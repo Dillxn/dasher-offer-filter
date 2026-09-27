@@ -123,8 +123,12 @@ public final class OfferFilterService extends AccessibilityService {
 
     private static boolean isButton(String label, String verb) {
         String normalized = label.trim().toLowerCase(Locale.US);
-        return normalized.equals(verb) || normalized.equals(verb + " offer") ||
-                normalized.equals(verb + " order");
+        if (normalized.equals(verb) || normalized.equals(verb + " offer") ||
+                normalized.equals(verb + " order")) return true;
+        // Dasher may append the offer countdown to the Accept label.
+        return verb.equals("accept") && normalized.matches(
+                "accept(?: offer| order)?\\s*[(:·]?\\s*(?:\\d{1,2}|\\d{1,2}:\\d{2})" +
+                        "\\s*(?:s|sec|seconds)?\\s*\\)?");
     }
 
     private void status(String message) {
