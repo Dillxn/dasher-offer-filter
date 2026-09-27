@@ -37,6 +37,13 @@ public final class OfferRuleTest {
     }
 
     @Test
+    public void ignoresAnUnrelatedEarningsAmountWhenPayIsGuaranteed() {
+        OfferSnapshot offer = OfferParser.parse(Arrays.asList(
+                "$100.00 Weekly earnings", "Guaranteed", "$8.50", "4 mi"));
+        assertEquals(Integer.valueOf(850), offer.payCents);
+    }
+
+    @Test
     public void chargesOnlyForStopsBeyondPickupAndDropoff() {
         FilterSettings settings = new FilterSettings(true, 600, 100, 0, 200);
         OfferSnapshot offer = OfferParser.parse(Arrays.asList("$7.00 Guaranteed", "1 mi", "3 stops"));
@@ -44,4 +51,3 @@ public final class OfferRuleTest {
         assertEquals(800, OfferRule.evaluate(offer, settings).requiredCents);
     }
 }
-

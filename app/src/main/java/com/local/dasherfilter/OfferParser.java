@@ -36,7 +36,7 @@ final class OfferParser {
             if (lower.contains("/hr") || lower.contains("per hour") ||
                     lower.contains("/mi") || lower.contains("per mile")) continue;
             boolean payLabel = lower.contains("guaranteed") ||
-                    lower.contains("total pay") || lower.contains("earnings");
+                    lower.contains("total pay");
             Matcher matcher = MONEY.matcher(line);
             while (matcher.find()) {
                 int amount = cents(matcher.group(1));

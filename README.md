@@ -24,7 +24,7 @@ The app reads only the Dasher package (`com.doordash.driverapp`). Android Access
 
 ## Build
 
-Use JDK 17, Android SDK Platform 36, SDK Build Tools 35.0.0 or newer, and Gradle 8.13. Run `./gradlew testDebugUnitTest assembleDebug`. The APK stays local.
+Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-local.sh`. The APK stays local. Gradle 8.13 is also supported with `./gradlew testDebugUnitTest assembleDebug` when its dependencies are available.
 
 ## Current limit
 

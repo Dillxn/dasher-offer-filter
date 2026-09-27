@@ -3,6 +3,9 @@ package com.local.dasherfilter;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.text.DateFormat;
+import java.util.Date;
+
 final class FilterStore {
     private static final String PREFS = "offer_filter";
 
@@ -24,8 +27,10 @@ final class FilterStore {
     }
 
     static void setLastStatus(Context context, String status) {
+        String timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                .format(new Date());
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString("last_status", status).apply();
+                .putString("last_status", timestamp + "\n" + status).apply();
     }
 
     static String lastStatus(Context context) {
