@@ -20,7 +20,7 @@ The required payout is `max(flat, miles × mile rate, minutes × minute rate) + 
 3. Enable Offer Filter under Android Accessibility settings. On newer Android versions, you may need to allow restricted settings from Offer Filter's App info menu before its accessibility service can be enabled.
 4. Check **Last offer check** against an actual offer while parked. Turn on auto-decline only after pay and distance are being read correctly.
 
-The app reads only the Dasher package (`com.doordash.driverapp`). Android Accessibility needs broad screen access, so review the permission before enabling it. DoorDash's platform access policy prohibits automated monitoring or scraping; using this app may put Dasher account access at risk.
+The app reads only the Dasher package (`com.doordash.driverapp`). Android Accessibility needs broad screen access, so review the permission before enabling it. [DoorDash's deactivation policy](https://help.doordash.com/en-us/dashers/article/deactivation-policy-us-english-dx) lists automated monitoring or scraping; using this app may put Dasher account access at risk.
 
 ## Build
 
