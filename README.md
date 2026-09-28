@@ -33,7 +33,7 @@ Automatic updates are on by default and can be switched off. Android JobSchedule
 
 [Android permits self-updates without user action under specified conditions](https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams#setRequireUserAction(int)); the installer still handles confirmation when required. A silent notification or the **Check / install update** button completes that confirmation. No accessibility automation clicks Android permission or installer screens.
 
-The update feed and APKs are in the public [update repository](https://github.com/Dillxn/dasher-offer-filter-updates); the source repository is private. The phone needs no GitHub token or login. Its only network requests fetch update metadata and APKs; offer information and settings stay on the device.
+Releases and APKs appear in the [original repository's Releases](https://github.com/Dillxn/dasher-offer-filter/releases), with matching APKs and the feed in the public [update repository](https://github.com/Dillxn/dasher-offer-filter-updates). The source repository is private. The phone needs no GitHub token or login for automatic updates. Its only network requests fetch update metadata and APKs; offer information and settings stay on the device.
 
 ## Setup
 
@@ -48,7 +48,7 @@ The app reads only the Dasher package (`com.doordash.driverapp`). Android Access
 
 Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-local.sh`. The APK stays local. Gradle 8.13 is also supported with `./gradlew testDebugUnitTest assembleDebug` when its dependencies are available.
 
-To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, build and test, push source on main, then run `python3 publish-update.py app/build/outputs/apk/debug/app-debug.apk --notes-file <release-notes.md>`. The publisher checks the existing signing certificate and rejects downgrades or changed APKs without a version increment. It uploads the release before publishing `latest.json`, so phones receive a working download URL.
+To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, build and test, push source on main, then run `python3 publish-update.py app/build/outputs/apk/debug/app-debug.apk --notes-file <release-notes.md>`. The publisher checks the existing signing certificate and rejects downgrades or changed APKs without a version increment. It uploads the same signed APK to Releases in both repositories before publishing `latest.json`, so phones receive a working download URL.
 
 ## Current limit
 

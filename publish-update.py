@@ -11,6 +11,7 @@ import shutil
 import subprocess
 
 REPO = "Dillxn/dasher-offer-filter-updates"
+SOURCE_REPO = "Dillxn/dasher-offer-filter"
 SIGNER = "8da09c9765a17e18635d81c87bf94d9ed78f1260eec3009a89f808bb69f6a757"
 ROOT = Path(__file__).resolve().parent
 
@@ -33,6 +34,8 @@ def get_content(name):
 
 def put_content(name, content, message):
     old = get_content(name)
+    if old and base64.b64decode(old["content"]) == content:
+        return
     payload = {"message": message, "branch": "main", "content": base64.b64encode(content).decode()}
     if old:
         payload["sha"] = old["sha"]
@@ -74,24 +77,26 @@ def main():
             "Android may still require installation confirmation. No GitHub sign-in is needed.\n"
             "Offer information and app settings are not uploaded here.\n").encode(), "Initialize update feed")
     tag = f"v{version}"
-    release = run("gh", "release", "view", tag, "--repo", REPO, "--json", "assets", optional=True)
-    if release.returncode == 0:
-        assets = json.loads(release.stdout)["assets"]
-        existing = next((item for item in assets if item["name"] == "OfferFilter.apk"), None)
-        if not existing or existing.get("digest") != f"sha256:{digest}":
-            raise RuntimeError("Existing release differs; bump the version")
-    else:
-        destination = ROOT / "app/build/publish/OfferFilter.apk"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(apk, destination)
-        run("gh", "release", "create", tag, str(destination), "--repo", REPO,
-            "--target", "main", "--title", f"Offer Filter {version}",
-            "--notes-file", str(args.notes_file.resolve()))
+    destination = ROOT / "app/build/publish/OfferFilter.apk"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(apk, destination)
+    for repository in (REPO, SOURCE_REPO):
+        release = run("gh", "release", "view", tag, "--repo", repository, "--json", "assets", optional=True)
+        if release.returncode == 0:
+            assets = json.loads(release.stdout)["assets"]
+            existing = next((item for item in assets if item["name"] == "OfferFilter.apk"), None)
+            if not existing or existing.get("digest") != f"sha256:{digest}":
+                raise RuntimeError(f"Existing release in {repository} differs; bump the version")
+        else:
+            run("gh", "release", "create", tag, str(destination), "--repo", repository,
+                "--target", "main", "--title", f"Offer Filter {version}",
+                "--notes-file", str(args.notes_file.resolve()))
     feed = {"packageName": package, "versionCode": code, "versionName": version,
             "apkUrl": f"https://github.com/{REPO}/releases/download/{tag}/OfferFilter.apk",
             "sha256": digest, "size": len(data)}
     put_content("latest.json", (json.dumps(feed, indent=2) + "\n").encode(), f"Publish {version} update feed")
     print(json.dumps(feed, indent=2))
+    print(f"Release: https://github.com/{SOURCE_REPO}/releases/tag/{tag}")
     print(f"Download: https://github.com/{REPO}/releases/latest/download/OfferFilter.apk")
 
 
