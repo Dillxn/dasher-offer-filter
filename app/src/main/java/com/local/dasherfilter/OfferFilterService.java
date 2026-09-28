@@ -1,8 +1,6 @@
 package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -13,12 +11,7 @@ import java.util.Locale;
 
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private long lastScanAt;
-    private long lastAttemptAt;
-    private long confirmationUntil;
-    private String lastAttemptKey = "";
-    private String pendingKey = "";
+    private final DeclineState declineState = new DeclineState();
     private String lastStatus = "";
 
     @Override
@@ -26,59 +19,44 @@ public final class OfferFilterService extends AccessibilityService {
         if (event.getPackageName() == null ||
                 !DASHER_PACKAGE.contentEquals(event.getPackageName())) return;
         long now = SystemClock.uptimeMillis();
-        if (now - lastScanAt < 250) return;
-        lastScanAt = now;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null ||
                 !DASHER_PACKAGE.contentEquals(root.getPackageName())) return;
         Scan scan = new Scan();
         scan(root, scan, 0);
+        if (scan.truncated) {
+            status("The offer screen could not be read completely. No action.");
+            return;
+        }
+        FilterSettings settings = FilterStore.load(this);
+        if (!settings.enabled) declineState.reset();
 
-        if (confirmationUntil > now && scan.accept == null && scan.decline != null &&
+        if (settings.enabled && declineState.mayConfirm(now) &&
+                scan.accept == null && scan.decline != null &&
                 containsDeclinePrompt(scan.text)) {
-            if (click(scan.decline)) status("Decline confirmation tapped.");
-            confirmationUntil = 0;
+            if (click(scan.decline)) {
+                declineState.confirmationSent();
+                status("Decline confirmation tapped.");
+            }
             return;
         }
+        if (scan.accept == null && scan.decline == null) declineState.offerGone();
         if (scan.accept == null || scan.decline == null) return;
 
-        OfferSnapshot offer = OfferParser.parse(scan.text);
-        if (offer.payCents == null) {
-            status("Offer visible, but payout could not be read safely. No action.");
-            return;
-        }
-        FilterSettings settings = FilterStore.load(this);
+        OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
-        status(offer.summary() + "\n" + decision.summary() +
-                (settings.enabled ? "" : "\nAuto-decline is off."));
-        if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) return;
-
-        String key = offer.fingerprint();
-        if (key.equals(pendingKey) ||
-                (key.equals(lastAttemptKey) && now - lastAttemptAt < 30000)) return;
-        pendingKey = key;
-        handler.postDelayed(() -> recheckAndDecline(key), 700);
-    }
-
-    private void recheckAndDecline(String key) {
-        pendingKey = "";
-        FilterSettings settings = FilterStore.load(this);
-        if (!settings.enabled) return;
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null || root.getPackageName() == null ||
-                !DASHER_PACKAGE.contentEquals(root.getPackageName())) return;
-        Scan scan = new Scan();
-        scan(root, scan, 0);
-        if (scan.accept == null || scan.decline == null) return;
-        OfferSnapshot offer = OfferParser.parse(scan.text);
-        if (!key.equals(offer.fingerprint()) ||
-                OfferRule.evaluate(offer, settings).result != OfferRule.Result.DECLINE) return;
+        if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
+            status(offer.summary() + "\n" + decision.summary() +
+                    (settings.enabled ? "" : "\nAuto-decline is off."));
+            return;
+        }
+        String key = DeclineState.offerKey(offer, scan.text);
+        if (!declineState.mayDecline(key)) return;
+        // Act on this visible offer immediately. No timer, debounce, alarm, or vibration.
         if (click(scan.decline)) {
-            lastAttemptKey = key;
-            lastAttemptAt = SystemClock.uptimeMillis();
-            confirmationUntil = lastAttemptAt + 3000;
-            status("Decline tapped for " + offer.summary());
+            declineState.declineSent(key, now);
+            status("Decline tapped for " + offer.summary() + "\n" + decision.summary());
         } else {
             status("Could not tap Decline. No further action.");
         }
@@ -96,20 +74,39 @@ public final class OfferFilterService extends AccessibilityService {
     private static boolean click(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = node;
         for (int i = 0; i < 4 && current != null; i++, current = current.getParent()) {
-            if (current.isClickable()) return current.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (current.isClickable() && current.isEnabled() && current.isVisibleToUser()) {
+                return current.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
         }
         return false;
     }
 
-    private static void scan(AccessibilityNodeInfo node, Scan result, int depth) {
-        if (node == null || depth > 25 || result.visited++ > 250) return;
+    private static String scan(AccessibilityNodeInfo node, Scan result, int depth) {
+        if (node == null) return "";
+        if (depth > 60 || result.visited++ >= 1500) {
+            result.truncated = true;
+            return "";
+        }
+        String ownLabel = "";
         if (node.isVisibleToUser()) {
             addLabel(result, node, node.getText());
             addLabel(result, node, node.getContentDescription());
-            for (int i = 0; i < node.getChildCount(); i++) {
-                scan(node.getChild(i), result, depth + 1);
+            ownLabel = node.getText() == null ? "" : node.getText().toString().trim();
+            if (ownLabel.isEmpty() && node.getContentDescription() != null) {
+                ownLabel = node.getContentDescription().toString().trim();
             }
         }
+        List<String> siblings = new ArrayList<>();
+        int children = node.getChildCount();
+        // A container can be invisible while some of its children are visible.
+        for (int i = 0; i < children; i++) {
+            if (result.truncated) break;
+            siblings.add(scan(node.getChild(i), result, depth + 1));
+        }
+        result.metricParts.addAll(OfferParser.joinMetricSiblings(siblings));
+        // A single-child layout wrapper does not split the metric row.
+        return ownLabel.isEmpty() && children == 1 && siblings.size() == 1
+                ? siblings.get(0) : ownLabel;
     }
 
     private static void addLabel(Scan result, AccessibilityNodeInfo node, CharSequence value) {
@@ -139,12 +136,14 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override
-    public void onInterrupt() { }
+    public void onInterrupt() { declineState.reset(); }
 
     private static final class Scan {
         final List<String> text = new ArrayList<>();
+        final List<String> metricParts = new ArrayList<>();
         AccessibilityNodeInfo accept;
         AccessibilityNodeInfo decline;
         int visited;
+        boolean truncated;
     }
 }

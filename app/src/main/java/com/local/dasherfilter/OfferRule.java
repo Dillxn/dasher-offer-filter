@@ -17,17 +17,24 @@ final class OfferRule {
         }
 
         String summary() {
+            if (requiredCents == 0) return result + ": " + reason;
             return String.format(Locale.US, "%s: required at least $%.2f (%s)",
                     result, requiredCents / 100.0, reason);
         }
     }
 
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
-        if (offer.payCents == null) {
+        boolean missing = settings.maxStops > 0 && offer.stops == null;
+        if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
+            return new Decision(Result.DECLINE, 0,
+                    offer.stops + " stops exceeds maximum " + settings.maxStops);
+        }
+        boolean needsPay = settings.flatCents > 0 || settings.perMileCents > 0 ||
+                settings.perMinuteCents > 0 || settings.extraStopCents > 0;
+        if (needsPay && offer.payCents == null) {
             return new Decision(Result.REVIEW, 0, "pay not found");
         }
         int required = settings.flatCents;
-        boolean missing = false;
         String reason = "flat minimum";
 
         if (settings.perMileCents > 0) {
@@ -62,7 +69,7 @@ final class OfferRule {
             }
         }
 
-        if (offer.payCents < required) {
+        if (offer.payCents != null && offer.payCents < required) {
             return new Decision(Result.DECLINE, required, reason);
         }
         if (missing) {
@@ -71,4 +78,3 @@ final class OfferRule {
         return new Decision(Result.KEEP, required, "meets enabled rules");
     }
 }
-

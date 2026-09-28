@@ -1,6 +1,8 @@
 # Offer Filter
 
-A local Android companion for the DoorDash Dasher app. It reads the visible offer screen through Android Accessibility and can tap **Decline** when the shown guaranteed payout is below your saved rule. It never signs in to DoorDash, sends offer data to a server, or accepts an offer.
+A local Android companion for the DoorDash Dasher app. It reads the visible offer screen through Android Accessibility and can tap **Decline** when the shown guaranteed payout is below your saved rule or the total stop count exceeds your limit. It never signs in to DoorDash, sends offer data to a server, or accepts an offer.
+
+Offers are evaluated immediately when Android reports a screen change, with no programmed waiting timer. The app makes no sound or vibration. Android and Dasher still determine screen/event delivery time. The **Dasher notification sound settings** button opens Android's controls for Dasher's own alerts.
 
 ## Rules
 
@@ -10,8 +12,13 @@ Set any unused value to zero:
 - Minimum dollars per mile
 - Minimum dollars per minute, only when an explicit estimated duration is shown
 - Fee for every stop after the usual pickup and drop-off
+- Maximum total stops (whole number; pickup + drop-off = 2 stops)
 
 The required payout is `max(flat, miles × mile rate, minutes × minute rate) + extra stops × fee`. If an enabled value is missing, the app may still decline when a known lower bound already fails; otherwise it leaves the offer for manual review. Auto-decline is off by default.
+
+With only a $20 flat minimum enabled, missing mileage and stops do not prevent a decision: below $20 declines, and $20 or more stays available for you to choose. A qualifying offer is never accepted automatically.
+
+The stop limit is independent of payout: a maximum of 2 allows up to 2 stops and declines 3 or more, even on a high-paying offer. Set all price rules to zero to use only maximum stops. Missing or conflicting stop counts cannot trigger the stop limit; a known payout failure can still trigger a price rule. Updates preserve existing price settings and auto-decline, and start the new stop limit at 0 (off).
 
 ## Setup
 
@@ -28,4 +35,4 @@ Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-lo
 
 ## Current limit
 
-Offer layouts change. The parser requires a clear payout and both Accept and Decline controls before it acts. The on-device offer labels have not yet been verified against a live offer on this phone; keep auto-decline off until that check is done.
+Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before it acts. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0; the expanded metric reader, maximum stops, and response time in 0.2.0 still need a live offer check.

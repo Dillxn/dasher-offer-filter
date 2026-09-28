@@ -31,7 +31,7 @@ while IFS= read -r -d '' file; do flat_files+=("$file"); done \
 "$tools/aapt2" link -o "$work/unsigned.apk" \
     --manifest app/src/main/AndroidManifest.xml \
     -I "$platform" --min-sdk-version 26 --target-sdk-version 35 \
-    --version-code 1 --version-name 0.1.0 --auto-add-overlay \
+    --version-code 2 --version-name 0.2.0 --auto-add-overlay \
     -R "${flat_files[@]}"
 
 sources=()

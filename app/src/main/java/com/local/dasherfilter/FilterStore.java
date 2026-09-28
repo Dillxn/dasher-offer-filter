@@ -13,7 +13,7 @@ final class FilterStore {
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         return new FilterSettings(p.getBoolean("enabled", false),
                 p.getInt("flat", 0), p.getInt("mile", 0),
-                p.getInt("minute", 0), p.getInt("stop", 0));
+                p.getInt("minute", 0), p.getInt("stop", 0), p.getInt("max_stops", 0));
     }
 
     static void save(Context context, FilterSettings settings) {
@@ -23,6 +23,7 @@ final class FilterStore {
                 .putInt("mile", settings.perMileCents)
                 .putInt("minute", settings.perMinuteCents)
                 .putInt("stop", settings.extraStopCents)
+                .putInt("max_stops", settings.maxStops)
                 .apply();
     }
 

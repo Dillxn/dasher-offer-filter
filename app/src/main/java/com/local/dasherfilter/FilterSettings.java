@@ -6,14 +6,16 @@ final class FilterSettings {
     final int perMileCents;
     final int perMinuteCents;
     final int extraStopCents;
+    final int maxStops;
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
-                   int perMinuteCents, int extraStopCents) {
+                   int perMinuteCents, int extraStopCents, int maxStops) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
         this.perMinuteCents = perMinuteCents;
         this.extraStopCents = extraStopCents;
+        this.maxStops = maxStops;
     }
 
 }
