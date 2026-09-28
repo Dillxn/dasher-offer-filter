@@ -30,7 +30,7 @@ final class OfferRule {
                     offer.stops + " stops exceeds maximum " + settings.maxStops);
         }
         boolean needsPay = settings.flatCents > 0 || settings.perMileCents > 0 ||
-                settings.perMinuteCents > 0 || settings.extraStopCents > 0;
+                settings.perMinuteCents > 0 || settings.extraStopCents > 0 || settings.risingOffers;
         if (needsPay && offer.payCents == null) {
             return new Decision(Result.REVIEW, 0, "pay not found");
         }
@@ -67,6 +67,13 @@ final class OfferRule {
                 required += settings.extraStopCents * extraStops;
                 if (extraStops > 0) reason += " and extra stops";
             }
+        }
+
+        if (settings.risingOffers && settings.lastAcceptedCents > 0 &&
+                settings.lastAcceptedCents + 1 > required) {
+            required = settings.lastAcceptedCents + 1;
+            reason = String.format(Locale.US, "must beat last accepted payout $%.2f",
+                    settings.lastAcceptedCents / 100.0);
         }
 
         if (offer.payCents != null && offer.payCents < required) {

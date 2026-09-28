@@ -123,6 +123,33 @@ public final class OfferRuleTest {
         assertEquals(2200, decision.requiredCents);
     }
 
+    @Test public void risingRuleRequiresStrictlyMoreThanLastAcceptedPay() {
+        FilterSettings settings = new FilterSettings(true, 2200, 0, 0, 0, 0, true, 2500);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(2499, null, null, null), settings).result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(2500, null, null, null), settings).result);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(2501, null, null, null), settings).result);
+        assertEquals(2501, OfferRule.evaluate(new OfferSnapshot(2500, null, null, null), settings).requiredCents);
+    }
+
+    @Test public void risingRuleStartsWithNormalRulesAndCanBeDisabled() {
+        FilterSettings first = new FilterSettings(true, 2200, 0, 0, 0, 0, true, 0);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(2200, null, null, null), first).result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(2199, null, null, null), first).result);
+        FilterSettings off = new FilterSettings(true, 2200, 0, 0, 0, 0, false, 2500);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(2200, null, null, null), off).result);
+    }
+
+    @Test public void risingRuleCombinesWithPriceAndStopRulesWithoutDoubleCharging() {
+        FilterSettings settings = new FilterSettings(true, 2200, 0, 0, 100, 3, true, 2500);
+        assertEquals(2501, OfferRule.evaluate(new OfferSnapshot(2501, null, null, 3), settings).requiredCents);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(2501, null, null, 3), settings).result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(9900, null, null, 4), settings).result);
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(null, null, null, 3), settings).result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(300, null, null, null), settings).result);
+        FilterSettings stricterFlat = new FilterSettings(true, 3000, 0, 0, 0, 0, true, 2500);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(2600, null, null, null), stricterFlat).result);
+    }
+
     @Test
     public void maximumStopsIsInclusiveAndWorksWithoutPay() {
         FilterSettings settings = new FilterSettings(true, 0, 0, 0, 0, 3);

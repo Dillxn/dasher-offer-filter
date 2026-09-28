@@ -1,10 +1,16 @@
 package com.local.dasherfilter;
 
+import android.Manifest;
 import android.app.Activity;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
@@ -23,12 +29,23 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private Switch enabled;
+    private Switch rising;
     private EditText flat;
     private EditText mile;
     private EditText minute;
     private EditText stop;
     private EditText maxStops;
     private TextView status;
+    private TextView risingStatus;
+    private TextView updateStatus;
+    private boolean finishingUpdateSetup;
+    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
+    private final Runnable refresh = new Runnable() {
+        @Override public void run() {
+            refreshStatus();
+            refreshHandler.postDelayed(this, 1000);
+        }
+    };
 
     @Override
     public void onCreate(Bundle state) {
@@ -40,9 +57,20 @@ public final class MainActivity extends Activity {
         page.setPadding(dp(20), dp(20), dp(20), dp(28));
         scroll.addView(page);
 
-        TextView title = text("Offer Filter", 24);
+        TextView title = text("Offer Filter " + Updater.version(this), 24);
         page.addView(title);
         page.addView(text("Set your offer limits. Zero disables a rule. The app only declines when a readable value fails an enabled rule.", 15));
+
+        rising = new Switch(this);
+        rising.setText("Only offers above my last accepted payout");
+        rising.setChecked(settings.risingOffers);
+        page.addView(rising);
+        risingStatus = text("", 14);
+        page.addView(risingStatus);
+        page.addView(text("Tracks an Accept tap followed by the delivery screen. Until an acceptance is detected, your other rules apply. This threshold can eventually block most offers.", 13));
+        Button resetRising = button("Reset last accepted payout");
+        resetRising.setOnClickListener(v -> { FilterStore.recordAccepted(this, 0); refreshStatus(); });
+        page.addView(resetRising);
 
         maxStops = field(page, "Maximum total stops (0 = off)",
                 Integer.toString(settings.maxStops), InputType.TYPE_CLASS_NUMBER);
@@ -78,22 +106,82 @@ public final class MainActivity extends Activity {
         Button refresh = button("Refresh status");
         refresh.setOnClickListener(v -> refreshStatus());
         page.addView(refresh);
+        page.addView(text("Updates", 18));
+        Switch updates = new Switch(this);
+        updates.setText("Automatic updates");
+        updates.setChecked(Updater.enabled(this));
+        updates.setOnCheckedChangeListener((view, checked) -> {
+            Updater.setEnabled(this, checked);
+            refreshStatus();
+            if (checked) Updater.check(this, false, null);
+        });
+        page.addView(updates);
+        updateStatus = text("", 14);
+        page.addView(updateStatus);
+        Button installPermission = button("Allow automatic installs");
+        installPermission.setOnClickListener(v -> allowUpdates());
+        page.addView(installPermission);
+        Button checkUpdate = button("Check / install update");
+        checkUpdate.setOnClickListener(v -> Updater.check(this, true, null));
+        page.addView(checkUpdate);
+        page.addView(text("Checks hourly and when this app opens. Updates install when you leave Dasher. Enable Allow from this source once; Android may still ask you to confirm an installation. Update notices are silent.", 13));
         page.addView(text("Setup: enable Offer Filter in Accessibility settings. If Android blocks a sideloaded accessibility service, open this app's App info menu and allow restricted settings. Auto-decline starts only after you turn it on and save.", 13));
         setContentView(scroll);
+        Updater.schedule(this);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (status != null) refreshStatus();
+        Updater.foreground(this);
+        if (status != null) {
+            refreshHandler.removeCallbacks(refresh);
+            refreshHandler.post(refresh);
+        }
+        if (finishingUpdateSetup) {
+            finishingUpdateSetup = false;
+            if (getPackageManager().canRequestPackageInstalls()) allowUpdates();
+        }
+        Updater.check(this, false, null);
+    }
+
+    @Override
+    protected void onPause() {
+        refreshHandler.removeCallbacks(refresh);
+        Updater.background(this);
+        super.onPause();
+    }
+
+    private void allowUpdates() {
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            finishingUpdateSetup = true;
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+                !Updater.prefs(this).getBoolean("notices_asked", false)) {
+            Updater.prefs(this).edit().putBoolean("notices_asked", true).apply();
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 12);
+            return;
+        }
+        Updater.check(this, true, null);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 12) Updater.check(this, true, null);
     }
 
     private void save() {
         try {
             FilterSettings next = new FilterSettings(enabled.isChecked(), parse(flat),
-                    parse(mile), parse(minute), parse(stop), parseMaxStops());
+                    parse(mile), parse(minute), parse(stop), parseMaxStops(),
+                    rising.isChecked(), FilterStore.load(this).lastAcceptedCents);
             if (next.enabled && next.flatCents == 0 && next.perMileCents == 0 &&
-                    next.perMinuteCents == 0 && next.extraStopCents == 0 && next.maxStops == 0) {
+                    next.perMinuteCents == 0 && next.extraStopCents == 0 && next.maxStops == 0 && !next.risingOffers) {
                 Toast.makeText(this, "Set at least one nonzero rule.", Toast.LENGTH_LONG).show();
                 return;
             }
@@ -149,6 +237,10 @@ public final class MainActivity extends Activity {
 
     private void refreshStatus() {
         FilterSettings saved = FilterStore.load(this);
+        risingStatus.setText(saved.lastAcceptedCents == 0 ? "No accepted payout recorded yet." :
+                String.format(Locale.US, "Last accepted: $%.2f. Rising rule %s.",
+                        saved.lastAcceptedCents / 100.0, saved.risingOffers ? "ON" : "OFF"));
+        if (updateStatus != null) updateStatus.setText(Updater.status(this));
         AccessibilityManager manager = getSystemService(AccessibilityManager.class);
         boolean serviceEnabled = false;
         String serviceId = new ComponentName(this, OfferFilterService.class).flattenToString();

@@ -15,7 +15,9 @@ import java.util.Locale;
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static boolean connected;
+    private static volatile OfferFilterService active;
     private final DeclineState declineState = new DeclineState();
+    private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long recheckUntil;
     private final Runnable recheck = new Runnable() {
@@ -29,9 +31,19 @@ public final class OfferFilterService extends AccessibilityService {
 
     static boolean isConnected() { return connected; }
 
+    static boolean isDasherForeground() {
+        OfferFilterService service = active;
+        if (service == null) return false;
+        AccessibilityNodeInfo root = service.getRootInActiveWindow();
+        return root != null && root.getPackageName() != null &&
+                DASHER_PACKAGE.contentEquals(root.getPackageName());
+    }
+
     @Override
     protected void onServiceConnected() {
         connected = true;
+        active = this;
+        Updater.schedule(this);
         status("Accessibility connected. Waiting for a Dasher offer.");
     }
 
@@ -39,6 +51,9 @@ public final class OfferFilterService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getPackageName() == null ||
                 !DASHER_PACKAGE.contentEquals(event.getPackageName())) return;
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED && isAcceptClick(event)) {
+            acceptedTracker.acceptClicked(SystemClock.uptimeMillis());
+        }
         handler.removeCallbacks(recheck);
         recheckUntil = SystemClock.uptimeMillis() + 3000;
         if (checkOffer()) handler.postDelayed(recheck, 200);
@@ -56,6 +71,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (root.getPackageName() == null || !DASHER_PACKAGE.contentEquals(root.getPackageName())) {
             declineState.reset();
+            acceptedTracker.reset();
             return false;
         }
         Scan scan = new Scan();
@@ -78,6 +94,12 @@ public final class OfferFilterService extends AccessibilityService {
         }
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         if (scan.accept == null || scan.decline == null) {
+            Integer accepted = acceptedTracker.observeOtherScreen(scan.text, now);
+            if (accepted != null) {
+                FilterStore.recordAccepted(this, accepted);
+                status(String.format(Locale.US, "Accepted offer detected: $%.2f. Rising rule baseline updated.", accepted / 100.0));
+                return false;
+            }
             if (scan.accept == null && scan.decline == null) declineState.offerGone();
             if (scan.accept != null || scan.decline != null || offer.payCents != null) {
                 status(offer.summary() + "\nNo action: " +
@@ -87,6 +109,8 @@ public final class OfferFilterService extends AccessibilityService {
             }
             return settings.enabled;
         }
+
+        acceptedTracker.observeOffer(offer, now);
 
         OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
@@ -113,6 +137,21 @@ public final class OfferFilterService extends AccessibilityService {
             String lower = line.toLowerCase(Locale.US);
             if (lower.contains("decline this") || lower.contains("decline offer") ||
                     lower.contains("decline order") || lower.contains("are you sure")) return true;
+        }
+        return false;
+    }
+
+    private static boolean isAcceptClick(AccessibilityEvent event) {
+        for (CharSequence label : event.getText()) {
+            if (label != null && OfferControls.isButton(label.toString(), "accept")) return true;
+        }
+        if (event.getContentDescription() != null &&
+                OfferControls.isButton(event.getContentDescription().toString(), "accept")) return true;
+        AccessibilityNodeInfo node = event.getSource();
+        for (int depth = 0; depth < 4 && node != null; depth++, node = node.getParent()) {
+            if (node.getText() != null && OfferControls.isButton(node.getText().toString(), "accept")) return true;
+            if (node.getContentDescription() != null &&
+                    OfferControls.isButton(node.getContentDescription().toString(), "accept")) return true;
         }
         return false;
     }
@@ -175,12 +214,14 @@ public final class OfferFilterService extends AccessibilityService {
     public void onInterrupt() {
         handler.removeCallbacks(recheck);
         declineState.reset();
+        acceptedTracker.reset();
         status("Android interrupted Offer Filter. Waiting for the next Dasher screen change.");
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
         connected = false;
+        active = null;
         handler.removeCallbacks(recheck);
         declineState.reset();
         return super.onUnbind(intent);
@@ -189,6 +230,7 @@ public final class OfferFilterService extends AccessibilityService {
     @Override
     public void onDestroy() {
         connected = false;
+        active = null;
         handler.removeCallbacks(recheck);
         declineState.reset();
         super.onDestroy();
