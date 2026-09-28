@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long recheckUntil;
     private final Runnable recheck = new Runnable() {
         @Override public void run() {
-            if (SystemClock.uptimeMillis() < recheckUntil && checkOffer()) {
+            long now = SystemClock.uptimeMillis();
+            if ((now < recheckUntil || declineState.hasPendingConfirmation(now)) && checkOffer()) {
                 handler.postDelayed(this, 200);
             }
         }
@@ -49,8 +51,9 @@ public final class OfferFilterService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getPackageName() == null ||
-                !DASHER_PACKAGE.contentEquals(event.getPackageName())) return;
+        boolean windowChange = event.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
+        if (!windowChange && (event.getPackageName() == null ||
+                !DASHER_PACKAGE.contentEquals(event.getPackageName()))) return;
         if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED && isAcceptClick(event)) {
             acceptedTracker.acceptClicked(SystemClock.uptimeMillis());
         }
@@ -81,14 +84,23 @@ public final class OfferFilterService extends AccessibilityService {
             return settings.enabled;
         }
 
-        if (settings.enabled && declineState.mayConfirm(now) &&
-                scan.accept == null && scan.decline != null &&
-                containsDeclinePrompt(scan.text)) {
-            if (click(scan.decline)) {
-                declineState.confirmationSent(now);
-                status("Decline confirmation requested; checking the screen.");
-            } else {
-                status("Could not tap the decline confirmation. Retrying while it is visible.");
+        Scan confirmation = confirmationScan(scan, declineState.hasPendingConfirmation(now));
+        if (confirmation != null) {
+            if (!settings.enabled || !declineState.hasPendingConfirmation(now)) {
+                status("Decline confirmation visible, but no recent automatic decline is pending. No action.");
+                return false;
+            }
+            int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels,
+                    confirmation.hasAcceptLabel);
+            if (selected < 0) {
+                status("Decline confirmation visible, but its action button is not clickable yet. Retrying.");
+            } else if (declineState.mayConfirm(now)) {
+                if (click(confirmation.declineTargets.get(selected))) {
+                    declineState.confirmationSent(now);
+                    status("Second-step Decline offer requested; checking whether the confirmation closes.");
+                } else {
+                    status("Could not tap the second-step Decline offer button. Retrying while it is visible.");
+                }
             }
             return true;
         }
@@ -132,13 +144,22 @@ public final class OfferFilterService extends AccessibilityService {
         return true;
     }
 
-    private static boolean containsDeclinePrompt(List<String> text) {
-        for (String line : text) {
-            String lower = line.toLowerCase(Locale.US);
-            if (lower.contains("decline this") || lower.contains("decline offer") ||
-                    lower.contains("decline order") || lower.contains("are you sure")) return true;
+    private Scan confirmationScan(Scan primary, boolean pending) {
+        if (pending) {
+            // Android lists interactive windows from top to bottom. Search the popup first.
+            for (AccessibilityWindowInfo window : getWindows()) {
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null || root.getPackageName() == null ||
+                        !DASHER_PACKAGE.contentEquals(root.getPackageName())) continue;
+                Scan candidate = new Scan();
+                scan(root, candidate, 0);
+                if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text, candidate.hasAcceptLabel)) {
+                    return candidate;
+                }
+            }
         }
-        return false;
+        return DeclineConfirmation.isSurface(primary.text, primary.hasAcceptLabel) ? primary : null;
     }
 
     private static boolean isAcceptClick(AccessibilityEvent event) {
@@ -158,12 +179,24 @@ public final class OfferFilterService extends AccessibilityService {
 
     private static boolean click(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = node;
-        for (int i = 0; i < 4 && current != null; i++, current = current.getParent()) {
-            if (current.isClickable() && current.isEnabled() && current.isVisibleToUser()) {
+        for (int i = 0; i < 8 && current != null; i++, current = current.getParent()) {
+            if (hasClickAction(current) && current.isEnabled() && current.isVisibleToUser()) {
                 if (current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
             }
         }
         return false;
+    }
+
+    private static boolean hasClickAction(AccessibilityNodeInfo node) {
+        return node.isClickable() || node.getActionList().contains(
+                AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+    }
+
+    private static AccessibilityNodeInfo clickTarget(AccessibilityNodeInfo node) {
+        for (int depth = 0; depth < 8 && node != null; depth++, node = node.getParent()) {
+            if (node.isVisibleToUser() && node.isEnabled() && hasClickAction(node)) return node;
+        }
+        return null;
     }
 
     private static String scan(AccessibilityNodeInfo node, Scan result, int depth) {
@@ -199,8 +232,19 @@ public final class OfferFilterService extends AccessibilityService {
         String label = value.toString().trim();
         if (label.isEmpty()) return;
         if (!result.text.contains(label)) result.text.add(label);
-        if (result.accept == null && OfferControls.isButton(label, "accept")) result.accept = node;
-        if (result.decline == null && OfferControls.isButton(label, "decline")) result.decline = node;
+        if (OfferControls.isButton(label, "accept")) {
+            result.hasAcceptLabel = true;
+            AccessibilityNodeInfo target = clickTarget(node);
+            if (result.accept == null && target != null) result.accept = target;
+        }
+        if (OfferControls.isButton(label, "decline")) {
+            AccessibilityNodeInfo target = clickTarget(node);
+            if (target != null) {
+                if (result.decline == null) result.decline = target;
+                result.declineLabels.add(label);
+                result.declineTargets.add(target);
+            }
+        }
     }
 
     private void status(String message) {
@@ -240,7 +284,10 @@ public final class OfferFilterService extends AccessibilityService {
         final List<String> text = new ArrayList<>();
         final List<String> metricParts = new ArrayList<>();
         AccessibilityNodeInfo accept;
+        boolean hasAcceptLabel;
         AccessibilityNodeInfo decline;
+        final List<String> declineLabels = new ArrayList<>();
+        final List<AccessibilityNodeInfo> declineTargets = new ArrayList<>();
         int visited;
         boolean truncated;
     }

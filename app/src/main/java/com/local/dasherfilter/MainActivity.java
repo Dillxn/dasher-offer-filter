@@ -98,7 +98,7 @@ public final class MainActivity extends Activity {
         sound.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")));
         page.addView(sound);
-        page.addView(text("Declines immediately once an offer can be read, with silent retries if it stays visible. Use the button above to silence Dasher's own notifications.", 13));
+        page.addView(text("Offer Filter is silent. Dasher may ring before an offer can be read. Use the button above to set Dasher's offer notifications to Silent; this affects all offers in that category. Ringing inside Dasher is separate.", 13));
 
         page.addView(text("Last offer check", 18));
         status = text("", 14);

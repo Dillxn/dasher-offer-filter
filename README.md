@@ -4,6 +4,12 @@ A local Android companion for the DoorDash Dasher app. It reads the visible offe
 
 Offers are evaluated immediately when Android reports a screen change, with no waiting timer before the first decline attempt. The app rechecks the current screen every 200 ms for up to 3 seconds after a Dasher event so an early, incomplete screen or missed tap can recover without another event. The same failing offer can receive up to four decline requests, at least 250 ms apart; a different offer is eligible immediately. Every retry reloads saved rules and checks the current foreground screen. The app makes no sound or vibration. Android and Dasher still determine screen/event delivery time. The **Dasher notification sound settings** button opens Android's controls for Dasher's own alerts.
 
+After an automatic first decline request, the app watches for the confirmation for up to 10 seconds, including blank screen transitions. It searches Dasher's topmost interactive application windows for the popup and selects an actionable **Decline offer** button even when the background Accept button remains exposed. It can request that confirmation up to four times, at least 250 ms apart. It leaves manually opened confirmations alone unless its own recent automatic decline is pending. A tap request still needs Dasher to actually dismiss the screen.
+
+### Dasher ringing
+
+The filter cannot guarantee stopping a sound that Dasher starts before Android exposes the offer for evaluation. Completing the second decline step may stop continued ringing, but this has not been checked on the phone. For Android notification sounds, use **Dasher notification sound settings** and set the relevant notification category to **Silent**. This silences all notifications in that category, including qualifying offers. On Samsung, missing categories can be enabled under **Settings → Notifications → Advanced settings → Manage notification categories for each app** ([Samsung instructions](https://www.samsung.com/us/support/answer/ANS10002521/)). Sounds played inside Dasher are separate from Android notification controls. Offer Filter does not mute the phone's calls or media.
+
 ## Rules
 
 Set any unused value to zero:
@@ -27,7 +33,7 @@ The stop limit is independent of payout: a maximum of 2 allows up to 2 stops and
 
 ## Automatic updates
 
-Install 0.3.0 once from the [permanent APK download](https://github.com/Dillxn/dasher-offer-filter-updates/releases/latest/download/OfferFilter.apk). In Offer Filter, tap **Allow automatic installs** and enable Android's **Allow from this source**. Update notifications are optional and silent.
+Install the latest version from the [permanent APK download](https://github.com/Dillxn/dasher-offer-filter-updates/releases/latest/download/OfferFilter.apk). In Offer Filter, tap **Allow automatic installs** and enable Android's **Allow from this source**. Update notifications are optional and silent.
 
 Automatic updates are on by default and can be switched off. Android JobScheduler checks hourly when network access is available, and opening the app also checks. Android may defer background jobs. New versions download automatically, verify package, version, exact size, SHA-256, and the installed app's signing certificate, then request self-installation. Installation waits while Dasher is the foreground app. Saved rules and the accepted-offer baseline stay in place.
 
@@ -52,4 +58,4 @@ To ship a new update, increase `versionCode` and `versionName` in both `app/buil
 
 ## Current limit
 
-Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before it acts. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. Version 0.3.0 adds accepted-offer tracking and self-updates. Decline reliability, live accepted-offer detection, and installation still need confirmation on the phone; no ADB device is connected.
+Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before the initial decline. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. Version 0.3.0 adds accepted-offer tracking and self-updates. Version 0.3.1 fixes the confirmation guard and selection of the second decline action. Local verification: the signed APK builds and all 45 JUnit tests pass. Confirmation reliability, ringing behavior, live accepted-offer detection, and installation still need confirmation on the phone; no ADB device is connected.

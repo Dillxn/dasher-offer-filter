@@ -40,14 +40,15 @@ public final class DeclineStateTest {
         assertFalse(state.mayConfirm(1000));
         state.declineSent("first", 1000);
         assertTrue(state.mayConfirm(1000));
-        assertFalse(state.mayConfirm(4000));
+        assertTrue(state.mayConfirm(4000));
+        assertFalse(state.mayConfirm(11000));
         state.reset();
         assertFalse(state.mayConfirm(1001));
         state.declineSent("second", 5000);
         state.confirmationSent(5000);
         assertFalse(state.mayConfirm(5001));
         assertTrue(state.mayConfirm(5250));
-        assertFalse(state.mayConfirm(8000));
+        assertFalse(state.mayConfirm(15000));
     }
 
     @Test
@@ -65,5 +66,33 @@ public final class DeclineStateTest {
         assertTrue(state.mayDecline("different offer", 2000));
         state.reset();
         assertTrue(state.mayDecline("different offer", 1751));
+    }
+
+    @Test public void delayedConfirmationSurvivesTransitionsButExpires() {
+        DeclineState state = new DeclineState();
+        state.declineSent("low offer", 1000);
+        state.offerGone();
+        assertTrue(state.hasPendingConfirmation(6000));
+        assertTrue(state.mayConfirm(6000));
+        assertFalse(state.hasPendingConfirmation(11000));
+        assertFalse(state.mayConfirm(11000));
+        state.declineSent("new offer", 12000);
+        state.reset();
+        assertFalse(state.hasPendingConfirmation(12001));
+    }
+
+    @Test public void capsConfirmationRequestsWithoutAnInitialWait() {
+        DeclineState state = new DeclineState();
+        state.declineSent("low offer", 1000);
+        assertTrue(state.mayConfirm(1000));
+        state.confirmationSent(1000);
+        assertFalse(state.mayConfirm(1249));
+        assertTrue(state.mayConfirm(1250));
+        state.confirmationSent(1250);
+        state.confirmationSent(1500);
+        state.confirmationSent(1750);
+        assertFalse(state.mayConfirm(2000));
+        state.declineSent("different offer", 2000);
+        assertTrue(state.mayConfirm(2000));
     }
 }

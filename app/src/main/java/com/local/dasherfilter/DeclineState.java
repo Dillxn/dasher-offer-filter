@@ -10,6 +10,7 @@ final class DeclineState {
     private int attempts;
     private long confirmationUntil;
     private long lastConfirmationAt = -1;
+    private int confirmationAttempts;
 
     static String offerKey(OfferSnapshot offer, List<String> labels) {
         StringBuilder identity = new StringBuilder(offer.fingerprint());
@@ -33,17 +34,21 @@ final class DeclineState {
         tappedOffer = offerKey;
         attempts++;
         lastTapAt = now;
-        confirmationUntil = now + 3000;
+        confirmationUntil = now + 10000;
         lastConfirmationAt = -1;
+        confirmationAttempts = 0;
     }
 
+    boolean hasPendingConfirmation(long now) { return now < confirmationUntil; }
+
     boolean mayConfirm(long now) {
-        return now < confirmationUntil &&
+        return hasPendingConfirmation(now) && confirmationAttempts < 4 &&
                 (lastConfirmationAt < 0 || now - lastConfirmationAt >= 250);
     }
 
     void confirmationSent(long now) {
         lastConfirmationAt = now;
+        confirmationAttempts++;
     }
 
     void offerGone() {
@@ -55,5 +60,6 @@ final class DeclineState {
         tappedOffer = "";
         confirmationUntil = 0;
         lastConfirmationAt = -1;
+        confirmationAttempts = 0;
     }
 }
