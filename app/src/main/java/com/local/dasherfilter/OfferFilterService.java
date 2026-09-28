@@ -1,6 +1,9 @@
 package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -11,55 +14,98 @@ import java.util.Locale;
 
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
+    private static boolean connected;
     private final DeclineState declineState = new DeclineState();
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private long recheckUntil;
+    private final Runnable recheck = new Runnable() {
+        @Override public void run() {
+            if (SystemClock.uptimeMillis() < recheckUntil && checkOffer()) {
+                handler.postDelayed(this, 200);
+            }
+        }
+    };
     private String lastStatus = "";
+
+    static boolean isConnected() { return connected; }
+
+    @Override
+    protected void onServiceConnected() {
+        connected = true;
+        status("Accessibility connected. Waiting for a Dasher offer.");
+    }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getPackageName() == null ||
                 !DASHER_PACKAGE.contentEquals(event.getPackageName())) return;
+        handler.removeCallbacks(recheck);
+        recheckUntil = SystemClock.uptimeMillis() + 3000;
+        if (checkOffer()) handler.postDelayed(recheck, 200);
+    }
+
+    private boolean checkOffer() {
         long now = SystemClock.uptimeMillis();
+        FilterSettings settings = FilterStore.load(this);
+        if (!settings.enabled) declineState.reset();
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null || root.getPackageName() == null ||
-                !DASHER_PACKAGE.contentEquals(root.getPackageName())) return;
+        if (root == null) {
+            status("Dasher reported a change, but the screen is not readable yet.");
+            return settings.enabled;
+        }
+        if (root.getPackageName() == null || !DASHER_PACKAGE.contentEquals(root.getPackageName())) {
+            declineState.reset();
+            return false;
+        }
         Scan scan = new Scan();
         scan(root, scan, 0);
         if (scan.truncated) {
             status("The offer screen could not be read completely. No action.");
-            return;
+            return settings.enabled;
         }
-        FilterSettings settings = FilterStore.load(this);
-        if (!settings.enabled) declineState.reset();
 
         if (settings.enabled && declineState.mayConfirm(now) &&
                 scan.accept == null && scan.decline != null &&
                 containsDeclinePrompt(scan.text)) {
             if (click(scan.decline)) {
-                declineState.confirmationSent();
-                status("Decline confirmation tapped.");
+                declineState.confirmationSent(now);
+                status("Decline confirmation requested; checking the screen.");
+            } else {
+                status("Could not tap the decline confirmation. Retrying while it is visible.");
             }
-            return;
+            return true;
         }
-        if (scan.accept == null && scan.decline == null) declineState.offerGone();
-        if (scan.accept == null || scan.decline == null) return;
-
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
+        if (scan.accept == null || scan.decline == null) {
+            if (scan.accept == null && scan.decline == null) declineState.offerGone();
+            if (scan.accept != null || scan.decline != null || offer.payCents != null) {
+                status(offer.summary() + "\nNo action: " +
+                        (scan.accept == null ? "Accept" : "") +
+                        (scan.accept == null && scan.decline == null ? " and " : "") +
+                        (scan.decline == null ? "Decline" : "") + " control not found.");
+            }
+            return settings.enabled;
+        }
+
         OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             status(offer.summary() + "\n" + decision.summary() +
                     (settings.enabled ? "" : "\nAuto-decline is off."));
-            return;
+            return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
         String key = DeclineState.offerKey(offer, scan.text);
-        if (!declineState.mayDecline(key)) return;
-        // Act on this visible offer immediately. No timer, debounce, alarm, or vibration.
+        if (!declineState.mayDecline(key, now)) return true;
+        // First attempt is immediate. Rechecks always read the current screen and saved rules.
         if (click(scan.decline)) {
             declineState.declineSent(key, now);
-            status("Decline tapped for " + offer.summary() + "\n" + decision.summary());
+            status("Decline requested for " + offer.summary() + "\n" + decision.summary() +
+                    "\nChecking whether the offer leaves the screen.");
         } else {
-            status("Could not tap Decline. No further action.");
+            status(offer.summary() + "\n" + decision.summary() +
+                    "\nCould not tap Decline. Retrying while this offer is visible.");
         }
+        return true;
     }
 
     private static boolean containsDeclinePrompt(List<String> text) {
@@ -75,7 +121,7 @@ public final class OfferFilterService extends AccessibilityService {
         AccessibilityNodeInfo current = node;
         for (int i = 0; i < 4 && current != null; i++, current = current.getParent()) {
             if (current.isClickable() && current.isEnabled() && current.isVisibleToUser()) {
-                return current.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                if (current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
             }
         }
         return false;
@@ -114,18 +160,8 @@ public final class OfferFilterService extends AccessibilityService {
         String label = value.toString().trim();
         if (label.isEmpty()) return;
         if (!result.text.contains(label)) result.text.add(label);
-        if (result.accept == null && isButton(label, "accept")) result.accept = node;
-        if (result.decline == null && isButton(label, "decline")) result.decline = node;
-    }
-
-    private static boolean isButton(String label, String verb) {
-        String normalized = label.trim().toLowerCase(Locale.US);
-        if (normalized.equals(verb) || normalized.equals(verb + " offer") ||
-                normalized.equals(verb + " order")) return true;
-        // Dasher may append the offer countdown to the Accept label.
-        return verb.equals("accept") && normalized.matches(
-                "accept(?: offer| order)?\\s*[(:·]?\\s*(?:\\d{1,2}|\\d{1,2}:\\d{2})" +
-                        "\\s*(?:s|sec|seconds)?\\s*\\)?");
+        if (result.accept == null && OfferControls.isButton(label, "accept")) result.accept = node;
+        if (result.decline == null && OfferControls.isButton(label, "decline")) result.decline = node;
     }
 
     private void status(String message) {
@@ -136,7 +172,27 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override
-    public void onInterrupt() { declineState.reset(); }
+    public void onInterrupt() {
+        handler.removeCallbacks(recheck);
+        declineState.reset();
+        status("Android interrupted Offer Filter. Waiting for the next Dasher screen change.");
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        connected = false;
+        handler.removeCallbacks(recheck);
+        declineState.reset();
+        return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        connected = false;
+        handler.removeCallbacks(recheck);
+        declineState.reset();
+        super.onDestroy();
+    }
 
     private static final class Scan {
         final List<String> text = new ArrayList<>();

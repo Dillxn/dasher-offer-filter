@@ -2,7 +2,7 @@
 
 A local Android companion for the DoorDash Dasher app. It reads the visible offer screen through Android Accessibility and can tap **Decline** when the shown guaranteed payout is below your saved rule or the total stop count exceeds your limit. It never signs in to DoorDash, sends offer data to a server, or accepts an offer.
 
-Offers are evaluated immediately when Android reports a screen change, with no programmed waiting timer. The app makes no sound or vibration. Android and Dasher still determine screen/event delivery time. The **Dasher notification sound settings** button opens Android's controls for Dasher's own alerts.
+Offers are evaluated immediately when Android reports a screen change, with no waiting timer before the first decline attempt. The app rechecks the current screen every 200 ms for up to 3 seconds after a Dasher event so an early, incomplete screen or missed tap can recover without another event. The same failing offer can receive up to four decline requests, at least 250 ms apart; a different offer is eligible immediately. Every retry reloads saved rules and checks the current foreground screen. The app makes no sound or vibration. Android and Dasher still determine screen/event delivery time. The **Dasher notification sound settings** button opens Android's controls for Dasher's own alerts.
 
 ## Rules
 
@@ -20,6 +20,8 @@ With only a $20 flat minimum enabled, missing mileage and stops do not prevent a
 
 The stop limit is independent of payout: a maximum of 2 allows up to 2 stops and declines 3 or more, even on a high-paying offer. Set all price rules to zero to use only maximum stops. Missing or conflicting stop counts cannot trigger the stop limit; a known payout failure can still trigger a price rule. Updates preserve existing price settings and auto-decline, and start the new stop limit at 0 (off).
 
+**Refresh status** shows whether Accessibility is connected, whether saved auto-decline is ON, and the saved minimum payout and stop limit. It reports missing controls, unreadable pay, or failed click attempts. A requested tap is not reported as a completed decline. If an offer is missed, this status is the first diagnostic to check.
+
 ## Setup
 
 1. Install the debug APK from `app/build/outputs/apk/debug/` on the Android phone.
@@ -35,4 +37,4 @@ Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-lo
 
 ## Current limit
 
-Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before it acts. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0; the expanded metric reader, maximum stops, and response time in 0.2.0 still need a live offer check.
+Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before it acts. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. These changes still need a live offer check.

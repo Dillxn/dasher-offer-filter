@@ -113,6 +113,17 @@ public final class OfferRuleTest {
     }
 
     @Test
+    public void threeDollarOfferFailsTwentyTwoDollarFloorWithOtherValuesMissing() {
+        FilterSettings settings = new FilterSettings(true, 2200, 150, 30, 100, 2);
+        OfferSnapshot offer = OfferParser.parse(Arrays.asList(
+                "$3.00 Guaranteed", "Accept, 30 seconds", "Decline"));
+        assertEquals(Integer.valueOf(300), offer.payCents);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals(2200, decision.requiredCents);
+    }
+
+    @Test
     public void maximumStopsIsInclusiveAndWorksWithoutPay() {
         FilterSettings settings = new FilterSettings(true, 0, 0, 0, 0, 3);
         assertEquals(OfferRule.Result.KEEP,

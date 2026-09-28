@@ -6,7 +6,10 @@ import java.util.Locale;
 /** Prevents repeated taps on one offer without delaying a different offer. */
 final class DeclineState {
     private String tappedOffer = "";
+    private long lastTapAt;
+    private int attempts;
     private long confirmationUntil;
+    private long lastConfirmationAt = -1;
 
     static String offerKey(OfferSnapshot offer, List<String> labels) {
         StringBuilder identity = new StringBuilder(offer.fingerprint());
@@ -20,29 +23,37 @@ final class DeclineState {
         return identity.toString();
     }
 
-    boolean mayDecline(String offerKey) {
-        return !offerKey.equals(tappedOffer);
+    boolean mayDecline(String offerKey, long now) {
+        return !offerKey.equals(tappedOffer) ||
+                (attempts < 4 && now - lastTapAt >= 250);
     }
 
     void declineSent(String offerKey, long now) {
+        if (!offerKey.equals(tappedOffer)) attempts = 0;
         tappedOffer = offerKey;
+        attempts++;
+        lastTapAt = now;
         confirmationUntil = now + 3000;
+        lastConfirmationAt = -1;
     }
 
     boolean mayConfirm(long now) {
-        return now < confirmationUntil;
+        return now < confirmationUntil &&
+                (lastConfirmationAt < 0 || now - lastConfirmationAt >= 250);
     }
 
-    void confirmationSent() {
-        confirmationUntil = 0;
+    void confirmationSent(long now) {
+        lastConfirmationAt = now;
     }
 
     void offerGone() {
         tappedOffer = "";
+        attempts = 0;
     }
 
     void reset() {
         tappedOffer = "";
         confirmationUntil = 0;
+        lastConfirmationAt = -1;
     }
 }

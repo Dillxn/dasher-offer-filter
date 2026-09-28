@@ -1,11 +1,14 @@
 package com.local.dasherfilter;
 
 import android.app.Activity;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -67,7 +70,7 @@ public final class MainActivity extends Activity {
         sound.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")));
         page.addView(sound);
-        page.addView(text("Offer Filter declines without a waiting timer and makes no sound or vibration. Use the button above to silence Dasher's own notifications.", 13));
+        page.addView(text("Declines immediately once an offer can be read, with silent retries if it stays visible. Use the button above to silence Dasher's own notifications.", 13));
 
         page.addView(text("Last offer check", 18));
         status = text("", 14);
@@ -145,7 +148,23 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshStatus() {
-        status.setText(FilterStore.lastStatus(this));
+        FilterSettings saved = FilterStore.load(this);
+        AccessibilityManager manager = getSystemService(AccessibilityManager.class);
+        boolean serviceEnabled = false;
+        String serviceId = new ComponentName(this, OfferFilterService.class).flattenToString();
+        if (manager != null) {
+            for (AccessibilityServiceInfo service : manager.getEnabledAccessibilityServiceList(
+                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+                ComponentName component = ComponentName.unflattenFromString(service.getId());
+                if (component != null && serviceId.equals(component.flattenToString())) serviceEnabled = true;
+            }
+        }
+        String accessibility = OfferFilterService.isConnected() ? "connected" :
+                serviceEnabled ? "enabled, waiting to connect" : "OFF";
+        status.setText(String.format(Locale.US,
+                "Accessibility: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\n\n%s",
+                accessibility, saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
+                saved.maxStops == 0 ? "off" : saved.maxStops, FilterStore.lastStatus(this)));
     }
 
     private TextView text(String value, int size) {

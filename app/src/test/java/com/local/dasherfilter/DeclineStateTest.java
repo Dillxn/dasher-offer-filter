@@ -8,10 +8,10 @@ public final class DeclineStateTest {
     @Test
     public void firstOfferAndDifferentOfferHaveNoWaitingPeriod() {
         DeclineState state = new DeclineState();
-        assertTrue(state.mayDecline("first"));
+        assertTrue(state.mayDecline("first", 1000));
         state.declineSent("first", 1000);
-        assertFalse(state.mayDecline("first"));
-        assertTrue(state.mayDecline("second"));
+        assertFalse(state.mayDecline("first", 1000));
+        assertTrue(state.mayDecline("second", 1000));
     }
 
     @Test
@@ -29,7 +29,7 @@ public final class DeclineStateTest {
         DeclineState state = new DeclineState();
         state.declineSent("same pay and route", 1000);
         state.offerGone();
-        assertTrue(state.mayDecline("same pay and route"));
+        assertTrue(state.mayDecline("same pay and route", 1001));
         // A brief transition with no controls must not lose the pending confirmation.
         assertTrue(state.mayConfirm(1001));
     }
@@ -44,7 +44,26 @@ public final class DeclineStateTest {
         state.reset();
         assertFalse(state.mayConfirm(1001));
         state.declineSent("second", 5000);
-        state.confirmationSent();
+        state.confirmationSent(5000);
         assertFalse(state.mayConfirm(5001));
+        assertTrue(state.mayConfirm(5250));
+        assertFalse(state.mayConfirm(8000));
+    }
+
+    @Test
+    public void retriesAStillVisibleOfferWithoutBlockingADifferentOffer() {
+        DeclineState state = new DeclineState();
+        state.declineSent("stuck offer", 1000);
+        assertFalse(state.mayDecline("stuck offer", 1249));
+        assertTrue(state.mayDecline("stuck offer", 1250));
+        state.declineSent("stuck offer", 1250);
+        state.declineSent("stuck offer", 1500);
+        state.declineSent("stuck offer", 1750);
+        assertFalse(state.mayDecline("stuck offer", 2000));
+        assertTrue(state.mayDecline("different offer", 1750));
+        state.declineSent("different offer", 1750);
+        assertTrue(state.mayDecline("different offer", 2000));
+        state.reset();
+        assertTrue(state.mayDecline("different offer", 1751));
     }
 }
