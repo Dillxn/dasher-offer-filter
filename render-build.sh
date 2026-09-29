@@ -24,11 +24,19 @@ if [[ ! -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" ]]; then
     curl -fsSL "$ANDROID_CLI_URL" -o "/tmp/$ANDROID_CLI"
     printf '%s  %s\n' "$ANDROID_CLI_SHA" "/tmp/$ANDROID_CLI" | sha256sum -c -
     rm -rf "$ANDROID_HOME/cmdline-tools/latest" "$ANDROID_HOME/cmdline-tools/cmdline-tools"
-    unzip -q -o "/tmp/$ANDROID_CLI" -d "$ANDROID_HOME/cmdline-tools"
+    python3 - "/tmp/$ANDROID_CLI" "$ANDROID_HOME/cmdline-tools" <<'PY'
+import pathlib, sys, zipfile
+with zipfile.ZipFile(pathlib.Path(sys.argv[1])) as z:
+    z.extractall(pathlib.Path(sys.argv[2]))
+PY
     mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
     set +o pipefail
     yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+    license_status=$?
     set -o pipefail
+    if [[ $license_status -ne 0 && $license_status -ne 141 ]]; then
+        exit "$license_status"
+    fi
     "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
         "platforms;android-36" "build-tools;35.0.0"
 fi
