@@ -30,7 +30,8 @@ public final class UpdatePolicyTest {
         assertEquals(120_000L, UpdatePolicy.retryDelayMillis(2));
         assertEquals(240_000L, UpdatePolicy.retryDelayMillis(3));
         assertEquals(480_000L, UpdatePolicy.retryDelayMillis(4));
-        assertEquals(480_000L, UpdatePolicy.retryDelayMillis(8));
+        assertEquals(900_000L, UpdatePolicy.retryDelayMillis(5));
+        assertEquals(900_000L, UpdatePolicy.retryDelayMillis(8));
     }
 
     @Test public void rejectsWrongPackageMalformedHashesAndUnboundedSize() {
