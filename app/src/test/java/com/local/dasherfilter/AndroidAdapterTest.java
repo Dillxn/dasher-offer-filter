@@ -17,7 +17,15 @@ import android.service.notification.StatusBarNotification;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.view.MotionEvent;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.time.Duration;
 import java.util.List;
 import org.junit.Before;
@@ -60,6 +68,7 @@ public class AndroidAdapterTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
+        DecisionLog.forgetCache();
     }
 
     @Test
@@ -145,7 +154,7 @@ public class AndroidAdapterTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View content = activity.get().findViewById(android.R.id.content);
-            View button = findButton(content, "Pause auto-decline immediately");
+            View button = findButton(content, "Pause auto-decline");
             assertNotNull(button);
             button.performClick();
             assertFalse(FilterStore.load(app).enabled);
@@ -289,6 +298,256 @@ public class AndroidAdapterTest {
         String report = DiagnosticLog.report(app);
         assertTrue(report.contains("max stops=3; rising offers=true; last accepted cents=2500"));
         assertTrue(report.contains("Notification access granted: false"));
+    }
+
+    @Test
+    public void resumeTurnsAutoDeclineBackOnWithTheSavedRules() {
+        FilterStore.save(app, new FilterSettings(false, 2000, 150, 0, 0, 0));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull(findButton(content, "Pause auto-decline"));
+            findButton(content, "Resume auto-decline").performClick();
+
+            FilterSettings saved = FilterStore.load(app);
+            assertTrue(saved.enabled);
+            assertEquals(2000, saved.flatCents);
+            assertEquals(150, saved.perMileCents);
+            // The same button now offers to pause again.
+            assertNotNull(findButton(content, "Pause auto-decline"));
+        }
+    }
+
+    @Test
+    public void resumeWithoutAnyRuleLeavesAutoDeclineOff() {
+        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            findButton(activity.get().findViewById(android.R.id.content), "Resume auto-decline").performClick();
+            assertFalse(FilterStore.load(app).enabled);
+        }
+    }
+
+    @Test
+    public void savingRulesKeepsAutoDeclinePaused() {
+        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            fieldLabeled(content, "Minimum pay ($)").setText("25");
+            findButton(content, "Save rules").performClick();
+
+            FilterSettings saved = FilterStore.load(app);
+            assertFalse(saved.enabled);
+            assertEquals(2500, saved.flatCents);
+        }
+    }
+
+    @Test
+    public void everyButtonOnTheScreenHasALabel() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            List<Button> buttons = new ArrayList<>();
+            collectButtons(activity.get().findViewById(android.R.id.content), buttons);
+            assertTrue(buttons.size() >= 10);
+            for (Button button : buttons) assertFalse("unlabeled button", button.getText().toString().trim().isEmpty());
+        }
+    }
+
+    @Test
+    public void emailReportIsAddressedToTheUserWithDecisionHistory() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            fieldLabeled(content, "Your email").setText(" me@example.com ");
+            findButton(content, "Email report").performClick();
+
+            Intent sent = Shadows.shadowOf(app).getNextStartedActivity();
+            assertEquals(Intent.ACTION_SEND, sent.getAction());
+            assertEquals(Arrays.asList("me@example.com"), Arrays.asList(sent.getStringArrayExtra(Intent.EXTRA_EMAIL)));
+            assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Offer Filter diagnostics"));
+            String body = sent.getStringExtra(Intent.EXTRA_TEXT);
+            assertTrue(body.contains("== Decision history"));
+            assertTrue(body.contains("DECLINE | pay $7.90 | needed $10.80"));
+            assertEquals("mailto:", sent.getSelector().getDataString());
+            assertEquals("me@example.com", FilterStore.reportEmail(app));
+        }
+    }
+
+    @Test
+    public void emailReportNeedsAnAddress() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            findButton(activity.get().findViewById(android.R.id.content), "Email report").performClick();
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+        }
+    }
+
+    @Test
+    public void recentDecisionsAppearWithTheirReasons() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull(findText(content, "$7.90 · needed $10.80"));
+            assertNotNull(findTextContaining(content, "Below your per-mile rate"));
+        }
+    }
+
+    @Test
+    public void tappingAChartColumnShowsWhatWasRead() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            DecisionChartView chart = findChart(content);
+            assertNotNull(chart);
+            assertNull(chart.selectedEntry());
+
+            float density = app.getResources().getDisplayMetrics().density;
+            float left = 44 * density;
+            float slot = (chart.getWidth() - 4 * density - left) / DecisionChartView.SLOTS;
+            float x = left + slot * (DecisionChartView.SLOTS - 0.5f);
+            chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, x, 40, 0));
+            chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, x, 40, 0));
+
+            assertEquals(Integer.valueOf(790), chart.selectedEntry().facts.payCents);
+            assertNotNull(findTextContaining(content, "Read: $7.90"));
+        }
+    }
+
+    @Test
+    public void chartDrawsUnknownPayAndSaturatedRequirements() {
+        DecisionChartView chart = new DecisionChartView(app, new Ui(app));
+        List<DecisionLog.Entry> entries = new ArrayList<>();
+        entries.add(declinedEntry());
+        entries.add(new DecisionLog.Entry(2000, DecisionLog.Source.NOTIFICATION, false, OfferSnapshot.UNKNOWN, 0,
+                OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD, true,
+                Collections.emptyList()));
+        entries.add(new DecisionLog.Entry(3000, DecisionLog.Source.SCREEN, false, new OfferSnapshot(100, 1.0, 999, 2),
+                Long.MAX_VALUE, OfferRule.Result.DECLINE, "dollars per minute", DecisionLog.Action.DECLINE_TAPPED,
+                true, Collections.emptyList()));
+        chart.setEntries(entries);
+        chart.measure(View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY));
+        chart.layout(0, 0, 1000, 400);
+        chart.draw(new Canvas(Bitmap.createBitmap(1000, 400, Bitmap.Config.ARGB_8888)));
+        assertEquals("Chart of the last 3 offers: 0 passed, 2 declined, 1 need review.", chart.getContentDescription());
+    }
+
+    @Test
+    public void backgroundDecisionsAreRecorded() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        ServiceController<OfferNotificationService> controller =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            controller.get().onNotificationPosted(doorDashOffer("New Order: Go to Chick-fil-A"), null);
+            List<DecisionLog.Entry> recent = DecisionLog.recent(app, 10);
+            assertEquals(1, recent.size());
+            assertEquals(DecisionLog.Source.NOTIFICATION, recent.get(0).source);
+            assertEquals(OfferRule.Result.REVIEW, recent.get(0).result);
+            assertEquals("pay not found", recent.get(0).reason);
+            assertEquals(DecisionLog.Action.SILENT_CARD, recent.get(0).action);
+        } finally {
+            controller.destroy();
+        }
+    }
+
+    @Test
+    public void notificationAccessShortcutNamesThisListenerAsAString() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            findButton(activity.get().findViewById(android.R.id.content), "Notification access").performClick();
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            if (Build.VERSION.SDK_INT >= 30) {
+                assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                        opened.getAction());
+                // The settings page reads this extra with getStringExtra.
+                assertEquals(new android.content.ComponentName(app, OfferNotificationService.class).flattenToString(),
+                        opened.getStringExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME));
+            } else {
+                assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS, opened.getAction());
+            }
+        }
+    }
+
+    @Test
+    public void reasonsAreShownInPlainWords() {
+        assertEquals("Below your minimum pay", MainActivity.plainReason("flat minimum"));
+        assertEquals("Below your per-mile rate (with stop fees)",
+                MainActivity.plainReason("dollars per mile and extra stops"));
+        assertEquals("Too many stops (4, max 3)", MainActivity.plainReason("4 stops exceeds maximum 3"));
+        assertEquals("Not above last accepted $12.50",
+                MainActivity.plainReason("must beat last accepted payout $12.50"));
+        assertEquals("Whole route: Below your minimum pay",
+                MainActivity.plainReason("combined route fails: flat minimum"));
+        assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
+    }
+
+    @Test
+    public void setupProblemsShowOnlyWhileSomethingIsOff() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            // No service is connected in this test, so screen reading is reported off with a Fix button.
+            TextView problem = findText(content, "Screen reading is off");
+            assertNotNull(problem);
+            assertEquals(View.VISIBLE, ((View) problem.getParent()).getVisibility());
+        }
+    }
+
+    private static DecisionLog.Entry declinedEntry() {
+        return new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, Arrays.asList("$7.90", "2 stops (7.2 mi) • 21 min"));
+    }
+
+    private static void collectButtons(View view, List<Button> out) {
+        if (view instanceof Button) out.add((Button) view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectButtons(group.getChildAt(i), out);
+        }
+    }
+
+    /** The field a visible label names via {@code labelFor}. */
+    private static EditText fieldLabeled(View root, String label) {
+        TextView caption = findText(root, label);
+        assertNotNull(label, caption);
+        return root.findViewById(caption.getLabelFor());
+    }
+
+    private static TextView findText(View view, String text) {
+        if (view instanceof TextView && !(view instanceof Button) && text.contentEquals(((TextView) view).getText())) {
+            return (TextView) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findText(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static TextView findTextContaining(View view, String text) {
+        if (view instanceof TextView && view.getVisibility() == View.VISIBLE
+                && ((TextView) view).getText().toString().contains(text)) {
+            return (TextView) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findTextContaining(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static DecisionChartView findChart(View view) {
+        if (view instanceof DecisionChartView) return (DecisionChartView) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                DecisionChartView found = findChart(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** A DoorDash offer notification in the shape observed on a real device, posted now. */

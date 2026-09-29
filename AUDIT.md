@@ -55,3 +55,32 @@ Hygiene: the app no longer trusts GitHub download hosts, and the retired publish
 Residual: the first update to a still-present DoorDash notification 90 s or more after it was first seen starts a new incarnation and may ring once more if it passes. An awake 0.4.5 phone behaved the same way, and live offers expire well before 90 s.
 
 Checks run for this review: `testDebugUnitTest` (128 tests, 0 failures/skips, including Robolectric API 26 and 35 adapters); `lintDebug` (no NewApi or error-severity issues against minSdk 26); unsigned aapt2/javac/d8/zipalign packaging reporting `versionCode='12' versionName='0.4.6'`; and `tools/verify_channel.py` against the live 0.4.5 feed using the new `UpdatePolicy`/`UpdateTransport`. Not established: the signed 0.4.6 build, which requires the Render-held key; installation on a physical handset; and real DoorDash audio/haptic behavior.
+
+## False-decline review — 0.4.7
+
+Trigger: the user saw a valid offer declined on 0.4.6. No diagnostics report existed, and the app kept no decision history, so the cause could not be read from evidence. The review therefore looked for every code path that could decline a keepable offer, and reproduced each one against 0.4.6 with a failing test before fixing it:
+
+1. **Label lookahead read a rate as pay (high).** In `OfferParser.parsePay`, a label line without an amount took the next line's sole amount without checking whether that line was a rate. `$30.00 / Guaranteed / $12.00/hr` parsed as $12.00 pay. Repair: the lookahead skips rate and `+$` lines.
+2. **Label lookahead read an increment as pay (high).** `$9.90 / Guaranteed (incl. tips) / +$2.00 Peak Pay` parsed as $2.00. Repair: the lookahead skips increments, so two unreconciled figures mean pay is unknown (REVIEW).
+3. **Confirmation authority reached the next offer (high).**
+   - **Defect:** after a decline tap, any Dasher screen within 10 s that had a Decline button and either a Back/Cancel label or no readable Accept was treated as the confirmation dialog, and its Decline was tapped. A next offer mid-render, or one with a Back button, matches that shape.
+   - **Repair:** a surface needs a prompt or decline+cancel; a surface whose parsed facts contradict the declined offer revokes the authority and is evaluated as an offer; the authority ends when the tapped confirmation disappears.
+   - **Still tapped:** the legitimate confirmation, whether in its own window or overlaying the declined offer (both covered by tests).
+4. **Notification-access shortcut (low).** `EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME` was passed as a `ComponentName` rather than the flattened string the settings page reads. Repair: pass `flattenToString()`.
+
+Second pass (independent adversarial review of the draft, each finding reproduced first):
+- **Increment standing in for pay (high).** "+$2.00" was still counted as a pay figure when no other amount was read. Increments are now never pay. An unlabeled total shown next to one is ambiguous, so the offer is REVIEW.
+- **Next offer with Accept but no pay drawn (medium).** A surface that has an Accept control must positively agree with the declined offer to be its dialog. Delivery screens end the authority. Revocation now ends only the confirmation window, and keeps the 4-attempt cap on re-tapping the same offer.
+- **Offer screens with Back/Cancel never evaluated (medium, pre-existing).** Without a pending confirmation, distinct Accept and Decline targets with no prompt make an offer screen.
+- **Legitimate confirmation missed (medium).** There are more back-out and prompt wordings. The dialog's button is the last Decline in tree order, not the one with the "best" label. The authority ends one second after the confirmation tap, not after a single missed read.
+- **Privacy, size, threading.**
+  - Evidence no longer matches phone numbers or bare hours.
+  - The report is capped at 60,000 characters, within intent limits.
+  - History JSON is built on the writer thread.
+  - The status button is restyled only when the state changes.
+- **Add-on acceptance.** An add-on's visible pay for acceptance tracking is its explicit increment, so accepting an add-on still updates the route.
+
+Observability: an always-on local decision history now records each decision's figures, requirement, reason, action and paused state. It also keeps only the evidence lines that carried a figure or a pay label, and it goes into every diagnostics report. The report is capped at 60,000 characters and can be emailed to the user's own address in two taps (the user presses Send), which satisfies "unless the user explicitly shares a diagnostic report".
+
+Residual: all three false-decline repairs depend on DoorDash wording and layout that no real-screen capture has confirmed. Pause/Resume and the new screen were exercised in Robolectric and rendered for review, not on a handset.
+

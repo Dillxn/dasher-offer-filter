@@ -163,28 +163,28 @@ public final class OfferNotificationService extends NotificationListenerService 
             FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
 
             OfferSnapshot facts = OfferParser.parse(metricLabels(labels));
-            OfferRule.Decision decision = decide(facts, labels);
+            FilterSettings settings = FilterStore.load(this);
+            OfferRule.Decision decision = decide(facts, labels, settings);
             String signature = labels + "|" + decision.summary();
             if (offer.state.duplicate(signature, decision.result)) return;
             DiagnosticLog.log(this, "notification", "parsed " + facts.summary() + "; " + decision.summary());
             logChannel(ranking, source.getKey(), notification);
 
-            if (decision.result == OfferRule.Result.DECLINE) {
-                filter(source, notification, offer, decision, signature, replay);
-            } else {
-                announce(notification, offer, facts, decision, signature, replay);
-            }
+            DecisionLog.Action action = decision.result == OfferRule.Result.DECLINE
+                    ? filter(source, notification, offer, decision, signature, replay)
+                    : announce(notification, offer, facts, decision, signature, replay);
+            DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
+                    AddOnOffer.isLikely(labels), decision.basis, decision, action, settings.enabled, labels));
         } catch (RuntimeException error) {
             DiagnosticLog.log(this, "notification",
                     "payload/handler rejected; original retained: " + error.getClass().getSimpleName());
         }
     }
 
-    private OfferRule.Decision decide(OfferSnapshot facts, List<String> labels) {
-        FilterSettings settings = FilterStore.load(this);
+    private OfferRule.Decision decide(OfferSnapshot facts, List<String> labels, FilterSettings settings) {
         if (!settings.enabled) {
             return new OfferRule.Decision(OfferRule.Result.REVIEW, 0,
-                    "auto-decline is off; inspect this offer manually");
+                    "auto-decline is off; inspect this offer manually", facts);
         }
         if (AddOnOffer.isLikely(labels)) {
             return OfferRule.evaluateAddOn(AddOnOffer.parse(ActiveRouteStore.load(this), labels), settings);
@@ -225,10 +225,15 @@ public final class OfferNotificationService extends NotificationListenerService 
         return offer;
     }
 
-    /** A known-failing offer: request DoorDash's own safe Decline action, or else only hide the notification. */
-    private void filter(StatusBarNotification source, Notification notification, TrackedOffer offer,
-                        OfferRule.Decision decision, String signature, boolean replay) {
+    /**
+     * A known-failing offer: request DoorDash's own safe Decline action, or else only hide the notification.
+     *
+     * @return what was done, for the decision log
+     */
+    private DecisionLog.Action filter(StatusBarNotification source, Notification notification, TrackedOffer offer,
+                                      OfferRule.Decision decision, String signature, boolean replay) {
         OfferAlerts.clear(this, offer.alertTag);
+        DecisionLog.Action action = DecisionLog.Action.NOTIFICATION_DECLINE_SENT;
         if (!offer.state.actionRequested) {
             PendingIntent decline = replay ? null : declineAction(notification);
             if (decline != null) {
@@ -238,11 +243,14 @@ public final class OfferNotificationService extends NotificationListenerService 
                     DiagnosticLog.log(this, "notification",
                             "notification Decline action REQUESTED; awaiting DoorDash removal, not yet verified");
                 } catch (PendingIntent.CanceledException | RuntimeException error) {
+                    action = DecisionLog.Action.DECLINE_REFUSED;
                     DiagnosticLog.log(this, "notification", "Decline action failed; original retained");
                 }
             } else if (replay) {
+                action = DecisionLog.Action.REPLAY;
                 DiagnosticLog.log(this, "notification", "known filtered offer on replay; no action taken");
             } else {
+                action = DecisionLog.Action.NOTIFICATION_HIDDEN;
                 DiagnosticLog.log(this, "notification", "known filtered offer; no safe background decline action. "
                         + "Hidden notification does NOT decline order.");
                 cancelNotification(source.getKey());
@@ -253,11 +261,16 @@ public final class OfferNotificationService extends NotificationListenerService 
                 + (offer.state.actionRequested
                         ? "Decline requested; completion unverified."
                         : "Notification hidden only; order not automatically declined."));
+        return action;
     }
 
-    /** A passing or unclassified offer: post the matching Offer Filter card, keeping DoorDash's original. */
-    private void announce(Notification notification, TrackedOffer offer, OfferSnapshot facts,
-                          OfferRule.Decision decision, String signature, boolean replay) {
+    /**
+     * A passing or unclassified offer: post the matching Offer Filter card, keeping DoorDash's original.
+     *
+     * @return what was done, for the decision log
+     */
+    private DecisionLog.Action announce(Notification notification, TrackedOffer offer, OfferSnapshot facts,
+                                        OfferRule.Decision decision, String signature, boolean replay) {
         boolean review = decision.result == OfferRule.Result.REVIEW;
         boolean foreground = OfferFilterService.isDasherForeground();
         boolean ring = offer.state.shouldRing(decision.result, foreground, replay);
@@ -265,14 +278,17 @@ public final class OfferNotificationService extends NotificationListenerService 
                 ? "Not classified: " + decision.reason
                         + ". Tap to open Dasher. No automatic decline or screen takeover."
                 : facts.summary() + "; " + decision.summary();
-        if (OfferAlerts.notifyOffer(this, offer.alertTag, notification.contentIntent, decision.result, detail, ring)) {
-            offer.state.delivered(signature, decision.result, ring);
-        }
+        boolean posted = OfferAlerts.notifyOffer(
+                this, offer.alertTag, notification.contentIntent, decision.result, detail, ring);
+        if (posted) offer.state.delivered(signature, decision.result, ring);
         if (review) {
             FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason
                     + ".\nDasher has not been opened. Tap the silent review card to inspect.");
         }
         if (foreground) OfferFilterService.requestCheckFromNotification();
+        if (!posted) return DecisionLog.Action.CARD_BLOCKED;
+        if (review) return DecisionLog.Action.SILENT_CARD;
+        return ring ? DecisionLog.Action.BELL : DecisionLog.Action.QUIET_PASS_CARD;
     }
 
     private void removeExpired(long now) {

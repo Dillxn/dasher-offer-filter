@@ -22,6 +22,26 @@ final class OfferSnapshot {
         return value != null && value >= 0 ? value : null;
     }
 
+    /** True when some fact is known in both snapshots and differs, so they cannot describe the same offer. */
+    boolean contradicts(OfferSnapshot other) {
+        return differ(payCents, other.payCents) || differ(miles, other.miles)
+                || differ(minutes, other.minutes) || differ(stops, other.stops);
+    }
+
+    /** True when no fact contradicts and at least one fact is known in both and equal. */
+    boolean agreesWith(OfferSnapshot other) {
+        return !contradicts(other) && (same(payCents, other.payCents) || same(miles, other.miles)
+                || same(minutes, other.minutes) || same(stops, other.stops));
+    }
+
+    private static boolean same(Object a, Object b) {
+        return a != null && a.equals(b);
+    }
+
+    private static boolean differ(Object a, Object b) {
+        return a != null && b != null && !a.equals(b);
+    }
+
     /** Identity of the facts only; used to tell one offer screen from the next. */
     String fingerprint() {
         return payCents + ":" + miles + ":" + minutes + ":" + stops;

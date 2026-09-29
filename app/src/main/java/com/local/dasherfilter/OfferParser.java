@@ -33,6 +33,8 @@ final class OfferParser {
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
     private static final Pattern METRIC_UNIT = Pattern.compile(
             "(?i)(?:mi\\.?|miles?|stops?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
+    /** "+$2.00": an amount added to something else, never a total on its own. */
+    private static final Pattern INCREMENT = Pattern.compile("\\+\\s*\\$");
     private static final Pattern TOTAL_LABEL = Pattern.compile("(?i)total(?: distance| mileage)?[:=]?");
     private static final String TRAILING_SEPARATOR = "[:=]$";
 
@@ -93,11 +95,13 @@ final class OfferParser {
 
     /**
      * A single amount on a "Guaranteed"/"Total pay" line (or the line right after a bare label) wins. Otherwise
-     * the screen must show exactly one amount. Rate figures ("/hr", "per mile", ...) are never pay.
+     * the screen must show exactly one amount and no "+$" increment. Rate figures ("/hr", "per mile", ...) and
+     * increments are never pay.
      */
     private static Integer parsePay(List<String> lines) {
         Set<Integer> labeled = new HashSet<>();
         Set<Integer> all = new HashSet<>();
+        boolean sawIncrement = false;
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             String lower = line.toLowerCase(Locale.US);
@@ -106,21 +110,39 @@ final class OfferParser {
             Matcher matcher = MONEY.matcher(line);
             boolean lineHasMoney = false;
             while (matcher.find()) {
+                if (isIncrement(line, matcher.start())) {
+                    sawIncrement = true;
+                    continue;
+                }
                 lineHasMoney = true;
                 int amount = cents(matcher.group(1));
                 all.add(amount);
                 if (payLabel) labeled.add(amount);
             }
             if (payLabel && !lineHasMoney && i + 1 < lines.size()) {
-                Matcher next = MONEY.matcher(lines.get(i + 1));
-                if (next.find()) {
-                    int amount = cents(next.group(1));
-                    if (!next.find()) labeled.add(amount);
-                }
+                Integer labelValue = soleTotalAmount(lines.get(i + 1));
+                if (labelValue != null) labeled.add(labelValue);
             }
         }
         if (!labeled.isEmpty()) return onlyValue(labeled);
-        return onlyValue(all);
+        // Whether an unlabeled amount already includes a "+$" bonus is unknown, so neither is taken as pay.
+        return sawIncrement ? null : onlyValue(all);
+    }
+
+    /** True when the "$" at {@code dollarIndex} is written as "+$…": an amount added to something else. */
+    private static boolean isIncrement(String line, int dollarIndex) {
+        int i = dollarIndex - 1;
+        while (i >= 0 && Character.isWhitespace(line.charAt(i))) i--;
+        return i >= 0 && line.charAt(i) == '+';
+    }
+
+    /** The line's only amount, unless the line is a rate or an increment, which can never be a pay total. */
+    private static Integer soleTotalAmount(String line) {
+        if (isRate(line.toLowerCase(Locale.US)) || INCREMENT.matcher(line).find()) return null;
+        Matcher matcher = MONEY.matcher(line);
+        if (!matcher.find()) return null;
+        int amount = cents(matcher.group(1));
+        return matcher.find() ? null : amount;
     }
 
     private static boolean isRate(String lower) {

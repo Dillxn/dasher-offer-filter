@@ -31,6 +31,14 @@ final class AcceptedOfferTracker {
         }
     }
 
+    /** A delivery-progress screen: an offer, and any decline confirmation for it, is over. */
+    static boolean isDeliveryScreen(List<String> labels) {
+        for (String label : labels) {
+            if (PROGRESS_LABELS.contains(label.trim().toLowerCase(Locale.US))) return true;
+        }
+        return false;
+    }
+
     private OfferSnapshot visibleOffer;
     private OfferSnapshot visibleRouteAfter;
     private boolean visibleAddOn;

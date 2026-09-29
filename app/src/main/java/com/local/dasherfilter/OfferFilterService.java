@@ -37,6 +37,10 @@ public final class OfferFilterService extends AccessibilityService {
     private long recheckUntil;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
     private long declineGeneration;
+    /** The offer whose Decline was last tapped: only its own confirmation may be tapped. */
+    private OfferSnapshot declinedOffer = OfferSnapshot.UNKNOWN;
+    /** Its decision-log entry, upgraded when the confirmation is tapped too. */
+    private DecisionLog.Entry declinedEntry;
     private String lastStatus = "";
     private String lastDiagnosticSignature = "";
 
@@ -156,7 +160,19 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
 
-        Scan confirmation = confirmationScan(scan, declineState.hasPendingConfirmation(now));
+        boolean pending = declineState.hasPendingConfirmation(now);
+        Scan confirmation = confirmationScan(scan, pending);
+        if (confirmation == null) {
+            // Our confirmation closed: no later dialog inherits the authority, even inside the window.
+            if (declineState.confirmationSettled(now)) declineState.endConfirmation();
+        } else if (!pending) {
+            // Nothing to confirm. An offer that merely has a Back or Cancel button is still an offer to judge.
+            if (isOfferScreen(confirmation)) confirmation = null;
+        } else if (!ownsConfirmation(confirmation)) {
+            declineState.endConfirmation();
+            status("A different offer is showing; the earlier decline cannot confirm it. Judging it on its own.");
+            confirmation = null;
+        }
         if (confirmation != null) return handleConfirmation(confirmation, settings, now);
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
@@ -177,13 +193,35 @@ public final class OfferFilterService extends AccessibilityService {
             status("A new notification arrived; old decline confirmation authority revoked.");
             return false;
         }
-        int selected = DeclineConfirmation.select(
-                confirmation.text, confirmation.declineLabels, confirmation.hasAcceptLabel);
+        int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
         if (selected >= 0 && declineState.mayConfirm(now) && click(confirmation.declineTargets.get(selected))) {
             declineState.confirmationSent(now);
+            if (declinedEntry != null) {
+                DecisionLog.record(this, new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
+                        declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
+                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence));
+            }
             status("Decline confirmation requested; waiting for Dasher to close the offer.");
         }
         return true;
+    }
+
+    /**
+     * Whether a confirmation-shaped surface is the confirmation of the offer we declined. A surface whose facts
+     * contradict that offer is a different offer. A surface that still has an Accept button is the declined offer
+     * with a dialog drawn over it, so it must positively show that offer; otherwise it is the next offer, perhaps
+     * not fully drawn, and is judged on its own.
+     */
+    private boolean ownsConfirmation(Scan surface) {
+        OfferSnapshot shown = OfferParser.parse(surface.text, surface.metricParts);
+        if (shown.contradicts(declinedOffer)) return false;
+        return surface.accept == null || shown.agreesWith(declinedOffer);
+    }
+
+    /** Distinct Accept and Decline targets with no question about declining: an offer, not a dialog. */
+    private static boolean isOfferScreen(Scan scan) {
+        return scan.accept != null && scan.decline != null && !scan.accept.equals(scan.decline)
+                && !DeclineConfirmation.hasPrompt(scan.text);
     }
 
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
@@ -202,6 +240,8 @@ public final class OfferFilterService extends AccessibilityService {
                     : "Dasher is finding offers.");
             return false;
         }
+        // Declining an add-on returns straight to the delivery: no confirmation is coming after that.
+        if (AcceptedOfferTracker.isDeliveryScreen(scan.text)) declineState.endConfirmation();
         if (scan.accept == null && scan.decline == null) {
             declineState.offerGone();
             return declineState.hasPendingConfirmation(now);
@@ -225,7 +265,9 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean handleOffer(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
         boolean isAddOn = AddOnOffer.isLikely(scan.text);
         AddOnOffer addOn = isAddOn ? AddOnOffer.parse(ActiveRouteStore.load(this), scan.text) : null;
-        acceptedTracker.observeOffer(offer, isAddOn ? addOn.combined : offer, isAddOn, now);
+        // An add-on's own pay is its explicit "+$" increment, which is never standalone pay.
+        acceptedTracker.observeOffer(
+                isAddOn ? addOn.incremental : offer, isAddOn ? addOn.combined : offer, isAddOn, now);
         OfferRule.Decision decision = isAddOn
                 ? OfferRule.evaluateAddOn(addOn, settings) : OfferRule.evaluate(offer, settings);
         diagnostic(isAddOn ? "add-on" : "offer", scan, offer, decision);
@@ -233,6 +275,9 @@ public final class OfferFilterService extends AccessibilityService {
 
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             declineState.reset();
+            record(scan, isAddOn, decision, settings, !settings.enabled ? DecisionLog.Action.PAUSED
+                    : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
+                    : DecisionLog.Action.NEEDS_REVIEW);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
@@ -242,12 +287,25 @@ public final class OfferFilterService extends AccessibilityService {
         if (isDasher(getRootInActiveWindow()) && click(scan.decline)) {
             declineState.declineSent(key, now);
             declineGeneration = OfferNotificationService.generation();
+            declinedOffer = offer;
+            declinedEntry = record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_TAPPED);
             DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail);
             status("Decline requested: " + detail + "\n" + decision.summary());
         } else {
+            record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_REFUSED);
             status("Decline click was not accepted by Android. No completion claimed.");
         }
         return true;
+    }
+
+    private DecisionLog.Entry record(Scan scan, boolean addOn, OfferRule.Decision decision, FilterSettings settings,
+                                     DecisionLog.Action action) {
+        List<String> labels = new ArrayList<>(scan.text);
+        labels.addAll(scan.metricParts);
+        DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, addOn, decision.basis, decision,
+                action, settings.enabled, labels);
+        DecisionLog.record(this, entry);
+        return entry;
     }
 
     /** A confirmation surface in any Dasher window while a decline is pending, else in the active window. */
@@ -258,12 +316,10 @@ public final class OfferFilterService extends AccessibilityService {
                 AccessibilityNodeInfo root = window.getRoot();
                 if (!isDasher(root)) continue;
                 Scan candidate = Scan.of(root);
-                if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text, candidate.hasAcceptLabel)) {
-                    return candidate;
-                }
+                if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text)) return candidate;
             }
         }
-        return DeclineConfirmation.isSurface(primary.text, primary.hasAcceptLabel) ? primary : null;
+        return DeclineConfirmation.isSurface(primary.text) ? primary : null;
     }
 
     private static boolean isAcceptClick(AccessibilityEvent event) {
@@ -336,7 +392,6 @@ public final class OfferFilterService extends AccessibilityService {
         final List<AccessibilityNodeInfo> declineTargets = new ArrayList<>();
         AccessibilityNodeInfo accept;
         AccessibilityNodeInfo decline;
-        boolean hasAcceptLabel;
         boolean truncated;
         int visited;
 
@@ -378,10 +433,7 @@ public final class OfferFilterService extends AccessibilityService {
                 return;
             }
             if (!text.contains(label)) text.add(label);
-            if (OfferControls.isButton(label, "accept")) {
-                hasAcceptLabel = true;
-                if (accept == null) accept = clickTarget(node);
-            }
+            if (OfferControls.isButton(label, "accept") && accept == null) accept = clickTarget(node);
             if (OfferControls.isButton(label, "decline")) {
                 AccessibilityNodeInfo target = clickTarget(node);
                 if (target != null) {

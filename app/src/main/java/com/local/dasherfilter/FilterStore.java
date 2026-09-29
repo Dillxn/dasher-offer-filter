@@ -18,6 +18,7 @@ final class FilterStore {
     private static final String LAST_ACCEPTED = "last_accepted";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
     private static final String LAST_STATUS = "last_status";
+    private static final String REPORT_EMAIL = "report_email";
 
     static FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
@@ -63,6 +64,15 @@ final class FilterStore {
 
     static String lastStatus(Context context) {
         return prefs(context).getString(LAST_STATUS, "No offer evaluated yet.");
+    }
+
+    /** The user's own address for emailing diagnostics reports; empty until they enter it. */
+    static String reportEmail(Context context) {
+        return prefs(context).getString(REPORT_EMAIL, "");
+    }
+
+    static void setReportEmail(Context context, String address) {
+        prefs(context).edit().putString(REPORT_EMAIL, address).apply();
     }
 
     private static SharedPreferences prefs(Context context) {

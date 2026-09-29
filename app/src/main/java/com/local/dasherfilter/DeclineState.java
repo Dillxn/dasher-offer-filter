@@ -8,6 +8,8 @@ final class DeclineState {
     static final int MAX_ATTEMPTS = 4;
     static final long RETRY_INTERVAL_MS = 250;
     static final long CONFIRMATION_WINDOW_MS = 10_000;
+    /** How long after our confirmation tap a missing dialog is taken to mean it closed, not a passing glitch. */
+    static final long CONFIRMATION_SETTLE_MS = 1_000;
 
     private String tappedOffer = "";
     private long lastTapAt;
@@ -56,6 +58,21 @@ final class DeclineState {
     void confirmationSent(long now) {
         lastConfirmationAt = now;
         confirmationAttempts++;
+    }
+
+    /** True once we tapped a confirmation and at least {@link #CONFIRMATION_SETTLE_MS} has passed since. */
+    boolean confirmationSettled(long now) {
+        return confirmationAttempts > 0 && now - lastConfirmationAt >= CONFIRMATION_SETTLE_MS;
+    }
+
+    /**
+     * Ends confirmation authority but keeps the per-offer decline attempt count, so a still-visible declined offer
+     * is not re-tapped more than {@link #MAX_ATTEMPTS} times.
+     */
+    void endConfirmation() {
+        confirmationUntil = 0;
+        lastConfirmationAt = -1;
+        confirmationAttempts = 0;
     }
 
     /** The offer left the screen; an identical next offer is a new offer. Confirmation authority is kept. */

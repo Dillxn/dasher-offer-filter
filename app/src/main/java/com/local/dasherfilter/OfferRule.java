@@ -15,11 +15,18 @@ final class OfferRule {
         final Result result;
         final long requiredCents;
         final String reason;
+        /** The facts the requirement was compared with: the offer, an add-on's increment, or its combined route. */
+        final OfferSnapshot basis;
 
         Decision(Result result, long requiredCents, String reason) {
+            this(result, requiredCents, reason, OfferSnapshot.UNKNOWN);
+        }
+
+        Decision(Result result, long requiredCents, String reason, OfferSnapshot basis) {
             this.result = result;
             this.requiredCents = requiredCents;
             this.reason = reason;
+            this.basis = basis;
         }
 
         String summary() {
@@ -34,10 +41,11 @@ final class OfferRule {
      */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
-            return new Decision(Result.DECLINE, 0, offer.stops + " stops exceeds maximum " + settings.maxStops);
+            String reason = offer.stops + " stops exceeds maximum " + settings.maxStops;
+            return new Decision(Result.DECLINE, 0, reason, offer);
         }
         boolean needsPay = settings.flatCents > 0 || settings.hasMarginalRule() || settings.risingOffers;
-        if (needsPay && offer.payCents == null) return new Decision(Result.REVIEW, 0, "pay not found");
+        if (needsPay && offer.payCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer);
 
         boolean missing = settings.maxStops > 0 && offer.stops == null;
         long required = Math.max(0, settings.flatCents);
@@ -80,9 +88,11 @@ final class OfferRule {
         }
 
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
-        if (offer.payCents != null && offer.payCents < required) return new Decision(Result.DECLINE, required, reason);
-        if (missing) return new Decision(Result.REVIEW, required, "an enabled value was not found");
-        return new Decision(Result.KEEP, required, "meets enabled rules");
+        if (offer.payCents != null && offer.payCents < required) {
+            return new Decision(Result.DECLINE, required, reason, offer);
+        }
+        if (missing) return new Decision(Result.REVIEW, required, "an enabled value was not found", offer);
+        return new Decision(Result.KEEP, required, "meets enabled rules", offer);
     }
 
     /**
@@ -92,7 +102,8 @@ final class OfferRule {
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
         Decision combined = evaluate(addOn.combined, settings.withoutRisingBaseline());
         if (combined.result == Result.DECLINE) {
-            return new Decision(Result.DECLINE, combined.requiredCents, "combined route fails: " + combined.reason);
+            return new Decision(Result.DECLINE, combined.requiredCents, "combined route fails: " + combined.reason,
+                    addOn.combined);
         }
 
         OfferSnapshot added = addOn.incremental;
@@ -119,13 +130,13 @@ final class OfferRule {
         }
 
         if (added.payCents != null && added.payCents < marginalCost) {
-            return new Decision(Result.DECLINE, marginalCost, "add-on marginal economics");
+            return new Decision(Result.DECLINE, marginalCost, "add-on marginal economics", added);
         }
         if (combined.result == Result.REVIEW || missing) {
             return new Decision(Result.REVIEW, marginalCost,
-                    "add-on has missing or ambiguous incremental/route evidence");
+                    "add-on has missing or ambiguous incremental/route evidence", added);
         }
-        return new Decision(Result.KEEP, marginalCost, "combined route and add-on meet enabled rules");
+        return new Decision(Result.KEEP, marginalCost, "combined route and add-on meet enabled rules", added);
     }
 
     /** Cents for {@code miles × rate}, rounded up; saturates rather than overflowing. */

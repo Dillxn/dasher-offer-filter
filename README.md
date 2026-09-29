@@ -6,6 +6,8 @@ A local Android assistant for reviewing and declining DoorDash delivery offers. 
 
 When a real offer screen is visible in Dasher, Accessibility reads the displayed payout, mileage, duration and stop count. A known enabled-rule failure can request Decline immediately and handle the subsequent confirmation. This is a UI request, not proof of server acceptance.
 
+The confirmation step belongs only to the offer that was declined. A confirmation needs a prompt ("Are you sure…", "Decline offer?") or a way back ("Cancel", "Go back"); a lone Decline button is how a new offer looks while it is still being drawn. A screen whose pay, distance, time or stops contradict the declined offer is a different offer and is judged on its own. Once the tapped confirmation closes, the authority ends.
+
 In the background, a notification containing sufficient explicit offer data can be evaluated. Passing offers receive a selective Offer Filter alert. Unknown offers receive a separate **silent, unclassified review card** that the user can tap to open Dasher. The app does not automatically foreground Dasher. A background notification with only a merchant name cannot establish payout, distance, or whether the order passes.
 
 If a known-failing background offer exposes a safe DoorDash-owned non-activity Decline action, the app can request it. Otherwise it can hide the notification only. **Hiding a notification does not decline the order**; it may remain pending until acted on or expired.
@@ -30,11 +32,15 @@ Add-on offers are not fresh standalone orders. They need explicitly added pay/di
 
 Install the cloud-signed APK over an existing cloud-signed 0.4.x installation. Do not uninstall for a normal update. The original 0.3.1 signer is a separate retired installation chain. Enable Accessibility, notification access, and Offer Filter's notification permission. Configure the observed DoorDash offer channel using the app's shortcut. Some Android devices require allowing restricted settings for sideloaded Accessibility services.
 
-Save rules to enable auto-decline. Turning it off or tapping **Pause auto-decline immediately** persists the pause immediately, without needing Save. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
+The screen is kept short. The top card shows whether auto-decline is on, paused or off, the rules in one line (for example `$7 min · $1.50/mi · ≤3 stops`), and one button: **Pause auto-decline** takes effect at once, and **Resume auto-decline** saves the rules and turns auto-decline back on (it refuses when no rule is set). A row with a Fix button appears only while screen reading, background offers or alerts are off. **Rules** and **Setup & help** fold away until tapped; **Save rules** keeps the current on/paused state. While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
 
-## Diagnostics
+## Decision history and diagnostics
 
-Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, updater status, the latest advertised version and last check timestamps even when raw capture is off. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
+Every offer the app evaluates is recorded on the phone, always on and bounded to the latest 200: time, source (screen or notification), the pay/miles/minutes/stops read, the pay the rules required, the result and reason, what the app did (for example "Decline tapped", "Notification hidden; order NOT declined", "Passing alert rang"), and whether auto-decline was paused. It also keeps only the lines that carried a figure or a pay label (such as `$7.90`, `Guaranteed (incl. tips)`, `2 stops (7.2 mi) • 21 min`), never names or addresses, so a misread can be spotted. **Recent offers** charts the latest 14 as bars (pay) against ticks (needed pay), each with a ✓/✕/? badge, and lists the latest five as one line each (`$7.90 · needed $10.80`, reason in plain words). A bar ending below its tick was declined by the rules as written; tap it, or a row, to see what was read and what the app did. Clear history removes it.
+
+**Email report** (under Setup & help) opens the mail app addressed to the user's own saved address, with the report as the body. Nothing is sent until the user presses Send. The subject always starts with `Offer Filter diagnostics`, so Claude can find the latest report through the user's Gmail connection when asked. **Share report** offers any app.
+
+Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, the decision history, updater status, the latest advertised version and last check timestamps even when raw capture is off; the newest 48,000 characters of raw log are added only while capture has been on. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
 
 ## Build and release
 

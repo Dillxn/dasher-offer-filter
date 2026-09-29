@@ -28,6 +28,12 @@ final class DiagnosticLog {
     private static final int MAX_BYTES = 128 * 1024;
     private static final int KEEP_BYTES = 96 * 1024;
     private static final int MAX_MESSAGE_CHARS = 4096;
+    /** Keeps a shared report comfortably inside Android's intent size limit (strings travel as UTF-16, twice). */
+    private static final int MAX_REPORT_LOG_CHARS = 24_000;
+    private static final int MAX_REPORT_CHARS = 60_000;
+    private static final int REPORT_DECISIONS = 100;
+    /** Every report subject starts with this, so reports are easy to find in a mailbox. */
+    static final String REPORT_SUBJECT = "Offer Filter diagnostics";
     /** One writer thread with a bounded queue; entries beyond the queue are dropped, never blocking callers. */
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
@@ -74,17 +80,34 @@ final class DiagnosticLog {
         }
     }
 
-    /** A shareable report. Saved rules and updater state are included even when raw capture is off. */
+    /**
+     * A shareable report: readiness, every saved rule, updater state and the decision history are always included;
+     * raw screen text only when capture was on. Nothing is sent unless the user shares it.
+     */
     static String report(Context context) {
+        String report = fullReport(context);
+        return report.length() <= MAX_REPORT_CHARS ? report
+                : report.substring(0, MAX_REPORT_CHARS) + "\n[report truncated]";
+    }
+
+    private static String fullReport(Context context) {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
-        return "Offer Filter " + Updater.version(context) + " diagnostics\n"
-                + "Generated locally. Raw labels may include personal/location text; review before sharing.\n"
-                + "Capture active: " + isEnabled(context) + " (30-minute session)\n"
+        String log = read(context);
+        if (log.length() > MAX_REPORT_LOG_CHARS) {
+            log = "[older entries omitted]\n" + log.substring(log.length() - MAX_REPORT_LOG_CHARS);
+        }
+        return REPORT_SUBJECT + " — Offer Filter " + Updater.version(context) + "\n"
+                + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
+                + ". Raw labels may include personal/location text; review before sharing.\n\n"
+                + "== Readiness\n"
                 + "Accessibility connected: " + OfferFilterService.isConnected() + "\n"
                 + "Notification access granted: " + OfferNotificationService.hasAccess(context) + "\n"
                 + "Notification listener connected: " + OfferNotificationService.isConnected() + "\n"
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
+                + "Raw capture active: " + isEnabled(context) + " (30-minute session)\n"
+                + "Last status: " + FilterStore.lastStatus(context).replace('\n', ' ') + "\n\n"
+                + "== Rules\n"
                 + "Auto-decline saved: " + rules.enabled
                 + "; flat cents=" + rules.flatCents
                 + "; per-mile cents=" + rules.perMileCents
@@ -93,11 +116,22 @@ final class DiagnosticLog {
                 + "; max stops=" + rules.maxStops
                 + "; rising offers=" + rules.risingOffers
                 + "; last accepted cents=" + rules.lastAcceptedCents + "\n"
-                + "Updater: " + Updater.status(context) + "\n"
+                + "In words: " + rules.describe() + "\n\n"
+                + "== Decision history (newest first)\n"
+                + DecisionLog.report(context, REPORT_DECISIONS) + "\n"
+                + "== Updater\n"
+                + "Status: " + Updater.status(context) + "\n"
                 + "Latest advertised version: " + updates.getString("advertised", "none") + "\n"
                 + "Last update attempt epoch ms: " + updates.getLong("attempt_at", 0) + "\n"
                 + "Last successful feed check epoch ms: " + updates.getLong("checked_at", 0) + "\n\n"
-                + read(context);
+                + "== Raw diagnostic log\n"
+                + log;
+    }
+
+    /** "Offer Filter diagnostics 0.4.7 2026-09-29 21:45". */
+    static String reportSubject(Context context) {
+        return REPORT_SUBJECT + " " + Updater.version(context) + " "
+                + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
     }
 
     static void clear(Context context) {

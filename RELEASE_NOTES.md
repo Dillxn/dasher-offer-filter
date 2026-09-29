@@ -1,3 +1,30 @@
+## 0.4.7 — false-decline fixes, decision history, clear Pause/Resume, redesigned screen
+
+After a report that a valid offer was declined, code review found three ways 0.4.6 could decline an offer that should have been kept. Each was reproduced by a failing test against the live 0.4.6 code before being fixed:
+
+- **A rate next to the pay label was read as pay.** With "$30.00", then "Guaranteed", then "$12.00/hr" on screen, the label took the hourly rate as the offer's pay, so a $30 offer looked like $12 and was declined. A rate is never pay now.
+- **A bonus was read as pay.** "+$2.00 Peak Pay" under "Guaranteed" made a $9.90 offer read as $2.00, and the bonus could also stand in for pay when the main amount wasn't readable yet. A "+$" amount is never pay now. When one appears next to a total that isn't explicitly labeled, it's unclear whether the total includes it, so the offer needs review rather than being declined.
+- **One offer's decline confirmation could tap Decline on the next offer.** The confirmation step stayed authorized for 10 seconds, and it treated any screen with a Decline button but no readable Accept as the confirmation dialog. That describes a new offer that is still being drawn, or one with a Back button. Now:
+  - A confirmation needs a prompt or a way back out (Cancel, Go back, Keep order, Never mind…).
+  - A screen whose figures contradict the declined offer is judged on its own.
+  - A screen that still shows an Accept button counts as the dialog only if it visibly repeats the declined offer.
+  - Reaching a delivery screen ends the authority.
+  - The authority also ends about a second after the tapped confirmation closes. That delay lets a swallowed tap be retried.
+  - Where both the offer and the dialog have a Decline button, the dialog's is tapped.
+  - Offer screens with a Back button are now judged normally. Before, they were never evaluated.
+
+The "Notification access" shortcut now passes the component name the way Android 11+ expects, so it opens Offer Filter's own access page.
+
+New:
+- **Decision history and chart.** Every evaluated offer is recorded on the phone: what was read, the pay needed, the result, the reason and what the app did. The Recent offers card charts the latest 14 as pay bars against needed-pay ticks, with ✓/✕/? badges and a legend, so a status is never shown by color alone. Tap a bar or row to see the exact lines that were read. Only figure and pay-label lines are kept, never names or addresses. The history is bounded to 200 entries.
+- **Pause/Resume.** One button on the status card pauses at once, or resumes with the rules on screen. Save keeps the on/paused state. The card also shows setup problems with a Fix button each.
+- **Email report.** Under Setup & help, this opens the mail app addressed to your own saved address, with the full report (rules, setup, decision history, updater state) as the body. Nothing is sent until you press Send. The subject always starts with "Offer Filter diagnostics", so Claude can find the latest report through your Gmail connection.
+- **A much shorter screen.** It shows the status, one Pause/Resume button, any setup problem, the chart and the last five offers, with reasons in plain words ("Below your per-mile rate"). Rules and Setup & help fold away until tapped. The long explanations are gone. Light and dark themes, with themed system bars on Android 8–15.
+
+An independent adversarial review of this release found the remaining bonus-as-pay and next-offer paths above before launch. Each finding got a failing test first.
+
+Evidence boundaries: JUnit and Robolectric (simulated Android 8 and 15) tests pass. The screen was rendered and reviewed in light and dark themes with Robolectric's native graphics. Android Lint reports no API-level issues for minSdk 26. These do not establish physical handset behavior, real DoorDash screen layouts, or real sound and vibration. The false decline that was reported could not be traced from logs, because no report existed; the decision history is there so the next one can be.
+
 ## 0.4.6 — code-quality review release
 
 A full review and readability rewrite of the 0.4.5 sources, fixing four defects that were each reproduced by a failing test against unmodified 0.4.5 before being fixed.
