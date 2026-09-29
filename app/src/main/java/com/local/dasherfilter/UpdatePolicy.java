@@ -34,6 +34,13 @@ final class UpdatePolicy {
 
     static boolean isNewer(long advertised, long installed) { return advertised > installed; }
 
+    static boolean trustedDownloadHost(String host) {
+        return "github.com".equals(host) ||
+                "raw.githubusercontent.com".equals(host) ||
+                "release-assets.githubusercontent.com".equals(host) ||
+                "dash-offer-filter-build.onrender.com".equals(host);
+    }
+
     static long retryDelayMillis(int consecutiveFailures) {
         int failures = Math.max(1, consecutiveFailures);
         if (failures >= 5) return 15L * 60_000L;
