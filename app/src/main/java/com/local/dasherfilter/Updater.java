@@ -189,7 +189,7 @@ final class Updater {
         PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), signingFlags());
         if (archive == null || !context.getPackageName().equals(archive.packageName) ||
                 code(archive) != release.getLong("versionCode") || code(archive) <= code(installed) ||
-                !signers(archive).equals(signers(installed)) || signers(archive).isEmpty()) {
+                !signingCompatible(installed, archive)) {
             throw new IOException("Update package, version, or signing certificate mismatch");
         }
     }
@@ -206,6 +206,21 @@ final class Updater {
         Set<Signature> result = new HashSet<>();
         if (signatures != null) for (Signature signature : signatures) result.add(signature);
         return result;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static boolean signingCompatible(PackageInfo installed, PackageInfo archive) {
+        Set<Signature> installedCurrent = signers(installed);
+        if (installedCurrent.isEmpty()) return false;
+        if (Build.VERSION.SDK_INT < 28) return installedCurrent.equals(signers(archive));
+        if (archive.signingInfo == null) return false;
+        Signature[] history = archive.signingInfo.hasPastSigningCertificates()
+                ? archive.signingInfo.getSigningCertificateHistory()
+                : archive.signingInfo.getApkContentsSigners();
+        if (history == null || history.length == 0) return false;
+        Set<Signature> trustedHistory = new HashSet<>();
+        for (Signature signature : history) trustedHistory.add(signature);
+        return trustedHistory.containsAll(installedCurrent);
     }
 
     @SuppressWarnings("deprecation")
