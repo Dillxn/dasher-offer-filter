@@ -1,12 +1,13 @@
-## Selective offer bell and background filtering
+## 0.4.3 — no premature foregrounding + updater repair
 
-- Keep DoorDash offer notifications enabled but set the DoorDash offer channel to Silent.
-- Detect the real DoorDash offer notification in the background.
-- Decline and remove filtered offers without emitting an Offer Filter alert.
-- For offers that pass, emit an audible high-priority Offer Filter notification and attempt to refocus Dasher.
-- For incomplete notification payloads, refocus Dasher silently, evaluate the real offer screen, then alert only if it passes or still needs manual review.
-- Remember the actual DoorDash offer notification channel ID and deep-link directly to that channel's settings after the first observed offer.
-- If auto-decline is off, relay every DoorDash offer through Offer Filter so silencing DoorDash does not cause missed offers.
-- Preserve background-offer handling, add-on route economics, diagnostics, and the tightened automatic update loop.
+- Fix automatic updates: the updater now allows the exact Render feed/APK host it already trusted in metadata validation.
+- Log update-check start, advertised version, download URL, and failures in diagnostics.
+- Never automatically foreground Dasher for an offer that cannot yet be classified from its background notification.
+- Never automatically foreground Dasher for a qualifying offer either; the selective Offer Filter alert is now the user-controlled way to open it.
+- If a filtered notification can be classified but exposes no Decline action, suppress its notification without launching Dasher.
+- Parse all textual notification extras, including nested bundles, so richer hidden DoorDash payloads can be evaluated without opening the app.
+- Log sanitized notification metadata for incomplete offer notifications to identify hidden payout/distance fields.
+- Parse DoorDash compact metrics such as `2 stops (7.2 mi) • 21 min` correctly.
+- Keep the observed DoorDash channel ID in diagnostics. The current live channel name itself indicates no notification sound/haptics, which helps distinguish Android notification behavior from Dasher's own in-app alert behavior.
 
-DoorDash must remain allowed to post its offer notifications; only its offer channel sound should be silenced. In-app sounds produced directly by Dasher are outside Android notification-channel control.
+Because 0.4.2's downloader rejects the Render host before connecting, 0.4.3 requires one manual install. After 0.4.3, the repaired automatic update path uses the Render feed directly.
