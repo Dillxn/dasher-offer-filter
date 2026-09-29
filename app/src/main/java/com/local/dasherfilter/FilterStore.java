@@ -2,58 +2,72 @@ package com.local.dasherfilter;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-
 import java.text.DateFormat;
 import java.util.Date;
 
+/** Saved rules, the standalone payout baseline, and the last user-visible status line. */
 final class FilterStore {
     private static final String PREFS = "offer_filter";
+    private static final String ENABLED = "enabled";
+    private static final String FLAT = "flat";
+    private static final String PER_MILE = "mile";
+    private static final String PER_MINUTE = "minute";
+    private static final String EXTRA_STOP = "stop";
+    private static final String MAX_STOPS = "max_stops";
+    private static final String RISING_OFFERS = "rising_offers";
+    private static final String LAST_ACCEPTED = "last_accepted";
+    private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
+    private static final String LAST_STATUS = "last_status";
 
     static FilterSettings load(Context context) {
-        SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        return new FilterSettings(p.getBoolean("enabled", false),
-                p.getInt("flat", 0), p.getInt("mile", 0),
-                p.getInt("minute", 0), p.getInt("stop", 0), p.getInt("max_stops", 0),
-                p.getBoolean("rising_offers", false), p.getInt("last_accepted", 0));
+        SharedPreferences prefs = prefs(context);
+        return new FilterSettings(prefs.getBoolean(ENABLED, false),
+                prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
+                prefs.getInt(PER_MINUTE, 0), prefs.getInt(EXTRA_STOP, 0), prefs.getInt(MAX_STOPS, 0),
+                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0));
     }
 
+    /** Saves rules. The accepted-payout baseline is owned by {@link #recordAccepted} and is not overwritten. */
     static void save(Context context, FilterSettings settings) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putBoolean("enabled", settings.enabled)
-                .putInt("flat", settings.flatCents)
-                .putInt("mile", settings.perMileCents)
-                .putInt("minute", settings.perMinuteCents)
-                .putInt("stop", settings.extraStopCents)
-                .putInt("max_stops", settings.maxStops)
-                .putBoolean("rising_offers", settings.risingOffers)
+        prefs(context).edit()
+                .putBoolean(ENABLED, settings.enabled)
+                .putInt(FLAT, settings.flatCents)
+                .putInt(PER_MILE, settings.perMileCents)
+                .putInt(PER_MINUTE, settings.perMinuteCents)
+                .putInt(EXTRA_STOP, settings.extraStopCents)
+                .putInt(MAX_STOPS, settings.maxStops)
+                .putBoolean(RISING_OFFERS, settings.risingOffers)
                 .apply();
     }
 
     static void recordAccepted(Context context, int cents) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putInt("last_accepted", cents).apply();
+        prefs(context).edit().putInt(LAST_ACCEPTED, cents).apply();
     }
 
     static void recordDoorDashOfferChannel(Context context, String channelId) {
         if (channelId == null || channelId.trim().isEmpty()) return;
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString("doordash_offer_channel", channelId).apply();
+        SharedPreferences prefs = prefs(context);
+        if (!channelId.equals(prefs.getString(DOORDASH_OFFER_CHANNEL, ""))) {
+            prefs.edit().putString(DOORDASH_OFFER_CHANNEL, channelId).apply();
+        }
     }
 
     static String doorDashOfferChannel(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString("doordash_offer_channel", "");
+        return prefs(context).getString(DOORDASH_OFFER_CHANNEL, "");
     }
 
     static void setLastStatus(Context context, String status) {
-        String timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                .format(new Date());
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString("last_status", timestamp + "\n" + status).apply();
+        String timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date());
+        prefs(context).edit().putString(LAST_STATUS, timestamp + "\n" + status).apply();
     }
 
     static String lastStatus(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString("last_status", "No offer evaluated yet.");
+        return prefs(context).getString(LAST_STATUS, "No offer evaluated yet.");
     }
+
+    private static SharedPreferences prefs(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    private FilterStore() {}
 }

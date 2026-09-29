@@ -24,7 +24,7 @@ Zero disables a rule. Required pay is `max(flat, miles × per-mile rate, minutes
 
 Known failures may decline despite another missing field. Conflicting, oversized, malformed, negative, ranged, and ambiguous numeric inputs do not become exact facts. Costs use overflow-safe long arithmetic and decimal ceiling for mileage rates.
 
-Add-on offers are not fresh standalone orders. They need explicitly added pay/distance/time/stops or explicitly labeled totals. Bare numbers do not establish incremental meaning. Old accepted-route travel totals are not subtracted from new totals to invent added miles/time: the route may already be partly completed. A missing active route is not permission to apply the standalone flat minimum to the add-on. Confirmed pickup/completion progress invalidates old travel estimates, and recognized idle screens clear route context. Route context can also be cleared manually.
+Add-on offers are not fresh standalone orders. They need explicitly added pay/distance/time/stops or explicitly labeled totals. The flat minimum and stop ceiling apply to the combined route; explicitly added pay is required whenever a per-mile, per-minute, extra-stop, or rising-payout rule is enabled. Bare numbers do not establish incremental meaning. Old accepted-route travel totals are not subtracted from new totals to invent added miles/time: the route may already be partly completed. A missing active route is not permission to apply the standalone flat minimum to the add-on. Confirmed pickup/completion progress invalidates old travel estimates, and recognized idle screens clear route context. Route context can also be cleared manually.
 
 ## Setup and recovery
 
@@ -34,15 +34,15 @@ Save rules to enable auto-decline. Turning it off or tapping **Pause auto-declin
 
 ## Diagnostics
 
-Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include saved rules, permission/service readiness, updater status and last check timestamps even when raw capture is off. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
+Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, updater status, the latest advertised version and last check timestamps even when raw capture is off. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
 
 ## Build and release
 
 The private source repository feeds the existing Render static build. `render-build.sh` installs the SDK/JDK as needed, verifies the current public channel using the production Java downloader, runs the JUnit and Robolectric suite, builds/signs the APK with the existing Render-held key, checks embedded package/version, and publishes only APK, feed, receipt and install-page assets.
 
-`app/build.gradle` is the version source of truth. A changed source commit cannot reuse the live version code. A deliberate same-source redeploy reuses the already published APK/feed bytes after checking them, preventing mutable content under one version. `verification.json` reports test totals and the exact live version reached by the production-transport probe. The old GitHub update feed is not used by new installs. The GitHub workflow is manual tests only and cannot create another signer.
+`app/build.gradle` is the version source of truth. A changed source commit cannot reuse the live version code. A deliberate same-source redeploy reuses the already published APK/feed bytes after checking them, preventing mutable content under one version. `verification.json` reports test totals and the exact live version reached by the production-transport probe. The app trusts only the Render release host for the feed, the APK, and every redirect hop; the retired GitHub feed is neither trusted by the app nor published to by any script in this repository. The GitHub workflow is manual tests only and cannot create another signer.
 
-Run `./gradlew --no-daemon testDebugUnitTest`, then `./build-local.sh` with the existing signing environment. The network probe is `python3 tools/verify_channel.py`. Local pure-Java checks are not handset installation tests; Robolectric adapter tests are not a physical phone or the real DoorDash client.
+Run `./gradlew --no-daemon testDebugUnitTest`, then `./build-local.sh` with the existing signing environment. The network probe is `python3 tools/verify_channel.py`. The app has minSdk 26 and no core-library desugaring, so Java APIs newer than Android 8 (for example `List.of`) crash on older phones even though the JVM-hosted tests pass; `./gradlew lintDebug` reports these as `NewApi`. Local pure-Java checks are not handset installation tests; Robolectric adapter tests are not a physical phone or the real DoorDash client.
 
 ## Current limitations
 

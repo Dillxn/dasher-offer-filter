@@ -6,24 +6,38 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Future;
 
-/** A stopped job's late callback must not finish a replacement job with the same ID. */
+/** Runs update checks for the periodic and retry jobs. A stopped job's late callback cannot finish its successor. */
 public final class UpdateJobService extends JobService {
     private static final class Run {
-        final JobParameters parameters; Future<?> task;
-        Run(JobParameters parameters) { this.parameters = parameters; }
+        final JobParameters parameters;
+        Future<?> task;
+
+        Run(JobParameters parameters) {
+            this.parameters = parameters;
+        }
     }
+
+    /** Main-thread only: job callbacks and the check's completion callback all run on the main looper. */
     private final Map<Integer, Run> running = new HashMap<>();
+
     @Override public boolean onStartJob(JobParameters parameters) {
-        Run run = new Run(parameters); running.put(parameters.getJobId(), run);
+        int jobId = parameters.getJobId();
+        Run run = new Run(parameters);
+        running.put(jobId, run);
         run.task = Updater.check(this, false, () -> {
-            if (running.get(parameters.getJobId()) == run) { running.remove(parameters.getJobId()); jobFinished(parameters, false); }
+            if (running.get(jobId) == run) {
+                running.remove(jobId);
+                jobFinished(parameters, false);
+            }
         });
         return true;
     }
+
     @Override public boolean onStopJob(JobParameters parameters) {
         Run run = running.get(parameters.getJobId());
         if (run != null && run.parameters == parameters) {
-            running.remove(parameters.getJobId()); if (run.task != null) run.task.cancel(true);
+            running.remove(parameters.getJobId());
+            if (run.task != null) run.task.cancel(true);
         }
         return Updater.enabled(this);
     }

@@ -1,10 +1,20 @@
 package com.local.dasherfilter;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
-/** A passing offer alone never advances the baseline. */
+/**
+ * Records an acceptance only after the user taps Accept on a readable offer and Dasher then shows delivery
+ * progress. A passing offer alone never advances the baseline.
+ */
 final class AcceptedOfferTracker {
+    private static final long MAX_OFFER_AGE_AT_CLICK_MS = 90_000;
+    private static final long MAX_CLICK_TO_PROGRESS_MS = 15_000;
+    private static final List<String> PROGRESS_LABELS = Arrays.asList(
+            "arrived at store", "arrived at pickup", "arrived at customer", "arrived at drop-off",
+            "confirm pickup", "confirm pick up", "complete pickup", "complete delivery", "slide to confirm pickup");
+
     static final class Acceptance {
         final OfferSnapshot acceptedOffer;
         final OfferSnapshot routeAfter;
@@ -17,8 +27,7 @@ final class AcceptedOfferTracker {
         }
 
         Integer baselinePay() {
-            return routeAfter != null && routeAfter.payCents != null
-                    ? routeAfter.payCents : acceptedOffer.payCents;
+            return routeAfter != null && routeAfter.payCents != null ? routeAfter.payCents : acceptedOffer.payCents;
         }
     }
 
@@ -37,8 +46,8 @@ final class AcceptedOfferTracker {
     }
 
     void observeOffer(OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn, long now) {
-        String key = offer.fingerprint() + "->" +
-                (routeAfter == null ? "null" : routeAfter.fingerprint()) + ":" + addOn;
+        String route = routeAfter == null ? "null" : routeAfter.fingerprint();
+        String key = offer.fingerprint() + "->" + route + ":" + addOn;
         if (!key.equals(visibleKey)) clearPending();
         visibleKey = key;
         visibleOffer = offer;
@@ -48,8 +57,8 @@ final class AcceptedOfferTracker {
     }
 
     void acceptClicked(long now) {
-        if (visibleOffer != null && visibleOffer.payCents != null && visibleOffer.payCents > 0 &&
-                now - visibleAt <= 90000) {
+        boolean readablePay = visibleOffer != null && visibleOffer.payCents != null && visibleOffer.payCents > 0;
+        if (readablePay && now - visibleAt <= MAX_OFFER_AGE_AT_CLICK_MS) {
             pendingOffer = visibleOffer;
             pendingRouteAfter = visibleRouteAfter;
             pendingAddOn = visibleAddOn;
@@ -57,18 +66,14 @@ final class AcceptedOfferTracker {
         }
     }
 
+    /** Returns the acceptance once delivery progress follows a recent Accept tap; otherwise null. */
     Acceptance observeOtherScreen(List<String> labels, long now) {
-        if (pendingOffer == null || now - clickedAt > 15000) {
+        if (pendingOffer == null || now - clickedAt > MAX_CLICK_TO_PROGRESS_MS) {
             clearPending();
             return null;
         }
         for (String label : labels) {
-            String lower = label.trim().toLowerCase(Locale.US);
-            if (lower.equals("arrived at store") || lower.equals("arrived at pickup") ||
-                    lower.equals("arrived at customer") || lower.equals("arrived at drop-off") ||
-                    lower.equals("confirm pickup") || lower.equals("confirm pick up") ||
-                    lower.equals("complete pickup") || lower.equals("complete delivery") ||
-                    lower.equals("slide to confirm pickup")) {
+            if (PROGRESS_LABELS.contains(label.trim().toLowerCase(Locale.US))) {
                 Acceptance accepted = new Acceptance(pendingOffer, pendingRouteAfter, pendingAddOn);
                 reset();
                 return accepted;

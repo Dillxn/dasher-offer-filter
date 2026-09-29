@@ -1,5 +1,6 @@
 package com.local.dasherfilter;
 
+/** Saved rules. Every threshold uses zero to mean "disabled". */
 final class FilterSettings {
     final boolean enabled;
     final int flatCents;
@@ -28,4 +29,25 @@ final class FilterSettings {
         this.lastAcceptedCents = lastAcceptedCents;
     }
 
+    /** True when at least one rule can reject or require review of an offer. */
+    boolean hasAnyRule() {
+        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || extraStopCents > 0
+                || maxStops > 0 || risingOffers;
+    }
+
+    /** Rules whose cost scales with an add-on's own miles, minutes, or stops. */
+    boolean hasMarginalRule() {
+        return perMileCents > 0 || perMinuteCents > 0 || extraStopCents > 0;
+    }
+
+    FilterSettings withEnabled(boolean value) {
+        return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
+                risingOffers, lastAcceptedCents);
+    }
+
+    /** Add-on routes are judged without the standalone rising-payout baseline. */
+    FilterSettings withoutRisingBaseline() {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
+                false, lastAcceptedCents);
+    }
 }
