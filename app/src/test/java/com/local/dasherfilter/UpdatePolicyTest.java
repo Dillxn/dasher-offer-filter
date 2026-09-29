@@ -29,6 +29,13 @@ public final class UpdatePolicyTest {
         }
     }
 
+    @Test public void downloaderTrustsExactRenderOrigin() {
+        assertTrue(UpdatePolicy.trustedDownloadHost("dash-offer-filter-build.onrender.com"));
+        assertTrue(UpdatePolicy.trustedDownloadHost("github.com"));
+        assertFalse(UpdatePolicy.trustedDownloadHost("dash-offer-filter-build.onrender.com.attacker.test"));
+        assertFalse(UpdatePolicy.trustedDownloadHost("other.onrender.com"));
+    }
+
     @Test public void retryBackoffIsFastAndBounded() {
         assertEquals(60_000L, UpdatePolicy.retryDelayMillis(1));
         assertEquals(120_000L, UpdatePolicy.retryDelayMillis(2));
