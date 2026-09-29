@@ -24,12 +24,16 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable recheck = new Runnable() {
         @Override public void run() {
             long now = SystemClock.uptimeMillis();
-            if ((now < recheckUntil || declineState.hasPendingConfirmation(now)) && checkOffer()) {
+            boolean keepChecking = checkOffer();
+            boolean notificationWake = OfferNotificationService.hasRecentPendingWake(now);
+            if ((now < recheckUntil || declineState.hasPendingConfirmation(now) || notificationWake) &&
+                    (keepChecking || notificationWake)) {
                 handler.postDelayed(this, 200);
             }
         }
     };
     private String lastStatus = "";
+    private String lastDiagnosticSignature = "";
 
     static boolean isConnected() { return connected; }
 
@@ -41,11 +45,22 @@ public final class OfferFilterService extends AccessibilityService {
                 DASHER_PACKAGE.contentEquals(root.getPackageName());
     }
 
+    static void requestCheckFromNotification() {
+        OfferFilterService service = active;
+        if (service == null) return;
+        service.handler.post(() -> {
+            service.handler.removeCallbacks(service.recheck);
+            service.recheckUntil = Math.max(service.recheckUntil, SystemClock.uptimeMillis() + 5000);
+            service.handler.post(service.recheck);
+        });
+    }
+
     @Override
     protected void onServiceConnected() {
         connected = true;
         active = this;
         Updater.schedule(this);
+        DiagnosticLog.log(this, "accessibility", "service connected");
         status("Accessibility connected. Waiting for a Dasher offer.");
     }
 
@@ -56,6 +71,7 @@ public final class OfferFilterService extends AccessibilityService {
                 !DASHER_PACKAGE.contentEquals(event.getPackageName()))) return;
         if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED && isAcceptClick(event)) {
             acceptedTracker.acceptClicked(SystemClock.uptimeMillis());
+            DiagnosticLog.log(this, "accessibility", "observed Accept click");
         }
         handler.removeCallbacks(recheck);
         recheckUntil = SystemClock.uptimeMillis() + 3000;
@@ -80,12 +96,14 @@ public final class OfferFilterService extends AccessibilityService {
         Scan scan = new Scan();
         scan(root, scan, 0);
         if (scan.truncated) {
+            diagnosticScan("truncated", scan, null, null);
             status("The offer screen could not be read completely. No action.");
             return settings.enabled;
         }
 
         Scan confirmation = confirmationScan(scan, declineState.hasPendingConfirmation(now));
         if (confirmation != null) {
+            diagnosticScan("confirmation", confirmation, null, null);
             if (!settings.enabled || !declineState.hasPendingConfirmation(now)) {
                 status("Decline confirmation visible, but no recent automatic decline is pending. No action.");
                 return false;
@@ -97,6 +115,7 @@ public final class OfferFilterService extends AccessibilityService {
             } else if (declineState.mayConfirm(now)) {
                 if (click(confirmation.declineTargets.get(selected))) {
                     declineState.confirmationSent(now);
+                    DiagnosticLog.log(this, "accessibility", "second-step Decline offer click requested");
                     status("Second-step Decline offer requested; checking whether the confirmation closes.");
                 } else {
                     status("Could not tap the second-step Decline offer button. Retrying while it is visible.");
@@ -106,6 +125,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         if (scan.accept == null || scan.decline == null) {
+            diagnosticScan("screen-without-both-controls", scan, offer, null);
             Integer accepted = acceptedTracker.observeOtherScreen(scan.text, now);
             if (accepted != null) {
                 FilterStore.recordAccepted(this, accepted);
@@ -125,6 +145,9 @@ public final class OfferFilterService extends AccessibilityService {
         acceptedTracker.observeOffer(offer, now);
 
         OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
+        diagnosticScan("offer", scan, offer, decision);
+        OfferNotificationService.screenResolved(this, decision.result,
+                offer.summary() + "; " + decision.summary());
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             status(offer.summary() + "\n" + decision.summary() +
                     (settings.enabled ? "" : "\nAuto-decline is off."));
@@ -135,6 +158,8 @@ public final class OfferFilterService extends AccessibilityService {
         // First attempt is immediate. Rechecks always read the current screen and saved rules.
         if (click(scan.decline)) {
             declineState.declineSent(key, now);
+            OfferNotificationService.cancelPendingFiltered(this, offer.summary());
+            DiagnosticLog.log(this, "accessibility", "first-step Decline click requested for " + offer.summary());
             status("Decline requested for " + offer.summary() + "\n" + decision.summary() +
                     "\nChecking whether the offer leaves the screen.");
         } else {
@@ -247,10 +272,22 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
+    private void diagnosticScan(String phase, Scan scan, OfferSnapshot offer, OfferRule.Decision decision) {
+        if (!DiagnosticLog.isEnabled(this)) return;
+        String message = phase + " labels=" + scan.text + " metricParts=" + scan.metricParts +
+                " accept=" + (scan.accept != null) + " decline=" + (scan.decline != null) +
+                (offer == null ? "" : " parsed={" + offer.summary() + "}") +
+                (decision == null ? "" : " decision={" + decision.summary() + "}");
+        if (message.equals(lastDiagnosticSignature)) return;
+        lastDiagnosticSignature = message;
+        DiagnosticLog.log(this, "screen", message);
+    }
+
     private void status(String message) {
         if (!message.equals(lastStatus)) {
             lastStatus = message;
             FilterStore.setLastStatus(this, message);
+            DiagnosticLog.log(this, "status", message);
         }
     }
 
@@ -259,6 +296,7 @@ public final class OfferFilterService extends AccessibilityService {
         handler.removeCallbacks(recheck);
         declineState.reset();
         acceptedTracker.reset();
+        DiagnosticLog.log(this, "accessibility", "service interrupted");
         status("Android interrupted Offer Filter. Waiting for the next Dasher screen change.");
     }
 
@@ -268,6 +306,7 @@ public final class OfferFilterService extends AccessibilityService {
         active = null;
         handler.removeCallbacks(recheck);
         declineState.reset();
+        DiagnosticLog.log(this, "accessibility", "service unbound");
         return super.onUnbind(intent);
     }
 
@@ -277,6 +316,7 @@ public final class OfferFilterService extends AccessibilityService {
         active = null;
         handler.removeCallbacks(recheck);
         declineState.reset();
+        DiagnosticLog.log(this, "accessibility", "service destroyed");
         super.onDestroy();
     }
 

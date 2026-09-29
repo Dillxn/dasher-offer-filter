@@ -30,6 +30,7 @@ import java.util.Locale;
 public final class MainActivity extends Activity {
     private Switch enabled;
     private Switch rising;
+    private Switch diagnostics;
     private EditText flat;
     private EditText mile;
     private EditText minute;
@@ -94,11 +95,15 @@ public final class MainActivity extends Activity {
         Button accessibility = button("Open Accessibility settings");
         accessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         page.addView(accessibility);
+        Button notificationAccess = button("Allow background offer access");
+        notificationAccess.setOnClickListener(v -> openNotificationAccess());
+        page.addView(notificationAccess);
+        page.addView(text("Notification access lets Offer Filter notice a DoorDash offer while Dasher is in the background. It uses DoorDash's own notification action to bring Dasher forward for qualifying or unreadable offers, and removes a filtered offer notification after a Decline request succeeds.", 13));
         Button sound = button("Dasher notification sound settings");
         sound.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")));
         page.addView(sound);
-        page.addView(text("Offer Filter is silent. Dasher may ring before an offer can be read. Use the button above to set Dasher's offer notifications to Silent; this affects all offers in that category. Ringing inside Dasher is separate.", 13));
+        page.addView(text("Offer Filter is silent. Android can play a DoorDash notification before a listener can classify and cancel it, so a filtered offer may still make a brief sound. Ringing inside Dasher is separate.", 13));
 
         page.addView(text("Last offer check", 18));
         status = text("", 14);
@@ -106,6 +111,27 @@ public final class MainActivity extends Activity {
         Button refresh = button("Refresh status");
         refresh.setOnClickListener(v -> refreshStatus());
         page.addView(refresh);
+
+        page.addView(text("Diagnostics", 18));
+        diagnostics = new Switch(this);
+        diagnostics.setText("Capture notification and screen diagnostics");
+        diagnostics.setChecked(DiagnosticLog.isEnabled(this));
+        diagnostics.setOnCheckedChangeListener((view, checked) -> {
+            DiagnosticLog.setEnabled(this, checked);
+            refreshStatus();
+        });
+        page.addView(diagnostics);
+        page.addView(text("Diagnostics stay on this phone until you share them. While enabled they can contain visible offer text, including store/customer/location text, so turn capture off when troubleshooting is done.", 13));
+        Button shareDiagnostics = button("Share diagnostics");
+        shareDiagnostics.setOnClickListener(v -> shareDiagnostics());
+        page.addView(shareDiagnostics);
+        Button clearDiagnostics = button("Clear diagnostics");
+        clearDiagnostics.setOnClickListener(v -> {
+            DiagnosticLog.clear(this);
+            Toast.makeText(this, "Diagnostics cleared.", Toast.LENGTH_SHORT).show();
+        });
+        page.addView(clearDiagnostics);
+
         page.addView(text("Updates", 18));
         Switch updates = new Switch(this);
         updates.setText("Automatic updates");
@@ -125,7 +151,7 @@ public final class MainActivity extends Activity {
         checkUpdate.setOnClickListener(v -> Updater.check(this, true, null));
         page.addView(checkUpdate);
         page.addView(text("Checks hourly and when this app opens. Updates install when you leave Dasher. Enable Allow from this source once; Android may still ask you to confirm an installation. Update notices are silent.", 13));
-        page.addView(text("Setup: enable Offer Filter in Accessibility settings. If Android blocks a sideloaded accessibility service, open this app's App info menu and allow restricted settings. Auto-decline starts only after you turn it on and save.", 13));
+        page.addView(text("Setup: enable Offer Filter in Accessibility settings and allow background offer access in Notification access. If Android blocks a sideloaded accessibility service, open this app's App info menu and allow restricted settings. Auto-decline starts only after you turn it on and save.", 13));
         setContentView(scroll);
         Updater.schedule(this);
     }
@@ -150,6 +176,30 @@ public final class MainActivity extends Activity {
         refreshHandler.removeCallbacks(refresh);
         Updater.background(this);
         super.onPause();
+    }
+
+    private void openNotificationAccess() {
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= 30) {
+            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                            new ComponentName(this, OfferNotificationService.class));
+        } else {
+            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        }
+        try {
+            startActivity(intent);
+        } catch (Exception error) {
+            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+        }
+    }
+
+    private void shareDiagnostics() {
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_SUBJECT, "Offer Filter diagnostics");
+        send.putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this));
+        startActivity(Intent.createChooser(send, "Share Offer Filter diagnostics"));
     }
 
     private void allowUpdates() {
@@ -253,10 +303,14 @@ public final class MainActivity extends Activity {
         }
         String accessibility = OfferFilterService.isConnected() ? "connected" :
                 serviceEnabled ? "enabled, waiting to connect" : "OFF";
+        boolean notificationAllowed = OfferNotificationService.hasAccess(this);
+        String notification = OfferNotificationService.isConnected() ? "connected" :
+                notificationAllowed ? "allowed, waiting to connect" : "OFF";
         status.setText(String.format(Locale.US,
-                "Accessibility: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\n\n%s",
-                accessibility, saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
-                saved.maxStops == 0 ? "off" : saved.maxStops, FilterStore.lastStatus(this)));
+                "Accessibility: %s\nBackground notification access: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nDiagnostics: %s\n\n%s",
+                accessibility, notification, saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
+                saved.maxStops == 0 ? "off" : saved.maxStops,
+                DiagnosticLog.isEnabled(this) ? "ON" : "off", FilterStore.lastStatus(this)));
     }
 
     private TextView text(String value, int size) {
