@@ -30,10 +30,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Update checks, download verification, and installation are separate observable stages. */
 final class Updater {
-    private static final int JOB = 7241, NOTICE = 7242, RETRY_JOB = 7243;
+    private static final int JOB = 7241, NOTICE = 7242, RETRY_JOB = 7243, RETRY_JOB_ALT = 7244;
     private static final long PERIOD_MS = 900_000L, FLEX_MS = 300_000L;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean BUSY = new AtomicBoolean();
+    /** A manual check requested while another check runs; it runs right after instead of being dropped. */
+    private static final AtomicBoolean MANUAL_QUEUED = new AtomicBoolean();
+    /** The network path; replaceable only by tests. Production always uses UpdateTransport (also used by the release probe). */
+    interface Fetcher { void download(String address, OutputStream output, long limit) throws IOException; }
+    static volatile Fetcher fetcher = UpdateTransport::download;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
     private static volatile Intent pendingConfirmation;
@@ -50,7 +55,7 @@ final class Updater {
     }
     static void schedule(Context context) {
         JobScheduler jobs = context.getSystemService(JobScheduler.class); if (jobs == null) return;
-        if (!enabled(context)) { jobs.cancel(JOB); jobs.cancel(RETRY_JOB); return; }
+        if (!enabled(context)) { jobs.cancel(JOB); jobs.cancel(RETRY_JOB); jobs.cancel(RETRY_JOB_ALT); return; }
         JobInfo pending = jobs.getPendingJob(JOB);
         if (pending == null || pending.getIntervalMillis() != PERIOD_MS || pending.getFlexMillis() != FLEX_MS) {
             int result = jobs.schedule(new JobInfo.Builder(JOB, new ComponentName(context, UpdateJobService.class))
@@ -58,22 +63,43 @@ final class Updater {
             DiagnosticLog.log(context, "update", "periodic scheduling result=" + result);
         }
     }
-    private static void retry(Context context, long delay) {
+    private static void retry(Context context, long delay) { retry(context, delay, -1); }
+    /**
+     * One-shot retry. Scheduling a job with the id of the job that is running right now would make Android stop that job
+     * (interrupting this very check), so a retry requested from inside a retry job uses the other retry id.
+     */
+    private static void retry(Context context, long delay, int runningJobId) {
         if (!enabled(context)) return;
         JobScheduler jobs = context.getSystemService(JobScheduler.class); if (jobs == null) return;
-        int result = jobs.schedule(new JobInfo.Builder(RETRY_JOB, new ComponentName(context, UpdateJobService.class))
+        int id = runningJobId == RETRY_JOB ? RETRY_JOB_ALT : RETRY_JOB;
+        int result = jobs.schedule(new JobInfo.Builder(id, new ComponentName(context, UpdateJobService.class))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setMinimumLatency(Math.max(60_000L, delay)).setPersisted(true).build());
-        DiagnosticLog.log(context, "update", "one-shot retry scheduled result=" + result + " earliestDelayMs=" + delay);
+        DiagnosticLog.log(context, "update", "one-shot retry scheduled id=" + id + " result=" + result + " earliestDelayMs=" + delay);
     }
-    static Future<?> check(Context context, boolean manual, Runnable done) {
+    private static void cancelRetries(Context app) { JobScheduler jobs = app.getSystemService(JobScheduler.class); if (jobs != null) { jobs.cancel(RETRY_JOB); jobs.cancel(RETRY_JOB_ALT); } }
+    static Future<?> check(Context context, boolean manual, Runnable done) { return check(context, manual, done, -1); }
+    /** jobId: the JobScheduler job running this check (-1 when not run by a job). */
+    static Future<?> check(Context context, boolean manual, Runnable done, int jobId) {
         Context app = context.getApplicationContext();
-        if (!BUSY.compareAndSet(false, true)) { if (done != null) MAIN.post(done); return CompletableFuture.completedFuture(null); }
-        FutureTask<Void> task = new FutureTask<>(() -> { runCheck(app, manual); return null; }) {
+        if (!BUSY.compareAndSet(false, true)) {
+            if (manual && MANUAL_QUEUED.compareAndSet(false, true)) {
+                // The single worker runs it right after the current check; a manual tap is never silently dropped.
+                status(app, "An update check is already running; your check will run right after it.");
+                FutureTask<Void> queued = new FutureTask<>(() -> { MANUAL_QUEUED.set(false); runCheck(app, true, -1); return null; }) {
+                    @Override protected void done() { MANUAL_QUEUED.set(false); if (done != null) MAIN.post(done); }
+                };
+                try { WORKER.execute(queued); return queued; } catch (RuntimeException error) { MANUAL_QUEUED.set(false); }
+            }
+            if (done != null) MAIN.post(done); return CompletableFuture.completedFuture(null);
+        }
+        // BUSY is released when the check itself ends (so a caller that waited for it can start the next one at once) and
+        // again in done(), which also covers a task cancelled before it ran.
+        FutureTask<Void> task = new FutureTask<>(() -> { try { runCheck(app, manual, jobId); } finally { BUSY.set(false); } return null; }) {
             @Override protected void done() { BUSY.set(false); if (done != null) MAIN.post(done); }
         };
         WORKER.execute(task); return task;
     }
-    private static void runCheck(Context app, boolean manual) {
+    private static void runCheck(Context app, boolean manual, int jobId) {
         try {
             if (!enabled(app) && !manual) return;
             long now = System.currentTimeMillis();
@@ -81,15 +107,21 @@ final class Updater {
             prefs(app).edit().putLong("attempt_at", now).apply();
             DiagnosticLog.log(app, "update", "check start manual=" + manual + " installed=" + version(app));
             PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
+            if (!manual && installBlocked(app, false) && verifiedWaiting(app, installed, now) != null) {
+                // Still waiting for Dasher/offers/deliveries to finish and the APK verified earlier is still the same file:
+                // neither the feed nor the APK is fetched or hashed again (the feed is re-read every FEED_REUSE_MS). The full
+                // download-and-verify path runs again before an actual installation.
+                deferInstall(app, jobId); return;
+            }
             status(app, "Checking for updates…");
             ByteArrayOutputStream feed = new ByteArrayOutputStream();
-            UpdateTransport.download(UpdatePolicy.FEED + "?t=" + now, feed, 16384);
+            fetcher.download(UpdatePolicy.FEED + "?t=" + now, feed, 16384);
             JSONObject release = new JSONObject(feed.toString(StandardCharsets.UTF_8.name())); metadata(release);
             long advertised = release.getLong("versionCode");
             prefs(app).edit().putLong("checked_at", now).putLong("next_check_at", now + 60_000L).putInt("failure_count", 0).putString("advertised", release.getString("versionName")).apply();
             if (advertised <= code(installed)) {
                 status(app, advertised == code(installed) ? "Up to date: " + installed.versionName : "Feed is older than this installation; no downgrade attempted.");
-                clearReady(app); JobScheduler jobs = app.getSystemService(JobScheduler.class); if (jobs != null) jobs.cancel(RETRY_JOB); return;
+                clearReady(app); cancelRetries(app); return;
             }
             File apk = apk(app); boolean reusable = false;
             if (apk.isFile()) { try { validate(app, apk, release, installed); reusable = true; } catch (Exception ignored) { DiagnosticLog.log(app, "update", "cached APK does not match current release; replacing"); } }
@@ -101,12 +133,13 @@ final class Updater {
                     if (!part.renameTo(apk)) throw new IOException("Could not save update");
                 } finally { if (part.exists()) part.delete(); }
             }
-            prefs(app).edit().putString("ready", release.toString()).commit(); install(app, apk, release, manual);
+            prefs(app).edit().putString("ready", release.toString()).putLong("ready_size", apk.length()).putLong("ready_modified", apk.lastModified()).commit();
+            install(app, apk, release, manual, jobId);
         } catch (Exception error) {
             if (Thread.currentThread().isInterrupted()) { status(app, "Update check interrupted; no installation started."); return; }
             int failures = Math.min(8, prefs(app).getInt("failure_count", 0) + 1); long delay = UpdatePolicy.retryDelayMillis(failures);
             prefs(app).edit().putInt("failure_count", failures).putLong("next_check_at", System.currentTimeMillis() + delay).apply();
-            status(app, "Update failed: " + error.getClass().getSimpleName() + ": " + error.getMessage() + ". Retry requested after " + delay / 60000 + " min; Android may defer it."); retry(app, delay);
+            status(app, "Update failed: " + error.getClass().getSimpleName() + ": " + error.getMessage() + ". Retry requested after " + delay / 60000 + " min; Android may defer it."); retry(app, delay, jobId);
         }
     }
     private static File apk(Context context) throws IOException {
@@ -122,9 +155,28 @@ final class Updater {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream in = new FileInputStream(file)) { byte[] b = new byte[8192]; int count; while ((count = in.read(b)) != -1) digest.update(b, 0, count); }
         if (!hex(digest.digest()).equals(r.getString("sha256"))) throw new IOException("Update checksum mismatch");
-        PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(file.getAbsolutePath(), signingFlags());
+        PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(file.getAbsolutePath(), UpdatePolicy.archiveSigningFlags(Build.VERSION.SDK_INT));
         if (archive == null || !context.getPackageName().equals(archive.packageName) || code(archive) != r.getLong("versionCode") || code(archive) <= code(installed) || !r.getString("versionName").equals(archive.versionName) || !signingCompatible(installed, archive)) throw new IOException("Update package/version/signing certificate mismatch");
     }
+    /** Dasher is in the foreground, or (automatic installs only) an offer or delivery is active. */
+    private static boolean installBlocked(Context context, boolean manual) {
+        return OfferFilterService.isDasherForeground() || (!manual && (OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null));
+    }
+    private static void deferInstall(Context context, int jobId) {
+        status(context, "Update verified; installation deferred while an offer/delivery is active. It installs after Dasher is closed and no delivery is active.");
+        retry(context, UpdatePolicy.DEFER_RETRY_MS, jobId);
+    }
+    /** A verified APK waiting for installation whose file is unchanged since verification, or null. */
+    private static JSONObject verifiedWaiting(Context app, PackageInfo installed, long now) {
+        SharedPreferences p = prefs(app); String ready = p.getString("ready", null); if (ready == null) return null;
+        try {
+            JSONObject release = new JSONObject(ready); metadata(release); File file = apk(app);
+            if (!UpdatePolicy.reuseVerified(release.getLong("versionCode"), code(installed), file.isFile() ? file.length() : -1, file.lastModified(),
+                    p.getLong("ready_size", -2), p.getLong("ready_modified", -2), p.getLong("checked_at", 0), now)) return null;
+            return release;
+        } catch (Exception error) { return null; }
+    }
+    /** Installed-package signer lookup (archives use UpdatePolicy.archiveSigningFlags). */
     @SuppressWarnings("deprecation") private static int signingFlags() { return Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES; }
     @SuppressWarnings("deprecation") private static Set<Signature> signers(PackageInfo p) {
         Signature[] all = Build.VERSION.SDK_INT >= 28 && p.signingInfo != null ? p.signingInfo.getApkContentsSigners() : p.signatures;
@@ -143,18 +195,18 @@ final class Updater {
         long size = r.getLong("size");
         try (OutputStream out = new FileOutputStream(file)) {
             if ("base64".equals(r.optString("encoding", "raw"))) {
-                ByteArrayOutputStream encoded = new ByteArrayOutputStream(); UpdateTransport.download(r.getString("apkUrl"), encoded, ((size + 2) / 3) * 4 + 4096);
+                ByteArrayOutputStream encoded = new ByteArrayOutputStream(); fetcher.download(r.getString("apkUrl"), encoded, ((size + 2) / 3) * 4 + 4096);
                 byte[] decoded = Base64.getDecoder().decode(encoded.toString(StandardCharsets.US_ASCII.name()).replaceAll("[\\r\\n\\t ]", ""));
                 if (decoded.length != size) throw new IOException("Decoded size mismatch"); out.write(decoded);
-            } else UpdateTransport.download(r.getString("apkUrl"), out, size);
+            } else fetcher.download(r.getString("apkUrl"), out, size);
         }
     }
-    private static void install(Context context, File file, JSONObject release, boolean manual) throws Exception {
+    private static void install(Context context, File file, JSONObject release, boolean manual, int jobId) throws Exception {
         if (!enabled(context) && !manual) return;
         if (!manual && prefs(context).getBoolean("manual_retry_required", false)) { status(context, "Android declined the previous installation. Manual retry is required."); return; }
         if (manual) prefs(context).edit().remove("manual_retry_required").apply();
         if (!context.getPackageManager().canRequestPackageInstalls()) { status(context, "Update verified and ready. Enable Allow from this source under Allow automatic installs."); return; }
-        if (OfferFilterService.isDasherForeground() || (!manual && (OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null))) { status(context, "Update verified; installation deferred while an offer/delivery is active."); retry(context, 60_000L); return; }
+        if (installBlocked(context, manual)) { deferInstall(context, jobId); return; }
         if (!manual && foreground.get() != null) { status(context, "Update verified; tap Check / install update to install."); return; }
         if (Thread.currentThread().isInterrupted()) return;
         if (manual && pendingConfirmation != null && foreground.get() != null) { confirmation(context, pendingConfirmation); return; }
@@ -197,7 +249,7 @@ final class Updater {
         status(context, "Android installation failed (" + code + "): " + detail + ". Tap Check / install update to retry.");
     }
     static void clearReady(Context context) {
-        pendingConfirmation = null; prefs(context).edit().remove("ready").remove("session").remove("session_at").remove("confirmation_needed").remove("manual_retry_required").apply();
+        pendingConfirmation = null; prefs(context).edit().remove("ready").remove("ready_size").remove("ready_modified").remove("session").remove("session_at").remove("confirmation_needed").remove("manual_retry_required").apply();
         try { apk(context).delete(); } catch (IOException ignored) {} NotificationManager m = context.getSystemService(NotificationManager.class); if (m != null) m.cancel(NOTICE);
     }
     private Updater() {}

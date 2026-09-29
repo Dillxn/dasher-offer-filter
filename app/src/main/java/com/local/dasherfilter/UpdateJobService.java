@@ -17,7 +17,7 @@ public final class UpdateJobService extends JobService {
         Run run = new Run(parameters); running.put(parameters.getJobId(), run);
         run.task = Updater.check(this, false, () -> {
             if (running.get(parameters.getJobId()) == run) { running.remove(parameters.getJobId()); jobFinished(parameters, false); }
-        });
+        }, parameters.getJobId());
         return true;
     }
     @Override public boolean onStopJob(JobParameters parameters) {

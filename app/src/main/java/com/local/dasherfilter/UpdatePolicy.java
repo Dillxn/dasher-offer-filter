@@ -19,6 +19,33 @@ final class UpdatePolicy {
     static boolean coolingDown(long now, long next) {
         return next > now && next - now <= 900_000L;
     }
+    /** Retry delay while an already verified update waits for Dasher/offers/deliveries to finish (no network, no re-hash). */
+    static final long DEFER_RETRY_MS = 300_000L;
+    /** While deferred, the feed is polled again at most this often, so a newer release still replaces a waiting one. */
+    static final long FEED_REUSE_MS = 900_000L;
+    /**
+     * An automatic check may skip the feed download and the APK re-hash when the APK it already verified is still the file it
+     * verified (same size and modification time in app-private storage), is newer than the installed version, and the feed
+     * was read within FEED_REUSE_MS. Any mismatch falls back to the full download-and-verify path.
+     */
+    static boolean reuseVerified(long readyCode, long installedCode, long fileSize, long fileModified, long verifiedSize, long verifiedModified,
+                                 long checkedAt, long now) {
+        return readyCode > installedCode && fileSize > 0 && fileSize == verifiedSize && fileModified > 0 && fileModified == verifiedModified &&
+                checkedAt > 0 && now >= checkedAt && now - checkedAt < FEED_REUSE_MS;
+    }
+    /**
+     * PackageManager flags for reading a downloaded archive's signers. On API 28 and 29 the archive parser collects (and
+     * verifies) certificates only when GET_SIGNATURES is requested, so signingInfo would be null with GET_SIGNING_CERTIFICATES
+     * alone and every self-update would fail. The installed-package lookup keeps GET_SIGNING_CERTIFICATES only.
+     */
+    static int archiveSigningFlags(int sdk) {
+        if (sdk >= 30) return GET_SIGNING_CERTIFICATES;
+        if (sdk >= 28) return GET_SIGNING_CERTIFICATES | GET_SIGNATURES;
+        return GET_SIGNATURES;
+    }
+    // PackageManager.GET_SIGNATURES / GET_SIGNING_CERTIFICATES (public API constants). Literal values keep this class free of
+    // android.* so tools/verify_channel.py can compile it with plain javac; UpdatePolicyTest pins them to the SDK values.
+    static final int GET_SIGNATURES = 0x00000040, GET_SIGNING_CERTIFICATES = 0x08000000;
     static void validate(String pkg, long code, String url, String sha, long bytes) {
         validate(pkg, code, url, sha, bytes, "raw");
     }

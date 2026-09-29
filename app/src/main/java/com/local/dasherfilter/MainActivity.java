@@ -12,14 +12,19 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
+import android.view.WindowInsets;
 import android.widget.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private Switch enabled, rising, diagnostics;
-    private EditText flat, mile, minute, stop, maxStops;
+    private EditText flat, mile, hour, stop, maxStops, maxMiles, avoidStores, maxDeclines;
     private TextView status;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() { @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); } };
@@ -27,6 +32,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state); OfferAlerts.ensureChannel(this); FilterSettings s = FilterStore.load(this);
         ScrollView scroll = new ScrollView(this); LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
         int pad = Math.round(18 * getResources().getDisplayMetrics().density); page.setPadding(pad, pad, pad, pad); scroll.addView(page);
+        applySystemBarInsets(scroll);
         page.addView(text("Offer Filter " + Updater.version(this), 24));
         page.addView(text("Quiet background mode: this app never opens Dasher automatically. Offers without enough pay/distance data get a SILENT review card, not a passing verdict. Tap the card to open Dasher; visible offers can then be filtered.", 15));
         page.addView(text("Notification silence is not control over Dasher's in-app sound or vibration. Keep DoorDash notifications enabled so offers remain detectable. This app cannot promise silent, fully automatic filtering of a notification that contains no price or distance.", 14));
@@ -34,11 +40,16 @@ public final class MainActivity extends Activity {
         rising = toggle(page, "Only standalone offers above last accepted payout", s.risingOffers);
         button(page, "Reset standalone payout baseline", () -> { FilterStore.recordAccepted(this, 0); refreshStatus(); });
         maxStops = field(page, "Maximum total stops (0 disables)", Integer.toString(s.maxStops), false);
+        maxMiles = field(page, "Maximum miles (0 disables)", money(s.maxMilesHundredths), true);
         flat = field(page, "Minimum payout ($)", money(s.flatCents), true);
         mile = field(page, "Minimum dollars per mile", money(s.perMileCents), true);
-        minute = field(page, "Minimum dollars per minute", money(s.perMinuteCents), true);
+        hour = field(page, "Minimum dollars per hour (uses only minutes Dasher shows)", money(hourlyCents(s)), true);
         stop = field(page, "Fee per stop after the first two ($)", money(s.extraStopCents), true);
-        page.addView(text("Required pay = max(flat, miles × rate, minutes × rate) + extra-stop fees. Zero disables a rule. Missing or conflicting evidence requires review unless another known rule already fails. Add-ons require explicit added values; an unlabeled figure is not assumed to be an increment.", 14));
+        page.addView(text("Stores to avoid (one per line or comma-separated)", 15));
+        avoidStores = new EditText(this); avoidStores.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        avoidStores.setMinLines(2); avoidStores.setText(String.join("\n", s.avoidStores)); page.addView(avoidStores);
+        maxDeclines = field(page, "Safety limit: decline requests per hour (0 = no limit)", Integer.toString(s.maxDeclinesPerHour), false);
+        page.addView(text("Required pay = max(flat, miles × $/mi, minutes × $/hr ÷ 60) + extra-stop fees. Zero disables a rule. Missing or conflicting evidence requires review unless another known rule already fails. Over max miles/stops or an avoided store is a known failure even when pay is not shown. Store rules alone never mark an offer as passing. Earn by Time offers are never auto-declined. Add-ons require explicit added values.", 14));
         enabled = toggle(page, "Auto-decline (Save to enable; switching off is immediate)", s.enabled);
         enabled.setOnCheckedChangeListener((v, on) -> { if (!on && FilterStore.load(this).enabled) pause(); });
         button(page, "Save rules", this::save);
@@ -74,25 +85,66 @@ public final class MainActivity extends Activity {
     private void save() {
         try {
             String n = maxStops.getText().toString().trim(); if (!n.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
-            FilterSettings next = FilterStore.load(this).withEnabled(enabled.isChecked()).withFlatCents(parse(flat)).withPerMileCents(parse(mile)).withPerMinuteCents(parse(minute)).withExtraStopCents(parse(stop)).withMaxStops(Integer.parseInt(n)).withRisingOffers(rising.isChecked());
+            String limit = maxDeclines.getText().toString().trim(); if (!limit.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Decline limit must be 0 through 99 per hour.");
+            List<String> stores = avoidTerms(avoidStores.getText().toString());
+            FilterSettings next = FilterStore.load(this).withEnabled(enabled.isChecked()).withFlatCents(parse(flat)).withPerMileCents(parse(mile))
+                    .withPerMinuteCents(0).withPerHourCents(parse(hour)).withExtraStopCents(parse(stop)).withMaxStops(Integer.parseInt(n))
+                    .withMaxMilesHundredths(parse(maxMiles)).withAvoidStores(stores).withMaxDeclinesPerHour(Integer.parseInt(limit)).withRisingOffers(rising.isChecked());
             if (next.enabled && !next.hasAnyRule()) throw new IllegalArgumentException("Enable at least one rule before auto-decline.");
             FilterStore.save(this, next); OfferNotificationService.rulesChanged(); OfferFilterService.requestCheckFromNotification(); toast("Rules saved."); refreshStatus();
         } catch (IllegalArgumentException error) { toast(error.getMessage()); }
     }
+    /** Legacy per-minute rules display as their exact hourly equivalent; saving stores the hourly rate. */
+    private static int hourlyCents(FilterSettings s) { long legacy = (long) s.perMinuteCents * 60; return (int) Math.min(Integer.MAX_VALUE, Math.max(s.perHourCents, legacy)); }
+    private static List<String> avoidTerms(String text) {
+        List<String> raw = new ArrayList<>();
+        for (String part : text.split("[\\n\\r,;]+")) if (!part.trim().isEmpty()) raw.add(part.trim());
+        if (raw.size() > StoreMatcher.MAX_TERMS) throw new IllegalArgumentException("Avoid at most " + StoreMatcher.MAX_TERMS + " stores.");
+        for (String term : raw) { String error = StoreMatcher.termError(term); if (error != null) throw new IllegalArgumentException("Store \"" + term + "\": " + error); }
+        return StoreMatcher.sanitize(raw);
+    }
     private static int parse(EditText field) {
         try {
-            String raw = field.getText().toString().trim(); if (raw.isEmpty()) return 0; BigDecimal n = new BigDecimal(raw);
+            String raw = field.getText().toString().trim(); if (raw.isEmpty()) return 0;
+            if (raw.indexOf('.') < 0 && raw.indexOf(',') == raw.lastIndexOf(',')) raw = raw.replace(',', '.');   // "2,50" in comma-decimal locales
+            BigDecimal n = new BigDecimal(raw);
             if (n.signum() < 0 || n.compareTo(new BigDecimal("1000")) > 0 || n.scale() > 2) throw new NumberFormatException(); return n.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
         } catch (ArithmeticException | NumberFormatException error) { throw new IllegalArgumentException("Amounts must be 0–1000 with at most two decimals."); }
     }
+    /** Settings reads the component as a flattened String; a Parcelable closes or crashes the detail page on Android 11+. */
+    static Intent notificationAccessIntent(android.content.Context context) {
+        if (Build.VERSION.SDK_INT < 30) return new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        return new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                new ComponentName(context, OfferNotificationService.class).flattenToString());
+    }
     private void notificationAccess() {
-        Intent i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-        if (Build.VERSION.SDK_INT >= 30) i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, new ComponentName(this, OfferNotificationService.class)); open(i);
+        try { startActivity(notificationAccessIntent(this)); }
+        catch (RuntimeException error) { open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
     }
     private void offerAlerts() {
         OfferAlerts.ensureChannel(this);
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 13); return; }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            boolean asked = getSharedPreferences("offer_filter_ui", MODE_PRIVATE).getBoolean("notification_permission_asked", false);
+            // After Android stops showing the prompt, send the user to the app's notification settings instead of a dead end.
+            if (!asked || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                getSharedPreferences("offer_filter_ui", MODE_PRIVATE).edit().putBoolean("notification_permission_asked", true).apply();
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 13); return;
+            }
+            open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())); return;
+        }
+        android.app.NotificationManager manager = getSystemService(android.app.NotificationManager.class);
+        if (manager != null && !manager.areNotificationsEnabled()) { open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())); return; }
         open(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID, OfferAlerts.CHANNEL_ID));
+    }
+    /** targetSdk 35 is edge-to-edge on Android 15: keep content clear of the status/navigation bars and cutouts. */
+    private static void applySystemBarInsets(ScrollView scroll) {
+        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            } else view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            return insets;
+        });
     }
     private void doorDashChannel() {
         String channel = FilterStore.doorDashOfferChannel(this);
@@ -108,8 +160,14 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() { handler.removeCallbacks(refresh); Updater.background(this); super.onPause(); }
     private void refreshStatus() {
         if (status == null) return; FilterSettings s = FilterStore.load(this); OfferSnapshot route = ActiveRouteStore.load(this);
-        status.setText("Accessibility connected: " + OfferFilterService.isConnected() + "\nBackground listener connected: " + OfferNotificationService.isConnected() + "\nPassing alerts permitted: " + OfferAlerts.canNotify(this) + "\nSaved auto-decline: " + s.enabled + "\nSaved minimum payout: $" + money(s.flatCents) + "\nStandalone accepted baseline: $" + money(s.lastAcceptedCents) + "\nActive route: " + (route == null ? "none" : route.summary()) + "\nRaw capture active: " + DiagnosticLog.isEnabled(this) + "\n\n" + FilterStore.lastStatus(this) + "\n\nUpdater: " + Updater.status(this));
+        status.setText("Accessibility connected: " + OfferFilterService.isConnected() + "\nBackground listener connected: " + OfferNotificationService.isConnected() + "\nPassing alerts permitted: " + OfferAlerts.canNotify(this) + "\nSaved auto-decline: " + s.enabled + "\nSaved minimum payout: $" + money(s.flatCents) + "\nStandalone accepted baseline: " + baseline(s) + "\nActive route: " + (route == null ? "none" : route.summary()) + "\nRaw capture active: " + DiagnosticLog.isEnabled(this) + "\n\n" + FilterStore.lastStatus(this) + "\n\nUpdater: " + Updater.status(this));
         if (diagnostics != null && diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
+    }
+    private static String baseline(FilterSettings s) {
+        if (s.lastAcceptedCents <= 0) return "not set";
+        if (s.lastAcceptedAt <= 0) return "$" + money(s.lastAcceptedCents) + " (undated from an older version; not applied)";
+        String at = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(s.lastAcceptedAt));
+        return "$" + money(s.lastAcceptedCents) + " accepted " + at + (s.baselineFresh(System.currentTimeMillis()) ? "" : " (older than 8 h; not applied)");
     }
     private TextView text(String label, int size) { TextView v = new TextView(this); v.setText(label); v.setTextSize(size); return v; }
     private Switch toggle(LinearLayout page, String label, boolean value) { Switch v = new Switch(this); v.setText(label); v.setChecked(value); page.addView(v); return v; }

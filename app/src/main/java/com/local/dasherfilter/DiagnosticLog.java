@@ -54,15 +54,22 @@ final class DiagnosticLog {
         try (InputStream in = new FileInputStream(file); ByteArrayOutputStream out = new ByteArrayOutputStream()) { byte[] b = new byte[4096]; int n; while ((n = in.read(b)) != -1) out.write(b, 0, n); return out.toByteArray(); }
     }
     static String report(Context context) {
-        FilterSettings s = FilterStore.load(context);
+        FilterSettings s = FilterStore.load(context); DoorDashChannelFacts channel = DoorDashChannelFacts.load(context);
         return "Offer Filter " + Updater.version(context) + " diagnostics\n" +
                 "Generated locally. Raw labels may include personal/location text; review before sharing.\n" +
                 "Capture active: " + isEnabled(context) + " (30-minute session)\n" +
                 "Accessibility connected: " + OfferFilterService.isConnected() + "\n" +
                 "Notification listener connected: " + OfferNotificationService.isConnected() + "\n" +
                 "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n" +
+                "Review cards permitted: " + OfferAlerts.canNotifyReview(context) + "\n" +
                 "Auto-decline saved: " + s.enabled + "; flat cents=" + s.flatCents + "; per-mile cents=" + s.perMileCents +
-                "; per-minute cents=" + s.perMinuteCents + "; extra-stop cents=" + s.extraStopCents + "; max stops=" + s.maxStops + "\n" +
+                "; per-minute cents=" + s.perMinuteCents + "; per-hour cents=" + s.perHourCents + "; extra-stop cents=" + s.extraStopCents +
+                "; max stops=" + s.maxStops + "; max miles (1/100)=" + s.maxMilesHundredths + "; avoided stores=" + s.avoidStores.size() +
+                " (names not included); rising=" + s.risingOffers + "; decline limit per hour=" + s.maxDeclinesPerHour + "\n" +
+                "Rising baseline: " + (s.lastAcceptedCents <= 0 ? "none" : s.lastAcceptedAt <= 0 ? "undated (not applied)" :
+                        "age " + Math.max(0, (System.currentTimeMillis() - s.lastAcceptedAt) / 60000) + " min, " + (s.baselineFresh(System.currentTimeMillis()) ? "applies" : "expired")) + "\n" +
+                (channel == null ? "DoorDash offer channel: not observed yet" : channel.summary()) + "\n" +
+                "Offer history records on this device: " + OfferHistoryStore.get(context).size() + " (not included)\n" +
                 "Updater: " + Updater.status(context) + "\n" +
                 "Last update attempt epoch ms: " + Updater.prefs(context).getLong("attempt_at", 0) + "\n" +
                 "Last successful feed check epoch ms: " + Updater.prefs(context).getLong("checked_at", 0) + "\n\n" + read(context);

@@ -79,7 +79,7 @@ final class OfferRule {
         Decision guard = guard(visible, offer.hourly);
         if (guard != null) return guard;
         String avoided = StoreMatcher.firstMatch(s.avoidStores, c.merchant, visible);
-        return limit(standalone(offer, null, s, s.baselineActive(c.nowWallMs), avoided, offer.hasFacts() || hasOfferControls(visible)), s, c);
+        return limit(standalone(offer, null, s, s.baselineActive(c.nowWallMs), avoided, offer.hasFacts() || hasOfferControls(visible) || provenOfferMerchant(c, s)), s, c);
     }
 
     /**
@@ -96,7 +96,7 @@ final class OfferRule {
         if (guard != null) return guard;
         String avoided = StoreMatcher.firstMatch(s.avoidStores, c.merchant, Collections.emptyList());
         FilterSettings routeRules = s.withRisingOffers(false);
-        boolean storeMayDecline = addOn.incremental.hasFacts() || addOn.combined.hasFacts() || hasOfferControls(visible);
+        boolean storeMayDecline = addOn.incremental.hasFacts() || addOn.combined.hasFacts() || hasOfferControls(visible) || provenOfferMerchant(c, s);
         Decision combined = standalone(addOn.shownRoute(), addOn.combined, routeRules, false, avoided, storeMayDecline);
         List<String> lines = new ArrayList<>();
         for (String line : combined.breakdown) lines.add("Route after adding: " + line);
@@ -172,6 +172,14 @@ final class OfferRule {
         List<String> lines = new ArrayList<>(d.breakdown);
         lines.add("Would request decline (" + d.reason + "), but " + c.declinesInLastHour + " decline requests already happened in the last hour");
         return new Decision(Result.REVIEW, d.requiredCents, "decline limit reached (" + s.maxDeclinesPerHour + " per hour)", Code.DECLINE_LIMIT, lines, d.avoidedStore);
+    }
+
+    /**
+     * A strong offer notification whose merchant came from an explicit offer phrase (see EvaluationContext.offerNotification)
+     * and that merchant itself is on the avoid list. A match found only in other notification text never qualifies.
+     */
+    private static boolean provenOfferMerchant(EvaluationContext c, FilterSettings s) {
+        return c.offerNotification && c.merchant != null && StoreMatcher.firstMatch(s.avoidStores, c.merchant, Collections.emptyList()) != null;
     }
 
     /** Both offer controls are visible: the labels are a real offer card, not a notification or message. */

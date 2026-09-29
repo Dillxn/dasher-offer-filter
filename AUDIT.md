@@ -1,3 +1,35 @@
+# Adversarial audit — Offer Filter 0.5.0
+
+Audited baseline: main commit 4efa90d (0.4.5 / versionCode 11). Two independent auditors (pure decision core; Android adapters and release scripts) reproduced findings with javac probes and Robolectric; each medium/high finding was then checked by a separate skeptic. Public DoorDash Help Center / Dasher Central screenshots were used to build realistic offer-card fixtures. Nine findings were confirmed, one was rejected (below), and the implementation went through two further rounds of independent adversarial review with repairs.
+
+## Confirmed and fixed
+1. **Pay taken from the wrong line (high).** A money-less "Guaranteed" caption adopted the next line's amount, so a Flash boost, Peak Pay, `$1.21/mi` or `$17.50/hr` became the payout and good offers were declined. Pay is now attributed per amount (free, component, increment, rate, included); a label takes only a bare amount beside it; conflicts are unknown.
+2. **Earn by Time declined (high).** `$15/active hr + tips` parsed as a $15 offer. Hourly cards are now always REVIEW, whatever other rule fails.
+3. **Add-on misread as a decline confirmation (high).** "Add to route" was not an accept control; the card could be confirm-declined without evaluation. It is now the add-on accept control, and a surface with offer evidence confirms only when bound to the declined offer.
+4. **Confirmation carried over to the next offer (high).** Ten-second, time-only authority could click Decline on a different passing offer. Authority is now bound to the declined offer's facts and ends once its sheet closes.
+5. **Signer check failed on Android 9–10 (high).** Archive certificates were only collected with `GET_SIGNATURES` there; the archive parse now requests both flags. The installed-package check and signer comparison are unchanged.
+6. **Wrong minutes (medium).** "1 h 5 min" → 5; pickup/ready/ETA times read as trip time. Fixed with full hour+minute parsing and context guards.
+7. **"+$" increment treated as standalone pay (medium).** Increments never become standalone pay and never count alone as add-on evidence.
+8. **Accept tracking credited failed or stale accepts (medium).** Delivery labels must newly appear after the tap; "no longer available" cancels; ambiguous accepts clear route context; add-on accepts that cannot be recorded clear route context.
+9. **Notification-access shortcut crashed Settings on Android 11+ (medium).** The component extra is now a flattened String.
+
+Lower-severity fixes: countdown labels resetting the 4-tap cap, one-cent double-sum rounding on add-on miles, "$7.50+" as exact pay, split "21 min" nodes ignored, road names/fractions as mileage, offer notifications dropped by merchant names containing exclusion words, re-ring of an identical notification after the 90 s entry lifetime, orphan review cards after process death, a failing offer with a "Back" label never getting its first decline, update deferral re-polling every minute, a dropped manual update tap, the POST_NOTIFICATIONS dead end, comma decimals, Android 15 edge-to-edge overlap, and the retired GitHub publisher still being runnable (removed).
+
+## Rejected
+- *Re-ring a same-key notification update as a new offer.* The mechanism is real, but without an order ID a pay correction is indistinguishable from a new offer and `Notification.when` changes on every rebuild, so the proposed fix would reintroduce the repeated-ring defect fixed in 0.4.4. One passing bell per notification incarnation remains the rule.
+
+## New surfaces and their safety boundaries
+- Store avoid list: a known failure; never creates KEEP. On notifications it acts only when the notification is classified as a real offer and the store comes from DoorDash's own "Go to …" phrase.
+- Maximum miles: add-ons use only an explicitly displayed route total.
+- Rising baseline: expires after 8 hours; undated 0.4.x baselines do not apply.
+- Decline limit per hour: opt-in; only converts declines into review.
+- History: local, bounded, no raw screen text; decisions never learn from it.
+
+## Evidence boundaries
+JVM tests (including fixed-seed fuzzing of 12,000 random and 6,000 realistic offer cards) and Robolectric Android API 26/35 adapter tests. The live-channel probe verifies the published APK. None of this is a physical handset, the real DoorDash client, or real audio/haptics.
+
+---
+
 # Adversarial audit — Offer Filter 0.4.4
 
 Audited baseline: main commit 5e30520683e90393d969548c6a3642d914da26c6 (0.4.3 / versionCode 9). User-supplied 0.4.2 phone diagnostics were used as a regression scenario, not as evidence that all 0.4.3 behavior was observed on-device.
