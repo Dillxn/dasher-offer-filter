@@ -20,4 +20,10 @@ final class UpdatePolicy {
     }
 
     static boolean isNewer(long advertised, long installed) { return advertised > installed; }
+
+    static long retryDelayMillis(int consecutiveFailures) {
+        int failures = Math.max(1, consecutiveFailures);
+        long minutes = 1L << Math.min(3, failures - 1);
+        return Math.min(15L, minutes) * 60_000L;
+    }
 }
