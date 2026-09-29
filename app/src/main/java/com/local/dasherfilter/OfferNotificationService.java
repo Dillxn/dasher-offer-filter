@@ -136,8 +136,8 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (!alreadyForeground) {
                 OfferAlerts.notifyOffer(this, notification.contentIntent, OfferRule.Result.REVIEW,
                         "Auto-decline is off; DoorDash offer requires review.");
-                wakeDasher(sbn);
-                try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
+                DiagnosticLog.log(this, "notification",
+                        "auto-decline off: alerted without foregrounding Dasher");
             }
             return;
         }
@@ -167,15 +167,18 @@ public final class OfferNotificationService extends NotificationListenerService 
                 DiagnosticLog.log(this, "notification", "filtered offer handled silently through notification Decline action");
                 return;
             }
-            DiagnosticLog.log(this, "notification", "filtered by notification data; opening Dasher silently so Accessibility can decline it");
-            wakeDasher(sbn);
+            try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
+            synchronized (LOCK) { clearLocked(); }
+            DiagnosticLog.log(this, "notification",
+                    "filtered by notification data but no Decline action exists; suppressed without foregrounding Dasher");
             return;
         }
 
         if (decision.result == OfferRule.Result.KEEP) {
             OfferAlerts.notifyOffer(this, notification.contentIntent, decision.result,
                     evaluated + "; " + decision.summary());
-            String route = wakeDasher(sbn);
+            DiagnosticLog.log(this, "notification",
+                    "qualifying offer alerted without foregrounding Dasher; tap the alert to open it");
             try {
                 cancelNotification(sbn.getKey());
                 DiagnosticLog.log(this, "notification", "replaced qualifying silent DoorDash notification with Offer Filter alert");
@@ -188,11 +191,12 @@ public final class OfferNotificationService extends NotificationListenerService 
         }
 
         synchronized (LOCK) {
-            pendingAlertAfterScreen = true;
+            pendingAlertAfterScreen = false;
+            pendingWake = false;
         }
         DiagnosticLog.log(this, "notification",
-                "notification lacks enough rule data; opening Dasher silently for screen evaluation before alerting");
-        wakeDasher(sbn);
+                "notification lacks enough rule data; leaving Dasher backgrounded and waiting for richer notification/screen evidence");
+        DiagnosticLog.log(this, "notification-meta", metadata(notification));
     }
 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
@@ -286,6 +290,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             add(result, extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT));
             CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
             if (lines != null) for (CharSequence line : lines) add(result, line);
+            addTextExtras(result, extras, 0);
         }
         if (notification.actions != null) {
             for (Notification.Action action : notification.actions) {
@@ -293,6 +298,75 @@ public final class OfferNotificationService extends NotificationListenerService 
             }
         }
         return result;
+    }
+
+    private static void addTextExtras(List<String> labels, Bundle extras, int depth) {
+        if (extras == null || depth > 2) return;
+        for (String key : extras.keySet()) {
+            Object value;
+            try { value = extras.get(key); }
+            catch (RuntimeException error) { continue; }
+            if (value instanceof CharSequence) {
+                add(labels, (CharSequence) value);
+            } else if (value instanceof CharSequence[]) {
+                for (CharSequence item : (CharSequence[]) value) add(labels, item);
+            } else if (value instanceof Bundle) {
+                addTextExtras(labels, (Bundle) value, depth + 1);
+            }
+        }
+    }
+
+    private static String metadata(Notification notification) {
+        if (notification == null) return "null";
+        StringBuilder out = new StringBuilder();
+        out.append("channel=").append(notification.getChannelId())
+                .append(" category=").append(notification.category)
+                .append(" flags=").append(notification.flags)
+                .append(" group=").append(notification.getGroup())
+                .append(" sortKey=").append(notification.getSortKey());
+        Bundle extras = notification.extras;
+        if (extras != null) {
+            out.append(" extras={");
+            int count = 0;
+            for (String key : extras.keySet()) {
+                if (count++ >= 40) { out.append("…"); break; }
+                Object value;
+                try { value = extras.get(key); }
+                catch (RuntimeException error) { continue; }
+                out.append(key).append('=').append(safeExtra(value)).append(';');
+            }
+            out.append('}');
+        }
+        if (notification.actions != null) {
+            out.append(" actions=[");
+            for (Notification.Action action : notification.actions) {
+                if (action != null) out.append(action.title).append(';');
+            }
+            out.append(']');
+        }
+        return out.toString();
+    }
+
+    private static String safeExtra(Object value) {
+        if (value == null) return "null";
+        if (value instanceof CharSequence) return truncate(value.toString());
+        if (value instanceof CharSequence[]) {
+            StringBuilder result = new StringBuilder("[");
+            for (CharSequence item : (CharSequence[]) value) {
+                if (result.length() > 400) break;
+                result.append(truncate(item == null ? "null" : item.toString())).append('|');
+            }
+            return result.append(']').toString();
+        }
+        if (value instanceof Number || value instanceof Boolean) return value.toString();
+        if (value instanceof Bundle) return "Bundle(keys=" + ((Bundle) value).keySet() + ")";
+        return value.getClass().getSimpleName();
+    }
+
+    private static String truncate(String value) {
+        if (value == null) return "null";
+        value = value.replace('\r', ' ').replace('\n', ' ');
+        return value.length() > 240 ? value.substring(0, 240) + "…" : value;
     }
 
     private static void add(List<String> labels, CharSequence value) {
