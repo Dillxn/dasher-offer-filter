@@ -132,8 +132,10 @@ final class OfferParser {
         Set<Integer> found = new HashSet<>();
         for (String line : lines) {
             String lower = line.toLowerCase(Locale.US);
-            if (!(lower.contains("estimated") || lower.contains("est.") ||
-                    lower.contains("duration") || lower.contains("total time"))) continue;
+            boolean explicitTime = lower.contains("estimated") || lower.contains("est.") ||
+                    lower.contains("duration") || lower.contains("total time");
+            boolean compactOfferMetric = MILES.matcher(line).find() || STOPS.matcher(line).find();
+            if (!explicitTime && !compactOfferMetric) continue;
             Matcher matcher = MINUTES.matcher(line);
             while (matcher.find()) {
                 int hours = matcher.group(1) == null ? 0 : Integer.parseInt(matcher.group(1));
