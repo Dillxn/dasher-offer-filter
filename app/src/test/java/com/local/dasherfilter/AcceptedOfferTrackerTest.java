@@ -37,7 +37,8 @@ public final class AcceptedOfferTrackerTest {
                 tracker.observeOtherScreen(Arrays.asList("Confirm pickup"), 1200);
         assertNotNull(accepted);
         assertTrue(accepted.addOn);
-        assertEquals(Integer.valueOf(3000), accepted.baselinePay());
+        assertEquals(Integer.valueOf(500), accepted.acceptedOffer.payCents);
+        assertEquals(Integer.valueOf(3000), accepted.routeAfter.payCents);
         assertEquals(combined.fingerprint(), accepted.routeAfter.fingerprint());
     }
 
