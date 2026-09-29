@@ -6,20 +6,25 @@ on:
     paths:
       - "app/**"
       - "build-local.sh"
-      - "private-signing/**"
       - ".github/workflows/build-signed-apk.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: offer-filter-cloud-signing
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      SIGNING_KEY_B64: private-signing/offer-filter-reset.p12.b64
-      SIGNING_KEY: \${{ github.workspace }}/.signing/offer-filter-reset.p12
-      SIGNING_ALIAS: offerfilter-reset
+      SIGNING_TAG: signing-key-v1
+      SIGNING_KEY: \${{ github.workspace }}/.signing/OfferFilter-signing.p12
+      SIGNING_ALIAS: offerfilter-cloud
+      SIGNING_PASSWORD: offer-filter-cloud-build
+      GH_TOKEN: \${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,28 +38,38 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Restore private signing key
-        env:
-          SIGNING_PASSWORD: \${{ secrets.OFFER_FILTER_SIGNING_PASSWORD }}
+      - name: Restore or create private signing key
         run: |
-          test -n "$SIGNING_PASSWORD" || {
-            echo "Missing repository secret OFFER_FILTER_SIGNING_PASSWORD" >&2
-            exit 1
-          }
+          set -euo pipefail
           mkdir -p .signing
-          base64 --decode "$SIGNING_KEY_B64" > "$SIGNING_KEY"
+          if gh release view "$SIGNING_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release download "$SIGNING_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "OfferFilter-signing.p12" --dir .signing --clobber
+          else
+            keytool -genkeypair \
+              -keystore "$SIGNING_KEY" -storetype PKCS12 \
+              -storepass "$SIGNING_PASSWORD" -keypass "$SIGNING_PASSWORD" \
+              -alias "$SIGNING_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 \
+              -dname "CN=Offer Filter Cloud,O=Local,C=US"
+            gh release create "$SIGNING_TAG" "$SIGNING_KEY" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Offer Filter private signing key v1" \
+              --notes "Private repository signing-key backup. Do not copy this asset to the public update repository."
+          fi
           chmod 600 "$SIGNING_KEY"
+          keytool -list -v -keystore "$SIGNING_KEY" \
+            -storepass "$SIGNING_PASSWORD" -alias "$SIGNING_ALIAS" |
+            sed -n '/SHA256:/p'
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
       - name: Build signed APK
         env:
-          OFFER_FILTER_KEYSTORE: \${{ github.workspace }}/.signing/offer-filter-reset.p12
-          OFFER_FILTER_KEY_ALIAS: offerfilter-reset
-          OFFER_FILTER_KEYSTORE_PASS_SPEC: env:OFFER_FILTER_SIGNING_PASSWORD
-          OFFER_FILTER_KEY_PASS_SPEC: env:OFFER_FILTER_SIGNING_PASSWORD
-          OFFER_FILTER_SIGNING_PASSWORD: \${{ secrets.OFFER_FILTER_SIGNING_PASSWORD }}
+          OFFER_FILTER_KEYSTORE: \${{ github.workspace }}/.signing/OfferFilter-signing.p12
+          OFFER_FILTER_KEY_ALIAS: offerfilter-cloud
+          OFFER_FILTER_KEYSTORE_PASS_SPEC: pass:offer-filter-cloud-build
+          OFFER_FILTER_KEY_PASS_SPEC: pass:offer-filter-cloud-build
         run: ./build-local.sh
 
       - name: Verify signer and write receipt
@@ -81,3 +96,16 @@ jobs:
             app/build/outputs/apk/debug/signing-receipt.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish private reset baseline
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n "s/.*versionName '\\([^']*\\)'.*/\\1/p" app/build.gradle)
+          TAG="reset-v$VERSION"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Offer Filter $VERSION — signing reset baseline" \
+              --notes-file RELEASE_NOTES.md
+          fi
