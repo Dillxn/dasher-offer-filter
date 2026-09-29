@@ -71,20 +71,19 @@ The app reads only the Dasher package (`com.doordash.driverapp`). Android Access
 
 Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-local.sh`. The APK stays local. Gradle 8.13 is also supported with `./gradlew testDebugUnitTest assembleDebug` when its dependencies are available.
 
-To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, update `RELEASE_NOTES.md`, push source on main, then run `./ship-update.sh` on the signing Mac. It runs the JUnit suite, builds with the existing signing key, verifies the APK version/signature and that the checkout exactly matches remote `main`, uploads the same APK to Releases in both repositories, switches `latest.json`, and finally downloads the feed and APK without authentication to verify the exact public channel phones use.
+To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, update `RELEASE_NOTES.md`, and push source to `main`. GitHub builds the signed APK in the cloud with the private-repo signing key, verifies it, and stores the signed artifact. The public update repo can then receive the verified APK as Base64 plus an updated `latest.json`; phones decode and re-verify the APK before installation.
 
-### Signing-key rotation
+### Signing-key reset and cloud builds
 
-The installed 0.3.1 updater requires the downloaded APK's current signer to exactly match its own, so key rotation uses a bridge release. **0.4.1 must be built and published with the existing signing key first.** It changes update validation to accept a newer certificate only when Android exposes the installed signer as an authenticated predecessor in the APK's signing-certificate history.
+The original 0.3.1 private signing key is no longer available. Android requires self-managed APK updates to preserve signing identity, so 0.3.1 cannot be upgraded in place with a newly generated key. The recovery path is a one-time uninstall/reinstall onto a new signing baseline.
 
-On the signing Mac:
+The private source repo now owns that replacement signer through the **Build signed Offer Filter** GitHub workflow. The workflow restores the signer from a private release asset named `signing-key-v1`; if it does not exist yet, it creates the key once and stores the PKCS12 file only in the private source repository's Releases. The public update repository never receives the signing key.
 
-1. Run `./ship-update.sh` to build, test, sign, publish, and publicly verify 0.4.1 with the existing key.
-2. Install 0.4.1 on the phone through the normal updater.
-3. Run `./prepare-key-rotation.sh`. It verifies the old certificate fingerprint, creates a new local 4096-bit RSA signing key and password file if needed, creates an Android signing-certificate lineage with installed-data continuity enabled and rollback disabled, and writes a local rotation config under `~/.android/`. No private key or password is stored in the repository.
-4. Bump the next release version/code, then run `OFFER_FILTER_BRIDGE_CONFIRMED=1 ./ship-rotated-update.sh`. The script refuses to publish unless the public bridge feed is already at least versionCode 7 and the operator explicitly confirms that the bridge is installed.
+The workflow runs the JUnit suite, builds and signs the APK, verifies the certificate, records SHA-256/size/version evidence, uploads a signed workflow artifact, and creates a private `reset-v<version>` baseline release. This removes any dependency on a particular Mac or Chromebook.
 
-The ordinary build script now refuses to invent a new keystore when its configured signer is missing. Rotated builds sign with both the predecessor and current signer plus the lineage so Android versions that need the predecessor path remain compatible, while Android 13+ can use the rotated signer.
+The new updater also supports a public Base64 APK channel under `dasher-offer-filter-updates/apks/`. Decoded APKs still undergo exact package, version, size, SHA-256, and signing-certificate validation before installation. The existing public `latest.json` remains on 0.3.1 until the replacement baseline has been installed, so the old app is not repeatedly offered an APK it cannot authenticate.
+
+After the one-time reinstall, subsequent versions can use the new cloud-held signer and the normal automatic update loop.
 
 ## Current limit
 
