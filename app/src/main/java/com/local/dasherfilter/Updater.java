@@ -97,6 +97,8 @@ final class Updater {
         return WORKER.submit(() -> {
             try {
                 if (!enabled(app) && !manual) return;
+                DiagnosticLog.log(app, "update", "check start manual=" + manual +
+                        " installed=" + version(app));
                 PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
                 long current = code(installed);
                 File apk = apk(app);
@@ -131,9 +133,13 @@ final class Updater {
                             .putInt("failure_count", 0)
                             .apply();
                     status(app, "Up to date: " + installed.versionName);
+                    DiagnosticLog.log(app, "update", "feed up to date installed=" +
+                            installed.versionName + " advertised=" + release.getString("versionName"));
                     return;
                 }
                 status(app, "Downloading " + release.getString("versionName") + "…");
+                DiagnosticLog.log(app, "update", "downloading advertised=" +
+                        release.getString("versionName") + " url=" + release.getString("apkUrl"));
                 File part = new File(apk.getParentFile(), "download.apk");
                 downloadUpdate(release, part);
                 validate(app, part, release, installed);
@@ -155,6 +161,8 @@ final class Updater {
                         .apply();
                 status(app, "Update check failed: " + error.getMessage() +
                         ". Retrying automatically in " + Math.max(1, delay / 60000L) + " min.");
+                DiagnosticLog.log(app, "update", "check failed " +
+                        error.getClass().getSimpleName() + ": " + error.getMessage());
             } finally {
                 if (done != null) done.run();
             }
@@ -263,7 +271,8 @@ final class Updater {
         for (int redirect = 0; redirect < 5; redirect++) {
             if (!"https".equals(url.getProtocol()) || url.getUserInfo() != null ||
                     !(url.getHost().equals("github.com") || url.getHost().equals("raw.githubusercontent.com") ||
-                            url.getHost().equals("release-assets.githubusercontent.com"))) {
+                            url.getHost().equals("release-assets.githubusercontent.com") ||
+                            url.getHost().equals("dash-offer-filter-build.onrender.com"))) {
                 throw new IOException("Untrusted update download host");
             }
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
