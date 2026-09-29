@@ -1,12 +1,11 @@
 package com.local.dasherfilter;
 
-import android.app.ActivityOptions;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,388 +14,131 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 
-/** Bridges DoorDash offer notifications into the on-device offer filter while Dasher is backgrounded. */
+/** Never launches an activity. Notification evidence and screen evidence are separate authorities. */
 public final class OfferNotificationService extends NotificationListenerService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
-    private static final long PENDING_MS = 90_000;
-    private static final long WAKE_POLL_MS = 6_000;
-    private static final Object LOCK = new Object();
     private static volatile OfferNotificationService active;
-    private static String pendingKey;
-    private static long pendingAt;
-    private static boolean pendingWake;
-    private static PendingIntent pendingContentIntent;
-    private static boolean pendingAlertAfterScreen;
+    private static volatile boolean offerOutstanding;
+    private static volatile long generation;
     private final Handler handler = new Handler(Looper.getMainLooper());
-
+    private final LinkedHashMap<String, Entry> entries = new LinkedHashMap<>();
+    private static final class Entry {
+        final OfferAlertState state; final String alertTag; final String merchant; Runnable expiry;
+        Entry(long now, StatusBarNotification source, String merchant) {
+            this.merchant = merchant; state = new OfferAlertState(now, source.getPostTime(), source.getNotification().when); alertTag = "offer-" + now + "-" + source.getKey();
+        }
+    }
     static boolean isConnected() { return active != null; }
-
+    static boolean hasActiveOffer() { return offerOutstanding; }
+    static long generation() { return generation; }
+    static boolean hasRecentPendingWake(long now) { return false; }
     static boolean hasAccess(Context context) {
         ComponentName component = new ComponentName(context, OfferNotificationService.class);
-        if (Build.VERSION.SDK_INT >= 27) {
-            NotificationManager manager = context.getSystemService(NotificationManager.class);
-            return manager != null && manager.isNotificationListenerAccessGranted(component);
-        }
-        String enabled = Settings.Secure.getString(context.getContentResolver(), "enabled_notification_listeners");
-        return enabled != null && enabled.contains(component.flattenToString());
+        if (Build.VERSION.SDK_INT >= 27) { NotificationManager m = context.getSystemService(NotificationManager.class); return m != null && m.isNotificationListenerAccessGranted(component); }
+        String enabled = Settings.Secure.getString(context.getContentResolver(), "enabled_notification_listeners"); if (enabled == null) return false;
+        for (String value : enabled.split(":")) if (component.equals(ComponentName.unflattenFromString(value))) return true; return false;
     }
-
-    static boolean hasRecentPendingWake(long now) {
-        synchronized (LOCK) {
-            expireLocked(now);
-            return pendingKey != null && pendingWake && now - pendingAt < WAKE_POLL_MS;
-        }
-    }
-
-    static void screenResolved(Context context, OfferRule.Result result, String detail) {
-        String key = null;
-        PendingIntent contentIntent = null;
-        boolean shouldAlert = false;
-        synchronized (LOCK) {
-            expireLocked(SystemClock.uptimeMillis());
-            if (pendingKey == null) return;
-            DiagnosticLog.log(context, "notification", "screen resolved " + result + ": " + detail);
-            if (result != OfferRule.Result.DECLINE) {
-                key = pendingKey;
-                contentIntent = pendingContentIntent;
-                shouldAlert = pendingAlertAfterScreen;
-                clearLocked();
-            }
-        }
-        if (shouldAlert) {
-            OfferAlerts.notifyOffer(context, contentIntent, result, detail);
-            OfferNotificationService service = active;
-            if (service != null && key != null) {
-                try {
-                    service.cancelNotification(key);
-                    DiagnosticLog.log(context, "notification", "replaced silent DoorDash offer with selective alert");
-                } catch (Exception error) {
-                    DiagnosticLog.log(context, "notification", "could not remove silent DoorDash offer: " +
-                            error.getClass().getSimpleName());
-                }
-            }
-        }
-    }
-
-    static void cancelPendingFiltered(Context context, String detail) {
-        OfferNotificationService service = active;
-        String key;
-        synchronized (LOCK) {
-            expireLocked(SystemClock.uptimeMillis());
-            key = pendingKey;
-            clearLocked();
-        }
-        if (key == null) return;
-        if (service == null) {
-            DiagnosticLog.log(context, "notification", "filtered offer matched, but notification listener disconnected: " + detail);
-            return;
-        }
-        try {
-            service.cancelNotification(key);
-            DiagnosticLog.log(context, "notification", "cancelled filtered offer notification after Decline: " + detail);
-        } catch (Exception error) {
-            DiagnosticLog.log(context, "notification", "failed to cancel filtered offer notification: " + error.getClass().getSimpleName());
-        }
-    }
-
+    static void screenResolved(Context context, OfferRule.Result result, String detail) { DiagnosticLog.log(context, "screen-decision", result + ": " + detail); }
+    static void cancelPendingFiltered(Context context, String detail) { DiagnosticLog.log(context, "notification", "screen decline requested; unrelated notification keys are not cancelled"); }
+    static void rulesChanged() { OfferNotificationService s = active; if (s != null) s.handler.post(s::reconcile); }
     @Override public void onListenerConnected() {
-        active = this;
-        Updater.schedule(this);
-        Updater.check(this, false, null);
-        OfferAlerts.ensureChannel(this);
-        DiagnosticLog.log(this, "notification", "listener connected");
+        active = this; OfferAlerts.ensureChannel(this); OfferAlerts.clear(this); Updater.schedule(this);
+        DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting"); reconcile(); Updater.check(this, false, null);
     }
-
+    private void reconcile() {
+        try { StatusBarNotification[] all = getActiveNotifications(); if (all != null) for (StatusBarNotification source : all) handle(source, getCurrentRanking(), true); }
+        catch (RuntimeException error) { DiagnosticLog.log(this, "notification", "reconcile failed: " + error.getClass().getSimpleName()); }
+    }
     @Override public void onListenerDisconnected() {
-        if (active == this) active = null;
-        DiagnosticLog.log(this, "notification", "listener disconnected");
+        clearEntries(); if (active == this) active = null; DiagnosticLog.log(this, "notification", "listener disconnected; delivery monitoring unavailable");
+        try { requestRebind(new ComponentName(this, OfferNotificationService.class)); } catch (RuntimeException error) { DiagnosticLog.log(this, "notification", "rebind request failed"); }
     }
-
-    @Override public void onNotificationPosted(StatusBarNotification sbn) {
-        if (sbn == null || !DASHER_PACKAGE.equals(sbn.getPackageName())) return;
-        Notification notification = sbn.getNotification();
-        List<String> labels = labels(notification);
-        DiagnosticLog.log(this, "notification", "posted key=" + sbn.getKey() + " labels=" + labels);
-
-        FilterSettings settings = FilterStore.load(this);
-        if (!NotificationOffer.isLikelyOffer(labels)) {
-            DiagnosticLog.log(this, "notification", "ignored because payload does not look like an offer");
-            return;
-        }
-        FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
-        DiagnosticLog.log(this, "notification", "DoorDash offer channel=" + notification.getChannelId());
-
-        boolean alreadyForeground = OfferFilterService.isDasherForeground();
-        if (!settings.enabled) {
-            DiagnosticLog.log(this, "notification", "auto-decline is off; relaying offer through selective alert");
-            if (!alreadyForeground) {
-                OfferAlerts.notifyOffer(this, notification.contentIntent, OfferRule.Result.REVIEW,
-                        "Auto-decline is off; DoorDash offer requires review.");
-                DiagnosticLog.log(this, "notification",
-                        "auto-decline off: alerted without foregrounding Dasher");
+    @Override public void onDestroy() { clearEntries(); handler.removeCallbacksAndMessages(null); if (active == this) active = null; super.onDestroy(); }
+    @Override public void onNotificationPosted(StatusBarNotification source, RankingMap ranking) { handle(source, ranking, false); }
+    @Override public void onNotificationPosted(StatusBarNotification source) { handle(source, getCurrentRanking(), false); }
+    private void handle(StatusBarNotification source, RankingMap ranking, boolean replay) {
+        if (source == null || !DASHER_PACKAGE.equals(source.getPackageName()) || !android.os.Process.myUserHandle().equals(source.getUser())) return;
+        Notification n = source.getNotification(); if (n == null || (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
+        if (!OfferEvidence.fresh(source.getPostTime(), System.currentTimeMillis(), OfferAlertState.LIFETIME_MS)) { DiagnosticLog.log(this, "notification", "ignored stale/future notification"); return; }
+        try {
+            List<String> labels = labels(n); if (!NotificationOffer.isLikelyOffer(labels)) return;
+            long now = SystemClock.elapsedRealtime(); Entry e = entries.get(source.getKey()); String merchant = merchant(labels);
+            if (e != null && !merchant.isEmpty() && !e.merchant.isEmpty() && !merchant.equals(e.merchant)) { remove(source.getKey(), e); e = null; }
+            if (e != null && e.state.expired(now)) { remove(source.getKey(), e); return; }
+            if (e == null) {
+                if (entries.size() >= 16) { String first = entries.keySet().iterator().next(); remove(first, entries.get(first)); }
+                e = new Entry(now, source, merchant); entries.put(source.getKey(), e); generation++;
+                final Entry captured = e; final String sourceKey = source.getKey();
+                e.expiry = () -> { if (entries.get(sourceKey) == captured) remove(sourceKey, captured); };
+                handler.postDelayed(e.expiry, OfferAlertState.LIFETIME_MS);
             }
-            return;
-        }
-        attachPending(sbn.getKey(), !alreadyForeground, notification.contentIntent, false);
-        if (alreadyForeground) {
-            DiagnosticLog.log(this, "notification", "Dasher already foreground; requesting immediate accessibility scan");
-            OfferFilterService.requestCheckFromNotification();
-            return;
-        }
-
-        OfferSnapshot offer = OfferParser.parse(labels);
-        OfferSnapshot activeRoute = ActiveRouteStore.load(this);
-        AddOnOffer addOn = activeRoute != null && AddOnOffer.isLikely(labels)
-                ? AddOnOffer.parse(activeRoute, offer, labels) : null;
-        OfferRule.Decision decision = addOn == null
-                ? OfferRule.evaluate(offer, settings)
-                : OfferRule.evaluateAddOn(addOn, settings);
-        DiagnosticLog.log(this, "notification", "parsed " +
-                (addOn == null ? offer.summary() : addOn.summary()) + "; " + decision.summary());
-
-        String evaluated = addOn == null ? offer.summary() : addOn.summary();
-        if (decision.result == OfferRule.Result.DECLINE) {
-            Notification.Action decline = findAction(notification, "decline");
-            if (decline != null && send(decline.actionIntent)) {
-                try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
-                synchronized (LOCK) { clearLocked(); }
-                DiagnosticLog.log(this, "notification", "filtered offer handled silently through notification Decline action");
-                return;
-            }
-            try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
-            synchronized (LOCK) { clearLocked(); }
-            DiagnosticLog.log(this, "notification",
-                    "filtered by notification data but no Decline action exists; suppressed without foregrounding Dasher");
-            return;
-        }
-
-        if (decision.result == OfferRule.Result.KEEP) {
-            OfferAlerts.notifyOffer(this, notification.contentIntent, decision.result,
-                    evaluated + "; " + decision.summary());
-            DiagnosticLog.log(this, "notification",
-                    "qualifying offer alerted without foregrounding Dasher; tap the alert to open it");
-            try {
-                cancelNotification(sbn.getKey());
-                DiagnosticLog.log(this, "notification", "replaced qualifying silent DoorDash notification with Offer Filter alert");
-            } catch (Exception error) {
-                DiagnosticLog.log(this, "notification", "could not remove qualifying DoorDash notification: " +
-                        error.getClass().getSimpleName());
-            }
-            synchronized (LOCK) { clearLocked(); }
-            return;
-        }
-
-        synchronized (LOCK) {
-            pendingAlertAfterScreen = false;
-            pendingWake = false;
-        }
-        DiagnosticLog.log(this, "notification",
-                "notification lacks enough rule data; leaving Dasher backgrounded and waiting for richer notification/screen evidence");
-        DiagnosticLog.log(this, "notification-meta", metadata(notification));
-    }
-
-    @Override public void onNotificationRemoved(StatusBarNotification sbn) {
-        if (sbn == null || !DASHER_PACKAGE.equals(sbn.getPackageName())) return;
-        synchronized (LOCK) {
-            if (sbn.getKey().equals(pendingKey)) {
-                if (pendingAlertAfterScreen) {
-                    DiagnosticLog.log(this, "notification",
-                            "DoorDash notification removed while screen classification is still pending");
-                } else {
-                    clearLocked();
+            e.state.postedAt = Math.max(e.state.postedAt, source.getPostTime()); offerOutstanding = !entries.isEmpty();
+            FilterStore.recordDoorDashOfferChannel(this, n.getChannelId()); FilterSettings settings = FilterStore.load(this);
+            OfferSnapshot offer = OfferParser.parse(metricLabels(labels)); boolean addOn = AddOnOffer.isLikely(labels);
+            OfferRule.Decision decision = !settings.enabled ? new OfferRule.Decision(OfferRule.Result.REVIEW, 0, "Auto-decline is off; inspect this offer manually.") : addOn ? OfferRule.evaluateAddOn(AddOnOffer.parse(ActiveRouteStore.load(this), offer, labels), settings) : OfferRule.evaluate(offer, settings);
+            String signature = labels.toString() + "|" + decision.summary(); if (e.state.duplicate(signature, decision.result)) return;
+            DiagnosticLog.log(this, "notification", "parsed " + offer.summary() + "; " + decision.summary()); logChannel(ranking, source.getKey(), n);
+            if (decision.result == OfferRule.Result.DECLINE) {
+                OfferAlerts.clear(this, e.alertTag);
+                if (!e.state.actionRequested) {
+                    PendingIntent decline = declineAction(n);
+                    if (decline != null && !replay) {
+                        e.state.actionRequested = true;
+                        try { decline.send(); DiagnosticLog.log(this, "notification", "notification Decline action REQUESTED; awaiting DoorDash removal, not yet verified"); }
+                        catch (PendingIntent.CanceledException | RuntimeException error) { DiagnosticLog.log(this, "notification", "Decline action failed; original retained"); }
+                    } else {
+                        DiagnosticLog.log(this, "notification", "known filtered offer; no safe background decline action. Hidden notification does NOT decline order.");
+                        if (!replay) cancelNotification(source.getKey());
+                    }
                 }
+                e.state.delivered(signature, decision.result, false);
+                FilterStore.setLastStatus(this, "Filtered background offer: " + decision.summary() + "\n" + (e.state.actionRequested ? "Decline requested; completion unverified." : "Notification hidden only; order not automatically declined.")); return;
             }
-        }
-        DiagnosticLog.log(this, "notification", "removed key=" + sbn.getKey());
+            boolean foreground = OfferFilterService.isDasherForeground(); boolean ring = e.state.shouldRing(decision.result, foreground, replay);
+            String detail = decision.result == OfferRule.Result.REVIEW ? "Not classified: " + decision.reason + " Tap to open Dasher. No automatic decline or screen takeover." : offer.summary() + "; " + decision.summary();
+            if (OfferAlerts.notifyOffer(this, e.alertTag, n.contentIntent, decision.result, detail, ring)) e.state.delivered(signature, decision.result, ring);
+            if (decision.result == OfferRule.Result.REVIEW) FilterStore.setLastStatus(this, "Background offer requires review. " + decision.reason + "\nDasher has not been opened. Tap the silent review card to inspect.");
+            if (foreground) OfferFilterService.requestCheckFromNotification();
+        } catch (RuntimeException error) { DiagnosticLog.log(this, "notification", "payload/handler rejected; original retained: " + error.getClass().getSimpleName()); }
     }
-
-    private String wakeDasher(StatusBarNotification sbn) {
-        Notification notification = sbn.getNotification();
-        String route = "none";
-        PendingIntent content = notification.contentIntent;
-        if (content != null) {
-            try {
-                if (Build.VERSION.SDK_INT >= 34) {
-                    ActivityOptions options = ActivityOptions.makeBasic();
-                    options.setPendingIntentBackgroundActivityStartMode(
-                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
-                    content.send(this, 0, null, null, null, null, options.toBundle());
-                } else {
-                    content.send();
-                }
-                route = "notification-content-intent";
-            } catch (Exception error) {
-                DiagnosticLog.log(this, "notification", "contentIntent wake failed: " + error.getClass().getSimpleName());
-            }
-        }
-        if ("none".equals(route)) {
-            try {
-                Intent launch = getPackageManager().getLaunchIntentForPackage(DASHER_PACKAGE);
-                if (launch != null) {
-                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                    startActivity(launch);
-                    route = "direct-launch-fallback";
-                }
-            } catch (Exception error) {
-                DiagnosticLog.log(this, "notification", "direct launch fallback failed: " + error.getClass().getSimpleName());
-            }
-        }
-        DiagnosticLog.log(this, "notification", "wake route=" + route);
-        OfferFilterService.requestCheckFromNotification();
-        final String usedRoute = route;
-        handler.postDelayed(() -> {
-            if ("none".equals(usedRoute)) return;
-            DiagnosticLog.log(this, "notification", OfferFilterService.isDasherForeground()
-                    ? "wake verified: Dasher is foreground"
-                    : "wake sent but Dasher is not foreground; Android likely blocked the background launch");
-            OfferFilterService.requestCheckFromNotification();
-        }, 1200);
-        return route;
+    @Override public void onNotificationRemoved(StatusBarNotification source) {
+        if (source == null || !DASHER_PACKAGE.equals(source.getPackageName()) || !android.os.Process.myUserHandle().equals(source.getUser())) return;
+        Entry e = entries.get(source.getKey()); if (e != null && e.state.removalMatches(source.getPostTime())) remove(source.getKey(), e);
     }
-
-    private static Notification.Action findAction(Notification notification, String action) {
-        if (notification.actions == null) return null;
-        for (Notification.Action candidate : notification.actions) {
-            if (candidate != null && candidate.title != null &&
-                    OfferControls.isButton(candidate.title.toString(), action)) return candidate;
+    private void remove(String key, Entry e) { if (e == null) return; entries.remove(key); if (e.expiry != null) handler.removeCallbacks(e.expiry); OfferAlerts.clear(this, e.alertTag); offerOutstanding = !entries.isEmpty(); }
+    private void clearEntries() { for (Entry e : entries.values()) { if (e.expiry != null) handler.removeCallbacks(e.expiry); OfferAlerts.clear(this, e.alertTag); } entries.clear(); offerOutstanding = false; }
+    private static PendingIntent declineAction(Notification n) {
+        if (n.actions == null) return null;
+        for (Notification.Action action : n.actions) {
+            if (action == null || action.title == null || action.actionIntent == null) continue;
+            PendingIntent intent = action.actionIntent;
+            if (OfferControls.isButton(action.title.toString(), "decline") && DASHER_PACKAGE.equals(intent.getCreatorPackage()) && !intent.isActivity()) return intent;
         }
         return null;
     }
-
-    private boolean send(PendingIntent intent) {
-        if (intent == null) return false;
-        try {
-            intent.send();
-            return true;
-        } catch (PendingIntent.CanceledException error) {
-            DiagnosticLog.log(this, "notification", "notification action was cancelled");
-            return false;
-        }
+    private static List<String> labels(Notification n) {
+        List<String> out = new ArrayList<>(); Bundle extras = n.extras; if (extras == null) return out;
+        for (String key : new String[]{Notification.EXTRA_TITLE, Notification.EXTRA_TEXT, Notification.EXTRA_BIG_TEXT}) { Object value = extras.get(key); if (value instanceof CharSequence) add(out, value.toString()); }
+        Object lines = extras.get(Notification.EXTRA_TEXT_LINES); if (lines instanceof CharSequence[]) for (CharSequence line : (CharSequence[]) lines) if (line != null) add(out, line.toString()); return out;
     }
-
-    private static List<String> labels(Notification notification) {
-        List<String> result = new ArrayList<>();
-        if (notification == null) return result;
-        Bundle extras = notification.extras;
-        if (extras != null) {
-            add(result, extras.getCharSequence(Notification.EXTRA_TITLE));
-            add(result, extras.getCharSequence(Notification.EXTRA_TEXT));
-            add(result, extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
-            add(result, extras.getCharSequence(Notification.EXTRA_SUB_TEXT));
-            add(result, extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT));
-            CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
-            if (lines != null) for (CharSequence line : lines) add(result, line);
-            addTextExtras(result, extras, 0);
-        }
-        if (notification.actions != null) {
-            for (Notification.Action action : notification.actions) {
-                if (action != null) add(result, action.title);
-            }
-        }
-        return result;
+    private static void add(List<String> labels, String value) {
+        if (labels.size() >= 32 || value.length() > 2048) throw new IllegalArgumentException("oversized notification"); String clean = OfferEvidence.normalize(value); if (!clean.isEmpty() && !labels.contains(clean)) labels.add(clean);
     }
-
-    private static void addTextExtras(List<String> labels, Bundle extras, int depth) {
-        if (extras == null || depth > 2) return;
-        for (String key : extras.keySet()) {
-            Object value;
-            try { value = extras.get(key); }
-            catch (RuntimeException error) { continue; }
-            if (value instanceof CharSequence) {
-                add(labels, (CharSequence) value);
-            } else if (value instanceof CharSequence[]) {
-                for (CharSequence item : (CharSequence[]) value) add(labels, item);
-            } else if (value instanceof Bundle) {
-                addTextExtras(labels, (Bundle) value, depth + 1);
-            }
-        }
+    private static String merchant(List<String> labels) {
+        for (String label : labels) { String s = label.toLowerCase(java.util.Locale.US); int index = s.indexOf("go to "); if (index >= 0) return s.substring(index + 6).trim(); } return "";
     }
-
-    private static String metadata(Notification notification) {
-        if (notification == null) return "null";
-        StringBuilder out = new StringBuilder();
-        out.append("channel=").append(notification.getChannelId())
-                .append(" category=").append(notification.category)
-                .append(" flags=").append(notification.flags)
-                .append(" group=").append(notification.getGroup())
-                .append(" sortKey=").append(notification.getSortKey());
-        Bundle extras = notification.extras;
-        if (extras != null) {
-            out.append(" extras={");
-            int count = 0;
-            for (String key : extras.keySet()) {
-                if (count++ >= 40) { out.append("…"); break; }
-                Object value;
-                try { value = extras.get(key); }
-                catch (RuntimeException error) { continue; }
-                out.append(key).append('=').append(safeExtra(value)).append(';');
-            }
-            out.append('}');
-        }
-        if (notification.actions != null) {
-            out.append(" actions=[");
-            for (Notification.Action action : notification.actions) {
-                if (action != null) out.append(action.title).append(';');
-            }
-            out.append(']');
-        }
-        return out.toString();
+    private static List<String> metricLabels(List<String> labels) {
+        List<String> out = new ArrayList<>(); for (String label : labels) { String lower = label.toLowerCase(java.util.Locale.US); if (lower.contains("go to ") || lower.startsWith("new delivery")) continue; out.add(label); } return out;
     }
-
-    private static String safeExtra(Object value) {
-        if (value == null) return "null";
-        if (value instanceof CharSequence) return truncate(value.toString());
-        if (value instanceof CharSequence[]) {
-            StringBuilder result = new StringBuilder("[");
-            for (CharSequence item : (CharSequence[]) value) {
-                if (result.length() > 400) break;
-                result.append(truncate(item == null ? "null" : item.toString())).append('|');
-            }
-            return result.append(']').toString();
-        }
-        if (value instanceof Number || value instanceof Boolean) return value.toString();
-        if (value instanceof Bundle) return "Bundle(keys=" + ((Bundle) value).keySet() + ")";
-        return value.getClass().getSimpleName();
-    }
-
-    private static String truncate(String value) {
-        if (value == null) return "null";
-        value = value.replace('\r', ' ').replace('\n', ' ');
-        return value.length() > 240 ? value.substring(0, 240) + "…" : value;
-    }
-
-    private static void add(List<String> labels, CharSequence value) {
-        if (value == null) return;
-        String label = value.toString().trim();
-        if (label.isEmpty() || labels.contains(label)) return;
-        if (label.length() > 240) label = label.substring(0, 240) + "…";
-        labels.add(label);
-    }
-
-    private static void attachPending(String key, boolean wake, PendingIntent contentIntent,
-                                      boolean alertAfterScreen) {
-        synchronized (LOCK) {
-            pendingKey = key;
-            pendingAt = SystemClock.uptimeMillis();
-            pendingWake = wake;
-            pendingContentIntent = contentIntent;
-            pendingAlertAfterScreen = alertAfterScreen;
-        }
-    }
-
-    private static void expireLocked(long now) {
-        if (pendingKey != null && now - pendingAt > PENDING_MS) clearLocked();
-    }
-
-    private static void clearLocked() {
-        pendingKey = null;
-        pendingAt = 0;
-        pendingWake = false;
-        pendingContentIntent = null;
-        pendingAlertAfterScreen = false;
+    private void logChannel(RankingMap map, String key, Notification n) {
+        if (!DiagnosticLog.isEnabled(this)) return;
+        Ranking rank = new Ranking(); NotificationChannel c = map != null && map.getRanking(key, rank) ? rank.getChannel() : null;
+        DiagnosticLog.log(this, "notification-channel", "id=" + n.getChannelId() + " actualSound=" + (c == null ? "unknown" : c.getSound() != null) + " actualVibration=" + (c == null ? "unknown" : c.shouldVibrate()) + " importance=" + (c == null ? "unknown" : c.getImportance()) + " fullScreenIntent=" + (n.fullScreenIntent != null));
+        if (n.extras != null) { List<String> keys = new ArrayList<>(n.extras.keySet()); Collections.sort(keys); if (keys.size() > 40) keys = keys.subList(0, 40); DiagnosticLog.log(this, "notification-meta", "extra keys only=" + keys); }
     }
 }

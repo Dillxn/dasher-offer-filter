@@ -2,7 +2,6 @@ package com.local.dasherfilter;
 
 import android.Manifest;
 import android.app.Activity;
-import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -13,386 +12,110 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
-import android.view.Gravity;
-import android.view.accessibility.AccessibilityManager;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.Switch;
-import android.widget.TextView;
-import android.widget.Toast;
-
+import android.widget.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    private Switch enabled;
-    private Switch rising;
-    private Switch diagnostics;
-    private EditText flat;
-    private EditText mile;
-    private EditText minute;
-    private EditText stop;
-    private EditText maxStops;
+    private Switch enabled, rising, diagnostics;
+    private EditText flat, mile, minute, stop, maxStops;
     private TextView status;
-    private TextView risingStatus;
-    private TextView updateStatus;
-    private boolean finishingUpdateSetup;
-    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
-    private final Runnable refresh = new Runnable() {
-        @Override public void run() {
-            refreshStatus();
-            refreshHandler.postDelayed(this, 1000);
-        }
-    };
-
-    @Override
-    public void onCreate(Bundle state) {
-        super.onCreate(state);
-        FilterSettings settings = FilterStore.load(this);
-        OfferAlerts.ensureChannel(this);
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(20), dp(20), dp(20), dp(28));
-        scroll.addView(page);
-
-        TextView title = text("Offer Filter " + Updater.version(this), 24);
-        page.addView(title);
-        page.addView(text("Set your offer limits. Zero disables a rule. The app only declines when a readable value fails an enabled rule.", 15));
-
-        rising = new Switch(this);
-        rising.setText("Only offers above my last accepted payout");
-        rising.setChecked(settings.risingOffers);
-        page.addView(rising);
-        risingStatus = text("", 14);
-        page.addView(risingStatus);
-        page.addView(text("Tracks an Accept tap followed by the delivery screen. Until an acceptance is detected, your other rules apply. This threshold can eventually block most offers.", 13));
-        Button resetRising = button("Reset last accepted payout");
-        resetRising.setOnClickListener(v -> { FilterStore.recordAccepted(this, 0); refreshStatus(); });
-        page.addView(resetRising);
-
-        maxStops = field(page, "Maximum total stops (0 = off)",
-                Integer.toString(settings.maxStops), InputType.TYPE_CLASS_NUMBER);
-        page.addView(text("Pickup + drop-off = 2 stops. Offers above your limit are declined. An unreadable stop count cannot trigger this rule.", 13));
-        flat = field(page, "Minimum payout ($)", settings.flatCents);
-        mile = field(page, "Minimum dollars per mile ($/mi)", settings.perMileCents);
-        minute = field(page, "Minimum dollars per minute ($/min)", settings.perMinuteCents);
-        stop = field(page, "Fee per extra stop ($)", settings.extraStopCents);
-        page.addView(text("Required payout = max(flat minimum, miles × rate, minutes × rate) + fee for each stop after pickup and drop-off. A known rule failure declines the offer; otherwise missing values leave it for you to review. Set all prices to zero to use only the stop limit.", 13));
-        page.addView(text("Add-on offers are evaluated against the active route: the combined route must still meet your rules, and the added payout must cover the added miles/time and any newly added stop fees. The flat minimum is not charged again to the add-on by itself.", 13));
-
-        enabled = new Switch(this);
-        enabled.setText("Auto-decline filtered offers");
-        enabled.setChecked(settings.enabled);
-        LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(-1, -2);
-        switchParams.topMargin = dp(18);
-        page.addView(enabled, switchParams);
-
-        Button save = button("Save rules");
-        save.setOnClickListener(v -> save());
-        page.addView(save);
-        Button accessibility = button("Open Accessibility settings");
-        accessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        page.addView(accessibility);
-        Button notificationAccess = button("Allow background offer access");
-        notificationAccess.setOnClickListener(v -> openNotificationAccess());
-        page.addView(notificationAccess);
-        page.addView(text("Notification access lets Offer Filter inspect DoorDash offers while Dasher is in the background.", 13));
-
-        Button offerAlerts = button("Enable selective Offer Filter alerts");
-        offerAlerts.setOnClickListener(v -> enableOfferAlerts());
-        page.addView(offerAlerts);
-
-        Button sound = button("Silence DoorDash offer channel");
-        sound.setOnClickListener(v -> openDoorDashOfferChannelSettings());
-        page.addView(sound);
-        page.addView(text("Best setup: leave DoorDash offer notifications allowed but set their offer category to Silent. Offer Filter then rings only after an offer passes your rules or genuinely needs review. Filtered offers stay silent. After Offer Filter observes an offer, this button opens that exact DoorDash notification channel. Sounds played inside Dasher itself are separate.", 13));
-
-        page.addView(text("Last offer check", 18));
-        status = text("", 14);
-        page.addView(status);
-        Button refresh = button("Refresh status");
-        refresh.setOnClickListener(v -> refreshStatus());
-        page.addView(refresh);
-
-        page.addView(text("Diagnostics", 18));
-        diagnostics = new Switch(this);
-        diagnostics.setText("Capture notification and screen diagnostics");
-        diagnostics.setChecked(DiagnosticLog.isEnabled(this));
-        diagnostics.setOnCheckedChangeListener((view, checked) -> {
-            DiagnosticLog.setEnabled(this, checked);
-            refreshStatus();
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable refresh = new Runnable() { @Override public void run() { refreshStatus(); handler.postDelayed(this, 1000); } };
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state); OfferAlerts.ensureChannel(this); FilterSettings s = FilterStore.load(this);
+        ScrollView scroll = new ScrollView(this); LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(18 * getResources().getDisplayMetrics().density); page.setPadding(pad, pad, pad, pad); scroll.addView(page);
+        page.addView(text("Offer Filter " + Updater.version(this), 24));
+        page.addView(text("Quiet background mode: this app never opens Dasher automatically. Offers without enough pay/distance data get a SILENT review card, not a passing verdict. Tap the card to open Dasher; visible offers can then be filtered.", 15));
+        page.addView(text("Notification silence is not control over Dasher's in-app sound or vibration. Keep DoorDash notifications enabled so offers remain detectable. This app cannot promise silent, fully automatic filtering of a notification that contains no price or distance.", 14));
+        button(page, "Pause auto-decline immediately", this::pause);
+        rising = toggle(page, "Only standalone offers above last accepted payout", s.risingOffers);
+        button(page, "Reset standalone payout baseline", () -> { FilterStore.recordAccepted(this, 0); refreshStatus(); });
+        maxStops = field(page, "Maximum total stops (0 disables)", Integer.toString(s.maxStops), false);
+        flat = field(page, "Minimum payout ($)", money(s.flatCents), true);
+        mile = field(page, "Minimum dollars per mile", money(s.perMileCents), true);
+        minute = field(page, "Minimum dollars per minute", money(s.perMinuteCents), true);
+        stop = field(page, "Fee per stop after the first two ($)", money(s.extraStopCents), true);
+        page.addView(text("Required pay = max(flat, miles × rate, minutes × rate) + extra-stop fees. Zero disables a rule. Missing or conflicting evidence requires review unless another known rule already fails. Add-ons require explicit added values; an unlabeled figure is not assumed to be an increment.", 14));
+        enabled = toggle(page, "Auto-decline (Save to enable; switching off is immediate)", s.enabled);
+        enabled.setOnCheckedChangeListener((v, on) -> { if (!on && FilterStore.load(this).enabled) pause(); });
+        button(page, "Save rules", this::save);
+        button(page, "Forget active route context", () -> { ActiveRouteStore.clear(this); toast("Route context cleared; ambiguous add-ons require review."); refreshStatus(); });
+        page.addView(text("Permissions and alerts", 20));
+        button(page, "Open Accessibility settings", () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        button(page, "Allow background notification access", this::notificationAccess);
+        button(page, "Enable / configure passing-offer alerts", this::offerAlerts);
+        button(page, "DoorDash offer channel settings", this::doorDashChannel);
+        page.addView(text("Set only DoorDash's offer channel to Silent; do not turn notification access off. Passing-offer bells and silent unclassified-review cards use separate Offer Filter channels. If permission is denied, original DoorDash notifications are retained.", 14));
+        page.addView(text("Saved state and last decision", 20)); status = text("", 14); status.setTextIsSelectable(true); page.addView(status);
+        page.addView(text("Diagnostics", 20)); diagnostics = toggle(page, "Capture raw diagnostics for 30 minutes", DiagnosticLog.isEnabled(this));
+        diagnostics.setOnCheckedChangeListener((v, on) -> DiagnosticLog.setEnabled(this, on));
+        page.addView(text("Local only. Raw screen text can include names and addresses. Capture expires automatically. The report includes updater state even when raw capture is off.", 14));
+        button(page, "Share diagnostics", () -> {
+            Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain"); send.putExtra(Intent.EXTRA_SUBJECT, "Offer Filter diagnostics"); send.putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)); open(Intent.createChooser(send, "Review and share diagnostics"));
         });
-        page.addView(diagnostics);
-        page.addView(text("Diagnostics stay on this phone until you share them. While enabled they can contain visible offer text, including store/customer/location text, so turn capture off when troubleshooting is done.", 13));
-        Button shareDiagnostics = button("Share diagnostics");
-        shareDiagnostics.setOnClickListener(v -> shareDiagnostics());
-        page.addView(shareDiagnostics);
-        Button clearDiagnostics = button("Clear diagnostics");
-        clearDiagnostics.setOnClickListener(v -> {
-            DiagnosticLog.clear(this);
-            Toast.makeText(this, "Diagnostics cleared.", Toast.LENGTH_SHORT).show();
+        button(page, "Clear diagnostic log", () -> { DiagnosticLog.clear(this); toast("Local log cleared."); });
+        page.addView(text("Updates", 20)); Switch updates = toggle(page, "Automatic update checks", Updater.enabled(this));
+        updates.setOnCheckedChangeListener((v, on) -> { Updater.setEnabled(this, on); if (on) Updater.check(this, false, null); });
+        button(page, "Allow automatic installs", () -> {
+            if (!getPackageManager().canRequestPackageInstalls()) open(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))); else Updater.check(this, true, null);
         });
-        page.addView(clearDiagnostics);
-
-        page.addView(text("Updates", 18));
-        Switch updates = new Switch(this);
-        updates.setText("Automatic updates");
-        updates.setChecked(Updater.enabled(this));
-        updates.setOnCheckedChangeListener((view, checked) -> {
-            Updater.setEnabled(this, checked);
-            refreshStatus();
-            if (checked) Updater.check(this, false, null);
-        });
-        page.addView(updates);
-        updateStatus = text("", 14);
-        page.addView(updateStatus);
-        Button installPermission = button("Allow automatic installs");
-        installPermission.setOnClickListener(v -> allowUpdates());
-        page.addView(installPermission);
-        Button checkUpdate = button("Check / install update");
-        checkUpdate.setOnClickListener(v -> Updater.check(this, true, null));
-        page.addView(checkUpdate);
-        page.addView(text("Checks in the background about every 15 minutes when Android permits, and also when this app or its background services reconnect. Failed checks retry quickly. Updates install when you leave Dasher. Enable Allow from this source once; Android may still ask you to confirm an installation. Update notices are silent.", 13));
-        page.addView(text("Setup: enable Offer Filter in Accessibility settings and allow background offer access in Notification access. If Android blocks a sideloaded accessibility service, open this app's App info menu and allow restricted settings. Auto-decline starts only after you turn it on and save.", 13));
-        setContentView(scroll);
-        Updater.schedule(this);
+        button(page, "Check / install update", () -> Updater.check(this, true, null));
+        page.addView(text("Checks request a 15-minute background interval. Failed checks schedule an actual retry, subject to Android delays. Automatic installation waits while an offer or delivery is active. Android can still require installation confirmation.", 14));
+        setContentView(scroll); Updater.schedule(this);
     }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Updater.foreground(this);
-        if (status != null) {
-            refreshHandler.removeCallbacks(refresh);
-            refreshHandler.post(refresh);
-        }
-        if (finishingUpdateSetup) {
-            finishingUpdateSetup = false;
-            if (getPackageManager().canRequestPackageInstalls()) allowUpdates();
-        }
-        Updater.check(this, false, null);
+    private static String money(int cents) { return String.format(Locale.US, "%.2f", cents / 100.0); }
+    private void pause() {
+        FilterSettings s = FilterStore.load(this); FilterStore.save(this, new FilterSettings(false, s.flatCents, s.perMileCents, s.perMinuteCents, s.extraStopCents, s.maxStops, s.risingOffers, s.lastAcceptedCents));
+        if (enabled != null && enabled.isChecked()) enabled.setChecked(false); OfferNotificationService.rulesChanged(); OfferFilterService.requestCheckFromNotification(); toast("Auto-decline paused immediately."); refreshStatus();
     }
-
-    @Override
-    protected void onPause() {
-        refreshHandler.removeCallbacks(refresh);
-        Updater.background(this);
-        super.onPause();
-    }
-
-    private void openNotificationAccess() {
-        Intent intent;
-        if (Build.VERSION.SDK_INT >= 30) {
-            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
-                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                            new ComponentName(this, OfferNotificationService.class));
-        } else {
-            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-        }
-        try {
-            startActivity(intent);
-        } catch (Exception error) {
-            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-        }
-    }
-
-    private void enableOfferAlerts() {
-        OfferAlerts.ensureChannel(this);
-        if (Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 13);
-            return;
-        }
-        openOfferAlertChannelSettings();
-    }
-
-    private void openOfferAlertChannelSettings() {
-        OfferAlerts.ensureChannel(this);
-        try {
-            if (Build.VERSION.SDK_INT >= 26) {
-                startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
-                        .putExtra(Settings.EXTRA_CHANNEL_ID, OfferAlerts.CHANNEL_ID));
-            } else {
-                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
-            }
-        } catch (Exception error) {
-            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
-        }
-    }
-
-    private void openDoorDashOfferChannelSettings() {
-        String channel = FilterStore.doorDashOfferChannel(this);
-        try {
-            if (Build.VERSION.SDK_INT >= 26 && !channel.isEmpty()) {
-                startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")
-                        .putExtra(Settings.EXTRA_CHANNEL_ID, channel));
-            } else {
-                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp"));
-                Toast.makeText(this,
-                        "Offer Filter has not observed the DoorDash offer channel yet. Keep notifications allowed and set the offer category to Silent.",
-                        Toast.LENGTH_LONG).show();
-            }
-        } catch (Exception error) {
-            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp"));
-        }
-    }
-
-    private void shareDiagnostics() {
-        Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType("text/plain");
-        send.putExtra(Intent.EXTRA_SUBJECT, "Offer Filter diagnostics");
-        send.putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this));
-        startActivity(Intent.createChooser(send, "Share Offer Filter diagnostics"));
-    }
-
-    private void allowUpdates() {
-        if (!getPackageManager().canRequestPackageInstalls()) {
-            finishingUpdateSetup = true;
-            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:" + getPackageName())));
-            return;
-        }
-        if (Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-                !Updater.prefs(this).getBoolean("notices_asked", false)) {
-            Updater.prefs(this).edit().putBoolean("notices_asked", true).apply();
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 12);
-            return;
-        }
-        Updater.check(this, true, null);
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 12) Updater.check(this, true, null);
-        if (requestCode == 13) {
-            OfferAlerts.ensureChannel(this);
-            refreshStatus();
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Selective offer alerts enabled.", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
     private void save() {
         try {
-            FilterSettings next = new FilterSettings(enabled.isChecked(), parse(flat),
-                    parse(mile), parse(minute), parse(stop), parseMaxStops(),
-                    rising.isChecked(), FilterStore.load(this).lastAcceptedCents);
-            if (next.enabled && next.flatCents == 0 && next.perMileCents == 0 &&
-                    next.perMinuteCents == 0 && next.extraStopCents == 0 && next.maxStops == 0 && !next.risingOffers) {
-                Toast.makeText(this, "Set at least one nonzero rule.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            FilterStore.save(this, next);
-            Toast.makeText(this, "Rules saved.", Toast.LENGTH_SHORT).show();
-            refreshStatus();
-        } catch (IllegalArgumentException error) {
-            Toast.makeText(this, error.getMessage(),
-                    Toast.LENGTH_LONG).show();
-        }
+            String n = maxStops.getText().toString().trim(); if (!n.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
+            FilterSettings next = new FilterSettings(enabled.isChecked(), parse(flat), parse(mile), parse(minute), parse(stop), Integer.parseInt(n), rising.isChecked(), FilterStore.load(this).lastAcceptedCents);
+            if (next.enabled && next.flatCents == 0 && next.perMileCents == 0 && next.perMinuteCents == 0 && next.extraStopCents == 0 && next.maxStops == 0 && !next.risingOffers) throw new IllegalArgumentException("Enable at least one rule before auto-decline.");
+            FilterStore.save(this, next); OfferNotificationService.rulesChanged(); OfferFilterService.requestCheckFromNotification(); toast("Rules saved."); refreshStatus();
+        } catch (IllegalArgumentException error) { toast(error.getMessage()); }
     }
-
-    private static int parse(EditText input) {
+    private static int parse(EditText field) {
         try {
-            String value = input.getText().toString().trim();
-            if (value.isEmpty()) return 0;
-            BigDecimal amount = new BigDecimal(value);
-            if (amount.signum() < 0 || amount.compareTo(new BigDecimal("1000")) > 0 ||
-                    amount.scale() > 2) throw new NumberFormatException();
-            return amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
-        } catch (ArithmeticException | NumberFormatException error) {
-            throw new IllegalArgumentException("Enter amounts from 0 to 1000 with up to two decimals.", error);
-        }
+            String raw = field.getText().toString().trim(); if (raw.isEmpty()) return 0; BigDecimal n = new BigDecimal(raw);
+            if (n.signum() < 0 || n.compareTo(new BigDecimal("1000")) > 0 || n.scale() > 2) throw new NumberFormatException(); return n.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
+        } catch (ArithmeticException | NumberFormatException error) { throw new IllegalArgumentException("Amounts must be 0–1000 with at most two decimals."); }
     }
-
-    private int parseMaxStops() {
-        String value = maxStops.getText().toString().trim();
-        if (value.isEmpty()) return 0;
-        if (!value.matches("\\d{1,2}")) {
-            throw new IllegalArgumentException("Maximum stops must be a whole number from 0 to 99.");
-        }
-        return Integer.parseInt(value);
+    private void notificationAccess() {
+        Intent i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        if (Build.VERSION.SDK_INT >= 30) i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, new ComponentName(this, OfferNotificationService.class)); open(i);
     }
-
-    private EditText field(LinearLayout page, String label, int cents) {
-        return field(page, label, String.format(Locale.US, "%.2f", cents / 100.0),
-                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+    private void offerAlerts() {
+        OfferAlerts.ensureChannel(this);
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 13); return; }
+        open(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID, OfferAlerts.CHANNEL_ID));
     }
-
-    private EditText field(LinearLayout page, String label, String value, int inputType) {
-        TextView caption = text(label, 15);
-        LinearLayout.LayoutParams captionParams = new LinearLayout.LayoutParams(-1, -2);
-        captionParams.topMargin = dp(16);
-        page.addView(caption, captionParams);
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setInputType(inputType);
-        input.setText(value);
-        input.setSelectAllOnFocus(true);
-        page.addView(input, new LinearLayout.LayoutParams(-1, -2));
-        return input;
+    private void doorDashChannel() {
+        String channel = FilterStore.doorDashOfferChannel(this);
+        Intent i = new Intent(channel.isEmpty() ? Settings.ACTION_APP_NOTIFICATION_SETTINGS : Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp");
+        if (!channel.isEmpty()) i.putExtra(Settings.EXTRA_CHANNEL_ID, channel); open(i);
     }
-
+    private void open(Intent i) { try { startActivity(i); } catch (RuntimeException error) { toast("Android could not open this screen: " + error.getClass().getSimpleName()); } }
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results); refreshStatus();
+        if (requestCode == 13) toast(results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED ? "Alerts permitted." : "Alerts not permitted; originals are retained.");
+    }
+    @Override protected void onResume() { super.onResume(); Updater.foreground(this); handler.removeCallbacks(refresh); handler.post(refresh); Updater.check(this, false, null); }
+    @Override protected void onPause() { handler.removeCallbacks(refresh); Updater.background(this); super.onPause(); }
     private void refreshStatus() {
-        FilterSettings saved = FilterStore.load(this);
-        risingStatus.setText(saved.lastAcceptedCents == 0 ? "No accepted payout recorded yet." :
-                String.format(Locale.US, "Last accepted: $%.2f. Rising rule %s.",
-                        saved.lastAcceptedCents / 100.0, saved.risingOffers ? "ON" : "OFF"));
-        if (updateStatus != null) updateStatus.setText(Updater.status(this));
-        AccessibilityManager manager = getSystemService(AccessibilityManager.class);
-        boolean serviceEnabled = false;
-        String serviceId = new ComponentName(this, OfferFilterService.class).flattenToString();
-        if (manager != null) {
-            for (AccessibilityServiceInfo service : manager.getEnabledAccessibilityServiceList(
-                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-                ComponentName component = ComponentName.unflattenFromString(service.getId());
-                if (component != null && serviceId.equals(component.flattenToString())) serviceEnabled = true;
-            }
-        }
-        String accessibility = OfferFilterService.isConnected() ? "connected" :
-                serviceEnabled ? "enabled, waiting to connect" : "OFF";
-        boolean notificationAllowed = OfferNotificationService.hasAccess(this);
-        String notification = OfferNotificationService.isConnected() ? "connected" :
-                notificationAllowed ? "allowed, waiting to connect" : "OFF";
-        OfferSnapshot activeRoute = ActiveRouteStore.load(this);
-        String doorDashChannel = FilterStore.doorDashOfferChannel(this);
-        status.setText(String.format(Locale.US,
-                "Accessibility: %s\nBackground notification access: %s\nSelective Offer Filter alerts: %s\nDoorDash offer channel: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nActive route: %s\nDiagnostics: %s\n\n%s",
-                accessibility, notification, OfferAlerts.canNotify(this) ? "ON" : "OFF",
-                doorDashChannel.isEmpty() ? "not observed yet" : doorDashChannel,
-                saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
-                saved.maxStops == 0 ? "off" : saved.maxStops,
-                activeRoute == null ? "none" : activeRoute.summary(),
-                DiagnosticLog.isEnabled(this) ? "ON" : "off", FilterStore.lastStatus(this)));
+        if (status == null) return; FilterSettings s = FilterStore.load(this); OfferSnapshot route = ActiveRouteStore.load(this);
+        status.setText("Accessibility connected: " + OfferFilterService.isConnected() + "\nBackground listener connected: " + OfferNotificationService.isConnected() + "\nPassing alerts permitted: " + OfferAlerts.canNotify(this) + "\nSaved auto-decline: " + s.enabled + "\nSaved minimum payout: $" + money(s.flatCents) + "\nStandalone accepted baseline: $" + money(s.lastAcceptedCents) + "\nActive route: " + (route == null ? "none" : route.summary()) + "\nRaw capture active: " + DiagnosticLog.isEnabled(this) + "\n\n" + FilterStore.lastStatus(this) + "\n\nUpdater: " + Updater.status(this));
+        if (diagnostics != null && diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
     }
-
-    private TextView text(String value, int size) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(size);
-        view.setGravity(Gravity.START);
-        return view;
+    private TextView text(String label, int size) { TextView v = new TextView(this); v.setText(label); v.setTextSize(size); return v; }
+    private Switch toggle(LinearLayout page, String label, boolean value) { Switch v = new Switch(this); v.setText(label); v.setChecked(value); page.addView(v); return v; }
+    private void button(LinearLayout page, String label, Runnable action) { Button v = new Button(this); v.setText(label); v.setOnClickListener(view -> action.run()); page.addView(v); }
+    private EditText field(LinearLayout page, String label, String value, boolean decimal) {
+        page.addView(text(label, 15)); EditText v = new EditText(this); v.setSingleLine(true); v.setInputType(InputType.TYPE_CLASS_NUMBER | (decimal ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0)); v.setText(value); v.setSelectAllOnFocus(true); page.addView(v); return v;
     }
-
-    private Button button(String label) {
-        Button view = new Button(this);
-        view.setText(label);
-        return view;
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
+    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
 }

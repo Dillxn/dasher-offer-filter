@@ -3,33 +3,22 @@ package com.local.dasherfilter;
 import java.util.List;
 import java.util.Locale;
 
-/** Conservative recognition of DoorDash notifications that appear to describe an offer. */
+/** Offer recognition never promotes a customer message, promotion, or account notification. */
 final class NotificationOffer {
     static boolean isLikelyOffer(List<String> labels) {
-        StringBuilder joined = new StringBuilder();
-        for (String label : labels) {
-            if (label == null) continue;
-            String value = label.trim().toLowerCase(Locale.US);
-            if (value.isEmpty()) continue;
-            if (joined.length() > 0) joined.append(' ');
-            joined.append(value);
-        }
-        String text = joined.toString();
-        boolean strongOfferWording = text.contains("new order") || text.contains("new offer") ||
-                text.contains("delivery offer") || text.contains("delivery opportunity") ||
-                text.contains("new delivery") || text.contains("order request") ||
-                text.contains("accept by") || text.contains("tap to accept");
-        if (strongOfferWording) return true;
-
-        boolean obviouslyNotOffer = text.contains("weekly earnings") || text.contains("earnings summary") ||
+        if (!OfferEvidence.bounded(labels)) return false;
+        String text = String.join(" ", labels).toLowerCase(Locale.US);
+        if (text.contains("new message") || text.contains("message from") ||
+                text.contains("weekly earnings") || text.contains("earnings summary") ||
                 text.contains("deposit") || text.contains("payout sent") || text.contains("balance") ||
                 text.contains("scheduled dash") || text.contains("schedule reminder") ||
-                text.contains("new message from") || text.contains("promotion");
-        if (obviouslyNotOffer) return false;
-
+                text.contains("promotion") || text.contains("dash now and skip")) return false;
+        if (text.contains("new order") || text.contains("new offer") ||
+                text.contains("delivery offer") || text.contains("delivery opportunity") ||
+                text.contains("new delivery") || text.contains("order request") ||
+                text.contains("accept by") || text.contains("tap to accept") || AddOnOffer.isLikely(labels)) return true;
         OfferSnapshot offer = OfferParser.parse(labels);
         return offer.payCents != null && (offer.miles != null || offer.stops != null);
     }
-
     private NotificationOffer() {}
 }

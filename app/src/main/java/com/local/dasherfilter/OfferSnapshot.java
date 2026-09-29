@@ -7,23 +7,16 @@ final class OfferSnapshot {
     final Double miles;
     final Integer minutes;
     final Integer stops;
-
     OfferSnapshot(Integer payCents, Double miles, Integer minutes, Integer stops) {
-        this.payCents = payCents;
-        this.miles = miles;
-        this.minutes = minutes;
-        this.stops = stops;
+        this.payCents = valid(payCents);
+        this.miles = miles != null && Double.isFinite(miles) && miles >= 0 ? miles : null;
+        this.minutes = valid(minutes); this.stops = valid(stops);
     }
-
-    String fingerprint() {
-        return payCents + ":" + miles + ":" + minutes + ":" + stops;
-    }
-
+    private static Integer valid(Integer n) { return n != null && n >= 0 ? n : null; }
+    String fingerprint() { return payCents + ":" + miles + ":" + minutes + ":" + stops; }
     String summary() {
-        return String.format(Locale.US, "Pay %s, miles %s, minutes %s, stops %s",
-                payCents == null ? "?" : String.format(Locale.US, "$%.2f", payCents / 100.0),
-                miles == null ? "?" : miles, minutes == null ? "?" : minutes,
-                stops == null ? "?" : stops);
+        return "Pay " + (payCents == null ? "?" : String.format(Locale.US, "$%.2f", payCents / 100.0)) +
+                ", miles " + (miles == null ? "?" : miles) + ", minutes " + (minutes == null ? "?" : minutes) +
+                ", stops " + (stops == null ? "?" : stops);
     }
 }
-

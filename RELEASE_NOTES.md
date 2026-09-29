@@ -1,13 +1,16 @@
-## 0.4.3 — no premature foregrounding + updater repair
+## 0.4.4 — adversarial reliability audit
 
-- Fix automatic updates: the updater now allows the exact Render feed/APK host it already trusted in metadata validation.
-- Log update-check start, advertised version, download URL, and failures in diagnostics.
-- Never automatically foreground Dasher for an offer that cannot yet be classified from its background notification.
-- Never automatically foreground Dasher for a qualifying offer either; the selective Offer Filter alert is now the user-controlled way to open it.
-- If a filtered notification can be classified but exposes no Decline action, suppress its notification without launching Dasher.
-- Parse all textual notification extras, including nested bundles, so richer hidden DoorDash payloads can be evaluated without opening the app.
-- Log sanitized notification metadata for incomplete offer notifications to identify hidden payout/distance fields.
-- Parse DoorDash compact metrics such as `2 stops (7.2 mi) • 21 min` correctly.
-- Keep the observed DoorDash channel ID in diagnostics. The current live channel name itself indicates no notification sound/haptics, which helps distinguish Android notification behavior from Dasher's own in-app alert behavior.
+- Separate passing alerts from silent unclassified review cards; never automatically open Dasher to gather missing evidence.
+- Retain original passing/unknown notifications when replacement alerts are blocked or unavailable.
+- Bound notification state, cancel expiry callbacks on removal, suppress duplicate/reconnect bells, isolate stale-removal events, and ignore group summaries/other profiles.
+- Remove arbitrary notification-extra values from decision inputs. Customer messages cannot impersonate offers by containing new-order wording.
+- Require explicit add-on increments. Missing route context and contradictory figures remain REVIEW rather than silently becoming standalone orders.
+- Reject malformed/partial/negative payout values and ranged/fractional durations. Use overflow-safe cost calculations.
+- Recognize Finding offers and animated Unicode variants; clear/invalidate stale route estimates.
+- Preserve immediate first screen decline; revoke confirmation authority on changed notification generation or a newly nonfailing screen. Do not equate click requests or notification cancellation with completed decline.
+- Add a persisted immediate pause, clearer readiness/limitations, local 30-minute raw diagnostic sessions, and updater state in reports.
+- Schedule real one-shot retries, coalesce duplicate update checks, validate every redirect and the APK's embedded version, and defer automatic installation during active offers/deliveries.
+- Add simulated Android adapter tests and adversarial regressions. The release probe uses the actual app downloader against the public feed and signed APK.
+- Use one version source and one existing Render-held signer. No additional key reset is required for cloud-signed 0.4.x installs.
 
-Because 0.4.2's downloader rejects the Render host before connecting, 0.4.3 requires one manual install. After 0.4.3, the repaired automatic update path uses the Render feed directly.
+Physical handset installation, live DoorDash screen variations, actual sound/vibration suppression, and Android background scheduling remain separate verification steps. This release does not claim to mute Dasher's internally generated audio/haptics.
