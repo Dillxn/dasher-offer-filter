@@ -82,6 +82,8 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     @Override public void onListenerConnected() {
         active = this;
+        Updater.schedule(this);
+        Updater.check(this, false, null);
         DiagnosticLog.log(this, "notification", "listener connected");
     }
 
