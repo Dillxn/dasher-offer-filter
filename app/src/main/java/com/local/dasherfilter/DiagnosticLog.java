@@ -33,8 +33,7 @@ final class DiagnosticLog {
     static void log(Context context, String source, String message) {
         if (!isEnabled(context)) return;
         String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
-        String safe = message == null ? "" : message.replace('', ' ').replace('
-', ' ');
+        String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
         byte[] line = (time + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
         synchronized (LOCK) {
             File file = file(context);
