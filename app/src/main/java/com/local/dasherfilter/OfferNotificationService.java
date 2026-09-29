@@ -29,9 +29,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     private final LinkedHashMap<String, Entry> entries = new LinkedHashMap<>();
     private static final class Entry {
         final OfferAlertState state; final String alertTag; final String merchant; Runnable expiry;
-        Entry(long now, StatusBarNotification source, String merchant) {
-            this.merchant = merchant; state = new OfferAlertState(now, source.getPostTime(), source.getNotification().when); alertTag = "offer-" + now + "-" + source.getKey();
-        }
+        Entry(long now, StatusBarNotification source, String merchant) { this.merchant = merchant; state = new OfferAlertState(now, source.getPostTime(), source.getNotification().when); alertTag = "offer-" + now + "-" + source.getKey(); }
     }
     static boolean isConnected() { return active != null; }
     static boolean hasActiveOffer() { return offerOutstanding; }
@@ -74,8 +72,7 @@ public final class OfferNotificationService extends NotificationListenerService 
                 if (entries.size() >= 16) { String first = entries.keySet().iterator().next(); remove(first, entries.get(first)); }
                 e = new Entry(now, source, merchant); entries.put(source.getKey(), e); generation++;
                 final Entry captured = e; final String sourceKey = source.getKey();
-                e.expiry = () -> { if (entries.get(sourceKey) == captured) remove(sourceKey, captured); };
-                handler.postDelayed(e.expiry, OfferAlertState.LIFETIME_MS);
+                e.expiry = () -> { if (entries.get(sourceKey) == captured) remove(sourceKey, captured); }; handler.postDelayed(e.expiry, OfferAlertState.LIFETIME_MS);
             }
             e.state.postedAt = Math.max(e.state.postedAt, source.getPostTime()); offerOutstanding = !entries.isEmpty();
             FilterStore.recordDoorDashOfferChannel(this, n.getChannelId()); FilterSettings settings = FilterStore.load(this);
@@ -92,8 +89,7 @@ public final class OfferNotificationService extends NotificationListenerService 
                         try { decline.send(); DiagnosticLog.log(this, "notification", "notification Decline action REQUESTED; awaiting DoorDash removal, not yet verified"); }
                         catch (PendingIntent.CanceledException | RuntimeException error) { DiagnosticLog.log(this, "notification", "Decline action failed; original retained"); }
                     } else {
-                        DiagnosticLog.log(this, "notification", "known filtered offer; no safe background decline action. Hidden notification does NOT decline order.");
-                        if (!replay) cancelNotification(source.getKey());
+                        DiagnosticLog.log(this, "notification", "known filtered offer; no safe background decline action. Hidden notification does NOT decline order."); if (!replay) cancelNotification(source.getKey());
                     }
                 }
                 e.state.delivered(signature, decision.result, false);
@@ -113,7 +109,8 @@ public final class OfferNotificationService extends NotificationListenerService 
     private void remove(String key, Entry e) { if (e == null) return; entries.remove(key); if (e.expiry != null) handler.removeCallbacks(e.expiry); OfferAlerts.clear(this, e.alertTag); offerOutstanding = !entries.isEmpty(); }
     private void clearEntries() { for (Entry e : entries.values()) { if (e.expiry != null) handler.removeCallbacks(e.expiry); OfferAlerts.clear(this, e.alertTag); } entries.clear(); offerOutstanding = false; }
     private static PendingIntent declineAction(Notification n) {
-        if (n.actions == null) return null;
+        // Type inspection is only public from API 31. Older devices must not guess and launch an activity.
+        if (Build.VERSION.SDK_INT < 31 || n.actions == null) return null;
         for (Notification.Action action : n.actions) {
             if (action == null || action.title == null || action.actionIntent == null) continue;
             PendingIntent intent = action.actionIntent;
@@ -129,9 +126,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     private static void add(List<String> labels, String value) {
         if (labels.size() >= 32 || value.length() > 2048) throw new IllegalArgumentException("oversized notification"); String clean = OfferEvidence.normalize(value); if (!clean.isEmpty() && !labels.contains(clean)) labels.add(clean);
     }
-    private static String merchant(List<String> labels) {
-        for (String label : labels) { String s = label.toLowerCase(java.util.Locale.US); int index = s.indexOf("go to "); if (index >= 0) return s.substring(index + 6).trim(); } return "";
-    }
+    private static String merchant(List<String> labels) { for (String label : labels) { String s = label.toLowerCase(java.util.Locale.US); int index = s.indexOf("go to "); if (index >= 0) return s.substring(index + 6).trim(); } return ""; }
     private static List<String> metricLabels(List<String> labels) {
         List<String> out = new ArrayList<>(); for (String label : labels) { String lower = label.toLowerCase(java.util.Locale.US); if (lower.contains("go to ") || lower.startsWith("new delivery")) continue; out.add(label); } return out;
     }
