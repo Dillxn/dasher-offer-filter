@@ -117,8 +117,14 @@ public final class OfferNotificationService extends NotificationListenerService 
         }
 
         OfferSnapshot offer = OfferParser.parse(labels);
-        OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
-        DiagnosticLog.log(this, "notification", "parsed " + offer.summary() + "; " + decision.summary());
+        OfferSnapshot activeRoute = ActiveRouteStore.load(this);
+        AddOnOffer addOn = activeRoute != null && AddOnOffer.isLikely(labels)
+                ? AddOnOffer.parse(activeRoute, offer, labels) : null;
+        OfferRule.Decision decision = addOn == null
+                ? OfferRule.evaluate(offer, settings)
+                : OfferRule.evaluateAddOn(addOn, settings);
+        DiagnosticLog.log(this, "notification", "parsed " +
+                (addOn == null ? offer.summary() : addOn.summary()) + "; " + decision.summary());
 
         if (decision.result == OfferRule.Result.DECLINE) {
             Notification.Action decline = findAction(notification, "decline");

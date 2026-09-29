@@ -127,11 +127,21 @@ public final class OfferFilterService extends AccessibilityService {
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         if (scan.accept == null || scan.decline == null) {
             diagnosticScan("screen-without-both-controls", scan, offer, null);
-            Integer accepted = acceptedTracker.observeOtherScreen(scan.text, now);
+            AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, now);
             if (accepted != null) {
-                FilterStore.recordAccepted(this, accepted);
-                status(String.format(Locale.US, "Accepted offer detected: $%.2f. Rising rule baseline updated.", accepted / 100.0));
+                Integer baseline = accepted.baselinePay();
+                if (baseline != null) FilterStore.recordAccepted(this, baseline);
+                ActiveRouteStore.save(this, accepted.routeAfter);
+                status((accepted.addOn ? "Accepted add-on detected. Active route updated: " :
+                        "Accepted offer detected. Active route: ") +
+                        (accepted.routeAfter == null ? "unknown" : accepted.routeAfter.summary()) +
+                        (baseline == null ? "" : String.format(Locale.US,
+                                "\nRising rule baseline: $%.2f.", baseline / 100.0)));
                 return false;
+            }
+            if (ActiveRouteStore.isIdleScreen(scan.text)) {
+                ActiveRouteStore.clear(this);
+                DiagnosticLog.log(this, "route", "active route cleared on idle Dasher screen");
             }
             if (scan.accept == null && scan.decline == null) declineState.offerGone();
             if (scan.accept != null || scan.decline != null || offer.payCents != null) {
@@ -143,14 +153,22 @@ public final class OfferFilterService extends AccessibilityService {
             return settings.enabled;
         }
 
-        acceptedTracker.observeOffer(offer, now);
+        OfferSnapshot activeRoute = ActiveRouteStore.load(this);
+        AddOnOffer addOn = activeRoute != null && AddOnOffer.isLikely(scan.text)
+                ? AddOnOffer.parse(activeRoute, offer, scan.text) : null;
+        acceptedTracker.observeOffer(offer, addOn == null ? offer : addOn.combined,
+                addOn != null, now);
 
-        OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
-        diagnosticScan("offer", scan, offer, decision);
+        OfferRule.Decision decision = addOn == null
+                ? OfferRule.evaluate(offer, settings)
+                : OfferRule.evaluateAddOn(addOn, settings);
+        diagnosticScan(addOn == null ? "offer" : "add-on", scan,
+                addOn == null ? offer : addOn.incremental, decision);
+        String evaluated = addOn == null ? offer.summary() : addOn.summary();
         OfferNotificationService.screenResolved(this, decision.result,
-                offer.summary() + "; " + decision.summary());
+                evaluated + "; " + decision.summary());
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
-            status(offer.summary() + "\n" + decision.summary() +
+            status((addOn == null ? offer.summary() : addOn.summary()) + "\n" + decision.summary() +
                     (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
@@ -159,12 +177,13 @@ public final class OfferFilterService extends AccessibilityService {
         // First attempt is immediate. Rechecks always read the current screen and saved rules.
         if (click(scan.decline)) {
             declineState.declineSent(key, now);
-            OfferNotificationService.cancelPendingFiltered(this, offer.summary());
-            DiagnosticLog.log(this, "accessibility", "first-step Decline click requested for " + offer.summary());
-            status("Decline requested for " + offer.summary() + "\n" + decision.summary() +
+            String declined = addOn == null ? offer.summary() : addOn.summary();
+            OfferNotificationService.cancelPendingFiltered(this, declined);
+            DiagnosticLog.log(this, "accessibility", "first-step Decline click requested for " + declined);
+            status("Decline requested for " + declined + "\n" + decision.summary() +
                     "\nChecking whether the offer leaves the screen.");
         } else {
-            status(offer.summary() + "\n" + decision.summary() +
+            status((addOn == null ? offer.summary() : addOn.summary()) + "\n" + decision.summary() +
                     "\nCould not tap Decline. Retrying while this offer is visible.");
         }
         return true;

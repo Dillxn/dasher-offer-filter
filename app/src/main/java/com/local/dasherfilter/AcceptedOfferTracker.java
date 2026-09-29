@@ -5,29 +5,61 @@ import java.util.Locale;
 
 /** A passing offer alone never advances the baseline. */
 final class AcceptedOfferTracker {
-    private Integer visiblePay;
+    static final class Acceptance {
+        final OfferSnapshot acceptedOffer;
+        final OfferSnapshot routeAfter;
+        final boolean addOn;
+
+        Acceptance(OfferSnapshot acceptedOffer, OfferSnapshot routeAfter, boolean addOn) {
+            this.acceptedOffer = acceptedOffer;
+            this.routeAfter = routeAfter;
+            this.addOn = addOn;
+        }
+
+        Integer baselinePay() {
+            return routeAfter != null && routeAfter.payCents != null
+                    ? routeAfter.payCents : acceptedOffer.payCents;
+        }
+    }
+
+    private OfferSnapshot visibleOffer;
+    private OfferSnapshot visibleRouteAfter;
+    private boolean visibleAddOn;
     private String visibleKey = "";
     private long visibleAt;
-    private Integer pendingPay;
+    private OfferSnapshot pendingOffer;
+    private OfferSnapshot pendingRouteAfter;
+    private boolean pendingAddOn;
     private long clickedAt;
 
     void observeOffer(OfferSnapshot offer, long now) {
-        if (!offer.fingerprint().equals(visibleKey)) pendingPay = null;
-        visibleKey = offer.fingerprint();
-        visiblePay = offer.payCents;
+        observeOffer(offer, offer, false, now);
+    }
+
+    void observeOffer(OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn, long now) {
+        String key = offer.fingerprint() + "->" +
+                (routeAfter == null ? "null" : routeAfter.fingerprint()) + ":" + addOn;
+        if (!key.equals(visibleKey)) clearPending();
+        visibleKey = key;
+        visibleOffer = offer;
+        visibleRouteAfter = routeAfter;
+        visibleAddOn = addOn;
         visibleAt = now;
     }
 
     void acceptClicked(long now) {
-        if (visiblePay != null && visiblePay > 0 && now - visibleAt <= 90000) {
-            pendingPay = visiblePay;
+        if (visibleOffer != null && visibleOffer.payCents != null && visibleOffer.payCents > 0 &&
+                now - visibleAt <= 90000) {
+            pendingOffer = visibleOffer;
+            pendingRouteAfter = visibleRouteAfter;
+            pendingAddOn = visibleAddOn;
             clickedAt = now;
         }
     }
 
-    Integer observeOtherScreen(List<String> labels, long now) {
-        if (pendingPay == null || now - clickedAt > 15000) {
-            reset();
+    Acceptance observeOtherScreen(List<String> labels, long now) {
+        if (pendingOffer == null || now - clickedAt > 15000) {
+            clearPending();
             return null;
         }
         for (String label : labels) {
@@ -37,7 +69,7 @@ final class AcceptedOfferTracker {
                     lower.equals("confirm pickup") || lower.equals("confirm pick up") ||
                     lower.equals("complete pickup") || lower.equals("complete delivery") ||
                     lower.equals("slide to confirm pickup")) {
-                Integer accepted = pendingPay;
+                Acceptance accepted = new Acceptance(pendingOffer, pendingRouteAfter, pendingAddOn);
                 reset();
                 return accepted;
             }
@@ -46,8 +78,17 @@ final class AcceptedOfferTracker {
     }
 
     void reset() {
-        visiblePay = null;
+        visibleOffer = null;
+        visibleRouteAfter = null;
+        visibleAddOn = false;
         visibleKey = "";
-        pendingPay = null;
+        clearPending();
+    }
+
+    private void clearPending() {
+        pendingOffer = null;
+        pendingRouteAfter = null;
+        pendingAddOn = false;
+        clickedAt = 0;
     }
 }

@@ -214,4 +214,70 @@ public final class OfferRuleTest {
             assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(offer, settings).result);
         }
     }
+    @Test public void addOnUsesMarginalEconomicsAndCombinedRoute() {
+        FilterSettings settings = new FilterSettings(true, 2000, 150, 0, 0, 0);
+        OfferSnapshot active = new OfferSnapshot(2500, 10.0, null, 2);
+
+        AddOnOffer cheapGood = AddOnOffer.parse(active,
+                new OfferSnapshot(300, 1.0, null, null),
+                Arrays.asList("Add to route", "$3.00", "1 mi"));
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(cheapGood, settings).result);
+
+        AddOnOffer cheapBad = AddOnOffer.parse(active,
+                new OfferSnapshot(300, 4.0, null, null),
+                Arrays.asList("Add to route", "$3.00", "4 mi"));
+        OfferRule.Decision bad = OfferRule.evaluateAddOn(cheapBad, settings);
+        assertEquals(OfferRule.Result.DECLINE, bad.result);
+        assertEquals(600, bad.requiredCents);
+    }
+
+    @Test public void addOnFlatMinimumAppliesToCombinedRouteNotTwice() {
+        FilterSettings settings = new FilterSettings(true, 2200, 0, 0, 0, 0);
+        OfferSnapshot active = new OfferSnapshot(2200, null, null, null);
+        AddOnOffer addOn = AddOnOffer.parse(active,
+                new OfferSnapshot(300, null, null, null),
+                Arrays.asList("Add to route", "$3.00"));
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(addOn, settings).result);
+    }
+
+    @Test public void addOnUsesCombinedStopCeilingAndMarginalStopFee() {
+        OfferSnapshot active = new OfferSnapshot(2500, null, null, 2);
+        AddOnOffer addOn = AddOnOffer.parse(active,
+                new OfferSnapshot(300, null, null, 2),
+                Arrays.asList("Add to route", "$3.00", "2 stops"));
+
+        FilterSettings maxStops = new FilterSettings(true, 0, 0, 0, 0, 3);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(addOn, maxStops).result);
+
+        FilterSettings stopFee = new FilterSettings(true, 0, 0, 0, 200, 0);
+        OfferRule.Decision fee = OfferRule.evaluateAddOn(addOn, stopFee);
+        assertEquals(OfferRule.Result.DECLINE, fee.result);
+        assertEquals(400, fee.requiredCents);
+    }
+
+    @Test public void addOnDoesNotRequireMarginalPayToBeatPriorFullOrder() {
+        FilterSettings settings = new FilterSettings(true, 2000, 100, 0, 0, 0, true, 2500);
+        OfferSnapshot active = new OfferSnapshot(2500, 10.0, null, 2);
+        AddOnOffer addOn = AddOnOffer.parse(active,
+                new OfferSnapshot(300, 1.0, null, null),
+                Arrays.asList("Add to route", "$3.00", "1 mi"));
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(addOn, settings).result);
+    }
+
+    @Test public void addOnMissingEnabledMarginalMetricRequiresReviewUnlessKnownFailure() {
+        FilterSettings settings = new FilterSettings(true, 0, 150, 30, 0, 0);
+        OfferSnapshot active = new OfferSnapshot(2500, 10.0, 50, 2);
+
+        AddOnOffer unknownTime = AddOnOffer.parse(active,
+                new OfferSnapshot(500, 2.0, null, null),
+                Arrays.asList("Add to route", "$5.00", "2 mi"));
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(unknownTime, settings).result);
+
+        AddOnOffer knownMileageFailure = AddOnOffer.parse(active,
+                new OfferSnapshot(200, 3.0, null, null),
+                Arrays.asList("Add to route", "$2.00", "3 mi"));
+        assertEquals(OfferRule.Result.DECLINE,
+                OfferRule.evaluateAddOn(knownMileageFailure, settings).result);
+    }
+
 }

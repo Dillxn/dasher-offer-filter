@@ -81,6 +81,7 @@ public final class MainActivity extends Activity {
         minute = field(page, "Minimum dollars per minute ($/min)", settings.perMinuteCents);
         stop = field(page, "Fee per extra stop ($)", settings.extraStopCents);
         page.addView(text("Required payout = max(flat minimum, miles × rate, minutes × rate) + fee for each stop after pickup and drop-off. A known rule failure declines the offer; otherwise missing values leave it for you to review. Set all prices to zero to use only the stop limit.", 13));
+        page.addView(text("Add-on offers are evaluated against the active route: the combined route must still meet your rules, and the added payout must cover the added miles/time and any newly added stop fees. The flat minimum is not charged again to the add-on by itself.", 13));
 
         enabled = new Switch(this);
         enabled.setText("Auto-decline filtered offers");
@@ -150,7 +151,7 @@ public final class MainActivity extends Activity {
         Button checkUpdate = button("Check / install update");
         checkUpdate.setOnClickListener(v -> Updater.check(this, true, null));
         page.addView(checkUpdate);
-        page.addView(text("Checks hourly and when this app opens. Updates install when you leave Dasher. Enable Allow from this source once; Android may still ask you to confirm an installation. Update notices are silent.", 13));
+        page.addView(text("Checks in the background about every 15 minutes when Android permits, and also when this app or its background services reconnect. Failed checks retry quickly. Updates install when you leave Dasher. Enable Allow from this source once; Android may still ask you to confirm an installation. Update notices are silent.", 13));
         page.addView(text("Setup: enable Offer Filter in Accessibility settings and allow background offer access in Notification access. If Android blocks a sideloaded accessibility service, open this app's App info menu and allow restricted settings. Auto-decline starts only after you turn it on and save.", 13));
         setContentView(scroll);
         Updater.schedule(this);
@@ -306,10 +307,12 @@ public final class MainActivity extends Activity {
         boolean notificationAllowed = OfferNotificationService.hasAccess(this);
         String notification = OfferNotificationService.isConnected() ? "connected" :
                 notificationAllowed ? "allowed, waiting to connect" : "OFF";
+        OfferSnapshot activeRoute = ActiveRouteStore.load(this);
         status.setText(String.format(Locale.US,
-                "Accessibility: %s\nBackground notification access: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nDiagnostics: %s\n\n%s",
+                "Accessibility: %s\nBackground notification access: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nActive route: %s\nDiagnostics: %s\n\n%s",
                 accessibility, notification, saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
                 saved.maxStops == 0 ? "off" : saved.maxStops,
+                activeRoute == null ? "none" : activeRoute.summary(),
                 DiagnosticLog.isEnabled(this) ? "ON" : "off", FilterStore.lastStatus(this)));
     }
 
