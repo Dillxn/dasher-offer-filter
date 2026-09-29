@@ -129,14 +129,15 @@ public final class OfferFilterService extends AccessibilityService {
             diagnosticScan("screen-without-both-controls", scan, offer, null);
             AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, now);
             if (accepted != null) {
-                Integer baseline = accepted.baselinePay();
+                Integer baseline = accepted.addOn ? null : accepted.acceptedOffer.payCents;
                 if (baseline != null) FilterStore.recordAccepted(this, baseline);
                 ActiveRouteStore.save(this, accepted.routeAfter);
                 status((accepted.addOn ? "Accepted add-on detected. Active route updated: " :
                         "Accepted offer detected. Active route: ") +
                         (accepted.routeAfter == null ? "unknown" : accepted.routeAfter.summary()) +
-                        (baseline == null ? "" : String.format(Locale.US,
-                                "\nRising rule baseline: $%.2f.", baseline / 100.0)));
+                        (accepted.addOn ? "\nStandalone rising-payout baseline unchanged." :
+                                baseline == null ? "" : String.format(Locale.US,
+                                        "\nRising rule baseline: $%.2f.", baseline / 100.0)));
                 return false;
             }
             if (ActiveRouteStore.isIdleScreen(scan.text)) {
