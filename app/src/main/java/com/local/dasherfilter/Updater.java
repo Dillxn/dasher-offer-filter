@@ -270,9 +270,7 @@ final class Updater {
         URL url = new URL(address);
         for (int redirect = 0; redirect < 5; redirect++) {
             if (!"https".equals(url.getProtocol()) || url.getUserInfo() != null ||
-                    !(url.getHost().equals("github.com") || url.getHost().equals("raw.githubusercontent.com") ||
-                            url.getHost().equals("release-assets.githubusercontent.com") ||
-                            url.getHost().equals("dash-offer-filter-build.onrender.com"))) {
+                    !UpdatePolicy.trustedDownloadHost(url.getHost())) {
                 throw new IOException("Untrusted update download host");
             }
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
