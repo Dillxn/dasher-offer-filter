@@ -25,6 +25,14 @@ public final class UpdatePolicyTest {
         }
     }
 
+    @Test public void retryBackoffIsFastAndBounded() {
+        assertEquals(60_000L, UpdatePolicy.retryDelayMillis(1));
+        assertEquals(120_000L, UpdatePolicy.retryDelayMillis(2));
+        assertEquals(240_000L, UpdatePolicy.retryDelayMillis(3));
+        assertEquals(480_000L, UpdatePolicy.retryDelayMillis(4));
+        assertEquals(480_000L, UpdatePolicy.retryDelayMillis(8));
+    }
+
     @Test public void rejectsWrongPackageMalformedHashesAndUnboundedSize() {
         assertThrows(IllegalArgumentException.class, () -> UpdatePolicy.validate("other.app", 4, URL, HASH, 25089));
         assertThrows(IllegalArgumentException.class, () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 0, URL, HASH, 25089));
