@@ -6,11 +6,13 @@ import static org.junit.Assert.*;
 public final class UpdatePolicyTest {
     private static final String URL = "https://github.com/Dillxn/dasher-offer-filter-updates/releases/download/v0.3.0/OfferFilter.apk";
     private static final String B64 = "https://raw.githubusercontent.com/Dillxn/dasher-offer-filter-updates/main/apks/v0.4.1/OfferFilter.apk.b64";
+    private static final String RENDER = "https://dash-offer-filter-build.onrender.com/OfferFilter.apk";
     private static final String HASH = "a".repeat(64);
 
     @Test public void acceptsExpectedFeedAndOnlyHigherVersions() {
         UpdatePolicy.validate(UpdatePolicy.PACKAGE, 4, URL, HASH, 25089);
         UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, B64, HASH, 50000, "base64");
+        UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, RENDER, HASH, 50000, "raw");
         assertTrue(UpdatePolicy.isNewer(4, 3));
         assertFalse(UpdatePolicy.isNewer(4, 4));
         assertFalse(UpdatePolicy.isNewer(3, 4));
@@ -44,6 +46,9 @@ public final class UpdatePolicyTest {
         assertThrows(IllegalArgumentException.class,
                 () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7,
                         B64.replace("dasher-offer-filter-updates", "other"), HASH, 50000, "base64"));
+        assertThrows(IllegalArgumentException.class,
+                () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7,
+                        RENDER.replace("dash-offer-filter-build", "attacker"), HASH, 50000, "raw"));
     }
 
     @Test public void rejectsWrongPackageMalformedHashesAndUnboundedSize() {
