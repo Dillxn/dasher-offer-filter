@@ -6,6 +6,12 @@ Offers are evaluated immediately when Android reports a screen change, with no w
 
 After an automatic first decline request, the app watches for the confirmation for up to 10 seconds, including blank screen transitions. It searches Dasher's topmost interactive application windows for the popup and selects an actionable **Decline offer** button even when the background Accept button remains exposed. It can request that confirmation up to four times, at least 250 ms apart. It leaves manually opened confirmations alone unless its own recent automatic decline is pending. A tap request still needs Dasher to actually dismiss the screen.
 
+### Background offers
+
+Version 0.4.0 adds a DoorDash notification listener so Offer Filter can react while Dasher is in the background. Enable **Allow background offer access** once in Android's Notification access settings. When a notification contains enough offer data, the same saved rules are evaluated immediately. A qualifying offer is opened in Dasher. A filtered offer uses a notification **Decline** action when DoorDash exposes one; otherwise Offer Filter opens Dasher so Accessibility can read the real offer screen and perform the normal decline flow. If the notification does not contain enough data to decide, Dasher is opened for screen evaluation.
+
+Android 14+ restricts background activity launches. Offer Filter first sends DoorDash's own notification `contentIntent` with the background-start opt-in and falls back to the package launch intent. The Diagnostics log records whether the wake was actually observed on the phone. Filtered notifications are cancelled after a real Decline request succeeds rather than being hidden before the app has acted.
+
 ### Dasher ringing
 
 The filter cannot guarantee stopping a sound that Dasher starts before Android exposes the offer for evaluation. Completing the second decline step may stop continued ringing, but this has not been checked on the phone. For Android notification sounds, use **Dasher notification sound settings** and set the relevant notification category to **Silent**. This silences all notifications in that category, including qualifying offers. On Samsung, missing categories can be enabled under **Settings → Notifications → Advanced settings → Manage notification categories for each app** ([Samsung instructions](https://www.samsung.com/us/support/answer/ANS10002521/)). Sounds played inside Dasher are separate from Android notification controls. Offer Filter does not mute the phone's calls or media.
@@ -31,6 +37,10 @@ The stop limit is independent of payout: a maximum of 2 allows up to 2 stops and
 
 **Refresh status** shows whether Accessibility is connected, whether saved auto-decline is ON, and the saved minimum payout and stop limit. It reports missing controls, unreadable pay, or failed click attempts. A requested tap is not reported as a completed decline. If an offer is missed, this status is the first diagnostic to check.
 
+## Diagnostics
+
+Turn on **Capture notification and screen diagnostics** while troubleshooting. The app keeps a bounded on-device text log containing DoorDash notification labels, the Accessibility labels visible on changed screens, parsed pay/miles/time/stops, rule decisions, foreground-wake results, and decline outcomes. Nothing is uploaded automatically. **Share diagnostics** sends the text through Android's share sheet so it can be attached to a ChatGPT conversation; **Clear diagnostics** deletes the local log. Because raw screen labels can include store, customer, or location text, leave capture off when it is not needed.
+
 ## Automatic updates
 
 Install the latest version from the [permanent APK download](https://github.com/Dillxn/dasher-offer-filter-updates/releases/latest/download/OfferFilter.apk). In Offer Filter, tap **Allow automatic installs** and enable Android's **Allow from this source**. Update notifications are optional and silent.
@@ -46,7 +56,8 @@ Releases and APKs appear in the [original repository's Releases](https://github.
 1. Install the debug APK from `app/build/outputs/apk/debug/` on the Android phone.
 2. Open Offer Filter and enter your rules. Leave auto-decline off initially.
 3. Enable Offer Filter under Android Accessibility settings. On newer Android versions, you may need to allow restricted settings from Offer Filter's App info menu before its accessibility service can be enabled.
-4. Check **Last offer check** against an actual offer while parked. Turn on auto-decline only after pay and distance are being read correctly.
+4. Tap **Allow background offer access** and grant Offer Filter notification access so DoorDash offers can be detected while Dasher is backgrounded.
+5. Check **Last offer check** against an actual offer while parked. Turn on auto-decline only after pay and distance are being read correctly.
 
 The app reads only the Dasher package (`com.doordash.driverapp`). Android Accessibility needs broad screen access, so review the permission before enabling it. [DoorDash's deactivation policy](https://help.doordash.com/en-us/dashers/article/deactivation-policy-us-english-dx) lists automated monitoring or scraping; using this app may put Dasher account access at risk.
 
@@ -58,4 +69,4 @@ To ship a new update, increase `versionCode` and `versionName` in both `app/buil
 
 ## Current limit
 
-Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before the initial decline. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. Version 0.3.0 adds accepted-offer tracking and self-updates. Version 0.3.1 fixes the confirmation guard and selection of the second decline action. Local verification: the signed APK builds and all 45 JUnit tests pass. Confirmation reliability, ringing behavior, live accepted-offer detection, and installation still need confirmation on the phone; no ADB device is connected.
+Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before the initial decline. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. Version 0.3.0 adds accepted-offer tracking and self-updates. Version 0.3.1 fixes the confirmation guard and selection of the second decline action. Its signed APK build passed all 45 JUnit tests. Version 0.4.0 adds background DoorDash notification handling, filtered-notification cancellation, foreground wake diagnostics, and an on-device shareable screen/notification log. The 0.4.0 source has not been APK-built in this execution environment because the existing signing key and Android SDK are not available here. Background wake behavior, notification payload shapes, confirmation reliability, ringing behavior, live accepted-offer detection, and installation still need confirmation on the phone.
