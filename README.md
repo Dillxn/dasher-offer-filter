@@ -73,6 +73,19 @@ Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-lo
 
 To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, update `RELEASE_NOTES.md`, push source on main, then run `./ship-update.sh` on the signing Mac. It runs the JUnit suite, builds with the existing signing key, verifies the APK version/signature and that the checkout exactly matches remote `main`, uploads the same APK to Releases in both repositories, switches `latest.json`, and finally downloads the feed and APK without authentication to verify the exact public channel phones use.
 
+### Signing-key rotation
+
+The installed 0.3.1 updater requires the downloaded APK's current signer to exactly match its own, so key rotation uses a bridge release. **0.4.1 must be built and published with the existing signing key first.** It changes update validation to accept a newer certificate only when Android exposes the installed signer as an authenticated predecessor in the APK's signing-certificate history.
+
+On the signing Mac:
+
+1. Run `./ship-update.sh` to build, test, sign, publish, and publicly verify 0.4.1 with the existing key.
+2. Install 0.4.1 on the phone through the normal updater.
+3. Run `./prepare-key-rotation.sh`. It verifies the old certificate fingerprint, creates a new local 4096-bit RSA signing key and password file if needed, creates an Android signing-certificate lineage with installed-data continuity enabled and rollback disabled, and writes a local rotation config under `~/.android/`. No private key or password is stored in the repository.
+4. Bump the next release version/code, then run `OFFER_FILTER_BRIDGE_CONFIRMED=1 ./ship-rotated-update.sh`. The script refuses to publish unless the public bridge feed is already at least versionCode 7 and the operator explicitly confirms that the bridge is installed.
+
+The ordinary build script now refuses to invent a new keystore when its configured signer is missing. Rotated builds sign with both the predecessor and current signer plus the lineage so Android versions that need the predecessor path remain compatible, while Android 13+ can use the rotated signer.
+
 ## Current limit
 
 Offer layouts change. The parser requires both Accept and Decline controls and a readable value that fails an enabled rule before the initial decline. Mileage numbers and units split between neighboring text nodes are supported, as are explicit stop counts. Item counts and unnumbered pickup/drop-off rows are not assumed to be stop totals. Conflicting or missing values remain unknown. Payout reading and declining were confirmed on the phone with 0.1.0. A missed $3 offer under a $22 minimum was reported after 0.2.0; its exact cause is not confirmed without phone status. Version 0.2.1 fixes permanent suppression after a tap request, adds bounded retries and clearer diagnostics, and supports more Accept countdown labels. Version 0.3.0 adds accepted-offer tracking and self-updates. Version 0.3.1 fixes the confirmation guard and selection of the second decline action. Its signed APK build passed all 45 JUnit tests. Version 0.4.1 adds background DoorDash notification handling, filtered-notification cancellation, foreground wake diagnostics, an on-device shareable screen/notification log, active-route-aware add-on evaluation, 15-minute periodic update checks, event-triggered checks, bounded fast retry, feed cache-busting, and publisher-side public-feed/APK verification. The 0.4.1 source has not been APK-built in this execution environment because the existing signing key and Android SDK are not available here. Background wake behavior, notification payload shapes, confirmation reliability, ringing behavior, live accepted-offer detection, and installation still need confirmation on the phone.
