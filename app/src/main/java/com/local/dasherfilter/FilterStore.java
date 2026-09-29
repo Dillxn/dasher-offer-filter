@@ -34,6 +34,17 @@ final class FilterStore {
                 .putInt("last_accepted", cents).apply();
     }
 
+    static void recordDoorDashOfferChannel(Context context, String channelId) {
+        if (channelId == null || channelId.trim().isEmpty()) return;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("doordash_offer_channel", channelId).apply();
+    }
+
+    static String doorDashOfferChannel(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString("doordash_offer_channel", "");
+    }
+
     static void setLastStatus(Context context, String status) {
         String timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
                 .format(new Date());
