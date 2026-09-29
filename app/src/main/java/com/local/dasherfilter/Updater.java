@@ -32,6 +32,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -134,9 +135,7 @@ final class Updater {
                 }
                 status(app, "Downloading " + release.getString("versionName") + "…");
                 File part = new File(apk.getParentFile(), "download.apk");
-                try (OutputStream out = new FileOutputStream(part)) {
-                    download(release.getString("apkUrl"), out, release.getLong("size"));
-                }
+                downloadUpdate(release, part);
                 validate(app, part, release, installed);
                 if (!part.renameTo(apk)) throw new IOException("Could not save update");
                 prefs(app).edit()
@@ -170,7 +169,8 @@ final class Updater {
 
     private static void metadata(JSONObject release) throws Exception {
         UpdatePolicy.validate(release.getString("packageName"), release.getLong("versionCode"),
-                release.getString("apkUrl"), release.getString("sha256"), release.getLong("size"));
+                release.getString("apkUrl"), release.getString("sha256"), release.getLong("size"),
+                release.optString("encoding", "raw"));
         if (!release.getString("versionName").matches("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?")) {
             throw new IOException("Invalid version name");
         }
@@ -232,6 +232,30 @@ final class Updater {
         StringBuilder value = new StringBuilder();
         for (byte item : bytes) value.append(String.format(Locale.US, "%02x", item & 255));
         return value.toString();
+    }
+
+    private static void downloadUpdate(JSONObject release, File part) throws Exception {
+        String encoding = release.optString("encoding", "raw");
+        long size = release.getLong("size");
+        if ("base64".equals(encoding)) {
+            ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+            long encodedLimit = ((size + 2) / 3) * 4 + 4096;
+            download(release.getString("apkUrl"), encoded, encodedLimit);
+            byte[] decoded;
+            try {
+                decoded = Base64.getMimeDecoder().decode(encoded.toByteArray());
+            } catch (IllegalArgumentException error) {
+                throw new IOException("Update base64 is invalid", error);
+            }
+            if (decoded.length != size) throw new IOException("Decoded update size mismatch");
+            try (OutputStream out = new FileOutputStream(part)) {
+                out.write(decoded);
+            }
+            return;
+        }
+        try (OutputStream out = new FileOutputStream(part)) {
+            download(release.getString("apkUrl"), out, size);
+        }
     }
 
     private static void download(String address, OutputStream output, long limit) throws Exception {
