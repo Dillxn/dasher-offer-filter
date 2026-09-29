@@ -1,6 +1,7 @@
 ## Background offers and faster automatic updates
 
 - Detect DoorDash offer notifications while Dasher is in the background.
+- Track the active accepted route and evaluate add-on offers using both marginal economics and combined-route economics.
 - Bring Dasher forward for qualifying or screen-only decisions when Android permits the notification handoff.
 - Use a DoorDash notification Decline action directly when one is exposed; otherwise defer to the Accessibility screen flow.
 - Cancel the matching filtered-offer notification after a real Decline request succeeds.
