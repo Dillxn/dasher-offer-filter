@@ -10,8 +10,8 @@ KEY_COMMIT="5e8f3ae4844503e7368cebbf135a365c0aad0435"
 KEY_PATH="private-signing/offer-filter-reset.p12.b64"
 KEY_FINGERPRINT="4065b43922fab40d01f3246456a1899bef33ef7f81f499e62c5d5ca917a3abf3"
 
-: "\${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is required}"
-: "\${UPDATE_BASE_URL:?UPDATE_BASE_URL is required}"
+: "${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is required}"
+: "${UPDATE_BASE_URL:?UPDATE_BASE_URL is required}"
 
 export ANDROID_HOME="$PWD/.android-sdk"
 if [[ -z "\${JAVA_HOME:-}" ]]; then
@@ -30,6 +30,7 @@ with zipfile.ZipFile(pathlib.Path(sys.argv[1])) as z:
     z.extractall(pathlib.Path(sys.argv[2]))
 PY
     mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+    chmod +x "$ANDROID_HOME/cmdline-tools/latest/bin/"*
     set +o pipefail
     yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
     license_status=$?
@@ -41,6 +42,7 @@ PY
         "platforms;android-36" "build-tools;35.0.0"
 fi
 
+git cat-file -e "$KEY_COMMIT:$KEY_PATH" 2>/dev/null || git fetch origin "$KEY_COMMIT" --depth=1
 git show "$KEY_COMMIT:$KEY_PATH" | base64 --decode > .signing/OfferFilter-signing.p12
 chmod 600 .signing/OfferFilter-signing.p12
 
