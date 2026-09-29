@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
+import urllib.request
 
 REPO = "Dillxn/dasher-offer-filter-updates"
 SOURCE_REPO = "Dillxn/dasher-offer-filter"
@@ -43,6 +45,62 @@ def put_content(name, content, message):
         "--input", "-", data=json.dumps(payload))
 
 
+def verify_source_matches(code, version):
+    gradle = (ROOT / "app/build.gradle").read_text()
+    code_match = re.search(r"versionCode\s+(\d+)", gradle)
+    version_match = re.search(r"versionName\s+'([^']+)'", gradle)
+    if not code_match or not version_match or int(code_match.group(1)) != code or version_match.group(1) != version:
+        raise RuntimeError("APK version does not match app/build.gradle")
+    local_head = run("git", "rev-parse", "HEAD").stdout.strip()
+    remote_head = run("gh", "api", f"repos/{SOURCE_REPO}/commits/main", "--jq", ".sha").stdout.strip()
+    if local_head != remote_head:
+        raise RuntimeError("Local checkout is not the current source-repo main; pull before publishing")
+
+
+def verify_release_asset(repository, tag, digest, size):
+    release = run("gh", "release", "view", tag, "--repo", repository, "--json", "assets")
+    assets = json.loads(release.stdout)["assets"]
+    asset = next((item for item in assets if item["name"] == "OfferFilter.apk"), None)
+    if not asset or asset.get("digest") != f"sha256:{digest}" or int(asset.get("size", -1)) != size:
+        raise RuntimeError(f"Published release asset verification failed in {repository}")
+
+
+def public_bytes(url, limit):
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "OfferFilter-Publisher",
+        "Cache-Control": "no-cache",
+    })
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise RuntimeError("Public verification download exceeded limit")
+    return data
+
+
+def verify_public_channel(feed, apk_bytes):
+    expected_feed = json.dumps(feed, sort_keys=True)
+    last_error = "public feed did not converge"
+    for attempt in range(6):
+        try:
+            nonce = time.time_ns()
+            raw = public_bytes(
+                f"https://raw.githubusercontent.com/{REPO}/main/latest.json?t={nonce}",
+                16 * 1024,
+            )
+            published = json.loads(raw)
+            if json.dumps(published, sort_keys=True) != expected_feed:
+                raise RuntimeError("public latest.json is still stale")
+            public_apk = public_bytes(feed["apkUrl"] + f"?t={nonce}", len(apk_bytes))
+            if len(public_apk) != len(apk_bytes) or hashlib.sha256(public_apk).hexdigest() != feed["sha256"]:
+                raise RuntimeError("public APK does not match the update feed")
+            return
+        except Exception as error:
+            last_error = str(error)
+            if attempt < 5:
+                time.sleep(2)
+    raise RuntimeError(f"Public update channel verification failed: {last_error}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("apk", type=Path)
@@ -64,6 +122,7 @@ def main():
         raise RuntimeError("Invalid APK version")
     data = apk.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
+    verify_source_matches(code, version)
     old = get_content("latest.json")
     if old:
         latest = json.loads(base64.b64decode(old["content"]))
@@ -91,10 +150,12 @@ def main():
             run("gh", "release", "create", tag, str(destination), "--repo", repository,
                 "--target", "main", "--title", f"Offer Filter {version}",
                 "--notes-file", str(args.notes_file.resolve()))
+        verify_release_asset(repository, tag, digest, len(data))
     feed = {"packageName": package, "versionCode": code, "versionName": version,
             "apkUrl": f"https://github.com/{REPO}/releases/download/{tag}/OfferFilter.apk",
             "sha256": digest, "size": len(data)}
     put_content("latest.json", (json.dumps(feed, indent=2) + "\n").encode(), f"Publish {version} update feed")
+    verify_public_channel(feed, data)
     print(json.dumps(feed, indent=2))
     print(f"Release: https://github.com/{SOURCE_REPO}/releases/tag/{tag}")
     print(f"Download: https://github.com/{REPO}/releases/latest/download/OfferFilter.apk")
