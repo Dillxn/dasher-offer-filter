@@ -7,11 +7,10 @@ cd "$(dirname "$0")"
 ANDROID_CLI="commandlinetools-linux-15859902_latest.zip"
 ANDROID_CLI_SHA="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
 ANDROID_CLI_URL="https://dl.google.com/android/repository/$ANDROID_CLI"
-KEY_COMMIT="5e8f3ae4844503e7368cebbf135a365c0aad0435"
-KEY_PATH="private-signing/offer-filter-reset.p12.b64"
 KEY_FINGERPRINT="4065b43922fab40d01f3246456a1899bef33ef7f81f499e62c5d5ca917a3abf3"
 
 : "${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is required}"
+: "${OFFER_FILTER_KEYSTORE_B64:?OFFER_FILTER_KEYSTORE_B64 is required}"
 : "${UPDATE_BASE_URL:?UPDATE_BASE_URL is required}"
 
 export ANDROID_HOME="$PWD/.android-sdk"
@@ -57,8 +56,7 @@ PY
         "platforms;android-36" "build-tools;35.0.0"
 fi
 
-git cat-file -e "$KEY_COMMIT:$KEY_PATH" 2>/dev/null || git fetch origin "$KEY_COMMIT" --depth=1
-git show "$KEY_COMMIT:$KEY_PATH" | base64 --decode > .signing/OfferFilter-signing.p12
+printf "%s" "$OFFER_FILTER_KEYSTORE_B64" | base64 --decode > .signing/OfferFilter-signing.p12
 chmod 600 .signing/OfferFilter-signing.p12
 
 actual_fp="$(keytool -list -v \
