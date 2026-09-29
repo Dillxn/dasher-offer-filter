@@ -1,0 +1,146 @@
+package com.local.dasherfilter;
+
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.os.*;
+import android.service.notification.StatusBarNotification;
+import android.view.View;
+import android.view.accessibility.*;
+import org.junit.*;
+import org.junit.runner.RunWith;
+import org.robolectric.*;
+import org.robolectric.annotation.*;
+import org.robolectric.android.controller.ServiceController;
+import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.shadows.ShadowSystemClock;
+import java.time.Duration;
+import java.util.*;
+import static org.junit.Assert.*;
+
+/** TEMPORARY adversarial review probes (round 1, invariant/lifecycle lens). Delete after review. */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk={26,35})
+@LooperMode(LooperMode.Mode.PAUSED)
+public class ZzInvLifecycleR1ProbeTest {
+    private Application app;
+    @Before public void setup() {
+        app=RuntimeEnvironment.getApplication();Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);Updater.setEnabled(app,false);OfferAlerts.ensureChannel(app);
+    }
+    private NotificationManager nm() { return app.getSystemService(NotificationManager.class); }
+    private StatusBarNotification post(String tag, String title, String text, Notification.Action action) {
+        Notification.Builder b=new Notification.Builder(app,"dasher_offers").setSmallIcon(android.R.drawable.stat_notify_more).setContentTitle(title).setContentText(text).setWhen(System.currentTimeMillis());
+        if (action!=null) b.addAction(action);
+        return new StatusBarNotification("com.doordash.driverapp","com.doordash.driverapp",10001,tag,10001,0,0,b.build(),android.os.Process.myUserHandle(),System.currentTimeMillis());
+    }
+    private static boolean audible(Notification n) { return n.getGroup()==null && (n.flags & Notification.FLAG_ONLY_ALERT_ONCE)==0 && OfferAlerts.CHANNEL_ID.equals(n.getChannelId()); }
+    private List<Notification> cards() { return Shadows.shadowOf(nm()).getAllNotifications(); }
+    private boolean anyAudible() { for (Notification n : cards()) if (audible(n)) return true; return false; }
+    private OfferHistoryStore history() { return OfferHistoryStore.get(app); }
+
+    /**
+     * PROBE 1: two distinct avoided-store offers on the same notification key (merchant-only text is identical) within 10 min.
+     * Limit 1 decline request per hour. Expected by B7: the second one is REVIEW (not hidden, no decline action).
+     */
+    @Test public void probe1_tombstoneRecordReuseBypassesDeclineBudget() {
+        FilterStore.save(app,new FilterSettings(true,2000,0,0,0,0).withAvoidStores(Arrays.asList("Chick-fil-A")).withMaxDeclinesPerHour(1));
+        ServiceController<OfferNotificationService> c=Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            PendingIntent declineIntent=PendingIntent.getBroadcast(app,1,new Intent("com.doordash.DECLINE"),PendingIntent.FLAG_IMMUTABLE);
+            Shadows.shadowOf(declineIntent).setCreatorPackage("com.doordash.driverapp");
+            Notification.Action act=new Notification.Action.Builder(null,"Decline",declineIntent).build();
+            StatusBarNotification first=post("NEW_ORDER","New Delivery!","New Order: Go to Chick-fil-A",act);
+            Shadows.shadowOf(c.get()).addActiveNotification(first);c.get().onNotificationPosted(first,null);
+            int sends1=Shadows.shadowOf(app).getBroadcastIntents().size(); int active1=c.get().getActiveNotifications().length;
+            // DoorDash removes it (declined or hidden by us); listener is told.
+            c.get().onNotificationRemoved(first);
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(40));
+            StatusBarNotification second=post("NEW_ORDER","New Delivery!","New Order: Go to Chick-fil-A",act);
+            Shadows.shadowOf(c.get()).addActiveNotification(second);c.get().onNotificationPosted(second,null);
+            int sends2=Shadows.shadowOf(app).getBroadcastIntents().size(); int active2=c.get().getActiveNotifications().length;
+            long wall=System.currentTimeMillis();
+            String report="SDK="+Build.VERSION.SDK_INT+" sends1="+sends1+" active1="+active1+" sends2="+sends2+" active2="+active2+" records="+history().size()
+                    +" budgetCount="+history().budget().count(wall)+" lastCode="+history().newestFirst().get(0).reasonCode+" outcome="+history().newestFirst().get(0).outcome()+" status="+FilterStore.lastStatus(app).replace('\n',' ');
+            System.out.println("PROBE1 "+report);
+            // B7 expectation: the second distinct request must be limited.
+            boolean secondActed = Build.VERSION.SDK_INT>=31 ? sends2>sends1 : active2==0;
+            assertFalse("PROBE1 budget bypass: "+report, secondActed);
+        } finally { c.destroy(); }
+    }
+
+    /** PROBE 2: tombstone keeps the FIRST labels of an incarnation; an identical re-post of the last-shown content re-rings. */
+    @Test public void probe2_tombstoneUsesFirstLabelsNotLastShown() {
+        FilterStore.save(app,new FilterSettings(true,1000,0,0,0,0));
+        ServiceController<OfferNotificationService> c=Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            c.get().onNotificationPosted(post("NEW_ORDER","New delivery offer","$25.00 · 5.2 mi · 20 min",null),null);assertTrue(audible(cards().get(0)));
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(30));
+            c.get().onNotificationPosted(post("NEW_ORDER","New delivery offer","$25.00 · 5.2 mi · 21 min",null),null);
+            assertFalse("update in place never rings",anyAudible());
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(61));ShadowLooper.idleMainLooper();
+            assertTrue("expired card gone",cards().isEmpty());
+            c.get().onNotificationPosted(post("NEW_ORDER","New delivery offer","$25.00 · 5.2 mi · 21 min",null),null);
+            System.out.println("PROBE2 SDK="+Build.VERSION.SDK_INT+" audibleAfterIdenticalRepost="+anyAudible()+" records="+history().size());
+            assertFalse("PROBE2: identical re-post of the last-shown content rang again; records="+history().size(),anyAudible());
+        } finally { c.destroy(); }
+    }
+
+    // ---- accessibility helpers ----
+    private final Map<String, AccessibilityNodeInfo> nodes=new HashMap<>();
+    private AccessibilityNodeInfo node(String text, boolean clickable) {
+        AccessibilityNodeInfo n=AccessibilityNodeInfo.obtain(new View(app));n.setPackageName("com.doordash.driverapp");n.setText(text);n.setVisibleToUser(true);n.setEnabled(true);n.setClickable(clickable);
+        if(clickable){n.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);Shadows.shadowOf(n).setOnPerformActionListener((action,args)->true);}return n;
+    }
+    private AccessibilityNodeInfo screen(String... labels) {
+        AccessibilityNodeInfo root=node("",false);nodes.clear();
+        for (String label : labels) {
+            boolean clickable=OfferControls.isControl(label)||label.equals("Back")||label.equals("Cancel")||label.equals("Decline offer")||label.equals("Directions");
+            AccessibilityNodeInfo n=node(label,clickable);nodes.put(label,n);Shadows.shadowOf(root).addChild(n);
+        }
+        return root;
+    }
+    private void show(ServiceController<OfferFilterService> c, AccessibilityNodeInfo root) {
+        Shadows.shadowOf(c.get()).setRootInActiveWindow(root);
+        AccessibilityEvent e=AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);e.setPackageName("com.doordash.driverapp");c.get().onAccessibilityEvent(e);
+    }
+    private int clicks(String label) { return Shadows.shadowOf(nodes.get(label)).getPerformedActions().size(); }
+
+    /**
+     * PROBE 3: A ($7.90, failing) gets its first-step decline; the card leaves (map). 4 s later a different, PASSING offer B
+     * ($25) renders with acceptance-rate wording and its Accept not yet visible. With no pending authority B gets no click
+     * (incomplete controls). With A's authority, is B's Decline clicked through the confirmation branch?
+     */
+    @Test public void probe3_promptWordingOnDifferentOfferUsesStaleAuthority() {
+        FilterStore.save(app,new FilterSettings(true,2000,0,0,0,0));
+        ServiceController<OfferFilterService> c=Robolectric.buildService(OfferFilterService.class).create();ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        try {
+            // Control: B alone (no prior decline) -> 0 clicks.
+            AccessibilityNodeInfo bControl=screen("$25.00","2 stops (7.2 mi) • 21 min","Your acceptance rate may drop if you decline","Accept","Decline");nodes.get("Accept").setVisibleToUser(false);
+            show(c,bControl);int controlClicks=clicks("Decline");
+            show(c,screen("Heading to Chipotle","Directions"));ShadowSystemClock.advanceBy(Duration.ofSeconds(20));
+            show(c,screen("$7.90","2 stops (7.2 mi) • 21 min","Accept","Decline"));int aClicks=clicks("Decline");
+            show(c,screen("Heading to Chipotle","Directions"));ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+            AccessibilityNodeInfo b=screen("$25.00","2 stops (7.2 mi) • 21 min","Your acceptance rate may drop if you decline","Accept","Decline");nodes.get("Accept").setVisibleToUser(false);
+            show(c,b);int bClicks=clicks("Decline");
+            String report="SDK="+Build.VERSION.SDK_INT+" controlClicks="+controlClicks+" aClicks="+aClicks+" bClicks="+bClicks+" status="+FilterStore.lastStatus(app).replace('\n',' ');
+            System.out.println("PROBE3 "+report);
+            assertEquals("PROBE3 control", 0, controlClicks);
+            assertEquals("PROBE3 A first step", 1, aClicks);
+            assertEquals("PROBE3 passing B declined via A's stale authority: "+report, 0, bClicks);
+        } finally { c.destroy(); }
+    }
+
+    /** PROBE 3b: same with an Earn by Time card B (H4.2: never declined at any call site). */
+    @Test public void probe3b_earnByTimeCardViaStaleAuthority() {
+        FilterStore.save(app,new FilterSettings(true,2000,0,0,0,0));
+        ServiceController<OfferFilterService> c=Robolectric.buildService(OfferFilterService.class).create();ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        try {
+            show(c,screen("$7.90","2 stops (7.2 mi) • 21 min","Accept","Decline"));int aClicks=clicks("Decline");
+            show(c,screen("Heading to Chipotle","Directions"));ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+            show(c,screen("$15/active hr + tips","From when you accept to when you complete this offer","Declining this offer may lower your acceptance rate","Slide to accept","Decline"));
+            int bClicks=clicks("Decline");
+            System.out.println("PROBE3b SDK="+Build.VERSION.SDK_INT+" aClicks="+aClicks+" ebtClicks="+bClicks+" status="+FilterStore.lastStatus(app).replace('\n',' '));
+            assertEquals("PROBE3b Earn by Time card declined via stale authority", 0, bClicks);
+        } finally { c.destroy(); }
+    }
+}
