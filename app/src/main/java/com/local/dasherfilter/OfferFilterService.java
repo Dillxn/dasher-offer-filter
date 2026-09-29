@@ -60,6 +60,7 @@ public final class OfferFilterService extends AccessibilityService {
         connected = true;
         active = this;
         Updater.schedule(this);
+        Updater.check(this, false, null);
         DiagnosticLog.log(this, "accessibility", "service connected");
         status("Accessibility connected. Waiting for a Dasher offer.");
     }
