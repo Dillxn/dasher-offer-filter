@@ -52,6 +52,7 @@ public final class MainActivity extends Activity {
     public void onCreate(Bundle state) {
         super.onCreate(state);
         FilterSettings settings = FilterStore.load(this);
+        OfferAlerts.ensureChannel(this);
         ScrollView scroll = new ScrollView(this);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -99,12 +100,16 @@ public final class MainActivity extends Activity {
         Button notificationAccess = button("Allow background offer access");
         notificationAccess.setOnClickListener(v -> openNotificationAccess());
         page.addView(notificationAccess);
-        page.addView(text("Notification access lets Offer Filter notice a DoorDash offer while Dasher is in the background. It uses DoorDash's own notification action to bring Dasher forward for qualifying or unreadable offers, and removes a filtered offer notification after a Decline request succeeds.", 13));
-        Button sound = button("Dasher notification sound settings");
-        sound.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")));
+        page.addView(text("Notification access lets Offer Filter inspect DoorDash offers while Dasher is in the background.", 13));
+
+        Button offerAlerts = button("Enable selective Offer Filter alerts");
+        offerAlerts.setOnClickListener(v -> enableOfferAlerts());
+        page.addView(offerAlerts);
+
+        Button sound = button("Silence DoorDash offer channel");
+        sound.setOnClickListener(v -> openDoorDashOfferChannelSettings());
         page.addView(sound);
-        page.addView(text("Offer Filter is silent. Android can play a DoorDash notification before a listener can classify and cancel it, so a filtered offer may still make a brief sound. Ringing inside Dasher is separate.", 13));
+        page.addView(text("Best setup: leave DoorDash offer notifications allowed but set their offer category to Silent. Offer Filter then rings only after an offer passes your rules or genuinely needs review. Filtered offers stay silent. After Offer Filter observes an offer, this button opens that exact DoorDash notification channel. Sounds played inside Dasher itself are separate.", 13));
 
         page.addView(text("Last offer check", 18));
         status = text("", 14);
@@ -195,6 +200,53 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void enableOfferAlerts() {
+        OfferAlerts.ensureChannel(this);
+        if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 13);
+            return;
+        }
+        openOfferAlertChannelSettings();
+    }
+
+    private void openOfferAlertChannelSettings() {
+        OfferAlerts.ensureChannel(this);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+                        .putExtra(Settings.EXTRA_CHANNEL_ID, OfferAlerts.CHANNEL_ID));
+            } else {
+                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+            }
+        } catch (Exception error) {
+            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+        }
+    }
+
+    private void openDoorDashOfferChannelSettings() {
+        String channel = FilterStore.doorDashOfferChannel(this);
+        try {
+            if (Build.VERSION.SDK_INT >= 26 && !channel.isEmpty()) {
+                startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp")
+                        .putExtra(Settings.EXTRA_CHANNEL_ID, channel));
+            } else {
+                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp"));
+                Toast.makeText(this,
+                        "Offer Filter has not observed the DoorDash offer channel yet. Keep notifications allowed and set the offer category to Silent.",
+                        Toast.LENGTH_LONG).show();
+            }
+        } catch (Exception error) {
+            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, "com.doordash.driverapp"));
+        }
+    }
+
     private void shareDiagnostics() {
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType("text/plain");
@@ -224,6 +276,13 @@ public final class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 12) Updater.check(this, true, null);
+        if (requestCode == 13) {
+            OfferAlerts.ensureChannel(this);
+            refreshStatus();
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Selective offer alerts enabled.", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void save() {
@@ -308,9 +367,12 @@ public final class MainActivity extends Activity {
         String notification = OfferNotificationService.isConnected() ? "connected" :
                 notificationAllowed ? "allowed, waiting to connect" : "OFF";
         OfferSnapshot activeRoute = ActiveRouteStore.load(this);
+        String doorDashChannel = FilterStore.doorDashOfferChannel(this);
         status.setText(String.format(Locale.US,
-                "Accessibility: %s\nBackground notification access: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nActive route: %s\nDiagnostics: %s\n\n%s",
-                accessibility, notification, saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
+                "Accessibility: %s\nBackground notification access: %s\nSelective Offer Filter alerts: %s\nDoorDash offer channel: %s\nSaved auto-decline: %s\nSaved minimum payout: $%.2f\nSaved maximum stops: %s\nActive route: %s\nDiagnostics: %s\n\n%s",
+                accessibility, notification, OfferAlerts.canNotify(this) ? "ON" : "OFF",
+                doorDashChannel.isEmpty() ? "not observed yet" : doorDashChannel,
+                saved.enabled ? "ON" : "OFF", saved.flatCents / 100.0,
                 saved.maxStops == 0 ? "off" : saved.maxStops,
                 activeRoute == null ? "none" : activeRoute.summary(),
                 DiagnosticLog.isEnabled(this) ? "ON" : "off", FilterStore.lastStatus(this)));
