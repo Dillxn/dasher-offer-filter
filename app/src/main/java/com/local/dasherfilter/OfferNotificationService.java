@@ -192,7 +192,14 @@ public final class OfferNotificationService extends NotificationListenerService 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
         if (sbn == null || !DASHER_PACKAGE.equals(sbn.getPackageName())) return;
         synchronized (LOCK) {
-            if (sbn.getKey().equals(pendingKey)) clearLocked();
+            if (sbn.getKey().equals(pendingKey)) {
+                if (pendingAlertAfterScreen) {
+                    DiagnosticLog.log(this, "notification",
+                            "DoorDash notification removed while screen classification is still pending");
+                } else {
+                    clearLocked();
+                }
+            }
         }
         DiagnosticLog.log(this, "notification", "removed key=" + sbn.getKey());
     }
