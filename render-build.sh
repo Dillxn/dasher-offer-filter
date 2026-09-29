@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 ANDROID_CLI="commandlinetools-linux-15859902_latest.zip"
 ANDROID_CLI_SHA="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
 ANDROID_CLI_URL="https://dl.google.com/android/repository/$ANDROID_CLI"
-KEY_FINGERPRINT="4065b43922fab40d01f3246456a1899bef33ef7f81f499e62c5d5ca917a3abf3"
+KEY_FINGERPRINT="553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703"
 
 : "${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is required}"
 : "${OFFER_FILTER_KEYSTORE_B64:?OFFER_FILTER_KEYSTORE_B64 is required}"
@@ -62,7 +62,7 @@ chmod 600 .signing/OfferFilter-signing.p12
 actual_fp="$(keytool -list -v \
     -keystore .signing/OfferFilter-signing.p12 \
     -storepass "$OFFER_FILTER_SIGNING_PASSWORD" \
-    -alias offerfilter-reset |
+    -alias offerfilter-cloud |
     awk -F'SHA256: ' '/SHA256: / {v=$2; gsub(":", "", v); print tolower(v); exit}')"
 if [[ "$actual_fp" != "$KEY_FINGERPRINT" ]]; then
     echo "Signing certificate fingerprint mismatch." >&2
@@ -72,7 +72,7 @@ fi
 ./gradlew testDebugUnitTest
 
 export OFFER_FILTER_KEYSTORE="$PWD/.signing/OfferFilter-signing.p12"
-export OFFER_FILTER_KEY_ALIAS="offerfilter-reset"
+export OFFER_FILTER_KEY_ALIAS="offerfilter-cloud"
 export OFFER_FILTER_KEYSTORE_PASS_SPEC="env:OFFER_FILTER_SIGNING_PASSWORD"
 export OFFER_FILTER_KEY_PASS_SPEC="env:OFFER_FILTER_SIGNING_PASSWORD"
 ./build-local.sh
