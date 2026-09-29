@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'code=$?; echo "BUILD FAILURE line=$LINENO exit=$code command=$BASH_COMMAND" >&2' ERR
 
 cd "$(dirname "$0")"
 
@@ -31,6 +32,8 @@ with zipfile.ZipFile(pathlib.Path(sys.argv[1])) as z:
 PY
     mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
     chmod +x "$ANDROID_HOME/cmdline-tools/latest/bin/"*
+    echo "sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+    "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
     set +o pipefail
     yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
     license_status=$?
