@@ -100,9 +100,10 @@ final class DecisionChartView extends View {
             DecisionLog.Entry entry = entries.get(i);
             float center = left + slot * (firstSlot + i + 0.5f);
             if (i == selected) {
-                fill.setColor(ui.selectionWash);
-                rect.set(center - slot / 2f + ui.dp(1), top - ui.dp(20), center + slot / 2f - ui.dp(1), bottom);
-                canvas.drawRoundRect(rect, ui.dp(6), ui.dp(6), fill);
+                // A short accent bar under the baseline marks the tapped offer without looking like data.
+                fill.setColor(ui.accent);
+                rect.set(center - barWidth / 2f, bottom + ui.dp(3), center + barWidth / 2f, bottom + ui.dp(6));
+                canvas.drawRoundRect(rect, ui.dp(2), ui.dp(2), fill);
             }
             int color = Ui.resultColor(entry.result);
             float barTop = bottom;
@@ -156,14 +157,20 @@ final class DecisionChartView extends View {
         canvas.drawText(Ui.resultSymbol(result), x, y + symbol.getTextSize() / 3f, symbol);
     }
 
+    /** Oldest time under its column and newest at the right edge, each kept inside the chart and apart. */
     private void drawTimes(Canvas canvas, float firstX, float right) {
-        float baseline = getHeight() - ui.dp(6);
+        float baseline = getHeight() - ui.dp(4);
+        String newest = time(entries.get(entries.size() - 1).at);
+        label.setTextAlign(Paint.Align.RIGHT);
+        canvas.drawText(newest, right, baseline, label);
+        if (entries.size() == 1) return;
+        String oldest = time(entries.get(0).at);
+        float oldestWidth = label.measureText(oldest);
+        float newestStart = right - label.measureText(newest);
+        float start = Math.min(firstX, newestStart - ui.dp(12) - oldestWidth);
+        if (start < ui.dp(44)) return;
         label.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(time(entries.get(0).at), firstX, baseline, label);
-        if (entries.size() > 1) {
-            label.setTextAlign(Paint.Align.RIGHT);
-            canvas.drawText(time(entries.get(entries.size() - 1).at), right, baseline, label);
-        }
+        canvas.drawText(oldest, start, baseline, label);
     }
 
     private String time(long at) {

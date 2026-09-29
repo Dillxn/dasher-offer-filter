@@ -58,5 +58,24 @@ public final class OfferParserTest {
         assertEquals(Integer.valueOf(990),
                 OfferParser.parse(Arrays.asList("$9.90 Guaranteed", "+$2.00 Peak Pay")).payCents);
     }
+
+    /** Labels read from a real double-order offer screen (addresses shortened), Sept 2026. */
+    private static final java.util.List<String> REAL_DOUBLE_OFFER = Arrays.asList(
+            "Decline", "$9.75", "incl. tips", "4 stops (2.6 mi) • 30 min", "Jersey Mike's Subs",
+            "53 East 4th Street, 45202 OH", "Chipotle Mexican Grill", "1 Fountain Square Plaza, 45202 OH",
+            "Multiple dropoffs (2 stops)", "Guaranteed earnings for completing the offer.", "Accept", "0:46");
+
+    @Test public void readsARealDoubleOrderScreen() {
+        OfferSnapshot offer = OfferParser.parse(REAL_DOUBLE_OFFER);
+        assertEquals(Integer.valueOf(975), offer.payCents);
+        assertEquals(2.6, offer.miles, 0.001);
+        assertEquals(Integer.valueOf(30), offer.minutes);
+        // "Multiple dropoffs (2 stops)" breaks down the drop-offs; the route line's 4 stops is the total.
+        assertEquals(Integer.valueOf(4), offer.stops);
+    }
+
+    @Test public void stopBreakdownAloneIsNotTheTotal() {
+        assertNull(OfferParser.parse(Arrays.asList("$9.75", "Multiple dropoffs (2 stops)")).stops);
+    }
 }
 

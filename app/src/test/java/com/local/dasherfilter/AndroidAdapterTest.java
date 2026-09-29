@@ -475,6 +475,10 @@ public class AndroidAdapterTest {
         assertEquals("Whole route: Below your minimum pay",
                 MainActivity.plainReason("combined route fails: flat minimum"));
         assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
+        DecisionLog.Entry fromNotification = new DecisionLog.Entry(1, DecisionLog.Source.NOTIFICATION, false,
+                OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD,
+                true, Collections.emptyList());
+        assertEquals("Notification showed no pay", MainActivity.plainReason(fromNotification));
     }
 
     @Test

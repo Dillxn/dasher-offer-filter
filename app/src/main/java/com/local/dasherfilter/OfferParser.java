@@ -30,6 +30,9 @@ final class OfferParser {
     private static final Pattern ROUTE_COUNTS = Pattern.compile(
             "(?i)^(\\d{1,2})\\s+pick[ -]?ups?\\s*(?:[,•·+&/|]|and)\\s*"
                     + "(\\d{1,2})\\s+(?:customer\\s+)?drop[ -]?offs?$");
+    /** "Multiple dropoffs (2 stops)": a count of one kind of stop, not the route's total. */
+    private static final Pattern STOP_BREAKDOWN = Pattern.compile(
+            "(?i)(?:pick[ -]?ups?|drop[ -]?offs?)\\s*\\(\\s*\\d{1,2}\\s+stops?\\s*\\)");
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
     private static final Pattern METRIC_UNIT = Pattern.compile(
             "(?i)(?:mi\\.?|miles?|stops?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
@@ -191,6 +194,7 @@ final class OfferParser {
         Set<Integer> found = new HashSet<>();
         for (String line : lines) {
             if (STOP_RANGE.matcher(line).find()) return null;
+            if (STOP_BREAKDOWN.matcher(line).find()) continue;
             collectIntegers(STOPS.matcher(line), found);
             collectIntegers(STOPS_FIRST.matcher(line), found);
             Matcher counts = ROUTE_COUNTS.matcher(line);

@@ -22,7 +22,7 @@ The app retains original passing/unknown notifications rather than deleting them
 
 ## Rules and add-ons
 
-Zero disables a rule. Required pay is `max(flat, miles × per-mile rate, minutes × per-minute rate) + extra-stop fee × max(0, stops - 2)`. Maximum stops is inclusive. The optional standalone rising-payout baseline requires strictly more than the last observed accepted standalone payout.
+Stops count pickups plus drop-offs, as DoorDash shows them: a single order is 2 stops and a double is 4. A "(N stops)" breakdown beside pickups or drop-offs is not the total. Zero disables a rule. Required pay is `max(flat, miles × per-mile rate, minutes × per-minute rate) + extra-stop fee × max(0, stops - 2)`. Maximum stops is inclusive. The optional standalone rising-payout baseline requires strictly more than the last observed accepted standalone payout.
 
 Known failures may decline despite another missing field. Conflicting, oversized, malformed, negative, ranged, and ambiguous numeric inputs do not become exact facts. Costs use overflow-safe long arithmetic and decimal ceiling for mileage rates.
 

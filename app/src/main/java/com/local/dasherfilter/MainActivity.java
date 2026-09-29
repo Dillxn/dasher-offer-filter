@@ -103,7 +103,7 @@ public final class MainActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(ui.page);
-        scroll.setClipToPadding(false);
+        scroll.setClipToPadding(true);
         LinearLayout page = ui.column();
         page.setPadding(ui.dp(16), ui.dp(20), ui.dp(16), ui.dp(24));
         scroll.addView(page, Ui.matchWidth());
@@ -234,7 +234,7 @@ public final class MainActivity extends Activity {
         LinearLayout body = ui.foldingCard(page, "Rules");
         LinearLayout first = ui.row();
         flat = ui.field(cell(first), "Minimum pay ($)", money(saved.flatCents), true);
-        maxStops = ui.field(cell(first), "Max stops", Integer.toString(saved.maxStops), false);
+        maxStops = ui.field(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false);
         body.addView(first);
         LinearLayout second = ui.row();
         mile = ui.field(cell(second), "Per mile ($)", money(saved.perMileCents), true);
@@ -413,25 +413,25 @@ public final class MainActivity extends Activity {
         top.addView(ui.text(headline(entry), 15, ui.ink, true), Ui.weighted());
         top.addView(ui.text(when(entry.at), 13, ui.inkSecondary, false));
         texts.addView(top);
-        TextView details = ui.text(plainReason(entry.reason), 13, ui.inkSecondary, false);
+        TextView details = ui.text(plainReason(entry), 13, ui.inkSecondary, false);
         texts.addView(details);
         row.addView(texts, Ui.weighted());
         row.setClickable(true);
         row.setContentDescription(Ui.resultLabel(entry.result) + ", " + headline(entry) + ", "
-                + plainReason(entry.reason));
+                + plainReason(entry));
         row.setBackground(new RippleDrawable(ColorStateList.valueOf(ui.selectionWash), null,
                 ui.rounded(0xFFFFFFFF, 0, 8)));
         boolean[] expanded = {false};
         row.setOnClickListener(tapped -> {
             expanded[0] = !expanded[0];
-            details.setText(expanded[0] ? describe(entry, false) : plainReason(entry.reason));
+            details.setText(expanded[0] ? describe(entry, false) : plainReason(entry));
         });
         return row;
     }
 
     /** "$7.90 · needed $10.80", or "Pay not read". */
     private static String headline(DecisionLog.Entry entry) {
-        String pay = entry.facts.payCents == null ? "Pay not read" : DecisionLog.money(entry.facts.payCents);
+        String pay = entry.facts.payCents == null ? "Pay unknown" : DecisionLog.money(entry.facts.payCents);
         String needed = entry.requiredCents > 0 && entry.requiredCents < Long.MAX_VALUE
                 ? " · needed " + DecisionLog.money(entry.requiredCents) : "";
         return pay + needed + (entry.addOn ? " · add-on" : "");
@@ -444,14 +444,20 @@ public final class MainActivity extends Activity {
             text.append(Ui.resultLabel(entry.result)).append(" · ").append(headline(entry))
                     .append(" · ").append(when(entry.at)).append('\n');
         }
-        text.append(plainReason(entry.reason)).append('\n')
-                .append(DecisionLog.facts(entry.facts)).append('\n')
-                .append(entry.action.label)
+        text.append(plainReason(entry));
+        if (hasFacts(entry.facts)) text.append('\n').append(DecisionLog.facts(entry.facts));
+        text.append('\n').append(entry.action.label)
                 .append(entry.source == DecisionLog.Source.SCREEN ? " · on screen" : " · from notification")
-                .append(entry.autoDecline ? "" : " · while paused").append('\n')
-                .append(entry.evidence.isEmpty() ? "Nothing numeric read." : "Read: "
-                        + String.join("  ·  ", entry.evidence));
+                .append(entry.autoDecline ? "" : " · while paused");
+        if (!entry.evidence.isEmpty()) text.append('\n').append("Read: ").append(String.join("  ·  ", entry.evidence));
         return text.toString();
+    }
+
+    static String plainReason(DecisionLog.Entry entry) {
+        if (entry.reason.equals("pay not found")) {
+            return entry.source == DecisionLog.Source.NOTIFICATION ? "Notification showed no pay" : "Pay not readable";
+        }
+        return plainReason(entry.reason);
     }
 
     /** Rule reasons in everyday words; the report keeps the exact wording. */
@@ -482,6 +488,10 @@ public final class MainActivity extends Activity {
             default: plain = Character.toUpperCase(base.charAt(0)) + base.substring(1);
         }
         return stopFees ? plain + " (with stop fees)" : plain;
+    }
+
+    private static boolean hasFacts(OfferSnapshot facts) {
+        return facts.miles != null || facts.minutes != null || facts.stops != null;
     }
 
     /** "9:41 PM" today, otherwise "Sep 28, 9:41 PM". */

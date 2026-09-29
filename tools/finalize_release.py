@@ -24,7 +24,7 @@ def main():
     required = {'com.local.dasherfilter.AndroidAdapterTest': 56, 'com.local.dasherfilter.AccessibilityAdapterTest': 36, 'com.local.dasherfilter.DecisionLogTest': 9}
     for name, minimum in required.items():
         if suites.get(name, {}).get('tests', 0) < minimum: raise ValueError('Missing Android adapter coverage: ' + name)
-    if totals['tests'] < 195 or totals['failures'] or totals['errors'] or totals['skipped']:
+    if totals['tests'] < 197 or totals['failures'] or totals['errors'] or totals['skipped']:
         raise ValueError('Test gate failed: ' + json.dumps(totals))
     apk = ROOT / 'app/build/outputs/apk/debug/app-debug.apk'
     sdk = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'

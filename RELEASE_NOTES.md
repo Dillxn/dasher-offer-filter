@@ -1,3 +1,12 @@
+## 0.4.8 — fixes from the first real diagnostics report
+
+Built from the first real report sent from the phone:
+- **Stops on double orders.** DoorDash shows "4 stops (2.6 mi) • 30 min" and also "Multiple dropoffs (2 stops)". The second line counts drop-offs only, but was read as a conflicting total, so stops became unknown. A "(N stops)" breakdown next to pickups or drop-offs no longer counts as the total. The real screen text is now a regression test.
+- **"Max stops" says what it counts.** The label reads "Max stops (1 order = 2)". DoorDash counts pickups plus drop-offs, so a double order is 4 stops and a max of 2 or 3 declines every double.
+- **Screen fixes.** Content no longer scrolls behind the status bar. The tapped chart column gets a small marker under the axis instead of a grey column that looked like a bar. Time labels stay inside the chart. An unread-pay offer reads "Pay unknown / Notification showed no pay" instead of repeating itself.
+
+The report also showed that the two declines it captured followed the rules as written. $9.75 for 30 minutes needed $18.00 at $0.60/min, and $14.40 for 41 minutes needed $24.60, with 4 stops over a maximum of 2. Neither was a misread.
+
 ## 0.4.7 — false-decline fixes, decision history, clear Pause/Resume, redesigned screen
 
 After a report that a valid offer was declined, code review found three ways 0.4.6 could decline an offer that should have been kept. Each was reproduced by a failing test against the live 0.4.6 code before being fixed:
