@@ -1,7 +1,6 @@
 plugins {
     id 'com.android.application'
 }
-
 android {
     namespace 'com.local.dasherfilter'
     compileSdk 36
@@ -9,8 +8,8 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 26
         targetSdk 35
-        versionCode 10
-        versionName '0.4.4'
+        versionCode 11
+        versionName '0.4.5'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -21,7 +20,6 @@ android {
         unitTests.all { maxHeapSize = '1024m' }
     }
 }
-
 dependencies {
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.16.1'
