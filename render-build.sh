@@ -104,6 +104,11 @@ EOF
     "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
 } > public/signing-receipt.txt
 
+echo "=== PUBLISHED UPDATE MANIFEST ==="
+cat public/latest.json
+echo "=== SIGNING RECEIPT ==="
+cat public/signing-receipt.txt
+
 cat > public/index.html <<EOF
 <!doctype html>
 <meta charset="utf-8">
