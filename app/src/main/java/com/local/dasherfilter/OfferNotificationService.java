@@ -29,6 +29,8 @@ public final class OfferNotificationService extends NotificationListenerService 
     private static String pendingKey;
     private static long pendingAt;
     private static boolean pendingWake;
+    private static PendingIntent pendingContentIntent;
+    private static boolean pendingAlertAfterScreen;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     static boolean isConnected() { return active != null; }
@@ -51,11 +53,32 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     static void screenResolved(Context context, OfferRule.Result result, String detail) {
+        String key = null;
+        PendingIntent contentIntent = null;
+        boolean shouldAlert = false;
         synchronized (LOCK) {
             expireLocked(SystemClock.uptimeMillis());
             if (pendingKey == null) return;
             DiagnosticLog.log(context, "notification", "screen resolved " + result + ": " + detail);
-            if (result != OfferRule.Result.DECLINE) clearLocked();
+            if (result != OfferRule.Result.DECLINE) {
+                key = pendingKey;
+                contentIntent = pendingContentIntent;
+                shouldAlert = pendingAlertAfterScreen;
+                clearLocked();
+            }
+        }
+        if (shouldAlert) {
+            OfferAlerts.notifyOffer(context, contentIntent, result, detail);
+            OfferNotificationService service = active;
+            if (service != null && key != null) {
+                try {
+                    service.cancelNotification(key);
+                    DiagnosticLog.log(context, "notification", "replaced silent DoorDash offer with selective alert");
+                } catch (Exception error) {
+                    DiagnosticLog.log(context, "notification", "could not remove silent DoorDash offer: " +
+                            error.getClass().getSimpleName());
+                }
+            }
         }
     }
 
@@ -84,6 +107,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         active = this;
         Updater.schedule(this);
         Updater.check(this, false, null);
+        OfferAlerts.ensureChannel(this);
         DiagnosticLog.log(this, "notification", "listener connected");
     }
 
@@ -107,9 +131,11 @@ public final class OfferNotificationService extends NotificationListenerService 
             DiagnosticLog.log(this, "notification", "ignored because payload does not look like an offer");
             return;
         }
+        FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
+        DiagnosticLog.log(this, "notification", "DoorDash offer channel=" + notification.getChannelId());
 
         boolean alreadyForeground = OfferFilterService.isDasherForeground();
-        attachPending(sbn.getKey(), !alreadyForeground);
+        attachPending(sbn.getKey(), !alreadyForeground, notification.contentIntent, false);
         if (alreadyForeground) {
             DiagnosticLog.log(this, "notification", "Dasher already foreground; requesting immediate accessibility scan");
             OfferFilterService.requestCheckFromNotification();
@@ -126,29 +152,40 @@ public final class OfferNotificationService extends NotificationListenerService 
         DiagnosticLog.log(this, "notification", "parsed " +
                 (addOn == null ? offer.summary() : addOn.summary()) + "; " + decision.summary());
 
+        String evaluated = addOn == null ? offer.summary() : addOn.summary();
         if (decision.result == OfferRule.Result.DECLINE) {
             Notification.Action decline = findAction(notification, "decline");
             if (decline != null && send(decline.actionIntent)) {
                 try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
                 synchronized (LOCK) { clearLocked(); }
-                DiagnosticLog.log(this, "notification", "filtered offer handled through notification Decline action");
+                DiagnosticLog.log(this, "notification", "filtered offer handled silently through notification Decline action");
                 return;
             }
-            DiagnosticLog.log(this, "notification", "filtered by notification data; opening Dasher so Accessibility can decline it");
+            DiagnosticLog.log(this, "notification", "filtered by notification data; opening Dasher silently so Accessibility can decline it");
             wakeDasher(sbn);
             return;
         }
 
         if (decision.result == OfferRule.Result.KEEP) {
+            OfferAlerts.notifyOffer(this, notification.contentIntent, decision.result,
+                    evaluated + "; " + decision.summary());
             String route = wakeDasher(sbn);
-            if (!"none".equals(route) && (notification.flags & Notification.FLAG_AUTO_CANCEL) != 0) {
-                try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
+            try {
+                cancelNotification(sbn.getKey());
+                DiagnosticLog.log(this, "notification", "replaced qualifying silent DoorDash notification with Offer Filter alert");
+            } catch (Exception error) {
+                DiagnosticLog.log(this, "notification", "could not remove qualifying DoorDash notification: " +
+                        error.getClass().getSimpleName());
             }
             synchronized (LOCK) { clearLocked(); }
             return;
         }
 
-        DiagnosticLog.log(this, "notification", "notification lacks enough rule data; opening Dasher for screen evaluation");
+        synchronized (LOCK) {
+            pendingAlertAfterScreen = true;
+        }
+        DiagnosticLog.log(this, "notification",
+                "notification lacks enough rule data; opening Dasher silently for screen evaluation before alerting");
         wakeDasher(sbn);
     }
 
@@ -253,11 +290,14 @@ public final class OfferNotificationService extends NotificationListenerService 
         labels.add(label);
     }
 
-    private static void attachPending(String key, boolean wake) {
+    private static void attachPending(String key, boolean wake, PendingIntent contentIntent,
+                                      boolean alertAfterScreen) {
         synchronized (LOCK) {
             pendingKey = key;
             pendingAt = SystemClock.uptimeMillis();
             pendingWake = wake;
+            pendingContentIntent = contentIntent;
+            pendingAlertAfterScreen = alertAfterScreen;
         }
     }
 
@@ -269,5 +309,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         pendingKey = null;
         pendingAt = 0;
         pendingWake = false;
+        pendingContentIntent = null;
+        pendingAlertAfterScreen = false;
     }
 }
