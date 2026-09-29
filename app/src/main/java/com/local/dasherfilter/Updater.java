@@ -43,6 +43,9 @@ final class Updater {
     private static final String FEED = "https://raw.githubusercontent.com/" + UpdatePolicy.REPO + "/main/latest.json";
     private static final int JOB = 7241;
     private static final int NOTICE = 7242;
+    private static final long PERIOD_MS = 15 * 60 * 1000L;
+    private static final long FLEX_MS = 5 * 60 * 1000L;
+    private static final long FOREGROUND_RECHECK_MS = 60 * 1000L;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
 
@@ -79,10 +82,12 @@ final class Updater {
         JobScheduler scheduler = context.getSystemService(JobScheduler.class);
         if (scheduler == null) return;
         if (!enabled(context)) { scheduler.cancel(JOB); return; }
-        if (scheduler.getPendingJob(JOB) == null) {
+        JobInfo pending = scheduler.getPendingJob(JOB);
+        if (pending == null || pending.getIntervalMillis() != PERIOD_MS ||
+                pending.getFlexMillis() != FLEX_MS) {
             scheduler.schedule(new JobInfo.Builder(JOB, new ComponentName(context, UpdateJobService.class))
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                    .setPeriodic(60 * 60 * 1000L).setPersisted(true).build());
+                    .setPeriodic(PERIOD_MS, FLEX_MS).setPersisted(true).build());
         }
     }
 
@@ -112,14 +117,18 @@ final class Updater {
                     clearReady(app);
                 }
                 long now = System.currentTimeMillis();
-                if (!manual && now - prefs(app).getLong("checked_at", 0) < 5 * 60 * 1000L) return;
+                if (!manual && now < prefs(app).getLong("next_check_at", 0)) return;
                 status(app, "Checking for updates…");
                 ByteArrayOutputStream feed = new ByteArrayOutputStream();
-                download(FEED, feed, 16 * 1024);
+                download(FEED + "?t=" + now, feed, 16 * 1024);
                 JSONObject release = new JSONObject(feed.toString(StandardCharsets.UTF_8.name()));
                 metadata(release);
                 if (!UpdatePolicy.isNewer(release.getLong("versionCode"), current)) {
-                    prefs(app).edit().putLong("checked_at", now).apply();
+                    prefs(app).edit()
+                            .putLong("checked_at", now)
+                            .putLong("next_check_at", now + FOREGROUND_RECHECK_MS)
+                            .putInt("failure_count", 0)
+                            .apply();
                     status(app, "Up to date: " + installed.versionName);
                     return;
                 }
@@ -130,10 +139,23 @@ final class Updater {
                 }
                 validate(app, part, release, installed);
                 if (!part.renameTo(apk)) throw new IOException("Could not save update");
-                prefs(app).edit().putString("ready", release.toString()).putLong("checked_at", now).commit();
+                prefs(app).edit()
+                        .putString("ready", release.toString())
+                        .putLong("checked_at", now)
+                        .putLong("next_check_at", now + FOREGROUND_RECHECK_MS)
+                        .putInt("failure_count", 0)
+                        .commit();
                 install(app, apk, release, manual);
             } catch (Exception error) {
-                status(app, "Update check failed: " + error.getMessage() + ". Will retry later.");
+                long now = System.currentTimeMillis();
+                int failures = Math.min(8, prefs(app).getInt("failure_count", 0) + 1);
+                long delay = UpdatePolicy.retryDelayMillis(failures);
+                prefs(app).edit()
+                        .putInt("failure_count", failures)
+                        .putLong("next_check_at", now + delay)
+                        .apply();
+                status(app, "Update check failed: " + error.getMessage() +
+                        ". Retrying automatically in " + Math.max(1, delay / 60000L) + " min.");
             } finally {
                 if (done != null) done.run();
             }
