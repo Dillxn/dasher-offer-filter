@@ -8,7 +8,15 @@ tools="$sdk_root/build-tools/35.0.0"
 platform="$sdk_root/platforms/android-36/android.jar"
 work="app/build/local"
 output="app/build/outputs/apk/debug/app-debug.apk"
-key="$HOME/.android/debug.keystore"
+key="${OFFER_FILTER_KEYSTORE:-$HOME/.android/debug.keystore}"
+key_alias="${OFFER_FILTER_KEY_ALIAS:-androiddebugkey}"
+key_store_pass="${OFFER_FILTER_KEYSTORE_PASS_SPEC:-pass:android}"
+key_pass="${OFFER_FILTER_KEY_PASS_SPEC:-pass:android}"
+lineage="${OFFER_FILTER_LINEAGE:-}"
+old_key="${OFFER_FILTER_OLD_KEYSTORE:-$HOME/.android/debug.keystore}"
+old_alias="${OFFER_FILTER_OLD_KEY_ALIAS:-androiddebugkey}"
+old_store_pass="${OFFER_FILTER_OLD_KEYSTORE_PASS_SPEC:-pass:android}"
+old_key_pass="${OFFER_FILTER_OLD_KEY_PASS_SPEC:-pass:android}"
 
 for command in "$tools/aapt2" "$tools/d8" "$tools/zipalign" "$tools/apksigner" "$JAVA_HOME/bin/javac"; do
     if [[ ! -x "$command" ]]; then
@@ -48,14 +56,27 @@ while IFS= read -r -d '' file; do classes+=("$file"); done \
 "$tools/zipalign" -f 4 "$work/unsigned.apk" "$work/aligned.apk"
 
 if [[ ! -f "$key" ]]; then
-    mkdir -p "$(dirname "$key")"
-    "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$key" \
-        -storepass android -keypass android -alias androiddebugkey \
-        -keyalg RSA -keysize 2048 -validity 10000 \
-        -dname 'CN=Android Debug,O=Android,C=US' >/dev/null
+    echo "Signing keystore is missing: $key" >&2
+    echo "Refusing to create a replacement key because installed phones require signing continuity." >&2
+    exit 1
 fi
-"$tools/apksigner" sign --ks "$key" --ks-pass pass:android \
-    --key-pass pass:android --ks-key-alias androiddebugkey \
-    --out "$output" "$work/aligned.apk"
+if [[ -n "$lineage" ]]; then
+    if [[ ! -f "$lineage" || ! -f "$old_key" ]]; then
+        echo "Rotated signing requires the lineage and predecessor keystore." >&2
+        exit 1
+    fi
+    "$tools/apksigner" sign \
+        --ks "$old_key" --ks-key-alias "$old_alias" \
+        --ks-pass "$old_store_pass" --key-pass "$old_key_pass" \
+        --next-signer \
+        --ks "$key" --ks-key-alias "$key_alias" \
+        --ks-pass "$key_store_pass" --key-pass "$key_pass" \
+        --lineage "$lineage" \
+        --out "$output" "$work/aligned.apk"
+else
+    "$tools/apksigner" sign --ks "$key" --ks-pass "$key_store_pass" \
+        --key-pass "$key_pass" --ks-key-alias "$key_alias" \
+        --out "$output" "$work/aligned.apk"
+fi
 "$tools/apksigner" verify --min-sdk-version 26 "$output"
 echo "Built $output"
