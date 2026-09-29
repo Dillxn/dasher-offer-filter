@@ -9,6 +9,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.media.AudioAttributes;
+import android.provider.Settings;
 
 final class OfferAlerts {
     static final String CHANNEL_ID = "qualifying_offers";
@@ -22,6 +24,11 @@ final class OfferAlerts {
                 CHANNEL_ID, "Qualifying DoorDash offers", NotificationManager.IMPORTANCE_HIGH);
         channel.setDescription("Alerts only after Offer Filter decides an offer passes or needs review.");
         channel.enableVibration(true);
+        channel.setSound(Settings.System.DEFAULT_NOTIFICATION_URI,
+                new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build());
         manager.createNotificationChannel(channel);
     }
 
@@ -77,6 +84,7 @@ final class OfferAlerts {
                 .setTimeoutAfter(90_000L)
                 .setCategory(Notification.CATEGORY_RECOMMENDATION);
         if (action != null) builder.setContentIntent(action);
+        manager.cancel(NOTIFICATION_ID);
         manager.notify(NOTIFICATION_ID, builder.build());
         DiagnosticLog.log(context, "alert", "posted selective offer alert: " + result + " " + body);
     }
