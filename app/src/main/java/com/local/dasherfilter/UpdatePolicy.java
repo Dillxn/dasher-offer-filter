@@ -8,13 +8,23 @@ final class UpdatePolicy {
     static final long MAX_APK_BYTES = 16 * 1024 * 1024;
 
     static void validate(String packageName, long code, String url, String sha256, long bytes) {
+        validate(packageName, code, url, sha256, bytes, "raw");
+    }
+
+    static void validate(String packageName, long code, String url, String sha256, long bytes,
+                         String encoding) {
         URI uri = URI.create(url);
+        boolean release = "raw".equals(encoding) && "github.com".equals(uri.getHost()) &&
+                uri.getPath().matches("/" + REPO +
+                        "/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?/OfferFilter\\.apk");
+        boolean base64 = "base64".equals(encoding) && "raw.githubusercontent.com".equals(uri.getHost()) &&
+                uri.getPath().matches("/" + REPO +
+                        "/main/apks/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?/OfferFilter\\.apk\\.b64");
         if (!PACKAGE.equals(packageName) || code <= 0 || code > Integer.MAX_VALUE ||
-                !"https".equals(uri.getScheme()) || !"github.com".equals(uri.getHost()) ||
-                uri.getUserInfo() != null || uri.getPort() != -1 || uri.getQuery() != null ||
-                uri.getFragment() != null ||
-                !uri.getPath().matches("/" + REPO + "/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?/OfferFilter\\.apk") ||
-                !sha256.matches("[a-f0-9]{64}") || bytes <= 0 || bytes > MAX_APK_BYTES) {
+                !"https".equals(uri.getScheme()) || uri.getUserInfo() != null ||
+                uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null ||
+                (!release && !base64) || !sha256.matches("[a-f0-9]{64}") ||
+                bytes <= 0 || bytes > MAX_APK_BYTES) {
             throw new IllegalArgumentException("Invalid update metadata");
         }
     }
