@@ -108,14 +108,31 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("apk", type=Path)
     parser.add_argument("--notes-file", required=True, type=Path)
+    parser.add_argument("--expected-signer", default=SIGNER)
+    parser.add_argument("--lineage-file", type=Path)
+    parser.add_argument("--required-ancestor")
     args = parser.parse_args()
     apk = args.apk.resolve()
     sdk = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
     tools = sdk / "build-tools/35.0.0"
     os.environ.setdefault("JAVA_HOME", "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
     signature = run(str(tools / "apksigner"), "verify", "--print-certs", str(apk)).stdout
-    if f"certificate SHA-256 digest: {SIGNER}" not in signature:
-        raise RuntimeError("The APK uses a different signing key; existing phones cannot update to it")
+    normalized_signature = signature.lower().replace(":", "")
+    expected_signer = args.expected_signer.lower().replace(":", "")
+    if expected_signer not in normalized_signature:
+        raise RuntimeError("The APK does not contain the expected current signing certificate")
+    if args.lineage_file:
+        lineage = args.lineage_file.resolve()
+        if not lineage.is_file():
+            raise RuntimeError("Signing lineage file does not exist")
+        lineage_text = run(str(tools / "apksigner"), "lineage", "--in", str(lineage),
+                           "--print-certs", "-v").stdout.lower().replace(":", "")
+        if expected_signer not in lineage_text:
+            raise RuntimeError("Expected current signer is not present in the signing lineage")
+        if args.required_ancestor:
+            ancestor = args.required_ancestor.lower().replace(":", "")
+            if ancestor not in lineage_text:
+                raise RuntimeError("Required predecessor signer is not present in the signing lineage")
     badging = run(str(tools / "aapt2"), "dump", "badging", str(apk)).stdout
     match = re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging)
     if not match or match[1] != "com.local.dasherfilter":
