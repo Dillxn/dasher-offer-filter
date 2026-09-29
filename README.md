@@ -65,7 +65,7 @@ The app reads only the Dasher package (`com.doordash.driverapp`). Android Access
 
 Use JDK 17, Android SDK Platform 36, and SDK Build Tools 35.0.0. Run `./build-local.sh`. The APK stays local. Gradle 8.13 is also supported with `./gradlew testDebugUnitTest assembleDebug` when its dependencies are available.
 
-To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, build and test, push source on main, then run `python3 publish-update.py app/build/outputs/apk/debug/app-debug.apk --notes-file <release-notes.md>`. The publisher checks the existing signing certificate and rejects downgrades or changed APKs without a version increment. It uploads the same signed APK to Releases in both repositories before publishing `latest.json`, so phones receive a working download URL.
+To ship a new update, increase `versionCode` and `versionName` in both `app/build.gradle` and `build-local.sh`, update `RELEASE_NOTES.md`, push source on main, then run `./ship-update.sh` on the signing Mac. It runs the JUnit suite, builds with the existing signing key, verifies the APK version/signature and that the checkout exactly matches remote `main`, uploads the same APK to Releases in both repositories, switches `latest.json`, and finally downloads the feed and APK without authentication to verify the exact public channel phones use.
 
 ## Current limit
 
