@@ -123,10 +123,6 @@ public final class OfferNotificationService extends NotificationListenerService 
         DiagnosticLog.log(this, "notification", "posted key=" + sbn.getKey() + " labels=" + labels);
 
         FilterSettings settings = FilterStore.load(this);
-        if (!settings.enabled) {
-            DiagnosticLog.log(this, "notification", "ignored because auto-decline is off");
-            return;
-        }
         if (!NotificationOffer.isLikelyOffer(labels)) {
             DiagnosticLog.log(this, "notification", "ignored because payload does not look like an offer");
             return;
@@ -135,6 +131,16 @@ public final class OfferNotificationService extends NotificationListenerService 
         DiagnosticLog.log(this, "notification", "DoorDash offer channel=" + notification.getChannelId());
 
         boolean alreadyForeground = OfferFilterService.isDasherForeground();
+        if (!settings.enabled) {
+            DiagnosticLog.log(this, "notification", "auto-decline is off; relaying offer through selective alert");
+            if (!alreadyForeground) {
+                OfferAlerts.notifyOffer(this, notification.contentIntent, OfferRule.Result.REVIEW,
+                        "Auto-decline is off; DoorDash offer requires review.");
+                wakeDasher(sbn);
+                try { cancelNotification(sbn.getKey()); } catch (Exception ignored) {}
+            }
+            return;
+        }
         attachPending(sbn.getKey(), !alreadyForeground, notification.contentIntent, false);
         if (alreadyForeground) {
             DiagnosticLog.log(this, "notification", "Dasher already foreground; requesting immediate accessibility scan");
