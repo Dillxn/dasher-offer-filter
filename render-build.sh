@@ -15,10 +15,22 @@ KEY_FINGERPRINT="4065b43922fab40d01f3246456a1899bef33ef7f81f499e62c5d5ca917a3abf
 : "${UPDATE_BASE_URL:?UPDATE_BASE_URL is required}"
 
 export ANDROID_HOME="$PWD/.android-sdk"
-if [[ -z "\${JAVA_HOME:-}" ]]; then
+if ! command -v java >/dev/null 2>&1 || ! command -v javac >/dev/null 2>&1; then
+    echo "Installing Eclipse Temurin 17..."
+    mkdir -p "$PWD/.jdk"
+    curl -fsSL \
+      "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse" \
+      -o /tmp/temurin17.tar.gz
+    tar -xzf /tmp/temurin17.tar.gz -C "$PWD/.jdk" --strip-components=1
+    export JAVA_HOME="$PWD/.jdk"
+    export PATH="$JAVA_HOME/bin:$PATH"
+else
     JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
     export JAVA_HOME
 fi
+echo "JAVA_HOME=$JAVA_HOME"
+java -version
+javac -version
 
 mkdir -p "$ANDROID_HOME/cmdline-tools" .signing public
 if [[ ! -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" ]]; then
