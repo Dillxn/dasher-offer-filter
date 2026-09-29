@@ -19,11 +19,12 @@ for command in "$tools/aapt2" "$tools/d8" "$tools/zipalign" "$tools/apksigner" "
 done
 [[ -f "$platform" && -f "$key" ]] || { echo 'Missing SDK or signing key; no replacement key will be generated.' >&2; exit 1; }
 rm -rf "$work"
-mkdir -p "$work/compiled" "$work/classes" "$work/dex" "$(dirname "$output")"
+mkdir -p "$work/compiled" "$work/gen" "$work/classes" "$work/dex" "$(dirname "$output")"
 "$tools/aapt2" compile --dir app/src/main/res -o "$work/compiled"
 flat_files=(); while IFS= read -r -d '' file; do flat_files+=("$file"); done < <(find "$work/compiled" -type f -name '*.flat' -print0)
-"$tools/aapt2" link -o "$work/unsigned.apk" --manifest app/src/main/AndroidManifest.xml -I "$platform" --min-sdk-version 26 --target-sdk-version 35 --version-code "$code" --version-name "$version" --auto-add-overlay -R "${flat_files[@]}"
-sources=(); while IFS= read -r -d '' file; do sources+=("$file"); done < <(find app/src/main/java -type f -name '*.java' -print0)
+"$tools/aapt2" link -o "$work/unsigned.apk" --manifest app/src/main/AndroidManifest.xml -I "$platform" --min-sdk-version 26 --target-sdk-version 35 --version-code "$code" --version-name "$version" --auto-add-overlay --java "$work/gen" -R "${flat_files[@]}"
+# R.java comes from aapt2 so code can reference resources (icons, colors) exactly as the Gradle build does.
+sources=(); while IFS= read -r -d '' file; do sources+=("$file"); done < <(find app/src/main/java "$work/gen" -type f -name '*.java' -print0)
 "$JAVA_HOME/bin/javac" -source 17 -target 17 -classpath "$platform" -d "$work/classes" "${sources[@]}"
 classes=(); while IFS= read -r -d '' file; do classes+=("$file"); done < <(find "$work/classes" -type f -name '*.class' -print0)
 "$tools/d8" --lib "$platform" --min-api 26 --output "$work/dex" "${classes[@]}"

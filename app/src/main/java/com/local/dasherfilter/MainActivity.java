@@ -68,14 +68,14 @@ public final class MainActivity extends Activity {
     }
     private static String money(int cents) { return String.format(Locale.US, "%.2f", cents / 100.0); }
     private void pause() {
-        FilterSettings s = FilterStore.load(this); FilterStore.save(this, new FilterSettings(false, s.flatCents, s.perMileCents, s.perMinuteCents, s.extraStopCents, s.maxStops, s.risingOffers, s.lastAcceptedCents));
+        FilterStore.save(this, FilterStore.load(this).withEnabled(false));
         if (enabled != null && enabled.isChecked()) enabled.setChecked(false); OfferNotificationService.rulesChanged(); OfferFilterService.requestCheckFromNotification(); toast("Auto-decline paused immediately."); refreshStatus();
     }
     private void save() {
         try {
             String n = maxStops.getText().toString().trim(); if (!n.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
-            FilterSettings next = new FilterSettings(enabled.isChecked(), parse(flat), parse(mile), parse(minute), parse(stop), Integer.parseInt(n), rising.isChecked(), FilterStore.load(this).lastAcceptedCents);
-            if (next.enabled && next.flatCents == 0 && next.perMileCents == 0 && next.perMinuteCents == 0 && next.extraStopCents == 0 && next.maxStops == 0 && !next.risingOffers) throw new IllegalArgumentException("Enable at least one rule before auto-decline.");
+            FilterSettings next = FilterStore.load(this).withEnabled(enabled.isChecked()).withFlatCents(parse(flat)).withPerMileCents(parse(mile)).withPerMinuteCents(parse(minute)).withExtraStopCents(parse(stop)).withMaxStops(Integer.parseInt(n)).withRisingOffers(rising.isChecked());
+            if (next.enabled && !next.hasAnyRule()) throw new IllegalArgumentException("Enable at least one rule before auto-decline.");
             FilterStore.save(this, next); OfferNotificationService.rulesChanged(); OfferFilterService.requestCheckFromNotification(); toast("Rules saved."); refreshStatus();
         } catch (IllegalArgumentException error) { toast(error.getMessage()); }
     }

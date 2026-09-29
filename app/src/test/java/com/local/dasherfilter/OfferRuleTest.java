@@ -40,14 +40,17 @@ public final class OfferRuleTest {
     @Test public void threeDollarOfferFailsTwentyTwoDollarFloorWithOtherValuesMissing() {
         OfferSnapshot o=p("$3.00 Guaranteed","Accept, 30 seconds","Decline"); assertEquals(Integer.valueOf(300),o.payCents); OfferRule.Decision d=OfferRule.evaluate(o,new FilterSettings(true,2200,150,30,100,2)); assertEquals(OfferRule.Result.DECLINE,d.result); assertEquals(2200L,d.requiredCents);
     }
+    // 0.5.0 (spec B6) deliberately changed the rising baseline: it applies only when dated within the last 8 hours.
+    // A legacy 8-argument baseline has no timestamp and no longer applies (loosening only), so these fixtures date it now.
+    private static FilterSettings fresh(FilterSettings s) { return s.withLastAccepted(s.lastAcceptedCents, System.currentTimeMillis()); }
     @Test public void risingRuleRequiresStrictlyMoreThanLastAcceptedPay() {
-        FilterSettings s=new FilterSettings(true,2200,0,0,0,0,true,2500); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2499,null,null,null),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2500,null,null,null),s).result); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2501,null,null,null),s).result); assertEquals(2501L,OfferRule.evaluate(new OfferSnapshot(2500,null,null,null),s).requiredCents);
+        FilterSettings s=fresh(new FilterSettings(true,2200,0,0,0,0,true,2500)); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2499,null,null,null),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2500,null,null,null),s).result); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2501,null,null,null),s).result); assertEquals(2501L,OfferRule.evaluate(new OfferSnapshot(2500,null,null,null),s).requiredCents);
     }
     @Test public void risingRuleStartsWithNormalRulesAndCanBeDisabled() {
         FilterSettings s=new FilterSettings(true,2200,0,0,0,0,true,0); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2200,null,null,null),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2199,null,null,null),s).result); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2200,null,null,null),new FilterSettings(true,2200,0,0,0,0,false,2500)).result);
     }
     @Test public void risingRuleCombinesWithPriceAndStopRulesWithoutDoubleCharging() {
-        FilterSettings s=new FilterSettings(true,2200,0,0,100,3,true,2500); assertEquals(2501L,OfferRule.evaluate(new OfferSnapshot(2501,null,null,3),s).requiredCents); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2501,null,null,3),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(9900,null,null,4),s).result); assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluate(new OfferSnapshot(null,null,null,3),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(300,null,null,null),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2600,null,null,null),new FilterSettings(true,3000,0,0,0,0,true,2500)).result);
+        FilterSettings s=fresh(new FilterSettings(true,2200,0,0,100,3,true,2500)); assertEquals(2501L,OfferRule.evaluate(new OfferSnapshot(2501,null,null,3),s).requiredCents); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(2501,null,null,3),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(9900,null,null,4),s).result); assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluate(new OfferSnapshot(null,null,null,3),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(300,null,null,null),s).result); assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluate(new OfferSnapshot(2600,null,null,null),new FilterSettings(true,3000,0,0,0,0,true,2500)).result);
     }
     @Test public void maximumStopsIsInclusiveAndWorksWithoutPay() {
         FilterSettings s=new FilterSettings(true,0,0,0,0,3); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(null,null,null,2),s).result); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluate(new OfferSnapshot(null,null,null,3),s).result); OfferRule.Decision d=OfferRule.evaluate(new OfferSnapshot(null,null,null,4),s); assertEquals(OfferRule.Result.DECLINE,d.result); assertEquals("DECLINE: 4 stops exceeds maximum 3",d.summary());
@@ -63,17 +66,23 @@ public final class OfferRuleTest {
         FilterSettings s=new FilterSettings(true,0,0,0,0,2);
         for(String[] labels:new String[][]{{"$25.00","2 stops","4 stops"},{"$25.00","2–4 stops"},{"$25.00","Stops: 2-4"},{"$25.00","2.5 stops"},{"$25.00","Stops: 2.5"},{"$25.00","0 stops"}}){OfferSnapshot o=OfferParser.parse(Arrays.asList(labels));assertNull(o.stops);assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluate(o,s).result);}
     }
+    // 0.5.0 third review: an add-on route total derived from the stored route plus the increment is unknown (the stored route
+    // may be partly driven or stale), so it never passes or declines an add-on. The 0.4.5 KEEP cases below relied on derived
+    // totals; they are REVIEW now, and pass only when DoorDash displays the route totals. Marginal declines are unchanged.
     @Test public void addOnUsesMarginalEconomicsAndCombinedRoute() {
         FilterSettings s=new FilterSettings(true,2000,150,0,0,0); OfferSnapshot active=new OfferSnapshot(2500,10.0,null,2);
-        AddOnOffer good=AddOnOffer.parse(active,p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi")); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(good,s).result);
+        AddOnOffer good=AddOnOffer.parse(active,p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi")); assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluateAddOn(good,s).result);
+        AddOnOffer shown=AddOnOffer.parse(active,p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi","New total $28.00","Total distance: 11 mi")); assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(shown,s).result);
         AddOnOffer bad=AddOnOffer.parse(active,p("$3.00","4 mi"),Arrays.asList("Add to route","+$3.00","+4 mi")); OfferRule.Decision d=OfferRule.evaluateAddOn(bad,s); assertEquals(OfferRule.Result.DECLINE,d.result);assertEquals(600L,d.requiredCents);
     }
-    @Test public void addOnFlatMinimumAppliesToCombinedRouteNotTwice() { AddOnOffer a=AddOnOffer.parse(new OfferSnapshot(2200,null,null,null),p("$3.00"),Arrays.asList("Add to route","+$3.00"));assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(a,new FilterSettings(true,2200,0,0,0,0)).result); }
+    @Test public void addOnFlatMinimumAppliesToCombinedRouteNotTwice() { AddOnOffer a=AddOnOffer.parse(new OfferSnapshot(2200,null,null,null),p("$3.00"),Arrays.asList("Add to route","+$3.00"));assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluateAddOn(a,new FilterSettings(true,2200,0,0,0,0)).result);
+        AddOnOffer shown=AddOnOffer.parse(new OfferSnapshot(2200,null,null,null),p("$3.00"),Arrays.asList("Add to route","+$3.00","New total $25.00"));assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(shown,new FilterSettings(true,2200,0,0,0,0)).result); }
     @Test public void addOnUsesCombinedStopCeilingAndMarginalStopFee() {
         AddOnOffer a=AddOnOffer.parse(new OfferSnapshot(2500,null,null,2),p("$3.00","2 stops"),Arrays.asList("Add to route","+$3.00","+2 stops"));assertEquals(OfferRule.Result.DECLINE,OfferRule.evaluateAddOn(a,new FilterSettings(true,0,0,0,0,3)).result); OfferRule.Decision d=OfferRule.evaluateAddOn(a,new FilterSettings(true,0,0,0,200,0));assertEquals(OfferRule.Result.DECLINE,d.result);assertEquals(400L,d.requiredCents);
     }
     @Test public void addOnDoesNotRequireMarginalPayToBeatPriorFullOrder() {
-        AddOnOffer a=AddOnOffer.parse(new OfferSnapshot(2500,10.0,null,2),p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi"));assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(a,new FilterSettings(true,2000,100,0,0,0,true,2500)).result);
+        AddOnOffer a=AddOnOffer.parse(new OfferSnapshot(2500,10.0,null,2),p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi"));assertEquals(OfferRule.Result.REVIEW,OfferRule.evaluateAddOn(a,new FilterSettings(true,2000,100,0,0,0,true,2500)).result);
+        AddOnOffer shown=AddOnOffer.parse(new OfferSnapshot(2500,10.0,null,2),p("$3.00","1 mi"),Arrays.asList("Add to route","+$3.00","+1 mi","Total pay $28.00","11 mi total"));assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(shown,new FilterSettings(true,2000,100,0,0,0,true,2500)).result);
     }
     @Test public void addOnMissingEnabledMarginalMetricRequiresReviewUnlessKnownFailure() {
         FilterSettings s=new FilterSettings(true,0,150,30,0,0);OfferSnapshot active=new OfferSnapshot(2500,10.0,50,2);

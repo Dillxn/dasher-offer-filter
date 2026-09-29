@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="of_background">#0E1311</color>
+    <color name="of_surface">#171E1B</color>
+    <color name="of_surface_variant">#222B27</color>
+    <color name="of_outline">#34403B</color>
+    <color name="of_text_primary">#E6ECE9</color>
+    <color name="of_text_secondary">#A3B0AA</color>
+    <color name="of_brand">#5BC894</color>
+    <color name="of_brand_dark">#3FA877</color>
+    <color name="of_on_brand">#0B1F16</color>
+    <color name="of_pass">#6BD49C</color>
+    <color name="of_pass_container">#173A28</color>
+    <color name="of_review">#F2B84B</color>
+    <color name="of_review_container">#3D2E10</color>
+    <color name="of_decline">#F28C7A</color>
+    <color name="of_decline_container">#43201A</color>
+</resources>

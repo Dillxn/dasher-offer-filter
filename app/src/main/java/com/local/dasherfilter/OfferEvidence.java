@@ -10,7 +10,14 @@ import java.util.regex.Pattern;
 final class OfferEvidence {
     private static final Pattern CASH = Pattern.compile("\\$\\s*([+\\-]?[\\d.,]+)");
     private static final Pattern CASH_RANGE = Pattern.compile("\\$\\s*[\\d.,]+\\s*[-–—]\\s*\\$?\\s*\\d");
-    private static final Pattern TIME_RANGE = Pattern.compile("(?i)\\d+(?:\\.\\d+)?\\s*[-–—]\\s*\\d+(?:\\.\\d+)?\\s*(?:min|minutes?|hr|hours?)\\b");
+    // "20-30 min", "21 to 35 mins", "1–2 hrs": a range is never an exact duration.
+    private static final Pattern TIME_RANGE = Pattern.compile("(?i)\\d+(?:\\.\\d+)?\\s*(?:[-–—]|to)\\s*\\d+(?:\\.\\d+)?\\s*(?:mins?|minutes?|hrs?|hours?)\\b");
+    private static final Pattern MONEY_TOKEN = Pattern.compile("\\$\\s*\\d");
+    private static final String INCREMENT = "\\s*\\+\\s*\\d{1,3}(?:\\.\\d{1,2})?\\s*(?:mi|miles?|mins?|minutes?|stops?)\\b";
+    private static final Pattern PLUS_AFTER = Pattern.compile("(?i)^(?!" + INCREMENT + ")\\s*\\+");
+    // "$7.50+", "+ tips", "plus tips", "before tips", "excl. tips", "tips not included": tips come on top of the shown amount.
+    private static final Pattern LOWER_BOUND = Pattern.compile("(?i)\\$\\s*\\d{1,4}(?:[.,]\\d{1,2})?(?!" + INCREMENT + ")\\s*\\+|(?:\\+|\\bplus)\\s*tips?\\b|" +
+            "\\b(?:before|excl\\.?|excluding|without|not\\s+including)\\s+(?:customer\\s+)?tips?\\b|\\btips?\\s+(?:not\\s+included|extra|additional)\\b");
 
     static String normalize(String text) {
         if (text == null) return "";
@@ -39,6 +46,12 @@ final class OfferEvidence {
         return false;
     }
     static boolean timeRange(String line) { return TIME_RANGE.matcher(normalize(line)).find(); }
+    static boolean hasMoneyToken(String line) { return MONEY_TOKEN.matcher(normalize(line)).find(); }
+    /** "$7.50+", "$7.50 + $2.00", "+ tips" or "before tips": the displayed amount is a floor or a sum, not the exact payout. */
+    static boolean lowerBound(String line) { return LOWER_BOUND.matcher(normalize(line)).find(); }
+    /** Text right after a money token starts with '+' that is not a separate "+2 mi"-style increment. */
+    static boolean plusFollows(String remainder) { return PLUS_AFTER.matcher(remainder).find(); }
+    static boolean lowerBoundMoney(List<String> labels) { for (String label : labels) if (lowerBound(label)) return true; return false; }
     static boolean isIdle(List<String> labels) {
         if (labels == null) return false;
         for (String raw : labels) {

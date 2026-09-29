@@ -41,7 +41,8 @@ public final class OfferFilterService extends AccessibilityService {
         if (event == null) return;
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOWS_CHANGED && (event.getPackageName() == null || !DASHER_PACKAGE.contentEquals(event.getPackageName()))) return;
         if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            if (isAcceptClick(event)) acceptedTracker.acceptClicked(SystemClock.uptimeMillis());
+            // Any accept tap may change the route; it stays unknown until an observed acceptance stores the new one.
+            if (isAcceptClick(event)) { acceptedTracker.acceptClicked(SystemClock.uptimeMillis()); ActiveRouteStore.clear(this); }
             for (CharSequence label : event.getText()) {
                 String text = OfferEvidence.normalize(label == null ? null : label.toString()).toLowerCase(java.util.Locale.US);
                 if (text.equals("confirm pickup") || text.equals("complete pickup") || text.equals("complete delivery") || text.equals("confirm dropoff")) ActiveRouteStore.invalidateTravel(this);
@@ -64,7 +65,7 @@ public final class OfferFilterService extends AccessibilityService {
             diagnostic("confirmation", confirmation, null, null);
             if (!settings.enabled || !declineState.hasPendingConfirmation(now)) return false;
             if (declineGeneration != OfferNotificationService.generation()) { declineState.reset(); status("A new notification arrived; old decline confirmation authority revoked."); return false; }
-            int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels, confirmation.hasAcceptLabel);
+            int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels, confirmation.hasAcceptLabel, showsDeclinedOffer(confirmation));
             if (selected >= 0 && declineState.mayConfirm(now) && click(confirmation.declineTargets.get(selected))) { declineState.confirmationSent(now); status("Decline confirmation requested; waiting for Dasher to close the offer."); }
             return true;
         }
@@ -87,7 +88,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (scan.accept.equals(scan.decline)) { status("Ambiguous shared button target; no action."); return false; }
         boolean isAddOn = AddOnOffer.isLikely(scan.text);
         AddOnOffer addOn = isAddOn ? AddOnOffer.parse(ActiveRouteStore.load(this), offer, scan.text) : null;
-        acceptedTracker.observeOffer(offer, isAddOn ? addOn.combined : offer, isAddOn, now);
+        acceptedTracker.observeOffer(offer, isAddOn ? addOn.combined : offer, isAddOn, scan.text, now);
         OfferRule.Decision decision = isAddOn ? OfferRule.evaluateAddOn(addOn, settings) : OfferRule.evaluate(offer, settings);
         diagnostic(isAddOn ? "add-on" : "offer", scan, offer, decision); String detail = isAddOn ? addOn.summary() : offer.summary();
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
@@ -95,7 +96,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         String key = DeclineState.offerKey(offer, scan.text); if (!declineState.mayDecline(key, now)) return declineState.hasPendingConfirmation(now);
         if (isDasher(getRootInActiveWindow()) && click(scan.decline)) {
-            declineState.declineSent(key, now); declineGeneration = OfferNotificationService.generation();
+            declineState.declineSent(key, offer, now); declineGeneration = OfferNotificationService.generation();
             DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail); status("Decline requested: " + detail + "\n" + decision.summary());
         } else status("Decline click was not accepted by Android. No completion claimed.");
         return true;
@@ -105,10 +106,12 @@ public final class OfferFilterService extends AccessibilityService {
             if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
             AccessibilityNodeInfo root = window.getRoot(); if (!isDasher(root)) continue;
             Scan candidate = new Scan(); scan(root, candidate, 0);
-            if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text, candidate.hasAcceptLabel)) return candidate;
+            if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text, candidate.hasAcceptLabel, showsDeclinedOffer(candidate))) return candidate;
         }
-        return DeclineConfirmation.isSurface(primary.text, primary.hasAcceptLabel) ? primary : null;
+        return DeclineConfirmation.isSurface(primary.text, primary.hasAcceptLabel, pending && showsDeclinedOffer(primary)) ? primary : null;
     }
+    /** A sheet laid over the declined offer still shows that offer's facts; a different offer never matches. */
+    private boolean showsDeclinedOffer(Scan s) { return declineState.isDeclinedOffer(OfferParser.parse(s.text, s.metricParts)); }
     private static boolean isAcceptClick(AccessibilityEvent e) {
         for (CharSequence label : e.getText()) if (label != null && OfferControls.isButton(label.toString(), "accept")) return true;
         if (e.getContentDescription() != null && OfferControls.isButton(e.getContentDescription().toString(), "accept")) return true;

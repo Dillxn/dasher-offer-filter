@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Framework-only theme (no AndroidX). Dark variant in values-night. -->
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/of_brand</item>
+        <item name="android:colorPrimaryDark">@color/of_brand_dark</item>
+        <item name="android:colorAccent">@color/of_brand</item>
+        <item name="android:windowBackground">@color/of_background</item>
+        <item name="android:statusBarColor">@color/of_background</item>
+        <item name="android:navigationBarColor">@color/of_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">@color/of_text_primary</item>
+        <item name="android:textColorSecondary">@color/of_text_secondary</item>
+    </style>
+</resources>

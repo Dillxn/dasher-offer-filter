@@ -7,7 +7,12 @@ import static org.junit.Assert.*;
 
 public final class DeclineConfirmationTest {
     @Test public void selectsSecondButtonEvenWithBackgroundAcceptPresent() {
+        // 0.5.0: without a prompt, a sheet over an offer (money + Accept + Cancel) is indistinguishable from a fresh offer
+        // with a nav Cancel, so it confirms only when the adapter proved it shows the declined offer (sameDeclinedOffer).
         assertEquals(1, DeclineConfirmation.select(
+                Arrays.asList("$3.00", "Accept 29", "Decline", "Cancel", "Decline offer"),
+                Arrays.asList("Decline", "Decline offer"), true, true));
+        assertEquals(-1, DeclineConfirmation.select(
                 Arrays.asList("$3.00", "Accept 29", "Decline", "Cancel", "Decline offer"),
                 Arrays.asList("Decline", "Decline offer"), true));
     }

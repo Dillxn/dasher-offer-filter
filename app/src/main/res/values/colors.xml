@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Offer Filter palette. Deliberately not DoorDash branding. Night values live in values-night. -->
+<resources>
+    <color name="of_background">#F3F5F4</color>
+    <color name="of_surface">#FFFFFF</color>
+    <color name="of_surface_variant">#E8EDEB</color>
+    <color name="of_outline">#D3DAD7</color>
+    <color name="of_text_primary">#15201C</color>
+    <color name="of_text_secondary">#56635E</color>
+    <color name="of_brand">#1E6B52</color>
+    <color name="of_brand_dark">#154D3B</color>
+    <color name="of_on_brand">#FFFFFF</color>
+    <color name="of_pass">#1E7D4F</color>
+    <color name="of_pass_container">#DDF3E6</color>
+    <color name="of_review">#8A5800</color>
+    <color name="of_review_container">#FFF1D6</color>
+    <color name="of_decline">#B3412E</color>
+    <color name="of_decline_container">#FBE3DE</color>
+    <color name="of_launcher_background">#1E6B52</color>
+    <color name="of_launcher_accent">#FFC857</color>
+</resources>
