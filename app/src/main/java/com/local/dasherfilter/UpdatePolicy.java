@@ -17,13 +17,16 @@ final class UpdatePolicy {
         boolean release = "raw".equals(encoding) && "github.com".equals(uri.getHost()) &&
                 uri.getPath().matches("/" + REPO +
                         "/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?/OfferFilter\\.apk");
+        boolean render = "raw".equals(encoding) &&
+                "dash-offer-filter-build.onrender.com".equals(uri.getHost()) &&
+                "/OfferFilter.apk".equals(uri.getPath());
         boolean base64 = "base64".equals(encoding) && "raw.githubusercontent.com".equals(uri.getHost()) &&
                 uri.getPath().matches("/" + REPO +
                         "/main/apks/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.]+)?/OfferFilter\\.apk\\.b64");
         if (!PACKAGE.equals(packageName) || code <= 0 || code > Integer.MAX_VALUE ||
                 !"https".equals(uri.getScheme()) || uri.getUserInfo() != null ||
                 uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null ||
-                (!release && !base64) || !sha256.matches("[a-f0-9]{64}") ||
+                (!release && !render && !base64) || !sha256.matches("[a-f0-9]{64}") ||
                 bytes <= 0 || bytes > MAX_APK_BYTES) {
             throw new IllegalArgumentException("Invalid update metadata");
         }
