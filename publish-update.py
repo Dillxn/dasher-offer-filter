@@ -51,6 +51,9 @@ def verify_source_matches(code, version):
     version_match = re.search(r"versionName\s+'([^']+)'", gradle)
     if not code_match or not version_match or int(code_match.group(1)) != code or version_match.group(1) != version:
         raise RuntimeError("APK version does not match app/build.gradle")
+    tracked_changes = run("git", "status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if tracked_changes:
+        raise RuntimeError("Tracked source files have uncommitted changes; commit them before publishing")
     local_head = run("git", "rev-parse", "HEAD").stdout.strip()
     remote_head = run("gh", "api", f"repos/{SOURCE_REPO}/commits/main", "--jq", ".sha").stdout.strip()
     if local_head != remote_head:
