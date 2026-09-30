@@ -1,3 +1,23 @@
+## 0.4.21 — one picture, live while dashing
+
+- **The main page is one illustration.** Instead of separate pictures stacked like magazine sections, the whole page is one scene:
+  - a sky from the top down to the horizon: a soft morning blue warming towards the horizon with a sun and drifting clouds, or at night deep blue with a moon and stars;
+  - the mascot and its state up in the sky, and the minimums drawn right in it as a constellation (no more porthole);
+  - the offers' skyline standing on the horizon in front of two ranges of hills;
+  - the chosen offer, its ticket and the map on the ground, down to the road with the little car.
+
+  The section headings are gone; everything is still tappable and read out the same way.
+- **Live while dashing.** While a dash is on, two searchlights sweep the sky from behind the hills, and a line with a pulsing green dot says "Watching for offers · last one 3 min ago". A dash counts as on after an offer, Dasher's "finding offers" screen or a delivery in the last half hour (or while a route is under way), until Dasher shows the dash ended or paused, and only while screen reading or background offers are on. It only shows what the app is doing; nothing is decided from it.
+
+Evidence boundaries: the main page was rendered and reviewed in light and dark, while dashing, empty, with the map, at 320 dp and at 2× font.
+
+- **Simulated Android 8 and 15 tests** cover:
+  - offers and delivery screens meaning a dash is on, and "Dash ended" or the start screen ending it;
+  - the live line and searchlights showing only while dashing with a service connected;
+  - the horizon sitting at the skyline's street, with the constellation above it;
+  - the scene drawing in both themes.
+- **Not verified:** anything on a real phone, including which Dasher screens appear during a real dash.
+
 ## 0.4.20 — the adaptive minimums show as soon as they change
 
 - **The star shows what was just learned.** Accepting an order (or declining a passing one by hand) raises the adaptive minimums. Until now the star on the main page redrew only when the next offer arrived, so right after accepting it still showed the old sparkles, or none. It now redraws within a second of anything being learned, as the Adaptive minimum line in Settings already did.

@@ -297,6 +297,7 @@ public final class OfferFilterService extends AccessibilityService {
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         if (scan.accept == null || scan.decline == null) return handleOtherScreen(scan, offer, settings, now);
+        Dashing.seen(this);
         if (scan.accept.equals(scan.decline)) {
             status("Ambiguous shared button target; no action.");
             return false;
@@ -353,7 +354,12 @@ public final class OfferFilterService extends AccessibilityService {
             recordAcceptance(accepted);
             return false;
         }
-        if (OfferEvidence.isDashOver(scan.text)) ManualDeclines.dashEnded(this);
+        if (OfferEvidence.isDashOver(scan.text)) {
+            ManualDeclines.dashEnded(this);
+            Dashing.ended(this);
+        } else if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
+            Dashing.seen(this);
+        }
         if (OfferEvidence.isIdle(scan.text)) {
             boolean pending = declineState.hasPendingConfirmation(now);
             ActiveRouteStore.clear(this);

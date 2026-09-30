@@ -926,6 +926,64 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void theHomepageShowsItIsWatchingOnlyWhileDashing() {
+        Dashing.forgetCache();
+        DecisionLog.record(app, declinedEntry());
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            ScenePage scene = find(content, ScenePage.class);
+            assertNull(shownTextContaining(content, "Watching for offers"));
+            assertFalse(scene.watching());
+
+            // Dasher seen mid-dash, but nothing can watch it yet: not live.
+            Dashing.seen(app);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull(shownTextContaining(content, "Watching for offers"));
+
+            service.get().onServiceConnected();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNotNull(shownTextContaining(content, "Watching for offers · last one"));
+            assertTrue("the searchlights sweep", scene.watching());
+
+            Dashing.ended(app);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull(shownTextContaining(content, "Watching for offers"));
+            assertFalse(scene.watching());
+        } finally {
+            service.destroy();
+        }
+    }
+
+    @Test
+    public void theMainPageIsOneSceneWithItsHorizonAtTheSkylinesStreet() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            ScenePage scene = find(content, ScenePage.class);
+            DecisionChartView chart = find(content, DecisionChartView.class);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            content.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(2340, View.MeasureSpec.AT_MOST));
+            content.layout(0, 0, 1080, 2340);
+            int[] sceneAt = new int[2];
+            int[] chartAt = new int[2];
+            int[] starAt = new int[2];
+            scene.getLocationInWindow(sceneAt);
+            chart.getLocationInWindow(chartAt);
+            star.getLocationInWindow(starAt);
+            float street = chartAt[1] - sceneAt[1] + chart.getHeight() - new Ui(app).dp(11);
+            assertEquals(street, scene.horizonY(), 1f);
+            assertTrue("the constellation is in the sky, above the skyline", starAt[1] < chartAt[1]);
+
+            // Bitmap drawing of the whole scene works in both themes.
+            android.graphics.Bitmap page = android.graphics.Bitmap.createBitmap(1080, Math.max(1, scene.getHeight()),
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            scene.draw(new android.graphics.Canvas(page));
+        }
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();

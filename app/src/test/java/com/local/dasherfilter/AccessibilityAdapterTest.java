@@ -248,6 +248,25 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void offersAndDeliveriesMeanDashingUntilDasherSaysTheDashEnded() {
+        Dashing.forgetCache();
+        controller.get().onServiceConnected();
+        assertFalse(Dashing.now(app));
+        show(offer("$7.90"));
+        assertTrue("an offer on screen means a dash is on", Dashing.now(app));
+
+        show(node("Dash ended", false));
+        assertFalse(Dashing.now(app));
+
+        Dashing.forgetCache();
+        show(node("Arrived at store", false));
+        assertTrue("a delivery screen means a dash is on", Dashing.now(app));
+        Dashing.forgetCache();
+        show(node("Dash now", false));
+        assertFalse("the start screen is not dashing", Dashing.now(app));
+    }
+
+    @Test
     public void theNotificationPathLeavesATakenOverOfferAlone() {
         controller.get().onServiceConnected();
         show(offer("$7.90"));

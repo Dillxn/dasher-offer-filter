@@ -72,6 +72,9 @@ public final class MainActivity extends Activity {
     };
     private Ui ui;
     private ScrollView mainPage;
+    private ScenePage scene;
+    private LinearLayout liveRow;
+    private TextView liveText;
     private ScrollView settingsPage;
     private boolean showingSettings;
 
@@ -149,8 +152,9 @@ public final class MainActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
-        mainPage = addPage(root);
-        settingsPage = addPage(root);
+        scene = new ScenePage(this, ui);
+        mainPage = addPage(root, scene);
+        settingsPage = addPage(root, ui.column());
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0), saved);
 
@@ -206,10 +210,10 @@ public final class MainActivity extends Activity {
 
     // ---- Pages ----
 
-    private ScrollView addPage(FrameLayout root) {
+    private ScrollView addPage(FrameLayout root, LinearLayout page) {
         ScrollView scroll = new ScrollView(this);
         scroll.setVisibility(View.GONE);
-        scroll.addView(ui.column(), Ui.matchWidth());
+        scroll.addView(page, Ui.matchWidth());
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
         return scroll;
@@ -233,7 +237,8 @@ public final class MainActivity extends Activity {
     /** A sky strip across the top of a page: the title and one round button. */
     private View header(String title, boolean back) {
         LinearLayout header = ui.row();
-        header.setBackground(new Scenery(Scenery.Part.SKY, ui));
+        // The main page's sky is the whole scene behind it; Settings has its own strip of sky.
+        if (back) header.setBackground(new Scenery(Scenery.Part.SKY, ui));
         header.setPadding(ui.dp(back ? 8 : 20), ui.dp(18), ui.dp(12), ui.dp(12));
         header.setMinimumHeight(ui.dp(84));
         if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
@@ -292,6 +297,16 @@ public final class MainActivity extends Activity {
         // The mascot already says what a tap does; this line is for the eye.
         stateHint.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         body.addView(stateHint, Ui.matchWidth());
+        // While dashing: the app is live, watching Dasher.
+        liveRow = ui.row();
+        liveRow.setGravity(Gravity.CENTER);
+        liveRow.setPadding(0, ui.dp(6), 0, 0);
+        liveRow.addView(new LiveDot(this, ui));
+        liveText = ui.text("", 13, ui.inkSecondary, false);
+        liveText.setPadding(ui.dp(4), 0, 0, 0);
+        liveRow.addView(liveText);
+        liveRow.setVisibility(View.GONE);
+        body.addView(liveRow, Ui.matchWidth());
         LinearLayout problems = ui.column();
         LinearLayout.LayoutParams problemParams = Ui.matchWidth();
         problemParams.topMargin = ui.dp(8);
@@ -313,15 +328,19 @@ public final class MainActivity extends Activity {
         }));
         body.addView(routeRow);
 
-        addOffers(body);
+        // One picture from top to bottom: the minimums as a constellation in the sky, the offers as a skyline on
+        // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
         addMinimums(body);
+        addOffers(body);
         addAreas(body);
         ground(page);
+        // The skyline's street (12 dp above the chart's bottom) is the horizon.
+        scene.setHorizon(chart, ui.dp(11), noOffers);
     }
 
     private void addOffers(LinearLayout body) {
-        ui.heading(body, "Offers");
         noOffers = ui.note("No offers yet.");
+        noOffers.setGravity(Gravity.CENTER_HORIZONTAL);
         body.addView(noOffers);
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
@@ -330,7 +349,9 @@ public final class MainActivity extends Activity {
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
         chart.setOnClickListener(tapped -> setTicketOpen(true));
-        body.addView(chart, Ui.matchWidth());
+        LinearLayout.LayoutParams chartParams = Ui.matchWidth();
+        chartParams.topMargin = ui.dp(12);
+        body.addView(chart, chartParams);
         chosenLine = ui.text("", 14, ui.inkSecondary, false);
         chosenLine.setGravity(Gravity.CENTER_HORIZONTAL);
         chosenLine.setPadding(0, ui.dp(10), 0, ui.dp(10));
@@ -354,10 +375,11 @@ public final class MainActivity extends Activity {
     }
 
     private void addMinimums(LinearLayout body) {
-        ui.heading(body, "Minimums");
         minimums = new MinimumsStarView(this, ui);
         minimums.setOnClickListener(tapped -> showSettings(true));
-        body.addView(minimums, Ui.matchWidth());
+        LinearLayout.LayoutParams starParams = Ui.matchWidth();
+        starParams.topMargin = ui.dp(28);
+        body.addView(minimums, starParams);
         minimumsNote = ui.text("", 14, ui.inkSecondary, false);
         minimumsNote.setGravity(Gravity.CENTER_HORIZONTAL);
         minimumsNote.setPadding(0, ui.dp(8), 0, 0);
@@ -367,7 +389,7 @@ public final class MainActivity extends Activity {
     /** Only while mapping is on (turned on in Settings): the map and the chosen area. */
     private void addAreas(LinearLayout body) {
         mapping = ui.column();
-        ui.heading(mapping, "Best areas");
+        mapping.setPadding(0, ui.dp(20), 0, 0);
         areaMap = new AreaMapView(this, ui);
         areaMap.setOnSelect(cell -> {
             pickedArea = true;
@@ -624,6 +646,7 @@ public final class MainActivity extends Activity {
         if (route != null) routeNote.setText("On a route: " + route.summary());
 
         refreshHistory();
+        refreshLive();
         // An accepted order (or a declined one that taught) changes the adaptive minimums without a new offer in
         // the history, so the star follows what was learned as well.
         String learned = saved.lastAcceptedCents + "|" + saved.best.summary() + "|" + saved.declined.summary();
@@ -663,6 +686,22 @@ public final class MainActivity extends Activity {
             Updater.check(this, true, null);
         }
         shownGitHub = state;
+    }
+
+    /** "Watching for offers · last one 3 min ago" while dashing, with the searchlights in the sky. */
+    private void refreshLive() {
+        boolean live = Dashing.now(this);
+        scene.setWatching(live);
+        liveRow.setVisibility(live ? View.VISIBLE : View.GONE);
+        if (!live) return;
+        String text = "Watching for offers";
+        if (!recentEntries.isEmpty()) {
+            long minutes = (System.currentTimeMillis() - recentEntries.get(0).at) / 60_000L;
+            if (minutes >= 0 && minutes < 60) {
+                text += " · last one " + (minutes < 1 ? "just now" : minutes + " min ago");
+            }
+        }
+        if (!text.contentEquals(liveText.getText())) liveText.setText(text);
     }
 
     private void refreshHistory() {

@@ -34,10 +34,6 @@ final class DecisionChartView extends View {
     /** The chart's inset from each side, in dp. */
     static final int SIDE_DP = 4;
     private static final long RISE_MS = 650;
-    /** Stars over the skyline: share across, share down the top part, and twinkle phase. */
-    private static final float[][] STARS = {
-            {0.08f, 0.2f, 0.1f}, {0.22f, 0.55f, 0.6f}, {0.37f, 0.12f, 0.3f}, {0.52f, 0.42f, 0.8f},
-            {0.66f, 0.1f, 0.45f}, {0.81f, 0.5f, 0.2f}, {0.93f, 0.18f, 0.7f}};
     /** Values above $1,000 (for example a saturated per-minute requirement) are drawn at the top of the scale. */
     private static final long SCALE_CAP_CENTS = 100_000;
     private static final long[] NICE_DOLLARS = {10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000};
@@ -115,7 +111,6 @@ final class DecisionChartView extends View {
             return;
         }
 
-        drawStars(canvas, left, right, top);
         long maxCents = scaleMax();
         float slot = (right - left) / SLOTS;
         float barWidth = Math.min(ui.dp(26), slot - ui.dp(3));
@@ -160,17 +155,6 @@ final class DecisionChartView extends View {
         rect.set(left, bottom, right, bottom + ui.dp(3));
         canvas.drawRoundRect(rect, ui.dp(1.5f), ui.dp(1.5f), fill);
         Motion.next(this);
-    }
-
-    /** A few small stars over the skyline, each brightening and fading on its own rhythm. */
-    private void drawStars(Canvas canvas, float left, float right, float top) {
-        for (float[] star : STARS) {
-            float twinkle = 0.5f + 0.5f * Motion.wave(2.6f + star[2] * 2.2f, star[2]);
-            int alpha = (int) (0x30 + 0x80 * twinkle);
-            fill.setColor((ui.inkMuted & 0x00FFFFFF) | (alpha << 24));
-            canvas.drawCircle(left + (right - left) * star[0], top * star[1] + ui.dp(4),
-                    ui.dp(1.1f) * (0.8f + 0.4f * twinkle), fill);
-        }
     }
 
     /** A soft beam from the top of the chart down onto the selected building. */

@@ -179,6 +179,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             } else {
                 action = filter(source, notification, offer, decision, signature, replay);
             }
+            Dashing.seen(this);
             DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
                     AddOnOffer.isLikely(labels), decision.basis, decision, action, settings.enabled, labels));
         } catch (RuntimeException error) {

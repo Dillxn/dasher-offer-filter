@@ -6,8 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.RadialGradient;
-import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.View;
@@ -15,14 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The minimums as constellations in a night-sky porthole: a spoke each for pay, per mile, per minute and per stop,
+ * The minimums as constellations in the page's sky: a spoke each for pay, per mile, per minute and per stop,
  * with the minimums you set (solid, round stars) and the adaptive minimums learned from offers you accepted or
  * declined by hand (dashed, sparkles). Distance from the middle is the pay each one asks of one example offer, so
  * every spoke shares a dollar scale. Recent offers are small marks on each spoke at what their own pay, per mile,
  * per minute and per stop would pay for the example (● passed, ✕ declined, ○ review): a mark outside a minimum beat
  * it. The extra-stop fee is added on top of the other minimums rather than being one, and nothing adaptive matches
- * it, so it has no spoke: nothing is converted from one meaning to another. The background stars twinkle and slide
- * as the phone tilts, and the shapes glide to new values; with Android's animations off they rest.
+ * it, so it has no spoke: nothing is converted from one meaning to another. The shapes glide to new values and the
+ * adaptive sparkles breathe; with Android's animations off they rest. By day the stars are drawn in ink on the
+ * morning sky, by night they shine.
  */
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
@@ -31,12 +30,12 @@ final class MinimumsStarView extends View {
     private static final float[] ANGLES = {-135, -45, 45, 135};
     /** A pay no rule can ask more than, for working out what an example offer needs. */
     private static final int ANY_PAY = Integer.MAX_VALUE;
-    private static final int SET_STAR = 0xFFA9CBFF;
-    private static final int LEARNED_STAR = 0xFFDCC2FF;
-    /** Offer marks in colors that read on the night sky. */
-    private static final int PASSED_MARK = 0xFF8BE08B;
-    private static final int DECLINED_MARK = 0xFFFF8F87;
-    private static final int REVIEW_MARK = 0xFFFFD27A;
+    /** Night-sky colors; by day the page's own accent, learned and outcome colors read on the pale sky. */
+    private static final int NIGHT_SET = 0xFFA9CBFF;
+    private static final int NIGHT_LEARNED = 0xFFDCC2FF;
+    private static final int NIGHT_PASSED = 0xFF8BE08B;
+    private static final int NIGHT_DECLINED = 0xFFFF8F87;
+    private static final int NIGHT_REVIEW = 0xFFFFD27A;
     /** At most this many recent offers are marked, as on the skyline. */
     private static final int MARKS = DecisionChartView.SLOTS;
     /** Offers far above every minimum stretch the scale only this far, so the minimums stay readable. */
@@ -49,7 +48,6 @@ final class MinimumsStarView extends View {
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final Path diamond = new Path();
-    private final Path porthole = new Path();
     private final DashPathEffect dash;
     /** Cents the minimum asks of the example offer; NaN where there is no such minimum. */
     private final double[] set = new double[NAMES.length];
@@ -66,13 +64,9 @@ final class MinimumsStarView extends View {
     /** Dollars between rings; three rings. */
     private long ringCents;
     private String needs = "";
-    private final float[][] stars = new float[34][4];
     private final String[] setText = new String[NAMES.length];
     private final String[] learnedText = new String[NAMES.length];
     private boolean adaptiveOn;
-    /** The sky's gradient, made again only when the porthole moves or resizes. */
-    private Shader night;
-    private float nightFor;
 
     MinimumsStarView(Context context, Ui ui) {
         super(context);
@@ -82,16 +76,20 @@ final class MinimumsStarView extends View {
         line.setStrokeJoin(Paint.Join.ROUND);
         dash = new DashPathEffect(new float[] {ui.dp(5), ui.dp(4)}, 0);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
-        // A fixed scatter of background stars: position as a share of the porthole, size, and twinkle phase.
-        java.util.Random scatter = new java.util.Random(7);
-        for (float[] star : stars) {
-            double angle = scatter.nextDouble() * Math.PI * 2;
-            double reach = Math.sqrt(scatter.nextDouble()) * 1.02;
-            star[0] = (float) (Math.cos(angle) * reach);
-            star[1] = (float) (Math.sin(angle) * reach);
-            star[2] = 0.6f + scatter.nextFloat() * 1.1f;
-            star[3] = scatter.nextFloat();
-        }
+    }
+
+    private int setColor() {
+        return ui.dark ? NIGHT_SET : ui.accent;
+    }
+
+    private int learnedColor() {
+        return adaptiveOn ? (ui.dark ? NIGHT_LEARNED : ui.learned) : 0xFF8E8A9C;
+    }
+
+    private int markColor(OfferRule.Result result) {
+        if (!ui.dark) return Ui.resultColor(result);
+        return result == OfferRule.Result.KEEP ? NIGHT_PASSED
+                : result == OfferRule.Result.DECLINE ? NIGHT_DECLINED : NIGHT_REVIEW;
     }
 
     /**
@@ -254,7 +252,7 @@ final class MinimumsStarView extends View {
                 + " to review.";
     }
 
-    // ---- Layout: the porthole, a spoke name at each corner, and a small key under it. ----
+    // ---- Layout: the constellation's circle, a spoke name at each corner, and a small key under it. ----
 
     private float nameLine;
 
@@ -274,7 +272,7 @@ final class MinimumsStarView extends View {
         return widest;
     }
 
-    /** The porthole's radius: as large as fits with the names outside it at the corners, up to 130 dp. */
+    /** The circle's radius: as large as fits with the names outside it at the corners, up to 130 dp. */
     private float windowRadius(float width) {
         float room = (width / 2 - nameWidth() - ui.dp(2)) / 0.7071f - ui.dp(6);
         return Math.max(ui.dp(76), Math.min(ui.dp(130), room));
@@ -295,52 +293,20 @@ final class MinimumsStarView extends View {
         float cy = window + ui.dp(4);
         float radius = window - ui.dp(12);
 
-        drawSky(canvas, cx, cy, window);
         drawGrid(canvas, cx, cy, radius);
         drawMarks(canvas, cx, cy, radius);
         float glide = Motion.settle(glideStart, GLIDE_MS);
-        drawShape(canvas, cx, cy, radius, set, setFrom, setTo, glide, SET_STAR, true, false);
-        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide,
-                adaptiveOn ? LEARNED_STAR : 0xFF8E8A9C, adaptiveOn, true);
+        drawShape(canvas, cx, cy, radius, set, setFrom, setTo, glide, setColor(), true, false);
+        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true);
         for (int i = 0; i < NAMES.length; i++) drawName(canvas, i, cx, cy, window, width);
         drawKey(canvas, width, cy + window + ui.dp(4));
         Motion.next(this);
     }
 
-    /** The porthole: a night sky whose stars twinkle and slide a little as the phone tilts. */
-    private void drawSky(Canvas canvas, float cx, float cy, float window) {
-        if (night == null || nightFor != cx * 31 + window) {
-            night = new RadialGradient(cx, cy - window * 0.3f, window * 1.3f,
-                    ui.dark ? 0xFF1E2A4A : 0xFF263B6B, ui.dark ? 0xFF0B1020 : 0xFF111A33, Shader.TileMode.CLAMP);
-            nightFor = cx * 31 + window;
-        }
-        fill.setShader(night);
-        canvas.drawCircle(cx, cy, window, fill);
-        fill.setShader(null);
-        porthole.reset();
-        porthole.addCircle(cx, cy, window, Path.Direction.CW);
-        canvas.save();
-        canvas.clipPath(porthole);
-        float slideX = -Tilt.x() * ui.dp(6);
-        float slideY = -Tilt.y() * ui.dp(4);
-        for (float[] star : stars) {
-            float twinkle = 0.5f + 0.5f * Motion.wave(1.8f + star[3] * 3f, star[3]);
-            int alpha = (int) ((star[2] > 1.3f ? 0x70 : 0x40) + 0x8F * twinkle);
-            fill.setColor((Math.min(255, alpha) << 24) | 0xFFFFFF);
-            canvas.drawCircle(cx + star[0] * window + slideX, cy + star[1] * window + slideY,
-                    ui.dp(star[2]) * (0.75f + 0.35f * twinkle), fill);
-        }
-        canvas.restore();
-        line.setPathEffect(null);
-        line.setStrokeWidth(ui.dp(3));
-        line.setColor(ui.dark ? 0xFF3A3A38 : 0xFFD9D6CC);
-        canvas.drawCircle(cx, cy, window, line);
-    }
-
     /** Faint rings and spokes, with the rings' dollars in the gap between the two top spokes. */
     private void drawGrid(Canvas canvas, float cx, float cy, float radius) {
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        line.setColor(0x2EFFFFFF);
+        line.setColor(ui.dark ? 0x2EFFFFFF : 0x260B2A55);
         for (int ring = 1; ring <= 3; ring++) canvas.drawCircle(cx, cy, radius * ring / 3, line);
         for (int i = 0; i < NAMES.length; i++) {
             float[] tip = point(cx, cy, radius, i, 1);
@@ -349,7 +315,7 @@ final class MinimumsStarView extends View {
         if (ringCents <= 0) return;
         text.setFakeBoldText(false);
         text.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
-        text.setColor(0x80FFFFFF);
+        text.setColor(ui.dark ? 0x80FFFFFF : 0xB0214066);
         text.setTextAlign(Paint.Align.CENTER);
         float below = -text.getFontMetrics().ascent + ui.dp(1);
         for (int ring = 2; ring <= 3; ring++) {
@@ -379,8 +345,7 @@ final class MinimumsStarView extends View {
         for (int m = marks.size() - 1; m >= 0; m--) {
             double[] mark = marks.get(m);
             OfferRule.Result result = markResults.get(m);
-            int color = result == OfferRule.Result.KEEP ? PASSED_MARK
-                    : result == OfferRule.Result.DECLINE ? DECLINED_MARK : REVIEW_MARK;
+            int color = markColor(result);
             int alpha = m == 0 ? 0xFF : Math.max(0x60, 0xE0 - m * 0x0C);
             // Offers side by side on a spoke fan out a little so they do not hide one another.
             float turn = ((m % 5) - 2) * 2.2f;
@@ -475,7 +440,7 @@ final class MinimumsStarView extends View {
         canvas.drawPath(diamond, fill);
     }
 
-    /** A spoke's name just outside the porthole at its corner. */
+    /** A spoke's name just outside the circle at its corner. */
     private void drawName(Canvas canvas, int axis, float cx, float cy, float window, float width) {
         boolean right = axis == 1 || axis == 2;
         boolean below = axis == 2 || axis == 3;
