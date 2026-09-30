@@ -8,6 +8,7 @@
 - A successful click or PendingIntent send means requested, not server-confirmed. Hiding a notification is not declining an order.
 - Notification updates/reconnects must not ring repeatedly. Verify replacement posting/permissions and never remove an original passing/unknown notification merely on an attempted replacement.
 - Keep the existing cloud signer. No automatic key generation, key material in source, signing material in public, or independent GitHub signing path.
+- The same cloud key may also reach a Claude session as the environment variables OFFER_FILTER_KEYSTORE_B64 and OFFER_FILTER_SIGNING_PASSWORD (set by the user in the environment settings, never in chat, source or GitHub). tools/sign-local.sh is the only way to use it there: it checks the certificate fingerprint, runs the tests, signs, and leaves the APK in dist/ for the user to install by hand. It never publishes; the next Render build still updates the feed.
 - Increase versionCode/versionName in app/build.gradle for changed app sources. build-local.sh derives the packaged version from this single source.
 - Render is the authoritative release path: render-build.sh, public/latest.json, public/OfferFilter.apk. Do not publish to the retired old-signer GitHub feed.
 - Run testDebugUnitTest (including Robolectric adapters), the signed APK build, and tools/verify_channel.py. The probe uses actual production UpdateTransport, exact size/SHA, APK package/version, and signer verification. Report which live version it tested.
