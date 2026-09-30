@@ -202,13 +202,13 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void pauseButtonPersistsWithoutPressingSave() {
+    public void tappingTheMascotPausesWithoutPressingSave() {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View content = activity.get().findViewById(android.R.id.content);
-            View button = findButton(content, "Pause auto-decline");
-            assertNotNull(button);
-            button.performClick();
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            assertEquals("Pause auto-decline", mascot.action());
+            mascot.performClick();
             assertFalse(FilterStore.load(app).enabled);
             assertEquals(2000, FilterStore.load(app).flatCents);
         }
@@ -361,25 +361,30 @@ public class AndroidAdapterTest {
         FilterStore.save(app, new FilterSettings(false, 2000, 150, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull(findButton(content, "Pause auto-decline"));
-            findButton(content, "Resume auto-decline").performClick();
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            assertEquals("Resume auto-decline", mascot.action());
+            assertNotNull(shownTextContaining(content, "Tap me to resume"));
+            mascot.performClick();
 
             FilterSettings saved = FilterStore.load(app);
             assertTrue(saved.enabled);
             assertEquals(2000, saved.flatCents);
             assertEquals(150, saved.perMileCents);
-            // The same button now offers to pause again.
-            assertNotNull(findButton(content, "Pause auto-decline"));
+            // The same mascot now offers to pause again.
+            assertEquals("Pause auto-decline", mascot.action());
+            assertNotNull(shownTextContaining(content, "Tap me to pause"));
         }
     }
 
     @Test
-    public void withoutAnyRuleTheMainButtonLeadsToTheRules() {
+    public void withoutAnyRuleTheMascotLeadsToTheRules() {
         FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull(findButton(content, "Resume auto-decline"));
-            findButton(content, "Set up rules").performClick();
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            assertEquals("Set up rules", mascot.action());
+            assertNotNull(shownTextContaining(content, "Tap me to set up rules"));
+            mascot.performClick();
             settle();
             assertFalse(FilterStore.load(app).enabled);
             assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
@@ -621,8 +626,10 @@ public class AndroidAdapterTest {
                     hero.getContentDescription().toString());
             assertEquals("the mascot is cheerful while on", Mascot.Mood.HAPPY, hero.mood());
 
-            findButton(content, "Pause auto-decline").performClick();
+            assertEquals(FilterHeroView.State.ON, hero.state());
+            hero.performClick();
             assertTrue(hero.getContentDescription().toString().startsWith("Auto-decline paused."));
+            assertEquals(FilterHeroView.State.PAUSED, hero.state());
             assertEquals("and asleep while paused", Mascot.Mood.SLEEPY, hero.mood());
         }
     }
@@ -883,6 +890,36 @@ public class AndroidAdapterTest {
                 OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD,
                 true, Collections.emptyList());
         assertEquals("Notification showed no pay", MainActivity.plainReason(fromNotification));
+    }
+
+    @Test
+    public void theMascotIsTheOneButtonOnTheMainPage() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            assertTrue(mascot.isClickable());
+            assertTrue(mascot.isFocusable());
+            // Screen readers hear a button that says what a tap does, with the state and the day's counts.
+            android.view.accessibility.AccessibilityNodeInfo node = mascot.createAccessibilityNodeInfo();
+            assertEquals(Button.class.getName(), node.getClassName().toString());
+            boolean labeled = false;
+            for (android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction action : node.getActionList()) {
+                labeled |= action.getId() == android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK
+                        && "Pause auto-decline".contentEquals(action.getLabel());
+            }
+            assertTrue("the tap is labeled", labeled);
+            assertTrue(mascot.getContentDescription().toString().startsWith("Auto-decline on. Last 24 hours:"));
+
+            // No other pause or resume control competes with it on the main page.
+            List<Button> buttons = new ArrayList<>();
+            collectButtons(content, buttons);
+            for (Button button : buttons) {
+                String label = button.getText().toString();
+                assertFalse(label, button.isShown() && (label.contains("Pause") || label.contains("Resume")));
+            }
+        }
     }
 
     @Test

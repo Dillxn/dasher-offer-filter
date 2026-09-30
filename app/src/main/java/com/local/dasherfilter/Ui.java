@@ -4,7 +4,10 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.text.InputType;
@@ -192,6 +195,34 @@ final class Ui {
         states.addState(new int[] {}, rounded(face, 0, 24));
         button.setBackground(states);
         button.setTextColor(primary ? onAccent : ink);
+    }
+
+    /** A soft press highlight inside rounded bounds, for rows that act when tapped. */
+    Drawable pressable(float radiusDp) {
+        int press = dark ? 0x1FFFFFFF : 0x140B0B0B;
+        return new RippleDrawable(ColorStateList.valueOf(press), null, rounded(0xFFFFFFFF, 0, radiusDp));
+    }
+
+    /** A full-width line of text that opens something, with a chevron at its end. */
+    Button listRow(LinearLayout parent, String label, Runnable action) {
+        Button button = new Button(context);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTypeface(Typeface.DEFAULT);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        button.setTextColor(ink);
+        button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        button.setMinHeight(dp(52));
+        button.setMinimumHeight(dp(52));
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(4), 0, dp(4), 0);
+        button.setStateListAnimator(null);
+        button.setCompoundDrawablesRelative(null, null, new Glyph(Glyph.Shape.CHEVRON, inkMuted, dp(18)), null);
+        button.setBackground(pressable(12));
+        button.setOnClickListener(clicked -> action.run());
+        parent.addView(button, matchWidth());
+        return button;
     }
 
     /** A full-width button added to {@code parent} with standard spacing. */

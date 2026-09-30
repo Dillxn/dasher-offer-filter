@@ -11,11 +11,11 @@ import android.graphics.drawable.Drawable;
 /**
  * The app's small line icons, drawn on a 24-unit grid so they scale to any size without image files: a clock for
  * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, a
- * rising line for the adaptive minimum, dots for the stop count, sliders for settings, a back arrow and a warning
- * sign.
+ * rising line for the adaptive minimum, dots for the stop count, sliders for settings, a back arrow, a warning
+ * sign, and the chevron at the end of a row that opens something.
  */
 final class Glyph extends Drawable {
-    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN }
+    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON }
 
     private final Shape shape;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -136,6 +136,12 @@ final class Glyph extends Drawable {
                 canvas.drawPath(path, stroke);
                 canvas.drawLine(12, 9.5f, 12, 13.5f, stroke);
                 canvas.drawCircle(12, 16.5f, 1.1f, fill);
+                break;
+            case CHEVRON:
+                path.moveTo(9.5f, 6);
+                path.lineTo(15.5f, 12);
+                path.lineTo(9.5f, 18);
+                canvas.drawPath(path, stroke);
                 break;
             case SLIDERS:
                 canvas.drawLine(3, 7, 21, 7, stroke);

@@ -7,14 +7,20 @@ import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.os.SystemClock;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Button;
 import java.util.Locale;
 
 /**
- * The mascot, a funnel standing upright, with the last 24 hours in three quiet counts below: passed, filtered and
- * left to review. On, it breathes, blinks, has its sieve, and an offer ticket drifts down into it while a drop falls
- * from its spout; paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered" counts only
- * offers the app acted on (a Decline tap, a decline request, or a hidden notification).
+ * The mascot, a funnel standing upright in a brush-drawn ring, with the last 24 hours in three quiet counts below:
+ * passed, filtered and left to review. It is also the screen's one button: a tap pauses or resumes auto-decline (or,
+ * with no rule yet, opens the rules), and it squishes a little while pressed. The ring says the state: nearly closed
+ * while on, two-thirds and amber while paused, a faint dotted circle while off; it draws itself when the state
+ * changes. On, the mascot breathes, blinks, has its sieve, and an offer ticket drifts down into it while a drop
+ * falls from its spout; paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
+ * counts only offers the app acted on (a Decline tap, a decline request, or a hidden notification).
  */
 @SuppressLint("ViewConstructor")
 final class FilterHeroView extends View {
@@ -22,9 +28,12 @@ final class FilterHeroView extends View {
 
     /** The drawing's own size; narrower screens scale it down whole. */
     private static final int DESIGN_WIDTH_DP = 320;
-    private static final int DESIGN_HEIGHT_DP = 250;
+    private static final int DESIGN_HEIGHT_DP = 268;
+    private static final float ON_SWEEP = 324;
+    private static final float PAUSED_SWEEP = 228;
+    private static final long RING_DRAW_MS = 1100;
 
-    /** Stars around the halo: dp from the middle across, dp down, and size. */
+    /** Stars around the ring: dp from the middle across, dp down, and size. */
     private static final float[][] TWINKLES = {
             {-98, 40, 5}, {-116, 118, 3.5f}, {-80, 170, 3}, {100, 30, 4}, {120, 96, 5.5f}, {88, 162, 3.5f}};
 
@@ -35,6 +44,12 @@ final class FilterHeroView extends View {
     private final Path path = new Path();
     private final RectF rect = new RectF();
     private final DashPathEffect pausedDash;
+    private final DashPathEffect dotted;
+    private final Enso ring = new Enso();
+    /** When the ring began drawing itself (uptime), for the current state. */
+    private long ringFrom;
+    /** What a tap does, as screen readers announce it: "Pause auto-decline", for example. */
+    private String action;
     private State state = State.OFF;
     private int passed;
     private int filtered;
@@ -48,7 +63,38 @@ final class FilterHeroView extends View {
         line.setStrokeJoin(Paint.Join.ROUND);
         text.setTextAlign(Paint.Align.CENTER);
         pausedDash = new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0);
+        dotted = new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, 0);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+        setClickable(true);
+        setFocusable(true);
+        setAccessibilityDelegate(new AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.setClassName(Button.class.getName());
+                if (action != null) {
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                            action));
+                }
+            }
+        });
+    }
+
+    State state() {
+        return state;
+    }
+
+    /** What a tap does, in words for screen readers. */
+    void setAction(String action) {
+        this.action = action;
+    }
+
+    String action() {
+        return action;
+    }
+
+    /** How much of the ring has drawn itself, 0 to 1; at once when Android's animations are off. */
+    float ringDrawn() {
+        return state == State.OFF ? 1f : Motion.settle(ringFrom, RING_DRAW_MS);
     }
 
     Mascot.Mood mood() {
@@ -56,6 +102,7 @@ final class FilterHeroView extends View {
     }
 
     void set(State state, int passed, int filtered, int review) {
+        if (state != this.state) ringFrom = SystemClock.uptimeMillis();
         this.state = state;
         this.passed = passed;
         this.filtered = filtered;
@@ -83,9 +130,9 @@ final class FilterHeroView extends View {
         canvas.save();
         canvas.scale(scale, scale);
         float cx = designWidth / 2;
-        // Tilting the phone slides the halo and its stars (far) against the ticket (near).
+        // Tilting the phone slides the ring and its stars (far) against the ticket (near).
         slide(canvas, -4);
-        drawHalo(canvas, cx);
+        drawRing(canvas, cx);
         drawTwinkles(canvas, cx);
         canvas.restore();
         if (state == State.ON) {
@@ -108,14 +155,31 @@ final class FilterHeroView extends View {
         return state == State.ON ? ui.accent : state == State.PAUSED ? Ui.WARNING : ui.inkMuted;
     }
 
-    /** A soft circle of light behind the mascot. */
-    private void drawHalo(Canvas canvas, float cx) {
-        float breathe = state == State.ON ? Motion.wave(6f, 0) : 0;
-        fill.setColor(withAlpha(stateColor(), state == State.OFF ? 0x0C : 0x16));
-        canvas.drawCircle(cx, ui.dp(104), ui.dp(88) + ui.dp(3) * breathe, fill);
+    /** The brush-drawn ring the mascot stands in, over a faint wash; the brush breathes a little while on. */
+    private void drawRing(Canvas canvas, float cx) {
+        float cy = ui.dp(104);
+        float radius = ui.dp(82);
+        if (state == State.OFF) {
+            line.setPathEffect(dotted);
+            line.setColor(withAlpha(ui.inkMuted, 0x80));
+            line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
+            canvas.drawCircle(cx, cy, radius, line);
+            line.setPathEffect(null);
+            return;
+        }
+        fill.setColor(withAlpha(stateColor(), 0x12));
+        canvas.drawCircle(cx, cy, radius - ui.dp(9), fill);
+        float breathe = state == State.ON ? 1 + 0.06f * Motion.wave(6f, 0) : 1;
+        ring.draw(canvas, withAlpha(stateColor(), state == State.ON ? 0xD9 : 0xBF), ui.page, cx, cy, radius,
+                ui.dp(9) * breathe, state == State.ON ? ON_SWEEP : PAUSED_SWEEP, ringDrawn());
     }
 
-    /** Small stars around the halo that brighten and fade in turn; none while off. */
+    @Override protected void drawableStateChanged() {
+        super.drawableStateChanged();
+        invalidate();
+    }
+
+    /** Small stars around the ring that brighten and fade in turn; none while off. */
     private void drawTwinkles(Canvas canvas, float cx) {
         if (state == State.OFF) return;
         int color = ui.dark ? 0xFFE9E2C8 : 0xFFE0B94F;
@@ -172,8 +236,10 @@ final class FilterHeroView extends View {
     private void drawMascot(Canvas canvas, float cx) {
         int color = stateColor();
         float breathe = state == State.OFF ? 0 : Motion.wave(4.5f, 0);
+        // Pressed, the mascot squishes down a little, like a button.
+        float squish = isPressed() ? 0.93f : 1f;
         canvas.save();
-        canvas.scale(1 + 0.012f * breathe, 1 + 0.012f * breathe, cx, ui.dp(120));
+        canvas.scale((1 + 0.012f * breathe) * squish, (1 + 0.012f * breathe) * squish, cx, ui.dp(150));
         float rimY = ui.dp(72);
         float half = ui.dp(62);
         float neckY = ui.dp(146);
@@ -255,7 +321,7 @@ final class FilterHeroView extends View {
 
     private void drawCount(Canvas canvas, float x, OfferRule.Result result, int count, String word, boolean live) {
         int color = Ui.resultColor(result);
-        float top = ui.dp(192);
+        float top = ui.dp(210);
         // The number and its word size with the font setting, shrunk only as far as their space needs.
         text.setFakeBoldText(true);
         float numberSize = Math.min(ui.sp(18), ui.dp(26));

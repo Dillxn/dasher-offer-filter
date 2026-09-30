@@ -44,8 +44,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The app's two pages, kept quiet. The main page: the mascot with the day's three counts, one line saying whether
- * auto-decline is on, and one button; then recent offers as a small skyline with one line about the chosen offer
+ * The app's two pages, kept quiet. The main page: the mascot in its ring with the day's three counts, which is also
+ * the one button (a tap pauses or resumes), and one line saying whether auto-decline is on; then recent offers as a small skyline with one line about the chosen offer
  * (tap for its ticket); the minimums as a constellation with recent offers marked; and, only when mapping is on,
  * where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts, the offer map,
  * reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The drawings move
@@ -75,8 +75,8 @@ public final class MainActivity extends Activity {
 
     // Main page: the mascot.
     private TextView stateLine;
+    private TextView stateHint;
     private FilterHeroView hero;
-    private Button masterButton;
     private int shownState;
     private String shownHero = "";
     private Readiness screenReading;
@@ -267,20 +267,24 @@ public final class MainActivity extends Activity {
         page.addView(header("Offer Filter", false));
         LinearLayout body = body(page);
 
+        // The mascot is the button: a tap pauses, resumes, or with no rule yet opens the rules.
         hero = new FilterHeroView(this, ui);
+        hero.setOnClickListener(tapped -> toggleAutoDecline());
         body.addView(hero, Ui.matchWidth());
         stateLine = ui.text("", 17, ui.ink, true);
         stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
         stateLine.setPadding(0, ui.dp(4), 0, 0);
         body.addView(stateLine, Ui.matchWidth());
-        masterButton = ui.button("", true, this::toggleAutoDecline);
-        LinearLayout.LayoutParams masterParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        masterParams.gravity = Gravity.CENTER_HORIZONTAL;
-        masterParams.topMargin = ui.dp(12);
-        body.addView(masterButton, masterParams);
+        stateHint = ui.text("", 14, ui.inkSecondary, false);
+        stateHint.setGravity(Gravity.CENTER_HORIZONTAL);
+        stateHint.setPadding(0, ui.dp(2), 0, 0);
+        // The mascot already says what a tap does; this line is for the eye.
+        stateHint.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        body.addView(stateHint, Ui.matchWidth());
         LinearLayout problems = ui.column();
-        body.addView(problems);
+        LinearLayout.LayoutParams problemParams = Ui.matchWidth();
+        problemParams.topMargin = ui.dp(8);
+        body.addView(problems, problemParams);
         screenReading = new Readiness(problems, "Screen reading is off",
                 () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
@@ -456,12 +460,10 @@ public final class MainActivity extends Activity {
         ui.heading(body, "Sound & setup");
         Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
-        ui.buttonPair(body,
-                ui.button("Accessibility", false, () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))),
-                ui.button("Notification access", false, this::openNotificationAccess));
-        ui.buttonPair(body,
-                ui.button("Alert settings", false, this::configureOfferAlerts),
-                ui.button("DoorDash channel", false, this::openDoorDashChannel));
+        ui.listRow(body, "Accessibility", () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        ui.listRow(body, "Notification access", this::openNotificationAccess);
+        ui.listRow(body, "Alert settings", this::configureOfferAlerts);
+        ui.listRow(body, "DoorDash channel", this::openDoorDashChannel);
     }
 
     private void addOfferMap(LinearLayout body) {
@@ -484,9 +486,8 @@ public final class MainActivity extends Activity {
 
     private void addReports(LinearLayout body) {
         ui.heading(body, "Reports");
-        ui.buttonPair(body,
-                ui.button("Share report", false, this::shareReport),
-                ui.button("Clear history", false, this::confirmClearHistory));
+        ui.listRow(body, "Share report", this::shareReport);
+        ui.listRow(body, "Clear history", this::confirmClearHistory);
         diagnostics = ui.toggle(body, "Capture full screen text (30 min)", DiagnosticLog.isEnabled(this));
         diagnostics.setOnCheckedChangeListener((view, on) -> DiagnosticLog.setEnabled(this, on));
 
@@ -519,8 +520,8 @@ public final class MainActivity extends Activity {
         });
         updateStatus = ui.text("", 13, ui.inkSecondary, false);
         body.addView(updateStatus);
-        ui.addButton(body, "Check for update", false, () -> Updater.check(this, true, null));
-        allowInstalls = ui.addButton(body, "Allow installs", false, () -> open(new Intent(
+        ui.listRow(body, "Check for update", () -> Updater.check(this, true, null));
+        allowInstalls = ui.listRow(body, "Allow installs", () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
     }
 
@@ -530,17 +531,19 @@ public final class MainActivity extends Activity {
         if (stateLine == null) return;
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
-        if (state != shownState) ui.style(masterButton, state != 1);
         shownState = state;
         if (saved.enabled) {
             stateLine.setText("Auto-decline is on");
-            masterButton.setText("Pause auto-decline");
+            stateHint.setText("Tap me to pause");
+            hero.setAction("Pause auto-decline");
         } else if (saved.hasAnyRule()) {
             stateLine.setText("Auto-decline is paused");
-            masterButton.setText("Resume auto-decline");
+            stateHint.setText("Tap me to resume");
+            hero.setAction("Resume auto-decline");
         } else {
             stateLine.setText("Auto-decline is off");
-            masterButton.setText("Set up rules");
+            stateHint.setText("Tap me to set up rules");
+            hero.setAction("Set up rules");
         }
 
         screenReading.update(OfferFilterService.isConnected());
@@ -1123,8 +1126,8 @@ public final class MainActivity extends Activity {
 
         Readiness(LinearLayout parent, String problem, Runnable onFix) {
             row = ui.row();
-            row.setBackground(ui.rounded((Ui.CRITICAL & 0x00FFFFFF) | (ui.dark ? 0x1F000000 : 0x14000000), 0, 16));
-            row.setPadding(ui.dp(14), ui.dp(8), ui.dp(16), ui.dp(8));
+            row.setBackground(ui.pressable(16));
+            row.setPadding(ui.dp(4), ui.dp(6), ui.dp(4), ui.dp(6));
             row.setMinimumHeight(ui.dp(48));
             row.setClickable(true);
             row.setFocusable(true);
@@ -1138,9 +1141,7 @@ public final class MainActivity extends Activity {
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
             row.addView(ui.text("Fix", 15, ui.accent, true));
-            LinearLayout.LayoutParams params = Ui.matchWidth();
-            params.topMargin = ui.dp(8);
-            parent.addView(row, params);
+            parent.addView(row, Ui.matchWidth());
         }
 
         void update(boolean ready) {

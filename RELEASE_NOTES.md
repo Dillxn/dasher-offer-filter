@@ -1,3 +1,30 @@
+## 0.4.18 — the mascot is the button
+
+- **Tap the mascot to pause or resume.** The separate button is gone.
+  - A small line under the state says what a tap does ("Tap me to pause").
+  - With no rule yet, a tap opens the rules.
+  - The mascot squishes a little while pressed.
+  - Screen readers hear a button named for what it does, with the state and the day's counts.
+- **A brush-drawn ring (an ensō) around the mascot** replaces the plain disc and shows the state:
+  - nearly closed while on;
+  - two-thirds and amber while paused;
+  - a faint dotted circle while off.
+
+  It draws itself when the state changes, breathes gently while on, and slides with the tilt like the rest of the sky.
+- **Calmer where it helps.**
+  - Setup problems are plain lines with **Fix**, without the tinted cards.
+  - In Settings, the Android shortcuts, Share report, Clear history, Check for update and Allow installs are plain rows with a chevron instead of pairs of big buttons.
+- The illustrations, motion and parallax stay as they were.
+
+Evidence boundaries: the main page (on, paused, off, mapping) and Settings were rendered and reviewed in light and dark, at 320 dp, and at 2× font.
+
+- **Simulated Android 8 and 15 tests** cover:
+  - tapping the mascot to pause, resume, or open the rules;
+  - its spoken label;
+  - no other pause or resume control;
+  - the ring drawing itself, resting with animations off, and drawing in every state.
+- **Not verified:** anything on a real phone.
+
 ## 0.4.17 — zen, gentle motion, offers on the star, and manual declines teach
 
 - **Quieter main page.** The speech bubble, the machine with its basket, bin and crate, the legend, the long notes and the map invitation are gone.

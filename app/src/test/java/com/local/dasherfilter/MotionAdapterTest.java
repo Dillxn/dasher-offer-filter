@@ -84,6 +84,30 @@ public class MotionAdapterTest {
         assertTrue("right edge down reads as a tilt to the right: " + Tilt.x(), Tilt.x() > 0.3f);
     }
 
+    @Test
+    public void theMascotsRingDrawsItselfUnlessAnimationsAreOff() throws Exception {
+        FilterHeroView mascot = new FilterHeroView(app, new Ui(app));
+        mascot.set(FilterHeroView.State.ON, 0, 0, 0);
+        assertTrue("starts drawing from the beginning", mascot.ringDrawn() < 0.2f);
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(1200));
+        assertEquals("and is whole a moment later", 1f, mascot.ringDrawn(), 0.001f);
+        mascot.set(FilterHeroView.State.ON, 1, 0, 0);
+        assertEquals("new counts do not redraw it", 1f, mascot.ringDrawn(), 0.001f);
+
+        setAnimatorDurationScale(0f);
+        mascot.set(FilterHeroView.State.PAUSED, 1, 0, 0);
+        assertEquals("with animations off it is whole at once", 1f, mascot.ringDrawn(), 0f);
+        // Drawn in every state without trouble.
+        for (FilterHeroView.State state : FilterHeroView.State.values()) {
+            mascot.set(state, 2, 3, 1);
+            mascot.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+                    android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            mascot.layout(0, 0, 1080, mascot.getMeasuredHeight());
+            mascot.draw(new android.graphics.Canvas(android.graphics.Bitmap.createBitmap(1080,
+                    mascot.getMeasuredHeight(), android.graphics.Bitmap.Config.ARGB_8888)));
+        }
+    }
+
     private ShadowSensorManager sensors() {
         return Shadows.shadowOf(app.getSystemService(SensorManager.class));
     }
