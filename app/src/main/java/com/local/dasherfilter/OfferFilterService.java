@@ -277,7 +277,11 @@ public final class OfferFilterService extends AccessibilityService {
     private void observeClick(AccessibilityEvent event) {
         long now = SystemClock.uptimeMillis();
         if (isAcceptClick(event)) {
-            acceptedTracker.acceptClicked(now);
+            OfferSnapshot accepting = acceptedTracker.acceptClicked(now);
+            // Each step toward learning from an accepted offer goes in the log, so a report shows where it stops.
+            DiagnosticLog.log(this, "accept", accepting != null
+                    ? "Accept tap seen on " + accepting.summary() + "; waiting up to 15 s for a delivery screen"
+                    : "Accept tap seen, but no offer with readable pay was on screen in the last 90 s: nothing to learn");
             passingOffer = null;
         }
         if (isDeclineClick(event) && now - ownTapAt > OWN_TAP_ECHO_MS) {
@@ -462,6 +466,11 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
     private boolean handleOtherScreen(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
+        OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
+        if (missed != null) {
+            DiagnosticLog.log(this, "accept", "Not learned: no delivery screen recognized within 15 s after Accept on "
+                    + missed.summary() + "; screen now: " + scan.text);
+        }
         AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, now);
         if (accepted != null) {
             recordAcceptance(accepted);
@@ -506,7 +515,13 @@ public final class OfferFilterService extends AccessibilityService {
         // Accepting after all means an earlier Decline tap on this offer was backed out of.
         ManualDeclines.forget(this);
         if (!accepted.addOn && accepted.acceptedOffer.payCents != null) {
-            FilterStore.recordAccepted(this, accepted.acceptedOffer);
+            boolean learned = FilterStore.recordAccepted(this, accepted.acceptedOffer);
+            DiagnosticLog.log(this, "accept", learned
+                    ? "Learned from accepted " + accepted.acceptedOffer.summary()
+                    : "Accepted " + accepted.acceptedOffer.summary()
+                            + " but not learned: auto-decline or Adaptive minimum was off");
+        } else {
+            DiagnosticLog.log(this, "accept", "Accepted an add-on: the standalone minimums do not learn from it");
         }
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed. " + (accepted.addOn

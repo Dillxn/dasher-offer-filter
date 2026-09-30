@@ -837,6 +837,37 @@ public class AccessibilityAdapterTest {
         assertEquals(2500, saved.lastAcceptedCents);
         // $25.00 for 21 min, 7.2 mi and 2 stops.
         assertEquals("$1.19/min, $3.47/mi, $12.50/stop", saved.best.summary());
+        // Each step is in the log, for a report to show.
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("Accept tap seen on Pay $25.00"));
+        assertTrue(log, log.contains("Learned from accepted Pay $25.00"));
+    }
+
+    @Test
+    public void anAcceptanceThatCannotTeachSaysWhyInTheLog() {
+        // Adaptive minimum off: accepted, but not learned.
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, false, 0));
+        show(offer("$25.00"));
+        userTaps("Accept");
+        show(node("Arrived at store", false));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertTrue(DiagnosticLog.read(app).contains("but not learned: auto-decline or Adaptive minimum was off"));
+
+        // Adaptive on, but Dasher never shows a delivery screen we know within 15 s.
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        show(offer("$26.00"));
+        userTaps("Accept");
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(16));
+        show(node("Heading to Kroger", false));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("Not learned: no delivery screen recognized within 15 s after Accept on Pay $26.00"));
+        assertTrue(log, log.contains("Heading to Kroger"));
+
+        // A tap with no readable offer on screen is noted too.
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(120));
+        userTaps("Accept");
+        assertTrue(DiagnosticLog.read(app).contains("no offer with readable pay was on screen in the last 90 s"));
     }
 
     /** The user's own tap on a Dasher button, as Android reports it. */

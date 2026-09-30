@@ -64,14 +64,28 @@ final class AcceptedOfferTracker {
         visibleAt = now;
     }
 
-    void acceptClicked(long now) {
+    /** @return the offer the tap is taken to accept, or null when no readable offer was on screen recently */
+    OfferSnapshot acceptClicked(long now) {
         boolean readablePay = visibleOffer != null && visibleOffer.payCents != null && visibleOffer.payCents > 0;
         if (readablePay && now - visibleAt <= MAX_OFFER_AGE_AT_CLICK_MS) {
             pendingOffer = visibleOffer;
             pendingRouteAfter = visibleRouteAfter;
             pendingAddOn = visibleAddOn;
             clickedAt = now;
+            return pendingOffer;
         }
+        return null;
+    }
+
+    /**
+     * An Accept tap whose delivery screen never came in time: returns that offer once (and forgets it), so the log
+     * can say it was not learned; null otherwise.
+     */
+    OfferSnapshot missedAcceptance(long now) {
+        if (pendingOffer == null || now - clickedAt <= MAX_CLICK_TO_PROGRESS_MS) return null;
+        OfferSnapshot missed = pendingOffer;
+        clearPending();
+        return missed;
     }
 
     /** Returns the acceptance once delivery progress follows a recent Accept tap; otherwise null. */

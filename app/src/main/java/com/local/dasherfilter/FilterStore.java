@@ -101,11 +101,12 @@ final class FilterStore {
      * forgets them but Reset. Nothing is learned while either is off, so turning it on never applies highs gathered
      * meanwhile. (The stored key keeps its old name, "last accepted".)
      */
-    static void recordAccepted(Context context, OfferSnapshot accepted) {
-        if (accepted.payCents == null) return;
+    /** @return whether it was learned (both switches on and the pay known) */
+    static boolean recordAccepted(Context context, OfferSnapshot accepted) {
+        if (accepted.payCents == null) return false;
         SharedPreferences prefs = prefs(context);
         boolean learning = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
-        if (!learning) return;
+        if (!learning) return false;
         AcceptedBest best = best(prefs).raisedBy(accepted);
         prefs.edit()
                 .putInt(LAST_ACCEPTED, Math.max(prefs.getInt(LAST_ACCEPTED, 0), accepted.payCents))
@@ -113,6 +114,7 @@ final class FilterStore {
                 .putInt(BEST_MILE_PAY, best.milePay).putLong(BEST_MILES, Double.doubleToLongBits(best.miles))
                 .putInt(BEST_STOP_PAY, best.stopPay).putInt(BEST_STOPS, best.stops)
                 .apply();
+        return true;
     }
 
     /**

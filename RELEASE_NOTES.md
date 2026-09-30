@@ -1,3 +1,23 @@
+## 0.4.35 — the log says why the adaptive minimum did or didn't learn
+
+- The adaptive minimum learns from an offer only when:
+  - auto-decline and **Adaptive minimum** are on;
+  - the offer's pay was read on screen;
+  - your **Accept** tap was seen;
+  - Dasher showed a delivery screen within 15 seconds.
+
+  Each step now goes in the log, so a shared report shows where it stops. The log lines are:
+  - "Accept tap seen on …";
+  - "Learned from accepted …";
+  - "not learned: auto-decline or Adaptive minimum was off";
+  - "Not learned: no delivery screen recognized within 15 s after Accept on …", with the screen Dasher showed instead;
+  - "no offer with readable pay was on screen".
+- Nothing about what is learned changed: guessing Dasher's wording could teach the minimum from offers you never accepted.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover each of those log lines.
+- **Not verified on a real phone:** which step stops on your dashes. A report after your next dash will show it.
+
 ## 0.4.34 — shopping screens never push offers out of a report
 
 - **Two logs instead of one.** Offers, decisions and status go in one small log, Dasher's other screens (a shopping list, an item) in another, so a few minutes of shopping can no longer push the offers out of a report you share. Every report now has both: the newest offers log, then "Dasher's other screens (newest)", each starting at a whole line.
