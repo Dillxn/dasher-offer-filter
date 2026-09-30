@@ -11,6 +11,7 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -148,5 +149,18 @@ public class DecisionLogTest {
         assertTrue(DecisionLog.recent(app, 10).isEmpty());
         DecisionLog.record(app, entry(1000, 790, OfferRule.Result.DECLINE, DecisionLog.Action.DECLINE_TAPPED));
         assertEquals(1, DecisionLog.recent(app, 10).size());
+    }
+
+    @Test
+    public void allTimeTotalsFollowEachOfferAndItsLaterStepsUntilCleared() {
+        DecisionLog.record(app, entry(1_000, 1500, OfferRule.Result.KEEP, DecisionLog.Action.PASSES));
+        // A failing offer is review until the app acts on it; tapping Decline moves it to filtered.
+        DecisionLog.record(app, entry(2_000, 700, OfferRule.Result.DECLINE, DecisionLog.Action.DECLINE_REFUSED));
+        assertArrayEquals(new int[] {1, 0, 1}, DecisionLog.totals(app));
+        DecisionLog.record(app, entry(2_000, 700, OfferRule.Result.DECLINE, DecisionLog.Action.DECLINE_TAPPED));
+        assertArrayEquals("the same offer, now filtered, is not counted twice", new int[] {1, 1, 0},
+                DecisionLog.totals(app));
+        DecisionLog.clear(app);
+        assertArrayEquals(new int[] {0, 0, 0}, DecisionLog.totals(app));
     }
 }

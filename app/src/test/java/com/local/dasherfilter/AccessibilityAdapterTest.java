@@ -30,6 +30,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -96,10 +97,22 @@ public class AccessibilityAdapterTest {
         controller.get().onAccessibilityEvent(event);
     }
 
-    /** The service's touch-watch overlays currently on screen. */
+    /** The service's touch-watch overlays currently on screen (the filter tab is not one). */
     private List<View> overlays() {
+        List<View> watches = new java.util.ArrayList<>();
+        for (View view : windows()) if (!(view instanceof DasherTab)) watches.add(view);
+        return watches;
+    }
+
+    private List<View> windows() {
         ShadowWindowManagerImpl windows = Shadow.extract(controller.get().getSystemService(WindowManager.class));
         return windows.getViews();
+    }
+
+    /** The filter tab over Dasher, or null. */
+    private DasherTab tab() {
+        for (View view : windows()) if (view instanceof DasherTab) return (DasherTab) view;
+        return null;
     }
 
     /** A finger landing anywhere on the screen, as Android reports it to a watching overlay. */
@@ -264,6 +277,53 @@ public class AccessibilityAdapterTest {
         Dashing.forgetCache();
         show(node("Dash now", false));
         assertFalse("the start screen is not dashing", Dashing.now(app));
+    }
+
+    @Test
+    public void theFilterTabSitsFixedOverDasherAndPausesOrResumes() {
+        controller.get().onServiceConnected();
+        show(offer("$25.00"));
+        DasherTab tab = tab();
+        assertNotNull("the tab is over Dasher", tab);
+        assertEquals(FilterHeroView.State.ON, tab.state());
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) tab.getLayoutParams();
+        assertEquals(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, params.type);
+        assertEquals("on the left edge", 0, params.x);
+        assertEquals(android.view.Gravity.TOP | android.view.Gravity.START, params.gravity);
+        assertTrue("never takes the keyboard or Dasher's focus",
+                (params.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0);
+
+        tab.performClick();
+        assertFalse(FilterStore.load(app).enabled);
+        assertTrue("pausing keeps the rules", FilterStore.load(app).hasAnyRule());
+        assertEquals(FilterHeroView.State.PAUSED, tab.state());
+        assertEquals("Offer Filter: paused. Tap to resume.", tab.getContentDescription().toString());
+        tab.performClick();
+        assertTrue(FilterStore.load(app).enabled);
+        assertEquals("the same tab stays; it is never added twice", 1, windows().size());
+
+        // Dasher leaves the screen: the tab goes with it.
+        AccessibilityNodeInfo maps = AccessibilityNodeInfo.obtain(new View(app));
+        maps.setPackageName("com.google.android.apps.maps");
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(maps);
+        controller.get().onAccessibilityEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOWS_CHANGED));
+        assertNull(tab());
+
+        // Turned off in Settings, it never shows.
+        DasherOverlay.setEnabled(app, false);
+        show(offer("$25.00"));
+        assertNull(tab());
+    }
+
+    @Test
+    public void theFilterTabShowsOnlyWhileTheServiceIsConnected() {
+        show(offer("$25.00"));
+        assertNull("not connected yet", tab());
+        controller.get().onServiceConnected();
+        show(offer("$25.00"));
+        assertNotNull(tab());
+        controller.get().onUnbind(null);
+        assertNull("gone with the service", tab());
     }
 
     @Test

@@ -1,3 +1,25 @@
+## 0.4.23 — a filter button inside Dasher, day and night, and counts per dash
+
+- **A filter button inside Dasher.**
+  - While Dasher is on screen, a small tab with the mascot's face sits on its left edge, a little above the middle, clear of the offer card and its Accept and Decline buttons.
+  - It cannot be moved or dismissed. Blue and awake means auto-decline is on; amber and asleep means paused.
+  - A tap pauses or resumes, keeping every rule. With no rule saved yet, it opens Offer Filter.
+  - A tap during an automatic decline counts as your touch, so that offer is handed back to you.
+  - It leaves when Dasher does. Settings → Filter button in Dasher turns it off.
+- **Tap the sun or the moon** to switch between day and night. Until the first tap, the app follows the phone's dark mode.
+- **Counts per dash.** Under the mascot: this dash's offers, passed, filtered and review (or the last dash's, between dashes), each with its all-time total underneath. The totals count every offer since the history was last cleared, beyond the 200 kept in the history. Clear history starts them again.
+
+Evidence boundaries: the main page was rendered and reviewed in light and dark, while dashing, and before any dash.
+
+- **Simulated Android 8 and 15 tests** cover:
+  - the tab showing over Dasher only with the service connected: fixed on the left edge, never focusable, pausing and resuming with rules kept, leaving with Dasher and the service, and never showing when turned off;
+  - the sun switching to night and the moon back to day, for the whole screen;
+  - this dash's counts against earlier offers, and the all-time totals.
+- **Java tests** cover a declined offer moving from review to filtered once, and Clear history resetting the totals.
+- **Not verified:**
+  - where the tab lands over a real Dasher screen;
+  - tapping it during a real dash.
+
 ## 0.4.22 — one screen, a new icon, and adaptive minimums that stay
 
 - **The main page fits one screen.** No scrolling:

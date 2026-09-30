@@ -42,7 +42,7 @@ final class MinimumsStarView extends View {
     private static final double OFFER_STRETCH = 1.35;
     private static final long GLIDE_MS = 700;
     /** The smallest circle, in dp, the constellation is drawn in when a screen is short. */
-    private static final int MIN_WINDOW_DP = 46;
+    private static final int MIN_WINDOW_DP = 40;
 
     private final Ui ui;
     private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);

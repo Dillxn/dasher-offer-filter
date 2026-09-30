@@ -87,19 +87,19 @@ public class MotionAdapterTest {
     @Test
     public void theMascotsRingDrawsItselfUnlessAnimationsAreOff() throws Exception {
         FilterHeroView mascot = new FilterHeroView(app, new Ui(app));
-        mascot.set(FilterHeroView.State.ON, 0, 0, 0);
+        mascot.set(FilterHeroView.State.ON, new int[] {0, 0, 0}, new int[] {0, 0, 0}, "This dash");
         assertTrue("starts drawing from the beginning", mascot.ringDrawn() < 0.2f);
         org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(1200));
         assertEquals("and is whole a moment later", 1f, mascot.ringDrawn(), 0.001f);
-        mascot.set(FilterHeroView.State.ON, 1, 0, 0);
+        mascot.set(FilterHeroView.State.ON, new int[] {1, 0, 0}, new int[] {1, 0, 0}, "This dash");
         assertEquals("new counts do not redraw it", 1f, mascot.ringDrawn(), 0.001f);
 
         setAnimatorDurationScale(0f);
-        mascot.set(FilterHeroView.State.PAUSED, 1, 0, 0);
+        mascot.set(FilterHeroView.State.PAUSED, new int[] {1, 0, 0}, new int[] {1, 0, 0}, "This dash");
         assertEquals("with animations off it is whole at once", 1f, mascot.ringDrawn(), 0f);
         // Drawn in every state without trouble.
         for (FilterHeroView.State state : FilterHeroView.State.values()) {
-            mascot.set(state, 2, 3, 1);
+            mascot.set(state, new int[] {2, 3, 1}, new int[] {20, 31, 4}, "Last dash");
             mascot.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
                     android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
             mascot.layout(0, 0, 1080, mascot.getMeasuredHeight());

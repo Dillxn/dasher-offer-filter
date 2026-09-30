@@ -702,17 +702,25 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void theFilterPictureShowsTheLast24HoursAndTheState() {
+    public void theFilterPictureShowsThisDashWithAllTimeTotalsAndTheState() {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        // One offer from hours before this dash began.
+        Dashing.forgetCache();
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 3 * 3_600_000L,
+                DecisionLog.Source.SCREEN, false, new OfferSnapshot(900, 4.0, 15, 2), 1200,
+                OfferRule.Result.DECLINE, "flat minimum", DecisionLog.Action.DECLINE_TAPPED, true,
+                Collections.emptyList()));
+        // This dash: one declined, one passed.
+        Dashing.seen(app);
         DecisionLog.record(app, declinedEntry());
-        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 60_000, DecisionLog.Source.SCREEN,
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
                 false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
                 DecisionLog.Action.PASSES, true, Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView hero = find(content, FilterHeroView.class);
-            assertEquals("Auto-decline on. Last 24 hours: 1 passed, 1 filtered, 0 to review.",
-                    hero.getContentDescription().toString());
+            assertEquals("Auto-decline on. This dash: 2 offers, 1 passed, 1 filtered, 0 to review. "
+                    + "In all: 1 passed, 2 filtered, 0 to review.", hero.getContentDescription().toString());
             assertEquals("the mascot is cheerful while on", Mascot.Mood.HAPPY, hero.mood());
 
             assertEquals(FilterHeroView.State.ON, hero.state());
@@ -1025,6 +1033,42 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void tappingTheSunTurnsTheAppToNightAndTheMoonBackToDay() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View sun = iconDescribed(activity.get().findViewById(android.R.id.content), "Switch to night");
+            assertNotNull("by day the sun is a button", sun);
+            sun.performClick();
+            assertEquals(Boolean.TRUE, Appearance.chosen(app));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+        }
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertTrue("the whole screen is night now", new Ui(activity.get()).dark);
+            View moon = iconDescribed(content, "Switch to day");
+            assertNotNull(moon);
+            moon.performClick();
+            assertEquals(Boolean.FALSE, Appearance.chosen(app));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+        }
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            assertFalse(new Ui(activity.get()).dark);
+        }
+    }
+
+    private static View iconDescribed(View view, String description) {
+        if (view.getContentDescription() != null && description.contentEquals(view.getContentDescription())) {
+            return view;
+        }
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View found = iconDescribed(((ViewGroup) view).getChildAt(i), description);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();
@@ -1118,7 +1162,7 @@ public class AndroidAdapterTest {
                         && "Pause auto-decline".contentEquals(action.getLabel());
             }
             assertTrue("the tap is labeled", labeled);
-            assertTrue(mascot.getContentDescription().toString().startsWith("Auto-decline on. Last 24 hours:"));
+            assertTrue(mascot.getContentDescription().toString().startsWith("Auto-decline on. "));
 
             // No other pause or resume control competes with it on the main page.
             List<Button> buttons = new ArrayList<>();

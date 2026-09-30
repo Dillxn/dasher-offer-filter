@@ -20,6 +20,7 @@ import java.util.Locale;
  */
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
+    private static final long OVERLAY_CHECK_MS = 1_500L;
     private static final long RECHECK_WINDOW_MS = 3000;
     private static final long RECHECK_INTERVAL_MS = 200;
     private static final int MAX_SCAN_DEPTH = 60;
@@ -49,6 +50,14 @@ public final class OfferFilterService extends AccessibilityService {
     private long passingOfferAt;
     private final Runnable syncAutomation = this::syncAutomation;
     private TouchWatch touchWatch;
+    private DasherOverlay overlay;
+    /** While the filter tab is up, a light check that Dasher is still on screen (switching apps may send no event). */
+    private final Runnable overlayCheck = new Runnable() {
+        @Override public void run() {
+            syncOverlay();
+            if (overlay != null && overlay.isShowing()) handler.postDelayed(this, OVERLAY_CHECK_MS);
+        }
+    };
     private OfferSilencer silencer;
     private long recheckUntil;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
@@ -117,6 +126,7 @@ public final class OfferFilterService extends AccessibilityService {
     @Override public void onCreate() {
         super.onCreate();
         touchWatch = new TouchWatch(this, this::userTookOver);
+        overlay = new DasherOverlay(this);
         silencer = new OfferSilencer(this);
         // Puts back any sound left turned down if the app died during a decline.
         OfferSilencer.restore(this);
@@ -135,6 +145,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean windowsChanged = event.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (!windowsChanged && !isDasherPackage(event.getPackageName())) return;
         if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) observeClick(event);
+        syncOverlay();
         handler.removeCallbacks(recheck);
         recheckUntil = SystemClock.uptimeMillis() + RECHECK_WINDOW_MS;
         if (checkOffer()) handler.postDelayed(recheck, RECHECK_INTERVAL_MS);
@@ -158,8 +169,26 @@ public final class OfferFilterService extends AccessibilityService {
         super.onDestroy();
     }
 
+    /** The filter tab over Dasher follows Dasher on and off the screen. */
+    private void syncOverlay() {
+        if (overlay == null) return;
+        boolean wasShowing = overlay.isShowing();
+        overlay.sync(active == this && isDasherForeground());
+        if (!wasShowing && overlay.isShowing()) {
+            handler.removeCallbacks(overlayCheck);
+            handler.postDelayed(overlayCheck, OVERLAY_CHECK_MS);
+        }
+    }
+
+    /** For tests: the filter tab over Dasher. */
+    DasherOverlay overlay() {
+        return overlay;
+    }
+
     private void stop() {
         if (active == this) active = null;
+        handler.removeCallbacks(overlayCheck);
+        if (overlay != null) overlay.hide();
         handler.removeCallbacksAndMessages(null);
         declineState.reset();
         acceptedTracker.reset();

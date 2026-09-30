@@ -59,7 +59,6 @@ public final class MainActivity extends Activity {
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000");
-    private static final long DAY_MS = 86_400_000L;
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
     private static final String SHOWING_SETTINGS = "settings";
 
@@ -147,6 +146,13 @@ public final class MainActivity extends Activity {
     private Button githubDisconnect;
     private GitHubConnect.State shownGitHub;
     private boolean askingGitHub;
+
+    /** Day or night as chosen with the sun and moon, for every view and dialog of this screen. */
+    @Override protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(base);
+        android.content.res.Configuration chosen = Appearance.override(base);
+        if (chosen != null) applyOverrideConfiguration(chosen);
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -258,7 +264,21 @@ public final class MainActivity extends Activity {
         if (back) name.setPadding(ui.dp(8), 0, 0, 0);
         if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
-        if (!back) header.addView(iconButton(Glyph.Shape.SLIDERS, "Settings", () -> showSettings(true)));
+        if (!back) {
+            // The sun (or moon) the scene draws here is a button: a tap turns day into night and back.
+            View sun = new View(this);
+            sun.setContentDescription(ui.dark ? "Switch to day" : "Switch to night");
+            sun.setBackground(ui.pressable(28));
+            sun.setOnClickListener(tapped -> {
+                Appearance.choose(this, !ui.dark);
+                recreate();
+            });
+            LinearLayout.LayoutParams sunParams = new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56));
+            sunParams.setMarginEnd(ui.dp(10));
+            header.addView(sun, sunParams);
+            scene.setSunAnchor(sun);
+            header.addView(iconButton(Glyph.Shape.SLIDERS, "Settings", () -> showSettings(true)));
+        }
         return header;
     }
 
@@ -579,6 +599,9 @@ public final class MainActivity extends Activity {
         ui.heading(body, "Sound & setup");
         Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
+        // A small fixed tab on Dasher's left edge that pauses or resumes, shown only while Dasher is on screen.
+        Switch tab = ui.toggle(body, "Filter button in Dasher", DasherOverlay.enabled(this));
+        tab.setOnCheckedChangeListener((view, on) -> DasherOverlay.setEnabled(this, on));
         ui.listRow(body, "Accessibility", () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         ui.listRow(body, "Notification access", this::openNotificationAccess);
         ui.listRow(body, "Alert settings", this::configureOfferAlerts);
@@ -818,29 +841,21 @@ public final class MainActivity extends Activity {
         updateMeter();
     }
 
-    /** The filter picture with the last 24 hours' counts; redrawn only when something it shows changed. */
+    /** The filter picture with this dash's counts and all-time totals; redrawn only when something it shows changed. */
     private void refreshHero(FilterHeroView.State state) {
-        long since = System.currentTimeMillis() - DAY_MS;
-        int passed = 0;
-        int filtered = 0;
-        int review = 0;
-        for (DecisionLog.Entry entry : recentEntries) {
-            if (entry.at < since) continue;
-            if (entry.result == OfferRule.Result.KEEP) passed++;
-            else if (entry.result == OfferRule.Result.DECLINE && actedOn(entry.action)) filtered++;
-            else review++;
+        long[] dash = Dashing.lastDash(this);
+        int[] counts = new int[DecisionLog.Tally.values().length];
+        if (dash != null) {
+            for (DecisionLog.Entry entry : recentEntries) {
+                if (entry.at >= dash[0] && entry.at <= dash[1]) counts[DecisionLog.tally(entry).ordinal()]++;
+            }
         }
-        String shown = state + "/" + passed + "/" + filtered + "/" + review;
+        int[] totals = DecisionLog.totals(this);
+        String label = dash == null ? "No dash yet" : dash[1] == Long.MAX_VALUE ? "This dash" : "Last dash";
+        String shown = state + "/" + java.util.Arrays.toString(counts) + java.util.Arrays.toString(totals) + label;
         if (shown.equals(shownHero)) return;
         shownHero = shown;
-        hero.set(state, passed, filtered, review);
-    }
-
-    /** A failing offer the app did something about; one paused, refused or taken over was left to the user. */
-    private static boolean actedOn(DecisionLog.Action action) {
-        return action == DecisionLog.Action.DECLINE_TAPPED || action == DecisionLog.Action.CONFIRMATION_TAPPED
-                || action == DecisionLog.Action.NOTIFICATION_DECLINE_SENT
-                || action == DecisionLog.Action.NOTIFICATION_HIDDEN;
+        hero.set(state, counts, totals, label);
     }
 
     /** "Highest accepted $14.20 · best $0.59/min, $2.37/mi · beat declined $25.00", or what it waits for. */

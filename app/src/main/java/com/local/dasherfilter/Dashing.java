@@ -6,7 +6,8 @@ import android.content.SharedPreferences;
 /**
  * Whether the user is dashing, as far as the app has seen: an offer, Dasher's "finding offers" screen or a delivery
  * screen within the last half hour, or a route still under way, and no "dash ended" or "dash paused" screen since.
- * It only drives the homepage's live monitoring; nothing about offers is decided from it.
+ * It drives the homepage's live monitoring and its per-dash counts; nothing about offers is decided from it. A dash
+ * starts at the first such sight after the last one ended (or went quiet for half an hour).
  */
 final class Dashing {
     static final long WINDOW_MS = 1_800_000L;
@@ -14,6 +15,7 @@ final class Dashing {
     private static final long WRITE_EVERY_MS = 30_000L;
     private static final String SEEN_AT = "seen_at";
     private static final String ENDED_AT = "ended_at";
+    private static final String STARTED_AT = "started_at";
 
     private static volatile long lastWrite;
 
@@ -24,9 +26,33 @@ final class Dashing {
     /** Something only seen during a dash: an offer, the search for one, or a delivery. */
     static void seen(Context context) {
         long now = System.currentTimeMillis();
-        if (now - lastWrite < WRITE_EVERY_MS && now >= lastWrite) return;
+        SharedPreferences prefs = prefs(context);
+        boolean onDash = onDash(prefs, now);
+        if (onDash && now - lastWrite < WRITE_EVERY_MS && now >= lastWrite) return;
         lastWrite = now;
-        prefs(context).edit().putLong(SEEN_AT, now).apply();
+        SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now);
+        if (!onDash) edit.putLong(STARTED_AT, now);
+        edit.apply();
+    }
+
+    private static boolean onDash(SharedPreferences prefs, long now) {
+        long seen = prefs.getLong(SEEN_AT, 0);
+        long age = now - seen;
+        return seen > prefs.getLong(ENDED_AT, 0) && age >= 0 && age < WINDOW_MS;
+    }
+
+    /**
+     * The current dash, or the last one, as {start, end}; the end is {@link Long#MAX_VALUE} while it is still on.
+     * Null before the first dash the app saw.
+     */
+    static long[] lastDash(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long started = prefs.getLong(STARTED_AT, 0);
+        if (started <= 0) return null;
+        if (onDash(prefs, System.currentTimeMillis())) return new long[] {started, Long.MAX_VALUE};
+        long ended = prefs.getLong(ENDED_AT, 0);
+        long end = ended >= started ? ended : prefs.getLong(SEEN_AT, started) + WINDOW_MS;
+        return new long[] {started, end};
     }
 
     /** Dasher said the dash ended or paused. */

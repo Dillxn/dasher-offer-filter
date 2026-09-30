@@ -55,6 +55,7 @@ final class ScenePage extends LinearLayout {
     private View horizon;
     private int horizonInset;
     private View fallback;
+    private View sunAnchor;
     private Shader sky;
     private Shader ground;
     private Shader sunGlow;
@@ -95,6 +96,11 @@ final class ScenePage extends LinearLayout {
         return watching;
     }
 
+    /** The sun (or moon) is drawn over this view, which is its button. */
+    void setSunAnchor(View view) {
+        sunAnchor = view;
+    }
+
     /** Where the horizon is, in this page's coordinates. */
     float horizonY() {
         if (horizon != null && horizon.getVisibility() == VISIBLE && horizon.getHeight() > 0) {
@@ -113,6 +119,15 @@ final class ScenePage extends LinearLayout {
             if (!(at.getParent() instanceof View)) break;
         }
         return y;
+    }
+
+    private float left(View view) {
+        float x = 0;
+        for (View at = view; at != null && at != this; at = (View) at.getParent()) {
+            x += at.getLeft();
+            if (!(at.getParent() instanceof View)) break;
+        }
+        return x;
     }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -165,8 +180,9 @@ final class ScenePage extends LinearLayout {
 
     /** By day a sun, by night a crescent moon, up by the settings button, both with a soft glow. */
     private void drawSun(Canvas canvas, float width) {
-        float x = width * 0.68f;
-        float y = ui.dp(44);
+        boolean anchored = sunAnchor != null && sunAnchor.getWidth() > 0;
+        float x = anchored ? left(sunAnchor) + sunAnchor.getWidth() / 2f : width * 0.68f;
+        float y = anchored ? top(sunAnchor) + sunAnchor.getHeight() / 2f : ui.dp(44);
         canvas.save();
         canvas.translate(-Tilt.x() * ui.dp(SUN_DEPTH), -Tilt.y() * ui.dp(SUN_DEPTH));
         float breathe = 1 + 0.06f * Motion.wave(7f, 0);

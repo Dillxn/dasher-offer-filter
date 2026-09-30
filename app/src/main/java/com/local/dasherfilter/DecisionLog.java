@@ -149,6 +149,57 @@ final class DecisionLog {
         }
     }
 
+    /** How the main page counts an offer: passed, filtered (a failing offer the app acted on), or left to review. */
+    enum Tally { PASSED, FILTERED, REVIEW }
+
+    /** A failing offer counts as filtered only when the app did something about it; one left to the user is review. */
+    static Tally tally(Entry entry) {
+        if (entry.result == OfferRule.Result.KEEP) return Tally.PASSED;
+        if (entry.result == OfferRule.Result.DECLINE && (entry.action == Action.DECLINE_TAPPED
+                || entry.action == Action.CONFIRMATION_TAPPED || entry.action == Action.NOTIFICATION_DECLINE_SENT
+                || entry.action == Action.NOTIFICATION_HIDDEN)) {
+            return Tally.FILTERED;
+        }
+        return Tally.REVIEW;
+    }
+
+    private static final String TOTALS = "decision_totals";
+
+    /**
+     * Every offer recorded since the history was last cleared, by {@link Tally}: kept apart from the history, which
+     * holds only the latest {@value #MAX_ENTRIES}.
+     */
+    static int[] totals(Context context) {
+        synchronized (LOCK) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE);
+            int[] totals = new int[Tally.values().length];
+            if (!prefs.contains(Tally.PASSED.name())) {
+                // First use since totals were kept: start from what the history holds.
+                for (Entry entry : loaded(context)) totals[tally(entry).ordinal()]++;
+                writeTotals(context, totals);
+                return totals;
+            }
+            for (Tally tally : Tally.values()) totals[tally.ordinal()] = prefs.getInt(tally.name(), 0);
+            return totals;
+        }
+    }
+
+    private static void writeTotals(Context context, int[] totals) {
+        android.content.SharedPreferences.Editor edit =
+                context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE).edit();
+        for (Tally tally : Tally.values()) edit.putInt(tally.name(), totals[tally.ordinal()]);
+        edit.apply();
+    }
+
+    /** Moves one offer's count from {@code from} (null for a new offer) to {@code to}. Under {@link #LOCK}. */
+    private static void recount(Context context, Tally from, Tally to) {
+        if (from == to) return;
+        int[] totals = totals(context);
+        if (from != null) totals[from.ordinal()] = Math.max(0, totals[from.ordinal()] - 1);
+        totals[to.ordinal()]++;
+        writeTotals(context, totals);
+    }
+
     private static final Object LOCK = new Object();
     private static final ExecutorService WRITER = Executors.newSingleThreadExecutor();
     /** Oldest first; null until first loaded from disk. Guarded by {@link #LOCK}. */
@@ -160,16 +211,21 @@ final class DecisionLog {
         try {
             synchronized (LOCK) {
                 List<Entry> all = loaded(context);
+                // Before anything changes, so a first count starts from the history as it was.
+                totals(context);
                 for (int i = all.size() - 1; i >= Math.max(0, all.size() - 6); i--) {
                     Entry previous = all.get(i);
                     if (previous.source != entry.source) continue;
                     if (!previous.sameOffer(entry)) break;
                     if (entry.action == previous.action || entry.action.weight < previous.action.weight) return;
-                    all.set(i, previous.withAction(entry.action, entry.autoDecline));
+                    Entry upgraded = previous.withAction(entry.action, entry.autoDecline);
+                    all.set(i, upgraded);
+                    recount(context, tally(previous), tally(upgraded));
                     persist(context, all);
                     return;
                 }
                 all.add(entry);
+                recount(context, null, tally(entry));
                 while (all.size() > MAX_ENTRIES) all.remove(0);
                 persist(context, all);
             }
@@ -200,6 +256,7 @@ final class DecisionLog {
     static void clear(Context context) {
         synchronized (LOCK) {
             entries = new ArrayList<>();
+            writeTotals(context, new int[Tally.values().length]);
             version++;
             File file = file(context);
             WRITER.execute(() -> {

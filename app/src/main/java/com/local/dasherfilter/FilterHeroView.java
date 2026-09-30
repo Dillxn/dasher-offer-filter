@@ -31,9 +31,9 @@ final class FilterHeroView extends View {
     private static final int DESIGN_HEIGHT_DP = 268;
     /** The drawing (ring, mascot, ticket) takes the design's top; the counts under it keep their own size. */
     private static final int ART_HEIGHT_DP = 196;
-    private static final int COUNTS_HEIGHT_DP = 58;
+    private static final int COUNTS_HEIGHT_DP = 84;
     /** The least share of its size the drawing shrinks to when a screen is short. */
-    private static final float MIN_SHARE = 0.36f;
+    private static final float MIN_SHARE = 0.3f;
     private static final float ON_SWEEP = 324;
     private static final float PAUSED_SWEEP = 228;
     private static final long RING_DRAW_MS = 1100;
@@ -56,9 +56,12 @@ final class FilterHeroView extends View {
     /** What a tap does, as screen readers announce it: "Pause auto-decline", for example. */
     private String action;
     private State state = State.OFF;
+    /** This dash's (or the last dash's) counts, and every offer's since the history was cleared. */
     private int passed;
     private int filtered;
     private int review;
+    private int[] totals = new int[3];
+    private String dashLabel = "No dash yet";
 
     FilterHeroView(Context context, Ui ui) {
         super(context);
@@ -106,16 +109,25 @@ final class FilterHeroView extends View {
         return Mascot.moodOf(state);
     }
 
-    void set(State state, int passed, int filtered, int review) {
+    /**
+     * @param dash       passed, filtered and review counts for the dash named by {@code dashLabel}
+     * @param totals     the same for every offer since the history was cleared
+     * @param dashLabel  "This dash", "Last dash" or "No dash yet"
+     */
+    void set(State state, int[] dash, int[] totals, String dashLabel) {
         if (state != this.state) ringFrom = SystemClock.uptimeMillis();
         this.state = state;
-        this.passed = passed;
-        this.filtered = filtered;
-        this.review = review;
+        this.passed = dash[0];
+        this.filtered = dash[1];
+        this.review = dash[2];
+        this.totals = totals.clone();
+        this.dashLabel = dashLabel;
         String mode = state == State.ON ? "Auto-decline on" : state == State.PAUSED ? "Auto-decline paused"
                 : "Auto-decline off";
-        setContentDescription(String.format(Locale.US, "%s. Last 24 hours: %d passed, %d filtered, %d to review.",
-                mode, passed, filtered, review));
+        setContentDescription(String.format(Locale.US,
+                "%s. %s: %d offers, %d passed, %d filtered, %d to review. In all: %d passed, %d filtered, %d to review.",
+                mode, dashLabel, passed + filtered + review, passed, filtered, review, totals[0], totals[1],
+                totals[2]));
         invalidate();
     }
 
@@ -171,7 +183,7 @@ final class FilterHeroView extends View {
         drawMascot(canvas, cx);
         canvas.restore();
         // The counts keep the page's text size however small the drawing above them is.
-        drawCounts(canvas, getWidth() / 2f, getWidth(), artTop + ui.dp(ART_HEIGHT_DP) * scale + ui.dp(16));
+        drawCounts(canvas, getWidth() / 2f, getWidth(), artTop + ui.dp(ART_HEIGHT_DP) * scale);
         if (state != State.OFF) Motion.next(this);
     }
 
@@ -341,15 +353,28 @@ final class FilterHeroView extends View {
     }
 
     /** Three quiet counts under the mascot: a small badge, the number, and its word. */
+    /** "THIS DASH" over three counts, each with its word and, under it, the all-time total. */
     private void drawCounts(Canvas canvas, float cx, float width, float top) {
+        text.setFakeBoldText(true);
+        text.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
+        text.setLetterSpacing(0.12f);
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setColor(ui.inkMuted);
+        int offers = passed + filtered + review;
+        String heading = dashLabel.startsWith("No") ? dashLabel
+                : dashLabel + " · " + offers + (offers == 1 ? " offer" : " offers");
+        canvas.drawText(heading.toUpperCase(Locale.US), cx, top + ui.dp(8) - text.getFontMetrics().ascent / 2, text);
+        text.setLetterSpacing(0);
+        float row = top + ui.dp(30);
         float spacing = Math.min(ui.dp(96), width * 0.3f);
-        drawCount(canvas, cx - spacing, top, OfferRule.Result.KEEP, passed, "passed", state != State.OFF);
-        drawCount(canvas, cx, top, OfferRule.Result.DECLINE, filtered, "filtered", state == State.ON);
-        drawCount(canvas, cx + spacing, top, OfferRule.Result.REVIEW, review, "review", state != State.OFF);
+        drawCount(canvas, cx - spacing, row, OfferRule.Result.KEEP, passed, totals[0], "passed", state != State.OFF);
+        drawCount(canvas, cx, row, OfferRule.Result.DECLINE, filtered, totals[1], "filtered", state == State.ON);
+        drawCount(canvas, cx + spacing, row, OfferRule.Result.REVIEW, review, totals[2], "review",
+                state != State.OFF);
     }
 
-    private void drawCount(Canvas canvas, float x, float top, OfferRule.Result result, int count, String word,
-                           boolean live) {
+    private void drawCount(Canvas canvas, float x, float top, OfferRule.Result result, int count, int total,
+                           String word, boolean live) {
         int color = Ui.resultColor(result);
         // The number and its word size with the font setting, shrunk only as far as their space needs.
         text.setFakeBoldText(true);
@@ -374,6 +399,9 @@ final class FilterHeroView extends View {
         text.setTextSize(Math.min(ui.sp(12), ui.dp(17)));
         text.setColor(live ? ui.inkSecondary : ui.inkMuted);
         canvas.drawText(word, x, top + ui.dp(22) + text.getTextSize() / 2, text);
+        text.setTextSize(Math.min(ui.sp(11), ui.dp(15)));
+        text.setColor(ui.inkMuted);
+        canvas.drawText(total + " total", x, top + ui.dp(40) + text.getTextSize() / 2, text);
     }
 
     private static int withAlpha(int color, int alpha) {
