@@ -52,6 +52,9 @@ final class ReportOutbox {
     private static final Map<String, Long> seen = new HashMap<>();
     private static boolean seenLoaded;
     private static volatile String appVersion;
+    /** The wall clock; tests pin it to make two reports land in the same millisecond. */
+    static java.util.function.LongSupplier clock = System::currentTimeMillis;
+    private static final java.util.concurrent.atomic.AtomicLong sequence = new java.util.concurrent.atomic.AtomicLong();
 
     static boolean enabled(Context context) {
         return !prefs(context).getString(TOKEN, "").isEmpty();
@@ -118,7 +121,7 @@ final class ReportOutbox {
     }
 
     private static boolean filedRecently(Context context, String signature) {
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         synchronized (seen) {
             loadSeen(context);
             Long filed = seen.get(signature);
@@ -149,7 +152,7 @@ final class ReportOutbox {
      */
     static boolean submit(Context context, ProblemReport report, boolean byUser) {
         if (!enabled(context)) return false;
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         synchronized (seen) {
             loadSeen(context);
             if (!byUser) {
@@ -190,8 +193,12 @@ final class ReportOutbox {
         if (dir == null || queued(context) >= MAX_QUEUED) return;
         try {
             JSONObject item = new JSONObject().put("title", report.title).put("body", report.body);
-            String name = now + "-" + Integer.toHexString(report.signature.hashCode() ^ (int) now) + ".json";
-            File file = new File(dir, name);
+            // Time first, so the oldest sends first; the sequence keeps same-millisecond reports apart.
+            File file;
+            do {
+                file = new File(dir, String.format(java.util.Locale.US, "%013d-%06d.json", now,
+                        sequence.incrementAndGet() % 1_000_000));
+            } while (file.exists());
             try (OutputStream out = new FileOutputStream(file)) {
                 out.write(item.toString().getBytes(StandardCharsets.UTF_8));
             }
@@ -229,7 +236,7 @@ final class ReportOutbox {
                 int issue = GitHubIssues.create(token, item.getString("title"), item.getString("body"));
                 //noinspection ResultOfMethodCallIgnored
                 file.delete();
-                prefs(context).edit().putInt(LAST_ISSUE, issue).putLong(LAST_SENT_AT, System.currentTimeMillis())
+                prefs(context).edit().putInt(LAST_ISSUE, issue).putLong(LAST_SENT_AT, clock.getAsLong())
                         .remove(LAST_ERROR).apply();
                 DiagnosticLog.log(context, "report", "filed issue #" + issue);
             } catch (GitHubIssues.Rejected rejected) {

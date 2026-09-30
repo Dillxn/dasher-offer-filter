@@ -15,7 +15,7 @@
   - a decline is still on screen 5 seconds after the tap (once per offer);
   - the screen reader or notification handler crashes (once per error site per version).
 
-  **Report this offer** on an opened history row or chart column files one with your note, and **Send test** checks the path. At most 10 automatic reports go out a day. Every word that isn't offer vocabulary, and every run of four or more digits, is masked before sending. Store names, customer names, streets, ZIP codes and phone numbers never leave the phone. Outages and rate limits are retried. **Turn off reports** removes the token and discards unsent reports.
+  **Report this offer** on an opened history row or chart column files one with your note, and **Send test** checks the path. At most 10 automatic reports go out a day. Every word that isn't offer vocabulary, and every run of four or more digits, is masked before sending. Store names, customer names, streets, ZIP codes and phone numbers never leave the phone. Outages and rate limits are retried. Reports made in the same instant are all kept: the first release build caught a clash that let one overwrite another. **Turn off reports** removes the token and discards unsent reports.
 - **The fixer.** Each report issue starts a GitHub Actions run, not a schedule.
   - **Diagnose:** Claude, with a read-only token and no shared build caches, explains a decision the rules made, or reproduces a misread or crash with a failing test, fixes it and bumps the version. A session that runs out of turns or time ships nothing.
   - **Gate:** a separate read-only job applies that one commit to main and requires tests that compile and fail on the old code, then the full suite, lint and a packaged APK.

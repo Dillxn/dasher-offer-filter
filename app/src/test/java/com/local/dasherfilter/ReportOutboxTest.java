@@ -58,6 +58,7 @@ public class ReportOutboxTest {
     @After
     public void stop() {
         GitHubIssues.endpoint = PRODUCTION_ENDPOINT;
+        ReportOutbox.clock = System::currentTimeMillis;
         if (server != null) {
             try {
                 server.close();
@@ -334,6 +335,18 @@ public class ReportOutboxTest {
         assertEquals(10, ReportOutbox.queued(app));
         // The user's own reports have their own allowance.
         assertTrue(ReportOutbox.fileByUser(app, unreadable("Pay"), null));
+    }
+
+    @Test
+    public void reportsOfOneProblemInTheSameMillisecondAreAllKept() {
+        // A coarse clock (as on some build machines, and some phones) gives consecutive reports the same time.
+        ReportOutbox.clock = () -> 1_790_000_000_000L;
+        ReportOutbox.setToken(app, "github_pat_test");
+        ProblemReport report = report("Pay $7.90");
+        for (int i = 0; i < 5; i++) assertTrue(ReportOutbox.submit(app, report, true));
+        ReportOutbox.flush();
+
+        assertEquals(5, ReportOutbox.queued(app));
     }
 
     @Test
