@@ -1,0 +1,68 @@
+name: Manual-install APK pre-release (signed in a Claude session; never the update feed)
+
+# An APK signed with the cloud key by tools/sign-local.sh can be kept on GitHub for installing by hand: commit it
+# under manual-release/ and push. This job checks the signer, package and version, publishes it as a pre-release
+# tagged manual-v<version> (a pre-release is never "latest"), and never signs, builds, or touches the Render feed.
+# Phones still update only from Render. Remove the APK from manual-release/ once the release exists.
+
+on:
+  push:
+    paths:
+      - 'manual-release/*.apk'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-apk-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'build-tools;35.0.0'
+      - name: Check each APK and publish it as a pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUD_SIGNER: 553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          for apk in manual-release/*.apk; do
+            signer="$("$tools/apksigner" verify --min-sdk-version 26 --print-certs "$apk" \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}')"
+            [ "$signer" = "$CLOUD_SIGNER" ] || { echo "$apk is not signed with the cloud key; not published." >&2; exit 1; }
+            badging="$("$tools/aapt2" dump badging "$apk" | head -1)"
+            package="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$badging")"
+            version="$(sed -n "s/.* versionName='\([^']*\)'.*/\1/p" <<< "$badging")"
+            code="$(sed -n "s/.* versionCode='\([^']*\)'.*/\1/p" <<< "$badging")"
+            [ "$package" = "com.local.dasherfilter" ] || { echo "$apk is $package, not Offer Filter." >&2; exit 1; }
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$apk has no usable version." >&2; exit 1; }
+            tag="manual-v$version"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              echo "$tag already exists; left as it is."
+              continue
+            fi
+            sha="$(sha256sum "$apk" | cut -d' ' -f1)"
+            notes="Offer Filter $version (versionCode $code), signed with the cloud key ($CLOUD_SIGNER).
+          SHA-256 of the APK: $sha
+
+          Install it by hand over the current app; do not uninstall first. This is a copy for installing by hand,
+          not the update feed: phones update only from Render. What changed is in RELEASE_NOTES.md."
+            gh release create "$tag" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "Offer Filter $version (install by hand)" --notes "$notes"
+            echo "Published $tag with $apk ($sha)"
+          done
