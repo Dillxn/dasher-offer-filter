@@ -23,7 +23,8 @@ requests, or comment on GitHub.
   - `render-build.sh` and `build-local.sh`;
   - Gradle files, the manifest and resources;
   - `AGENTS.md`;
-  - the updater (`Update*.java`).
+  - the updater (`Update*.java` and its GitHub sign-in, `GitHubConnect.java`);
+  - where tips go (`Support.java`).
 
   If a fix needs one of those, the outcome is `needs-human`.
 - Never change the user's rules, thresholds or defaults. Never turn an unknown into KEEP or DECLINE. A review is

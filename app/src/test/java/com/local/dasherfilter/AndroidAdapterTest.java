@@ -595,6 +595,95 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void gitHubConnectShowsOnlyInABuildWithAnAppAndWalksThroughTheCode() {
+        String shipped = GitHubConnect.clientId;
+        try {
+            GitHubConnect.clientId = "";
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                assertNull(findButton(activity.get().findViewById(android.R.id.content), "Connect GitHub"));
+            }
+
+            GitHubConnect.clientId = "Iv1.test";
+            GitHubConnect.disconnect(app);
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                View content = activity.get().findViewById(android.R.id.content);
+                assertEquals(View.VISIBLE, findButton(content, "Connect GitHub").getVisibility());
+                assertEquals(View.GONE, findButton(content, "Disconnect GitHub").getVisibility());
+                assertNotNull(findText(content, "Not connected. Connect GitHub to get updates from your repository."));
+
+                // GitHub sent a code: it is shown large, and the button copies it and opens GitHub's code page.
+                app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                        .putString("device_code", "device").putString("user_code", "WDJB-MJHT")
+                        .putLong("code_expires_at", System.currentTimeMillis() + 600_000L).commit();
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+                TextView code = findText(content, "WDJB-MJHT");
+                assertEquals(View.VISIBLE, code.getVisibility());
+                findButton(content, "Copy code and open GitHub").performClick();
+                android.content.ClipboardManager clipboard = app.getSystemService(android.content.ClipboardManager.class);
+                assertEquals("WDJB-MJHT", clipboard.getPrimaryClip().getItemAt(0).getText().toString());
+                Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+                assertEquals(Intent.ACTION_VIEW, opened.getAction());
+                assertEquals("https://github.com/login/device", opened.getDataString());
+
+                // Cancelling forgets the code.
+                findButton(content, "Cancel").performClick();
+                assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
+                assertEquals(View.GONE, code.getVisibility());
+                assertEquals(View.VISIBLE, findButton(content, "Connect GitHub").getVisibility());
+
+                // Connected: says as whom, and offers only to disconnect.
+                app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                        .putString("access_token", "ghu_test").putString("login", "Dillxn").commit();
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+                assertNotNull(findText(content, "Connected to GitHub as Dillxn. Updates also come from your repository."));
+                assertEquals(View.GONE, findButton(content, "Connect GitHub").getVisibility());
+                findButton(content, "Disconnect GitHub").performClick();
+                assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
+                assertNull(app.getSharedPreferences("github", Context.MODE_PRIVATE).getString("access_token", null));
+            }
+        } finally {
+            GitHubConnect.clientId = shipped;
+            GitHubConnect.disconnect(app);
+        }
+    }
+
+    @Test
+    public void tipsShowOnlyWithTheAuthorsNamesAndOpenTheirService() {
+        String cashApp = Support.cashApp;
+        String venmo = Support.venmo;
+        String payPal = Support.payPal;
+        try {
+            Support.cashApp = "";
+            Support.venmo = "";
+            Support.payPal = "";
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                View content = activity.get().findViewById(android.R.id.content);
+                assertNull(findText(content, "SUPPORT"));
+                assertNull(findButton(content, "Tip with Cash App"));
+            }
+
+            Support.cashApp = "OfferFilterDev";
+            Support.venmo = "Offer-Filter";
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                View content = activity.get().findViewById(android.R.id.content);
+                assertNotNull(findText(content, "SUPPORT"));
+                assertNull("a service without a name is not offered", findButton(content, "Tip with PayPal"));
+                findButton(content, "Tip with Cash App").performClick();
+                Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+                assertEquals(Intent.ACTION_VIEW, opened.getAction());
+                assertEquals("https://cash.app/$OfferFilterDev", opened.getDataString());
+                findButton(content, "Tip with Venmo").performClick();
+                assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Offer%20Filter%20tip",
+                        Shadows.shadowOf(app).getNextStartedActivity().getDataString());
+            }
+        } finally {
+            Support.cashApp = cashApp;
+            Support.venmo = venmo;
+            Support.payPal = payPal;
+        }
+    }
+
+    @Test
     public void turningReportsOffAsksFirst() {
         ReportOutbox.setToken(app, "github_pat_existing");
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

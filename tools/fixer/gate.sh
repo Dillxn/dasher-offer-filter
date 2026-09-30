@@ -24,8 +24,11 @@ step "only app code, tests, version and notes changed"
 changed="$(git diff --name-only --no-renames "$base" HEAD)"
 while IFS= read -r path; do
     case "$path" in
-        # The updater and its transport decide what the phone installs; the fixer never touches them.
-        app/src/main/java/*/Update*.java) fail "not allowed to change the updater: $path" ;;
+        # The updater, its transport and its GitHub sign-in decide what the phone installs; the fixer never touches them.
+        app/src/main/java/*/Update*.java|app/src/main/java/*/GitHubConnect.java)
+            fail "not allowed to change the updater: $path" ;;
+        # Where tips go is the author's alone to set.
+        app/src/main/java/*/Support.java) fail "not allowed to change where tips go: $path" ;;
         app/src/main/java/*|app/src/test/java/*|app/build.gradle|README.md|RELEASE_NOTES.md|AUDIT.md) ;;
         *) fail "not allowed to change $path" ;;
     esac
@@ -96,7 +99,7 @@ for path in glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml'):
     for key in totals:
         totals[key] += int(suite.get(key, 0))
 print('junit', totals)
-if totals['tests'] < 332 or totals['failures'] or totals['errors'] or totals['skipped']:
+if totals['tests'] < 354 or totals['failures'] or totals['errors'] or totals['skipped']:
     sys.exit('GATE FAILED: test totals ' + str(totals))
 PY
 

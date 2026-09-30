@@ -46,6 +46,8 @@ import org.json.JSONObject;
 /**
  * Update checks, download verification, and installation are separate observable stages. An APK is installed only
  * after its size, SHA-256, package, embedded version, and signing certificate all match the feed and this app.
+ * Releases are read from Render and, once the user connects GitHub, from the app's private repository too; the newer
+ * of the two is used, and one being unreachable does not stop the other.
  */
 final class Updater {
     private static final int PERIODIC_JOB_ID = 7241;
@@ -193,18 +195,18 @@ final class Updater {
             PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
             status(app, "Checking for updates…");
 
-            JSONObject release = fetchRelease(now);
-            long advertised = release.getLong("versionCode");
+            Release release = newestRelease(app, now);
+            long advertised = release.json.getLong("versionCode");
             prefs(app).edit()
                     .putLong(CHECKED_AT, now)
                     .putLong(NEXT_CHECK_AT, now + SUCCESS_COOLDOWN_MS)
                     .putInt(FAILURE_COUNT, 0)
-                    .putString(ADVERTISED, release.getString("versionName"))
+                    .putString(ADVERTISED, release.json.getString("versionName"))
                     .apply();
             if (!UpdatePolicy.isNewer(advertised, versionCode(installed))) {
-                status(app, advertised == versionCode(installed)
+                status(app, (advertised == versionCode(installed)
                         ? "Up to date: " + installed.versionName
-                        : "Feed is older than this installation; no downgrade attempted.");
+                        : "Feed is older than this installation; no downgrade attempted.") + release.caveat);
                 clearReady(app);
                 JobScheduler jobs = app.getSystemService(JobScheduler.class);
                 if (jobs != null) jobs.cancel(RETRY_JOB_ID);
@@ -228,16 +230,75 @@ final class Updater {
         }
     }
 
-    private static JSONObject fetchRelease(long now) throws IOException, JSONException {
+    /** A release as one channel advertised it, with the token that channel needs (null for Render). */
+    static final class Release {
+        final UpdatePolicy.Channel channel;
+        final JSONObject json;
+        final String token;
+        /** A note about the other channel when it could not be read, for the status line. */
+        String caveat = "";
+
+        Release(UpdatePolicy.Channel channel, JSONObject json, String token) {
+            this.channel = channel;
+            this.json = json;
+            this.token = token;
+        }
+
+        long versionCode() {
+            return json.optLong("versionCode", 0);
+        }
+    }
+
+    /**
+     * The newest release among the channels that answered: Render always, and the repository while GitHub is
+     * connected. A tie goes to the first (Render).
+     *
+     * @throws Exception the first channel's failure when none answered
+     */
+    private static Release newestRelease(Context app, long now) throws Exception {
+        Release render = null;
+        Release repo = null;
+        Exception renderError = null;
+        Exception repoError = null;
+        try {
+            render = fetchRelease(UpdatePolicy.Channel.RENDER, UpdatePolicy.FEED + "?t=" + now, null);
+        } catch (Exception error) {
+            renderError = error;
+        }
+        if (GitHubConnect.configured()) {
+            try {
+                String token = GitHubConnect.token(app);
+                if (token != null) repo = fetchRelease(UpdatePolicy.Channel.REPO, UpdatePolicy.REPO_FEED, token);
+            } catch (Exception error) {
+                repoError = error;
+                DiagnosticLog.log(app, "update", "repository feed failed: " + error.getClass().getSimpleName());
+            }
+        }
+        Release newest = newer(render, repo);
+        if (newest == null) throw renderError != null ? renderError : repoError;
+        if (repoError != null) newest.caveat = " (GitHub not reachable: " + repoError.getMessage() + ")";
+        else if (renderError != null && newest.channel == UpdatePolicy.Channel.REPO) newest.caveat = " (from GitHub)";
+        return newest;
+    }
+
+    /** The one with the higher version code; {@code first} on a tie; null only when both are null. */
+    static Release newer(Release first, Release second) {
+        if (first == null) return second;
+        if (second == null) return first;
+        return second.versionCode() > first.versionCode() ? second : first;
+    }
+
+    private static Release fetchRelease(UpdatePolicy.Channel channel, String address, String token)
+            throws IOException, JSONException {
         ByteArrayOutputStream feed = new ByteArrayOutputStream();
-        UpdateTransport.download(UpdatePolicy.FEED + "?t=" + now, feed, MAX_FEED_BYTES);
-        JSONObject release = new JSONObject(feed.toString(StandardCharsets.UTF_8.name()));
+        UpdateTransport.download(channel, address, token, feed, MAX_FEED_BYTES);
+        Release release = new Release(channel, new JSONObject(feed.toString(StandardCharsets.UTF_8.name())), token);
         checkMetadata(release);
         return release;
     }
 
     /** The cached APK when it still matches this release; otherwise a fresh download that passed every check. */
-    private static File verifiedApk(Context app, JSONObject release, PackageInfo installed) throws Exception {
+    private static File verifiedApk(Context app, Release release, PackageInfo installed) throws Exception {
         File apk = apkFile(app);
         if (apk.isFile()) {
             try {
@@ -249,9 +310,11 @@ final class Updater {
         }
         File part = new File(apk.getParentFile(), "download.apk");
         try {
-            status(app, "Downloading " + release.getString("versionName") + "…");
+            status(app, "Downloading " + release.json.getString("versionName")
+                    + (release.channel == UpdatePolicy.Channel.REPO ? " from GitHub…" : "…"));
             try (OutputStream out = new FileOutputStream(part)) {
-                UpdateTransport.download(release.getString("apkUrl"), out, release.getLong("size"));
+                UpdateTransport.download(release.channel, release.json.getString("apkUrl"), release.token, out,
+                        release.json.getLong("size"));
             }
             validateApk(app, part, release, installed);
             if (apk.exists() && !apk.delete()) throw new IOException("Could not replace old update");
@@ -269,22 +332,24 @@ final class Updater {
         return new File(dir, "OfferFilter.apk");
     }
 
-    private static void checkMetadata(JSONObject release) throws IOException, JSONException {
-        if (!POSITIVE_INTEGER.matcher(String.valueOf(release.get("versionCode"))).matches()
-                || !POSITIVE_INTEGER.matcher(String.valueOf(release.get("size"))).matches()) {
+    private static void checkMetadata(Release release) throws IOException, JSONException {
+        JSONObject json = release.json;
+        if (!POSITIVE_INTEGER.matcher(String.valueOf(json.get("versionCode"))).matches()
+                || !POSITIVE_INTEGER.matcher(String.valueOf(json.get("size"))).matches()) {
             throw new IOException("Noninteger version or size");
         }
-        UpdatePolicy.validate(release.getString("packageName"), release.getLong("versionCode"),
-                release.getString("apkUrl"), release.getString("sha256"), release.getLong("size"),
-                release.optString("encoding", "raw"));
-        if (!UpdatePolicy.validVersionName(release.getString("versionName"))) {
+        UpdatePolicy.validate(release.channel, json.getString("packageName"), json.getLong("versionCode"),
+                json.getString("apkUrl"), json.getString("sha256"), json.getLong("size"),
+                json.optString("encoding", "raw"));
+        if (!UpdatePolicy.validVersionName(json.getString("versionName"))) {
             throw new IOException("Invalid version name");
         }
     }
 
-    private static void validateApk(Context context, File file, JSONObject release, PackageInfo installed)
+    private static void validateApk(Context context, File file, Release checked, PackageInfo installed)
             throws Exception {
-        checkMetadata(release);
+        checkMetadata(checked);
+        JSONObject release = checked.json;
         if (file.length() != release.getLong("size")) throw new IOException("Update size mismatch");
         if (!sha256(file).equals(release.getString("sha256"))) throw new IOException("Update checksum mismatch");
         PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(file.getAbsolutePath(), signingFlags());
@@ -344,7 +409,8 @@ final class Updater {
         return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
     }
 
-    private static void install(Context context, File file, JSONObject release, boolean manual) throws Exception {
+    private static void install(Context context, File file, Release checked, boolean manual) throws Exception {
+        JSONObject release = checked.json;
         SharedPreferences prefs = prefs(context);
         if (!enabled(context) && !manual) return;
         if (!manual && prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)) {

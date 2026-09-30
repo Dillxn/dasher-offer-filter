@@ -1,3 +1,34 @@
+## 0.4.19 — updates from GitHub without Render, and tips
+
+- **Updates no longer depend on Render's build minutes.** Settings → Updates → **Connect GitHub**:
+  - one tap asks GitHub for a short code, copies it, and opens github.com/login/device;
+  - paste it and approve, and the app says whom it is connected as;
+  - from then on it also reads releases from this repository and installs whichever of Render and the repository is newer, with the same size, SHA-256, package, version and signer checks;
+  - if one source is unreachable, the other still works.
+
+  The sign-in can only read this repository's files, refreshes itself, and is kept on the phone. **Disconnect GitHub** forgets it. It is separate from the report token and never turns reports on.
+- **Tips instead of a price.** Settings → **Support** has one-tap tips through Cash App, Venmo or PayPal. It shows up once the author's names are filled in. A tip only opens that app ready to pay; Offer Filter never charges or counts anything.
+- Releases can be published to `release/` on `main` from a Claude session (`tools/publish-repo-feed.py`), replacing the manual pre-release workflow, which could not run.
+
+Evidence boundaries:
+
+- **Java tests** cover:
+  - each channel accepting only its own exact feed and APK addresses;
+  - the GitHub token going only to this repository's release folder;
+  - the newer release winning, with a tie going to Render;
+  - tip links, and names that could change the address being refused.
+- **Simulated Android 15 tests against a local fake GitHub** cover:
+  - asking for a code, waiting, and slowing down when asked;
+  - approval, with the token limited to this repository and no client secret sent;
+  - refresh, a refused refresh, and GitHub being unreachable;
+  - a denied sign-in, device flow being off, and an expired code;
+  - cancelling while GitHub answers.
+- **Simulated Android 8 and 15 tests** cover the Connect GitHub and Support sections of Settings.
+- **Not verified:**
+  - signing in against real GitHub;
+  - reading the real repository feed through the GitHub API (the published files were checked through git instead);
+  - installing on a real phone.
+
 ## 0.4.18 — the mascot is the button
 
 - **Tap the mascot to pause or resume.** The separate button is gone.

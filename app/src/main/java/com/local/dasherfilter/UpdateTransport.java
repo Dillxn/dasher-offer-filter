@@ -7,19 +7,28 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 
-/** The real updater HTTP path; also exercised by the release probe. No Android dependencies. */
+/**
+ * The real updater HTTP path; also exercised by the release probe. No Android dependencies. A repository request
+ * carries the user's GitHub token and asks for the file's raw bytes; the token is only ever sent to the GitHub API
+ * under this repository's release folder, because every hop is checked against the channel's origin first.
+ */
 final class UpdateTransport {
     private static final int MAX_REDIRECTS = 5;
     private static final long TOTAL_TIMEOUT_NANOS = 60_000_000_000L;
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 15_000;
 
-    /** @throws IOException unless the address is a plain HTTPS URL on the release host with a canonical path */
+    /** @throws IOException unless the address is a plain HTTPS URL on the Render host with a canonical path */
     static void validateAddress(String address) throws IOException {
+        validateAddress(UpdatePolicy.Channel.RENDER, address);
+    }
+
+    /** @throws IOException unless the address is a plain HTTPS URL on {@code channel}'s origin with a canonical path */
+    static void validateAddress(UpdatePolicy.Channel channel, String address) throws IOException {
         try {
             URI uri = URI.create(address);
             String path = uri.getRawPath();
-            if (!"https".equals(uri.getScheme()) || !UpdatePolicy.trustedDownloadHost(uri.getHost())
+            if (!"https".equals(uri.getScheme()) || !UpdatePolicy.trustedAddress(channel, uri)
                     || uri.getRawUserInfo() != null || uri.getPort() != -1 || uri.getRawFragment() != null
                     || path == null || !uri.normalize().getRawPath().equals(path)
                     || path.contains("%") || path.contains("\\")) {
@@ -35,11 +44,23 @@ final class UpdateTransport {
      * exact Content-Length when one is sent, and a one-minute overall deadline.
      */
     static void download(String address, OutputStream output, long limit) throws IOException {
+        download(UpdatePolicy.Channel.RENDER, address, null, output, limit);
+    }
+
+    /**
+     * Like {@link #download(String, OutputStream, long)} for {@code channel}; {@code token} (the user's GitHub
+     * connection) is required for the repository and never sent anywhere else.
+     */
+    static void download(UpdatePolicy.Channel channel, String address, String token, OutputStream output, long limit)
+            throws IOException {
+        if (channel == UpdatePolicy.Channel.REPO && (token == null || token.isEmpty())) {
+            throw new IOException("Not connected to GitHub");
+        }
         if (limit <= 0 || limit > UpdatePolicy.MAX_APK_BYTES * 2L) throw new IOException("Invalid download limit");
         long deadline = System.nanoTime() + TOTAL_TIMEOUT_NANOS;
         URL url = new URL(address);
         for (int redirect = 0; redirect < MAX_REDIRECTS; redirect++) {
-            validateAddress(url.toExternalForm());
+            validateAddress(channel, url.toExternalForm());
             checkDeadline(deadline);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -49,6 +70,11 @@ final class UpdateTransport {
             connection.setRequestProperty("User-Agent", "OfferFilter-Updater");
             connection.setRequestProperty("Cache-Control", "no-cache, no-store");
             connection.setRequestProperty("Accept-Encoding", "identity");
+            if (channel == UpdatePolicy.Channel.REPO) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+                connection.setRequestProperty("Accept", "application/vnd.github.raw");
+                connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            }
             try {
                 int status = connection.getResponseCode();
                 if (isRedirect(status)) {

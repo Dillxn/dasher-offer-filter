@@ -3,6 +3,8 @@ package com.local.dasherfilter;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -129,6 +131,12 @@ public final class MainActivity extends Activity {
     private Switch diagnostics;
     private TextView updateStatus;
     private Button allowInstalls;
+    private TextView githubStatus;
+    private TextView githubCode;
+    private Button githubConnect;
+    private Button githubDisconnect;
+    private GitHubConnect.State shownGitHub;
+    private boolean askingGitHub;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -169,6 +177,7 @@ public final class MainActivity extends Activity {
         // Sound left turned down by a decline the screen reader could not finish is put back here too.
         if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
+        if (GitHubConnect.configured()) GitHubConnect.resume(this);
         Tilt.start(this);
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -378,6 +387,7 @@ public final class MainActivity extends Activity {
         addOfferMap(body);
         addReports(body);
         addUpdates(body);
+        addSupport(body);
         TextView footer = ui.text("Offer Filter v" + Updater.version(this) + " · Not a DoorDash app.", 12,
                 ui.inkSecondary, false);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -523,6 +533,64 @@ public final class MainActivity extends Activity {
         ui.listRow(body, "Check for update", () -> Updater.check(this, true, null));
         allowInstalls = ui.listRow(body, "Allow installs", () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
+        if (GitHubConnect.configured()) addGitHub(body);
+    }
+
+    /** Signing in to GitHub so updates also come from the app's private repository. */
+    private void addGitHub(LinearLayout body) {
+        githubStatus = ui.text("", 13, ui.inkSecondary, false);
+        githubStatus.setPadding(0, ui.dp(14), 0, 0);
+        body.addView(githubStatus);
+        githubCode = ui.text("", 30, ui.ink, true);
+        githubCode.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        githubCode.setLetterSpacing(0.08f);
+        githubCode.setTextIsSelectable(true);
+        githubCode.setGravity(Gravity.CENTER_HORIZONTAL);
+        githubCode.setPadding(0, ui.dp(8), 0, 0);
+        body.addView(githubCode, Ui.matchWidth());
+        githubConnect = ui.addButton(body, "Connect GitHub", false, this::connectGitHub);
+        githubDisconnect = ui.listRow(body, "Disconnect GitHub", () -> {
+            GitHubConnect.disconnect(this);
+            refresh();
+        });
+    }
+
+    /** First tap asks GitHub for a code and opens GitHub with it copied; later taps open GitHub again. */
+    private void connectGitHub() {
+        if (GitHubConnect.userCode(this) != null) {
+            openGitHub();
+            return;
+        }
+        askingGitHub = true;
+        refresh();
+        GitHubConnect.connect(this, () -> {
+            askingGitHub = false;
+            if (isFinishing() || isDestroyed()) return;
+            refresh();
+            if (GitHubConnect.userCode(this) != null) openGitHub();
+        });
+    }
+
+    private void openGitHub() {
+        String code = GitHubConnect.userCode(this);
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        if (code != null && clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("GitHub code", code));
+            toast("Code " + code + " copied. Paste it on GitHub, then come back.");
+        }
+        open(new Intent(Intent.ACTION_VIEW, Uri.parse(GitHubConnect.VERIFICATION_URL)));
+    }
+
+    /** One-tap tips, shown once the author's names are filled in. */
+    private void addSupport(LinearLayout body) {
+        List<Support.Method> methods = Support.methods();
+        if (methods.isEmpty()) return;
+        ui.heading(body, "Support");
+        body.addView(ui.note("Offer Filter is free. If it makes your dash better, a tip keeps it going."));
+        for (Support.Method method : methods) {
+            ui.listRow(body, "Tip with " + method.label,
+                    () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(method)))));
+        }
     }
 
     // ---- State ----
@@ -559,6 +627,7 @@ public final class MainActivity extends Activity {
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
         baselineNote.setText(adaptiveNote(saved));
         updateStatus.setText(Updater.status(this));
+        if (githubStatus != null) refreshGitHub();
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
         if (diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
         boolean reporting = ReportOutbox.enabled(this);
@@ -567,6 +636,24 @@ public final class MainActivity extends Activity {
         if (reportSelected != null) reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
         sendTest.setVisibility(reporting ? View.VISIBLE : View.INVISIBLE);
         stopReports.setVisibility(reporting ? View.VISIBLE : View.GONE);
+    }
+
+    private void refreshGitHub() {
+        GitHubConnect.State state = GitHubConnect.state(this);
+        String code = GitHubConnect.userCode(this);
+        githubStatus.setText(askingGitHub ? "Asking GitHub for a code…" : GitHubConnect.status(this));
+        githubCode.setText(code == null ? "" : code);
+        githubCode.setVisibility(code == null ? View.GONE : View.VISIBLE);
+        githubConnect.setText(state == GitHubConnect.State.WAITING ? "Copy code and open GitHub" : "Connect GitHub");
+        githubConnect.setEnabled(!askingGitHub);
+        githubConnect.setVisibility(state == GitHubConnect.State.CONNECTED ? View.GONE : View.VISIBLE);
+        githubDisconnect.setText(state == GitHubConnect.State.WAITING ? "Cancel" : "Disconnect GitHub");
+        githubDisconnect.setVisibility(state == GitHubConnect.State.OFF ? View.GONE : View.VISIBLE);
+        // Just connected: look for an update from the repository right away rather than at the next check.
+        if (state == GitHubConnect.State.CONNECTED && shownGitHub == GitHubConnect.State.WAITING) {
+            Updater.check(this, true, null);
+        }
+        shownGitHub = state;
     }
 
     private void refreshHistory() {
