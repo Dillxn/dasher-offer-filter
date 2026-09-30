@@ -28,7 +28,7 @@ import org.json.JSONObject;
  */
 final class GitHubConnect {
     /** The user's own GitHub App (public identifier, not a secret); empty hides the feature. */
-    static final String CLIENT_ID = "";
+    static final String CLIENT_ID = "Iv23liz8X14UB0s60G2B";
     /** Dillxn/dasher-offer-filter, so the token cannot reach any other repository. */
     static final long REPOSITORY_ID = 1391329716L;
     static final String VERIFICATION_URL = "https://github.com/login/device";

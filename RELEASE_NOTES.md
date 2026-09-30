@@ -7,7 +7,7 @@
   - if one source is unreachable, the other still works.
 
   The sign-in can only read this repository's files, refreshes itself, and is kept on the phone. **Disconnect GitHub** forgets it. It is separate from the report token and never turns reports on.
-- **Tips instead of a price.** Settings → **Support** has one-tap tips through Cash App, Venmo or PayPal. It shows up once the author's names are filled in. A tip only opens that app ready to pay; Offer Filter never charges or counts anything.
+- **Tips instead of a price.** Settings → **Support** has one-tap tips through Cash App or Venmo. A tip only opens that app ready to pay; Offer Filter never charges or counts anything.
 - Releases can be published to `release/` on `main` from a Claude session (`tools/publish-repo-feed.py`), replacing the manual pre-release workflow, which could not run.
 
 Evidence boundaries:

@@ -11,8 +11,8 @@ import java.util.regex.Pattern;
  */
 final class Support {
     /** The author's own names on each service (public, not secrets); an empty one is not offered. */
-    static final String CASH_APP = "";
-    static final String VENMO = "";
+    static final String CASH_APP = "JesusLovesYou0808";
+    static final String VENMO = "dillonriecke";
     static final String PAYPAL = "";
     /** The names in use; tests stand in their own. */
     static String cashApp = CASH_APP;
