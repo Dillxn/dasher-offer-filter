@@ -10,14 +10,32 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 
 /**
- * The drawn backdrop behind the pages. {@link Part#SKY} puts a sun and clouds (a moon and stars in dark mode) behind
- * the page title; {@link Part#GROUND} puts rolling hills, houses, trees and a road with a little delivery car along the
- * bottom of the page area. Every color sits close to the page color, so text over it keeps its contrast.
+ * The drawn backdrop behind the pages. {@link Part#SKY} puts a sun, clouds and a few glints (a moon and twinkling
+ * stars in dark mode) behind the page title; {@link Part#GROUND} puts rolling hills, houses, trees and a road with a
+ * little delivery car along the bottom of the page area. Both move gently: stars twinkle, clouds and birds drift, the
+ * car drives, and tilting the phone slides the far layers against the near ones. With Android's animations off,
+ * everything rests. Every color sits close to the page color, so text over it keeps its contrast.
  */
 final class Scenery extends Drawable {
     enum Part { SKY, GROUND }
+
+    /** How far, in dp, each layer slides at full tilt: the farther away, the less. */
+    private static final float STARS_DEPTH = 3;
+    private static final float MOON_DEPTH = 5;
+    private static final float CLOUD_DEPTH = 9;
+    private static final float BIRD_DEPTH = 12;
+    private static final float BACK_HILL_DEPTH = 3;
+    private static final float FRONT_HILL_DEPTH = 6;
+    private static final float ROAD_DEPTH = 9;
+    /** Where the stars sit, as shares of the sky (clear of the title at the left), with a size and a phase each. */
+    private static final float[][] STARS = {
+            {0.40f, 0.22f, 1.4f, 0.1f}, {0.47f, 0.62f, 1.0f, 0.7f}, {0.53f, 0.14f, 1.2f, 0.4f},
+            {0.58f, 0.78f, 1.6f, 0.9f}, {0.63f, 0.3f, 0.9f, 0.2f}, {0.7f, 0.12f, 1.5f, 0.55f},
+            {0.74f, 0.58f, 1.0f, 0.3f}, {0.8f, 0.3f, 1.3f, 0.8f}, {0.85f, 0.86f, 0.9f, 0.05f},
+            {0.9f, 0.2f, 1.1f, 0.6f}, {0.95f, 0.5f, 1.4f, 0.35f}, {0.44f, 0.9f, 0.8f, 0.5f}};
 
     private final Part part;
     private final Ui ui;
@@ -30,12 +48,16 @@ final class Scenery extends Drawable {
     private final RectF rect = new RectF();
     private final float[] carAt = new float[2];
     private final float[] carTangent = new float[2];
+    private final DashPathEffect roadDash;
+    private final Runnable nextFrame = this::invalidateSelf;
+    private PathMeasure roadMeasure;
 
     Scenery(Part part, Ui ui) {
         this.part = part;
         this.ui = ui;
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeCap(Paint.Cap.ROUND);
+        roadDash = new DashPathEffect(new float[] {ui.dp(8), ui.dp(8)}, 0);
     }
 
     Part part() {
@@ -53,33 +75,47 @@ final class Scenery extends Drawable {
         float bottom = bounds.bottom;
         float top = bottom - groundHeight(bounds.height());
         float g = bottom - top;
+        // Past the edges by more than any layer slides.
+        float over = ui.dp(ROAD_DEPTH + 6);
+        float left = bounds.left - over;
+        float right = bounds.right + over;
+        float below = bottom + over;
 
         backHill.reset();
-        backHill.moveTo(bounds.left, top + g * 0.35f);
+        backHill.moveTo(left, top + g * 0.35f);
         backHill.cubicTo(width * 0.25f, top + g * 0.05f, width * 0.45f, top + g * 0.45f, width * 0.68f, top + g * 0.2f);
-        backHill.cubicTo(width * 0.82f, top + g * 0.05f, width * 0.93f, top + g * 0.2f, bounds.right, top + g * 0.3f);
-        backHill.lineTo(bounds.right, bottom);
-        backHill.lineTo(bounds.left, bottom);
+        backHill.cubicTo(width * 0.82f, top + g * 0.05f, width * 0.93f, top + g * 0.2f, right, top + g * 0.3f);
+        backHill.lineTo(right, below);
+        backHill.lineTo(left, below);
         backHill.close();
 
         frontHill.reset();
-        frontHill.moveTo(bounds.left, top + g * 0.62f);
-        frontHill.cubicTo(width * 0.3f, top + g * 0.45f, width * 0.6f, top + g * 0.7f, bounds.right, top + g * 0.52f);
-        frontHill.lineTo(bounds.right, bottom);
-        frontHill.lineTo(bounds.left, bottom);
+        frontHill.moveTo(left, top + g * 0.62f);
+        frontHill.cubicTo(width * 0.3f, top + g * 0.45f, width * 0.6f, top + g * 0.7f, right, top + g * 0.52f);
+        frontHill.lineTo(right, below);
+        frontHill.lineTo(left, below);
         frontHill.close();
 
         road.reset();
-        road.moveTo(bounds.left - ui.dp(10), top + g * 0.86f);
-        road.cubicTo(width * 0.35f, top + g * 0.7f, width * 0.65f, top + g * 0.92f, bounds.right + ui.dp(10),
+        road.moveTo(left - ui.dp(24), top + g * 0.86f);
+        road.cubicTo(width * 0.35f, top + g * 0.7f, width * 0.65f, top + g * 0.92f, right + ui.dp(24),
                 top + g * 0.74f);
-        PathMeasure measure = new PathMeasure(road, false);
-        measure.getPosTan(measure.getLength() * 0.64f, carAt, carTangent);
+        roadMeasure = new PathMeasure(road, false);
     }
 
     @Override public void draw(Canvas canvas) {
         if (part == Part.SKY) drawSky(canvas);
         else drawGround(canvas);
+        if (Motion.on()) {
+            unscheduleSelf(nextFrame);
+            scheduleSelf(nextFrame, SystemClock.uptimeMillis() + 16);
+        }
+    }
+
+    /** Moves the canvas by a layer's share of the tilt; the caller restores it. */
+    private void slide(Canvas canvas, float depth) {
+        canvas.save();
+        canvas.translate(Tilt.x() * ui.dp(depth), Tilt.y() * ui.dp(depth) * 0.6f);
     }
 
     private void drawSky(Canvas canvas) {
@@ -89,26 +125,81 @@ final class Scenery extends Drawable {
         // Off to the right of the title, clear of the round button at the edge.
         float sunX = bounds.left + width * 0.66f;
         float sunY = bounds.top + height * 0.5f;
+        slide(canvas, STARS_DEPTH);
+        drawStars(canvas, bounds);
+        canvas.restore();
+        slide(canvas, MOON_DEPTH);
         if (ui.dark) {
             fill.setColor(0xFF2E2D29);
             canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
             fill.setColor(ui.page);
             canvas.drawCircle(sunX + ui.dp(7), sunY - ui.dp(5), ui.dp(14), fill);
-            fill.setColor(0xFF3A3935);
-            float[][] stars = {{0.42f, 0.25f}, {0.58f, 0.7f}, {0.7f, 0.2f}, {0.93f, 0.85f}, {0.5f, 0.9f}};
-            for (float[] star : stars) {
-                canvas.drawCircle(bounds.left + width * star[0], bounds.top + height * star[1], ui.dp(1.6f), fill);
-            }
         } else {
+            float glow = 1 + 0.08f * Motion.wave(7f, 0);
             fill.setColor(0x33F4C74E);
-            canvas.drawCircle(sunX, sunY, ui.dp(26), fill);
+            canvas.drawCircle(sunX, sunY, ui.dp(26) * glow, fill);
             fill.setColor(0xFFF6DE92);
             canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
         }
+        canvas.restore();
         int cloud = ui.dark ? 0xFF1A1A19 : 0xFFFBFAF7;
-        drawCloud(canvas, bounds.left + width * 0.55f, bounds.top + height * 0.4f, ui.dp(13), cloud);
-        drawCloud(canvas, bounds.left + width * 0.76f, bounds.top + height * 0.74f, ui.dp(11), cloud);
-        drawBirds(canvas, bounds.left + width * 0.44f, bounds.top + height * 0.3f);
+        slide(canvas, CLOUD_DEPTH);
+        drawCloud(canvas, drift(bounds, 0.55f, 90f), bounds.top + height * 0.4f, ui.dp(13), cloud);
+        drawCloud(canvas, drift(bounds, 0.76f, 130f), bounds.top + height * 0.74f, ui.dp(11), cloud);
+        canvas.restore();
+        slide(canvas, BIRD_DEPTH);
+        drawBirds(canvas, drift(bounds, 0.44f, 60f), bounds.top + height * 0.3f + ui.dp(3) * Motion.wave(5f, 0));
+        canvas.restore();
+    }
+
+    /**
+     * Where something that starts at {@code share} of the width is now, drifting right and crossing the whole sky
+     * once every {@code period} seconds, wrapping round past the edges.
+     */
+    private float drift(Rect bounds, float share, float period) {
+        float span = bounds.width() + ui.dp(80);
+        float at = (share * bounds.width() + ui.dp(40) + Motion.loop(period, 0) * span) % span;
+        return bounds.left - ui.dp(40) + at;
+    }
+
+    /** Stars that brighten and fade on their own rhythms (dark mode), or a few soft glints by day. */
+    private void drawStars(Canvas canvas, Rect bounds) {
+        for (float[] star : STARS) {
+            float x = bounds.left + bounds.width() * star[0];
+            float y = bounds.top + bounds.height() * star[1];
+            float twinkle = 0.5f + 0.5f * Motion.wave(2.2f + star[3] * 2.6f, star[3]);
+            if (ui.dark) {
+                fill.setColor(blend(0xFF2A2927, 0xFF6E6B62, twinkle));
+                canvas.drawCircle(x, y, ui.dp(star[2]) * (0.8f + 0.3f * twinkle), fill);
+            } else if (star[2] >= 1.3f) {
+                fill.setColor(blend(0x00EBD49A, 0xFFEBD49A, twinkle));
+                sparkle(canvas, x, y, ui.dp(2.2f + 2.4f * twinkle));
+            }
+        }
+    }
+
+    /** A four-pointed glint. */
+    private void sparkle(Canvas canvas, float x, float y, float half) {
+        float waist = half * 0.22f;
+        path.reset();
+        path.moveTo(x, y - half);
+        path.quadTo(x + waist, y - waist, x + half, y);
+        path.quadTo(x + waist, y + waist, x, y + half);
+        path.quadTo(x - waist, y + waist, x - half, y);
+        path.quadTo(x - waist, y - waist, x, y - half);
+        path.close();
+        canvas.drawPath(path, fill);
+    }
+
+    /** {@code from} to {@code to} (colors, alpha included) by {@code share}. */
+    private static int blend(int from, int to, float share) {
+        int color = 0;
+        for (int shift = 0; shift <= 24; shift += 8) {
+            int a = (from >>> shift) & 0xFF;
+            int b = (to >>> shift) & 0xFF;
+            color |= Math.round(a + (b - a) * share) << shift;
+        }
+        return color;
     }
 
     /** Two small birds, a pair of curved strokes each. */
@@ -120,10 +211,12 @@ final class Scenery extends Drawable {
             float bx = x + i * ui.dp(16);
             float by = y + i * ui.dp(7);
             float wing = ui.dp(i == 0 ? 6 : 5);
+            // Wings beat slowly, each bird on its own beat.
+            float lift = wing * (0.6f + 0.35f * Motion.wave(1.4f, i * 0.37f));
             path.reset();
             path.moveTo(bx - wing, by);
-            path.quadTo(bx - wing / 2, by - wing * 0.6f, bx, by);
-            path.quadTo(bx + wing / 2, by - wing * 0.6f, bx + wing, by);
+            path.quadTo(bx - wing / 2, by - lift, bx, by);
+            path.quadTo(bx + wing / 2, by - lift, bx + wing, by);
             canvas.drawPath(path, line);
         }
     }
@@ -144,27 +237,38 @@ final class Scenery extends Drawable {
         float g = groundHeight(bounds.height());
         float top = bounds.bottom - g;
 
+        slide(canvas, BACK_HILL_DEPTH);
         fill.setColor(ui.dark ? 0xFF141413 : 0xFFE8E6DE);
         canvas.drawPath(backHill, fill);
         drawHouse(canvas, bounds.left + width * 0.2f, top + g * 0.2f, ui.dp(22));
         drawTree(canvas, bounds.left + width * 0.33f, top + g * 0.3f, ui.dp(9));
         drawHouse(canvas, bounds.left + width * 0.76f, top + g * 0.16f, ui.dp(18));
         drawTree(canvas, bounds.left + width * 0.88f, top + g * 0.21f, ui.dp(8));
+        canvas.restore();
 
+        slide(canvas, FRONT_HILL_DEPTH);
         fill.setColor(ui.dark ? 0xFF111110 : 0xFFE1DFD6);
         canvas.drawPath(frontHill, fill);
         drawTree(canvas, bounds.left + width * 0.08f, top + g * 0.6f, ui.dp(11));
+        canvas.restore();
 
+        slide(canvas, ROAD_DEPTH);
         line.setPathEffect(null);
         line.setStrokeWidth(ui.dp(18));
         line.setColor(ui.dark ? 0xFF1E1E1D : 0xFFD6D3C9);
         canvas.drawPath(road, line);
         line.setStrokeWidth(ui.dp(2));
         line.setColor(ui.dark ? 0xFF2C2C2A : 0xFFEFEDE7);
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(8), ui.dp(8)}, 0));
+        line.setPathEffect(roadDash);
         canvas.drawPath(road, line);
         line.setPathEffect(null);
-        drawCar(canvas);
+        if (roadMeasure != null) {
+            // Across the page once every 16 seconds; parked two thirds along with animations off.
+            float along = Motion.on() ? Motion.loop(16f, 0.64f) : 0.64f;
+            roadMeasure.getPosTan(roadMeasure.getLength() * along, carAt, carTangent);
+            drawCar(canvas);
+        }
+        canvas.restore();
     }
 
     /** A house sitting on the hill at (x, ground), {@code size} wide, with one lit window. */
@@ -199,7 +303,8 @@ final class Scenery extends Drawable {
     private void drawCar(Canvas canvas) {
         float angle = (float) Math.toDegrees(Math.atan2(carTangent[1], carTangent[0]));
         canvas.save();
-        canvas.translate(carAt[0], carAt[1]);
+        // A gentle bounce on the road.
+        canvas.translate(carAt[0], carAt[1] - ui.dp(0.8f) * Math.abs(Motion.wave(0.9f, 0)));
         canvas.rotate(angle);
         float u = ui.dp(1);
         int body = ui.dark ? 0xFF2D4C73 : 0xFFA9C1E0;

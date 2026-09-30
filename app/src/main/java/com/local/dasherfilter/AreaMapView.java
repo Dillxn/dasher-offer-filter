@@ -36,6 +36,9 @@ final class AreaMapView extends View {
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final Path path = new Path();
+    /** Made once: the map redraws every frame while its "You" halo breathes. */
+    private final DashPathEffect unrankedDash;
+    private final DashPathEffect frameDash;
     private List<AreaMap.Cell> cells = Collections.emptyList();
     private List<AreaMap.Cell> ranked = Collections.emptyList();
     private double[] here;
@@ -55,6 +58,8 @@ final class AreaMapView extends View {
         line.setStrokeCap(Paint.Cap.ROUND);
         text.setTextAlign(Paint.Align.CENTER);
         text.setFakeBoldText(true);
+        unrankedDash = new DashPathEffect(new float[] {ui.dp(4), ui.dp(3)}, 0);
+        frameDash = new DashPathEffect(new float[] {ui.dp(6), ui.dp(4)}, 0);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         setClickable(true);
     }
@@ -197,7 +202,7 @@ final class AreaMapView extends View {
             } else {
                 line.setColor(brown());
                 line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
-                line.setPathEffect(new DashPathEffect(new float[] {ui.dp(4), ui.dp(3)}, 0));
+                line.setPathEffect(unrankedDash);
                 line.setColor(brown());
                 canvas.drawRoundRect(rect, corner, corner, line);
                 line.setPathEffect(null);
@@ -214,6 +219,7 @@ final class AreaMapView extends View {
         canvas.restore();
         drawNorth(canvas, width);
         drawScale(canvas, height);
+        if (here != null) Motion.next(this);
     }
 
     private int brown() {
@@ -231,7 +237,7 @@ final class AreaMapView extends View {
         rect.inset(ui.dp(7), ui.dp(7));
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         line.setColor((brown() & 0x00FFFFFF) | 0x66000000);
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(6), ui.dp(4)}, 0));
+        line.setPathEffect(frameDash);
         canvas.drawRoundRect(rect, ui.dp(9), ui.dp(9), line);
         line.setPathEffect(null);
         rect.set(0, 0, width, height);
@@ -250,7 +256,8 @@ final class AreaMapView extends View {
         path.quadTo((fromX + toX) / 2 + (toY - fromY) * 0.25f, (fromY + toY) / 2 - (toX - fromX) * 0.25f, toX, toY);
         line.setColor(ui.dark ? 0xFFE0876E : 0xFFB5523B);
         line.setStrokeWidth(ui.dp(2.5f));
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, 0));
+        // The dots walk slowly toward the best area.
+        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, -ui.dp(8) * Motion.loop(1.6f, 0)));
         canvas.drawPath(path, line);
         line.setPathEffect(null);
     }
@@ -286,12 +293,13 @@ final class AreaMapView extends View {
         canvas.drawText(Integer.toString(place + 1), cx, cy + text.getTextSize() / 3, text);
     }
 
-    /** The phone's position: a dot with a halo and "You". */
+    /** The phone's position: a dot with a halo that breathes out and fades, and "You". */
     private void drawHere(Canvas canvas) {
         float cx = x(here[1]);
         float cy = y(here[0]);
-        fill.setColor((ui.accent & 0x00FFFFFF) | 0x33000000);
-        canvas.drawCircle(cx, cy, ui.dp(14), fill);
+        float pulse = Motion.on() ? Motion.loop(2.8f, 0) : 0.4f;
+        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0x4D * (1 - pulse)) << 24));
+        canvas.drawCircle(cx, cy, ui.dp(9) + ui.dp(10) * pulse, fill);
         fill.setColor(0xFFFFFFFF);
         canvas.drawCircle(cx, cy, ui.dp(7.5f), fill);
         fill.setColor(ui.accent);

@@ -1,3 +1,44 @@
+## 0.4.17 — zen, gentle motion, offers on the star, and manual declines teach
+
+- **Quieter main page.** The speech bubble, the machine with its basket, bin and crate, the legend, the long notes and the map invitation are gone.
+  - The mascot keeps the day's three counts, with one line of state and one soft button under it.
+  - Headings are small captions.
+  - The chosen offer is one line under the skyline; tap it, or a building, to unfold its ticket.
+  - The skyline has no axis or times.
+  - The star shows the spoke names only; screen readers still hear every value.
+  - The map appears only while mapping is on, which is now turned on in Settings.
+  - Buttons are soft pills, setup problems are quiet rows with **Fix**, and the rule fields are soft cards.
+- **Gentle motion.**
+  - Stars twinkle in the sky, over the skyline, around the mascot and in the star's porthole.
+  - Clouds and birds drift, the car drives the road, and the mascot breathes and blinks.
+  - While auto-decline is on, a ticket drifts into the mascot. While paused, a "z" floats up.
+  - Buildings rise as offers arrive, the star's shapes glide to new values, the stamp thumps down, and the map's "You" halo breathes.
+  - **Tilt parallax:** tilting the phone slides the sky's layers, the hills and the mascot's halo against one another. The gyroscope (or gravity sensor) is read only while the app is on screen. The readings are never kept or sent.
+  - With Android's **Remove animations** setting on, nothing moves and no sensor is read.
+- **Recent offers on the star.** Each of the last 14 standalone offers with a pay is marked on every spoke it can be placed on (● passed, ✕ declined, ○ review), at what its own pay, pay per mile, per minute and per stop would pay for the example offer. A mark outside a minimum beat it.
+- **Manual declines teach the adaptive minimum.** Tapping Decline yourself on an offer the rules let through raises only the rule that came closest to catching it, just past that offer. The decline counts once the next different offer arrives, so a decline just before ending or pausing the dash teaches nothing. Also ignored:
+  - an offer you then accept
+  - the app's own taps
+  - declines while auto-decline or the adaptive minimum is off
+  - short trips (no mile or minute floor)
+  - misread-looking offers
+
+  The star and the Settings note show what declines taught, and **Reset** clears it.
+
+Evidence boundaries: both pages were rendered and reviewed in light and dark, paused and off, at 320 dp, and at 2× font.
+
+- **Java unit tests** cover choosing the closest rule, the "beat it" arithmetic, and the short-trip and misread guards.
+- **Simulated Android 8 and 15 tests** cover:
+  - a manual decline teaching only after the next offer, and nothing when the dash ends, for the app's own taps, or while learning is off
+  - the folded ticket and its line
+  - offer marks and decline floors on the star
+  - mapping being turned on from Settings
+  - tilt following the rotation sensor and gravity, recentring, and stopping when the app leaves the screen
+  - no sensor and no motion with animations off
+- **Not verified:**
+  - Real gyroscope feel, frame rate and battery use on a phone.
+  - Whether DoorDash's own Decline button reports its taps the way these tests model.
+
 ## 0.4.16 — background offers are no longer missed
 
 - **Fix: offers were missed while Dasher was in the background.** DoorDash's background notification names the store but not the pay, so Offer Filter cannot judge it. Such offers got a silent card, and with DoorDash's own offer channel silenced, nothing made a sound. They now ring once on a new **Offers to check** channel while Dasher is not on screen. Tap the card to open Dasher. They are still never declined or opened for you. Nothing rings again on updates, replays or reconnects, or for offers the rules decline. Offers while auto-decline is paused alert the same way.

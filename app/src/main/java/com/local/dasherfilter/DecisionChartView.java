@@ -5,14 +5,15 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
-import android.text.format.DateFormat;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Recent offers as a little skyline, oldest left: each offer is a building as tall as the pay read, the ink rope
@@ -20,7 +21,8 @@ import java.util.Locale;
  * ? review). Passed offers have their windows lit. A building that ends below its rope is a decline by the rules as
  * written, so a surprising decline shows either a misread pay or a rule to adjust. An offer whose pay was not read
  * is a signpost at street level. Tapping a building selects it (a spotlight picks it out) and reports it to the
- * listener.
+ * listener. There is no axis: the line under the chart gives the chosen offer's pay and what it needed. Buildings
+ * rise as offers arrive and a few stars twinkle overhead; with Android's animations off they rest.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -29,6 +31,13 @@ final class DecisionChartView extends View {
     }
 
     static final int SLOTS = 14;
+    /** The chart's inset from each side, in dp. */
+    static final int SIDE_DP = 4;
+    private static final long RISE_MS = 650;
+    /** Stars over the skyline: share across, share down the top part, and twinkle phase. */
+    private static final float[][] STARS = {
+            {0.08f, 0.2f, 0.1f}, {0.22f, 0.55f, 0.6f}, {0.37f, 0.12f, 0.3f}, {0.52f, 0.42f, 0.8f},
+            {0.66f, 0.1f, 0.45f}, {0.81f, 0.5f, 0.2f}, {0.93f, 0.18f, 0.7f}};
     /** Values above $1,000 (for example a saturated per-minute requirement) are drawn at the top of the scale. */
     private static final long SCALE_CAP_CENTS = 100_000;
     private static final long[] NICE_DOLLARS = {10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000};
@@ -42,13 +51,17 @@ final class DecisionChartView extends View {
     private final Path path = new Path();
     private List<DecisionLog.Entry> entries = Collections.emptyList();
     private int selected = -1;
+    private long selectedAt;
     private OnSelect listener;
+    /** When each shown offer (by its time) began to rise. */
+    private final Map<Long, Long> risingSince = new HashMap<>();
 
     DecisionChartView(android.content.Context context, Ui ui) {
         super(context);
         this.ui = ui;
         label.setTextSize(ui.sp(11));
         label.setColor(ui.inkMuted);
+        label.setTextAlign(Paint.Align.CENTER);
         symbol.setTextAlign(Paint.Align.CENTER);
         symbol.setFakeBoldText(true);
         // The symbol belongs to its circle, so it follows the font setting only as far as the circle allows.
@@ -67,6 +80,16 @@ final class DecisionChartView extends View {
         List<DecisionLog.Entry> ordered = new ArrayList<>(newestFirst.subList(0, Math.min(SLOTS, newestFirst.size())));
         Collections.reverse(ordered);
         DecisionLog.Entry previous = selectedEntry();
+        // New offers rise from the street; on first showing, all rise one after another.
+        long now = SystemClock.uptimeMillis();
+        boolean first = risingSince.isEmpty();
+        Map<Long, Long> next = new HashMap<>();
+        for (int i = 0; i < ordered.size(); i++) {
+            Long since = risingSince.get(ordered.get(i).at);
+            next.put(ordered.get(i).at, since != null ? since : now + (first ? i * 45L : 0));
+        }
+        risingSince.clear();
+        risingSince.putAll(next);
         entries = ordered;
         selected = previous == null ? -1 : ordered.indexOf(previous);
         setContentDescription(describe(ordered));
@@ -78,37 +101,42 @@ final class DecisionChartView extends View {
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
-        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(ui.dp(200), heightSpec));
+        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(ui.dp(160), heightSpec));
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        float left = ui.dp(44);
-        float right = getWidth() - ui.dp(4);
-        float top = ui.dp(24);
-        float bottom = getHeight() - ui.dp(24);
+        float left = ui.dp(SIDE_DP);
+        float right = getWidth() - ui.dp(SIDE_DP);
+        float top = ui.dp(26);
+        float bottom = getHeight() - ui.dp(12);
         if (entries.isEmpty()) {
-            label.setTextAlign(Paint.Align.CENTER);
             label.setColor(ui.inkSecondary);
             canvas.drawText("No offers recorded yet", getWidth() / 2f, getHeight() / 2f, label);
-            label.setColor(ui.inkMuted);
             return;
         }
 
+        drawStars(canvas, left, right, top);
         long maxCents = scaleMax();
-        drawGrid(canvas, left, right, top, bottom, maxCents);
         float slot = (right - left) / SLOTS;
         float barWidth = Math.min(ui.dp(26), slot - ui.dp(3));
         int firstSlot = SLOTS - entries.size();
         if (selected >= 0 && selected < entries.size()) {
-            drawSpotlight(canvas, left + slot * (firstSlot + selected + 0.5f), barWidth, bottom);
+            drawSpotlight(canvas, left + slot * (firstSlot + selected + 0.5f), barWidth, bottom,
+                    Motion.settle(selectedAt, 300));
         }
+        boolean rising = false;
         for (int i = 0; i < entries.size(); i++) {
             DecisionLog.Entry entry = entries.get(i);
             float center = left + slot * (firstSlot + i + 0.5f);
+            Long since = risingSince.get(entry.at);
+            float rise = Motion.settle(since == null ? 0 : since, RISE_MS);
+            rising |= rise < 1;
             float roof = bottom;
             if (entry.facts.payCents != null) {
-                roof = y(entry.facts.payCents, maxCents, top, bottom);
-                drawBuilding(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom, entry.result);
+                roof = bottom - (bottom - y(entry.facts.payCents, maxCents, top, bottom)) * rise;
+                if (rise > 0) {
+                    drawBuilding(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom, entry.result);
+                }
             } else {
                 drawSignpost(canvas, center, bottom);
                 roof = bottom - ui.dp(14);
@@ -120,6 +148,7 @@ final class DecisionChartView extends View {
                 line.setStrokeCap(Paint.Cap.ROUND);
                 canvas.drawLine(center - barWidth / 2f - ui.dp(3), rope, center + barWidth / 2f + ui.dp(3), rope, line);
             }
+            if (rise <= 0) continue;
             // A flag on a short pole on the roof.
             line.setColor(ui.baseline);
             line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
@@ -128,37 +157,35 @@ final class DecisionChartView extends View {
         }
         // The street.
         fill.setColor(ui.gridline);
-        rect.set(left - ui.dp(4), bottom, right, bottom + ui.dp(4));
-        canvas.drawRect(rect, fill);
-        drawTimes(canvas, left + slot * firstSlot, right);
+        rect.set(left, bottom, right, bottom + ui.dp(3));
+        canvas.drawRoundRect(rect, ui.dp(1.5f), ui.dp(1.5f), fill);
+        Motion.next(this);
+    }
+
+    /** A few small stars over the skyline, each brightening and fading on its own rhythm. */
+    private void drawStars(Canvas canvas, float left, float right, float top) {
+        for (float[] star : STARS) {
+            float twinkle = 0.5f + 0.5f * Motion.wave(2.6f + star[2] * 2.2f, star[2]);
+            int alpha = (int) (0x30 + 0x80 * twinkle);
+            fill.setColor((ui.inkMuted & 0x00FFFFFF) | (alpha << 24));
+            canvas.drawCircle(left + (right - left) * star[0], top * star[1] + ui.dp(4),
+                    ui.dp(1.1f) * (0.8f + 0.4f * twinkle), fill);
+        }
     }
 
     /** A soft beam from the top of the chart down onto the selected building. */
-    private void drawSpotlight(Canvas canvas, float center, float barWidth, float bottom) {
+    private void drawSpotlight(Canvas canvas, float center, float barWidth, float bottom, float shown) {
         path.reset();
         path.moveTo(center - ui.dp(4), 0);
         path.lineTo(center + ui.dp(4), 0);
         path.lineTo(center + barWidth / 2f + ui.dp(8), bottom);
         path.lineTo(center - barWidth / 2f - ui.dp(8), bottom);
         path.close();
-        fill.setColor((ui.accent & 0x00FFFFFF) | 0x24000000);
+        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0x24 * shown) << 24));
         canvas.drawPath(path, fill);
-        fill.setColor(ui.accent);
+        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0xFF * shown) << 24));
         rect.set(center - barWidth / 2f, bottom + ui.dp(6), center + barWidth / 2f, bottom + ui.dp(9));
         canvas.drawRoundRect(rect, ui.dp(2), ui.dp(2), fill);
-    }
-
-    private void drawGrid(Canvas canvas, float left, float right, float top, float bottom, long maxCents) {
-        line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        line.setStrokeCap(Paint.Cap.BUTT);
-        label.setTextAlign(Paint.Align.RIGHT);
-        for (int step = 0; step <= 2; step++) {
-            long cents = maxCents * step / 2;
-            float y = y(cents, maxCents, top, bottom);
-            line.setColor(step == 0 ? ui.baseline : ui.gridline);
-            canvas.drawLine(left, y, right, y, line);
-            canvas.drawText("$" + cents / 100, left - ui.dp(8), y + label.getTextSize() / 3f, label);
-        }
     }
 
     /** A building with a rounded roofline and a grid of windows, lit when the offer passed. */
@@ -201,26 +228,6 @@ final class DecisionChartView extends View {
         canvas.drawText(Ui.resultSymbol(result), x, y + symbol.getTextSize() / 3f, symbol);
     }
 
-    /** Oldest time under its column and newest at the right edge, each kept inside the chart and apart. */
-    private void drawTimes(Canvas canvas, float firstX, float right) {
-        float baseline = getHeight() - ui.dp(4);
-        String newest = time(entries.get(entries.size() - 1).at);
-        label.setTextAlign(Paint.Align.RIGHT);
-        canvas.drawText(newest, right, baseline, label);
-        if (entries.size() == 1) return;
-        String oldest = time(entries.get(0).at);
-        float oldestWidth = label.measureText(oldest);
-        float newestStart = right - label.measureText(newest);
-        float start = Math.min(firstX, newestStart - ui.dp(12) - oldestWidth);
-        if (start < ui.dp(44)) return;
-        label.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(oldest, start, baseline, label);
-    }
-
-    private String time(long at) {
-        return DateFormat.getTimeFormat(getContext()).format(new Date(at));
-    }
-
     /** The smallest "nice" dollar ceiling at or above every pay and requirement shown. */
     private long scaleMax() {
         long max = 0;
@@ -242,8 +249,8 @@ final class DecisionChartView extends View {
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (entries.isEmpty()) return super.onTouchEvent(event);
         if (event.getAction() == MotionEvent.ACTION_UP) {
-            float left = ui.dp(44);
-            float slot = (getWidth() - ui.dp(4) - left) / SLOTS;
+            float left = ui.dp(SIDE_DP);
+            float slot = (getWidth() - ui.dp(SIDE_DP) - left) / SLOTS;
             int index = (int) Math.floor((event.getX() - left) / slot) - (SLOTS - entries.size());
             if (index >= 0 && index < entries.size()) select(index);
             performClick();
@@ -256,6 +263,7 @@ final class DecisionChartView extends View {
     }
 
     void select(int index) {
+        if (index != selected) selectedAt = SystemClock.uptimeMillis();
         selected = index;
         invalidate();
         if (listener != null) listener.selected(entries.get(index));

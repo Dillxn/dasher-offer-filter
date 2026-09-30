@@ -26,6 +26,10 @@ public final class OfferFilterService extends AccessibilityService {
     private static final int MAX_SCAN_NODES = 1500;
     private static final int MAX_CLICK_TARGET_ANCESTORS = 8;
     private static final int MAX_ACCEPT_LABEL_ANCESTORS = 4;
+    /** A click event this soon after the app's own tap is that tap's echo, not the user's. */
+    private static final long OWN_TAP_ECHO_MS = 1500;
+    /** A manual Decline counts for the offer seen on screen at most this long ago. */
+    private static final long MANUAL_DECLINE_OFFER_AGE_MS = 90_000;
     /** A declined offer or its confirmation still showing this long after the decline tap is reported as stuck. */
     static final long STUCK_MS = 5_000;
     /** How long a takeover lasts at most; offers expire well before this. */
@@ -39,6 +43,10 @@ public final class OfferFilterService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final DeclineState declineState = new DeclineState();
     private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
+    private long ownTapAt = -OWN_TAP_ECHO_MS;
+    /** The last standalone offer on screen that the rules let through, for a manual Decline to refer to. */
+    private OfferSnapshot passingOffer;
+    private long passingOfferAt;
     private final Runnable syncAutomation = this::syncAutomation;
     private TouchWatch touchWatch;
     private OfferSilencer silencer;
@@ -159,7 +167,19 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void observeClick(AccessibilityEvent event) {
-        if (isAcceptClick(event)) acceptedTracker.acceptClicked(SystemClock.uptimeMillis());
+        long now = SystemClock.uptimeMillis();
+        if (isAcceptClick(event)) {
+            acceptedTracker.acceptClicked(now);
+            passingOffer = null;
+        }
+        if (isDeclineClick(event) && now - ownTapAt > OWN_TAP_ECHO_MS) {
+            // The user's own Decline on an offer the rules let through: the rules were too lenient for them.
+            if (passingOffer != null && now - passingOfferAt <= MANUAL_DECLINE_OFFER_AGE_MS) {
+                ManualDeclines.declined(this, passingOffer, System.currentTimeMillis());
+                DiagnosticLog.log(this, "accessibility", "manual Decline of a passing offer; held until the next offer");
+            }
+            passingOffer = null;
+        }
         for (CharSequence label : event.getText()) {
             String text = OfferEvidence.normalize(label == null ? null : label.toString()).toLowerCase(Locale.US);
             if (PROGRESS_TAPS.contains(text)) ActiveRouteStore.invalidateTravel(this);
@@ -296,7 +316,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
         reportIfStuck(confirmation, now);
-        if (selected >= 0 && declineState.mayConfirm(now) && click(confirmation.declineTargets.get(selected))) {
+        if (selected >= 0 && declineState.mayConfirm(now) && ownClick(confirmation.declineTargets.get(selected))) {
             declineState.confirmationSent(now);
             if (declinedEntry != null) {
                 DecisionLog.record(this, new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
@@ -333,6 +353,7 @@ public final class OfferFilterService extends AccessibilityService {
             recordAcceptance(accepted);
             return false;
         }
+        if (OfferEvidence.isDashOver(scan.text)) ManualDeclines.dashEnded(this);
         if (OfferEvidence.isIdle(scan.text)) {
             boolean pending = declineState.hasPendingConfirmation(now);
             ActiveRouteStore.clear(this);
@@ -360,6 +381,8 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void recordAcceptance(AcceptedOfferTracker.Acceptance accepted) {
+        // Accepting after all means an earlier Decline tap on this offer was backed out of.
+        ManualDeclines.forget(this);
         if (!accepted.addOn && accepted.acceptedOffer.payCents != null) {
             FilterStore.recordAccepted(this, accepted.acceptedOffer);
         }
@@ -391,6 +414,13 @@ public final class OfferFilterService extends AccessibilityService {
         declinedOfferShowing = decision.result == OfferRule.Result.DECLINE
                 && (key.equals(declinedKey) || offer.agreesWith(declinedOffer));
 
+        boolean letThrough = settings.enabled && decision.result == OfferRule.Result.KEEP;
+        if (letThrough && !isAddOn) {
+            passingOffer = offer;
+            passingOfferAt = now;
+        } else if (passingOffer != null && !offer.agreesWith(passingOffer)) {
+            passingOffer = null;
+        }
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             declineState.reset();
             DecisionLog.Entry entry = record(scan, isAddOn, decision, settings, !settings.enabled
@@ -406,7 +436,7 @@ public final class OfferFilterService extends AccessibilityService {
             return declineState.hasPendingConfirmation(now);
         }
         // Re-check the active window just before acting: the screen can change while it is being read.
-        if (isDasher(getRootInActiveWindow()) && click(scan.decline)) {
+        if (isDasher(getRootInActiveWindow()) && ownClick(scan.decline)) {
             boolean firstTap = !key.equals(declinedKey) || !declineState.hasPendingConfirmation(now);
             declineState.declineSent(key, now);
             declineGeneration = OfferNotificationService.generation();
@@ -492,6 +522,28 @@ public final class OfferFilterService extends AccessibilityService {
 
     private static boolean isAcceptLabel(CharSequence label) {
         return label != null && OfferControls.isButton(label.toString(), "accept");
+    }
+
+    private static boolean isDeclineClick(AccessibilityEvent event) {
+        for (CharSequence label : event.getText()) {
+            if (isDeclineLabel(label)) return true;
+        }
+        if (isDeclineLabel(event.getContentDescription())) return true;
+        AccessibilityNodeInfo node = event.getSource();
+        for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++, node = node.getParent()) {
+            if (isDeclineLabel(node.getText()) || isDeclineLabel(node.getContentDescription())) return true;
+        }
+        return false;
+    }
+
+    private static boolean isDeclineLabel(CharSequence label) {
+        return label != null && OfferControls.isButton(label.toString(), "decline");
+    }
+
+    /** The app's own tap; its click event, arriving just after, is not mistaken for the user's. */
+    private boolean ownClick(AccessibilityNodeInfo node) {
+        ownTapAt = SystemClock.uptimeMillis();
+        return click(node);
     }
 
     private static boolean isDasherPackage(CharSequence packageName) {

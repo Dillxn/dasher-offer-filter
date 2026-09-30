@@ -11,11 +11,10 @@ import android.view.View;
 import java.util.Locale;
 
 /**
- * The filter as a little machine: offer tickets float down on parachutes into the mascot, a funnel standing
- * upright, and drop from its spout into three containers with the last 24 hours' counts: a basket for passed
- * offers, a bin for filtered ones and a crate for those left to review. On, the mascot is cheerful and has its
- * sieve; paused, it is asleep and open (dashed, amber) and nothing reaches the bin; off, it is grey and blank.
- * "Filtered" counts only offers the app acted on (a Decline tap, a decline request, or a hidden notification).
+ * The mascot, a funnel standing upright, with the last 24 hours in three quiet counts below: passed, filtered and
+ * left to review. On, it breathes, blinks, has its sieve, and an offer ticket drifts down into it while a drop falls
+ * from its spout; paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered" counts only
+ * offers the app acted on (a Decline tap, a decline request, or a hidden notification).
  */
 @SuppressLint("ViewConstructor")
 final class FilterHeroView extends View {
@@ -23,9 +22,11 @@ final class FilterHeroView extends View {
 
     /** The drawing's own size; narrower screens scale it down whole. */
     private static final int DESIGN_WIDTH_DP = 320;
-    private static final int DESIGN_HEIGHT_DP = 342;
-    private static final int[] CANOPIES_LIGHT = {0xFFA9C8F2, 0xFFF4BCCB, 0xFFBFE3B4};
-    private static final int[] CANOPIES_DARK = {0xFF3D5A85, 0xFF7A4452, 0xFF3F6A3A};
+    private static final int DESIGN_HEIGHT_DP = 250;
+
+    /** Stars around the halo: dp from the middle across, dp down, and size. */
+    private static final float[][] TWINKLES = {
+            {-98, 40, 5}, {-116, 118, 3.5f}, {-80, 170, 3}, {100, 30, 4}, {120, 96, 5.5f}, {88, 162, 3.5f}};
 
     private final Ui ui;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -33,12 +34,11 @@ final class FilterHeroView extends View {
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final RectF rect = new RectF();
+    private final DashPathEffect pausedDash;
     private State state = State.OFF;
     private int passed;
     private int filtered;
     private int review;
-    /** Shrinks the container labels to fit large system font sizes; decided once per drawing. */
-    private float labelScale = 1f;
 
     FilterHeroView(Context context, Ui ui) {
         super(context);
@@ -46,6 +46,8 @@ final class FilterHeroView extends View {
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeCap(Paint.Cap.ROUND);
         line.setStrokeJoin(Paint.Join.ROUND);
+        text.setTextAlign(Paint.Align.CENTER);
+        pausedDash = new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
@@ -80,108 +82,115 @@ final class FilterHeroView extends View {
         float scale = getWidth() / designWidth;
         canvas.save();
         canvas.scale(scale, scale);
-        drawScene(canvas, designWidth);
+        float cx = designWidth / 2;
+        // Tilting the phone slides the halo and its stars (far) against the ticket (near).
+        slide(canvas, -4);
+        drawHalo(canvas, cx);
+        drawTwinkles(canvas, cx);
         canvas.restore();
+        if (state == State.ON) {
+            slide(canvas, 8);
+            drawDriftingTicket(canvas, cx);
+            canvas.restore();
+        }
+        drawMascot(canvas, cx);
+        drawCounts(canvas, cx, designWidth);
+        canvas.restore();
+        if (state != State.OFF) Motion.next(this);
+    }
+
+    private void slide(Canvas canvas, float depth) {
+        canvas.save();
+        canvas.translate(Tilt.x() * ui.dp(depth), Tilt.y() * ui.dp(depth) * 0.6f);
     }
 
     private int stateColor() {
         return state == State.ON ? ui.accent : state == State.PAUSED ? Ui.WARNING : ui.inkMuted;
     }
 
-    private void drawScene(Canvas canvas, float width) {
-        float cx = width / 2;
-        int[] canopies = ui.dark ? CANOPIES_DARK : CANOPIES_LIGHT;
-        boolean off = state == State.OFF;
-        // Kept off the middle, where the speech bubble above points down at the mascot.
-        drawParachute(canvas, cx - ui.dp(116), ui.dp(74), -10, off ? ui.gridline : canopies[0]);
-        drawParachute(canvas, cx + ui.dp(118), ui.dp(80), 9, off ? ui.gridline : canopies[1]);
-        drawParachute(canvas, cx + ui.dp(62), ui.dp(58), -5, off ? ui.gridline : canopies[2]);
-
-        float spacing = Math.min(ui.dp(104), width * 0.32f);
-        float binTop = ui.dp(254);
-        float spoutY = ui.dp(216);
-        drawFlow(canvas, cx, spoutY, cx - spacing, binTop, OfferRule.Result.KEEP, state != State.OFF);
-        drawFlow(canvas, cx, spoutY, cx, binTop, OfferRule.Result.DECLINE, state == State.ON);
-        drawFlow(canvas, cx, spoutY, cx + spacing, binTop, OfferRule.Result.REVIEW, state != State.OFF);
-        drawMascot(canvas, cx);
-
-        fitLabels(spacing - ui.dp(8), ui.dp(DESIGN_HEIGHT_DP) - ui.dp(302));
-        drawBasket(canvas, cx - spacing, binTop, state != State.OFF);
-        drawBin(canvas, cx, binTop, state == State.ON);
-        drawCrate(canvas, cx + spacing, binTop, state != State.OFF);
-        drawCount(canvas, cx - spacing, passed, "passed", state != State.OFF);
-        drawCount(canvas, cx, filtered, "filtered", state == State.ON);
-        drawCount(canvas, cx + spacing, review, "review", state != State.OFF);
+    /** A soft circle of light behind the mascot. */
+    private void drawHalo(Canvas canvas, float cx) {
+        float breathe = state == State.ON ? Motion.wave(6f, 0) : 0;
+        fill.setColor(withAlpha(stateColor(), state == State.OFF ? 0x0C : 0x16));
+        canvas.drawCircle(cx, ui.dp(104), ui.dp(88) + ui.dp(3) * breathe, fill);
     }
 
-    /** An offer ticket hanging from a parachute, tilted by {@code degrees}. */
-    private void drawParachute(Canvas canvas, float x, float y, float degrees, int canopy) {
+    /** Small stars around the halo that brighten and fade in turn; none while off. */
+    private void drawTwinkles(Canvas canvas, float cx) {
+        if (state == State.OFF) return;
+        int color = ui.dark ? 0xFFE9E2C8 : 0xFFE0B94F;
+        for (int i = 0; i < TWINKLES.length; i++) {
+            float[] star = TWINKLES[i];
+            float twinkle = 0.5f + 0.5f * Motion.wave(2.4f + i * 0.45f, i * 0.23f);
+            fill.setColor(withAlpha(color, (int) (40 + 150 * twinkle)));
+            sparkle(canvas, cx + ui.dp(star[0]), ui.dp(star[1]), ui.dp(star[2]) * (0.55f + 0.45f * twinkle));
+        }
+    }
+
+    private void sparkle(Canvas canvas, float x, float y, float half) {
+        float waist = half * 0.22f;
+        path.reset();
+        path.moveTo(x, y - half);
+        path.quadTo(x + waist, y - waist, x + half, y);
+        path.quadTo(x + waist, y + waist, x, y + half);
+        path.quadTo(x - waist, y + waist, x - half, y);
+        path.quadTo(x - waist, y - waist, x, y - half);
+        path.close();
+        canvas.drawPath(path, fill);
+    }
+
+    /** One offer ticket on a small parachute, drifting down into the funnel's mouth, again and again. */
+    private void drawDriftingTicket(Canvas canvas, float cx) {
+        float t = Motion.on() ? Motion.loop(7f, 0) : 0.55f;
+        float y = ui.dp(38) + ui.dp(30) * t;
+        float x = cx + ui.dp(10) * Motion.wave(7f, 0.25f);
+        int alpha = (int) (255 * Math.min(1f, Math.min(t * 5f, (1f - t) * 5f)));
         canvas.save();
-        canvas.rotate(degrees, x, y);
-        float half = ui.dp(19);
-        float domeY = y - ui.dp(34);
-        // Strings from the canopy's rim to the ticket's top corners.
-        line.setColor(ui.baseline);
+        canvas.rotate(4 * Motion.wave(3.5f, 0), x, y);
+        line.setPathEffect(null);
+        line.setColor(withAlpha(ui.baseline, alpha));
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        line.setPathEffect(null);
-        canvas.drawLine(x - half + ui.dp(2), domeY, x - ui.dp(16), y - ui.dp(12), line);
-        canvas.drawLine(x + half - ui.dp(2), domeY, x + ui.dp(16), y - ui.dp(12), line);
-        canvas.drawLine(x, domeY, x, y - ui.dp(12), line);
-        rect.set(x - half, domeY - half, x + half, domeY + half);
-        fill.setColor(canopy);
+        float dome = y - ui.dp(22);
+        canvas.drawLine(x - ui.dp(12), dome, x - ui.dp(10), y - ui.dp(8), line);
+        canvas.drawLine(x + ui.dp(12), dome, x + ui.dp(10), y - ui.dp(8), line);
+        rect.set(x - ui.dp(13), dome - ui.dp(13), x + ui.dp(13), dome + ui.dp(13));
+        fill.setColor(withAlpha(ui.dark ? 0xFF3D5A85 : 0xFFA9C8F2, alpha));
         canvas.drawArc(rect, 180, 180, true, fill);
-        fill.setColor(0x33FFFFFF);
-        rect.set(x - half / 3, domeY - half, x + half / 3, domeY + half);
-        canvas.drawArc(rect, 180, 180, true, fill);
-        // The ticket.
-        rect.set(x - ui.dp(23), y - ui.dp(13), x + ui.dp(23), y + ui.dp(13));
-        fill.setColor(ui.surface);
-        canvas.drawRoundRect(rect, ui.dp(5), ui.dp(5), fill);
-        line.setColor(ui.baseline);
-        line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
-        canvas.drawRoundRect(rect, ui.dp(5), ui.dp(5), line);
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(2), ui.dp(2)}, 0));
-        float cut = rect.right - ui.dp(13);
-        canvas.drawLine(cut, rect.top + ui.dp(3), cut, rect.bottom - ui.dp(3), line);
-        line.setPathEffect(null);
-        text.setTextAlign(Paint.Align.CENTER);
+        rect.set(x - ui.dp(15), y - ui.dp(8), x + ui.dp(15), y + ui.dp(8));
+        fill.setColor(withAlpha(ui.surface, alpha));
+        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
+        line.setColor(withAlpha(ui.baseline, alpha));
+        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), line);
         text.setFakeBoldText(true);
-        // Part of the picture, not reading text: sized with it rather than with the font setting.
-        text.setTextSize(ui.dp(13));
-        text.setColor(ui.inkSecondary);
-        canvas.drawText("$", rect.left + (cut - rect.left) / 2, y + ui.dp(4.5f), text);
+        text.setTextSize(ui.dp(9));
+        text.setColor(withAlpha(ui.inkSecondary, alpha));
+        canvas.drawText("$", x - ui.dp(3), y + ui.dp(3), text);
         canvas.restore();
     }
 
-    /** The mascot: rim, body narrowing to the spout, a sieve while on, arms, and its face. */
+    /** The mascot: rim (a sieve while on), body narrowing to the spout, arms, face; a drop falls while on. */
     private void drawMascot(Canvas canvas, float cx) {
         int color = stateColor();
-        float rimY = ui.dp(108);
-        float half = ui.dp(74);
-        float neckY = ui.dp(194);
-        float neck = ui.dp(13);
-        float spoutY = ui.dp(216);
+        float breathe = state == State.OFF ? 0 : Motion.wave(4.5f, 0);
+        canvas.save();
+        canvas.scale(1 + 0.012f * breathe, 1 + 0.012f * breathe, cx, ui.dp(120));
+        float rimY = ui.dp(72);
+        float half = ui.dp(62);
+        float neckY = ui.dp(146);
+        float neck = ui.dp(11);
+        float spoutY = ui.dp(164);
 
-        // Arms first, so the body covers where they join; one waves while on.
-        float armY = ui.dp(146);
+        float armY = ui.dp(104);
         float side = half - (half - neck) * (armY - rimY) / (neckY - rimY);
-        boolean waving = state == State.ON;
-        line.setColor(color);
-        line.setStrokeWidth(ui.dp(3.5f));
         line.setPathEffect(null);
+        line.setColor(color);
+        line.setStrokeWidth(ui.dp(3));
         path.reset();
         path.moveTo(cx - side, armY);
-        path.quadTo(cx - side - ui.dp(16), armY + ui.dp(6), cx - side - ui.dp(20), armY + ui.dp(26));
+        path.quadTo(cx - side - ui.dp(13), armY + ui.dp(5), cx - side - ui.dp(16), armY + ui.dp(21));
         path.moveTo(cx + side, armY);
-        if (waving) {
-            path.quadTo(cx + side + ui.dp(16), armY - ui.dp(2), cx + side + ui.dp(22), armY - ui.dp(24));
-        } else {
-            path.quadTo(cx + side + ui.dp(16), armY + ui.dp(6), cx + side + ui.dp(20), armY + ui.dp(26));
-        }
+        path.quadTo(cx + side + ui.dp(13), armY + ui.dp(5), cx + side + ui.dp(16), armY + ui.dp(21));
         canvas.drawPath(path, line);
-        fill.setColor(color);
-        canvas.drawCircle(cx - side - ui.dp(20), armY + ui.dp(28), ui.dp(4), fill);
-        canvas.drawCircle(cx + side + ui.dp(waving ? 22 : 20), armY + ui.dp(waving ? -26 : 28), ui.dp(4), fill);
 
         path.reset();
         path.moveTo(cx - half, rimY);
@@ -193,196 +202,86 @@ final class FilterHeroView extends View {
         path.close();
         fill.setColor(ui.surface);
         canvas.drawPath(path, fill);
-        fill.setColor(withAlpha(color, state == State.OFF ? 0x18 : 0x30));
+        fill.setColor(withAlpha(color, state == State.OFF ? 0x16 : 0x2A));
         canvas.drawPath(path, fill);
         line.setStrokeWidth(ui.dp(2.5f));
-        line.setPathEffect(state == State.PAUSED ? new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0) : null);
+        line.setPathEffect(state == State.PAUSED ? pausedDash : null);
         canvas.drawPath(path, line);
-
-        rect.set(cx - half, rimY - ui.dp(14), cx + half, rimY + ui.dp(14));
+        rect.set(cx - half, rimY - ui.dp(12), cx + half, rimY + ui.dp(12));
         fill.setColor(ui.surface);
         canvas.drawOval(rect, fill);
-        fill.setColor(withAlpha(color, state == State.OFF ? 0x26 : 0x55));
+        fill.setColor(withAlpha(color, state == State.OFF ? 0x20 : 0x48));
         canvas.drawOval(rect, fill);
         canvas.drawOval(rect, line);
         line.setPathEffect(null);
         if (state == State.ON) {
-            // The sieve: a mesh of holes across the rim.
-            fill.setColor(withAlpha(color, 0xB0));
+            fill.setColor(withAlpha(color, 0xA0));
             for (int row = -1; row <= 1; row++) {
-                for (int col = -5; col <= 5; col++) {
+                for (int col = -4; col <= 4; col++) {
                     float x = cx + col * ui.dp(12) + (row == 0 ? ui.dp(6) : 0);
-                    float y = rimY + row * ui.dp(6);
-                    float dx = (x - cx) / (half - ui.dp(10));
-                    float dy = (y - rimY) / ui.dp(9);
-                    if (dx * dx + dy * dy <= 1) canvas.drawCircle(x, y, ui.dp(1.8f), fill);
+                    float y = rimY + row * ui.dp(5);
+                    float dx = (x - cx) / (half - ui.dp(9));
+                    float dy = (y - rimY) / ui.dp(8);
+                    if (dx * dx + dy * dy <= 1) canvas.drawCircle(x, y, ui.dp(1.6f), fill);
                 }
             }
         }
-        Mascot.face(canvas, mood(), cx, ui.dp(150), ui.dp(46), state == State.OFF ? ui.inkMuted : ui.ink);
-        if (state == State.PAUSED) Mascot.snore(canvas, cx + ui.dp(40), ui.dp(134), ui.dp(16), ui.inkSecondary);
-    }
-
-    private void drawFlow(Canvas canvas, float fromX, float fromY, float toX, float toY, OfferRule.Result result,
-                          boolean live) {
-        if (!live) return;
-        path.reset();
-        path.moveTo(fromX, fromY);
-        path.cubicTo(fromX, fromY + ui.dp(20), toX, toY - ui.dp(24), toX, toY - ui.dp(6));
-        line.setColor(withAlpha(Ui.resultColor(result), 0xB0));
-        line.setStrokeWidth(ui.dp(2.5f));
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(5), ui.dp(5)}, 0));
-        canvas.drawPath(path, line);
-        line.setPathEffect(null);
-    }
-
-    /** A woven basket for the offers that passed. */
-    private void drawBasket(Canvas canvas, float x, float top, boolean live) {
-        int color = Ui.GOOD;
-        float halfTop = ui.dp(36);
-        float halfBottom = ui.dp(28);
-        float bottom = top + ui.dp(44);
-        drawPeeking(canvas, x, top, passed, live);
-        path.reset();
-        path.moveTo(x - halfTop, top);
-        path.lineTo(x + halfTop, top);
-        path.lineTo(x + halfBottom, bottom);
-        path.lineTo(x - halfBottom, bottom);
-        path.close();
-        fill.setColor(ui.surface);
-        canvas.drawPath(path, fill);
-        fill.setColor(withAlpha(color, live ? 0x33 : 0x14));
-        canvas.drawPath(path, fill);
-        line.setColor(withAlpha(color, live ? 0xFF : 0x70));
-        line.setStrokeWidth(ui.dp(2));
-        canvas.drawPath(path, line);
-        // The weave.
-        line.setStrokeWidth(Math.max(1, ui.dp(1.2f)));
-        for (int i = 1; i <= 2; i++) {
-            float y = top + ui.dp(44) * i / 3f;
-            float inset = (halfTop - halfBottom) * i / 3f;
-            canvas.drawLine(x - halfTop + inset, y, x + halfTop - inset, y, line);
-        }
-        for (int i = -2; i <= 2; i++) {
-            canvas.drawLine(x + i * ui.dp(13), top, x + i * ui.dp(10.5f), bottom, line);
-        }
-        drawBadge(canvas, x, top + ui.dp(22), OfferRule.Result.KEEP, live);
-    }
-
-    /** A bin with its lid tipped open for the filtered offers. */
-    private void drawBin(Canvas canvas, float x, float top, boolean live) {
-        int color = Ui.CRITICAL;
-        float half = ui.dp(28);
-        float bottom = top + ui.dp(44);
-        drawPeeking(canvas, x, top, filtered, live);
-        rect.set(x - half, top + ui.dp(4), x + half, bottom);
-        fill.setColor(ui.surface);
-        canvas.drawRoundRect(rect, ui.dp(4), ui.dp(4), fill);
-        fill.setColor(withAlpha(color, live ? 0x2E : 0x12));
-        canvas.drawRoundRect(rect, ui.dp(4), ui.dp(4), fill);
-        line.setColor(withAlpha(color, live ? 0xFF : 0x70));
-        line.setStrokeWidth(ui.dp(2));
-        canvas.drawRoundRect(rect, ui.dp(4), ui.dp(4), line);
-        line.setStrokeWidth(Math.max(1, ui.dp(1.2f)));
-        for (int i = -1; i <= 1; i += 2) {
-            canvas.drawLine(x + i * ui.dp(15), top + ui.dp(10), x + i * ui.dp(15), bottom - ui.dp(6), line);
-        }
-        // The lid, lifted off and tilted above the bin, with its handle.
-        canvas.save();
-        canvas.rotate(-12, x + ui.dp(10), top - ui.dp(10));
-        rect.set(x - half + ui.dp(8), top - ui.dp(14), x + half + ui.dp(12), top - ui.dp(8));
-        fill.setColor(withAlpha(color, live ? 0xFF : 0x70));
-        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
-        rect.set(x + ui.dp(4), top - ui.dp(19), x + ui.dp(16), top - ui.dp(13));
-        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
+        // A blink every few seconds while awake.
+        boolean blink = state == State.ON && Motion.on() && Motion.loop(5.3f, 0) > 0.965f;
+        Mascot.face(canvas, blink ? Mascot.Mood.BLINK : mood(), cx, ui.dp(110), ui.dp(40),
+                state == State.OFF ? ui.inkMuted : ui.ink);
         canvas.restore();
-        drawBadge(canvas, x, top + ui.dp(25), OfferRule.Result.DECLINE, live);
-    }
 
-    /** A taped crate for the offers left to review. */
-    private void drawCrate(Canvas canvas, float x, float top, boolean live) {
-        int color = 0xFFC98A0B;
-        float half = ui.dp(31);
-        float bottom = top + ui.dp(44);
-        drawPeeking(canvas, x, top, review, live);
-        rect.set(x - half, top, x + half, bottom);
-        fill.setColor(ui.surface);
-        canvas.drawRect(rect, fill);
-        fill.setColor(withAlpha(Ui.WARNING, live ? 0x40 : 0x16));
-        canvas.drawRect(rect, fill);
-        line.setColor(withAlpha(color, live ? 0xFF : 0x70));
-        line.setStrokeWidth(ui.dp(2));
-        canvas.drawRect(rect, line);
-        line.setStrokeWidth(Math.max(1, ui.dp(1.2f)));
-        canvas.drawLine(x - half, top + ui.dp(11), x + half, top + ui.dp(11), line);
-        canvas.drawLine(x - half, bottom - ui.dp(11), x + half, bottom - ui.dp(11), line);
-        drawBadge(canvas, x, top + ui.dp(22), OfferRule.Result.REVIEW, live);
-    }
-
-    /** One or two tiny tickets sticking out of a container that holds any. */
-    private void drawPeeking(Canvas canvas, float x, float top, int count, boolean live) {
-        if (count <= 0) return;
-        for (int i = 0; i < Math.min(2, count); i++) {
-            canvas.save();
-            canvas.rotate(i == 0 ? -14 : 12, x + (i == 0 ? -ui.dp(10) : ui.dp(12)), top);
-            rect.set(x + (i == 0 ? -ui.dp(24) : 0), top - ui.dp(12), x + (i == 0 ? ui.dp(4) : ui.dp(26)),
-                    top + ui.dp(8));
-            fill.setColor(ui.surface);
-            canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
-            line.setColor(withAlpha(ui.baseline, live ? 0xFF : 0x90));
-            line.setStrokeWidth(Math.max(1, ui.dp(1.2f)));
-            canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), line);
-            canvas.restore();
-        }
-    }
-
-    private void drawBadge(Canvas canvas, float x, float y, OfferRule.Result result, boolean live) {
-        int color = Ui.resultColor(result);
-        float radius = ui.dp(11);
-        fill.setColor(ui.surface);
-        canvas.drawCircle(x, y, radius + ui.dp(2), fill);
-        fill.setColor(withAlpha(color, live ? 0xFF : 0x70));
-        canvas.drawCircle(x, y, radius, fill);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setFakeBoldText(true);
-        text.setTextSize(ui.dp(12));
-        text.setColor(withAlpha(Ui.onStatus(color), live ? 0xFF : 0xB0));
-        canvas.drawText(Ui.resultSymbol(result), x, y + text.getTextSize() / 3, text);
-    }
-
-    /** One scale for the three labels under the containers, so the widest and the tallest fit. */
-    private void fitLabels(float availableWidth, float availableHeight) {
-        float widest = 0;
-        float tallest = 0;
-        for (Object[] label : new Object[][] {{passed, "passed"}, {filtered, "filtered"}, {review, "review"}}) {
+        if (state == State.ON) {
+            float t = Motion.on() ? Motion.loop(1.8f, 0) : 0.4f;
+            fill.setColor(withAlpha(color, (int) (0xC0 * (1 - t))));
+            canvas.drawCircle(cx, spoutY + ui.dp(4) + ui.dp(16) * t * t, ui.dp(3), fill);
+        } else if (state == State.PAUSED) {
+            float t = Motion.on() ? Motion.loop(3.2f, 0) : 0.3f;
             text.setFakeBoldText(true);
-            text.setTextSize(ui.sp(17));
-            float number = text.measureText(label[0].toString());
-            float height = Ui.lineHeight(text);
-            text.setFakeBoldText(false);
-            text.setTextSize(ui.sp(12));
-            widest = Math.max(widest, Math.max(number, text.measureText((String) label[1])));
-            tallest = Math.max(tallest, height + Ui.lineHeight(text));
+            text.setColor(withAlpha(ui.inkSecondary, (int) (255 * (1 - t))));
+            text.setTextSize(ui.dp(12) + ui.dp(6) * t);
+            canvas.drawText("z", cx + ui.dp(36) + ui.dp(10) * t, ui.dp(92) - ui.dp(28) * t, text);
         }
-        labelScale = Math.min(1f, Math.min(availableWidth / widest, availableHeight / tallest));
     }
 
-    private void drawCount(Canvas canvas, float x, int count, String word, boolean live) {
-        text.setTextAlign(Paint.Align.CENTER);
+    /** Three quiet counts under the mascot: a small badge, the number, and its word. */
+    private void drawCounts(Canvas canvas, float cx, float width) {
+        float spacing = Math.min(ui.dp(96), width * 0.3f);
+        drawCount(canvas, cx - spacing, OfferRule.Result.KEEP, passed, "passed", state != State.OFF);
+        drawCount(canvas, cx, OfferRule.Result.DECLINE, filtered, "filtered", state == State.ON);
+        drawCount(canvas, cx + spacing, OfferRule.Result.REVIEW, review, "review", state != State.OFF);
+    }
+
+    private void drawCount(Canvas canvas, float x, OfferRule.Result result, int count, String word, boolean live) {
+        int color = Ui.resultColor(result);
+        float top = ui.dp(192);
+        // The number and its word size with the font setting, shrunk only as far as their space needs.
         text.setFakeBoldText(true);
-        text.setTextSize(ui.sp(17) * labelScale);
+        float numberSize = Math.min(ui.sp(18), ui.dp(26));
+        text.setTextSize(numberSize);
+        String number = Integer.toString(count);
+        float badge = ui.dp(8);
+        float numberWidth = text.measureText(number);
+        float rowWidth = badge * 2 + ui.dp(6) + numberWidth;
+        float left = x - rowWidth / 2;
+        fill.setColor(withAlpha(color, live ? 0xFF : 0x60));
+        canvas.drawCircle(left + badge, top, badge, fill);
         Paint.FontMetrics metrics = text.getFontMetrics();
-        float y = ui.dp(302) - metrics.ascent;
         text.setColor(live ? ui.ink : ui.inkMuted);
-        canvas.drawText(Integer.toString(count), x, y, text);
-        float next = y + metrics.descent;
+        text.setTextAlign(Paint.Align.LEFT);
+        canvas.drawText(number, left + badge * 2 + ui.dp(6), top - (metrics.ascent + metrics.descent) / 2, text);
+        text.setTextSize(ui.dp(9));
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setColor(withAlpha(Ui.onStatus(color), live ? 0xFF : 0xB0));
+        canvas.drawText(Ui.resultSymbol(result), left + badge, top + text.getTextSize() / 3, text);
         text.setFakeBoldText(false);
-        text.setTextSize(ui.sp(12) * labelScale);
+        text.setTextSize(Math.min(ui.sp(12), ui.dp(17)));
         text.setColor(live ? ui.inkSecondary : ui.inkMuted);
-        canvas.drawText(word, x, next - text.getFontMetrics().ascent, text);
+        canvas.drawText(word, x, top + ui.dp(22) + text.getTextSize() / 2, text);
     }
 
     private static int withAlpha(int color, int alpha) {
-        return (color & 0x00FFFFFF) | (alpha << 24);
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
     }
 }

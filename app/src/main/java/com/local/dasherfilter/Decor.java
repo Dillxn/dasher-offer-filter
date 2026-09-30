@@ -14,9 +14,9 @@ import android.graphics.drawable.Drawable;
 import android.view.View;
 
 /**
- * The drawn shapes the screen is dressed in instead of plain boxes: a wavy underline for headings, a price tag for
- * each rule field, a ticket with a torn-off stub for an opened offer, a speech bubble for the mascot, and a switch
- * whose knob is the mascot's face. All are backgrounds of ordinary views, so the views keep their meaning.
+ * The few drawn shapes the screen keeps: a ticket with a torn-off stub for an opened offer, its rubber stamp, and a
+ * switch whose knob is the mascot's face. The shapes are backgrounds of ordinary views, so the views keep their
+ * meaning.
  */
 final class Decor {
     private Decor() {}
@@ -49,74 +49,6 @@ final class Decor {
         @SuppressWarnings("deprecation")
         @Override public int getOpacity() {
             return PixelFormat.TRANSLUCENT;
-        }
-    }
-
-    /** A hand-drawn wave under a heading. */
-    static final class Squiggle extends Shape {
-        Squiggle(Ui ui) {
-            super(ui);
-        }
-
-        @Override public void draw(Canvas canvas) {
-            Rect bounds = getBounds();
-            float y = bounds.bottom - ui.dp(4);
-            float wave = ui.dp(8);
-            path.reset();
-            path.moveTo(bounds.left, y);
-            for (float x = bounds.left; x < bounds.right; x += wave) {
-                path.quadTo(x + wave / 4, y - ui.dp(2.5f), x + wave / 2, y);
-                path.quadTo(x + wave * 3 / 4, y + ui.dp(2.5f), x + wave, y);
-            }
-            line.setColor((ui.accent & 0x00FFFFFF) | 0x99000000);
-            line.setStrokeWidth(ui.dp(2));
-            canvas.save();
-            canvas.clipRect(bounds);
-            canvas.drawPath(path, line);
-            canvas.restore();
-        }
-    }
-
-    /** A price tag pointing left, with a punched hole and a loop of string. */
-    static final class Tag extends Shape {
-        Tag(Ui ui) {
-            super(ui);
-        }
-
-        @Override public void draw(Canvas canvas) {
-            Rect b = getBounds();
-            float point = ui.dp(18);
-            float radius = ui.dp(10);
-            float middle = b.exactCenterY();
-            path.reset();
-            path.moveTo(b.left + point, b.top + ui.dp(1));
-            path.lineTo(b.right - radius, b.top + ui.dp(1));
-            rect.set(b.right - 2 * radius - ui.dp(1), b.top + ui.dp(1), b.right - ui.dp(1), b.top + 2 * radius);
-            path.arcTo(rect, -90, 90);
-            path.lineTo(b.right - ui.dp(1), b.bottom - radius);
-            rect.set(b.right - 2 * radius - ui.dp(1), b.bottom - 2 * radius - ui.dp(1), b.right - ui.dp(1),
-                    b.bottom - ui.dp(1));
-            path.arcTo(rect, 0, 90);
-            path.lineTo(b.left + point, b.bottom - ui.dp(1));
-            path.lineTo(b.left + ui.dp(1), middle);
-            path.close();
-            fill.setColor(ui.dark ? 0xFF2A2721 : 0xFFFFF8E8);
-            canvas.drawPath(path, fill);
-            line.setColor(ui.dark ? 0xFF4A4337 : 0xFFE4D5AE);
-            line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
-            canvas.drawPath(path, line);
-            float holeX = b.left + point + ui.dp(1);
-            fill.setColor(ui.page);
-            canvas.drawCircle(holeX, middle, ui.dp(4), fill);
-            canvas.drawCircle(holeX, middle, ui.dp(4), line);
-            // The string: a loop through the hole.
-            line.setColor(ui.dark ? 0xFF6E6557 : 0xFFB9A57A);
-            line.setStrokeWidth(Math.max(1, ui.dp(1.2f)));
-            path.reset();
-            path.moveTo(holeX, middle);
-            path.cubicTo(holeX - ui.dp(10), middle - ui.dp(14), holeX - ui.dp(16), middle + ui.dp(2),
-                    b.left + ui.dp(3), b.top + ui.dp(6));
-            canvas.drawPath(path, line);
         }
     }
 
@@ -161,38 +93,9 @@ final class Decor {
         }
     }
 
-    /** A speech bubble whose tail points down at the mascot. {@link #TAIL_DP} is the tail's height. */
-    static final class Bubble extends Shape {
-        static final int TAIL_DP = 14;
-
-        Bubble(Ui ui) {
-            super(ui);
-        }
-
-        @Override public void draw(Canvas canvas) {
-            Rect b = getBounds();
-            float tail = ui.dp(TAIL_DP);
-            float middle = b.exactCenterX();
-            rect.set(b.left + ui.dp(1), b.top + ui.dp(1), b.right - ui.dp(1), b.bottom - tail);
-            path.reset();
-            path.addRoundRect(rect, ui.dp(20), ui.dp(20), Path.Direction.CW);
-            Path point = new Path();
-            point.moveTo(middle - ui.dp(12), b.bottom - tail - ui.dp(2));
-            point.lineTo(middle - ui.dp(2), b.bottom - ui.dp(1));
-            point.lineTo(middle + ui.dp(12), b.bottom - tail - ui.dp(2));
-            point.close();
-            path.op(point, Path.Op.UNION);
-            fill.setColor(ui.surface);
-            canvas.drawPath(path, fill);
-            line.setColor(ui.dark ? 0x40FFFFFF : 0x330B0B0B);
-            line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
-            canvas.drawPath(path, line);
-        }
-    }
-
     /**
      * A rubber stamp for an offer's outcome, "PASSED", "DECLINED" or "REVIEW", pressed on at a slight angle in the
-     * outcome's ink. The word is also its accessibility text.
+     * outcome's ink; it thumps down when its ticket opens. The word is also its accessibility text.
      */
     @SuppressLint("ViewConstructor")
     static final class Stamp extends View {
@@ -200,6 +103,8 @@ final class Decor {
         private final OfferRule.Result result;
         private final Paint ink = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF rect = new RectF();
+        private final DashPathEffect worn;
+        private long pressedAt;
 
         Stamp(Context context, Ui ui, OfferRule.Result result) {
             super(context);
@@ -208,8 +113,14 @@ final class Decor {
             ink.setFakeBoldText(true);
             ink.setTextAlign(Paint.Align.CENTER);
             ink.setLetterSpacing(0.12f);
+            worn = new DashPathEffect(new float[] {ui.dp(22), ui.dp(2), ui.dp(9), ui.dp(3)}, 0);
             setContentDescription(Ui.resultLabel(result));
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+        }
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            pressedAt = android.os.SystemClock.uptimeMillis();
         }
 
         private String word() {
@@ -233,21 +144,27 @@ final class Decor {
         }
 
         @Override protected void onDraw(Canvas canvas) {
+            float press = Motion.settle(pressedAt, 320);
             ink.setTextSize(size());
             ink.setColor(color());
+            ink.setAlpha(Math.round(255 * Math.min(1f, press * 1.6f)));
             canvas.save();
-            canvas.rotate(-7, getWidth() / 2f, getHeight() / 2f);
+            // Comes down from a little larger and lands at its slant.
+            float scale = 1 + 0.45f * (1 - press);
+            canvas.scale(scale, scale, getWidth() / 2f, getHeight() / 2f);
+            canvas.rotate(-7 - 5 * (1 - press), getWidth() / 2f, getHeight() / 2f);
             rect.set(ui.dp(8), getHeight() * 0.18f, getWidth() - ui.dp(8), getHeight() * 0.82f);
             ink.setStyle(Paint.Style.STROKE);
             ink.setStrokeWidth(ui.dp(2.5f));
             // A worn border: long dashes with small gaps, like ink that did not quite take.
-            ink.setPathEffect(new DashPathEffect(new float[] {ui.dp(22), ui.dp(2), ui.dp(9), ui.dp(3)}, 0));
+            ink.setPathEffect(worn);
             canvas.drawRoundRect(rect, ui.dp(5), ui.dp(5), ink);
             ink.setPathEffect(null);
             ink.setStyle(Paint.Style.FILL);
             Paint.FontMetrics metrics = ink.getFontMetrics();
             canvas.drawText(word(), getWidth() / 2f, getHeight() / 2f - (metrics.ascent + metrics.descent) / 2, ink);
             canvas.restore();
+            if (press < 1) Motion.next(this);
         }
     }
 

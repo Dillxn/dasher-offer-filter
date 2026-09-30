@@ -16,12 +16,9 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
-import android.text.SpannableString;
-import android.text.Spanned;
 import android.text.TextWatcher;
 import android.text.format.DateFormat;
 import android.text.format.DateUtils;
-import android.text.style.StyleSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,12 +44,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The app's two pages, drawn rather than boxed. The main page reads top to bottom as a little scene: the mascot
- * says whether auto-decline is on, above the filter machine with the day's counts and the one button; then recent
- * offers as a skyline with the chosen offer as a stamped ticket; the minimums as constellations; and, when mapping
- * is on, where offers pay best as a treasure map. Settings holds everything set once: the rules as price tags,
- * sound and Android shortcuts, the offer map, reports and updates. Pause and Resume take effect at once; Save keeps
- * the on/paused state.
+ * The app's two pages, kept quiet. The main page: the mascot with the day's three counts, one line saying whether
+ * auto-decline is on, and one button; then recent offers as a small skyline with one line about the chosen offer
+ * (tap for its ticket); the minimums as a constellation with recent offers marked; and, only when mapping is on,
+ * where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts, the offer map,
+ * reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The drawings move
+ * gently and shift with the phone's tilt while the app is open, unless Android's animations are off.
  */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
@@ -76,8 +73,8 @@ public final class MainActivity extends Activity {
     private ScrollView settingsPage;
     private boolean showingSettings;
 
-    // Main page: the mascot and machine.
-    private TextView bubble;
+    // Main page: the mascot.
+    private TextView stateLine;
     private FilterHeroView hero;
     private Button masterButton;
     private int shownState;
@@ -90,7 +87,7 @@ public final class MainActivity extends Activity {
 
     // Main page: offers.
     private DecisionChartView chart;
-    private View legend;
+    private TextView chosenLine;
     private LinearLayout ticket;
     private Decor.Ticket ticketShape;
     private Button reportSelected;
@@ -99,12 +96,13 @@ public final class MainActivity extends Activity {
     private List<DecisionLog.Entry> recentEntries = Collections.emptyList();
     /** The ticket follows each new offer until an older one is picked. */
     private boolean followNewest = true;
+    /** The chosen offer's ticket is folded away until its line or a building is tapped. */
+    private boolean ticketOpen;
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
     private TextView minimumsNote;
     private LinearLayout mapping;
-    private LinearLayout notMapping;
     private AreaMapView areaMap;
     private LinearLayout areaDetail;
     private String shownAreas = "";
@@ -171,6 +169,7 @@ public final class MainActivity extends Activity {
         // Sound left turned down by a decline the screen reader could not finish is put back here too.
         if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
+        Tilt.start(this);
         handler.removeCallbacks(refresh);
         handler.post(refresh);
         Updater.check(this, false, null);
@@ -178,6 +177,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onPause() {
         handler.removeCallbacks(refresh);
+        Tilt.stop();
         Updater.background(this);
         super.onPause();
     }
@@ -226,7 +226,7 @@ public final class MainActivity extends Activity {
         header.setPadding(ui.dp(back ? 8 : 20), ui.dp(18), ui.dp(12), ui.dp(12));
         header.setMinimumHeight(ui.dp(84));
         if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
-        TextView name = ui.text(title, 26, ui.ink, true);
+        TextView name = ui.text(title, 22, ui.ink, true);
         if (back) name.setPadding(ui.dp(8), 0, 0, 0);
         if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
@@ -267,18 +267,18 @@ public final class MainActivity extends Activity {
         page.addView(header("Offer Filter", false));
         LinearLayout body = body(page);
 
-        bubble = ui.text("", 16, ui.ink, false);
-        bubble.setBackground(new Decor.Bubble(ui));
-        bubble.setPadding(ui.dp(18), ui.dp(12), ui.dp(18), ui.dp(12 + Decor.Bubble.TAIL_DP));
-        bubble.setGravity(Gravity.CENTER_HORIZONTAL);
-        LinearLayout.LayoutParams bubbleParams = Ui.matchWidth();
-        bubbleParams.topMargin = ui.dp(4);
-        bubbleParams.setMarginStart(ui.dp(12));
-        bubbleParams.setMarginEnd(ui.dp(12));
-        body.addView(bubble, bubbleParams);
         hero = new FilterHeroView(this, ui);
         body.addView(hero, Ui.matchWidth());
-        masterButton = ui.addButton(body, "", true, this::toggleAutoDecline);
+        stateLine = ui.text("", 17, ui.ink, true);
+        stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
+        stateLine.setPadding(0, ui.dp(4), 0, 0);
+        body.addView(stateLine, Ui.matchWidth());
+        masterButton = ui.button("", true, this::toggleAutoDecline);
+        LinearLayout.LayoutParams masterParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        masterParams.gravity = Gravity.CENTER_HORIZONTAL;
+        masterParams.topMargin = ui.dp(12);
+        body.addView(masterButton, masterParams);
         LinearLayout problems = ui.column();
         body.addView(problems);
         screenReading = new Readiness(problems, "Screen reading is off",
@@ -305,91 +305,60 @@ public final class MainActivity extends Activity {
     }
 
     private void addOffers(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.CHART, "Your offers");
-        noOffers = ui.note("No offers yet. Each one Dasher shows gets a building here, as tall as its pay.");
+        ui.heading(body, "Offers");
+        noOffers = ui.note("No offers yet.");
         body.addView(noOffers);
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
             followNewest = !recentEntries.isEmpty() && entry == recentEntries.get(0);
             showSelection(entry);
         });
-        LinearLayout.LayoutParams chartParams = Ui.matchWidth();
-        chartParams.topMargin = ui.dp(4);
-        body.addView(chart, chartParams);
-        legend = legend();
-        body.addView(legend);
+        // A tapped building opens its ticket; the screen's own choice of the newest does not.
+        chart.setOnClickListener(tapped -> setTicketOpen(true));
+        body.addView(chart, Ui.matchWidth());
+        chosenLine = ui.text("", 14, ui.inkSecondary, false);
+        chosenLine.setGravity(Gravity.CENTER_HORIZONTAL);
+        chosenLine.setPadding(0, ui.dp(10), 0, ui.dp(10));
+        chosenLine.setMinHeight(ui.dp(48));
+        chosenLine.setOnClickListener(tapped -> setTicketOpen(!ticketOpen));
+        body.addView(chosenLine, Ui.matchWidth());
         ticket = ui.column();
         ticketShape = new Decor.Ticket(ui);
         ticket.setBackground(ticketShape);
         ticket.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(14));
+        ticket.setVisibility(View.GONE);
         LinearLayout.LayoutParams ticketParams = Ui.matchWidth();
-        ticketParams.topMargin = ui.dp(12);
+        ticketParams.topMargin = ui.dp(4);
         body.addView(ticket, ticketParams);
     }
 
-    /** Symbol and word for each outcome, plus the needed-pay rope, so no meaning rests on color alone. */
-    private View legend() {
-        // One line normally; two with a large font, so no entry is cut off.
-        LinearLayout legend = ui.column();
-        legend.setPadding(0, ui.dp(8), 0, 0);
-        LinearLayout line = ui.row();
-        legend.addView(line);
-        for (OfferRule.Result result : new OfferRule.Result[] {
-                OfferRule.Result.KEEP, OfferRule.Result.DECLINE, OfferRule.Result.REVIEW}) {
-            if (result == OfferRule.Result.REVIEW && ui.largeText()) {
-                line = ui.row();
-                line.setPadding(0, ui.dp(4), 0, 0);
-                legend.addView(line);
-            }
-            line.addView(ui.badge(result, 14));
-            TextView word = ui.text(Ui.resultLabel(result), 12, ui.inkSecondary, false);
-            word.setPadding(ui.dp(4), 0, ui.dp(12), 0);
-            line.addView(word);
-        }
-        View rope = new View(this);
-        rope.setBackgroundColor(ui.ink);
-        line.addView(rope, new LinearLayout.LayoutParams(ui.dp(14), ui.dp(2)));
-        TextView needed = ui.text("Needed", 12, ui.inkSecondary, false);
-        needed.setPadding(ui.dp(4), 0, 0, 0);
-        line.addView(needed);
-        return legend;
+    /** Unfolds or folds the chosen offer's ticket. */
+    private void setTicketOpen(boolean open) {
+        ticketOpen = open;
+        if (chart.selectedEntry() != null) showSelection(chart.selectedEntry());
     }
 
     private void addMinimums(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.SPARKLE, "Your minimums");
+        ui.heading(body, "Minimums");
         minimums = new MinimumsStarView(this, ui);
         minimums.setOnClickListener(tapped -> showSettings(true));
         body.addView(minimums, Ui.matchWidth());
-        minimumsNote = ui.note("");
-        body.addView(minimumsNote);
-        ui.addButton(body, "Edit minimums", false, () -> showSettings(true));
+        minimumsNote = ui.text("", 14, ui.inkSecondary, false);
+        minimumsNote.setGravity(Gravity.CENTER_HORIZONTAL);
+        minimumsNote.setPadding(0, ui.dp(8), 0, 0);
+        body.addView(minimumsNote, Ui.matchWidth());
     }
 
+    /** Only while mapping is on (turned on in Settings): the map and the chosen area. */
     private void addAreas(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.MAP, "Where offers pay best");
-        notMapping = ui.column();
-        notMapping.addView(ui.note("Mark the map with every offer you see, and find the areas that pay best per "
-                + "mile. Uses approximate location, and it all stays on this phone."));
-        ui.addButton(notMapping, "Start mapping", true, () -> {
-            AreaMap.setEnabled(this, true);
-            if (!AreaMap.hasPermission(this)) askForLocation();
-            refresh();
-        });
-        body.addView(notMapping, Ui.matchWidth());
         mapping = ui.column();
+        ui.heading(mapping, "Best areas");
         areaMap = new AreaMapView(this, ui);
         areaMap.setOnSelect(cell -> {
             pickedArea = true;
             showArea(cell);
         });
-        LinearLayout.LayoutParams mapParams = Ui.matchWidth();
-        mapParams.topMargin = ui.dp(4);
-        mapping.addView(areaMap, mapParams);
-        TextView key = ui.text("Gold squares pay more per mile; dashed ones have fewer than " + AreaMap.MIN_OFFERS
-                + " offers so far. A square is where you were when an offer came in, not its pickup.", 12,
-                ui.inkSecondary, false);
-        key.setPadding(0, ui.dp(8), 0, 0);
-        mapping.addView(key);
+        mapping.addView(areaMap, Ui.matchWidth());
         areaDetail = ui.column();
         mapping.addView(areaDetail, Ui.matchWidth());
         body.addView(mapping, Ui.matchWidth());
@@ -414,7 +383,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addRules(LinearLayout body, FilterSettings saved) {
-        ui.heading(body, Glyph.Shape.COIN, "Your minimums");
+        ui.heading(body, "Minimums");
         LinearLayout first = fieldRow(body);
         flat = ui.tagField(cell(first), "Minimum pay ($)", money(saved.flatCents), true, Glyph.Shape.COIN);
         maxStops = ui.tagField(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false,
@@ -484,7 +453,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addSoundAndSetup(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.BELL, "Sound & setup");
+        ui.heading(body, "Sound & setup");
         Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
         ui.buttonPair(body,
@@ -496,7 +465,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addOfferMap(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.MAP, "Offer map");
+        ui.heading(body, "Offer map");
         areasToggle = ui.toggle(body, "Remember where offers come in", AreaMap.enabled(this));
         areasToggle.setOnCheckedChangeListener((view, on) -> {
             if (on == AreaMap.enabled(this)) return;
@@ -504,9 +473,8 @@ public final class MainActivity extends Activity {
             if (on && !AreaMap.hasPermission(this)) askForLocation();
             refresh();
         });
-        body.addView(ui.note("Uses the phone's approximate location from when each offer appears, rounded to "
-                + "squares of about 2 km. It stays on this phone: never in reports, and the map is drawn here "
-                + "without any map service."));
+        body.addView(ui.note("Shows where offers pay best per mile on the main page. Uses approximate location "
+                + "when each offer appears, in squares of about 2 km, and stays on this phone."));
         areasStatus = ui.text("", 13, ui.inkSecondary, false);
         areasStatus.setPadding(0, ui.dp(8), 0, 0);
         body.addView(areasStatus);
@@ -515,7 +483,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addReports(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.LETTER, "Reports");
+        ui.heading(body, "Reports");
         ui.buttonPair(body,
                 ui.button("Share report", false, this::shareReport),
                 ui.button("Clear history", false, this::confirmClearHistory));
@@ -543,7 +511,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addUpdates(LinearLayout body) {
-        ui.heading(body, Glyph.Shape.REFRESH, "Updates");
+        ui.heading(body, "Updates");
         Switch updates = ui.toggle(body, "Automatic updates", Updater.enabled(this));
         updates.setOnCheckedChangeListener((view, on) -> {
             Updater.setEnabled(this, on);
@@ -559,19 +527,19 @@ public final class MainActivity extends Activity {
     // ---- State ----
 
     private void refresh() {
-        if (bubble == null) return;
+        if (stateLine == null) return;
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         if (state != shownState) ui.style(masterButton, state != 1);
         shownState = state;
         if (saved.enabled) {
-            bubble.setText(said("Auto-decline is on.", "I tap Decline on offers below your minimums."));
+            stateLine.setText("Auto-decline is on");
             masterButton.setText("Pause auto-decline");
         } else if (saved.hasAnyRule()) {
-            bubble.setText(said("Auto-decline is paused.", "I only watch: nothing gets declined."));
+            stateLine.setText("Auto-decline is paused");
             masterButton.setText("Resume auto-decline");
         } else {
-            bubble.setText(said("Auto-decline is off.", "Set a minimum and I'll start."));
+            stateLine.setText("Auto-decline is off");
             masterButton.setText("Set up rules");
         }
 
@@ -598,13 +566,6 @@ public final class MainActivity extends Activity {
         stopReports.setVisibility(reporting ? View.VISIBLE : View.GONE);
     }
 
-    /** The mascot's line: the state in bold, then what that means. */
-    private static CharSequence said(String state, String meaning) {
-        SpannableString line = new SpannableString(state + " " + meaning);
-        line.setSpan(new StyleSpan(Typeface.BOLD), 0, state.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return line;
-    }
-
     private void refreshHistory() {
         long version = DecisionLog.version();
         if (version == shownHistoryVersion) return;
@@ -615,8 +576,11 @@ public final class MainActivity extends Activity {
         boolean empty = recent.isEmpty();
         noOffers.setVisibility(empty ? View.VISIBLE : View.GONE);
         chart.setVisibility(empty ? View.GONE : View.VISIBLE);
-        legend.setVisibility(empty ? View.GONE : View.VISIBLE);
-        ticket.setVisibility(empty ? View.GONE : View.VISIBLE);
+        chosenLine.setVisibility(empty ? View.GONE : View.VISIBLE);
+        if (empty) {
+            ticketOpen = false;
+            ticket.setVisibility(View.GONE);
+        }
         if (!empty) {
             DecisionLog.Entry selected = chart.selectedEntry();
             if (followNewest || selected == null) {
@@ -653,14 +617,16 @@ public final class MainActivity extends Activity {
                 || action == DecisionLog.Action.NOTIFICATION_HIDDEN;
     }
 
-    /** "Last accepted $14.20 · best $0.59/min, $2.37/mi, $7.10/stop", or what it waits for. */
+    /** "Last accepted $14.20 · best $0.59/min, $2.37/mi · beat declined $25.00", or what it waits for. */
     private static String adaptiveNote(FilterSettings saved) {
-        if (saved.lastAcceptedCents <= 0 && saved.best.isEmpty()) {
-            return "Rises with the offers you accept. None yet.";
+        if (saved.lastAcceptedCents <= 0 && saved.best.isEmpty() && saved.declined.isEmpty()) {
+            return "Rises with the offers you accept, and ones you decline by hand. None yet.";
         }
-        String last = saved.lastAcceptedCents > 0 ? "Last accepted " + DecisionLog.money(saved.lastAcceptedCents) : "";
-        String best = saved.best.isEmpty() ? "" : "best " + saved.best.summary();
-        return last + (!last.isEmpty() && !best.isEmpty() ? " · " : "") + best;
+        List<String> parts = new java.util.ArrayList<>();
+        if (saved.lastAcceptedCents > 0) parts.add("Last accepted " + DecisionLog.money(saved.lastAcceptedCents));
+        if (!saved.best.isEmpty()) parts.add("best " + saved.best.summary());
+        if (!saved.declined.isEmpty()) parts.add("beat declined " + saved.declined.summary());
+        return String.join(" · ", parts);
     }
 
     /** Redraws the minimums from the rules as typed (unsaved), with the latest fully read offer. */
@@ -670,9 +636,9 @@ public final class MainActivity extends Activity {
         FilterSettings typed = new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
                 lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
                 lenientCents(stop, saved.extraStopCents), lenientStops(saved.maxStops), rising.isChecked(),
-                saved.lastAcceptedCents, saved.best);
+                saved.lastAcceptedCents, saved.best, saved.declined);
         OfferSnapshot example = exampleOffer();
-        minimums.show(typed, example);
+        minimums.show(typed, example, recentEntries);
         minimumsNote.setText(minimums.caption());
         rulesPreview.setText(MinimumsStarView.needs(typed, example));
     }
@@ -701,11 +667,22 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * The chosen offer as a ticket: its outcome stamped on the stub with the time, then the drawn offer (pay
-     * against needed, the route), the reason, what the app did, and the exact lines read.
+     * The chosen offer in one line under the skyline (time, outcome, reason), and, when unfolded, as a ticket: its
+     * outcome stamped on the stub with the time, then the drawn offer (pay against needed, the route), the reason,
+     * what the app did, and the exact lines read.
      */
     private void showSelection(DecisionLog.Entry entry) {
+        String line = when(entry.at) + (entry.addOn ? " · add-on" : "") + " · " + Ui.resultLabel(entry.result)
+                + " · " + plainReason(entry);
+        chosenLine.setText(line + (ticketOpen ? "  ▴" : "  ▾"));
+        chosenLine.setContentDescription(line + (ticketOpen ? ". Details shown; tap to hide."
+                : ". Tap for details."));
         ticket.removeAllViews();
+        ticket.setVisibility(ticketOpen ? View.VISIBLE : View.GONE);
+        if (!ticketOpen) {
+            reportSelected = null;
+            return;
+        }
         LinearLayout stub = ui.row();
         stub.addView(new Decor.Stamp(this, ui, entry.result));
         TextView time = ui.text(when(entry.at) + (entry.addOn ? " · add-on" : ""), 13, ui.inkSecondary, false);
@@ -758,6 +735,12 @@ public final class MainActivity extends Activity {
         }
         if (reason.startsWith("must match best accepted ")) {
             return "Below your best accepted " + reason.substring("must match best accepted ".length());
+        }
+        if (reason.startsWith("must beat declined payout ")) {
+            return "Not above an offer you declined, " + reason.substring("must beat declined payout ".length());
+        }
+        if (reason.startsWith("must beat declined ")) {
+            return "Not above an offer you declined, " + reason.substring("must beat declined ".length());
         }
         Matcher stops = TOO_MANY_STOPS.matcher(reason);
         if (stops.matches()) return "Too many stops (" + stops.group(1) + ", max " + stops.group(2) + ")";
@@ -837,7 +820,6 @@ public final class MainActivity extends Activity {
         areasFix.setVisibility(on && (!permitted || needsAllTheTime) ? View.VISIBLE : View.GONE);
         areasFix.setText(permitted ? "Allow all the time" : "Allow location");
         areasForget.setVisibility(cells.isEmpty() && unlocated == 0 ? View.GONE : View.VISIBLE);
-        notMapping.setVisibility(on ? View.GONE : View.VISIBLE);
         mapping.setVisibility(on ? View.VISIBLE : View.GONE);
         if (!on) return;
 
@@ -855,31 +837,30 @@ public final class MainActivity extends Activity {
         else areaDetail.removeAllViews();
     }
 
-    /** The chosen square on a paper tag: its place, offers, pay per mile and pay, and a way to see it. */
+    /** The chosen square in two quiet lines, its place then its offers and pay, and a way to see it. */
     private void showArea(AreaMap.Cell cell) {
         areaDetail.removeAllViews();
         int rank = areaMap.rank(cell);
         String where = AreaMap.from(areaHere, cell);
-        LinearLayout slip = ui.column();
-        slip.setBackground(new Decor.Tag(ui));
-        slip.setPadding(ui.dp(32), ui.dp(12), ui.dp(14), ui.dp(12));
-        slip.addView(ui.text((rank > 0 ? "#" + rank : "Not ranked yet") + (where.isEmpty() ? "" : " · " + where),
-                16, ui.ink, true));
-        slip.addView(ui.text(cell.offers + (cell.offers == 1 ? " offer" : " offers")
-                + (cell.ranked() ? " · " + cell.perMile() : "") + " · avg "
-                + DecisionLog.money(cell.averagePayCents()) + " · best " + DecisionLog.money(cell.bestPayCents), 13,
-                ui.inkSecondary, false));
-        if (!cell.ranked()) {
-            slip.addView(ui.text("Ranked once " + AreaMap.MIN_OFFERS + " offers with miles came in here.", 13,
-                    ui.inkSecondary, false));
-        }
-        slip.addView(ui.text("Last offer " + when(cell.lastAt), 13, ui.inkSecondary, false));
-        ui.addButton(slip, "Open in Maps", false, () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(
+        TextView place = ui.text((rank > 0 ? "#" + rank : "Not ranked yet") + (where.isEmpty() ? "" : " · " + where),
+                16, ui.ink, true);
+        place.setGravity(Gravity.CENTER_HORIZONTAL);
+        place.setPadding(0, ui.dp(12), 0, 0);
+        areaDetail.addView(place, Ui.matchWidth());
+        TextView facts = ui.text(cell.offers + (cell.offers == 1 ? " offer" : " offers")
+                + (cell.ranked() ? " · " + cell.perMile() : " · ranked after " + AreaMap.MIN_OFFERS + " with miles")
+                + " · avg " + DecisionLog.money(cell.averagePayCents()) + " · last " + when(cell.lastAt), 13,
+                ui.inkSecondary, false);
+        facts.setGravity(Gravity.CENTER_HORIZONTAL);
+        areaDetail.addView(facts, Ui.matchWidth());
+        Button maps = ui.button("Open in Maps", false, () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(
                 String.format(Locale.US, "geo:%.4f,%.4f?q=%.4f,%.4f(Offer area)", cell.latitude(),
                         cell.longitude(), cell.latitude(), cell.longitude())))));
-        LinearLayout.LayoutParams params = Ui.matchWidth();
-        params.topMargin = ui.dp(12);
-        areaDetail.addView(slip, params);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.gravity = Gravity.CENTER_HORIZONTAL;
+        params.topMargin = ui.dp(10);
+        areaDetail.addView(maps, params);
     }
 
     // ---- Actions ----
@@ -942,9 +923,9 @@ public final class MainActivity extends Activity {
         String stops = maxStops.getText().toString().trim();
         if (stops.isEmpty()) stops = "0";
         if (!stops.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
+        FilterSettings saved = FilterStore.load(this);
         return new FilterSettings(enabled, parseCents(flat), parseCents(mile), parseCents(minute), parseCents(stop),
-                Integer.parseInt(stops), rising.isChecked(), FilterStore.load(this).lastAcceptedCents,
-                FilterStore.load(this).best);
+                Integer.parseInt(stops), rising.isChecked(), saved.lastAcceptedCents, saved.best, saved.declined);
     }
 
     /** Parses a dollar amount from 0 to 1000 with at most two decimals. Blank means zero (rule disabled). */
@@ -1038,6 +1019,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Clear", (dialog, which) -> {
                     DecisionLog.clear(this);
                     followNewest = true;
+                    ticketOpen = false;
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -1132,24 +1114,33 @@ public final class MainActivity extends Activity {
         });
     }
 
-    /** One setup problem as a warning sign with a Fix button; the whole row is hidden while that part works. */
+    /**
+     * One setup problem as a quiet row, a small warning sign, what is off, and "Fix", that is itself the button;
+     * the row is hidden while that part works.
+     */
     private final class Readiness {
         private final LinearLayout row;
 
         Readiness(LinearLayout parent, String problem, Runnable onFix) {
             row = ui.row();
-            row.setPadding(0, ui.dp(10), 0, 0);
+            row.setBackground(ui.rounded((Ui.CRITICAL & 0x00FFFFFF) | (ui.dark ? 0x1F000000 : 0x14000000), 0, 16));
+            row.setPadding(ui.dp(14), ui.dp(8), ui.dp(16), ui.dp(8));
+            row.setMinimumHeight(ui.dp(48));
+            row.setClickable(true);
+            row.setFocusable(true);
+            row.setContentDescription(problem + ". Fix.");
+            row.setOnClickListener(tapped -> onFix.run());
             View sign = new View(MainActivity.this);
-            sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(28)));
+            sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
             sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            row.addView(sign, new LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)));
-            TextView text = ui.text(problem, 15, ui.ink, true);
+            row.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
+            TextView text = ui.text(problem, 15, ui.ink, false);
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
-            Button fix = ui.button("Fix", true, onFix);
-            fix.setMinWidth(ui.dp(72));
-            row.addView(fix);
-            parent.addView(row);
+            row.addView(ui.text("Fix", 15, ui.accent, true));
+            LinearLayout.LayoutParams params = Ui.matchWidth();
+            params.topMargin = ui.dp(8);
+            parent.addView(row, params);
         }
 
         void update(boolean ready) {

@@ -544,6 +544,62 @@ public class AccessibilityAdapterTest {
         assertEquals("$1.19/min, $3.47/mi, $12.50/stop", saved.best.summary());
     }
 
+    /** The user's own tap on a Dasher button, as Android reports it. */
+    private void userTaps(String label) {
+        AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
+        tap.setPackageName("com.doordash.driverapp");
+        tap.getText().add(label);
+        controller.get().onAccessibilityEvent(tap);
+    }
+
+    @Test
+    public void aManualDeclineTeachesTheClosestMinimumOnceTheNextOfferArrives() {
+        // For $14.00 over 7.2 mi, $1.50/mi asks $10.80 and the $7 minimum asks $7: per mile came closest.
+        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+        show(offer("$14.00"));
+        assertTrue("it passes the rules", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        userTaps("Decline");
+        assertTrue("held until the dash goes on", FilterStore.load(app).declined.isEmpty());
+
+        show(offer("$20.00"));
+        DeclinedFloor learned = FilterStore.load(app).declined;
+        assertEquals("$1.94/mi", learned.rates.perMileLabel());
+        assertEquals("only that rule rises", 0, learned.payCents);
+
+        // An offer like the declined one is now declined; the better one still passes.
+        show(offer("$14.00"));
+        assertFalse(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        show(offer("$20.00"));
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+    }
+
+    @Test
+    public void aDeclineJustBeforeEndingTheDashTeachesNothing() {
+        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+        show(offer("$14.00"));
+        userTaps("Decline");
+        show(node("Dash now", false));
+        show(offer("$20.00"));
+        assertTrue(FilterStore.load(app).declined.isEmpty());
+    }
+
+    @Test
+    public void theAppsOwnDeclinesAndDeclinesWhileLearningIsOffTeachNothing() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        show(offer("$7.90"));
+        assertFalse("the app declines the failing offer", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        userTaps("Decline");
+        show(offer("$25.00"));
+        assertTrue(FilterStore.load(app).declined.isEmpty());
+
+        // With the adaptive minimum off, a manual decline of a passing offer is not learned either.
+        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, false, 0));
+        show(offer("$14.00"));
+        userTaps("Decline");
+        show(offer("$20.00"));
+        assertTrue(FilterStore.load(app).declined.isEmpty());
+    }
+
     @Test
     public void acceptedAddOnUpdatesTheActiveRoute() {
         ActiveRouteStore.save(app, new OfferSnapshot(2500, 10.0, null, 2));

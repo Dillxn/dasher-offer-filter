@@ -93,7 +93,7 @@ final class AcceptedBest {
         return new AcceptedBest(newMinutePay, newMinutes, newMilePay, newMiles, newStopPay, newStops);
     }
 
-    private static boolean looksMisread(OfferSnapshot offer) {
+    static boolean looksMisread(OfferSnapshot offer) {
         return (offer.minutes != null && offer.minutes < PLAUSIBLE_MINUTES)
                 || (offer.miles != null && offer.miles < PLAUSIBLE_MILES)
                 || (offer.stops != null && offer.stops < PLAUSIBLE_STOPS);

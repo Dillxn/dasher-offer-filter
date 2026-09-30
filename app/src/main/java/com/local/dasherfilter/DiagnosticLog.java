@@ -117,7 +117,9 @@ final class DiagnosticLog {
                 + "; max stops=" + rules.maxStops
                 + "; rising offers=" + rules.risingOffers
                 + "; last accepted cents=" + rules.lastAcceptedCents
-                + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary()) + "\n"
+                + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
+                + "; learned from manual declines=" + (rules.declined.isEmpty() ? "none" : rules.declined.summary())
+                + "\n"
                 + "In words: " + rules.describe() + "\n\n"
                 + "== Decision history (newest first)\n"
                 + DecisionLog.report(context, REPORT_DECISIONS) + "\n"

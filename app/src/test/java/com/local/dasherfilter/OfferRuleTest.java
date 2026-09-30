@@ -4,6 +4,8 @@ import java.util.Arrays;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
 
 /** Existing standalone-rule cases retained; add-on fixtures now explicitly identify added values. */
@@ -455,5 +457,36 @@ public final class OfferRuleTest {
         // Explicit added pay passes: the standalone baseline does not apply to add-ons.
         AddOnOffer explicitPay = AddOnOffer.parse(null, Arrays.asList("Add to route", "+$3.00"));
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(explicitPay, risingOnly).result);
+    }
+
+    @Test
+    public void aManualDeclineRaisesOnlyTheRuleThatCameClosest() {
+        FilterSettings rules = new FilterSettings(true, 700, 150, 30, 0, 0, true, 0);
+        // $15 over 6 mi and 24 min: the minimum asks $7, per mile $9, per minute $7.20. Per mile came closest.
+        DeclinedFloor floor = DeclinedFloor.raisedBy(rules, new OfferSnapshot(1500, 6.0, 24, 2));
+        assertEquals("$2.50/mi", floor.rates.perMileLabel());
+        assertFalse(floor.rates.hasPerMinute());
+        assertEquals(0, floor.payCents);
+
+        FilterSettings learned = new FilterSettings(true, 700, 150, 30, 0, 0, true, 0, AcceptedBest.NONE, floor);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(1500, 6.0, 24, 2), learned).result);
+        assertEquals("must beat declined $2.50/mi",
+                OfferRule.evaluate(new OfferSnapshot(1500, 6.0, 24, 2), learned).reason);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1510, 6.0, 24, 2), learned).result);
+        // Add-ons are never judged by it.
+        assertTrue(learned.withoutRisingBaseline().declined == floor && !learned.withoutRisingBaseline().risingOffers);
+    }
+
+    @Test
+    public void shortTripsAndMisreadsDoNotSetRateFloorsFromADecline() {
+        FilterSettings rules = new FilterSettings(true, 700, 150, 30, 0, 0, true, 0);
+        // A 1.2 mi, 8 min hop cannot set a per-mile or per-minute floor, so its payout is what rises.
+        DeclinedFloor hop = DeclinedFloor.raisedBy(rules, new OfferSnapshot(900, 1.2, 8, 2));
+        assertEquals(900, hop.payCents);
+        assertTrue(hop.rates.isEmpty());
+        // "1 min" is a misread: nothing is learned.
+        assertTrue(DeclinedFloor.raisedBy(rules, new OfferSnapshot(900, 6.0, 1, 2)).isEmpty());
+        // Unknown pay teaches nothing.
+        assertTrue(DeclinedFloor.raisedBy(rules, new OfferSnapshot(null, 6.0, 24, 2)).isEmpty());
     }
 }

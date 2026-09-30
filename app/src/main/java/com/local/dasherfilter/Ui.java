@@ -4,9 +4,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.text.InputType;
@@ -22,7 +20,7 @@ import android.widget.TextView;
 
 /**
  * Framework-only styling for the app's screen: one palette per light/dark theme and the few components it is built
- * from, dressed as drawn things (chunky buttons that press down, price-tag fields, switches with a face). Status
+ * from, kept quiet: soft pill buttons, rounded fields, small captions for headings, and switches with a face. Status
  * colors are fixed across themes and always travel with a symbol and a word, never color alone.
  */
 final class Ui {
@@ -176,39 +174,24 @@ final class Ui {
         button.setAllCaps(false);
         button.setTypeface(MEDIUM);
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        button.setMinHeight(dp(52));
-        button.setMinimumHeight(dp(52));
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
         button.setStateListAnimator(null);
-        // The bottom padding matches the lip, so the label sits on the button's face.
-        button.setPadding(dp(16), 0, dp(16), dp(LIP_DP));
+        button.setPadding(dp(20), 0, dp(20), 0);
         style(button, primary);
         button.setOnClickListener(clicked -> action.run());
         return button;
     }
 
-    private static final int LIP_DP = 4;
-
-    /**
-     * Restyles a button as a chunky key, filled accent (primary) or plain (secondary), standing on a darker lip it
-     * sinks onto while pressed.
-     */
+    /** Restyles a button as a soft, flat pill: filled accent (primary) or a faint wash (secondary). */
     void style(Button button, boolean primary) {
-        int face = primary ? accent : surface;
-        int lip = primary ? 0xFF1A4C8A : (dark ? 0xFF050505 : 0xFFD8D5CB);
-        int stroke = primary ? 0 : (dark ? 0x40FFFFFF : 0x330B0B0B);
+        int face = primary ? accent : (dark ? 0x14FFFFFF : 0x0F0B0B0B);
+        int pressed = primary ? 0xFF1D5499 : (dark ? 0x29FFFFFF : 0x1F0B0B0B);
         StateListDrawable states = new StateListDrawable();
-        states.addState(new int[] {android.R.attr.state_pressed}, key(face, lip, stroke, true));
-        states.addState(new int[] {}, key(face, lip, stroke, false));
+        states.addState(new int[] {android.R.attr.state_pressed}, rounded(pressed, 0, 24));
+        states.addState(new int[] {}, rounded(face, 0, 24));
         button.setBackground(states);
         button.setTextColor(primary ? onAccent : ink);
-    }
-
-    private Drawable key(int face, int lip, int stroke, boolean pressed) {
-        int depth = dp(LIP_DP);
-        LayerDrawable key = new LayerDrawable(new Drawable[] {rounded(lip, 0, 14), rounded(face, stroke, 14)});
-        key.setLayerInset(0, 0, pressed ? depth - dp(1) : 0, 0, 0);
-        key.setLayerInset(1, 0, pressed ? depth - dp(1) : 0, 0, pressed ? 0 : depth);
-        return key;
     }
 
     /** A full-width button added to {@code parent} with standard spacing. */
@@ -218,32 +201,6 @@ final class Ui {
         params.topMargin = dp(10);
         parent.addView(button, params);
         return button;
-    }
-
-    /** A filled circle carrying a result symbol: ✓ passed, ✕ declined, ? review. */
-    TextView badge(OfferRule.Result result, int sizeDp) {
-        return badge(resultSymbol(result), resultColor(result), sizeDp);
-    }
-
-    TextView badge(String symbol, int color, int sizeDp) {
-        TextView view = text(symbol, sizeDp * 0.5f, onStatus(color), true);
-        // The symbol belongs to the circle, so it scales with the circle, not with the font setting.
-        view.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sizeDp * 0.5f);
-        view.setGravity(Gravity.CENTER);
-        view.setIncludeFontPadding(false);
-        GradientDrawable circle = new GradientDrawable();
-        circle.setShape(GradientDrawable.OVAL);
-        circle.setColor(color);
-        view.setBackground(circle);
-        view.setLayoutParams(new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)));
-        view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        return view;
-    }
-
-    void recolorBadge(TextView badge, String symbol, int color) {
-        badge.setText(symbol);
-        badge.setTextColor(onStatus(color));
-        ((GradientDrawable) badge.getBackground()).setColor(color);
     }
 
     void styleField(EditText field) {
@@ -276,30 +233,28 @@ final class Ui {
         return view;
     }
 
-    /** A section heading: an icon and a title over a hand-drawn wave. */
-    TextView heading(LinearLayout parent, Glyph.Shape icon, String title) {
-        TextView view = text(title, 19, ink, true);
-        view.setCompoundDrawablesRelative(new Glyph(icon, accent, dp(22)), null, null, null);
-        view.setCompoundDrawablePadding(dp(10));
-        view.setPadding(0, 0, dp(4), dp(10));
-        view.setBackground(new Decor.Squiggle(this));
+    /** A section heading: a small, quiet, letter-spaced caption. */
+    TextView heading(LinearLayout parent, String title) {
+        TextView view = text(title.toUpperCase(java.util.Locale.US), 12, inkMuted, true);
+        view.setLetterSpacing(0.16f);
         if (Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(true);
+        view.setContentDescription(title);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.topMargin = dp(28);
-        params.bottomMargin = dp(8);
+        params.topMargin = dp(36);
+        params.bottomMargin = dp(10);
         parent.addView(view, params);
         return view;
     }
 
     /**
-     * A rule field drawn as a price tag: icon and label on top, the amount large beneath. The label is linked to
-     * the field for screen readers.
+     * A rule field on a soft rounded card: a small icon and label on top, the amount large beneath. The label is
+     * linked to the field for screen readers.
      */
     EditText tagField(LinearLayout parent, String label, String value, boolean decimal, Glyph.Shape icon) {
         LinearLayout tag = column();
-        tag.setBackground(new Decor.Tag(this));
-        tag.setPadding(dp(30), dp(10), dp(14), dp(8));
+        tag.setBackground(rounded(dark ? 0x0FFFFFFF : 0x0A0B0B0B, 0, 16));
+        tag.setPadding(dp(14), dp(10), dp(14), dp(8));
         TextView caption = text(label, 12, inkSecondary, false);
         caption.setCompoundDrawablesRelative(new Glyph(icon, inkSecondary, dp(15)), null, null, null);
         caption.setCompoundDrawablePadding(dp(6));

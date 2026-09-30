@@ -22,6 +22,13 @@ final class FilterStore {
     private static final String BEST_MILES = "best_miles_bits";
     private static final String BEST_STOP_PAY = "best_stop_pay";
     private static final String BEST_STOPS = "best_stops";
+    private static final String DECLINED_PAY = "declined_pay";
+    private static final String DECLINED_MINUTE_PAY = "declined_minute_pay";
+    private static final String DECLINED_MINUTES = "declined_minutes";
+    private static final String DECLINED_MILE_PAY = "declined_mile_pay";
+    private static final String DECLINED_MILES = "declined_miles_bits";
+    private static final String DECLINED_STOP_PAY = "declined_stop_pay";
+    private static final String DECLINED_STOPS = "declined_stops";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
     private static final String LAST_STATUS = "last_status";
     /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
@@ -33,7 +40,7 @@ final class FilterStore {
         return new FilterSettings(prefs.getBoolean(ENABLED, false),
                 prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(EXTRA_STOP, 0), prefs.getInt(MAX_STOPS, 0),
-                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs));
+                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs));
     }
 
     /** The stored bests; anything that is not a positive, finite number reads as "none" rather than crashing a rule. */
@@ -42,6 +49,33 @@ final class FilterStore {
         return new AcceptedBest(positive(prefs.getInt(BEST_MINUTE_PAY, 0)), positive(prefs.getInt(BEST_MINUTES, 0)),
                 positive(prefs.getInt(BEST_MILE_PAY, 0)), Double.isFinite(miles) && miles > 0 ? miles : 0,
                 positive(prefs.getInt(BEST_STOP_PAY, 0)), positive(prefs.getInt(BEST_STOPS, 0)));
+    }
+
+    /** The decline floors, sanitized like the bests. */
+    private static DeclinedFloor declined(SharedPreferences prefs) {
+        double miles = Double.longBitsToDouble(prefs.getLong(DECLINED_MILES, 0));
+        return new DeclinedFloor(positive(prefs.getInt(DECLINED_PAY, 0)), new AcceptedBest(
+                positive(prefs.getInt(DECLINED_MINUTE_PAY, 0)), positive(prefs.getInt(DECLINED_MINUTES, 0)),
+                positive(prefs.getInt(DECLINED_MILE_PAY, 0)), Double.isFinite(miles) && miles > 0 ? miles : 0,
+                positive(prefs.getInt(DECLINED_STOP_PAY, 0)), positive(prefs.getInt(DECLINED_STOPS, 0))));
+    }
+
+    /**
+     * An offer the user declined by hand, after the dash went on: the rule that came closest to catching it is
+     * raised just past it. Learned only while auto-decline and the adaptive minimum are both on, like acceptances.
+     */
+    static void learnFromDecline(Context context, OfferSnapshot declinedOffer) {
+        FilterSettings settings = load(context);
+        if (!settings.enabled || !settings.risingOffers) return;
+        DeclinedFloor floor = DeclinedFloor.raisedBy(settings, declinedOffer);
+        if (floor == settings.declined) return;
+        prefs(context).edit()
+                .putInt(DECLINED_PAY, floor.payCents)
+                .putInt(DECLINED_MINUTE_PAY, floor.rates.minutePay).putInt(DECLINED_MINUTES, floor.rates.minutes)
+                .putInt(DECLINED_MILE_PAY, floor.rates.milePay)
+                .putLong(DECLINED_MILES, Double.doubleToLongBits(floor.rates.miles))
+                .putInt(DECLINED_STOP_PAY, floor.rates.stopPay).putInt(DECLINED_STOPS, floor.rates.stops)
+                .apply();
     }
 
     private static int positive(int value) {
@@ -79,10 +113,17 @@ final class FilterStore {
                 .apply();
     }
 
-    /** Forgets the payout baseline and every best rate: the adaptive minimum starts over from the saved rules. */
+    /**
+     * Forgets the payout baseline, every best rate and everything declines taught: the adaptive minimum starts over
+     * from the saved rules.
+     */
     static void resetAccepted(Context context) {
         prefs(context).edit().remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
-                .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS).apply();
+                .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS)
+                .remove(DECLINED_PAY).remove(DECLINED_MINUTE_PAY).remove(DECLINED_MINUTES)
+                .remove(DECLINED_MILE_PAY).remove(DECLINED_MILES).remove(DECLINED_STOP_PAY).remove(DECLINED_STOPS)
+                .apply();
+        ManualDeclines.forget(context);
     }
 
     static void recordDoorDashOfferChannel(Context context, String channelId) {

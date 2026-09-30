@@ -9,9 +9,13 @@ import android.graphics.RectF;
  * paused, blank while off. Decoration only; the words next to it say what the state is.
  */
 final class Mascot {
-    enum Mood { HAPPY, SLEEPY, IDLE }
+    enum Mood { HAPPY, BLINK, SLEEPY, IDLE }
 
     static final int CHEEK = 0x66F28B8B;
+    /** Reused every frame (drawing happens on the main thread only). */
+    private static final Paint STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final RectF OVAL = new RectF();
 
     private Mascot() {}
 
@@ -23,13 +27,13 @@ final class Mascot {
     /** A face about {@code size} across, centered at (x, y). */
     static void face(Canvas canvas, Mood mood, float x, float y, float size, int ink) {
         float u = size / 28f;
-        Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint stroke = STROKE;
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeCap(Paint.Cap.ROUND);
         stroke.setStrokeWidth(Math.max(1f, 1.8f * u));
         stroke.setColor(ink);
-        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        RectF oval = new RectF();
+        Paint fill = FILL;
+        RectF oval = OVAL;
         float eyeY = y - 3 * u;
         float eyeX = 6.5f * u;
         if (mood != Mood.IDLE) {
@@ -49,6 +53,13 @@ final class Mascot {
                 oval.set(x - 4.5f * u, y - 1 * u, x + 4.5f * u, y + 6 * u);
                 canvas.drawArc(oval, 20, 140, false, stroke);
                 break;
+            case BLINK:
+                for (int side = -1; side <= 1; side += 2) {
+                    canvas.drawLine(x + side * eyeX - 2.4f * u, eyeY, x + side * eyeX + 2.4f * u, eyeY, stroke);
+                }
+                oval.set(x - 4.5f * u, y - 1 * u, x + 4.5f * u, y + 6 * u);
+                canvas.drawArc(oval, 20, 140, false, stroke);
+                break;
             case SLEEPY:
                 for (int side = -1; side <= 1; side += 2) {
                     oval.set(x + side * eyeX - 3 * u, eyeY - 2.5f * u, x + side * eyeX + 3 * u, eyeY + 2 * u);
@@ -62,16 +73,5 @@ final class Mascot {
                 canvas.drawLine(x - 3 * u, y + 4.5f * u, x + 3 * u, y + 4.5f * u, stroke);
                 break;
         }
-    }
-
-    /** "z z" drifting up from a sleeping mascot, the second one smaller and higher. */
-    static void snore(Canvas canvas, float x, float y, float size, int ink) {
-        Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
-        text.setColor(ink);
-        text.setFakeBoldText(true);
-        text.setTextSize(size);
-        canvas.drawText("z", x, y, text);
-        text.setTextSize(size * 0.75f);
-        canvas.drawText("z", x + size * 0.7f, y - size * 0.7f, text);
     }
 }

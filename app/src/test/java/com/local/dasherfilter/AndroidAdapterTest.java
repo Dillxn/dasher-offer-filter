@@ -419,10 +419,14 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void theNewestOfferIsShownAsAStampedTicket() {
+    public void theNewestOfferIsOneQuietLineThatUnfoldsIntoAStampedTicket() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull(shownTextContaining(content, "Declined · Below your per-mile rate"));
+            assertNull("the ticket stays folded until asked for", find(content, OfferCardView.class));
+
+            openTicket(content);
             OfferCardView card = find(content, OfferCardView.class);
             assertTrue(card.isShown());
             assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
@@ -437,6 +441,11 @@ public class AndroidAdapterTest {
                     Collections.emptyList()));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertEquals("Passed", find(content, Decor.Stamp.class).getContentDescription().toString());
+            assertNotNull(shownTextContaining(content, "Passed · Meets your rules"));
+
+            // Tapping the line again folds the ticket away.
+            shownTextContaining(content, "Passed · Meets your rules").performClick();
+            assertNull(find(content, OfferCardView.class));
         }
     }
 
@@ -510,6 +519,7 @@ public class AndroidAdapterTest {
             assertEquals("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review.",
                     findChart(content).getContentDescription().toString());
             assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            openTicket(content);
             assertNotNull(shownTextContaining(content, "Decline tapped · on screen"));
         }
     }
@@ -527,10 +537,10 @@ public class AndroidAdapterTest {
                     chart.selectedEntry().facts.payCents);
             assertNull(shownTextContaining(content, "Read: $7.90"));
 
-            // The older offer is the second building from the right.
+            // The older offer is the second building from the right; tapping it opens its ticket.
             float density = app.getResources().getDisplayMetrics().density;
-            float left = 44 * density;
-            float slot = (chart.getWidth() - 4 * density - left) / DecisionChartView.SLOTS;
+            float left = DecisionChartView.SIDE_DP * density;
+            float slot = (chart.getWidth() - DecisionChartView.SIDE_DP * density - left) / DecisionChartView.SLOTS;
             float x = left + slot * (DecisionChartView.SLOTS - 1.5f);
             chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, x, 40, 0));
             chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, x, 40, 0));
@@ -545,6 +555,7 @@ public class AndroidAdapterTest {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            openTicket(content);
             assertNull("no report button without a token", shownButton(content, "Report this offer"));
             assertNotNull(findTextContaining(content, "Off. Paste a GitHub token"));
 
@@ -645,8 +656,7 @@ public class AndroidAdapterTest {
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
                     + "Per stop: no set minimum, adaptive $7.10.", star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
-            assertNotNull(findText(content, "An offer like 20 min · 5 mi · 2 stops needs $14.21. "
-                    + "Farther out asks more; rings are $5.00 apart."));
+            assertNotNull(findText(content, "An offer like 20 min · 5 mi · 2 stops needs $14.21."));
 
             fieldLabeled(content, "Per mile ($)").setText("0");
             assertTrue(star.getContentDescription().toString()
@@ -661,18 +671,39 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void startMappingAsksOnlyForApproximateLocation() {
+    public void theStarMarksRecentOffersAndWhatAManualDeclineTaught() {
+        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0, true, 0));
+        // Declined by hand: pay came closest to catching it, so later offers must beat its $9.00.
+        FilterStore.learnFromDecline(app, new OfferSnapshot(900, 3.0, 12, 2));
+        DecisionLog.record(app, declinedEntry());
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
+                DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
+                OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertFalse(find(content, AreaMapView.class).isShown());
-            shownButton(content, "Start mapping").performClick();
+            String star = find(content, MinimumsStarView.class).getContentDescription().toString();
+            assertTrue(star, star.contains("Pay: set $7.00, adaptive more than $9.00."));
+            assertTrue(star, star.endsWith("Marked: your last 2 offers, 1 passed, 1 declined, 0 to review."));
+        }
+    }
+
+    @Test
+    public void mappingIsTurnedOnInSettingsAndAsksOnlyForApproximateLocation() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertFalse("no map, and no invitation to one, on the main page",
+                    find(content, AreaMapView.class).isShown());
+            iconButton(content, "Settings").performClick();
+            ((Switch) findButton(content, "Remember where offers come in")).setChecked(true);
             assertTrue(AreaMap.enabled(app));
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();
             assertEquals(Arrays.asList(Manifest.permission.ACCESS_COARSE_LOCATION),
                     Arrays.asList(request.requestedPermissions));
+            assertNotNull(shownTextContaining(content, "Needs location permission"));
+            iconButton(content, "Back").performClick();
             assertTrue(find(content, AreaMapView.class).isShown());
-            assertNotNull(findTextContaining(content, "Needs location permission"));
         }
     }
 
@@ -846,6 +877,8 @@ public class AndroidAdapterTest {
         assertEquals("Whole route: Below your minimum pay",
                 MainActivity.plainReason("combined route fails: flat minimum"));
         assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
+        assertEquals("Not above an offer you declined, $2.50/mi",
+                MainActivity.plainReason("must beat declined $2.50/mi"));
         DecisionLog.Entry fromNotification = new DecisionLog.Entry(1, DecisionLog.Source.NOTIFICATION, false,
                 OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD,
                 true, Collections.emptyList());
@@ -1000,6 +1033,13 @@ public class AndroidAdapterTest {
         AreaMap.note(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN, false,
                 new OfferSnapshot(payCents, miles, 20 + notedOffers, 2), 1000, OfferRule.Result.KEEP,
                 "meets enabled rules", DecisionLog.Action.PASSES, true, Collections.emptyList()));
+    }
+
+    /** Taps the line under the skyline, unfolding the chosen offer's ticket. */
+    private static void openTicket(View content) {
+        TextView line = shownTextContaining(content, "▾");
+        assertNotNull("the chosen offer's line", line);
+        line.performClick();
     }
 
     private static void settle() {

@@ -173,8 +173,10 @@ final class DecisionLog {
                 while (all.size() > MAX_ENTRIES) all.remove(0);
                 persist(context, all);
             }
-            // A new offer, not a later step of one already recorded: it counts once toward its area.
+            // A new offer, not a later step of one already recorded: it counts once toward its area, and shows the
+            // dash went on after any offer the user declined by hand.
             AreaMap.note(context, entry);
+            ManualDeclines.offerSeen(context, entry.facts, System.currentTimeMillis());
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "decision-log", "record failed: " + error.getClass().getSimpleName());
         }

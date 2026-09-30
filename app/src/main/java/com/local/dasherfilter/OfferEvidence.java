@@ -68,6 +68,21 @@ final class OfferEvidence {
         return TIME_RANGE.matcher(normalize(line)).find();
     }
 
+    /** Screens that show the dash is over or on a break, not just between offers. */
+    private static final List<String> DASH_OVER_LABELS = Arrays.asList(
+            "dash now", "start dashing", "dash paused", "resume dash", "dash ended", "your dash has ended",
+            "dash summary");
+
+    /** True when Dasher shows the dash ended or paused. */
+    static boolean isDashOver(List<String> labels) {
+        if (labels == null) return false;
+        for (String raw : labels) {
+            String label = normalize(raw).toLowerCase(Locale.US);
+            if (DASH_OVER_LABELS.contains(TRAILING_PUNCTUATION.matcher(label).replaceAll(""))) return true;
+        }
+        return false;
+    }
+
     static boolean isIdle(List<String> labels) {
         if (labels == null) return false;
         for (String raw : labels) {

@@ -113,6 +113,36 @@ final class OfferRule {
                     reason = "must match best accepted " + best.perStopLabel();
                 }
             }
+            // What offers declined by hand taught: each is a floor of its own, beaten by at least a cent.
+            DeclinedFloor declined = settings.declined;
+            if (declined.payCents > 0 && declined.beatPay() > required) {
+                required = declined.beatPay();
+                reason = "must beat declined payout " + DecisionLog.money(declined.payCents);
+            }
+            if (declined.rates.hasPerMinute()) {
+                if (offer.minutes == null) {
+                    missing = true;
+                } else if (declined.beatMinutes(offer.minutes) > required) {
+                    required = declined.beatMinutes(offer.minutes);
+                    reason = "must beat declined " + declined.rates.perMinuteLabel();
+                }
+            }
+            if (declined.rates.hasPerMile()) {
+                if (offer.miles == null) {
+                    missing = true;
+                } else if (declined.beatMiles(offer.miles) > required) {
+                    required = declined.beatMiles(offer.miles);
+                    reason = "must beat declined " + declined.rates.perMileLabel();
+                }
+            }
+            if (declined.rates.hasPerStop()) {
+                if (offer.stops == null) {
+                    missing = true;
+                } else if (declined.beatStops(offer.stops) > required) {
+                    required = declined.beatStops(offer.stops);
+                    reason = "must beat declined " + declined.rates.perStopLabel();
+                }
+            }
         }
 
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
