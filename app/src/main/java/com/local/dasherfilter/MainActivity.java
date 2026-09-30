@@ -81,7 +81,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
     private FrameLayout sheet;
-    private LinearLayout sheetCard;
+    private DrawerCard sheetCard;
     private TextView areaLine;
     /** Over everything while an update installs: it says so and takes no input until the new version opens. */
     private LinearLayout updatingCover;
@@ -393,11 +393,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void buildSheet(FrameLayout root) {
         sheet = new FrameLayout(this);
-        sheet.setBackgroundColor(0x66000000);
+        sheet.setBackground(new android.graphics.drawable.ColorDrawable(0x66000000));
         sheet.setVisibility(View.GONE);
         sheet.setClickable(true);
         sheet.setOnClickListener(tapped -> closeSheet());
-        sheetCard = ui.column();
+        // A drawer: a downward drag closes it, as do a tap on the dimmed page and Back.
+        sheetCard = new DrawerCard(this, ui);
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setColor(ui.page);
         float corner = ui.dp(24);
@@ -423,6 +424,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         content.addView(ticket, Ui.matchWidth());
         scroll.addView(content, Ui.matchWidth());
         sheetCard.addView(scroll, Ui.matchWidth());
+        sheetCard.setUp(scroll, sheet, this::closeSheet);
         sheet.addView(sheetCard, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
         root.addView(sheet, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -433,6 +435,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void openSheet(View content) {
         ticket.setVisibility(content == ticket ? View.VISIBLE : View.GONE);
         if (sheet.getVisibility() == View.VISIBLE) return;
+        sheetCard.settle();
         sheet.setVisibility(View.VISIBLE);
         sheet.setAlpha(0f);
         sheet.animate().alpha(1f).setDuration(160);

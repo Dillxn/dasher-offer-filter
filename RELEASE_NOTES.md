@@ -1,3 +1,17 @@
+## 0.4.36 — drag the ticket down to close it
+
+- **The offer ticket is a drawer.** Pull it down to close it: from its handle any time, or from anywhere on it once its content is scrolled to the top.
+  - It follows your finger, and the dimmed page behind it fades as you pull.
+  - Let go past a quarter of its height, or flick it down, and it closes. Otherwise it springs back.
+  - A tap on the dimmed page and Back still close it, and screen readers get a Close action.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - a short, slow pull springing back;
+  - a pull past a quarter closing it;
+  - the Close action.
+- **Not verified on a real phone:** how the pull feels.
+
 ## 0.4.35 — the log says why the adaptive minimum did or didn't learn
 
 - The adaptive minimum learns from an offer only when:

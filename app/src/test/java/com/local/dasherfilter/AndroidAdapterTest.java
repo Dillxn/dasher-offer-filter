@@ -1173,6 +1173,62 @@ public class AndroidAdapterTest {
         }
     }
 
+    @Test
+    @Config(qualifiers = "w360dp-h740dp-xxhdpi")
+    public void theTicketDrawerClosesWhenDraggedDownAndSpringsBackOtherwise() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            layOut(content);
+            openTicket(content);
+            layOut(content);
+            DrawerCard card = find(content, DrawerCard.class);
+            View sheet = (View) card.getParent();
+            assertEquals(View.VISIBLE, sheet.getVisibility());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+
+            // A short, slow pull: it follows the finger, then springs back.
+            drag(card, 0.1f, 400);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+            assertEquals(View.VISIBLE, sheet.getVisibility());
+            assertEquals(0f, card.getTranslationY(), 0.5f);
+
+            // Pulled past a quarter of its height: it closes.
+            drag(card, 0.5f, 400);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
+            assertEquals(View.GONE, sheet.getVisibility());
+
+            // Screen readers close it with an action.
+            openTicket(content);
+            layOut(content);
+            assertTrue(card.performAccessibilityAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_DISMISS, null));
+            assertEquals(View.GONE, sheet.getVisibility());
+        }
+    }
+
+    private static void layOut(View content) {
+        int width = content.getResources().getDisplayMetrics().widthPixels;
+        int height = content.getResources().getDisplayMetrics().heightPixels;
+        content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+        content.layout(0, 0, width, height);
+    }
+
+    /** A finger on the card's handle, pulled down {@code share} of its height over {@code ms}. */
+    private static void drag(View card, float share, long ms) {
+        long start = android.os.SystemClock.uptimeMillis();
+        float x = card.getWidth() / 2f;
+        float y = 4;
+        float to = card.getHeight() * share;
+        card.dispatchTouchEvent(MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, x, y, 0));
+        for (int step = 1; step <= 8; step++) {
+            card.dispatchTouchEvent(MotionEvent.obtain(start, start + ms * step / 8, MotionEvent.ACTION_MOVE, x,
+                    y + to * step / 8, 0));
+        }
+        card.dispatchTouchEvent(MotionEvent.obtain(start, start + ms + 50, MotionEvent.ACTION_UP, x, y + to, 0));
+    }
+
     /** Dasher installed on the simulated phone, with its launcher activity. */
     private void dasherInstalled() {
         android.content.ComponentName dasher =
