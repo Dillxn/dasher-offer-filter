@@ -212,6 +212,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         handler.removeCallbacks(refresh);
         handler.post(refresh);
         Updater.check(this, false, null);
+        ReportOutbox.retryRefused(this);
     }
 
     @Override protected void onPause() {

@@ -22,11 +22,14 @@ final class GitHubIssues {
         final int code;
         /** GitHub said to slow down (429, or 403 with a rate-limit signal): the same request can succeed later. */
         final boolean rateLimited;
+        /** GitHub's own words, such as "Resource not accessible by integration"; "" when it gave none. */
+        final String message;
 
-        Rejected(int code, boolean rateLimited) {
+        Rejected(int code, boolean rateLimited, String message) {
             super("GitHub HTTP " + code);
             this.code = code;
             this.rateLimited = rateLimited;
+            this.message = message;
         }
 
         /** Worth sending again later: an outage (5xx) or a rate limit. */
@@ -71,10 +74,12 @@ final class GitHubIssues {
             }
             int status = connection.getResponseCode();
             if (status != 201) {
+                String error = errorBody(connection);
+                // GitHub's secondary rate limit can answer 403 with no headers, only a message saying so.
                 boolean rateLimited = connection.getHeaderField("Retry-After") != null
                         || "0".equals(connection.getHeaderField("X-RateLimit-Remaining"))
-                        || mentionsRateLimit(connection);
-                throw new Rejected(status, rateLimited);
+                        || error.toLowerCase(java.util.Locale.US).contains("rate limit");
+                throw new Rejected(status, rateLimited, messageOf(error));
             }
             try (InputStream in = connection.getInputStream()) {
                 return new JSONObject(readBounded(in)).getInt("number");
@@ -86,13 +91,24 @@ final class GitHubIssues {
         }
     }
 
-    /** GitHub's secondary rate limit can answer 403 with no headers, only a message saying so. */
-    private static boolean mentionsRateLimit(HttpURLConnection connection) {
+    private static String errorBody(HttpURLConnection connection) {
         try (InputStream in = connection.getErrorStream()) {
-            return in != null && readBounded(in).toLowerCase(java.util.Locale.US).contains("rate limit");
+            return in == null ? "" : readBounded(in);
         } catch (IOException unreadable) {
-            return false;
+            return "";
         }
+    }
+
+    /** The "message" of GitHub's error answer, as one short plain line; "" when there is none. */
+    static String messageOf(String error) {
+        String message;
+        try {
+            message = new JSONObject(error).optString("message", "");
+        } catch (JSONException notJson) {
+            return "";
+        }
+        message = message.replaceAll("[\\p{Cntrl}]+", " ").trim();
+        return message.length() > 120 ? message.substring(0, 119).trim() + "…" : message;
     }
 
     private static String readBounded(InputStream in) throws IOException {

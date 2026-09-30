@@ -1,3 +1,18 @@
+## 0.4.26 — reports refused by GitHub try again by themselves
+
+- **When GitHub refuses a report** sent through your GitHub connection (403), the status line now shows:
+  - GitHub's own words, such as "Resource not accessible by integration";
+  - the step that is easy to miss: adding **Issues: Read and write** to the GitHub App is not enough by itself. The installation must accept it: github.com → Settings → Applications → Installed GitHub Apps → Configure → accept the new permissions.
+- **Refused reports are sent again each time Offer Filter opens**, with a freshly renewed token, so approving the permission on github.com is all it takes. They are still kept only while reports are on.
+
+Evidence boundaries:
+- **Java tests with a local fake of GitHub** cover:
+  - the message and steps shown for a 403;
+  - the token renewed before the next attempt;
+  - a refused report sent once GitHub allows it, and nothing sent when nothing was refused;
+  - GitHub's message kept to one short plain line.
+- **Not verified:** a real report through a real GitHub App after its permissions were accepted.
+
 ## 0.4.25 — the map is the ground, and updates just happen
 
 - **The map is part of the homepage.**

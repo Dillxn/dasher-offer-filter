@@ -89,10 +89,12 @@ public class ReportOutboxTest {
 
     /** A one-thread HTTP/1.1 fake of GitHub's issue endpoint that answers every POST with {@code status}. */
     private void fakeGitHub(int status, String response) throws IOException {
-        server = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
+        // Each fake keeps its own socket, so one replaced mid-test never answers for the next.
+        ServerSocket listening = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
+        server = listening;
         Thread thread = new Thread(() -> {
-            while (!server.isClosed()) {
-                try (Socket socket = server.accept()) {
+            while (!listening.isClosed()) {
+                try (Socket socket = listening.accept()) {
                     answer(socket, status, response);
                 } catch (IOException | JSONException closedOrMalformed) {
                     // The next accept() fails once the server is closed, which ends the loop.
@@ -527,10 +529,65 @@ public class ReportOutboxTest {
             queue(1);
             assertFalse(ReportOutbox.drain(app));
             assertEquals("kept until it works", 1, ReportOutbox.queued(app));
-            assertTrue(ReportOutbox.status(app), ReportOutbox.status(app).contains("Issues: Read and write"));
+            String status = ReportOutbox.status(app);
+            assertTrue(status, status.contains("Issues: Read and write"));
+            assertTrue("GitHub's own words are shown", status.contains("(403: Resource not accessible by integration)"));
+            assertTrue("adding the permission is not enough; the installation must accept it",
+                    status.contains("Installed GitHub Apps") && status.contains("accept its new permissions"));
         } finally {
             GitHubConnect.disconnect(app);
             GitHubConnect.clientId = shipped;
         }
+    }
+
+    @Test
+    public void aRefusedReportIsSentAgainWhenTheAppOpensOnceGitHubAllowsIt() throws Exception {
+        String shipped = GitHubConnect.clientId;
+        try {
+            fakeGitHub(403, "{\"message\": \"Resource not accessible by integration\"}");
+            connectedToGitHub();
+            android.content.SharedPreferences github =
+                    app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE);
+            github.edit().putString("refresh_token", "ghr_refresh")
+                    .putLong("access_expires_at", System.currentTimeMillis() + 3_600_000L).commit();
+            ReportOutbox.useGitHub(app, true);
+            queue(1);
+            android.app.job.JobScheduler jobs = app.getSystemService(android.app.job.JobScheduler.class);
+            jobs.cancelAll();
+            assertFalse(ReportOutbox.drain(app));
+            assertEquals("the next attempt asks GitHub for a fresh token first", 1,
+                    github.getLong("access_expires_at", 0));
+
+            // The permission is accepted on github.com; opening the app tries again.
+            server.close();
+            fakeGitHub(201, "{\"number\": 5}");
+            github.edit().putLong("access_expires_at", 0).commit();
+            ReportOutbox.retryRefused(app);
+            ReportOutbox.flush();
+            assertEquals("a send is scheduled", 1, jobs.getAllPendingJobs().size());
+            assertFalse(ReportOutbox.drain(app));
+            assertEquals(0, ReportOutbox.queued(app));
+            assertTrue(ReportOutbox.status(app), ReportOutbox.status(app).contains("#5"));
+
+            // With nothing refused, opening the app sends nothing more.
+            jobs.cancelAll();
+            ReportOutbox.retryRefused(app);
+            ReportOutbox.flush();
+            assertEquals(0, jobs.getAllPendingJobs().size());
+        } finally {
+            GitHubConnect.disconnect(app);
+            GitHubConnect.clientId = shipped;
+        }
+    }
+
+    @Test
+    public void githubsErrorMessageIsOneShortPlainLine() {
+        assertEquals("Resource not accessible by integration",
+                GitHubIssues.messageOf("{\"message\": \"Resource not accessible by integration\", \"status\": \"403\"}"));
+        assertEquals("", GitHubIssues.messageOf("<html>Forbidden</html>"));
+        assertEquals("", GitHubIssues.messageOf(""));
+        assertEquals("line one line two", GitHubIssues.messageOf("{\"message\": \"line one\\nline two\"}"));
+        String longer = GitHubIssues.messageOf("{\"message\": \"" + "x".repeat(300) + "\"}");
+        assertTrue(longer.length() <= 120 && longer.endsWith("…"));
     }
 }

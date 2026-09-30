@@ -301,11 +301,17 @@ final class ReportOutbox {
                 DiagnosticLog.log(context, "report", "filed issue #" + issue);
             } catch (GitHubIssues.Rejected rejected) {
                 if (rejected.tokenProblem()) {
+                    String said = rejected.code + (rejected.message.isEmpty() ? "" : ": " + rejected.message);
                     prefs(context).edit().putString(LAST_ERROR, connection
-                            ? "GitHub refused the report (" + rejected.code + "). In your GitHub App's settings, give "
-                                    + "it Issues: Read and write and approve the change; reports are kept until then."
-                            : "GitHub rejected the token (" + rejected.code
+                            ? "GitHub refused the report (" + said + "). The GitHub App needs Issues: Read and write, "
+                                    + "and adding it is not enough by itself: on github.com, open Settings → "
+                                    + "Applications → Installed GitHub Apps, tap Configure next to the app, and "
+                                    + "accept its new permissions (GitHub also emails a request to review them). "
+                                    + "Reports are kept and sent again each time you open Offer Filter."
+                            : "GitHub rejected the token (" + said
                                     + "). Paste a new one; reports are kept until then.").apply();
+                    // Permissions approved from now on reach the next attempt's token.
+                    if (connection) GitHubConnect.renewSoon(context);
                     return false;
                 }
                 // An outage or a rate limit passes: keep everything and let Android retry later.
@@ -322,6 +328,18 @@ final class ReportOutbox {
             }
         }
         return false;
+    }
+
+    /**
+     * When the app opens: reports GitHub refused (a token or permission problem) are tried again, so fixing the
+     * problem on github.com is enough. Nothing is sent while reports are off, and nothing is tried without one waiting.
+     */
+    static void retryRefused(Context context) {
+        if (!enabled(context) || prefs(context).getString(LAST_ERROR, "").isEmpty()) return;
+        Context app = context.getApplicationContext();
+        DISK.execute(() -> {
+            if (queued(app) > 0) schedule(app);
+        });
     }
 
     static int queued(Context context) {

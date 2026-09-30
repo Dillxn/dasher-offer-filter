@@ -134,6 +134,17 @@ final class GitHubConnect {
         if (state(app) == State.WAITING && !POLLING.get()) WORKER.execute(() -> pollUntilDone(app));
     }
 
+    /**
+     * Makes the next {@link #token} ask GitHub for a fresh token first, when the connection can be refreshed: after
+     * GitHub refused a report, so permissions approved since then are sure to be in the token used next.
+     */
+    static void renewSoon(Context context) {
+        synchronized (LOCK) {
+            SharedPreferences prefs = prefs(context);
+            if (prefs.getString(REFRESH, null) != null) prefs.edit().putLong(ACCESS_EXPIRES_AT, 1).commit();
+        }
+    }
+
     /** Forgets the connection on this phone. Updates then come from Render only, and reports sent through it stop. */
     static void disconnect(Context context) {
         synchronized (LOCK) {
