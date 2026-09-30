@@ -144,7 +144,11 @@ final class ProblemReport {
         return new JSONObject().put("enabled", rules.enabled).put("flatCents", rules.flatCents)
                 .put("perMileCents", rules.perMileCents).put("perMinuteCents", rules.perMinuteCents)
                 .put("extraStopCents", rules.extraStopCents).put("maxStops", rules.maxStops)
-                .put("risingOffers", rules.risingOffers).put("lastAcceptedCents", rules.lastAcceptedCents);
+                .put("risingOffers", rules.risingOffers).put("lastAcceptedCents", rules.lastAcceptedCents)
+                .put("bestAccepted", new JSONObject()
+                        .put("minutePay", rules.best.minutePay).put("minutes", rules.best.minutes)
+                        .put("milePay", rules.best.milePay).put("miles", rules.best.miles)
+                        .put("stopPay", rules.best.stopPay).put("stops", rules.best.stops));
     }
 
     private static JSONObject errorJson(Throwable error) throws JSONException {

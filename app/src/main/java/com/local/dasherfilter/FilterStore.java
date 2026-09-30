@@ -16,6 +16,12 @@ final class FilterStore {
     private static final String MAX_STOPS = "max_stops";
     private static final String RISING_OFFERS = "rising_offers";
     private static final String LAST_ACCEPTED = "last_accepted";
+    private static final String BEST_MINUTE_PAY = "best_minute_pay";
+    private static final String BEST_MINUTES = "best_minutes";
+    private static final String BEST_MILE_PAY = "best_mile_pay";
+    private static final String BEST_MILES = "best_miles_bits";
+    private static final String BEST_STOP_PAY = "best_stop_pay";
+    private static final String BEST_STOPS = "best_stops";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
     private static final String LAST_STATUS = "last_status";
     private static final String REPORT_EMAIL = "report_email";
@@ -26,10 +32,22 @@ final class FilterStore {
         return new FilterSettings(prefs.getBoolean(ENABLED, false),
                 prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(EXTRA_STOP, 0), prefs.getInt(MAX_STOPS, 0),
-                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0));
+                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs));
     }
 
-    /** Saves rules. The accepted-payout baseline is owned by {@link #recordAccepted} and is not overwritten. */
+    /** The stored bests; anything that is not a positive, finite number reads as "none" rather than crashing a rule. */
+    private static AcceptedBest best(SharedPreferences prefs) {
+        double miles = Double.longBitsToDouble(prefs.getLong(BEST_MILES, 0));
+        return new AcceptedBest(positive(prefs.getInt(BEST_MINUTE_PAY, 0)), positive(prefs.getInt(BEST_MINUTES, 0)),
+                positive(prefs.getInt(BEST_MILE_PAY, 0)), Double.isFinite(miles) && miles > 0 ? miles : 0,
+                positive(prefs.getInt(BEST_STOP_PAY, 0)), positive(prefs.getInt(BEST_STOPS, 0)));
+    }
+
+    private static int positive(int value) {
+        return Math.max(0, value);
+    }
+
+    /** Saves rules. The accepted baselines are owned by {@link #recordAccepted} and are not overwritten. */
     static void save(Context context, FilterSettings settings) {
         prefs(context).edit()
                 .putBoolean(ENABLED, settings.enabled)
@@ -42,8 +60,28 @@ final class FilterStore {
                 .apply();
     }
 
-    static void recordAccepted(Context context, int cents) {
-        prefs(context).edit().putInt(LAST_ACCEPTED, cents).apply();
+    /**
+     * An accepted standalone offer: the new payout baseline, and, only while auto-decline and the adaptive minimum
+     * are both on, a new best for any rate it beats. Nothing is learned while either is off, so turning it on never
+     * applies highs gathered meanwhile.
+     */
+    static void recordAccepted(Context context, OfferSnapshot accepted) {
+        if (accepted.payCents == null) return;
+        SharedPreferences prefs = prefs(context);
+        boolean learning = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
+        AcceptedBest best = learning ? best(prefs).raisedBy(accepted) : best(prefs);
+        prefs.edit()
+                .putInt(LAST_ACCEPTED, accepted.payCents)
+                .putInt(BEST_MINUTE_PAY, best.minutePay).putInt(BEST_MINUTES, best.minutes)
+                .putInt(BEST_MILE_PAY, best.milePay).putLong(BEST_MILES, Double.doubleToLongBits(best.miles))
+                .putInt(BEST_STOP_PAY, best.stopPay).putInt(BEST_STOPS, best.stops)
+                .apply();
+    }
+
+    /** Forgets the payout baseline and every best rate: the adaptive minimum starts over from the saved rules. */
+    static void resetAccepted(Context context) {
+        prefs(context).edit().remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
+                .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS).apply();
     }
 
     static void recordDoorDashOfferChannel(Context context, String channelId) {

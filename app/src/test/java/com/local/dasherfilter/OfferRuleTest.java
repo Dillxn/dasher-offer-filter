@@ -186,6 +186,110 @@ public final class OfferRuleTest {
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(beatsLastAccepted, higherFlatFloor).result);
     }
 
+    // ---- Adaptive minimum: best accepted pay per minute, mile and stop ----
+
+    /** Best rates from one accepted offer: $14.20 for 24 min (59.2¢/min), 6.0 mi ($2.37/mi), 2 stops ($7.10/stop). */
+    private static final AcceptedBest BEST = AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2));
+
+    private static FilterSettings adaptive(AcceptedBest best) {
+        return new FilterSettings(true, 0, 0, 0, 0, 0, true, 1420, best);
+    }
+
+    @Test
+    public void adaptiveMinimumRaisesPerMinuteMileAndStopFloorsToTheBestAccepted() {
+        // 30 min needs 1420 × 30 / 24 = $17.75; 7.5 mi needs 1420 × 7.5 / 6 = $17.75; 2 stops need $14.20.
+        OfferSnapshot justBelow = new OfferSnapshot(1774, 7.5, 30, 2);
+        OfferRule.Decision declined = OfferRule.evaluate(justBelow, adaptive(BEST));
+        assertEquals(OfferRule.Result.DECLINE, declined.result);
+        assertEquals(1775L, declined.requiredCents);
+        assertEquals("must match best accepted $0.59/min", declined.reason);
+
+        // Exactly matching the best rate passes: a floor, not "must beat".
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1775, 7.5, 30, 2),
+                adaptive(BEST)).result);
+
+        // Longer distance makes the per-mile floor the binding one: 1420 × 8 / 6 = $18.93⅓, rounded up.
+        OfferRule.Decision byMiles = OfferRule.evaluate(new OfferSnapshot(1893, 8.0, 24, 2), adaptive(BEST));
+        assertEquals(1894L, byMiles.requiredCents);
+        assertEquals("must match best accepted $2.37/mi", byMiles.reason);
+
+        // A double order: 4 stops at $7.10 each needs $28.40.
+        OfferRule.Decision byStops = OfferRule.evaluate(new OfferSnapshot(2800, 6.0, 24, 4), adaptive(BEST));
+        assertEquals(OfferRule.Result.DECLINE, byStops.result);
+        assertEquals(2840L, byStops.requiredCents);
+        assertEquals("must match best accepted $7.10/stop", byStops.reason);
+    }
+
+    @Test
+    public void adaptiveFloorsAreFloorsNotSurcharges() {
+        // A configured $0.50/min rule and the best accepted $0.59/min: the higher applies, nothing is added up.
+        FilterSettings settings = new FilterSettings(true, 0, 0, 50, 0, 0, true, 0, BEST);
+        assertEquals(1775L, OfferRule.evaluate(new OfferSnapshot(1800, null, 30, null), new FilterSettings(
+                true, 0, 0, 50, 0, 0, true, 0, AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, null, 24, null))))
+                .requiredCents);
+        // A configured rate above the best still wins.
+        FilterSettings strictRule = new FilterSettings(true, 0, 0, 80, 0, 0, true, 0, BEST);
+        assertEquals(2400L, OfferRule.evaluate(new OfferSnapshot(2500, 6.0, 30, 2), strictRule).requiredCents);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(2500, 6.0, 30, 2), settings).result);
+    }
+
+    @Test
+    public void anUnknownAmountTheBestRateNeedsIsReviewUnlessAnotherFloorAlreadyFails() {
+        // Minutes are not shown, so the per-minute floor cannot be checked: review, never keep.
+        OfferSnapshot noMinutes = new OfferSnapshot(5000, 6.0, null, 2);
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(noMinutes, adaptive(BEST)).result);
+        // The known per-mile floor fails: that is a real failure even with minutes unknown.
+        OfferSnapshot lowPerMile = new OfferSnapshot(1500, 8.0, null, 2);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(lowPerMile, adaptive(BEST)).result);
+    }
+
+    @Test
+    public void bestRatesApplyOnlyWhileTheAdaptiveMinimumIsOn() {
+        FilterSettings off = new FilterSettings(true, 1000, 0, 0, 0, 0, false, 1420, BEST);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1000, 20.0, 60, 4), off).result);
+        // With nothing accepted yet the adaptive minimum adds no rate floors.
+        FilterSettings fresh = new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0, AcceptedBest.NONE);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1000, 20.0, 60, 4), fresh).result);
+    }
+
+    @Test
+    public void addOnsAreNeverJudgedByBestRates() {
+        OfferSnapshot active = new OfferSnapshot(2500, 10.0, null, 2);
+        AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+1 mi"));
+        FilterSettings settings = new FilterSettings(true, 2000, 100, 0, 0, 0, true, 2500,
+                AcceptedBest.NONE.raisedBy(new OfferSnapshot(5000, 5.0, 10, 2)));
+        assertEquals("$5.00/min, $10.00/mi, $25.00/stop", settings.best.summary());
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(addOn, settings).result);
+    }
+
+    @Test
+    public void onlyAHigherRateSetsANewBestAndImplausibleReadingsNeverDo() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2));
+        // Lower rates on every measure change nothing.
+        AcceptedBest lower = best.raisedBy(new OfferSnapshot(1000, 6.0, 24, 2));
+        assertEquals("$0.59/min, $2.37/mi, $7.10/stop", lower.summary());
+        // A better per-minute rate only moves that best.
+        AcceptedBest faster = best.raisedBy(new OfferSnapshot(1300, 9.0, 15, 3));
+        assertEquals("$0.87/min, $2.37/mi, $7.10/stop", faster.summary());
+        // "1 min", "0.1 mi" or "1 stop" is a misread: that offer sets no best at all, not even per stop.
+        assertEquals(best.summary(), best.raisedBy(new OfferSnapshot(4500, 0.1, 1, 2)).summary());
+        assertEquals(best.summary(), best.raisedBy(new OfferSnapshot(1000, 6.0, 24, 1)).summary());
+        assertEquals(best.summary(), best.raisedBy(new OfferSnapshot(null, 6.0, 24, 2)).summary());
+        assertEquals("", AcceptedBest.NONE.summary());
+    }
+
+    @Test
+    public void aShortTripSetsNoDistanceOrTimeBestSoNormalOffersStillPass() {
+        // $7.50 for 0.6 mi and 6 min is $12.50/mi and $1.25/min: real, but only because base pay dominates.
+        AcceptedBest afterShortTrip = AcceptedBest.NONE.raisedBy(new OfferSnapshot(750, 0.6, 6, 2));
+        assertEquals("$3.75/stop", afterShortTrip.summary());
+        FilterSettings settings = new FilterSettings(true, 0, 0, 0, 0, 0, true, 750, afterShortTrip);
+        // A typical $15 offer for 5 mi and 20 min still passes, instead of needing $62.50.
+        OfferRule.Decision typical = OfferRule.evaluate(new OfferSnapshot(1500, 5.0, 20, 2), settings);
+        assertEquals(OfferRule.Result.KEEP, typical.result);
+        assertEquals(751L, typical.requiredCents);
+    }
+
     @Test
     public void maximumStopsIsInclusiveAndWorksWithoutPay() {
         FilterSettings settings = new FilterSettings(true, 0, 0, 0, 0, 3);

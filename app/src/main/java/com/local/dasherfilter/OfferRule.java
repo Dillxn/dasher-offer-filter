@@ -36,8 +36,9 @@ final class OfferRule {
     }
 
     /**
-     * Required pay is {@code max(flat, miles × rate, minutes × rate) + fee × max(0, stops - 2)}, raised to one cent
-     * above the last accepted standalone payout when the rising rule is on.
+     * Required pay is {@code max(flat, miles × rate, minutes × rate) + fee × max(0, stops - 2)}. The adaptive
+     * minimum raises it to one cent above the last accepted standalone payout, and to at least the best accepted
+     * pay per minute, per mile and per stop applied to this offer; each is a floor of its own, never added on top.
      */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
@@ -85,6 +86,33 @@ final class OfferRule {
             required = settings.lastAcceptedCents + 1L;
             reason = String.format(Locale.US, "must beat last accepted payout $%.2f",
                     settings.lastAcceptedCents / 100.0);
+        }
+        if (settings.risingOffers) {
+            AcceptedBest best = settings.best;
+            if (best.hasPerMinute()) {
+                if (offer.minutes == null) {
+                    missing = true;
+                } else if (best.forMinutes(offer.minutes) > required) {
+                    required = best.forMinutes(offer.minutes);
+                    reason = "must match best accepted " + best.perMinuteLabel();
+                }
+            }
+            if (best.hasPerMile()) {
+                if (offer.miles == null) {
+                    missing = true;
+                } else if (best.forMiles(offer.miles) > required) {
+                    required = best.forMiles(offer.miles);
+                    reason = "must match best accepted " + best.perMileLabel();
+                }
+            }
+            if (best.hasPerStop()) {
+                if (offer.stops == null) {
+                    missing = true;
+                } else if (best.forStops(offer.stops) > required) {
+                    required = best.forStops(offer.stops);
+                    reason = "must match best accepted " + best.perStopLabel();
+                }
+            }
         }
 
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
@@ -140,7 +168,7 @@ final class OfferRule {
     }
 
     /** Cents for {@code miles × rate}, rounded up; saturates rather than overflowing. */
-    private static long mileageCost(int rateCents, double miles) {
+    static long mileageCost(int rateCents, double miles) {
         try {
             return BigDecimal.valueOf(miles).multiply(BigDecimal.valueOf(rateCents))
                     .setScale(0, RoundingMode.CEILING).longValueExact();

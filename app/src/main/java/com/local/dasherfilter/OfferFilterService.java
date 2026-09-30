@@ -361,7 +361,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     private void recordAcceptance(AcceptedOfferTracker.Acceptance accepted) {
         if (!accepted.addOn && accepted.acceptedOffer.payCents != null) {
-            FilterStore.recordAccepted(this, accepted.acceptedOffer.payCents);
+            FilterStore.recordAccepted(this, accepted.acceptedOffer);
         }
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed. " + (accepted.addOn

@@ -16,7 +16,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.text.format.DateFormat;
 import android.text.format.DateUtils;
 import android.util.Patterns;
@@ -62,7 +64,7 @@ public final class MainActivity extends Activity {
     };
     private Ui ui;
 
-    private TextView stateBadge;
+    private FilterHeroView hero;
     private TextView stateTitle;
     private TextView stateDetail;
     private Button masterButton;
@@ -72,16 +74,17 @@ public final class MainActivity extends Activity {
     private Readiness backgroundOffers;
     private Readiness offerAlerts;
 
-    private TextView activitySummary;
     private DecisionChartView chart;
     private View legend;
     private LinearLayout selectionPanel;
-    private TextView selectionDetail;
+    private LinearLayout selectionDetail;
     private Button reportSelected;
     private LinearLayout history;
     private Button moreHistory;
     private boolean showAllHistory;
     private long shownHistoryVersion = -1;
+    private List<DecisionLog.Entry> recentEntries = java.util.Collections.emptyList();
+    private String shownHero = "";
 
     private EditText flat;
     private EditText mile;
@@ -90,6 +93,7 @@ public final class MainActivity extends Activity {
     private EditText maxStops;
     private Switch rising;
     private TextView baselineNote;
+    private RuleMeterView ruleMeter;
 
     private EditText reportEmail;
     private EditText reportToken;
@@ -163,13 +167,11 @@ public final class MainActivity extends Activity {
 
     private void addStatusCard(LinearLayout page) {
         LinearLayout card = ui.card(page, null);
-        LinearLayout heading = ui.row();
-        stateBadge = ui.badge("✓", Ui.GOOD, 22);
-        heading.addView(stateBadge);
+        hero = new FilterHeroView(this, ui);
+        card.addView(hero, Ui.matchWidth());
         stateTitle = ui.text("", 20, ui.ink, true);
-        stateTitle.setPadding(ui.dp(10), 0, 0, 0);
-        heading.addView(stateTitle, Ui.weighted());
-        card.addView(heading);
+        stateTitle.setPadding(0, ui.dp(8), 0, 0);
+        card.addView(stateTitle);
         stateDetail = ui.note("");
         card.addView(stateDetail);
         masterButton = ui.addButton(card, "", true, this::toggleAutoDecline);
@@ -185,12 +187,10 @@ public final class MainActivity extends Activity {
 
     private void addActivityCard(LinearLayout page) {
         LinearLayout card = ui.card(page, "Recent offers");
-        activitySummary = ui.note("");
-        card.addView(activitySummary);
 
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
-            selectionDetail.setText(describe(entry, true));
+            showSelection(entry);
             selectionPanel.setVisibility(View.VISIBLE);
         });
         LinearLayout.LayoutParams chartParams = Ui.matchWidth();
@@ -201,10 +201,7 @@ public final class MainActivity extends Activity {
 
         selectionPanel = ui.column();
         selectionPanel.setVisibility(View.GONE);
-        selectionDetail = ui.text("", 13, ui.inkSecondary, false);
-        selectionDetail.setBackground(ui.rounded(ui.fieldFill, 0, 10));
-        selectionDetail.setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10));
-        selectionDetail.setTextIsSelectable(true);
+        selectionDetail = ui.column();
         selectionPanel.addView(selectionDetail, Ui.matchWidth());
         reportSelected = ui.addButton(selectionPanel, "Report this offer", false, () -> {
             DecisionLog.Entry selected = chart.selectedEntry();
@@ -226,57 +223,97 @@ public final class MainActivity extends Activity {
 
     /** Symbol and word for each status, plus the requirement tick, so no meaning rests on color alone. */
     private LinearLayout legend() {
-        LinearLayout legend = ui.row();
+        // One line normally; two with a large font, so no entry is cut off.
+        LinearLayout legend = ui.column();
         legend.setPadding(0, ui.dp(6), 0, 0);
+        LinearLayout line = ui.row();
+        legend.addView(line);
         for (OfferRule.Result result : new OfferRule.Result[] {
                 OfferRule.Result.KEEP, OfferRule.Result.DECLINE, OfferRule.Result.REVIEW}) {
-            legend.addView(ui.badge(result, 14));
+            if (result == OfferRule.Result.REVIEW && ui.largeText()) {
+                line = ui.row();
+                line.setPadding(0, ui.dp(4), 0, 0);
+                legend.addView(line);
+            }
+            line.addView(ui.badge(result, 14));
             TextView word = ui.text(Ui.resultLabel(result), 12, ui.inkSecondary, false);
             word.setPadding(ui.dp(4), 0, ui.dp(12), 0);
-            legend.addView(word);
+            line.addView(word);
         }
         View tick = new View(this);
         tick.setBackgroundColor(ui.ink);
-        legend.addView(tick, new LinearLayout.LayoutParams(ui.dp(14), ui.dp(2)));
+        line.addView(tick, new LinearLayout.LayoutParams(ui.dp(14), ui.dp(2)));
         TextView needed = ui.text("Needed", 12, ui.inkSecondary, false);
         needed.setPadding(ui.dp(4), 0, 0, 0);
-        legend.addView(needed);
+        line.addView(needed);
         return legend;
     }
 
     private void addRulesCard(LinearLayout page, FilterSettings saved) {
         LinearLayout body = ui.foldingCard(page, "Rules");
-        LinearLayout first = ui.row();
-        flat = ui.field(cell(first), "Minimum pay ($)", money(saved.flatCents), true);
-        maxStops = ui.field(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false);
+        ruleMeter = new RuleMeterView(this, ui);
+        LinearLayout.LayoutParams meterParams = Ui.matchWidth();
+        meterParams.topMargin = ui.dp(4);
+        body.addView(ruleMeter, meterParams);
+        body.addView(ui.divider());
+
+        LinearLayout first = fieldRow();
+        flat = ui.field(cell(first), "Minimum pay ($)", money(saved.flatCents), true, Glyph.Shape.COIN);
+        maxStops = ui.field(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false,
+                Glyph.Shape.STOPS);
         body.addView(first);
-        LinearLayout second = ui.row();
-        mile = ui.field(cell(second), "Per mile ($)", money(saved.perMileCents), true);
-        minute = ui.field(cell(second), "Per minute ($)", money(saved.perMinuteCents), true);
+        LinearLayout second = fieldRow();
+        mile = ui.field(cell(second), "Per mile ($)", money(saved.perMileCents), true, Glyph.Shape.ROAD);
+        minute = ui.field(cell(second), "Per minute ($)", money(saved.perMinuteCents), true, Glyph.Shape.CLOCK);
         body.addView(second);
-        LinearLayout third = ui.row();
-        stop = ui.field(cell(third), "Per extra stop ($)", money(saved.extraStopCents), true);
+        LinearLayout third = fieldRow();
+        stop = ui.field(cell(third), "Per extra stop ($)", money(saved.extraStopCents), true, Glyph.Shape.PIN);
         cell(third);
         body.addView(third);
         TextView zero = ui.text("0 turns a rule off.", 12, ui.inkSecondary, false);
         zero.setPadding(0, ui.dp(6), 0, 0);
         body.addView(zero);
 
-        rising = ui.toggle(body, "Must beat last accepted pay", saved.risingOffers);
+        rising = ui.toggle(body, "Adaptive minimum", saved.risingOffers);
         LinearLayout baseline = ui.row();
         baselineNote = ui.text("", 13, ui.inkSecondary, false);
+        baselineNote.setCompoundDrawablesRelative(new Glyph(Glyph.Shape.TREND, ui.accent, ui.dp(18)), null, null,
+                null);
+        baselineNote.setCompoundDrawablePadding(ui.dp(8));
         baseline.addView(baselineNote, Ui.weighted());
         baseline.addView(ui.button("Reset", false, () -> {
-            FilterStore.recordAccepted(this, 0);
+            FilterStore.resetAccepted(this);
             refresh();
+            updateMeter();
         }));
         body.addView(baseline);
         ui.addButton(body, "Save rules", true, this::save);
+
+        TextWatcher preview = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable text) {
+                updateMeter();
+            }
+        };
+        for (EditText field : new EditText[] {flat, maxStops, mile, minute, stop}) {
+            field.addTextChangedListener(preview);
+        }
+        rising.setOnCheckedChangeListener((view, on) -> updateMeter());
     }
 
-    /** A half-width column inside {@code row}. */
+    /** Two fields side by side, or one above the other when a large font would crowd them. */
+    private LinearLayout fieldRow() {
+        return ui.largeText() ? ui.column() : ui.row();
+    }
+
+    /** A half-width column inside {@code row}, or a full-width one when the row is stacked. */
     private LinearLayout cell(LinearLayout row) {
         LinearLayout cell = ui.column();
+        if (row.getOrientation() == LinearLayout.VERTICAL) {
+            row.addView(cell, Ui.matchWidth());
+            return cell;
+        }
         LinearLayout.LayoutParams params = Ui.weighted();
         params.setMarginEnd(row.getChildCount() == 0 ? ui.dp(6) : 0);
         params.setMarginStart(row.getChildCount() == 0 ? 0 : ui.dp(6));
@@ -372,17 +409,14 @@ public final class MainActivity extends Activity {
         if (state != shownState) ui.style(masterButton, state != 1);
         shownState = state;
         if (saved.enabled) {
-            ui.recolorBadge(stateBadge, "✓", Ui.GOOD);
             stateTitle.setText("Auto-decline on");
             stateDetail.setText(saved.brief());
             masterButton.setText("Pause auto-decline");
         } else if (saved.hasAnyRule()) {
-            ui.recolorBadge(stateBadge, "‖", Ui.WARNING);
             stateTitle.setText("Auto-decline paused");
             stateDetail.setText(saved.brief());
             masterButton.setText("Resume auto-decline");
         } else {
-            ui.recolorBadge(stateBadge, "–", ui.inkMuted);
             stateTitle.setText("Auto-decline off");
             stateDetail.setText("Add a rule under Rules.");
             masterButton.setText("Resume auto-decline");
@@ -393,8 +427,9 @@ public final class MainActivity extends Activity {
         offerAlerts.update(OfferAlerts.canNotify(this));
 
         refreshHistory();
-        baselineNote.setText(saved.lastAcceptedCents > 0
-                ? "Last accepted: " + DecisionLog.money(saved.lastAcceptedCents) : "Last accepted: none yet");
+        refreshHero(saved.enabled ? FilterHeroView.State.ON
+                : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
+        baselineNote.setText(adaptiveNote(saved));
         updateStatus.setText(Updater.status(this));
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
         OfferSnapshot route = ActiveRouteStore.load(this);
@@ -413,36 +448,136 @@ public final class MainActivity extends Activity {
         if (version == shownHistoryVersion) return;
         shownHistoryVersion = version;
         List<DecisionLog.Entry> recent = DecisionLog.recent(this, DecisionLog.MAX_ENTRIES);
-        activitySummary.setText(summarize(recent));
+        recentEntries = recent;
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
         chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         legend.setVisibility(empty ? View.GONE : View.VISIBLE);
         DecisionLog.Entry selected = chart.selectedEntry();
         selectionPanel.setVisibility(selected == null ? View.GONE : View.VISIBLE);
-        if (selected != null) selectionDetail.setText(describe(selected, true));
+        if (selected != null) showSelection(selected);
         history.removeAllViews();
         int rows = Math.min(showAllHistory ? MORE_HISTORY_ROWS : HISTORY_ROWS, recent.size());
         for (int i = 0; i < rows; i++) history.addView(historyRow(recent.get(i)));
         moreHistory.setVisibility(recent.size() > HISTORY_ROWS ? View.VISIBLE : View.GONE);
         moreHistory.setText(showAllHistory ? "Show less" : "Show more");
+        updateMeter();
     }
 
-    private String summarize(List<DecisionLog.Entry> recent) {
+    /** The filter picture with the last 24 hours' counts; redrawn only when something it shows changed. */
+    private void refreshHero(FilterHeroView.State state) {
         long since = System.currentTimeMillis() - DAY_MS;
-        int total = 0;
         int passed = 0;
-        int declined = 0;
-        for (DecisionLog.Entry entry : recent) {
+        int filtered = 0;
+        int review = 0;
+        for (DecisionLog.Entry entry : recentEntries) {
             if (entry.at < since) continue;
-            total++;
             if (entry.result == OfferRule.Result.KEEP) passed++;
-            else if (entry.result == OfferRule.Result.DECLINE) declined++;
+            else if (entry.result == OfferRule.Result.DECLINE && actedOn(entry.action)) filtered++;
+            else review++;
         }
-        if (recent.isEmpty()) return "No offers yet.";
-        if (total == 0) return "None in the last 24 hours.";
-        return String.format(Locale.US, "Last 24 h: %d passed · %d declined · %d review",
-                passed, declined, total - passed - declined);
+        String shown = state + "/" + passed + "/" + filtered + "/" + review;
+        if (shown.equals(shownHero)) return;
+        shownHero = shown;
+        hero.set(state, passed, filtered, review);
+    }
+
+    /** A failing offer the app did something about; one paused, refused or taken over was left to the user. */
+    private static boolean actedOn(DecisionLog.Action action) {
+        return action == DecisionLog.Action.DECLINE_TAPPED || action == DecisionLog.Action.CONFIRMATION_TAPPED
+                || action == DecisionLog.Action.NOTIFICATION_DECLINE_SENT
+                || action == DecisionLog.Action.NOTIFICATION_HIDDEN;
+    }
+
+    /** "Last accepted $14.20 · best $0.59/min, $2.37/mi, $7.10/stop", or what it waits for. */
+    private static String adaptiveNote(FilterSettings saved) {
+        if (saved.lastAcceptedCents <= 0 && saved.best.isEmpty()) {
+            return "Rises with the offers you accept. None yet.";
+        }
+        String last = saved.lastAcceptedCents > 0 ? "Last accepted " + DecisionLog.money(saved.lastAcceptedCents) : "";
+        String best = saved.best.isEmpty() ? "" : "best " + saved.best.summary();
+        return last + (!last.isEmpty() && !best.isEmpty() ? " · " : "") + best;
+    }
+
+    /** Redraws the rules picture from the rules as typed (unsaved), with the latest fully read offer. */
+    private void updateMeter() {
+        if (ruleMeter == null) return;
+        FilterSettings saved = FilterStore.load(this);
+        FilterSettings typed = new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
+                lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
+                lenientCents(stop, saved.extraStopCents), lenientStops(saved.maxStops), rising.isChecked(),
+                saved.lastAcceptedCents, saved.best);
+        ruleMeter.show(typed, exampleOffer());
+    }
+
+    private static int lenientCents(EditText field, int fallback) {
+        try {
+            return parseCents(field);
+        } catch (IllegalArgumentException invalid) {
+            return fallback;
+        }
+    }
+
+    private int lenientStops(int fallback) {
+        String raw = maxStops.getText().toString().trim();
+        if (raw.isEmpty()) return 0;
+        return raw.matches("[0-9]{1,2}") ? Integer.parseInt(raw) : fallback;
+    }
+
+    /** The newest standalone offer whose miles, minutes and stops were all read, else a typical one. */
+    private OfferSnapshot exampleOffer() {
+        for (DecisionLog.Entry entry : recentEntries) {
+            OfferSnapshot facts = entry.facts;
+            if (!entry.addOn && facts.miles != null && facts.minutes != null && facts.stops != null) return facts;
+        }
+        return new OfferSnapshot(null, 5.0, 20, 2);
+    }
+
+    /** The tapped chart column, drawn as an offer card with its reason and what the app did. */
+    private void showSelection(DecisionLog.Entry entry) {
+        selectionDetail.removeAllViews();
+        LinearLayout heading = ui.row();
+        heading.addView(ui.badge(entry.result, 20));
+        TextView title = ui.text(Ui.resultLabel(entry.result) + " · " + when(entry.at)
+                + (entry.addOn ? " · add-on" : ""), 14, ui.ink, true);
+        title.setPadding(ui.dp(8), 0, 0, 0);
+        heading.addView(title, Ui.weighted());
+        selectionDetail.addView(heading);
+        selectionDetail.addView(offerDetail(entry, true));
+    }
+
+    /**
+     * The drawn offer (pay against needed, the route), then the reason, what the app did, and the exact lines read.
+     *
+     * @param withReason false where the reason is already shown right above
+     */
+    private LinearLayout offerDetail(DecisionLog.Entry entry, boolean withReason) {
+        LinearLayout detail = ui.column();
+        detail.setBackground(ui.rounded(ui.fieldFill, 0, 12));
+        detail.setPadding(ui.dp(12), ui.dp(12), ui.dp(12), ui.dp(10));
+        OfferCardView card = new OfferCardView(this, ui);
+        card.show(entry);
+        detail.addView(card, Ui.matchWidth());
+        if (withReason) {
+            TextView reason = ui.text(plainReason(entry), 15, ui.ink, true);
+            reason.setPadding(0, ui.dp(8), 0, 0);
+            detail.addView(reason);
+        }
+        TextView action = ui.text(entry.action.label
+                + (entry.source == DecisionLog.Source.SCREEN ? " · on screen" : " · from notification")
+                + (entry.autoDecline ? "" : " · while paused"), 13, ui.inkSecondary, false);
+        action.setPadding(0, ui.dp(4), 0, 0);
+        detail.addView(action);
+        if (!entry.evidence.isEmpty()) {
+            TextView read = ui.text("Read: " + String.join("  ·  ", entry.evidence), 12, ui.inkMuted, false);
+            read.setPadding(0, ui.dp(4), 0, 0);
+            read.setTextIsSelectable(true);
+            detail.addView(read);
+        }
+        LinearLayout.LayoutParams params = Ui.matchWidth();
+        params.topMargin = ui.dp(8);
+        detail.setLayoutParams(params);
+        return detail;
     }
 
     /** Badge, "$7.90 · needed $10.80", time, and the reason in plain words; tap for everything else. */
@@ -455,12 +590,17 @@ public final class MainActivity extends Activity {
         row.addView(badge);
         LinearLayout texts = ui.column();
         texts.setPadding(ui.dp(12), 0, 0, 0);
-        LinearLayout top = ui.row();
-        top.addView(ui.text(headline(entry), 15, ui.ink, true), Ui.weighted());
+        // With a large font the time moves under the amounts instead of squeezing them.
+        LinearLayout top = ui.largeText() ? ui.column() : ui.row();
+        top.addView(ui.text(headline(entry), 15, ui.ink, true),
+                ui.largeText() ? Ui.matchWidth() : Ui.weighted());
         top.addView(ui.text(when(entry.at), 13, ui.inkSecondary, false));
         texts.addView(top);
-        TextView details = ui.text(plainReason(entry), 13, ui.inkSecondary, false);
-        texts.addView(details);
+        texts.addView(ui.text(plainReason(entry), 13, ui.inkSecondary, false));
+        // The drawn offer appears on the first tap; built then, so a long history stays cheap.
+        LinearLayout expansion = ui.column();
+        expansion.setVisibility(View.GONE);
+        texts.addView(expansion, Ui.matchWidth());
         Button report = ui.addButton(texts, "Report this offer", false, () -> reportOffer(entry));
         report.setVisibility(View.GONE);
         row.addView(texts, Ui.weighted());
@@ -469,11 +609,11 @@ public final class MainActivity extends Activity {
                 + plainReason(entry));
         row.setBackground(new RippleDrawable(ColorStateList.valueOf(ui.selectionWash), null,
                 ui.rounded(0xFFFFFFFF, 0, 8)));
-        boolean[] expanded = {false};
         row.setOnClickListener(tapped -> {
-            expanded[0] = !expanded[0];
-            details.setText(expanded[0] ? describe(entry, false) : plainReason(entry));
-            report.setVisibility(expanded[0] && ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
+            boolean expand = expansion.getVisibility() != View.VISIBLE;
+            if (expand && expansion.getChildCount() == 0) expansion.addView(offerDetail(entry, false));
+            expansion.setVisibility(expand ? View.VISIBLE : View.GONE);
+            report.setVisibility(expand && ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
         });
         return row;
     }
@@ -484,22 +624,6 @@ public final class MainActivity extends Activity {
         String needed = entry.requiredCents > 0 && entry.requiredCents < Long.MAX_VALUE
                 ? " · needed " + DecisionLog.money(entry.requiredCents) : "";
         return pay + needed + (entry.addOn ? " · add-on" : "");
-    }
-
-    /** Reason, facts, action and, with evidence, the headline, time and exact lines read. */
-    private String describe(DecisionLog.Entry entry, boolean withHeadline) {
-        StringBuilder text = new StringBuilder();
-        if (withHeadline) {
-            text.append(Ui.resultLabel(entry.result)).append(" · ").append(headline(entry))
-                    .append(" · ").append(when(entry.at)).append('\n');
-        }
-        text.append(plainReason(entry));
-        if (hasFacts(entry.facts)) text.append('\n').append(DecisionLog.facts(entry.facts));
-        text.append('\n').append(entry.action.label)
-                .append(entry.source == DecisionLog.Source.SCREEN ? " · on screen" : " · from notification")
-                .append(entry.autoDecline ? "" : " · while paused");
-        if (!entry.evidence.isEmpty()) text.append('\n').append("Read: ").append(String.join("  ·  ", entry.evidence));
-        return text.toString();
     }
 
     static String plainReason(DecisionLog.Entry entry) {
@@ -517,6 +641,9 @@ public final class MainActivity extends Activity {
         }
         if (reason.startsWith("must beat last accepted payout ")) {
             return "Not above last accepted " + reason.substring("must beat last accepted payout ".length());
+        }
+        if (reason.startsWith("must match best accepted ")) {
+            return "Below your best accepted " + reason.substring("must match best accepted ".length());
         }
         Matcher stops = TOO_MANY_STOPS.matcher(reason);
         if (stops.matches()) return "Too many stops (" + stops.group(1) + ", max " + stops.group(2) + ")";
@@ -537,10 +664,6 @@ public final class MainActivity extends Activity {
             default: plain = Character.toUpperCase(base.charAt(0)) + base.substring(1);
         }
         return stopFees ? plain + " (with stop fees)" : plain;
-    }
-
-    private static boolean hasFacts(OfferSnapshot facts) {
-        return facts.miles != null || facts.minutes != null || facts.stops != null;
     }
 
     /** "9:41 PM" today, otherwise "Sep 28, 9:41 PM". */
@@ -605,7 +728,8 @@ public final class MainActivity extends Activity {
         if (stops.isEmpty()) stops = "0";
         if (!stops.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
         return new FilterSettings(enabled, parseCents(flat), parseCents(mile), parseCents(minute), parseCents(stop),
-                Integer.parseInt(stops), rising.isChecked(), FilterStore.load(this).lastAcceptedCents);
+                Integer.parseInt(stops), rising.isChecked(), FilterStore.load(this).lastAcceptedCents,
+                FilterStore.load(this).best);
     }
 
     /** Parses a dollar amount from 0 to 1000 with at most two decimals. Blank means zero (rule disabled). */

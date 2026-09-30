@@ -296,9 +296,10 @@ public class AndroidAdapterTest {
     @Test
     public void reportIncludesEverySavedRuleAndNotificationAccess() {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, 2500);
+        FilterStore.recordAccepted(app, new OfferSnapshot(2500, 6.0, 25, 2));
         String report = DiagnosticLog.report(app);
         assertTrue(report.contains("max stops=3; rising offers=true; last accepted cents=2500"));
+        assertTrue(report.contains("best accepted=$1.00/min, $4.17/mi, $12.50/stop"));
         assertTrue(report.contains("Notification access granted: false"));
     }
 
@@ -473,6 +474,85 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void theFilterPictureShowsTheLast24HoursAndTheState() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        DecisionLog.record(app, declinedEntry());
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 60_000, DecisionLog.Source.SCREEN,
+                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.PASSES, true, Collections.emptyList()));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            FilterHeroView hero = find(content, FilterHeroView.class);
+            assertEquals("Auto-decline on. Last 24 hours: 1 passed, 1 filtered, 0 to review.",
+                    hero.getContentDescription().toString());
+
+            findButton(content, "Pause auto-decline").performClick();
+            assertTrue(hero.getContentDescription().toString().startsWith("Auto-decline paused."));
+        }
+    }
+
+    @Test
+    public void theRulesPictureFollowsTheRulesAsTheyAreTyped() {
+        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            RuleMeterView meter = find(content, RuleMeterView.class);
+            // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops.
+            assertEquals("An offer like 21 min · 7.2 mi · 2 stops: needs $7.00",
+                    meter.getContentDescription().toString());
+
+            fieldLabeled(content, "Per mile ($)").setText("1.50");
+            assertEquals("An offer like 21 min · 7.2 mi · 2 stops: needs $10.80",
+                    meter.getContentDescription().toString());
+            fieldLabeled(content, "Max stops (1 order = 2)").setText("1");
+            assertTrue(meter.getContentDescription().toString().endsWith("declined. At most 1 stop: this one has 2"));
+            // Unsaved: nothing changed in the saved rules.
+            assertEquals(0, FilterStore.load(app).perMileCents);
+        }
+    }
+
+    @Test
+    public void anOpenedHistoryRowDrawsTheOffer() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull("drawn only when opened", find(content, OfferCardView.class));
+            ((View) findTextContaining(content, "Below your per-mile rate").getParent().getParent()).performClick();
+            OfferCardView card = find(content, OfferCardView.class);
+            assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
+                    card.getContentDescription().toString());
+        }
+    }
+
+    @Test
+    public void acceptedOffersRaiseTheBestRatesUntilReset() {
+        // Nothing is learned while the adaptive minimum is off, or while auto-decline is paused.
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));
+        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
+        FilterStore.save(app, new FilterSettings(false, 1000, 0, 0, 0, 0, true, 0));
+        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
+        assertTrue(FilterStore.load(app).best.isEmpty());
+        assertEquals("the payout baseline still follows every acceptance", 3000,
+                FilterStore.load(app).lastAcceptedCents);
+
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
+        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+        FilterStore.recordAccepted(app, new OfferSnapshot(900, 6.0, 24, 2));
+        FilterSettings saved = FilterStore.load(app);
+        assertEquals(900, saved.lastAcceptedCents);
+        assertEquals("the lower offer is the last one, not a new best", "$0.59/min, $2.37/mi, $7.10/stop",
+                saved.best.summary());
+
+        // Saving rules keeps what was learned; Reset starts over.
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
+        assertEquals("$0.59/min, $2.37/mi, $7.10/stop", FilterStore.load(app).best.summary());
+        FilterStore.resetAccepted(app);
+        assertTrue(FilterStore.load(app).best.isEmpty());
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();
@@ -566,6 +646,19 @@ public class AndroidAdapterTest {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) collectButtons(group.getChildAt(i), out);
         }
+    }
+
+    /** The first view of {@code type} in the tree, or null. */
+    private static <T extends View> T find(View view, Class<T> type) {
+        if (type.isInstance(view)) return type.cast(view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                T found = find(group.getChildAt(i), type);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** The first button labeled {@code text} that is actually on screen (itself and every ancestor visible). */

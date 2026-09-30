@@ -529,6 +529,22 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void acceptingAStandaloneOfferRecordsItsPayoutAndBestRates() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        show(offer("$25.00"));
+        AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
+        tap.setPackageName("com.doordash.driverapp");
+        tap.getText().add("Accept");
+        controller.get().onAccessibilityEvent(tap);
+        show(node("Arrived at store", false));
+
+        FilterSettings saved = FilterStore.load(app);
+        assertEquals(2500, saved.lastAcceptedCents);
+        // $25.00 for 21 min, 7.2 mi and 2 stops.
+        assertEquals("$1.19/min, $3.47/mi, $12.50/stop", saved.best.summary());
+    }
+
+    @Test
     public void acceptedAddOnUpdatesTheActiveRoute() {
         ActiveRouteStore.save(app, new OfferSnapshot(2500, 10.0, null, 2));
         AccessibilityNodeInfo root = node("", false);

@@ -3,6 +3,7 @@ package com.local.dasherfilter;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -62,6 +63,11 @@ final class Ui {
         selectionWash = dark ? 0xFF262625 : 0xFFF1F0EC;
     }
 
+    /** True when the user's font setting is large enough that side-by-side text would crowd. */
+    boolean largeText() {
+        return context.getResources().getConfiguration().fontScale >= 1.3f;
+    }
+
     int dp(float value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
                 context.getResources().getDisplayMetrics()));
@@ -69,6 +75,25 @@ final class Ui {
 
     float sp(float value) {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, context.getResources().getDisplayMetrics());
+    }
+
+    /**
+     * Shrinks {@code paint}'s text size (down to {@code minFraction} of it) until {@code value} fits
+     * {@code maxWidth}, for drawn text that must survive large system font sizes; returns the text, ellipsized if
+     * it still does not fit.
+     */
+    static CharSequence fit(android.text.TextPaint paint, String value, float maxWidth, float minFraction) {
+        float size = paint.getTextSize();
+        float width = paint.measureText(value);
+        if (width > maxWidth && width > 0) paint.setTextSize(Math.max(size * minFraction, size * maxWidth / width));
+        return android.text.TextUtils.ellipsize(value, paint, Math.max(0, maxWidth),
+                android.text.TextUtils.TruncateAt.END);
+    }
+
+    /** Height of one line of text at {@code paint}'s current size. */
+    static float lineHeight(Paint paint) {
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        return metrics.descent - metrics.ascent;
     }
 
     static int resultColor(OfferRule.Result result) {
@@ -223,6 +248,8 @@ final class Ui {
 
     TextView badge(String symbol, int color, int sizeDp) {
         TextView view = text(symbol, sizeDp * 0.5f, onStatus(color), true);
+        // The symbol belongs to the circle, so it scales with the circle, not with the font setting.
+        view.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sizeDp * 0.5f);
         view.setGravity(Gravity.CENTER);
         view.setIncludeFontPadding(false);
         GradientDrawable circle = new GradientDrawable();
@@ -242,8 +269,17 @@ final class Ui {
 
     /** A labeled numeric field; the label is linked to the field for screen readers. */
     EditText field(LinearLayout parent, String label, String value, boolean decimal) {
+        return field(parent, label, value, decimal, null);
+    }
+
+    /** A labeled numeric field whose label starts with a drawn icon for what it measures. */
+    EditText field(LinearLayout parent, String label, String value, boolean decimal, Glyph.Shape icon) {
         TextView caption = text(label, 13, inkSecondary, false);
         caption.setPadding(0, dp(10), 0, dp(4));
+        if (icon != null) {
+            caption.setCompoundDrawablesRelative(new Glyph(icon, inkSecondary, dp(16)), null, null, null);
+            caption.setCompoundDrawablePadding(dp(6));
+        }
         EditText field = new EditText(context);
         field.setId(View.generateViewId());
         caption.setLabelFor(field.getId());

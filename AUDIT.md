@@ -120,3 +120,15 @@ Scope: a new outbound data path, an automated release path, and two changes to t
   - Vibration cannot be stopped by another app.
   - Whether ACTION_OUTSIDE reaches the overlay for every touch, and which stream Dasher rings on, are device behavior the simulated tests cannot establish.
   - Actions minutes and Claude usage are spent per report, bounded by the caps.
+
+## Follow-up — 0.4.10 (adaptive rates, drawn screen)
+
+- **Adaptive rates.** Best accepted pay per minute, per mile and per stop are kept as the (pay, amount) pair that set them, so comparisons and requirements use exact integer or BigDecimal arithmetic with ceiling rounding.
+  - They apply only while the adaptive minimum is on, each as its own floor. They never apply to add-ons.
+  - A missing amount a floor needs gives REVIEW unless another known floor already fails.
+  - Bests are learned only while auto-decline and the adaptive minimum are both on.
+  - An offer with any misread-looking figure (under 5 min, 0.5 mi or 2 stops) sets none.
+  - Only trips of at least 2 mi and 10 min set the per-mile and per-minute bests.
+  - Saving rules never touches them; Reset clears them. Corrupt stored values read as none.
+  - *(Review: the first draft let a $7.50, 0.6 mi trip set $12.50/mi, so a normal $15, 5 mi offer "needed" $62.50. It also learned while off, and set a per-stop best from partial misreads. All were reproduced by tests and fixed.)*
+- **Drawn views.** The drawn views reuse OfferRule for totals: the meter evaluates the example offer with a very large pay to read the requirement. Layouts come from font metrics, with fitting, stacking and wrapping at large font scales, and were checked at 1.3× and 2×. The hero's middle pile counts only offers the app acted on. They redraw only when what they show changes. Each has a content description for screen readers, and no meaning rests on color alone.

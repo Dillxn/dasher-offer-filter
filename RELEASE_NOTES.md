@@ -1,3 +1,37 @@
+## 0.4.10 — adaptive minimum for rates, and a drawn screen
+
+- **The adaptive minimum now covers rates.** Turn on **Adaptive minimum** under Rules, and each standalone offer you accept raises it:
+  - **Payout:** a later offer must pay more than the last one you accepted, as before.
+  - **Rates:** it must also at least match your best accepted pay per minute, per mile and per stop. If your best was $14.20 for 24 minutes, a 30-minute offer needs $17.75.
+  - **How floors combine:** each floor stands on its own and is compared with your saved rules. The higher one applies; nothing is added on top.
+  - **Unknowns:** an offer that doesn't show the minutes, miles or stops a floor needs goes to review, never keep or decline.
+  - **When it learns:** only while auto-decline and the adaptive minimum are both on.
+  - **What doesn't count:**
+    - Add-ons are never judged by these floors and don't raise them.
+    - An offer with any misread-looking figure (under 5 minutes, under half a mile, 1 stop) sets no best at all.
+    - Only trips of at least 2 miles set the per-mile best, and only trips of at least 10 minutes the per-minute best. A short hop's inflated rate would otherwise decline nearly every normal offer.
+  - **Starting over:** **Reset** starts it all over.
+- **A drawn screen.**
+  - **Top card:** your offers flow through a funnel into passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. The funnel opens and turns amber when paused.
+  - **Opened offers:** a tapped bar or history row is drawn as a ticket: pay against what was needed, and the route from pickup to drop-off with a dot per stop.
+  - **Rules:** a meter shows what an offer like your latest one needs, rule by rule, with the deciding rule highlighted. It updates as you type.
+  - **Icons:** small drawn icons (clock, road, pin, coin) mark each rule field.
+  - **Large fonts:** everything is sized from your font setting, so large fonts wrap and stack instead of overlapping.
+
+An independent review before release found three problems, all fixed with tests:
+- A short trip's inflated rate could lock out normal offers.
+- Bests were learned while the feature was off.
+- A partial misread could still set a best.
+
+It also found three drawing issues: large-font overflow, faint idle labels, and paused offers counted as declined.
+
+Evidence boundaries: JUnit and Robolectric (simulated Android 8 and 15) tests cover:
+- the adaptive floors, exact ties, unknown amounts, add-on exclusion, and implausible readings;
+- recording from an observed acceptance, storage and Reset;
+- the drawn views' content: counts, state, the live meter, opened offers.
+
+The screen was rendered and reviewed in light and dark themes, at a 320dp phone width, and at 1.3× and 2× font sizes. Real handset installation and DoorDash's real screens, sounds and vibration were not exercised.
+
 ## 0.4.9 — touch to take over, a quieter decline, and an automatic fix loop
 
 - **Touch to take over.** Touching the screen while a filtered offer is being declined stops the automation for that offer, and a toast says "Offer Filter stopped tapping this offer".

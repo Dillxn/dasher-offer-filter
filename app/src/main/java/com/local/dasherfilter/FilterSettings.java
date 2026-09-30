@@ -13,6 +13,8 @@ final class FilterSettings {
     final int maxStops;
     final boolean risingOffers;
     final int lastAcceptedCents;
+    /** Best accepted pay per minute, mile and stop; floors while the adaptive minimum is on. */
+    final AcceptedBest best;
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int extraStopCents, int maxStops) {
@@ -22,6 +24,13 @@ final class FilterSettings {
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int extraStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops, risingOffers,
+                lastAcceptedCents, AcceptedBest.NONE);
+    }
+
+    FilterSettings(boolean enabled, int flatCents, int perMileCents,
+                   int perMinuteCents, int extraStopCents, int maxStops,
+                   boolean risingOffers, int lastAcceptedCents, AcceptedBest best) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
@@ -30,6 +39,7 @@ final class FilterSettings {
         this.maxStops = maxStops;
         this.risingOffers = risingOffers;
         this.lastAcceptedCents = lastAcceptedCents;
+        this.best = best == null ? AcceptedBest.NONE : best;
     }
 
     /** True when at least one rule can reject or require review of an offer. */
@@ -55,6 +65,7 @@ final class FilterSettings {
             rules.add(lastAcceptedCents > 0
                     ? "more than last accepted " + DecisionLog.money(lastAcceptedCents)
                     : "more than your last accepted pay (none yet)");
+            if (!best.isEmpty()) rules.add("at least your best accepted " + best.summary());
         }
         return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
     }
@@ -68,20 +79,21 @@ final class FilterSettings {
         if (extraStopCents > 0) rules.add("+" + DecisionLog.shortMoney(extraStopCents) + "/extra stop");
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
-            rules.add(lastAcceptedCents > 0
-                    ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat last accepted");
+            String adaptive = lastAcceptedCents > 0
+                    ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat last accepted";
+            rules.add(best.isEmpty() ? adaptive : adaptive + " + best rates");
         }
         return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
     }
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
-                risingOffers, lastAcceptedCents);
+                risingOffers, lastAcceptedCents, best);
     }
 
-    /** Add-on routes are judged without the standalone rising-payout baseline. */
+    /** Add-on routes are judged without the adaptive minimum: neither the payout baseline nor the best rates. */
     FilterSettings withoutRisingBaseline() {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
-                false, lastAcceptedCents);
+                false, lastAcceptedCents, best);
     }
 }

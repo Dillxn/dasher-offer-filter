@@ -34,7 +34,20 @@ The app retains original passing/unknown notifications rather than deleting them
 
 ## Rules and add-ons
 
-Stops count pickups plus drop-offs, as DoorDash shows them: a single order is 2 stops and a double is 4. A "(N stops)" breakdown beside pickups or drop-offs is not the total. Zero disables a rule. Required pay is `max(flat, miles × per-mile rate, minutes × per-minute rate) + extra-stop fee × max(0, stops - 2)`. Maximum stops is inclusive. The optional standalone rising-payout baseline requires strictly more than the last observed accepted standalone payout.
+Stops count pickups plus drop-offs, as DoorDash shows them: a single order is 2 stops and a double is 4. A "(N stops)" breakdown beside pickups or drop-offs is not the total. Zero disables a rule. Required pay is `max(flat, miles × per-mile rate, minutes × per-minute rate) + extra-stop fee × max(0, stops - 2)`. Maximum stops is inclusive.
+
+The optional **Adaptive minimum** rises with the standalone offers you accept:
+
+- **Payout:** an offer must pay strictly more than the last accepted payout.
+- **Rates:** it must also at least match the best pay per minute, per mile and per stop among accepted offers. For example, if your best is $14.20 for 24 minutes, a 30-minute offer needs $17.75.
+- **How the floors combine:** each is a floor of its own, compared with the saved rules' total, never added to it.
+- **Unknowns:** if an offer doesn't show the minutes, miles or stops a floor needs, it goes to review, never keep or decline.
+- **When it learns:** bests are learned only while auto-decline and the adaptive minimum are both on. Turning the minimum on never applies highs gathered while it was off.
+- **What doesn't count:**
+  - Add-ons are never judged by these floors and don't set them.
+  - An offer with any misread-looking figure (under 5 minutes, under half a mile, or 1 stop) sets no best at all.
+  - Short trips pay mostly base pay, so only trips of at least 2 miles set the per-mile best, and only trips of at least 10 minutes the per-minute best. A $7.50 hop of 0.6 miles would otherwise make every 5-mile offer need $62.50.
+- **Starting over:** **Reset** clears the payout and every best rate.
 
 Known failures may decline despite another missing field. Conflicting, oversized, malformed, negative, ranged, and ambiguous numeric inputs do not become exact facts. Costs use overflow-safe long arithmetic and decimal ceiling for mileage rates.
 
@@ -44,7 +57,14 @@ Add-on offers are not fresh standalone orders. They need explicitly added pay/di
 
 Install the cloud-signed APK over an existing cloud-signed 0.4.x installation. Do not uninstall for a normal update. The original 0.3.1 signer is a separate retired installation chain. Enable Accessibility, notification access, and Offer Filter's notification permission. Configure the observed DoorDash offer channel using the app's shortcut. Some Android devices require allowing restricted settings for sideloaded Accessibility services.
 
-The screen is kept short. The top card shows whether auto-decline is on, paused or off, the rules in one line (for example `$7 min · $1.50/mi · ≤3 stops`), and one button: **Pause auto-decline** takes effect at once, and **Resume auto-decline** saves the rules and turns auto-decline back on (it refuses when no rule is set). A row with a Fix button appears only while screen reading, background offers or alerts are off. **Rules** and **Setup & help** fold away until tapped; **Save rules** keeps the current on/paused state. While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
+The screen is kept short and mostly drawn rather than written.
+
+- **Top card.** Offer tickets flow into a funnel and out to passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. A failing offer left to you (paused, refused or taken over) counts as review. The funnel has its sieve when on, is open, dashed and amber when paused, and grey when off.
+- **Opened offer.** Tapping a chart bar or a history row draws the offer: its pay as a bar against the needed-pay tick, and its route from pickup bag to drop-off house with a dot per stop.
+- **Rules.** A meter shows what an offer like your latest one needs, as one bar per rule with icons: minimum pay, per mile, per minute, extra stops, and each adaptive floor. The rule that sets the bar is highlighted. It follows the fields as you type, before you save.
+- **Large fonts.** The drawings size themselves from the system font setting. Labels shrink, or move to their own line, rather than overlap or get cut. With a large font, rule fields stack in one column.
+
+Under the picture, the top card shows whether auto-decline is on, paused or off, the rules in one line (for example `$7 min · $1.50/mi · ≤3 stops`), and one button: **Pause auto-decline** takes effect at once, and **Resume auto-decline** saves the rules and turns auto-decline back on (it refuses when no rule is set). A row with a Fix button appears only while screen reading, background offers or alerts are off. **Rules** and **Setup & help** fold away until tapped; **Save rules** keeps the current on/paused state. While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
 
 ## Decision history and diagnostics
 
