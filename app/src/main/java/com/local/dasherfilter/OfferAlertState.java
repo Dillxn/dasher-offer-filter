@@ -28,8 +28,12 @@ final class OfferAlertState {
         return displayed && signature.equals(nextSignature) && result == nextResult;
     }
 
+    /**
+     * Once per offer, while Dasher is not on screen and never on a replay: a passing offer, or one that could not be
+     * judged, so a background offer is heard. A known failure never rings.
+     */
     boolean shouldRing(OfferRule.Result nextResult, boolean foreground, boolean replay) {
-        return nextResult == OfferRule.Result.KEEP && !rang && !foreground && !replay;
+        return nextResult != OfferRule.Result.DECLINE && !rang && !foreground && !replay;
     }
 
     void delivered(String signature, OfferRule.Result result, boolean rang) {

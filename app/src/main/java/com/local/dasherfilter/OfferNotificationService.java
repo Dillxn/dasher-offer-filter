@@ -24,7 +24,8 @@ import java.util.Map;
 
 /**
  * Classifies DoorDash offer notifications in the background. Never launches an activity: notification evidence and
- * screen evidence are separate authorities, and an unclassified offer only gets a silent review card.
+ * screen evidence are separate authorities. An offer that cannot be judged gets a card that rings once while Dasher
+ * is in the background, so it is not missed, and is otherwise left to the user.
  */
 public final class OfferNotificationService extends NotificationListenerService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -299,11 +300,11 @@ public final class OfferNotificationService extends NotificationListenerService 
         if (posted) offer.state.delivered(signature, decision.result, ring);
         if (review) {
             FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason
-                    + ".\nDasher has not been opened. Tap the silent review card to inspect.");
+                    + ".\nDasher has not been opened. Tap the card to inspect.");
         }
         if (foreground) OfferFilterService.requestCheckFromNotification();
         if (!posted) return DecisionLog.Action.CARD_BLOCKED;
-        if (review) return DecisionLog.Action.SILENT_CARD;
+        if (review) return ring ? DecisionLog.Action.CHECK_BELL : DecisionLog.Action.SILENT_CARD;
         return ring ? DecisionLog.Action.BELL : DecisionLog.Action.QUIET_PASS_CARD;
     }
 

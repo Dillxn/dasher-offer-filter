@@ -92,20 +92,52 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void unclassifiedNotificationUsesSilentChannelAndDoesNotLaunch() {
+    public void aReviewCardNotAskedToRingStaysQuietAndDoesNotLaunch() {
         assertTrue(OfferAlerts.notifyOffer(app, "review", null, OfferRule.Result.REVIEW, "Missing pay", false));
 
         Notification notification = notifications().getNotification("review", ALERT_NOTIFICATION_ID);
         assertNotNull(notification);
         assertEquals(OfferAlerts.REVIEW_CHANNEL_ID, notification.getChannelId());
+        // A group child with summary-only alerting never alerts, even on the audible "Offers to check" channel.
         assertEquals(Notification.GROUP_ALERT_SUMMARY, notification.getGroupAlertBehavior());
-
-        // The review channel is silent, and posting the card starts no activity.
-        NotificationChannel channel = app.getSystemService(NotificationManager.class)
-                .getNotificationChannel(notification.getChannelId());
-        assertNull(channel.getSound());
-        assertFalse(channel.shouldVibrate());
         assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+        // The silent channel older versions used is gone.
+        assertNull(app.getSystemService(NotificationManager.class).getNotificationChannel("unclassified_offers_v1"));
+    }
+
+    @Test
+    public void aBackgroundOfferWithoutPayRingsOnceSoItIsNotMissed() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        ServiceController<OfferNotificationService> controller =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            // DoorDash's background notification names the store but not the pay, so it cannot be judged.
+            StatusBarNotification offer = doorDashOffer("New Order: Go to Chick-fil-A");
+            controller.get().onNotificationPosted(offer, null);
+            Notification card = notifications().getAllNotifications().get(0);
+            NotificationChannel channel = app.getSystemService(NotificationManager.class)
+                    .getNotificationChannel(card.getChannelId());
+            assertEquals("it must be heard", NotificationManager.IMPORTANCE_HIGH, channel.getImportance());
+            assertNotNull(channel.getSound());
+            assertTrue(card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
+            assertNull("still never opens Dasher by itself", Shadows.shadowOf(app).getNextStartedActivity());
+            assertEquals("CHECK_BELL", DecisionLog.recent(app, 1).get(0).action.name());
+
+            // An update of the same offer (DoorDash changes its title as the offer ages) does not ring again.
+            Notification aged = new Notification.Builder(app, "source")
+                    .setSmallIcon(android.R.drawable.stat_notify_more)
+                    .setContentTitle("New Delivery! 0:45 left")
+                    .setContentText("New Order: Go to Chick-fil-A")
+                    .build();
+            controller.get().onNotificationPosted(new StatusBarNotification("com.doordash.driverapp",
+                    "com.doordash.driverapp", 3, "NEW_ORDER", 10001, 0, 0, aged, android.os.Process.myUserHandle(),
+                    System.currentTimeMillis()), null);
+            assertEquals(1, notifications().size());
+            Notification update = notifications().getAllNotifications().get(0);
+            assertEquals(Notification.GROUP_ALERT_SUMMARY, update.getGroupAlertBehavior());
+        } finally {
+            controller.destroy();
+        }
     }
 
     @Test
@@ -779,7 +811,8 @@ public class AndroidAdapterTest {
             assertEquals(DecisionLog.Source.NOTIFICATION, recent.get(0).source);
             assertEquals(OfferRule.Result.REVIEW, recent.get(0).result);
             assertEquals("pay not found", recent.get(0).reason);
-            assertEquals(DecisionLog.Action.SILENT_CARD, recent.get(0).action);
+            assertEquals("in the background it rang once, so it is not missed", DecisionLog.Action.CHECK_BELL,
+                    recent.get(0).action);
         } finally {
             controller.destroy();
         }

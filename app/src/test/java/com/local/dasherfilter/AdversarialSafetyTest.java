@@ -79,12 +79,18 @@ public final class AdversarialSafetyTest {
     }
 
     @Test
-    public void reviewAndReplayNeverRing() {
+    public void replaysForegroundOffersAndKnownFailuresNeverRing() {
         OfferAlertState state = new OfferAlertState(1000, 1000);
         // Arguments: result, foreground, replay.
-        assertFalse(state.shouldRing(OfferRule.Result.REVIEW, false, false));
         assertFalse(state.shouldRing(OfferRule.Result.KEEP, false, true));
+        assertFalse(state.shouldRing(OfferRule.Result.REVIEW, false, true));
         assertFalse(state.shouldRing(OfferRule.Result.KEEP, true, false));
+        assertFalse(state.shouldRing(OfferRule.Result.REVIEW, true, false));
+        assertFalse(state.shouldRing(OfferRule.Result.DECLINE, false, false));
+        // A background offer that cannot be judged rings once, so it is not missed.
+        assertTrue(state.shouldRing(OfferRule.Result.REVIEW, false, false));
+        state.delivered("unjudged", OfferRule.Result.REVIEW, true);
+        assertFalse(state.shouldRing(OfferRule.Result.KEEP, false, false));
     }
 
     @Test

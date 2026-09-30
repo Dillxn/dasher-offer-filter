@@ -13,10 +13,16 @@ import android.os.Build;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 
-/** Passing offers may ring; unknown offers get a separate, noninterrupting review card. */
+/**
+ * Passing offers may ring on their own channel. An offer that cannot be judged (DoorDash's background notification
+ * shows no pay, or auto-decline is paused) rings once on "Offers to check", so it is not missed while Dasher is in
+ * the background; it is never judged, declined or opened for you.
+ */
 final class OfferAlerts {
     static final String CHANNEL_ID = "qualifying_offers";
-    static final String REVIEW_CHANNEL_ID = "unclassified_offers_v1";
+    static final String REVIEW_CHANNEL_ID = "offers_to_check_v2";
+    /** 0.4.15 and earlier posted review cards silently here; Android cannot raise a channel's importance later. */
+    private static final String RETIRED_SILENT_REVIEW_CHANNEL_ID = "unclassified_offers_v1";
     static final int NOTIFICATION_ID = 8241;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final int MAX_BODY_CHARS = 500;
@@ -36,11 +42,16 @@ final class OfferAlerts {
         manager.createNotificationChannel(passing);
 
         NotificationChannel review = new NotificationChannel(
-                REVIEW_CHANNEL_ID, "Unclassified offers (silent)", NotificationManager.IMPORTANCE_LOW);
-        review.setDescription("An offer exists, but required pay/distance evidence is missing. Tap to inspect it.");
-        review.enableVibration(false);
-        review.setSound(null, null);
+                REVIEW_CHANNEL_ID, "Offers to check", NotificationManager.IMPORTANCE_HIGH);
+        review.setDescription("An offer arrived while Dasher was in the background, but its pay or distance was not "
+                + "shown, so it could not be judged. Rings once; tap to open Dasher.");
+        review.enableVibration(true);
+        review.setSound(Settings.System.DEFAULT_NOTIFICATION_URI, new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
         manager.createNotificationChannel(review);
+        manager.deleteNotificationChannel(RETIRED_SILENT_REVIEW_CHANNEL_ID);
     }
 
     /** Whether the passing-offer channel can actually post. */
@@ -91,11 +102,11 @@ final class OfferAlerts {
 
         String body = detail == null ? "" : detail;
         if (body.length() > MAX_BODY_CHARS) body = body.substring(0, MAX_BODY_CHARS) + "…";
-        boolean audible = result == OfferRule.Result.KEEP && ring;
+        boolean audible = ring;
         Notification.Builder builder = new Notification.Builder(context, channel)
                 .setSmallIcon(smallIcon(context))
                 .setContentTitle(result == OfferRule.Result.KEEP
-                        ? "DoorDash offer passes filter" : "DoorDash offer: not yet classified")
+                        ? "DoorDash offer passes filter" : "DoorDash offer: open Dasher to check it")
                 .setContentText(body)
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -111,7 +122,7 @@ final class OfferAlerts {
         if (open != null) builder.setContentIntent(open);
 
         try {
-            // A decline of an earlier offer may still have the sound turned down; this offer's bell must be heard.
+            // A decline of an earlier offer may still have the sound turned down; this offer's alert must be heard.
             if (audible) OfferSilencer.yieldToPassingAlert(context);
             context.getSystemService(NotificationManager.class).notify(tag, NOTIFICATION_ID, builder.build());
             DiagnosticLog.log(context, "alert", "posted " + result + " audibleRequested=" + audible);

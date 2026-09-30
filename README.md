@@ -8,7 +8,7 @@ When a real offer screen is visible in Dasher, Accessibility reads the displayed
 
 The confirmation step belongs only to the offer that was declined. A confirmation needs a prompt ("Are you sure…", "Decline offer?") or a way back ("Cancel", "Go back"); a lone Decline button is how a new offer looks while it is still being drawn. A screen whose pay, distance, time or stops contradict the declined offer is a different offer and is judged on its own. Once the tapped confirmation closes, the authority ends.
 
-In the background, a notification containing sufficient explicit offer data can be evaluated. Passing offers receive a selective Offer Filter alert. Unknown offers receive a separate **silent, unclassified review card** that the user can tap to open Dasher. The app does not automatically foreground Dasher. A background notification with only a merchant name cannot establish payout, distance, or whether the order passes.
+In the background, a notification containing sufficient explicit offer data can be evaluated. Passing offers receive a selective Offer Filter alert. An offer that cannot be judged gets a card on **Offers to check** that rings once while Dasher is in the background, so it is not missed, and opens Dasher when tapped. The app does not automatically foreground Dasher. A background notification with only a merchant name cannot establish payout, distance, or whether the order passes.
 
 If a known-failing background offer exposes a safe DoorDash-owned non-activity Decline action, the app can request it. Otherwise it can hide the notification only. **Hiding a notification does not decline the order**; it may remain pending until acted on or expired.
 
@@ -28,7 +28,7 @@ Navigation voice shares the media stream, so if Dasher's ring plays there, direc
 
 Touching the screen while a decline is in progress hands the offer back. The confirmation is not tapped, that offer is not declined again (from the screen or its notification), the sound comes back, and a toast says so. The takeover holds through partly drawn frames of that offer. It ends when Dasher goes idle or to a delivery, when a clearly different offer appears, or after two minutes. A tiny invisible accessibility overlay notices the touch without receiving it. The app's own taps are accessibility actions, not touches, so they never count. A decline whose confirmation was already tapped can't be undone. A channel's name does not establish its actual configuration; opt-in diagnostics record actual channel sound, vibration, importance, and presence of a full-screen intent when Android exposes these.
 
-Only proven passing offers request an audible Offer Filter alert. Unknown offers and disabled-filter offers use the silent review channel. Consequently a qualifying order with no background price/distance evidence will not produce a passing bell until adequate evidence is available. This is a deliberate uncertainty boundary, not fully automatic background classification. Silent review can be missed; inspect the review cards while parked.
+Two alerts can ring, each at most once per offer and only while Dasher is not on screen. A proven passing offer rings on **Offers that pass**. An offer that cannot be judged rings on **Offers to check**: DoorDash's background notification shows no pay, or auto-decline is paused. Nothing rings on a replay, a reconnect or an update of the same offer, or for a known failure. An offer that could not be judged is never declined or opened automatically; the alert only says to look. Before 0.4.16 these offers got a silent card, and with DoorDash's own offer channel silenced, background offers went unnoticed.
 
 The app retains original passing/unknown notifications rather than deleting them merely because it tried to post a replacement. Alert permission denial, blocked channels, reconnects, duplicate updates, expiration, and stale removals are handled separately.
 
@@ -69,7 +69,7 @@ The app has two pages, drawn rather than boxed. The main page reads top to botto
 - **Settings.** The rules are price tags, with a live line saying what an example offer needs as you type. **Save rules** keeps the current on/paused state. Switches have the mascot's face for a knob: awake when on, asleep when off. Then come sound and Android shortcuts, the offer map, reports (**Share report**, **Clear history**, raw capture, automatic reports) and updates. Buttons are chunky keys that press down.
 - **Scenery and fonts.** A sun, clouds and birds (a moon and stars in dark mode) sit behind each page title, and each page ends on hills, houses and a road with a little car, all in colors close to the page. The drawings size themselves from the system font setting. Labels shrink, or move to their own line, rather than overlap or get cut. With a large font, price tags stack in one column and the star's values move under it.
 
-While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
+While paused nothing is declined, and every background offer gets an "Offers to check" alert. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
 
 ## Offer areas
 

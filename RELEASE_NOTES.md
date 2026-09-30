@@ -1,3 +1,10 @@
+## 0.4.16 — background offers are no longer missed
+
+- **Fix: offers were missed while Dasher was in the background.** DoorDash's background notification names the store but not the pay, so Offer Filter cannot judge it. Such offers got a silent card, and with DoorDash's own offer channel silenced, nothing made a sound. They now ring once on a new **Offers to check** channel while Dasher is not on screen. Tap the card to open Dasher. They are still never declined or opened for you. Nothing rings again on updates, replays or reconnects, or for offers the rules decline. Offers while auto-decline is paused alert the same way.
+- The old silent "Unclassified offers" channel is removed; Android cannot make an existing channel louder, so the new one replaces it.
+
+Evidence boundaries: simulated Android 8 and 15 tests cover the ring once, the quiet update and the absence of any launch; the ring test fails on 0.4.15. Not verified: DoorDash's real background notifications and sound on a phone.
+
 ## 0.4.15 — the map keeps showing the best area
 
 - **Fix:** the map's details are meant to show the best area until you tap another. In 0.4.14, the first automatic choice counted as your tap, so when a better area turned up while the page was open, the details stayed on the old one. They now follow the best area until you pick one, and your pick then stays put as the ranking changes.
