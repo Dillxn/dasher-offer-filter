@@ -359,7 +359,7 @@ final class AreaMapView extends View {
         canvas.drawText(Integer.toString(place + 1), cx, cy + text.getTextSize() / 3, text);
     }
 
-    /** The phone's position: a dot with a halo that breathes out and fades, and "You". */
+    /** The phone's position: a dot with a halo that breathes out and fades. */
     private void drawHere(Canvas canvas) {
         float cx = x(here[1]);
         float cy = y(here[0]);
@@ -370,13 +370,7 @@ final class AreaMapView extends View {
         canvas.drawCircle(cx, cy, ui.dp(7.5f), fill);
         fill.setColor(ui.accent);
         canvas.drawCircle(cx, cy, ui.dp(5.5f), fill);
-        text.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF3A2A18);
-        text.setTextSize(Math.min(ui.sp(11), ui.dp(15)));
-        if (hereName == null) {
-            canvas.drawText("You", cx, cy + ui.dp(14) - text.getFontMetrics().ascent, text);
-        } else {
-            drawLabel(canvas, "You · " + hereName, cx, cy + ui.dp(22));
-        }
+        // No label: the blue dot is you, and the signpost on the hills names where.
     }
 
     /** A compass rose with north marked. */

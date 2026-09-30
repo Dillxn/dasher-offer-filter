@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Intent;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -16,7 +17,8 @@ import java.util.Locale;
 
 /**
  * Reads only the visible Dasher window and may request Decline on a readable, known-failing offer. A notification
- * is never authority to click another offer, and a successful click is a request, not a confirmed decline.
+ * is never authority to click another offer, and a successful click is a request, not a confirmed decline. In split
+ * screen, Dasher's half is read even while the user is in the other half, so an offer there is judged at once.
  */
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -74,6 +76,10 @@ public final class OfferFilterService extends AccessibilityService {
     private long takenOverAt;
     /** Whether the latest read showed the declined offer or its own confirmation, so its ring may be turned down. */
     private boolean declinedOfferShowing;
+    /** Whether the latest read showed an offer or a confirmation, which the best-area guide must not cover. */
+    private boolean offerOnScreen;
+    /** Whether the last look at the windows found the screen split (Android's split-screen divider). */
+    private boolean splitSeen;
     /** The last declined offer already reported as stuck. */
     private String reportedStuck = "";
     /** The last offer already reported as unreadable, so repeated reads of it file nothing more. */
@@ -102,12 +108,29 @@ public final class OfferFilterService extends AccessibilityService {
         return service != null && service.isTakenOver(facts, SystemClock.uptimeMillis());
     }
 
+    /** Whether Dasher is on screen: the active window, or its half of a split screen. */
     static boolean isDasherForeground() {
         OfferFilterService service = active;
         if (service == null) return false;
         try {
-            return isDasher(service.getRootInActiveWindow());
+            return service.dasherRoot() != null;
         } catch (RuntimeException error) {
+            return false;
+        }
+    }
+
+    /**
+     * At the user's tap on Split with Dasher: asks Android to split the screen, as its own Split screen accessibility
+     * shortcut does. Never called otherwise.
+     *
+     * @return whether Android took the request
+     */
+    static boolean splitScreen() {
+        OfferFilterService service = active;
+        if (service == null) return false;
+        try {
+            return service.performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+        } catch (RuntimeException refused) {
             return false;
         }
     }
@@ -147,10 +170,11 @@ public final class OfferFilterService extends AccessibilityService {
         boolean windowsChanged = event.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (!windowsChanged && !isDasherPackage(event.getPackageName())) return;
         if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) observeClick(event);
-        syncOverlay();
         handler.removeCallbacks(recheck);
         recheckUntil = SystemClock.uptimeMillis() + RECHECK_WINDOW_MS;
+        // The offer first, so a decline is never kept waiting on the tab.
         if (checkOffer()) handler.postDelayed(recheck, RECHECK_INTERVAL_MS);
+        syncOverlay();
     }
 
     @Override public void onInterrupt() {
@@ -171,11 +195,19 @@ public final class OfferFilterService extends AccessibilityService {
         super.onDestroy();
     }
 
-    /** The filter tab over Dasher follows Dasher on and off the screen. */
+    /** The filter tab over Dasher follows Dasher on and off the screen, and into its half of a split screen. */
     private void syncOverlay() {
         if (overlay == null) return;
         boolean wasShowing = overlay.isShowing();
-        overlay.sync(active == this && isDasherForeground());
+        Rect area = null;
+        if (active == this) {
+            try {
+                area = dasherArea();
+            } catch (RuntimeException unreadable) {
+                area = null;
+            }
+        }
+        overlay.sync(area, area != null && splitSeen, offerOnScreen);
         if (!wasShowing && overlay.isShowing()) {
             handler.removeCallbacks(overlayCheck);
             handler.postDelayed(overlayCheck, OVERLAY_CHECK_MS);
@@ -297,14 +329,18 @@ public final class OfferFilterService extends AccessibilityService {
         long now = SystemClock.uptimeMillis();
         FilterSettings settings = FilterStore.load(this);
         if (!settings.enabled) declineState.reset();
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return settings.enabled;
-        if (!isDasher(root)) {
+        offerOnScreen = false;
+        AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+        if (activeRoot == null) return settings.enabled;
+        AccessibilityNodeInfo root = isDasher(activeRoot) ? activeRoot : splitDasherRoot();
+        if (root == null) {
             declineState.reset();
             acceptedTracker.reset();
             return false;
         }
         Scan scan = Scan.of(root);
+        // A screen too big to read might be an offer: the guide stays off it too.
+        offerOnScreen = scan.truncated;
         if (scan.truncated) {
             declinedOfferShowing = false;
             status("Offer screen exceeded safe read limits; no automatic action.");
@@ -313,6 +349,7 @@ public final class OfferFilterService extends AccessibilityService {
 
         boolean pending = declineState.hasPendingConfirmation(now);
         Scan confirmation = confirmationScan(scan, pending);
+        offerOnScreen = confirmation != null || scan.accept != null || scan.decline != null;
         if (confirmation == null) {
             // Our confirmation closed: no later dialog inherits the authority, even inside the window.
             if (declineState.confirmationSettled(now)) declineState.endConfirmation();
@@ -472,8 +509,8 @@ public final class OfferFilterService extends AccessibilityService {
             if (key.equals(declinedKey)) reportIfStuck(scan, now);
             return declineState.hasPendingConfirmation(now);
         }
-        // Re-check the active window just before acting: the screen can change while it is being read.
-        if (isDasher(getRootInActiveWindow()) && ownClick(scan.decline)) {
+        // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
+        if (dasherRoot() != null && ownClick(scan.decline)) {
             boolean firstTap = !key.equals(declinedKey) || !declineState.hasPendingConfirmation(now);
             declineState.declineSent(key, now);
             declineGeneration = OfferNotificationService.generation();
@@ -581,6 +618,70 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean ownClick(AccessibilityNodeInfo node) {
         ownTapAt = SystemClock.uptimeMillis();
         return click(node);
+    }
+
+    /** Dasher's window to read: the active one, or Dasher's half of a split screen; null when neither. */
+    private AccessibilityNodeInfo dasherRoot() {
+        AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+        return isDasher(activeRoot) ? activeRoot : splitDasherRoot();
+    }
+
+    /** Dasher's half of a split screen while the user is in the other app's half (Offer Filter's, say). */
+    private AccessibilityNodeInfo splitDasherRoot() {
+        AccessibilityWindowInfo half = dasherWindow(false);
+        AccessibilityNodeInfo root = half == null ? null : half.getRoot();
+        return isDasher(root) ? root : null;
+    }
+
+    /**
+     * Dasher's application window among those on screen: with {@code dasherActive}, the one the active root is in;
+     * otherwise only Dasher's half of a split screen, and only while another app's half is the active window. While
+     * the shade, recents or any other system surface is in front, nothing: Dasher is left alone then, as before.
+     */
+    private AccessibilityWindowInfo dasherWindow(boolean dasherActive) {
+        List<AccessibilityWindowInfo> windows;
+        try {
+            windows = getWindows();
+        } catch (RuntimeException unavailable) {
+            splitSeen = false;
+            return null;
+        }
+        boolean split = false;
+        boolean otherAppActive = false;
+        AccessibilityWindowInfo dasher = null;
+        for (AccessibilityWindowInfo window : windows) {
+            if (window.getType() == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
+            if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            if (!isDasher(window.getRoot())) {
+                if (window.isActive()) otherAppActive = true;
+                continue;
+            }
+            // The active Dasher window first, else the one in front.
+            if (dasher == null || (window.isActive() && !dasher.isActive())
+                    || (window.isActive() == dasher.isActive() && window.getLayer() > dasher.getLayer())) {
+                dasher = window;
+            }
+        }
+        splitSeen = split;
+        if (dasher == null) return null;
+        return dasherActive || (split && otherAppActive) ? dasher : null;
+    }
+
+    /**
+     * Where Dasher is on screen, for the filter tab: its window's bounds (half the screen when split), or the whole
+     * screen when Android does not say; null when Dasher is not on screen.
+     */
+    private Rect dasherArea() {
+        boolean dasherActive = isDasher(getRootInActiveWindow());
+        AccessibilityWindowInfo window = dasherWindow(dasherActive);
+        if (window != null) {
+            Rect bounds = new Rect();
+            window.getBoundsInScreen(bounds);
+            if (!bounds.isEmpty()) return bounds;
+        }
+        if (!dasherActive) return null;
+        android.util.DisplayMetrics screen = getResources().getDisplayMetrics();
+        return new Rect(0, 0, screen.widthPixels, screen.heightPixels);
     }
 
     private static boolean isDasherPackage(CharSequence packageName) {

@@ -15,7 +15,7 @@ import android.graphics.drawable.Drawable;
  * sign, and the chevron at the end of a row that opens something.
  */
 final class Glyph extends Drawable {
-    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON }
+    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT }
 
     private final Shape shape;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -142,6 +142,14 @@ final class Glyph extends Drawable {
                 path.lineTo(15.5f, 12);
                 path.lineTo(9.5f, 18);
                 canvas.drawPath(path, stroke);
+                break;
+            case SPLIT:
+                // A phone split in two, with a pin in its lower half: Dasher's map under Offer Filter.
+                oval.set(6, 2.5f, 18, 21.5f);
+                canvas.drawRoundRect(oval, 2.5f, 2.5f, stroke);
+                canvas.drawLine(6, 12, 18, 12, stroke);
+                canvas.drawCircle(12, 16.3f, 1.8f, fill);
+                canvas.drawLine(9, 7.2f, 15, 7.2f, stroke);
                 break;
             case SLIDERS:
                 canvas.drawLine(3, 7, 21, 7, stroke);

@@ -8,6 +8,7 @@ import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -58,6 +59,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
+    /** A split-screen window shorter than this gets the compact homepage; any window at all under the second. */
+    static final int COMPACT_SPLIT_HEIGHT_DP = 600;
+    static final int COMPACT_HEIGHT_DP = 400;
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000");
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
     private static final String SHOWING_SETTINGS = "settings";
@@ -72,8 +76,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
-    private LinearLayout liveRow;
-    private TextView liveText;
+    /** The header's Split with Dasher button, shown while Dasher is installed and the screen is not split. */
+    private View splitButton;
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
     private FrameLayout sheet;
@@ -86,7 +90,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: the mascot.
     private TextView stateLine;
-    private TextView stateHint;
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
@@ -98,7 +101,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: offers.
     private DecisionChartView chart;
-    private TextView chosenLine;
     private LinearLayout ticket;
     private Decor.Ticket ticketShape;
     private Button reportSelected;
@@ -114,7 +116,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
-    private TextView minimumsNote;
+    /** A short window (half a split screen): the page keeps the mascot, its counts and the map. */
+    private boolean compact;
+    /** Where the sky meets the ground in a short window: just above the map. */
+    private View horizonMark;
     private AreaMapView areaMap;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
@@ -213,6 +218,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
         handler.post(refresh);
         Updater.check(this, false, null);
         ReportOutbox.retryRefused(this);
+        DasherSplit.resumed(this);
+    }
+
+    @Override public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration configuration) {
+        super.onMultiWindowModeChanged(inMultiWindow, configuration);
+        DasherSplit.resumed(this);
+        refresh();
+    }
+
+    /** Offer Filter above, Dasher below, at the user's tap. */
+    private void splitWithDasher() {
+        String problem = DasherSplit.start(this);
+        if (problem != null) toast(problem);
     }
 
     @Override protected void onPause() {
@@ -272,11 +290,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
         header.setPadding(ui.dp(back ? 8 : 20), ui.dp(back ? 18 : 10), ui.dp(12), ui.dp(back ? 12 : 4));
         header.setMinimumHeight(ui.dp(back ? 84 : 62));
         if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
-        TextView name = ui.text(title, 22, ui.ink, true);
+        // The main page's picture needs no title; screen readers still hear it.
+        TextView name = ui.text(back ? title : "", 22, ui.ink, true);
+        if (!back) name.setContentDescription(title);
         if (back) name.setPadding(ui.dp(8), 0, 0, 0);
         if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
         if (!back) {
+            splitButton = iconButton(Glyph.Shape.SPLIT, "Split screen with Dasher", this::splitWithDasher);
+            LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
+            splitParams.setMarginEnd(ui.dp(4));
+            header.addView(splitButton, splitParams);
             // The sun (or moon) the scene draws here is a button: a tap turns day into night and back.
             View sun = new View(this);
             sun.setContentDescription(ui.dark ? "Switch to day" : "Switch to night");
@@ -415,26 +439,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         hero = new FilterHeroView(this, ui);
         hero.setOnClickListener(tapped -> toggleAutoDecline());
         body.addView(hero, share(1));
-        stateLine = ui.text("", 17, ui.ink, true);
+        // Words only when something needs the user: paused, or no rules yet. On, the picture says it all.
+        stateLine = ui.text("", 16, ui.ink, true);
         stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
         stateLine.setPadding(0, ui.dp(4), 0, 0);
+        stateLine.setOnClickListener(tapped -> toggleAutoDecline());
         body.addView(stateLine, Ui.matchWidth());
-        stateHint = ui.text("", 14, ui.inkSecondary, false);
-        stateHint.setGravity(Gravity.CENTER_HORIZONTAL);
-        stateHint.setPadding(0, ui.dp(2), 0, 0);
-        // The mascot already says what a tap does; this line is for the eye.
-        stateHint.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        body.addView(stateHint, Ui.matchWidth());
-        // While dashing: the app is live, watching Dasher.
-        liveRow = ui.row();
-        liveRow.setGravity(Gravity.CENTER);
-        liveRow.setPadding(0, ui.dp(6), 0, 0);
-        liveRow.addView(new LiveDot(this, ui));
-        liveText = ui.text("", 13, ui.inkSecondary, false);
-        liveText.setPadding(ui.dp(4), 0, 0, 0);
-        liveRow.addView(liveText);
-        liveRow.setVisibility(View.GONE);
-        body.addView(liveRow, Ui.matchWidth());
         LinearLayout problems = ui.column();
         LinearLayout.LayoutParams problemParams = Ui.matchWidth();
         problemParams.topMargin = ui.dp(8);
@@ -458,12 +468,27 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         // One picture from top to bottom: the minimums as a constellation in the sky, the offers as a skyline on
         // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
+        int heightDp = getResources().getConfiguration().screenHeightDp;
+        compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
         addMinimums(body);
         addOffers(body);
+        horizonMark = new View(this);
+        horizonMark.setVisibility(compact ? View.INVISIBLE : View.GONE);
+        body.addView(horizonMark, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(12)));
         addAreas(body);
-        ground(page, 78);
-        // The skyline's street (12 dp above the chart's bottom) is the horizon.
-        scene.setHorizon(chart, ui.dp(11), noOffers);
+        // Short, the map runs down to the page's end; the road needs the room of a whole screen.
+        if (!compact) ground(page, 78);
+        if (compact) {
+            // Half a split screen: the constellation and the skyline give their room to the map, whose top is the
+            // horizon.
+            minimums.setVisibility(View.GONE);
+            chart.setVisibility(View.GONE);
+            noOffers.setVisibility(View.GONE);
+            scene.setHorizon(horizonMark, 0, null);
+        } else {
+            // The skyline's street (12 dp above the chart's bottom) is the horizon.
+            scene.setHorizon(chart, ui.dp(11), noOffers);
+        }
     }
 
     private void addOffers(LinearLayout body) {
@@ -480,12 +505,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout.LayoutParams chartParams = share(0.7f);
         chartParams.topMargin = ui.dp(6);
         body.addView(chart, chartParams);
-        chosenLine = ui.text("", 14, ui.inkSecondary, false);
-        chosenLine.setGravity(Gravity.CENTER);
-        chosenLine.setPadding(0, ui.dp(4), 0, ui.dp(4));
-        chosenLine.setMinHeight(ui.dp(40));
-        chosenLine.setOnClickListener(tapped -> setTicketOpen(!ticketOpen));
-        body.addView(chosenLine, Ui.matchWidth());
         // The ticket unfolds in the sheet over the page.
         ticket = ui.column();
         ticketShape = new Decor.Ticket(ui);
@@ -508,10 +527,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout.LayoutParams starParams = share(1.15f);
         starParams.topMargin = ui.dp(6);
         body.addView(minimums, starParams);
-        minimumsNote = ui.text("", 13, ui.inkSecondary, false);
-        minimumsNote.setGravity(Gravity.CENTER_HORIZONTAL);
-        minimumsNote.setPadding(0, ui.dp(2), 0, 0);
-        body.addView(minimumsNote, Ui.matchWidth());
     }
 
     /**
@@ -531,7 +546,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
             if (!AreaMap.hasPermission(this)) askForLocation();
         });
-        LinearLayout.LayoutParams mapParams = share(1f);
+        // In a short window the map is what the page is for, beside Dasher's own.
+        LinearLayout.LayoutParams mapParams = share(compact ? 2f : 1f);
         mapParams.topMargin = ui.dp(2);
         body.addView(areaMap, mapParams);
         areaLine = ui.text("", 13, ui.ink, true);
@@ -775,18 +791,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
         if (saved.enabled) {
-            stateLine.setText("Auto-decline is on");
-            stateHint.setText("Tap me to pause");
+            stateLine.setText("");
             hero.setAction("Pause auto-decline");
         } else if (saved.hasAnyRule()) {
-            stateLine.setText("Auto-decline is paused");
-            stateHint.setText("Tap me to resume");
+            stateLine.setText("Paused");
             hero.setAction("Resume auto-decline");
         } else {
-            stateLine.setText("Auto-decline is off");
-            stateHint.setText("Tap me to set up rules");
+            stateLine.setText("Tap to set up rules");
             hero.setAction("Set up rules");
         }
+        stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
+        if (splitButton != null) splitButton.setVisibility(DasherSplit.offered(this) ? View.VISIBLE : View.GONE);
 
         screenReading.update(OfferFilterService.isConnected());
         backgroundOffers.update(OfferNotificationService.isConnected());
@@ -852,22 +867,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         shownGitHub = state;
     }
 
-    /** "Watching for offers · last one 3 min ago" while dashing, with the searchlights in the sky. */
+    /** While dashing, the searchlights sweep the sky; screen readers hear it from the mascot. */
     private void refreshLive() {
         boolean live = Dashing.now(this);
         scene.setWatching(live);
-        liveRow.setVisibility(live ? View.VISIBLE : View.GONE);
-        // One line under the state either way: what a tap does, or that the app is watching.
-        stateHint.setVisibility(live ? View.GONE : View.VISIBLE);
-        if (!live) return;
-        String text = "Watching for offers";
-        if (!recentEntries.isEmpty()) {
-            long minutes = (System.currentTimeMillis() - recentEntries.get(0).at) / 60_000L;
-            if (minutes >= 0 && minutes < 60) {
-                text += " · last one " + (minutes < 1 ? "just now" : minutes + " min ago");
-            }
-        }
-        if (!text.contentEquals(liveText.getText())) liveText.setText(text);
+        hero.setWatching(live);
     }
 
     private void refreshHistory() {
@@ -878,9 +882,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         recentEntries = recent;
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
-        noOffers.setVisibility(empty ? View.VISIBLE : View.GONE);
-        chart.setVisibility(empty ? View.GONE : View.VISIBLE);
-        chosenLine.setVisibility(empty ? View.GONE : View.VISIBLE);
+        noOffers.setVisibility(empty && !compact ? View.VISIBLE : View.GONE);
+        chart.setVisibility(empty || compact ? View.GONE : View.VISIBLE);
         if (empty) {
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
@@ -936,7 +939,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 saved.lastAcceptedCents, saved.best, saved.declined);
         OfferSnapshot example = exampleOffer();
         minimums.show(typed, example, recentEntries);
-        minimumsNote.setText(minimums.caption());
         rulesPreview.setText(MinimumsStarView.needs(typed, example));
     }
 
@@ -964,16 +966,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The chosen offer in one line under the skyline (time, outcome, reason), and, when unfolded, as a ticket: its
-     * outcome stamped on the stub with the time, then the drawn offer (pay against needed, the route), the reason,
-     * what the app did, and the exact lines read.
+     * The chosen offer (a tapped building in the skyline), unfolded as a ticket: its outcome stamped on the stub with
+     * the time, then the drawn offer (pay against needed, the route), the reason, what the app did, and the exact
+     * lines read.
      */
     private void showSelection(DecisionLog.Entry entry) {
-        String line = when(entry.at) + (entry.addOn ? " · add-on" : "") + " · " + Ui.resultLabel(entry.result)
-                + " · " + plainReason(entry);
-        chosenLine.setText(line + (ticketOpen ? "  ▴" : "  ▾"));
-        chosenLine.setContentDescription(line + (ticketOpen ? ". Details shown; tap to hide."
-                : ". Tap for details."));
         ticket.removeAllViews();
         ticket.setVisibility(ticketOpen ? View.VISIBLE : View.GONE);
         if (!ticketOpen) {
@@ -1124,9 +1121,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!on) {
             areaMap.setEmptyMessage("Tap to map where offers pay best");
         } else if (!permitted) {
-            areaMap.setEmptyMessage("Tap to allow location and map where offers pay best");
+            areaMap.setEmptyMessage("Tap to allow location");
         } else {
-            areaMap.setEmptyMessage("Offers you see will be pinned here");
+            areaMap.setEmptyMessage("Offers will pin here");
         }
         List<AreaMap.Cell> shownCells = on ? cells : java.util.Collections.<AreaMap.Cell>emptyList();
         double[] here = on && permitted ? AreaMap.here(this) : null;
@@ -1145,7 +1142,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         String hereName = here == null ? null : Places.name(this, here[0], here[1]);
         areaMap.setNames(names, hereName);
-        scene.setPlace(hereName);
+        // The signpost stands on the hills above the skyline; a short window has no room for it.
+        scene.setPlace(compact ? null : hereName);
         // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
         if (areaMap.selected() != null) {
@@ -1162,11 +1160,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int rank = areaMap.rank(cell);
         String where = AreaMap.from(areaHere, cell);
         String name = Places.name(this, cell.latitude(), cell.longitude());
-        String line = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)
-                + (where.isEmpty() ? "" : " · " + where)
-                + (cell.ranked() ? " · " + cell.perMile() : " · " + cell.offers + (cell.offers == 1 ? " offer" : " offers"));
-        areaLine.setText(line + " · Open in Maps ›");
-        areaLine.setContentDescription(line + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
+        String rate = cell.ranked() ? cell.perMile() : cell.offers + (cell.offers == 1 ? " offer" : " offers");
+        // Its rank is on its coin; "of you" and Maps go without saying on the page, not to screen readers.
+        List<String> parts = new java.util.ArrayList<>();
+        if (name != null) parts.add(name);
+        if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
+        parts.add(rate);
+        areaLine.setText(String.join(" · ", parts) + "  ›");
+        String spoken = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)
+                + (where.isEmpty() ? "" : " · " + where) + " · " + rate;
+        areaLine.setContentDescription(spoken + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
                 + when(cell.lastAt) + ". Opens it in Maps.");
         areaLine.setVisibility(View.VISIBLE);
     }

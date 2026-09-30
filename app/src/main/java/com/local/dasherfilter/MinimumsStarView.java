@@ -21,11 +21,16 @@ import java.util.List;
  * it. The extra-stop fee is added on top of the other minimums rather than being one, and nothing adaptive matches
  * it, so it has no spoke: nothing is converted from one meaning to another. The shapes glide to new values and the
  * adaptive sparkles breathe; with Android's animations off they rest. By day the stars are drawn in ink on the
- * morning sky, by night they shine.
+ * morning sky, by night they shine. Each spoke is marked by its icon from Settings, with no words or key on the page;
+ * screen readers hear the whole of it, and what the example offer needs.
  */
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
     private static final String[] NAMES = {"Pay", "Per mile", "Per minute", "Per stop"};
+    /** Each spoke is marked with the same icon as its field in Settings; the names are for screen readers. */
+    private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
+            Glyph.Shape.PIN};
+    private static final int ICON_DP = 18;
     /** Spokes point to the corners, where their names sit: top-left, top-right, bottom-right, bottom-left. */
     private static final float[] ANGLES = {-135, -45, 45, 135};
     /** A pay no rule can ask more than, for working out what an example offer needs. */
@@ -69,6 +74,7 @@ final class MinimumsStarView extends View {
     private final String[] setText = new String[NAMES.length];
     private final String[] learnedText = new String[NAMES.length];
     private boolean adaptiveOn;
+    private final Glyph[] icons = new Glyph[ICONS.length];
 
     MinimumsStarView(Context context, Ui ui) {
         super(context);
@@ -77,6 +83,7 @@ final class MinimumsStarView extends View {
         line.setStrokeCap(Paint.Cap.ROUND);
         line.setStrokeJoin(Paint.Join.ROUND);
         dash = new DashPathEffect(new float[] {ui.dp(5), ui.dp(4)}, 0);
+        for (int i = 0; i < ICONS.length; i++) icons[i] = new Glyph(ICONS[i], ui.inkSecondary, ui.dp(ICON_DP));
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
@@ -139,7 +146,7 @@ final class MinimumsStarView extends View {
         top = top > 0 ? Math.max(top, Math.min(offers, top * OFFER_STRETCH)) : offers;
         ringCents = top > 0 ? ringStep(top) : 0;
         glideTo();
-        setContentDescription(describe());
+        setContentDescription(caption() + " " + describe());
         invalidate();
     }
 
@@ -254,27 +261,18 @@ final class MinimumsStarView extends View {
                 + " to review.";
     }
 
-    // ---- Layout: the constellation's circle, a spoke name at each corner, and a small key under it. ----
+    // ---- Layout: the constellation's circle, with a spoke icon at each corner. ----
 
-    private float nameLine;
-
-    private void measureName() {
-        text.setFakeBoldText(false);
-        text.setTextSize(Math.min(ui.sp(12), ui.dp(17)));
-        nameLine = Ui.lineHeight(text);
-    }
-
+    /** Room under the circle; there is no key, the icons and the colors being the same as everywhere else. */
     private float keyHeight() {
-        return nameLine + ui.dp(12);
+        return ui.dp(4);
     }
 
     private float nameWidth() {
-        float widest = 0;
-        for (String name : NAMES) widest = Math.max(widest, text.measureText(name));
-        return widest;
+        return ui.dp(ICON_DP);
     }
 
-    /** The circle's radius: as large as fits with the names outside it at the corners, up to 130 dp. */
+    /** The circle's radius: as large as fits with the icons outside it at the corners, up to 130 dp. */
     private float windowRadius(float width) {
         float room = (width / 2 - nameWidth() - ui.dp(2)) / 0.7071f - ui.dp(6);
         return Math.max(ui.dp(MIN_WINDOW_DP), Math.min(ui.dp(130), room));
@@ -285,7 +283,6 @@ final class MinimumsStarView extends View {
      * (the page working out what fits), it answers the least it reads well at.
      */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
-        measureName();
         int width = MeasureSpec.getSize(widthSpec);
         float window = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? MIN_WINDOW_DP * ui.dp(1)
                 : windowRadius(width);
@@ -299,7 +296,6 @@ final class MinimumsStarView extends View {
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        measureName();
         float width = getWidth();
         float window = window(width, getHeight());
         float cx = width / 2;
@@ -313,8 +309,7 @@ final class MinimumsStarView extends View {
         float glide = Motion.settle(glideStart, GLIDE_MS);
         drawShape(canvas, cx, cy, radius, set, setFrom, setTo, glide, setColor(), true, false);
         drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true);
-        for (int i = 0; i < NAMES.length; i++) drawName(canvas, i, cx, cy, window, width);
-        drawKey(canvas, width, cy + window + ui.dp(4));
+        for (int i = 0; i < NAMES.length; i++) drawIcon(canvas, i, cx, cy, window, width);
         Motion.next(this);
     }
 
@@ -455,54 +450,17 @@ final class MinimumsStarView extends View {
         canvas.drawPath(diamond, fill);
     }
 
-    /** A spoke's name just outside the circle at its corner. */
-    private void drawName(Canvas canvas, int axis, float cx, float cy, float window, float width) {
+    /** A spoke's icon just outside the circle at its corner. */
+    private void drawIcon(Canvas canvas, int axis, float cx, float cy, float window, float width) {
         boolean right = axis == 1 || axis == 2;
         boolean below = axis == 2 || axis == 3;
-        float[] corner = point(cx, cy, window + ui.dp(6), axis, 1);
-        text.setFakeBoldText(false);
-        text.setTextSize(Math.min(ui.sp(12), ui.dp(17)));
-        text.setColor(ui.inkSecondary);
-        text.setTextAlign(right ? Paint.Align.LEFT : Paint.Align.RIGHT);
-        float room = right ? width - corner[0] : corner[0];
-        CharSequence name = Ui.fit(text, NAMES[axis], room, 0.7f);
-        Paint.FontMetrics metrics = text.getFontMetrics();
-        float baseline = below ? corner[1] - metrics.ascent : corner[1] - metrics.descent;
-        baseline = Math.max(-metrics.ascent, baseline);
-        canvas.drawText(name, 0, name.length(), corner[0], baseline, text);
-    }
-
-    /** "● set  ✦ adaptive  ● ✕ ○ offers", or "adaptive (off)" while the adaptive minimum is switched off. */
-    private void drawKey(Canvas canvas, float width, float top) {
-        text.setFakeBoldText(false);
-        text.setTextSize(Math.min(ui.sp(11), ui.dp(16)));
-        text.setColor(ui.inkMuted);
-        text.setTextAlign(Paint.Align.LEFT);
-        String first = "set";
-        String second = adaptiveOn ? "adaptive" : "adaptive (off)";
-        String third = marks.isEmpty() ? "" : "offers";
-        float marker = ui.dp(12);
-        float gap = ui.dp(14);
-        float offerMarks = third.isEmpty() ? 0 : 3 * marker;
-        float total = 2 * marker + text.measureText(first) + gap + text.measureText(second)
-                + (third.isEmpty() ? 0 : gap + offerMarks + text.measureText(third));
-        float x = Math.max(0, (width - total) / 2);
-        float middle = top + ui.dp(6) + Ui.lineHeight(text) / 2;
-        float baseline = top + ui.dp(6) - text.getFontMetrics().ascent;
-        fill.setColor(ui.accent);
-        canvas.drawCircle(x + ui.dp(4), middle, ui.dp(3), fill);
-        canvas.drawText(first, x + marker, baseline, text);
-        x += marker + text.measureText(first) + gap;
-        fill.setColor(adaptiveOn ? ui.learned : ui.inkMuted);
-        drawSparkle(canvas, x + ui.dp(4), middle, ui.dp(5));
-        canvas.drawText(second, x + marker, baseline, text);
-        if (third.isEmpty()) return;
-        x += marker + text.measureText(second) + gap;
-        OfferRule.Result[] results = {OfferRule.Result.KEEP, OfferRule.Result.DECLINE, OfferRule.Result.REVIEW};
-        for (OfferRule.Result result : results) {
-            drawMark(canvas, x + ui.dp(4), middle, result, Ui.resultColor(result));
-            x += marker;
-        }
-        canvas.drawText(third, x, baseline, text);
+        float[] corner = point(cx, cy, window + ui.dp(4), axis, 1);
+        int size = ui.dp(ICON_DP);
+        int left = Math.round(right ? corner[0] : corner[0] - size);
+        int top = Math.round(below ? corner[1] : corner[1] - size);
+        left = Math.max(0, Math.min(Math.round(width) - size, left));
+        top = Math.max(0, top);
+        icons[axis].setBounds(left, top, left + size, top + size);
+        icons[axis].draw(canvas);
     }
 }

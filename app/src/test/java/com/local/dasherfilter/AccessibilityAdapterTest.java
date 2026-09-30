@@ -9,6 +9,8 @@ import android.view.WindowManager;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
+import android.graphics.Rect;
 import java.time.Duration;
 import java.util.List;
 import org.junit.After;
@@ -23,6 +25,7 @@ import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowAccessibilityWindowInfo;
 import org.robolectric.shadows.ShadowAudioManager;
 import org.robolectric.shadows.ShadowToast;
 import org.robolectric.shadows.ShadowWindowManagerImpl;
@@ -100,7 +103,9 @@ public class AccessibilityAdapterTest {
     /** The service's touch-watch overlays currently on screen (the filter tab is not one). */
     private List<View> overlays() {
         List<View> watches = new java.util.ArrayList<>();
-        for (View view : windows()) if (!(view instanceof DasherTab)) watches.add(view);
+        for (View view : windows()) {
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+        }
         return watches;
     }
 
@@ -313,6 +318,152 @@ public class AccessibilityAdapterTest {
         DasherOverlay.setEnabled(app, false);
         show(offer("$25.00"));
         assertNull(tab());
+    }
+
+    /** A window on screen as Android lists it to the service. */
+    private static AccessibilityWindowInfo window(int type, AccessibilityNodeInfo root, boolean active, Rect bounds) {
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setType(type);
+        if (root != null) shadow.setRoot(root);
+        shadow.setActive(active);
+        shadow.setBoundsInScreen(bounds);
+        return window;
+    }
+
+    private AccessibilityNodeInfo appRoot(String packageName) {
+        AccessibilityNodeInfo root = AccessibilityNodeInfo.obtain(new View(app));
+        root.setPackageName(packageName);
+        root.setVisibleToUser(true);
+        return root;
+    }
+
+    private static final Rect TOP_HALF = new Rect(0, 0, 1080, 1000);
+    private static final Rect DIVIDER = new Rect(0, 1000, 1080, 1040);
+    private static final Rect BOTTOM_HALF = new Rect(0, 1040, 1080, 2040);
+
+    /** Offer Filter in the top half (the one the user last touched), Dasher showing {@code dasher} in the bottom. */
+    private void splitWithDasherBelow(AccessibilityNodeInfo dasher) {
+        AccessibilityNodeInfo ours = appRoot("com.local.dasherfilter");
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, dasher, false, BOTTOM_HALF)));
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(ours);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        event.setPackageName("com.doordash.driverapp");
+        controller.get().onAccessibilityEvent(event);
+    }
+
+    @Test
+    public void inSplitScreenAnOfferInDashersHalfIsDeclinedWhileTheUserIsInTheOtherHalf() {
+        controller.get().onServiceConnected();
+        splitWithDasherBelow(offer("$7.90"));
+        assertEquals("declined at once, though Offer Filter's half is the active one", 1,
+                Shadows.shadowOf(decline).getPerformedActions().size());
+        assertTrue(Shadows.shadowOf(accept).getPerformedActions().isEmpty());
+        assertTrue(OfferFilterService.isDasherForeground());
+
+        // A passing offer there is left for the user, as always.
+        splitWithDasherBelow(offer("$25.00"));
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertTrue(Shadows.shadowOf(accept).getPerformedActions().isEmpty());
+    }
+
+    @Test
+    public void dasherBehindAnotherAppOrUnderTheShadeIsLeftAlone() {
+        controller.get().onServiceConnected();
+        // Not split: another app is in front, and Dasher's window is only listed.
+        AccessibilityNodeInfo maps = appRoot("com.google.android.apps.maps");
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, new Rect(0, 0, 1080, 2040)),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, offer("$7.90"), false, new Rect(0, 0, 1080, 2040))));
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(maps);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        event.setPackageName("com.doordash.driverapp");
+        controller.get().onAccessibilityEvent(event);
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertFalse(OfferFilterService.isDasherForeground());
+
+        // Split, but the shade is down over both halves.
+        AccessibilityNodeInfo shade = appRoot("com.android.systemui");
+        AccessibilityNodeInfo ours = appRoot("com.local.dasherfilter");
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_SYSTEM, shade, true, new Rect(0, 0, 1080, 2040)),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, false, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, offer("$7.90"), false, BOTTOM_HALF)));
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(shade);
+        controller.get().onAccessibilityEvent(event);
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertNull(tab());
+    }
+
+    @Test
+    public void theTabIsOverDasherOnlyWhenDasherFillsTheScreen() {
+        controller.get().onServiceConnected();
+        AccessibilityNodeInfo idle = node("Finding offers", false);
+        Rect screen = new Rect(0, 0, 1080, app.getResources().getDisplayMetrics().heightPixels);
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Collections.singletonList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, idle, true, screen)));
+        show(idle);
+        DasherTab tab = tab();
+        assertNotNull(tab);
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) tab.getLayoutParams();
+        assertEquals(Math.round(screen.height() * DasherOverlay.TOP_SHARE), params.y);
+
+        // Split: Offer Filter's own half has the mascot, so no tab.
+        splitWithDasherBelow(node("Finding offers", false));
+        assertNull(tab());
+    }
+
+    @Test
+    public void theBestAreaIsPointedOutOverDasherButNeverOverAnOffer() {
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        AreaMap.forgetCache();
+        AreaMap.setEnabled(app, true);
+        int[][] pays = {{1000, 1200, 800}, {1500, 1800, 1200}};
+        double[][] spots = {{37.7749, -122.4194}, {37.8149, -122.3794}};
+        double[] miles = {5.0, 6.0, 4.0};
+        for (int spot = 0; spot < 2; spot++) {
+            for (int i = 0; i < 3; i++) {
+                at(spots[spot][0], spots[spot][1]);
+                AreaMap.note(app, new DecisionLog.Entry(System.currentTimeMillis() + spot * 10 + i,
+                        DecisionLog.Source.SCREEN, false, new OfferSnapshot(pays[spot][i], miles[i], 20 + i, 2), 1000,
+                        OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                        java.util.Collections.emptyList()));
+            }
+        }
+        at(37.7749, -122.4194);
+        controller.get().onServiceConnected();
+
+        splitWithDasherBelow(node("Finding offers", false));
+        DasherGuide guide = null;
+        for (View view : windows()) if (view instanceof DasherGuide) guide = (DasherGuide) view;
+        assertNotNull("pointed out at the top of Dasher's half", guide);
+        assertEquals("3.6 mi NE · $3.00/mi", guide.label());
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) guide.getLayoutParams();
+        assertTrue("inside Dasher's half", params.y >= BOTTOM_HALF.top && params.y < BOTTOM_HALF.bottom);
+        assertTrue("touches pass through to Dasher",
+                (params.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
+        assertTrue("the guide is not a touch watch", overlays().isEmpty());
+
+        // An offer comes up in Dasher's half: the guide gets out of its way.
+        splitWithDasherBelow(offer("$25.00"));
+        for (View view : windows()) assertFalse(view instanceof DasherGuide);
+    }
+
+    /** The phone's last known position, fresh. */
+    private void at(double latitude, double longitude) {
+        android.location.Location fix = new android.location.Location(android.location.LocationManager.NETWORK_PROVIDER);
+        fix.setLatitude(latitude);
+        fix.setLongitude(longitude);
+        fix.setAccuracy(1500);
+        fix.setTime(System.currentTimeMillis());
+        fix.setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos());
+        Shadows.shadowOf(app.getSystemService(android.location.LocationManager.class))
+                .setLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER, fix);
     }
 
     @Test

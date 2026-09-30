@@ -8,6 +8,7 @@
 - Never infer missing pay, travel, or incremental add-on semantics. Unknown is REVIEW, not KEEP or DECLINE. A separate known failure may still decline.
 - Preserve immediate first decline attempts on a readable foreground offer. Never automatically open Dasher to inspect an unclassified offer. A user's touch during a decline hands that offer back: no further automatic taps on it.
 - Sound turned down during a decline is restored exactly (and after a crash). Touch only media and alarm streams, never the ringer/notification/system streams (ringer mode), never during a call, and never over a passing, unknown or next offer.
+- Split screen with Dasher happens only at the user's tap (the accessibility split action, then Dasher's own launch intent into the other half). In split screen, Dasher's half is read and may be declined like a foreground window only while the split divider is present and another app's half is the active window; never under the shade, recents or other system surfaces. The best-area guide over Dasher never covers an offer or confirmation and never takes touches.
 - A successful click or PendingIntent send means requested, not server-confirmed. Hiding a notification is not declining an order.
 - Notification updates/reconnects must not ring repeatedly. Verify replacement posting/permissions and never remove an original passing/unknown notification merely on an attempted replacement.
 - Keep the existing cloud signer. No automatic key generation, key material in source, signing material in public, or independent GitHub signing path.

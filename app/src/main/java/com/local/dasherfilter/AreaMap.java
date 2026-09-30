@@ -275,14 +275,23 @@ final class AreaMap {
 
     /** "2.1 mi NE of you", "Around you" within about a mile, or "" with no position to measure from. */
     static String from(double[] here, Cell cell) {
-        if (here == null) return "";
+        double[] way = offset(here, cell);
+        if (way == null) return "";
+        if (way[0] < 1) return "Around you";
+        return String.format(Locale.US, "%.1f mi %s of you", way[0], compassPoint(way[1]));
+    }
+
+    /** How far and which way a square's middle is from here: {miles, degrees clockwise from north}; null unknown. */
+    static double[] offset(double[] here, Cell cell) {
+        if (here == null) return null;
         double north = (cell.latitude() - here[0]) * MILES_PER_DEGREE_LATITUDE;
         double east = (cell.longitude() - here[1]) * MILES_PER_DEGREE_LATITUDE * Math.cos(Math.toRadians(here[0]));
-        double miles = Math.hypot(north, east);
-        if (miles < 1) return "Around you";
+        return new double[] {Math.hypot(north, east), (Math.toDegrees(Math.atan2(east, north)) + 360) % 360};
+    }
+
+    static String compassPoint(double bearing) {
         String[] points = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
-        double bearing = (Math.toDegrees(Math.atan2(east, north)) + 360) % 360;
-        return String.format(Locale.US, "%.1f mi %s of you", miles, points[(int) Math.round(bearing / 45) % 8]);
+        return points[(int) Math.round(bearing / 45) % 8];
     }
 
     /** Removes every square and the unlocated count. */

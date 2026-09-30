@@ -1,3 +1,35 @@
+## 0.4.27 — fewer words, and split screen with Dasher
+
+- **The homepage says less.** The picture carries it; words appear only where something needs you. Screen readers still hear all of it. Gone from the page:
+  - the title;
+  - "Auto-decline is on" and "Tap me to…" (paused shows **Paused**; no rules shows **Tap to set up rules**);
+  - "Watching for offers" (the searchlights show it);
+  - the words under the counts (✓ ✕ ? say which is which);
+  - the constellation's names, key and caption (its spokes carry the same icons as in Settings);
+  - the line under the skyline (tap a building for its ticket);
+  - "You" on the map (the blue dot; the signpost names where you are).
+  - The line under the map is now "Treasure Island · 3.6 mi NE · $3.00/mi ›".
+- **Split with Dasher.** A new round button at the top puts Offer Filter above and Dasher below, at your tap only. In half a screen the page keeps the mascot, its counts, anything needing a fix and the map, which gets most of the room.
+- **Dasher's half is still watched.** In split screen, an offer in Dasher's half is read and declined at once even while you are using Offer Filter's half. Under the shade or recent apps Dasher is left alone, as before.
+- **Over Dasher:**
+  - The filter tab shows only while Dasher fills the screen; in split screen, Offer Filter's own half has the mascot.
+  - A small pill points toward the best offer area ("3.6 mi NE · $3.00/mi"). It sits beside the tab, or at the top of Dasher's half when split, and never covers an offer or takes a touch.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - an offer in Dasher's half declined while Offer Filter's half is active;
+  - a passing one left alone;
+  - Dasher left alone behind another app or under the shade;
+  - the tab only when Dasher fills the screen;
+  - the guide inside Dasher's half, letting touches through, and gone while an offer shows;
+  - the Split button asking Android through screen reading, then opening Dasher beside it once;
+  - the short-window page.
+- **Renders** of the full and half-height pages were reviewed, light and dark.
+- **Not verified on a real phone:**
+  - the split action and Dasher opening in the other half;
+  - reading and declining in Dasher's half of a real split screen;
+  - where the guide lands over Dasher's real map.
+
 ## 0.4.26 — reports refused by GitHub try again by themselves
 
 - **When GitHub refuses a report** sent through your GitHub connection (403), the status line now shows:

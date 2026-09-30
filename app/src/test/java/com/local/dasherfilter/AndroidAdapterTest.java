@@ -363,7 +363,7 @@ public class AndroidAdapterTest {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Resume auto-decline", mascot.action());
-            assertNotNull(shownTextContaining(content, "Tap me to resume"));
+            assertNotNull("paused says so, in one word", shownTextContaining(content, "Paused"));
             mascot.performClick();
 
             FilterSettings saved = FilterStore.load(app);
@@ -372,7 +372,7 @@ public class AndroidAdapterTest {
             assertEquals(150, saved.perMileCents);
             // The same mascot now offers to pause again.
             assertEquals("Pause auto-decline", mascot.action());
-            assertNotNull(shownTextContaining(content, "Tap me to pause"));
+            assertNull("on, the picture says it all", shownTextContaining(content, "Paused"));
         }
     }
 
@@ -383,7 +383,7 @@ public class AndroidAdapterTest {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Set up rules", mascot.action());
-            assertNotNull(shownTextContaining(content, "Tap me to set up rules"));
+            assertNotNull(shownTextContaining(content, "Tap to set up rules"));
             mascot.performClick();
             settle();
             assertFalse(FilterStore.load(app).enabled);
@@ -424,11 +424,11 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void theNewestOfferIsOneQuietLineThatUnfoldsIntoAStampedTicket() {
+    public void theNewestOfferIsABuildingThatUnfoldsIntoAStampedTicket() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNotNull(shownTextContaining(content, "Declined · Below your per-mile rate"));
+            assertNull("no line of words under the skyline", shownTextContaining(content, "Below your per-mile rate"));
             assertNull("the ticket stays folded until asked for", find(content, OfferCardView.class));
 
             openTicket(content);
@@ -446,10 +446,10 @@ public class AndroidAdapterTest {
                     Collections.emptyList()));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertEquals("Passed", find(content, Decor.Stamp.class).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Passed · Meets your rules"));
+            assertNotNull(shownTextContaining(content, "Meets your rules"));
 
-            // Tapping the line again folds the ticket away.
-            shownTextContaining(content, "Passed · Meets your rules").performClick();
+            // Back folds the ticket away.
+            activity.get().onBackPressed();
             assertNull(find(content, OfferCardView.class));
         }
     }
@@ -523,8 +523,8 @@ public class AndroidAdapterTest {
             View content = activity.get().findViewById(android.R.id.content);
             assertEquals("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review.",
                     findChart(content).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
             openTicket(content);
+            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
             assertNotNull(shownTextContaining(content, "Decline tapped · on screen"));
         }
     }
@@ -756,7 +756,9 @@ public class AndroidAdapterTest {
             View content = activity.get().findViewById(android.R.id.content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.isShown());
-            assertEquals("Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
+            // What the example offer needs is heard first; the page shows no words for it.
+            assertEquals("An offer like 20 min · 5 mi · 2 stops needs $14.21. "
+                    + "Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
                     + "Per stop: no set minimum, adaptive $7.10.", star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
@@ -837,8 +839,11 @@ public class AndroidAdapterTest {
             assertTrue("on the page, no sheet or switch", map.isShown());
             assertEquals("Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
                     + "2, Around you, $2.00/mi over 3 offers.", map.getContentDescription().toString());
-            TextView best = shownTextContaining(content, "#1 · 3.6 mi NE of you · $3.00/mi · Open in Maps");
+            TextView best = shownTextContaining(content, "3.6 mi NE · $3.00/mi  ›");
             assertNotNull("the best area is shown until another is picked", best);
+            assertTrue(areaLineSaid(content), areaLineSaid(content)
+                    .startsWith("#1 · 3.6 mi NE of you · $3.00/mi. Average"));
+            assertTrue(areaLineSaid(content).endsWith("Opens it in Maps."));
             best.performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertTrue(opened.getDataString(), opened.getDataString().startsWith("geo:37.81"));
@@ -856,7 +861,7 @@ public class AndroidAdapterTest {
         setLocation(37.7749, -122.4194);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNotNull(shownTextContaining(content, "#1 · Around you"));
+            assertTrue(areaLineSaid(content).startsWith("#1 · Around you"));
 
             // A better area turns up while the map is open: nothing was picked, so the details follow it.
             noteOfferAt(37.8149, -122.3794, 1500, 5.0);
@@ -864,8 +869,7 @@ public class AndroidAdapterTest {
             noteOfferAt(37.8149, -122.3794, 1200, 4.0);
             setLocation(37.7749, -122.4194);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
-            assertNotNull(shownTextContaining(content, "#1 · 3.6 mi NE of you"));
-            assertNull(shownTextContaining(content, "#2 · Around you"));
+            assertTrue(areaLineSaid(content).startsWith("#1 · 3.6 mi NE of you"));
         }
     }
 
@@ -885,7 +889,7 @@ public class AndroidAdapterTest {
             View content = activity.get().findViewById(android.R.id.content);
             AreaMapView map = find(content, AreaMapView.class);
             map.pick(AreaMap.ranked(AreaMap.cells(app)).get(1));
-            assertNotNull(shownTextContaining(content, "#2 · Around you"));
+            assertTrue(areaLineSaid(content).startsWith("#2 · Around you"));
 
             // An even better area turns up: the picked one stays, now third.
             noteOfferAt(37.7349, -122.4594, 3000, 5.0);
@@ -893,7 +897,7 @@ public class AndroidAdapterTest {
             noteOfferAt(37.7349, -122.4594, 2400, 4.0);
             setLocation(37.7749, -122.4194);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
-            assertNotNull(shownTextContaining(content, "#3 · Around you"));
+            assertTrue(areaLineSaid(content).startsWith("#3 · Around you"));
         }
     }
 
@@ -956,23 +960,26 @@ public class AndroidAdapterTest {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             ScenePage scene = find(content, ScenePage.class);
-            assertNull(shownTextContaining(content, "Watching for offers"));
+            FilterHeroView mascot = find(content, FilterHeroView.class);
             assertFalse(scene.watching());
+            assertFalse(mascot.getContentDescription().toString().contains("watching"));
 
             // Dasher seen mid-dash, but nothing can watch it yet: not live.
             Dashing.seen(app);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertNull(shownTextContaining(content, "Watching for offers"));
+            assertFalse(scene.watching());
 
             service.get().onServiceConnected();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertNotNull(shownTextContaining(content, "Watching for offers · last one"));
             assertTrue("the searchlights sweep", scene.watching());
+            assertTrue("screen readers hear it: " + mascot.getContentDescription(),
+                    mascot.getContentDescription().toString().contains(", watching for offers. "));
+            assertNull("no words on the page for it", shownTextContaining(content, "Watching for offers"));
 
             Dashing.ended(app);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertNull(shownTextContaining(content, "Watching for offers"));
             assertFalse(scene.watching());
+            assertFalse(mascot.getContentDescription().toString().contains("watching"));
         } finally {
             service.destroy();
         }
@@ -1021,15 +1028,87 @@ public class AndroidAdapterTest {
             android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
             assertTrue("the whole scene fits: " + scene.getHeight() + " in " + page.getHeight(),
                     scene.getHeight() <= page.getHeight());
-            assertNotNull(shownTextContaining(content, "Auto-decline is"));
+            assertTrue(find(content, AreaMapView.class).isShown());
 
             openTicket(content);
             assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile rate"));
-            assertNotNull(shownTextContaining(content, "▴"));
             activity.get().onBackPressed();
             assertFalse(activity.get().isFinishing());
-            assertNotNull("folded again", shownTextContaining(content, "▾"));
+            assertNull("folded again", shownTextContaining(content, "Below your per-mile rate"));
         }
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h360dp-xxhdpi")
+    public void aShortWindowKeepsTheMascotItsCountsAndTheMap() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertTrue(find(content, FilterHeroView.class).isShown());
+            assertTrue("the map stays", find(content, AreaMapView.class).isShown());
+            assertFalse("the constellation gives way", find(content, MinimumsStarView.class).isShown());
+            assertFalse("the skyline gives way", findChart(content).isShown());
+            assertNull(shownTextContaining(content, "No offers yet"));
+        }
+    }
+
+    /** Dasher installed on the simulated phone, with its launcher activity. */
+    private void dasherInstalled() {
+        android.content.ComponentName dasher =
+                new android.content.ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home");
+        org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
+        packages.addActivityIfNotPresent(dasher);
+        android.content.IntentFilter launcher = new android.content.IntentFilter(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        packages.addIntentFilterForActivity(dasher, launcher);
+    }
+
+    @Test
+    public void splitWithDasherSplitsTheScreenAtATapThenOpensDasherBelow() throws Exception {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull("no Dasher, no button", shownIcon(content, "Split screen with Dasher"));
+        }
+        dasherInstalled();
+        DasherSplit.forget();
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            View split = shownIcon(content, "Split screen with Dasher");
+            assertNotNull(split);
+
+            // Screen reading is how Android is asked; without it, the tap only says so.
+            split.performClick();
+            assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().startsWith("Turn on screen reading"));
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+
+            service.get().onServiceConnected();
+            split.performClick();
+            assertEquals(Collections.singletonList(
+                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN),
+                    Shadows.shadowOf(service.get()).getGlobalActionsPerformed());
+            assertNull("Dasher waits for the split", Shadows.shadowOf(app).getNextStartedActivity());
+
+            // The screen splits: Dasher opens in the other half, once.
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(opened);
+            assertEquals("com.doordash.driverapp", opened.getComponent() != null
+                    ? opened.getComponent().getPackageName() : opened.getPackage());
+            assertTrue((opened.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT) != 0);
+            activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+            assertNull("already split: no button", shownIcon(content, "Split screen with Dasher"));
+        } finally {
+            service.destroy();
+        }
+    }
+
+    /** A shown view with this description, or null. */
+    private static View shownIcon(View content, String description) {
+        View found = iconDescribed(content, description);
+        return found != null && found.isShown() ? found : null;
     }
 
     @Test
@@ -1388,11 +1467,17 @@ public class AndroidAdapterTest {
                 "meets enabled rules", DecisionLog.Action.PASSES, true, Collections.emptyList()));
     }
 
-    /** Taps the line under the skyline, unfolding the chosen offer's ticket. */
+    /** The line under the map as screen readers hear it: its rank is on the map's coin, not in its words. */
+    private static String areaLineSaid(View content) {
+        TextView line = shownTextContaining(content, "  ›");
+        return line == null || line.getContentDescription() == null ? "" : line.getContentDescription().toString();
+    }
+
+    /** Taps the skyline, unfolding the chosen offer's ticket. */
     private static void openTicket(View content) {
-        TextView line = shownTextContaining(content, "▾");
-        assertNotNull("the chosen offer's line", line);
-        line.performClick();
+        DecisionChartView chart = findChart(content);
+        assertTrue("the skyline", chart != null && chart.isShown());
+        chart.performClick();
     }
 
     private static void settle() {
