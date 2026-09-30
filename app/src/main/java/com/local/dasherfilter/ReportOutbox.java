@@ -39,6 +39,8 @@ final class ReportOutbox {
     private static final String DIR = "report-outbox";
 
     private static final String TOKEN = "token";
+    /** The user chose to send reports through their GitHub connection (the one updates use). */
+    private static final String VIA_GITHUB = "via_github";
     private static final String DAY = "day";
     private static final String AUTOMATIC_TODAY = "automatic_today";
     private static final String BY_USER_TODAY = "by_user_today";
@@ -56,8 +58,48 @@ final class ReportOutbox {
     static java.util.function.LongSupplier clock = System::currentTimeMillis;
     private static final java.util.concurrent.atomic.AtomicLong sequence = new java.util.concurrent.atomic.AtomicLong();
 
+    /** Reports are on with a pasted token, or through the GitHub connection once the user turned that on. */
     static boolean enabled(Context context) {
-        return !prefs(context).getString(TOKEN, "").isEmpty();
+        return !prefs(context).getString(TOKEN, "").isEmpty() || throughGitHub(context);
+    }
+
+    /** Whether reports go through the GitHub connection now: chosen, and still connected. */
+    static boolean throughGitHub(Context context) {
+        return prefs(context).getBoolean(VIA_GITHUB, false) && GitHubConnect.configured()
+                && GitHubConnect.state(context) == GitHubConnect.State.CONNECTED;
+    }
+
+    static boolean useGitHubChosen(Context context) {
+        return prefs(context).getBoolean(VIA_GITHUB, false);
+    }
+
+    /**
+     * Sends reports through the GitHub connection, or stops. Stopping, with no token pasted, discards any report
+     * still waiting to send, as removing a token does. Connecting GitHub alone never turns reports on.
+     */
+    static void useGitHub(Context context, boolean on) {
+        prefs(context).edit().putBoolean(VIA_GITHUB, on).remove(LAST_ERROR).apply();
+        Context app = context.getApplicationContext();
+        if (on) schedule(app);
+        else if (!enabled(app)) discard(app);
+    }
+
+    /** GitHub was disconnected: reports that went through it stop, and what was waiting is discarded. */
+    static void connectionRemoved(Context context) {
+        if (!prefs(context).getBoolean(VIA_GITHUB, false)) return;
+        prefs(context).edit().putBoolean(VIA_GITHUB, false).apply();
+        if (!enabled(context)) discard(context.getApplicationContext());
+    }
+
+    private static void discard(Context app) {
+        DISK.execute(() -> {
+            for (File file : files(app)) {
+                //noinspection ResultOfMethodCallIgnored
+                file.delete();
+            }
+        });
+        JobScheduler jobs = app.getSystemService(JobScheduler.class);
+        if (jobs != null) jobs.cancel(JOB_ID);
     }
 
     /**
@@ -72,24 +114,36 @@ final class ReportOutbox {
             schedule(app);
             return;
         }
-        DISK.execute(() -> {
-            for (File file : files(app)) {
-                //noinspection ResultOfMethodCallIgnored
-                file.delete();
-            }
-        });
-        JobScheduler jobs = app.getSystemService(JobScheduler.class);
-        if (jobs != null) jobs.cancel(JOB_ID);
+        // Turning reports off turns off the GitHub connection's use for them too.
+        prefs(context).edit().putBoolean(VIA_GITHUB, false).apply();
+        discard(app);
     }
 
     static String token(Context context) {
         return prefs(context).getString(TOKEN, "");
     }
 
+    /**
+     * The token a report is sent with: the pasted one, else the GitHub connection's (refreshed if due; blocking).
+     *
+     * @throws IOException when GitHub could not be reached to refresh the connection
+     */
+    private static String sendingToken(Context context) throws IOException {
+        String pasted = token(context);
+        if (!pasted.isEmpty()) return pasted;
+        if (!throughGitHub(context)) return "";
+        String connection = GitHubConnect.token(context);
+        return connection == null ? "" : connection;
+    }
+
     /** "On · last report #12, 7:31 PM", "Token rejected…", or "Off". */
     static String status(Context context) {
         SharedPreferences prefs = prefs(context);
-        if (!enabled(context)) return "Off. Paste a GitHub token to turn on.";
+        if (!enabled(context)) {
+            return GitHubConnect.configured() && GitHubConnect.state(context) == GitHubConnect.State.CONNECTED
+                    ? "Off. Turn on to send reports through your GitHub connection."
+                    : "Off. Paste a GitHub token to turn on.";
+        }
         String error = prefs.getString(LAST_ERROR, "");
         if (!error.isEmpty()) return error;
         int issue = prefs.getInt(LAST_ISSUE, 0);
@@ -229,8 +283,14 @@ final class ReportOutbox {
         for (File file : files(context)) {
             if (Thread.currentThread().isInterrupted()) return true;
             // Read per report, so turning reports off stops sending at once.
-            String token = token(context);
+            String token;
+            try {
+                token = sendingToken(context);
+            } catch (IOException offline) {
+                return true;
+            }
             if (token.isEmpty()) return false;
+            boolean connection = token(context).isEmpty();
             try {
                 JSONObject item = new JSONObject(read(file));
                 int issue = GitHubIssues.create(token, item.getString("title"), item.getString("body"));
@@ -241,8 +301,11 @@ final class ReportOutbox {
                 DiagnosticLog.log(context, "report", "filed issue #" + issue);
             } catch (GitHubIssues.Rejected rejected) {
                 if (rejected.tokenProblem()) {
-                    prefs(context).edit().putString(LAST_ERROR, "GitHub rejected the token (" + rejected.code
-                            + "). Paste a new one; reports are kept until then.").apply();
+                    prefs(context).edit().putString(LAST_ERROR, connection
+                            ? "GitHub refused the report (" + rejected.code + "). In your GitHub App's settings, give "
+                                    + "it Issues: Read and write and approve the change; reports are kept until then."
+                            : "GitHub rejected the token (" + rejected.code
+                                    + "). Paste a new one; reports are kept until then.").apply();
                     return false;
                 }
                 // An outage or a rate limit passes: keep everything and let Android retry later.

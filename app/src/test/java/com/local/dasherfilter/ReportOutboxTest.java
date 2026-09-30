@@ -461,4 +461,76 @@ public class ReportOutboxTest {
         assertEquals(0, ReportOutbox.queued(app));
         assertTrue(ReportOutbox.status(app).startsWith("Off"));
     }
+
+    /** Signed in to GitHub for updates, as the phone would be after Connect GitHub. */
+    private void connectedToGitHub() {
+        GitHubConnect.clientId = "Iv1.test";
+        app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_connection").commit();
+    }
+
+    @Test
+    public void reportsUseTheGitHubConnectionOnlyOnceTurnedOn() throws IOException {
+        String shipped = GitHubConnect.clientId;
+        try {
+            fakeGitHub(201, "{\"number\": 9}");
+            connectedToGitHub();
+            assertFalse("connecting GitHub never turns reports on", ReportOutbox.enabled(app));
+            assertTrue(ReportOutbox.status(app).contains("GitHub connection"));
+
+            ReportOutbox.useGitHub(app, true);
+            assertTrue(ReportOutbox.enabled(app));
+            queue(1);
+            assertFalse(ReportOutbox.drain(app));
+            assertEquals("Bearer ghu_connection", authorizations.get(0));
+            assertTrue(ReportOutbox.status(app).contains("#9"));
+        } finally {
+            GitHubConnect.disconnect(app);
+            GitHubConnect.clientId = shipped;
+        }
+    }
+
+    @Test
+    public void turningTheConnectionOffOrDisconnectingDiscardsWhatWasWaiting() throws IOException {
+        String shipped = GitHubConnect.clientId;
+        try {
+            fakeGitHub(201, "{\"number\": 7}");
+            connectedToGitHub();
+            ReportOutbox.useGitHub(app, true);
+            queue(1);
+            ReportOutbox.useGitHub(app, false);
+            ReportOutbox.flush();
+            assertEquals(0, ReportOutbox.queued(app));
+            assertFalse(ReportOutbox.enabled(app));
+
+            ReportOutbox.useGitHub(app, true);
+            queue(1);
+            GitHubConnect.disconnect(app);
+            ReportOutbox.flush();
+            assertFalse(ReportOutbox.enabled(app));
+            assertEquals("disconnecting GitHub is removing the token", 0, ReportOutbox.queued(app));
+            assertFalse(ReportOutbox.drain(app));
+            assertEquals(0, received.size());
+        } finally {
+            GitHubConnect.disconnect(app);
+            GitHubConnect.clientId = shipped;
+        }
+    }
+
+    @Test
+    public void aConnectionWithoutIssuePermissionSaysWhatToChange() throws IOException {
+        String shipped = GitHubConnect.clientId;
+        try {
+            fakeGitHub(403, "{\"message\": \"Resource not accessible by integration\"}");
+            connectedToGitHub();
+            ReportOutbox.useGitHub(app, true);
+            queue(1);
+            assertFalse(ReportOutbox.drain(app));
+            assertEquals("kept until it works", 1, ReportOutbox.queued(app));
+            assertTrue(ReportOutbox.status(app), ReportOutbox.status(app).contains("Issues: Read and write"));
+        } finally {
+            GitHubConnect.disconnect(app);
+            GitHubConnect.clientId = shipped;
+        }
+    }
 }

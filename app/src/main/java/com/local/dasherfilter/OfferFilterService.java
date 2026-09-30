@@ -135,7 +135,9 @@ public final class OfferFilterService extends AccessibilityService {
     @Override protected void onServiceConnected() {
         active = this;
         Updater.schedule(this);
-        DiagnosticLog.log(this, "accessibility", "connected; no automatic activity launches");
+        DiagnosticLog.log(this, "accessibility", "connected; never opens Dasher");
+        // Offer Filter was on screen when an update began: open it again, never over Dasher.
+        if (!isDasherForeground()) Updater.relaunchAfterUpdate(this);
         status("Accessibility connected. Only visible offer screens can be fully evaluated.");
         Updater.check(this, false, null);
     }

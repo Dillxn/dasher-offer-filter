@@ -1069,6 +1069,54 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void whileUpdatingTheScreenSaysSoAndTakesNoInputUntilItFails() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull(shownTextContaining(content, "Updating Offer Filter"));
+
+            Updater.prefs(app).edit().putInt("session", 5).commit();
+            Updater.installStarted(app, true);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            TextView title = shownTextContaining(content, "Updating Offer Filter");
+            assertNotNull(title);
+            View cover = (View) title.getParent();
+            assertTrue("it takes every touch", cover.dispatchTouchEvent(
+                    MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10, 10, 0)));
+            activity.get().onBackPressed();
+            assertFalse("Back does not interrupt it", activity.get().isFinishing());
+            assertTrue(FilterStore.load(app).enabled);
+
+            Updater.installationFailed(app, 1, "test");
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull("a failed install gives the screen back", shownTextContaining(content, "Updating Offer Filter"));
+        }
+    }
+
+    @Test
+    public void afterAnUpdateStartedOnScreenOfferFilterOpensAgainOnce() {
+        // Not on screen when the update began: nothing opens afterwards.
+        Updater.installStarted(app, false);
+        assertFalse(Updater.relaunchAfterUpdate(app));
+
+        // On screen, but this is still the version that began the update: not yet.
+        Updater.installStarted(app, true);
+        assertFalse(Updater.relaunchAfterUpdate(app));
+
+        // The new version is running: Offer Filter opens, and asking again brings back the same screen.
+        Updater.prefs(app).edit().putLong("relaunch_from_code", 1).commit();
+        assertTrue(Updater.relaunchAfterUpdate(app));
+        Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+        assertEquals(MainActivity.class.getName(), opened.getComponent().getClassName());
+        assertTrue((opened.getFlags() & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0);
+
+        // Once the screen is open, nothing more opens.
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            assertFalse(Updater.relaunchAfterUpdate(app));
+        }
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();

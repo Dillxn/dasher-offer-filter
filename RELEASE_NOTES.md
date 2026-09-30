@@ -1,3 +1,26 @@
+## 0.4.24 — reports through GitHub, and a calm update
+
+- **Reports can use your GitHub connection.**
+  - Once GitHub is connected for updates, Settings → Reports has **Send reports through my GitHub connection**, with no token to paste.
+  - Turning it on is the opt-in; connecting GitHub alone never turns reports on.
+  - Turning it off, turning reports off, or disconnecting GitHub stops reports and discards anything not yet sent.
+  - The GitHub App also needs **Issues: Read and write**. Until that change is approved on GitHub, the status line says what to change and reports wait.
+- **Updating is visible, and the app comes back.**
+  - When an update starts installing with Offer Filter on screen, the screen shows the mascot waiting in a sweeping ring, "Updating Offer Filter…". It takes no taps and Back doesn't interrupt it.
+  - If Android's install fails, the screen comes back as it was.
+  - Once the new version is in, Offer Filter opens again by itself, but only if it was on screen when the update began, and never over Dasher.
+
+Evidence boundaries:
+
+- **Simulated Android 15 tests against a local fake GitHub** cover:
+  - reports going through the connection only once turned on, sent with its token;
+  - turning it off, or disconnecting, discarding what waited;
+  - a refusal for missing Issues permission saying what to change.
+- **Simulated Android 8 and 15 tests** cover:
+  - the updating screen taking every touch and Back, and giving the screen back after a failed install;
+  - the reopening happening only after an update begun on screen, only once the new version runs, and not again once open.
+- **Not verified:** a real update on a real phone, including whether Android lets the app reopen itself there.
+
 ## 0.4.23 — a filter button inside Dasher, day and night, and counts per dash
 
 - **A filter button inside Dasher.**

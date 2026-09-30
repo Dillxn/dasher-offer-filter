@@ -73,6 +73,11 @@ final class Updater {
     private static final String MANUAL_RETRY_REQUIRED = "manual_retry_required";
     private static final String SESSION = "session";
     private static final String SESSION_AT = "session_at";
+    /** When the session was handed to Android to install, and whether Offer Filter was on screen then. */
+    private static final String COMMITTED_AT = "committed_at";
+    private static final String RELAUNCH_AT = "relaunch_at";
+    private static final String RELAUNCH_FROM = "relaunch_from_code";
+    private static final long INSTALL_WINDOW_MS = 10 * 60_000L;
 
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean BUSY = new AtomicBoolean();
@@ -479,6 +484,7 @@ final class Updater {
             Intent resultIntent = new Intent(context, UpdateReceiver.class).setAction(UpdateReceiver.INSTALL_RESULT);
             PendingIntent result = PendingIntent.getBroadcast(context, id, resultIntent, flags);
             status(context, "Installing " + release.getString("versionName") + "… Android may request confirmation.");
+            installStarted(context, foreground.get() != null);
             session.commit(result.getIntentSender());
         } catch (Exception error) {
             installer.abandonSession(id);
@@ -530,11 +536,73 @@ final class Updater {
                 .build());
     }
 
+    /**
+     * The update was handed to Android to install. With Offer Filter on screen, the screen shows it is updating
+     * (and takes no input) until the new version starts, which then opens Offer Filter again.
+     */
+    static void installStarted(Context context, boolean onScreen) {
+        long now = System.currentTimeMillis();
+        SharedPreferences.Editor edit = prefs(context).edit().putLong(COMMITTED_AT, now);
+        if (onScreen) {
+            edit.putLong(RELAUNCH_AT, now).putLong(RELAUNCH_FROM, versionCode(context));
+        } else {
+            edit.remove(RELAUNCH_AT).remove(RELAUNCH_FROM);
+        }
+        edit.commit();
+    }
+
+    /** An update is being installed: handed to Android, and neither failed nor finished yet. */
+    static boolean installing(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long at = prefs.getLong(COMMITTED_AT, 0);
+        long age = System.currentTimeMillis() - at;
+        return at > 0 && prefs.contains(SESSION) && age >= 0 && age < INSTALL_WINDOW_MS;
+    }
+
+    /**
+     * After an update installed while Offer Filter was on screen, opens it again. Safe to ask more than once: it
+     * brings back the one screen, and the screen itself says it is open ({@link #relaunched}). Returns whether it
+     * asked Android to open it.
+     */
+    static boolean relaunchAfterUpdate(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long at = prefs.getLong(RELAUNCH_AT, 0);
+        long age = System.currentTimeMillis() - at;
+        if (at <= 0 || age < 0 || age > INSTALL_WINDOW_MS) return false;
+        // Only once the new version is the one running.
+        if (versionCode(context) <= prefs.getLong(RELAUNCH_FROM, Long.MAX_VALUE)) return false;
+        try {
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            return true;
+        } catch (RuntimeException refused) {
+            DiagnosticLog.log(context, "update", "reopen after update refused: " + refused.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /** Offer Filter's screen is open again: nothing more to reopen. */
+    static void relaunched(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.contains(RELAUNCH_AT)) prefs.edit().remove(RELAUNCH_AT).remove(RELAUNCH_FROM).apply();
+    }
+
+    private static long versionCode(Context context) {
+        try {
+            return versionCode(context.getPackageManager().getPackageInfo(context.getPackageName(), 0));
+        } catch (android.content.pm.PackageManager.NameNotFoundException impossible) {
+            return 0;
+        }
+    }
+
     static void installationFailed(Context context, int code, String detail) {
         pendingConfirmation = null;
         prefs(context).edit()
                 .remove(SESSION)
                 .remove(SESSION_AT)
+                .remove(COMMITTED_AT)
+                .remove(RELAUNCH_AT)
+                .remove(RELAUNCH_FROM)
                 .putBoolean(MANUAL_RETRY_REQUIRED, true)
                 .apply();
         status(context, "Android installation failed (" + code + "): " + detail
@@ -547,6 +615,7 @@ final class Updater {
         prefs(context).edit()
                 .remove(SESSION)
                 .remove(SESSION_AT)
+                .remove(COMMITTED_AT)
                 .remove(MANUAL_RETRY_REQUIRED)
                 // Written by 0.4.5 and earlier but never read; removed here so old installs shed them.
                 .remove("ready")

@@ -22,9 +22,9 @@ import org.json.JSONObject;
  * The phone's connection to GitHub, used only to read updates from the app's private repository. It signs in with
  * GitHub's device flow: the app asks GitHub for a short code, the user approves it at github.com/login/device, and
  * the app receives a token that can do only what the user's "Offer Filter Updates" GitHub App may do (read this
- * repository's files), restricted to this one repository. There is no client secret and no server: device-flow
- * tokens refresh with the client ID alone. Tokens stay in the app's private storage and go only to GitHub. This is
- * separate from the report token, so connecting never turns reports on.
+ * repository's files, and file issues if the app is given that), restricted to this one repository. There is no
+ * client secret and no server: device-flow tokens refresh with the client ID alone. Tokens stay in the app's private
+ * storage and go only to GitHub. Connecting never turns reports on; the user does that separately in Reports.
  */
 final class GitHubConnect {
     /** The user's own GitHub App (public identifier, not a secret); empty hides the feature. */
@@ -134,11 +134,12 @@ final class GitHubConnect {
         if (state(app) == State.WAITING && !POLLING.get()) WORKER.execute(() -> pollUntilDone(app));
     }
 
-    /** Forgets the connection on this phone. Updates then come from Render only. */
+    /** Forgets the connection on this phone. Updates then come from Render only, and reports sent through it stop. */
     static void disconnect(Context context) {
         synchronized (LOCK) {
             prefs(context).edit().clear().commit();
         }
+        ReportOutbox.connectionRemoved(context);
     }
 
     /** Asks GitHub for a device code and remembers it. */

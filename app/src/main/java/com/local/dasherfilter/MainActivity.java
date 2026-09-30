@@ -79,6 +79,8 @@ public final class MainActivity extends Activity {
     private FrameLayout sheet;
     private LinearLayout sheetCard;
     private TextView areaLine;
+    /** Over everything while an update installs: it says so and takes no input until the new version opens. */
+    private LinearLayout updatingCover;
     private ScrollView settingsPage;
     private boolean showingSettings;
 
@@ -134,6 +136,7 @@ public final class MainActivity extends Activity {
     private Button areasFix;
     private Button areasForget;
     private EditText reportToken;
+    private Switch reportViaGitHub;
     private TextView reportStatus;
     private Button sendTest;
     private Button stopReports;
@@ -169,6 +172,8 @@ public final class MainActivity extends Activity {
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0), saved);
         buildSheet(root);
+        buildUpdatingCover(root);
+        Updater.relaunched(this);
 
         setContentView(root);
         styleSystemBars();
@@ -186,6 +191,8 @@ public final class MainActivity extends Activity {
     /** Back from Settings returns to the main page; back from the main page leaves. */
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
+        // While updating, nothing is to be interrupted; the new version opens by itself.
+        if (updatingCover.getVisibility() == View.VISIBLE) return;
         if (sheet.getVisibility() == View.VISIBLE) closeSheet();
         else if (showingSettings) showSettings(false);
         else super.onBackPressed();
@@ -312,6 +319,28 @@ public final class MainActivity extends Activity {
     /** A share of the height left on one screen. */
     private static LinearLayout.LayoutParams share(float weight) {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, weight);
+    }
+
+    private void buildUpdatingCover(FrameLayout root) {
+        updatingCover = ui.column();
+        updatingCover.setGravity(Gravity.CENTER);
+        updatingCover.setBackgroundColor(ui.page);
+        updatingCover.setVisibility(View.GONE);
+        // Clickable: every touch lands here and goes no further.
+        updatingCover.setClickable(true);
+        updatingCover.setFocusable(true);
+        updatingCover.addView(new UpdatingView(this, ui), Ui.matchWidth());
+        TextView title = ui.text("Updating Offer Filter…", 20, ui.ink, true);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        title.setPadding(0, ui.dp(12), 0, 0);
+        updatingCover.addView(title, Ui.matchWidth());
+        TextView note = ui.text("It opens again by itself in a moment.", 15, ui.inkSecondary, false);
+        note.setGravity(Gravity.CENTER_HORIZONTAL);
+        note.setPadding(ui.dp(24), ui.dp(6), ui.dp(24), 0);
+        updatingCover.addView(note, Ui.matchWidth());
+        updatingCover.setContentDescription("Updating Offer Filter. It opens again by itself in a moment.");
+        root.addView(updatingCover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void buildSheet(FrameLayout root) {
@@ -633,6 +662,14 @@ public final class MainActivity extends Activity {
         diagnostics = ui.toggle(body, "Capture full screen text (30 min)", DiagnosticLog.isEnabled(this));
         diagnostics.setOnCheckedChangeListener((view, on) -> DiagnosticLog.setEnabled(this, on));
 
+        // Once GitHub is connected for updates, reports can go through the same connection: no token to paste.
+        reportViaGitHub = ui.toggle(body, "Send reports through my GitHub connection",
+                ReportOutbox.useGitHubChosen(this));
+        reportViaGitHub.setOnCheckedChangeListener((view, on) -> {
+            if (on == ReportOutbox.useGitHubChosen(this)) return;
+            ReportOutbox.useGitHub(this, on);
+            refresh();
+        });
         TextView caption = ui.text("Automatic reports (GitHub token)", 13, ui.inkSecondary, false);
         caption.setPadding(0, ui.dp(14), 0, ui.dp(4));
         body.addView(caption);
@@ -767,10 +804,24 @@ public final class MainActivity extends Activity {
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
         baselineNote.setText(adaptiveNote(saved));
         updateStatus.setText(Updater.status(this));
+        boolean updating = Updater.installing(this);
+        if (updating != (updatingCover.getVisibility() == View.VISIBLE)) {
+            updatingCover.setVisibility(updating ? View.VISIBLE : View.GONE);
+            if (updating) {
+                updatingCover.setAlpha(0f);
+                updatingCover.animate().alpha(1f).setDuration(250);
+                updatingCover.announceForAccessibility("Updating Offer Filter");
+            }
+        }
         if (githubStatus != null) refreshGitHub();
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
         if (diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
         boolean reporting = ReportOutbox.enabled(this);
+        boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;
+        reportViaGitHub.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (reportViaGitHub.isChecked() != ReportOutbox.useGitHubChosen(this)) {
+            reportViaGitHub.setChecked(ReportOutbox.useGitHubChosen(this));
+        }
         reportStatus.setText(ReportOutbox.status(this));
         reportToken.setHint(reporting ? "Token saved · paste to replace" : "github_pat_…");
         if (reportSelected != null) reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
