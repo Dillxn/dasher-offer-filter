@@ -225,7 +225,7 @@ public class AccessibilityAdapterTest {
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
         assertTrue(Shadows.shadowOf(confirm).getPerformedActions().isEmpty());
-        assertEquals("Offer Filter stopped tapping this offer", ShadowToast.getTextOfLatestToast());
+        assertEquals("Dash Buddy stopped tapping this offer", ShadowToast.getTextOfLatestToast());
         assertEquals(DecisionLog.Action.USER_TOOK_OVER, DecisionLog.recent(app, 1).get(0).action);
     }
 
@@ -302,7 +302,7 @@ public class AccessibilityAdapterTest {
         assertFalse(FilterStore.load(app).enabled);
         assertTrue("pausing keeps the rules", FilterStore.load(app).hasAnyRule());
         assertEquals(FilterHeroView.State.PAUSED, tab.state());
-        assertEquals("Offer Filter: paused. Tap to resume.", tab.getContentDescription().toString());
+        assertEquals("Dash Buddy: paused. Tap to resume.", tab.getContentDescription().toString());
         tab.performClick();
         assertTrue(FilterStore.load(app).enabled);
         assertEquals("the same tab stays; it is never added twice", 1, windows().size());

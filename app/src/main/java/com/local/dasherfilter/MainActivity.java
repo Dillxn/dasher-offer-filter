@@ -366,7 +366,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         updatingCover.setClickable(true);
         updatingCover.setFocusable(true);
         updatingCover.addView(new UpdatingView(this, ui), Ui.matchWidth());
-        TextView title = ui.text("Updating Offer Filter…", 20, ui.ink, true);
+        TextView title = ui.text("Updating Dash Buddy…", 20, ui.ink, true);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
         title.setPadding(0, ui.dp(12), 0, 0);
         updatingCover.addView(title, Ui.matchWidth());
@@ -374,7 +374,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         note.setGravity(Gravity.CENTER_HORIZONTAL);
         note.setPadding(ui.dp(24), ui.dp(6), ui.dp(24), 0);
         updatingCover.addView(note, Ui.matchWidth());
-        updatingCover.setContentDescription("Updating Offer Filter. It opens again by itself in a moment.");
+        updatingCover.setContentDescription("Updating Dash Buddy. It opens again by itself in a moment.");
         root.addView(updatingCover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -439,7 +439,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void buildMain(LinearLayout page) {
         int heightDp = getResources().getConfiguration().screenHeightDp;
         compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
-        page.addView(header("Offer Filter", false));
+        page.addView(header("Dash Buddy", false));
         LinearLayout body = body(page);
         // Everything between the title and the road shares one screen.
         body.setLayoutParams(share(1));
@@ -580,7 +580,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         addReports(body);
         addUpdates(body);
         addSupport(body);
-        TextView footer = ui.text("Offer Filter v" + Updater.version(this) + " · Not a DoorDash app.", 12,
+        TextView footer = ui.text("Dash Buddy v" + Updater.version(this) + " · Not a DoorDash app.", 12,
                 ui.inkSecondary, false);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(0, ui.dp(28), 0, 0);
@@ -786,7 +786,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         List<Support.Method> methods = Support.methods();
         if (methods.isEmpty()) return;
         ui.heading(body, "Support");
-        body.addView(ui.note("Offer Filter is free. If it makes your dash better, a tip keeps it going."));
+        body.addView(ui.note("Dash Buddy is free. If it makes your dash better, a tip keeps it going."));
         for (Support.Method method : methods) {
             ui.listRow(body, "Tip with " + method.label,
                     () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(method)))));
@@ -840,7 +840,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (updating) {
                 updatingCover.setAlpha(0f);
                 updatingCover.animate().alpha(1f).setDuration(250);
-                updatingCover.announceForAccessibility("Updating Offer Filter");
+                updatingCover.announceForAccessibility("Updating Dash Buddy");
             }
         }
         if (githubStatus != null) refreshGitHub();
@@ -1118,7 +1118,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             areasStatus.setText("Needs location permission. Approximate is enough.");
         } else if (needsAllTheTime) {
             areasStatus.setText(unlocated + (unlocated == 1 ? " offer" : " offers") + " came in without a "
-                    + "location. Android may share it only while Offer Filter is open, so choose Allow all the "
+                    + "location. Android may share it only while Dash Buddy is open, so choose Allow all the "
                     + "time.");
         } else {
             areasStatus.setText("On · " + AreaMap.totalOffers(cells) + " offers in " + cells.size()
@@ -1355,12 +1355,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .show();
     }
 
-    /** Offers any app for the diagnostic report; mail keeps its "Offer Filter diagnostics" subject. */
+    /** Offers any app for the diagnostic report; mail keeps its "Dash Buddy diagnostics" subject. */
     private void shareReport() {
         open(Intent.createChooser(new Intent(Intent.ACTION_SEND)
                 .setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT, DiagnosticLog.reportSubject(this))
-                .putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)), "Share Offer Filter report"));
+                .putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)), "Share Dash Buddy report"));
     }
 
     private void openNotificationAccess() {

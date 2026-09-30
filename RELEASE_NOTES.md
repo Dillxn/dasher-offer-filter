@@ -1,3 +1,28 @@
+## 0.4.29 — Offer Filter is now Dash Buddy
+
+- **New name: Dash Buddy**, so it sits right beside Dasher in alphabetical app lists such as the app drawer and Settings → Apps. The new name shows everywhere the app names itself:
+  - the launcher and recent apps;
+  - its screen-reading and background-offers entries in Accessibility and Notification access;
+  - the tab over Dasher, toasts and the updating screen;
+  - the update notification and install prompt;
+  - the diagnostic report ("Dash Buddy diagnostics");
+  - the note on a Venmo tip.
+- **The passing-offer alert** now reads "DoorDash offer meets your rules".
+- **Nothing to redo.** The package, signer and update feed are unchanged, so this installs over Offer Filter like any update. Screen reading and notification access stay on: Android remembers them by the app's package and service, not the name it shows. This one update is installed by 0.4.28, so if it asks for a tap, that prompt still says Offer Filter; the new name shows from the next update on.
+- **What keeps the old name:** the update file (OfferFilter.apk), this repository, the "Offer Filter Updates" GitHub App and the report fixer's comments.
+
+Evidence boundaries:
+- **Java and simulated Android 8 and 15 tests** cover the renamed texts:
+  - the diagnostic report's subject;
+  - the tab's description over Dasher;
+  - the takeover toast;
+  - the updating screen;
+  - the split-screen hint;
+  - the Venmo tip note.
+- **Not verified on a real phone:**
+  - the new name in the launcher and settings lists;
+  - that accessibility and notification access stay on across this update.
+
 ## 0.4.28 — split screen on phones that won't split for us, a softer map, and the constellation in split screen
 
 - **Split with Dasher works on phones that ignore the split request.** Newer Android starts split screen from recent apps, so when the phone does not split the screen for us, Offer Filter opens recent apps with a hint (tap Offer Filter's icon above its card and choose split screen). Once the screen splits within a minute, Dasher opens in the other half by itself; a split much later opens nothing.

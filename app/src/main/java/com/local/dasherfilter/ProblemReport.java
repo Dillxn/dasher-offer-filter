@@ -91,7 +91,7 @@ final class ProblemReport {
         List<String> screen = redact(labels);
         String title = TITLE_PREFIX + " " + kind.label + ": " + headline(kind, entry, error);
         StringBuilder summary = new StringBuilder()
-                .append("Filed by Offer Filter ").append(appVersion).append(".\n\n")
+                .append("Filed by Dash Buddy ").append(appVersion).append(".\n\n")
                 .append("**What happened:** ").append(kind.label).append('\n');
         if (note != null && !note.trim().isEmpty()) summary.append("**User says:** ").append(note.trim()).append('\n');
         if (entry != null) {

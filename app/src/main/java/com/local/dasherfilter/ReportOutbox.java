@@ -305,9 +305,9 @@ final class ReportOutbox {
                     prefs(context).edit().putString(LAST_ERROR, connection
                             ? "GitHub refused the report (" + said + "). The GitHub App needs Issues: Read and write, "
                                     + "and adding it is not enough by itself: on github.com, open Settings → "
-                                    + "Applications → Installed GitHub Apps, tap Configure next to the app, and "
+                                    + "Applications → Installed GitHub Apps, tap Configure next to your GitHub App, and "
                                     + "accept its new permissions (GitHub also emails a request to review them). "
-                                    + "Reports are kept and sent again each time you open Offer Filter."
+                                    + "Reports are kept and sent again each time you open Dash Buddy."
                             : "GitHub rejected the token (" + said
                                     + "). Paste a new one; reports are kept until then.").apply();
                     // Permissions approved from now on reach the next attempt's token.

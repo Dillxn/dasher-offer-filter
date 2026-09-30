@@ -493,7 +493,7 @@ public class AndroidAdapterTest {
             assertEquals(Intent.ACTION_CHOOSER, chooser.getAction());
             Intent sent = chooser.getParcelableExtra(Intent.EXTRA_INTENT);
             assertEquals(Intent.ACTION_SEND, sent.getAction());
-            assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Offer Filter diagnostics"));
+            assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Dash Buddy diagnostics"));
             String body = sent.getStringExtra(Intent.EXTRA_TEXT);
             assertTrue(body.contains("== Decision history"));
             assertTrue(body.contains("DECLINE | pay $7.90 | needed $10.80"));
@@ -673,7 +673,7 @@ public class AndroidAdapterTest {
                 assertEquals(Intent.ACTION_VIEW, opened.getAction());
                 assertEquals("https://cash.app/$OfferFilterDev", opened.getDataString());
                 findButton(content, "Tip with Venmo").performClick();
-                assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Offer%20Filter%20tip",
+                assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Dash%20Buddy%20tip",
                         Shadows.shadowOf(app).getNextStartedActivity().getDataString());
             }
         } finally {
@@ -1137,7 +1137,7 @@ public class AndroidAdapterTest {
             shownIcon(content, "Split screen with Dasher").performClick();
             assertEquals("asked to split, then opened recent apps", Arrays.asList("split", "recents"), asked);
             assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()
-                    .startsWith("Tap Offer Filter's icon above its card and choose split screen."));
+                    .startsWith("Tap Dash Buddy's icon above its card and choose split screen."));
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
             // The user splits it from recent apps half a minute later: Dasher still opens in the other half.
@@ -1221,12 +1221,12 @@ public class AndroidAdapterTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull(shownTextContaining(content, "Updating Offer Filter"));
+            assertNull(shownTextContaining(content, "Updating Dash Buddy"));
 
             Updater.prefs(app).edit().putInt("session", 5).commit();
             Updater.installStarted(app, true);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            TextView title = shownTextContaining(content, "Updating Offer Filter");
+            TextView title = shownTextContaining(content, "Updating Dash Buddy");
             assertNotNull(title);
             View cover = (View) title.getParent();
             assertTrue("it takes every touch", cover.dispatchTouchEvent(
@@ -1237,7 +1237,7 @@ public class AndroidAdapterTest {
 
             Updater.installationFailed(app, 1, "test");
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertNull("a failed install gives the screen back", shownTextContaining(content, "Updating Offer Filter"));
+            assertNull("a failed install gives the screen back", shownTextContaining(content, "Updating Dash Buddy"));
         }
     }
 

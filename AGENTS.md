@@ -1,4 +1,6 @@
-# Offer Filter development
+# Dash Buddy (formerly Offer Filter) development
+
+- The app shows as "Dash Buddy" (so it sits beside Dasher in alphabetical app lists); it was Offer Filter before 0.4.29. Only user-visible text carries the new name; code comments may still say Offer Filter. Keep unchanged: the package com.local.dasherfilter, class and component names, prefs keys, notification channel IDs, the feed files (OfferFilter.apk, latest.json), User-Agents, signing file names, the "Offer Filter Updates" GitHub App and the fixer's own text.
 
 - Stay on main; no branches or worktrees. Stage a complete, tested/versioned change in one commit rather than publishing partially edited main states.
 - Network access is for updates, and for problem reports only after the user saves a report token in the app (their explicit opt-in; removing it stops reports and discards unsent ones). Reports go only to this private repository's issues, where the fixer workflow has Claude read them. Every word that is not offer vocabulary is masked before a report leaves the phone. Otherwise offer data, rules, and logs stay on-device unless the user explicitly shares a diagnostic report.

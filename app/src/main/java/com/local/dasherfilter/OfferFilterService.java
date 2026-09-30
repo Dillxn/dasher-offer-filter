@@ -322,7 +322,7 @@ public final class OfferFilterService extends AccessibilityService {
         status(alreadyConfirmed
                 ? "You touched the screen after the decline was confirmed; nothing more will be tapped."
                 : "You touched the screen, so auto-decline stopped for this offer.");
-        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Offer Filter stopped tapping this offer";
+        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Dash Buddy stopped tapping this offer";
         Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
     }
 

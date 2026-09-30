@@ -65,7 +65,7 @@ final class Support {
         if (!validHandle(handle)) throw new IllegalArgumentException(method + " has no usable name");
         switch (method) {
             case CASH_APP: return "https://cash.app/$" + handle;
-            case VENMO: return "https://venmo.com/" + handle + "?txn=pay&note=Offer%20Filter%20tip";
+            case VENMO: return "https://venmo.com/" + handle + "?txn=pay&note=Dash%20Buddy%20tip";
             default: return "https://paypal.me/" + handle;
         }
     }

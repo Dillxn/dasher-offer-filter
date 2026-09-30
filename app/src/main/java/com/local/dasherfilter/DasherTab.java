@@ -37,9 +37,9 @@ final class DasherTab extends View {
 
     void show(FilterHeroView.State next) {
         state = next;
-        setContentDescription(state == FilterHeroView.State.ON ? "Offer Filter: auto-decline on. Tap to pause."
-                : state == FilterHeroView.State.PAUSED ? "Offer Filter: paused. Tap to resume."
-                : "Offer Filter: no rules yet. Tap to set them up.");
+        setContentDescription(state == FilterHeroView.State.ON ? "Dash Buddy: auto-decline on. Tap to pause."
+                : state == FilterHeroView.State.PAUSED ? "Dash Buddy: paused. Tap to resume."
+                : "Dash Buddy: no rules yet. Tap to set them up.");
         invalidate();
     }
 

@@ -106,7 +106,7 @@ final class OfferAlerts {
         Notification.Builder builder = new Notification.Builder(context, channel)
                 .setSmallIcon(smallIcon(context))
                 .setContentTitle(result == OfferRule.Result.KEEP
-                        ? "DoorDash offer passes filter" : "DoorDash offer: open Dasher to check it")
+                        ? "DoorDash offer meets your rules" : "DoorDash offer: open Dasher to check it")
                 .setContentText(body)
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
