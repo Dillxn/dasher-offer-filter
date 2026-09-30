@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for offer alerts: the app's funnel, white on transparent as Android requires. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3.6,3.5 L20.4,3.5 Q21.6,3.5 20.8,4.4 L14,12.6 L14,19.2 Q14,19.8 13.4,20.1 L10.9,21.4 Q10,21.8 10,20.8 L10,12.6 L3.2,4.4 Q2.4,3.5 3.6,3.5 Z" />
+</vector>

@@ -65,6 +65,16 @@ final class OfferAlerts {
      * @return true only when Android accepted the post. The caller must keep the original DoorDash notification
      *         whenever this returns false.
      */
+    /**
+     * The app's funnel for the status bar. Looked up by name because this build has no generated R class; falls
+     * back to a system icon if the resource is missing.
+     */
+    @SuppressWarnings("DiscouragedApi")
+    static int smallIcon(Context context) {
+        int id = context.getResources().getIdentifier("ic_notification", "drawable", context.getPackageName());
+        return id != 0 ? id : android.R.drawable.stat_notify_more;
+    }
+
     static boolean notifyOffer(Context context, String tag, PendingIntent doorDashIntent, OfferRule.Result result,
                                String detail, boolean ring) {
         if (result == OfferRule.Result.DECLINE) {
@@ -83,7 +93,7 @@ final class OfferAlerts {
         if (body.length() > MAX_BODY_CHARS) body = body.substring(0, MAX_BODY_CHARS) + "…";
         boolean audible = result == OfferRule.Result.KEEP && ring;
         Notification.Builder builder = new Notification.Builder(context, channel)
-                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setSmallIcon(smallIcon(context))
                 .setContentTitle(result == OfferRule.Result.KEEP
                         ? "DoorDash offer passes filter" : "DoorDash offer: not yet classified")
                 .setContentText(body)

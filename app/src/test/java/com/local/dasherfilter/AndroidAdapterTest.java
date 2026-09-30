@@ -74,6 +74,22 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void theAppHasALauncherIconAndItsAlertsCarryTheFunnel() {
+        int icon = app.getApplicationInfo().icon;
+        assertTrue("the launcher needs an icon", icon != 0);
+        assertTrue(app.getDrawable(icon) instanceof android.graphics.drawable.AdaptiveIconDrawable);
+        if (Build.VERSION.SDK_INT >= 33) {
+            assertNotNull("themed icons need a monochrome layer",
+                    ((android.graphics.drawable.AdaptiveIconDrawable) app.getDrawable(icon)).getMonochrome());
+        }
+
+        assertTrue(OfferAlerts.notifyOffer(app, "keep", null, OfferRule.Result.KEEP, "$25.00", true));
+        Notification alert = notifications().getNotification("keep", ALERT_NOTIFICATION_ID);
+        assertEquals(app.getResources().getIdentifier("ic_notification", "drawable", app.getPackageName()),
+                alert.getSmallIcon().getResId());
+    }
+
+    @Test
     public void unclassifiedNotificationUsesSilentChannelAndDoesNotLaunch() {
         assertTrue(OfferAlerts.notifyOffer(app, "review", null, OfferRule.Result.REVIEW, "Missing pay", false));
 

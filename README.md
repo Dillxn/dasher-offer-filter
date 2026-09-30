@@ -57,6 +57,8 @@ Add-on offers are not fresh standalone orders. They need explicitly added pay/di
 
 Install the cloud-signed APK over an existing cloud-signed 0.4.x installation. Do not uninstall for a normal update. The original 0.3.1 signer is a separate retired installation chain. Enable Accessibility, notification access, and Offer Filter's notification permission. Configure the observed DoorDash offer channel using the app's shortcut. Some Android devices require allowing restricted settings for sideloaded Accessibility services.
 
+The app's icon is a white funnel on blue with a green check. It is an adaptive icon with a themed (one-colour) layer, and offer alerts use the same funnel in the status bar.
+
 The screen is kept short and mostly drawn rather than written.
 
 - **Top card.** Offer tickets flow into a funnel and out to passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. A failing offer left to you (paused, refused or taken over) counts as review. The funnel has its sieve when on, is open, dashed and amber when paused, and grey when off.

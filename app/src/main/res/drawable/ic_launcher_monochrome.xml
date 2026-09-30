@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One-colour version for themed launcher icons (Android 13+): the system tints it; the sieve and check are cut out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M33.5,31 L74.5,31 Q77,31 75.5,33 L59,54 L59,69.5 Q59,71 57.7,71.7 L52,74.9 Q50,76 50,73.7 L50,54 L32.5,33 Q31,31 33.5,31 Z M39,37.2 L69,37.2 L69,39.8 L39,39.8 Z M45,44.7 L63,44.7 L63,47.3 L45,47.3 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M60,67 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z M63.3,68.5 L65.5,66.3 L68.5,69.3 L74.8,62.5 L77.1,64.6 L68.6,73.7 Z" />
+</vector>

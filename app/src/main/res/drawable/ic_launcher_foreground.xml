@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The filter from the app's status card: a funnel with its sieve, and a passed-offer check. Drawn inside the
+  adaptive-icon safe zone (a 66dp circle at the centre of the 108dp canvas), so no launcher mask clips it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33.5,31 L74.5,31 Q77,31 75.5,33 L59,54 L59,69.5 Q59,71 57.7,71.7 L52,74.9 Q50,76 50,73.7 L50,54 L32.5,33 Q31,31 33.5,31 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#256ABF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:pathData="M39,38.5 L69,38.5 M45,46 L63,46" />
+    <path
+        android:fillColor="#0CA30C"
+        android:strokeColor="#256ABF"
+        android:strokeWidth="3"
+        android:pathData="M58.5,67 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M64.4,67.4 L68.5,71.5 L75.8,63.6" />
+</vector>
