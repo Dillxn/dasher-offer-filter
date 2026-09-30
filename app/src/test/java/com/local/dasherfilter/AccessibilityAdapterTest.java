@@ -372,6 +372,23 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void withCaptureOnDashersOtherScreensAreKeptForAReportAndOtherwiseNot() {
+        AccessibilityNodeInfo list = node("", false);
+        Shadows.shadowOf(list).addChild(node("Organic bananas", false));
+        Shadows.shadowOf(list).addChild(node("Aisle 12", false));
+        Shadows.shadowOf(list).addChild(node("Produce", false));
+        show(list);
+        DiagnosticLog.setEnabled(app, true);
+        assertFalse("nothing kept while capture was off", DiagnosticLog.report(app).contains("Aisle 12"));
+
+        show(list);
+        String report = DiagnosticLog.report(app);
+        assertTrue(report, report.contains("Organic bananas") && report.contains("Aisle 12"));
+        assertTrue(Shadows.shadowOf(decline == null ? node("", false) : decline).getPerformedActions().isEmpty());
+        DiagnosticLog.setEnabled(app, false);
+    }
+
+    @Test
     public void dasherInTheOtherHalfIsRememberedForAMomentOnly() {
         controller.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(0);

@@ -1,3 +1,14 @@
+## 0.4.32 — capture shopping screens
+
+- **Capture full screen text** (Settings → Reports, 30 minutes) now also keeps Dasher's other screens (a shopping list, an item, a delivery step), once per distinct screen and at most once a second, so their wording can be learned from a report you share. It is the first step toward a store sketch for shopping orders. Nothing is decided from those screens, nothing is kept while capture is off, and nothing leaves the phone unless you share the report.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - another Dasher screen's words kept in the report while capture is on;
+  - nothing kept while it is off;
+  - nothing tapped.
+- **Not verified on a real phone:** what Dasher's shopping screens actually say.
+
 ## 0.4.31 — no second map beside Dasher
 
 - **Split screen with Dasher shows one map: Dasher's.** Our map and its line step aside while Dasher is in the other half, since its own map is right there and the pointer over it shows the way to the best area. The room goes to the sky: the constellation is back at full size (about twice as large as in 0.4.30's header), above the skyline. Our map comes back if Dasher leaves the other half. A moment under the shade or in recent apps does not count as leaving (20 seconds do).

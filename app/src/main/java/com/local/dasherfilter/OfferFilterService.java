@@ -489,6 +489,9 @@ public final class OfferFilterService extends AccessibilityService {
             forgetTakeover();
         }
         if (scan.accept == null && scan.decline == null) {
+            // With capture on, Dasher's other screens (a shopping list, an item, a delivery) are kept too, so their
+            // wording can be learned from a shared report. Nothing is decided from them.
+            captureOtherScreen(scan, now);
             declineState.offerGone();
             return declineState.hasPendingConfirmation(now);
         }
@@ -755,6 +758,20 @@ public final class OfferFilterService extends AccessibilityService {
     private static boolean click(AccessibilityNodeInfo node) {
         return node != null && isDasher(node) && node.isEnabled() && node.isVisibleToUser() && hasClickAction(node)
                 && node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+    }
+
+    /** The last other screen captured, and when: a screen whose words have not changed is kept once. */
+    private int lastOtherScreen;
+    private long lastOtherScreenAt;
+
+    /** With capture on, one line per distinct other Dasher screen (at most one a second): its words, as read. */
+    private void captureOtherScreen(Scan scan, long now) {
+        if (!DiagnosticLog.isEnabled(this)) return;
+        int words = scan.text.hashCode() * 31 + scan.metricParts.hashCode();
+        if (words == lastOtherScreen || now - lastOtherScreenAt < 1000) return;
+        lastOtherScreen = words;
+        lastOtherScreenAt = now;
+        DiagnosticLog.log(this, "screen", "other labels=" + scan.text + " metricParts=" + scan.metricParts);
     }
 
     private void diagnostic(String phase, Scan scan, OfferSnapshot offer, OfferRule.Decision decision) {
