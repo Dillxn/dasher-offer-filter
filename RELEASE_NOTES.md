@@ -1,3 +1,17 @@
+## 0.4.33 — screen text capture is automatic
+
+- **No switch to remember.** What the screen reader sees, including Dasher's shopping screens, is always captured into a small rolling log on this phone: the last 24 hours, the newest 128 KB. **Share report** includes it; nothing else sends it, and automatic GitHub reports still carry only masked offer labels. **Clear history** now clears it too. The "Capture full screen text (30 min)" switch is gone; one line under **Share report** says what is kept.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - capture on from the start;
+  - an entry two days old dropped while today's is kept;
+  - the report saying capture is automatic;
+  - Clear history removing the captured text;
+  - no capture switch in Settings;
+  - a shopping-like screen kept while capture is on, and not while off.
+- **Not verified on a real phone:** the log over a whole day of dashing.
+
 ## 0.4.32 — capture shopping screens
 
 - **Capture full screen text** (Settings → Reports, 30 minutes) now also keeps Dasher's other screens (a shopping list, an item, a delivery step), once per distinct screen and at most once a second, so their wording can be learned from a report you share. It is the first step toward a store sketch for shopping orders. Nothing is decided from those screens, nothing is kept while capture is off, and nothing leaves the phone unless you share the report.

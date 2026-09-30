@@ -137,7 +137,7 @@ Opening such an issue starts `.github/workflows/offer-report-fixer.yml`. It is e
 
 Set the repository variable `OFFER_FIXER_ENABLED` to `false` to stop it.
 
-Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, the decision history, updater status, the latest advertised version and last check timestamps even when raw capture is off; the newest 48,000 characters of raw log are added only while capture has been on. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
+Screen text is captured automatically: what the screen reader and the notification path saw and did, including Dasher's screen text (offers, and its other screens such as a shopping list), goes into a small rolling log on the phone, the newest 128 KB with nothing older than a day. There is no switch to remember. It leaves the phone only inside a report you share yourself; automatic GitHub reports never include it (they carry only masked offer labels). Raw screen text can contain customer, store and address information, so review a report before sharing it. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, the decision history, updater status, the latest advertised version and last check timestamps, and the newest 24,000 characters of the log. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. **Clear history** removes the decisions and the captured text.
 
 ## Build and release
 

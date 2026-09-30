@@ -215,20 +215,25 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void rawCaptureExpiresAndReportStillIncludesUpdateState() {
-        DiagnosticLog.setEnabled(app, true);
-        assertTrue(DiagnosticLog.isEnabled(app));
+    public void screenCaptureIsAutomaticAndKeepsOnlyTheLastDay() throws Exception {
+        assertTrue("on from the start, with no switch", DiagnosticLog.isEnabled(app));
 
-        // Once the capture window has passed, raw capture reports itself disabled.
-        app.getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE)
-                .edit()
-                .putLong("until", System.currentTimeMillis() - 1)
-                .commit();
-        assertFalse(DiagnosticLog.isEnabled(app));
+        // An entry from two days ago is dropped; today's stays.
+        String old = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", java.util.Locale.US)
+                .format(new java.util.Date(System.currentTimeMillis() - 2 * DiagnosticLog.KEEP_MS));
+        java.io.File log = new java.io.File(app.getFilesDir(), "offer-filter-diagnostics.log");
+        java.nio.file.Files.write(log.toPath(),
+                (old + " [screen] other labels=[Two days old]\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        DiagnosticLog.log(app, "screen", "other labels=[Aisle 12]");
+        String kept = DiagnosticLog.read(app);
+        assertTrue(kept, kept.contains("Aisle 12"));
+        assertFalse(kept, kept.contains("Two days old"));
 
-        // The diagnostic report still carries updater status.
+        // The diagnostic report still carries updater status, and says capture is automatic.
         Updater.status(app, "Synthetic updater error for test");
-        assertTrue(DiagnosticLog.report(app).contains("Synthetic updater error for test"));
+        String report = DiagnosticLog.report(app);
+        assertTrue(report.contains("Synthetic updater error for test"));
+        assertTrue(report.contains("Screen text capture: automatic"));
     }
 
     @Test
@@ -413,6 +418,8 @@ public class AndroidAdapterTest {
             activity.recreate();
             content = activity.get().findViewById(android.R.id.content);
             assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertNull("capture is automatic: no switch", findTextView(content, "Capture full screen text"));
+            assertNotNull(findTextView(content, "stays on this phone for reports"));
 
             activity.get().onBackPressed();
             assertTrue(find(content, FilterHeroView.class).isShown());
@@ -509,9 +516,11 @@ public class AndroidAdapterTest {
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertEquals(1, DecisionLog.recent(app, 10).size());
+            DiagnosticLog.log(app, "screen", "other labels=[Customer's order]");
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertTrue(DecisionLog.recent(app, 10).isEmpty());
+            assertFalse("the captured screen text goes too", DiagnosticLog.read(app).contains("Customer's order"));
             assertNotNull(shownTextContaining(content, "No offers yet"));
         }
     }
@@ -1625,6 +1634,18 @@ public class AndroidAdapterTest {
     private static String areaLineSaid(View content) {
         TextView line = shownTextContaining(content, "  ›");
         return line == null || line.getContentDescription() == null ? "" : line.getContentDescription().toString();
+    }
+
+    /** Any TextView (a switch's label too) whose text contains {@code part}, shown or not. */
+    private static TextView findTextView(View view, String part) {
+        if (view instanceof TextView && ((TextView) view).getText().toString().contains(part)) return (TextView) view;
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                TextView found = findTextView(((ViewGroup) view).getChildAt(i), part);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** Taps the skyline, unfolding the chosen offer's ticket. */

@@ -161,7 +161,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private TextView reportStatus;
     private Button sendTest;
     private Button stopReports;
-    private Switch diagnostics;
     private TextView updateStatus;
     private Button allowInstalls;
     private TextView githubStatus;
@@ -743,8 +742,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ui.heading(body, "Reports");
         ui.listRow(body, "Share report", this::shareReport);
         ui.listRow(body, "Clear history", this::confirmClearHistory);
-        diagnostics = ui.toggle(body, "Capture full screen text (30 min)", DiagnosticLog.isEnabled(this));
-        diagnostics.setOnCheckedChangeListener((view, on) -> DiagnosticLog.setEnabled(this, on));
+        TextView kept = ui.text("Dasher's screen text from the last day stays on this phone for reports. It leaves only "
+                + "in a report you share.", 13, ui.inkSecondary, false);
+        kept.setPadding(0, ui.dp(6), 0, 0);
+        body.addView(kept);
 
         // Once GitHub is connected for updates, reports can go through the same connection: no token to paste.
         reportViaGitHub = ui.toggle(body, "Send reports through my GitHub connection",
@@ -899,7 +900,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         if (githubStatus != null) refreshGitHub();
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
-        if (diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
         boolean reporting = ReportOutbox.enabled(this);
         boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;
         reportViaGitHub.setVisibility(connected ? View.VISIBLE : View.GONE);
@@ -1398,9 +1398,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void confirmClearHistory() {
         new AlertDialog.Builder(this)
                 .setTitle("Clear offer history?")
-                .setMessage("This removes the recorded decisions from this phone. It does not change your rules.")
+                .setMessage("This removes the recorded decisions and the captured screen text from this phone. It "
+                        + "does not change your rules.")
                 .setPositiveButton("Clear", (dialog, which) -> {
                     DecisionLog.clear(this);
+                    DiagnosticLog.clear(this);
                     followNewest = true;
                     ticketOpen = false;
                     refresh();

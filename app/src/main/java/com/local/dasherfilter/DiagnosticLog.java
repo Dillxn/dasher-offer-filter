@@ -20,11 +20,20 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Opt-in local diagnostics; raw capture expires, bounded I/O never blocks screen-decision callbacks. */
+/**
+ * Local diagnostics, captured automatically: what the screen reader and the notification path saw and did,
+ * including Dasher's screen text, in a small rolling log on this phone (the newest 128 KB, nothing older than a
+ * day). It leaves the phone only in a report the user shares. Bounded I/O never blocks screen-decision callbacks.
+ */
 final class DiagnosticLog {
     private static final String PREFS = "offer_filter_diagnostics";
     private static final String FILE = "offer-filter-diagnostics.log";
-    private static final long SESSION_MS = 1_800_000L;
+    /** Entries older than this are dropped. */
+    static final long KEEP_MS = 24 * 3_600_000L;
+    /** How often the writer drops old entries (each report drops them too). */
+    private static final long PRUNE_EVERY_MS = 3_600_000L;
+    private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS XXX";
+    private static volatile long prunedAt;
     private static final int MAX_BYTES = 128 * 1024;
     private static final int KEEP_BYTES = 96 * 1024;
     private static final int MAX_MESSAGE_CHARS = 4096;
@@ -39,18 +48,13 @@ final class DiagnosticLog {
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
     private static final Object LOCK = new Object();
 
+    /** On unless turned off. There is no switch for it; tests turn it off. */
     static boolean isEnabled(Context context) {
-        SharedPreferences prefs = prefs(context);
-        long remaining = prefs.getLong("until", 0) - System.currentTimeMillis();
-        return prefs.getBoolean("enabled", false) && remaining > 0 && remaining <= SESSION_MS;
+        return !prefs(context).getBoolean("off", false);
     }
 
     static void setEnabled(Context context, boolean enabled) {
-        prefs(context).edit()
-                .putBoolean("enabled", enabled)
-                .putLong("until", enabled ? System.currentTimeMillis() + SESSION_MS : 0)
-                .apply();
-        if (enabled) log(context, "diagnostics", "local raw capture enabled for 30 minutes");
+        prefs(context).edit().putBoolean("off", !enabled).remove("enabled").remove("until").apply();
     }
 
     static void log(Context context, String source, String message) {
@@ -58,7 +62,7 @@ final class DiagnosticLog {
         Context app = context.getApplicationContext();
         String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
         if (safe.length() > MAX_MESSAGE_CHARS) safe = safe.substring(0, MAX_MESSAGE_CHARS) + " [truncated]";
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US).format(new Date());
+        String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date());
         byte[] line = (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
         try {
             WRITER.execute(() -> append(app, line));
@@ -72,6 +76,11 @@ final class DiagnosticLog {
         synchronized (LOCK) {
             File file = file(context);
             if (!file.exists()) return "No diagnostic entries yet.";
+            try {
+                dropOlderThan(file, System.currentTimeMillis() - KEEP_MS);
+            } catch (IOException ignored) {
+                // Read what is there.
+            }
             try {
                 return new String(readBytes(file), StandardCharsets.UTF_8);
             } catch (IOException error) {
@@ -105,7 +114,8 @@ final class DiagnosticLog {
                 + "Notification access granted: " + OfferNotificationService.hasAccess(context) + "\n"
                 + "Notification listener connected: " + OfferNotificationService.isConnected() + "\n"
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
-                + "Raw capture active: " + isEnabled(context) + " (30-minute session)\n"
+                + "Screen text capture: " + (isEnabled(context) ? "automatic" : "off")
+                + " (kept on this phone: the last 24 hours, newest 128 KB)\n"
                 + "Last status: " + FilterStore.lastStatus(context).replace('\n', ' ') + "\n"
                 + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"
@@ -154,9 +164,39 @@ final class DiagnosticLog {
                     out.write(bytes);
                 }
                 if (file.length() > MAX_BYTES) trimToRecentLines(file);
+                long now = System.currentTimeMillis();
+                if (now - prunedAt > PRUNE_EVERY_MS) {
+                    prunedAt = now;
+                    dropOlderThan(file, now - KEEP_MS);
+                }
             } catch (IOException ignored) {
                 // Best effort, as above.
             }
+        }
+    }
+
+    /** Drops the entries written before {@code cutoff}; a line whose time cannot be read is kept. */
+    private static void dropOlderThan(File file, long cutoff) throws IOException {
+        byte[] data = readBytes(file);
+        SimpleDateFormat time = new SimpleDateFormat(TIME_PATTERN, Locale.US);
+        int length = time.format(new Date(0)).length();
+        int start = 0;
+        while (start < data.length) {
+            int end = start;
+            while (end < data.length && data[end] != '\n') end++;
+            if (end - start < length) break;
+            Date at;
+            try {
+                at = time.parse(new String(data, start, length, StandardCharsets.UTF_8));
+            } catch (java.text.ParseException unreadable) {
+                break;
+            }
+            if (at == null || at.getTime() >= cutoff) break;
+            start = Math.min(data.length, end + 1);
+        }
+        if (start == 0) return;
+        try (OutputStream out = new FileOutputStream(file, false)) {
+            out.write(data, start, data.length - start);
         }
     }
 
