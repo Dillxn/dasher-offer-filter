@@ -120,6 +120,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private boolean compact;
     /** Where the sky meets the ground in a short window: just above the map. */
     private View horizonMark;
+    /** The main page's header, whose empty left (the title's place) holds the constellation in a short window. */
+    private LinearLayout mainHeader;
+    private TextView mainTitle;
+    /** How tall the constellation stands in the header of a short window. */
+    static final int HEADER_STAR_DP = 92;
     private AreaMapView areaMap;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
@@ -229,8 +234,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Offer Filter above, Dasher below, at the user's tap. */
     private void splitWithDasher() {
-        String problem = DasherSplit.start(this);
-        if (problem != null) toast(problem);
+        String said = DasherSplit.start(this);
+        if (said != null) toast(said);
     }
 
     @Override protected void onPause() {
@@ -297,6 +302,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
         if (!back) {
+            mainHeader = header;
+            mainTitle = name;
             splitButton = iconButton(Glyph.Shape.SPLIT, "Split screen with Dasher", this::splitWithDasher);
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
@@ -430,6 +437,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // ---- Main page ----
 
     private void buildMain(LinearLayout page) {
+        int heightDp = getResources().getConfiguration().screenHeightDp;
+        compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
         page.addView(header("Offer Filter", false));
         LinearLayout body = body(page);
         // Everything between the title and the road shares one screen.
@@ -468,8 +477,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         // One picture from top to bottom: the minimums as a constellation in the sky, the offers as a skyline on
         // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
-        int heightDp = getResources().getConfiguration().screenHeightDp;
-        compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
         addMinimums(body);
         addOffers(body);
         horizonMark = new View(this);
@@ -479,9 +486,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Short, the map runs down to the page's end; the road needs the room of a whole screen.
         if (!compact) ground(page, 78);
         if (compact) {
-            // Half a split screen: the constellation and the skyline give their room to the map, whose top is the
-            // horizon.
-            minimums.setVisibility(View.GONE);
+            // Half a split screen: the constellation rises into the sky beside the sun, in the header's empty left
+            // (where a title would be); the skyline gives its room to the map, whose top is the horizon.
+            ((ViewGroup) minimums.getParent()).removeView(minimums);
+            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(0, ui.dp(HEADER_STAR_DP), 1f));
+            // The title keeps its words for screen readers only, taking no room.
+            mainTitle.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0f));
             chart.setVisibility(View.GONE);
             noOffers.setVisibility(View.GONE);
             scene.setHorizon(horizonMark, 0, null);

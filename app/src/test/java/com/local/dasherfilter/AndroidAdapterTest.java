@@ -1040,13 +1040,25 @@ public class AndroidAdapterTest {
 
     @Test
     @Config(qualifiers = "w360dp-h360dp-xxhdpi")
-    public void aShortWindowKeepsTheMascotItsCountsAndTheMap() {
+    public void aShortWindowKeepsTheConstellationTheMascotItsCountsAndTheMap() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertTrue(find(content, FilterHeroView.class).isShown());
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue(mascot.isShown());
             assertTrue("the map stays", find(content, AreaMapView.class).isShown());
-            assertFalse("the constellation gives way", find(content, MinimumsStarView.class).isShown());
+            assertTrue("the constellation stays, up in the sky", star.isShown());
+            int[] starAt = new int[2];
+            int[] mascotAt = new int[2];
+            star.getLocationInWindow(starAt);
+            mascot.getLocationInWindow(mascotAt);
+            assertTrue("beside the sun, above the mascot", starAt[1] < mascotAt[1]);
+            assertNotNull("in the header, with the sun and Settings",
+                    iconDescribed((View) star.getParent(), "Settings"));
+            star.performClick();
+            assertTrue("a tap still opens the minimums", fieldLabeled(content, "Minimum pay ($)").isShown());
+            iconButton(content, "Back").performClick();
             assertFalse("the skyline gives way", findChart(content).isShown());
             assertNull(shownTextContaining(content, "No offers yet"));
         }
@@ -1102,6 +1114,63 @@ public class AndroidAdapterTest {
             assertNull("already split: no button", shownIcon(content, "Split screen with Dasher"));
         } finally {
             service.destroy();
+        }
+    }
+
+    @Test
+    public void aPhoneThatWillNotSplitOpensRecentAppsAndDasherStillFollows() {
+        dasherInstalled();
+        DasherSplit.forget();
+        List<String> asked = new ArrayList<>();
+        DasherSplit.split = () -> {
+            asked.add("split");
+            return false;
+        };
+        DasherSplit.recents = () -> {
+            asked.add("recents");
+            return true;
+        };
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            service.get().onServiceConnected();
+            View content = activity.get().findViewById(android.R.id.content);
+            shownIcon(content, "Split screen with Dasher").performClick();
+            assertEquals("asked to split, then opened recent apps", Arrays.asList("split", "recents"), asked);
+            assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()
+                    .startsWith("Tap Offer Filter's icon above its card and choose split screen."));
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+
+            // The user splits it from recent apps half a minute later: Dasher still opens in the other half.
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(30));
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(opened);
+            assertTrue((opened.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT) != 0);
+        } finally {
+            service.destroy();
+            DasherSplit.forget();
+        }
+    }
+
+    @Test
+    public void aSplitLongAfterTheTapOpensNothing() {
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.split = () -> false;
+        DasherSplit.recents = () -> true;
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            service.get().onServiceConnected();
+            View content = activity.get().findViewById(android.R.id.content);
+            shownIcon(content, "Split screen with Dasher").performClick();
+            ShadowSystemClock.advanceBy(Duration.ofMillis(DasherSplit.BY_HAND_MS + 1000));
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
+            assertNull("an unrelated split later never opens Dasher", Shadows.shadowOf(app).getNextStartedActivity());
+        } finally {
+            service.destroy();
+            DasherSplit.forget();
         }
     }
 

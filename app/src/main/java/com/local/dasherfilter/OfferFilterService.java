@@ -126,10 +126,24 @@ public final class OfferFilterService extends AccessibilityService {
      * @return whether Android took the request
      */
     static boolean splitScreen() {
+        return globalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+    }
+
+    /**
+     * At the user's tap on Split with Dasher, when the phone would not split the screen for us: opens recent apps,
+     * where the user starts split screen from Offer Filter's card. Never called otherwise.
+     *
+     * @return whether Android took the request
+     */
+    static boolean openRecents() {
+        return globalAction(GLOBAL_ACTION_RECENTS);
+    }
+
+    private static boolean globalAction(int action) {
         OfferFilterService service = active;
         if (service == null) return false;
         try {
-            return service.performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+            return service.performGlobalAction(action);
         } catch (RuntimeException refused) {
             return false;
         }

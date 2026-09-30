@@ -1,3 +1,20 @@
+## 0.4.28 — split screen on phones that won't split for us, a softer map, and the constellation in split screen
+
+- **Split with Dasher works on phones that ignore the split request.** Newer Android starts split screen from recent apps, so when the phone does not split the screen for us, Offer Filter opens recent apps with a hint (tap Offer Filter's icon above its card and choose split screen). Once the screen splits within a minute, Dasher opens in the other half by itself; a split much later opens nothing.
+- **The map fades out at its edges.** Squares, coins, the trail and the grid dissolve into the ground over the last 22 dp instead of being cut off; the compass and scale stay crisp.
+- **The constellation stays in split screen.** In a short window it rises into the sky at the top, beside the sun or moon, where the title used to be; a tap still opens the minimums.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - a refused split opening recent apps with the hint;
+  - Dasher opening beside Offer Filter after a split made there 30 s later, and not after one long after;
+  - the constellation in the header of a short window, above the mascot, still opening the minimums.
+- **Renders** of the map's fade and the short-window page were reviewed, light and dark.
+- **Not verified on a real phone:**
+  - recent apps opening from the button;
+  - Dasher opening after a split made there;
+  - how the fade looks on a real screen.
+
 ## 0.4.27 — fewer words, and split screen with Dasher
 
 - **The homepage says less.** The picture carries it; words appear only where something needs you. Screen readers still hear all of it. Gone from the page:

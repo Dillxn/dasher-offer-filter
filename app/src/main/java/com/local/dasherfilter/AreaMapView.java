@@ -4,9 +4,13 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.view.MotionEvent;
 import android.view.View;
 import java.util.ArrayList;
@@ -18,8 +22,10 @@ import java.util.Locale;
  * The offer areas drawn into the homepage's ground, north up, with no map tiles: each square where offers came in is
  * gilded deeper the better its pay per mile, with coins on the best three (named after their neighbourhood when the
  * phone's place lookup knows it) and a dotted trail from you to the best. Squares with too few offers to rank are
- * dashed outlines. A dot marks where the phone is now, with the neighbourhood it is in; a scale bar and a compass
- * rose give distance and direction. Tap a square to select it. With nothing to show yet, it says why.
+ * dashed outlines. A dot marks where the phone is now; a scale bar and a compass rose give distance and direction.
+ * The land fades out toward every edge instead of stopping at a hard line, so a square or coin the edge cuts through
+ * dissolves into the scene's ground; the compass and the scale stay crisp above it. Tap a square to select it. With
+ * nothing to show yet, it says why.
  */
 @SuppressLint("ViewConstructor")
 final class AreaMapView extends View {
@@ -42,6 +48,16 @@ final class AreaMapView extends View {
     /** Made once: the map redraws every frame while its "You" halo breathes. */
     private final DashPathEffect unrankedDash;
     private final DashPathEffect frameDash;
+    /** How far in from each edge the land fades from nothing to full. */
+    static final int FADE_DP = 22;
+    /** Keeps the land only where the edge ramps allow: multiplies what was drawn by the ramp's alpha. */
+    private final Paint fade = new Paint();
+    private final RectF strip = new RectF();
+    /** One ramp per edge, from clear at the edge to opaque inward; remade only when the size changes. */
+    private Shader fadeTop;
+    private Shader fadeBottom;
+    private Shader fadeLeft;
+    private Shader fadeRight;
     private List<AreaMap.Cell> cells = Collections.emptyList();
     private List<AreaMap.Cell> ranked = Collections.emptyList();
     private double[] here;
@@ -67,8 +83,47 @@ final class AreaMapView extends View {
         text.setFakeBoldText(true);
         unrankedDash = new DashPathEffect(new float[] {ui.dp(4), ui.dp(3)}, 0);
         frameDash = new DashPathEffect(new float[] {ui.dp(6), ui.dp(4)}, 0);
+        fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         setClickable(true);
+    }
+
+    @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        float ramp = fadeLength(width, height);
+        int clear = 0x00000000;
+        int opaque = 0xFF000000;
+        fadeTop = new LinearGradient(0, 0, 0, ramp, clear, opaque, Shader.TileMode.CLAMP);
+        fadeBottom = new LinearGradient(0, height - ramp, 0, height, opaque, clear, Shader.TileMode.CLAMP);
+        fadeLeft = new LinearGradient(0, 0, ramp, 0, clear, opaque, Shader.TileMode.CLAMP);
+        fadeRight = new LinearGradient(width - ramp, 0, width, 0, opaque, clear, Shader.TileMode.CLAMP);
+    }
+
+    /** The ramp: {@link #FADE_DP}, but never more than a quarter of a short or narrow map. */
+    private float fadeLength(float width, float height) {
+        return Math.max(1, Math.min(ui.dp(FADE_DP), Math.min(width, height) / 4));
+    }
+
+    /**
+     * Fades what was drawn into the current layer toward every edge: each edge's strip is multiplied by its ramp, so
+     * the corners, under two ramps, fade the most.
+     */
+    private void fadeEdges(Canvas canvas, float width, float height) {
+        if (fadeTop == null) return;
+        float ramp = fadeLength(width, height);
+        strip.set(0, 0, width, ramp);
+        fade.setShader(fadeTop);
+        canvas.drawRect(strip, fade);
+        strip.set(0, height - ramp, width, height);
+        fade.setShader(fadeBottom);
+        canvas.drawRect(strip, fade);
+        strip.set(0, 0, ramp, height);
+        fade.setShader(fadeLeft);
+        canvas.drawRect(strip, fade);
+        strip.set(width - ramp, 0, width, height);
+        fade.setShader(fadeRight);
+        canvas.drawRect(strip, fade);
+        fade.setShader(null);
     }
 
     void setOnSelect(OnSelect onSelect) {
@@ -217,7 +272,10 @@ final class AreaMapView extends View {
         // No paper: the squares lie on the scene's own ground.
         rect.set(0, 0, width, height);
         if (cells.isEmpty()) {
+            int fields = canvas.saveLayer(0, 0, width, height, null);
             drawEmptyFields(canvas, width, height);
+            fadeEdges(canvas, width, height);
+            canvas.restoreToCount(fields);
             text.setColor(brown());
             text.setTextSize(Math.min(ui.sp(14), ui.dp(20)));
             text.setFakeBoldText(false);
@@ -227,6 +285,8 @@ final class AreaMapView extends View {
             return;
         }
         project(width, height);
+        // The land is drawn into its own layer, faded at the edges, then laid on the ground.
+        int land = canvas.saveLayer(0, 0, width, height, null);
         canvas.save();
         path.reset();
         path.addRoundRect(rect, ui.dp(12), ui.dp(12), Path.Direction.CW);
@@ -264,6 +324,8 @@ final class AreaMapView extends View {
         for (int i = Math.min(3, ranked.size()) - 1; i >= 0; i--) drawName(canvas, ranked.get(i));
         if (here != null) drawHere(canvas);
         canvas.restore();
+        fadeEdges(canvas, width, height);
+        canvas.restoreToCount(land);
         drawNorth(canvas, width);
         drawScale(canvas, height);
         if (here != null) Motion.next(this);
