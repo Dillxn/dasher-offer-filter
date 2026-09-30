@@ -75,6 +75,13 @@ final class MinimumsStarView extends View {
     private final String[] learnedText = new String[NAMES.length];
     private boolean adaptiveOn;
     private final Glyph[] icons = new Glyph[ICONS.length];
+    /**
+     * In a short window's header the icons stand beside the circle rather than at its corners, so the circle can be
+     * as tall as the header allows.
+     */
+    private boolean beside;
+    /** How much of their full size the stars, sparkles and marks are drawn at: less on a small circle. */
+    private float detail = 1;
 
     MinimumsStarView(Context context, Ui ui) {
         super(context);
@@ -261,7 +268,24 @@ final class MinimumsStarView extends View {
                 + " to review.";
     }
 
-    // ---- Layout: the constellation's circle, with a spoke icon at each corner. ----
+    // ---- Layout: the constellation's circle, with a spoke icon at each corner (or beside it, in a header). ----
+
+    /** Draws it for a short window's header: the icons beside the circle, the circle as tall as the header. */
+    void setBeside(boolean on) {
+        if (on == beside) return;
+        beside = on;
+        requestLayout();
+        invalidate();
+    }
+
+    boolean beside() {
+        return beside;
+    }
+
+    /** The width a header gives it at {@code heightDp} tall: the circle, and an icon with a little room each side. */
+    static int besideWidthDp(int heightDp) {
+        return heightDp - 8 + 2 * (ICON_DP + 8);
+    }
 
     /** Room under the circle; there is no key, the icons and the colors being the same as everywhere else. */
     private float keyHeight() {
@@ -303,13 +327,21 @@ final class MinimumsStarView extends View {
         float top = Math.max(0, (getHeight() - (2 * window + ui.dp(8) + keyHeight())) / 2);
         float cy = top + window + ui.dp(4);
         float radius = window - ui.dp(12);
+        if (beside) {
+            cy = getHeight() / 2f;
+            radius = Math.max(ui.dp(12), Math.min(getHeight() / 2f - ui.dp(4), width / 2f - ui.dp(ICON_DP + 8)));
+        }
+        detail = Math.max(0.6f, Math.min(1, radius / ui.dp(45)));
 
         drawGrid(canvas, cx, cy, radius);
         drawMarks(canvas, cx, cy, radius);
         float glide = Motion.settle(glideStart, GLIDE_MS);
         drawShape(canvas, cx, cy, radius, set, setFrom, setTo, glide, setColor(), true, false);
         drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true);
-        for (int i = 0; i < NAMES.length; i++) drawIcon(canvas, i, cx, cy, window, width);
+        for (int i = 0; i < NAMES.length; i++) {
+            if (beside) drawIconBeside(canvas, i, cx, cy, radius);
+            else drawIcon(canvas, i, cx, cy, window, width);
+        }
         Motion.next(this);
     }
 
@@ -328,7 +360,8 @@ final class MinimumsStarView extends View {
         text.setColor(ui.dark ? 0x80FFFFFF : 0xB0214066);
         text.setTextAlign(Paint.Align.CENTER);
         float below = -text.getFontMetrics().ascent + ui.dp(1);
-        for (int ring = 2; ring <= 3; ring++) {
+        // On a small circle the two labels would run into each other and the points: only the outer ring's.
+        for (int ring = radius < ui.dp(40) ? 3 : 2; ring <= 3; ring++) {
             canvas.drawText("$" + (ringCents * ring / 100), cx, cy - radius * ring / 3 + below, text);
         }
     }
@@ -368,7 +401,7 @@ final class MinimumsStarView extends View {
                     line.setPathEffect(null);
                     line.setStrokeWidth(Math.max(1, ui.dp(1)));
                     line.setColor((color & 0x00FFFFFF) | ((int) (0x90 * (1 - pulse)) << 24));
-                    canvas.drawCircle(at[0], at[1], ui.dp(4) + ui.dp(7) * pulse, line);
+                    canvas.drawCircle(at[0], at[1], (ui.dp(4) + ui.dp(7) * pulse) * detail, line);
                 }
                 drawMark(canvas, at[0], at[1], result, (color & 0x00FFFFFF) | (alpha << 24));
             }
@@ -377,7 +410,7 @@ final class MinimumsStarView extends View {
 
     /** ● passed, ✕ declined, ○ review: the shape carries the outcome, not only the color. */
     private void drawMark(Canvas canvas, float x, float y, OfferRule.Result result, int color) {
-        float size = ui.dp(3.2f);
+        float size = ui.dp(3.2f) * detail;
         if (result == OfferRule.Result.KEEP) {
             fill.setColor(color);
             canvas.drawCircle(x, y, size, fill);
@@ -425,14 +458,14 @@ final class MinimumsStarView extends View {
             if (Double.isNaN(values[i])) continue;
             float[] at = points[i];
             fill.setColor((color & 0x00FFFFFF) | 0x3A000000);
-            canvas.drawCircle(at[0], at[1], ui.dp(8) * breathe, fill);
+            canvas.drawCircle(at[0], at[1], ui.dp(8) * breathe * detail, fill);
             fill.setColor(color);
             if (dashed) {
-                drawSparkle(canvas, at[0], at[1], ui.dp(6.5f) * breathe);
+                drawSparkle(canvas, at[0], at[1], ui.dp(6.5f) * breathe * detail);
             } else {
-                canvas.drawCircle(at[0], at[1], ui.dp(3.8f), fill);
+                canvas.drawCircle(at[0], at[1], ui.dp(3.8f) * detail, fill);
                 fill.setColor(0xFFFFFFFF);
-                canvas.drawCircle(at[0], at[1], ui.dp(1.6f), fill);
+                canvas.drawCircle(at[0], at[1], ui.dp(1.6f) * detail, fill);
             }
         }
     }
@@ -448,6 +481,17 @@ final class MinimumsStarView extends View {
         diamond.quadTo(x - waist, y - waist, x, y - half);
         diamond.close();
         canvas.drawPath(diamond, fill);
+    }
+
+    /** In a header, a spoke's icon beside the circle on its side, above or below the middle as its spoke points. */
+    private void drawIconBeside(Canvas canvas, int axis, float cx, float cy, float radius) {
+        boolean right = axis == 1 || axis == 2;
+        boolean below = axis == 2 || axis == 3;
+        int size = ui.dp(ICON_DP);
+        int left = Math.round(right ? cx + radius + ui.dp(6) : cx - radius - ui.dp(6) - size);
+        int top = Math.round(below ? cy + ui.dp(2) : cy - ui.dp(2) - size);
+        icons[axis].setBounds(left, top, left + size, top + size);
+        icons[axis].draw(canvas);
     }
 
     /** A spoke's icon just outside the circle at its corner. */

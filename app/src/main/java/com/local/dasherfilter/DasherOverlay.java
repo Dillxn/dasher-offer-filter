@@ -20,6 +20,9 @@ import android.widget.Toast;
  *
  * <p>Beside the tab (or, in split screen, at the top of Dasher's half) a {@link DasherGuide} points toward the best
  * offer area, while no offer is on screen and no delivery is under way. Touches pass through it.
+ *
+ * <p>Both are laid out in screen coordinates (as Android reports Dasher's window bounds), not below the status bar,
+ * so they land where they are placed over Dasher.
  */
 final class DasherOverlay {
     /** Where the tab's top sits, as a share of the screen's height. */
@@ -115,7 +118,8 @@ final class DasherOverlay {
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT, ui.dp(DasherGuide.HEIGHT_DP),
                     WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
             params.gravity = Gravity.TOP | Gravity.START;
             try {
@@ -170,7 +174,8 @@ final class DasherOverlay {
         view.setOnClickListener(tapped -> toggle(view));
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(ui.dp(DasherTab.WIDTH_DP),
                 ui.dp(DasherTab.HEIGHT_DP), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START;
         params.x = area.left;

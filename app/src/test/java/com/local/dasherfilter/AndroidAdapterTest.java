@@ -1005,6 +1005,8 @@ public class AndroidAdapterTest {
             float street = chartAt[1] - sceneAt[1] + chart.getHeight() - new Ui(app).dp(11);
             assertEquals(street, scene.horizonY(), 1f);
             assertTrue("the constellation is in the sky, above the skyline", starAt[1] < chartAt[1]);
+            assertFalse("a whole screen keeps it in the page, drawn in full", star.beside());
+            assertNull("not in the header", iconDescribed((View) star.getParent(), "Settings"));
 
             // Bitmap drawing of the whole scene works in both themes.
             android.graphics.Bitmap page = android.graphics.Bitmap.createBitmap(1080, Math.max(1, scene.getHeight()),
@@ -1040,7 +1042,7 @@ public class AndroidAdapterTest {
 
     @Test
     @Config(qualifiers = "w360dp-h360dp-xxhdpi")
-    public void aShortWindowKeepsTheConstellationTheMascotItsCountsAndTheMap() {
+    public void aShortWindowKeepsTheConstellationTheMascotItsCountsTheSkylineAndTheMap() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -1056,11 +1058,50 @@ public class AndroidAdapterTest {
             assertTrue("beside the sun, above the mascot", starAt[1] < mascotAt[1]);
             assertNotNull("in the header, with the sun and Settings",
                     iconDescribed((View) star.getParent(), "Settings"));
+            assertTrue("drawn with its icons beside the circle", star.beside());
+            View title = iconDescribed(content, "Dash Buddy");
+            assertTrue("the page's name keeps room, so screen readers reach it", title != null && title.getWidth() > 0);
             star.performClick();
             assertTrue("a tap still opens the minimums", fieldLabeled(content, "Minimum pay ($)").isShown());
             iconButton(content, "Back").performClick();
-            assertFalse("the skyline gives way", findChart(content).isShown());
-            assertNull(shownTextContaining(content, "No offers yet"));
+            assertTrue("the skyline stays", findChart(content).isShown());
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h410dp-420dpi")
+    public void halfOfASplitScreenFitsOneScreenWithEverythingOnIt() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
+        DecisionLog.record(app, declinedEntry());
+        // Screen reading on, as while dashing; background offers still off, so one line asks for a fix.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            int width = content.getResources().getDisplayMetrics().widthPixels;
+            int height = content.getResources().getDisplayMetrics().heightPixels;
+            content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            content.layout(0, 0, width, height);
+            ScenePage scene = find(content, ScenePage.class);
+            android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
+            assertTrue("no scrolling: " + scene.getHeight() + " in " + page.getHeight(),
+                    scene.getHeight() <= page.getHeight());
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue(star.beside());
+            assertTrue(findChart(content).isShown());
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue(map.isShown() && map.getHeight() >= new Ui(app).dp(96));
+            // The skyline's street is still the horizon, above the map.
+            int[] mapAt = new int[2];
+            int[] sceneAt = new int[2];
+            map.getLocationInWindow(mapAt);
+            scene.getLocationInWindow(sceneAt);
+            assertTrue("the horizon is above the map", scene.horizonY() <= mapAt[1] - sceneAt[1]);
+        } finally {
+            service.destroy();
         }
     }
 

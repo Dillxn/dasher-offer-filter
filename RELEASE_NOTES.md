@@ -1,3 +1,28 @@
+## 0.4.30 — the whole picture in split screen
+
+- **The skyline is back in split screen.** Its street is the horizon again, so the hills and ground no longer cut a hard line across the map.
+- **The constellation fits the header.** In split screen it stands at the header's left with its icons beside the circle: a bigger circle in less height, clear of the split screen's handle. On a small circle only the outer dollar label shows, and the stars and marks scale down.
+- **The page fits half a screen** (about 411×410 dp): the constellation, mascot and counts, one line needing a fix, the skyline, the map and its line, with no scrolling.
+- **The map:**
+  - its top and bottom fade less;
+  - when it has to zoom in, it keeps you and the best area's coin in the clear middle rather than in the faded edge;
+  - a place name that would overlap another is left out, the best area's first.
+- **Over Dasher:** the pointer (and the tab) are placed in screen coordinates. The pointer now sits just under Dasher's "This dash" pill instead of a status bar's height lower, over the hotspots.
+- Screen readers reach the page's name in split screen again.
+
+Evidence boundaries:
+- **Pixel tests** (simulated Android 8 and 15, native graphics) cover:
+  - the map's edges fading while its compass and scale stay solid (the test fails with the fade off);
+  - side-by-side names not drawn over each other.
+- **Simulated Android 8 and 15 tests** cover:
+  - half of a split screen at 411×410 dp fitting without scrolling, with the constellation in the header, the skyline, the map at 84 dp or more and the horizon above the map;
+  - the constellation in the page body on a whole screen;
+  - the overlay windows placed in screen coordinates.
+- **Renders** of the split and full pages were reviewed, light and dark.
+- **Not verified on a real phone:**
+  - where the pointer lands over Dasher;
+  - the page at your exact split size.
+
 ## 0.4.29 — Offer Filter is now Dash Buddy
 
 - **New name: Dash Buddy**, so it sits right beside Dasher in alphabetical app lists such as the app drawer and Settings → Apps. The new name shows everywhere the app names itself:

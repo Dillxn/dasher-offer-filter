@@ -116,15 +116,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
-    /** A short window (half a split screen): the page keeps the mascot, its counts and the map. */
+    /**
+     * A short window (half a split screen): the constellation moves into the header beside the sun, drawn with its
+     * icons beside the circle; the page keeps the mascot, its counts, the skyline and the map, and drops the road.
+     */
     private boolean compact;
-    /** Where the sky meets the ground in a short window: just above the map. */
-    private View horizonMark;
-    /** The main page's header, whose empty left (the title's place) holds the constellation in a short window. */
+    /** The main page's header, whose left holds the constellation in a short window. */
     private LinearLayout mainHeader;
     private TextView mainTitle;
     /** How tall the constellation stands in the header of a short window. */
-    static final int HEADER_STAR_DP = 92;
+    static final int HEADER_STAR_DP = 72;
     private AreaMapView areaMap;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
@@ -479,26 +480,28 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
         addMinimums(body);
         addOffers(body);
-        horizonMark = new View(this);
-        horizonMark.setVisibility(compact ? View.INVISIBLE : View.GONE);
-        body.addView(horizonMark, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(12)));
         addAreas(body);
         // Short, the map runs down to the page's end; the road needs the room of a whole screen.
         if (!compact) ground(page, 78);
         if (compact) {
-            // Half a split screen: the constellation rises into the sky beside the sun, in the header's empty left
-            // (where a title would be); the skyline gives its room to the map, whose top is the horizon.
+            // Half a split screen: the constellation rises into the sky at the header's left, its icons beside the
+            // circle so it stands as tall as the header allows, and clear of the split screen's handle at the middle.
             ((ViewGroup) minimums.getParent()).removeView(minimums);
-            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(0, ui.dp(HEADER_STAR_DP), 1f));
-            // The title keeps its words for screen readers only, taking no room.
-            mainTitle.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0f));
-            chart.setVisibility(View.GONE);
-            noOffers.setVisibility(View.GONE);
-            scene.setHorizon(horizonMark, 0, null);
-        } else {
-            // The skyline's street (12 dp above the chart's bottom) is the horizon.
-            scene.setHorizon(chart, ui.dp(11), noOffers);
+            minimums.setBeside(true);
+            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
+                    ui.dp(MinimumsStarView.besideWidthDp(HEADER_STAR_DP)), ui.dp(HEADER_STAR_DP)));
+            mainHeader.setPadding(mainHeader.getPaddingLeft(), ui.dp(4), mainHeader.getPaddingRight(), 0);
+            // The empty title still takes the room between, so screen readers reach it, and hear it first.
+            mainTitle.setId(View.generateViewId());
+            minimums.setAccessibilityTraversalAfter(mainTitle.getId());
+            // Half a screen holds the whole picture only if each part settles for a little less.
+            chart.setLeastDp(52);
+            areaMap.setLeastDp(84);
+            areaLine.setMinHeight(ui.dp(32));
+            body.setPadding(body.getPaddingLeft(), 0, body.getPaddingRight(), ui.dp(4));
         }
+        // The skyline's street (12 dp above the chart's bottom) is the horizon.
+        scene.setHorizon(chart, ui.dp(11), noOffers);
     }
 
     private void addOffers(LinearLayout body) {
@@ -892,8 +895,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         recentEntries = recent;
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
-        noOffers.setVisibility(empty && !compact ? View.VISIBLE : View.GONE);
-        chart.setVisibility(empty || compact ? View.GONE : View.VISIBLE);
+        noOffers.setVisibility(empty ? View.VISIBLE : View.GONE);
+        chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         if (empty) {
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
@@ -1152,8 +1155,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         String hereName = here == null ? null : Places.name(this, here[0], here[1]);
         areaMap.setNames(names, hereName);
-        // The signpost stands on the hills above the skyline; a short window has no room for it.
-        scene.setPlace(compact ? null : hereName);
+        // The signpost stands on the hills beside the skyline.
+        scene.setPlace(hereName);
         // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
         if (areaMap.selected() != null) {

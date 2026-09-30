@@ -53,6 +53,11 @@ final class AreaMapView extends View {
     /** Keeps the land only where the edge ramps allow: multiplies what was drawn by the ramp's alpha. */
     private final Paint fade = new Paint();
     private final RectF strip = new RectF();
+    /** The least height it reads well at, when the page asks with no limit; less in a short window. */
+    private int leastDp = 96;
+    /** Where the place names already drawn this frame are, so none is drawn over another. */
+    private final RectF[] namePills = {new RectF(), new RectF(), new RectF()};
+    private int namesShown;
     /** One ramp per edge, from clear at the edge to opaque inward; remade only when the size changes. */
     private Shader fadeTop;
     private Shader fadeBottom;
@@ -90,18 +95,24 @@ final class AreaMapView extends View {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        float ramp = fadeLength(width, height);
+        float across = sideFade(width);
+        float down = topFade(height);
         int clear = 0x00000000;
         int opaque = 0xFF000000;
-        fadeTop = new LinearGradient(0, 0, 0, ramp, clear, opaque, Shader.TileMode.CLAMP);
-        fadeBottom = new LinearGradient(0, height - ramp, 0, height, opaque, clear, Shader.TileMode.CLAMP);
-        fadeLeft = new LinearGradient(0, 0, ramp, 0, clear, opaque, Shader.TileMode.CLAMP);
-        fadeRight = new LinearGradient(width - ramp, 0, width, 0, opaque, clear, Shader.TileMode.CLAMP);
+        fadeTop = new LinearGradient(0, 0, 0, down, clear, opaque, Shader.TileMode.CLAMP);
+        fadeBottom = new LinearGradient(0, height - down, 0, height, opaque, clear, Shader.TileMode.CLAMP);
+        fadeLeft = new LinearGradient(0, 0, across, 0, clear, opaque, Shader.TileMode.CLAMP);
+        fadeRight = new LinearGradient(width - across, 0, width, 0, opaque, clear, Shader.TileMode.CLAMP);
     }
 
-    /** The ramp: {@link #FADE_DP}, but never more than a quarter of a short or narrow map. */
-    private float fadeLength(float width, float height) {
-        return Math.max(1, Math.min(ui.dp(FADE_DP), Math.min(width, height) / 4));
+    /** The left and right ramps: {@link #FADE_DP}, never more than a quarter of a narrow map. */
+    private float sideFade(float width) {
+        return Math.max(1, Math.min(ui.dp(FADE_DP), width / 4));
+    }
+
+    /** The top and bottom ramps: shorter, so a short map (half a split screen) keeps most of its height clear. */
+    private float topFade(float height) {
+        return Math.max(1, Math.min(ui.dp(FADE_DP), height * 0.12f));
     }
 
     /**
@@ -110,17 +121,18 @@ final class AreaMapView extends View {
      */
     private void fadeEdges(Canvas canvas, float width, float height) {
         if (fadeTop == null) return;
-        float ramp = fadeLength(width, height);
-        strip.set(0, 0, width, ramp);
+        float across = sideFade(width);
+        float down = topFade(height);
+        strip.set(0, 0, width, down);
         fade.setShader(fadeTop);
         canvas.drawRect(strip, fade);
-        strip.set(0, height - ramp, width, height);
+        strip.set(0, height - down, width, height);
         fade.setShader(fadeBottom);
         canvas.drawRect(strip, fade);
-        strip.set(0, 0, ramp, height);
+        strip.set(0, 0, across, height);
         fade.setShader(fadeLeft);
         canvas.drawRect(strip, fade);
-        strip.set(width - ramp, 0, width, height);
+        strip.set(width - across, 0, width, height);
         fade.setShader(fadeRight);
         canvas.drawRect(strip, fade);
         fade.setShader(null);
@@ -209,7 +221,7 @@ final class AreaMapView extends View {
     /** Whatever the page gives it on one screen; asked with no limit, the least it reads well at. */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(96)
+        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(leastDp)
                 : resolveSize(Math.min(ui.dp(320), Math.max(ui.dp(220), width)), heightSpec);
         setMeasuredDimension(width, height);
     }
@@ -253,6 +265,21 @@ final class AreaMapView extends View {
             AreaMap.Cell focus = ranked.isEmpty() ? cells.get(0) : ranked.get(0);
             double latitude = here != null ? here[0] : focus.latitude();
             double longitude = here != null ? here[1] : focus.longitude();
+            if (here != null && !ranked.isEmpty()) {
+                // Where the best square's coin is drawn, in degrees: its square's top-right corner.
+                double corner = Math.max(0, (AreaMap.CELL_DEGREES * scale / 2 - ui.dp(14))) / scale;
+                double coinLatitude = focus.latitude() + corner;
+                double coinLongitude = focus.longitude() + corner / squash;
+                // Both in the clear middle (inside the faded edges, with room for the coin) when they fit: centre
+                // between them. Otherwise stay on you.
+                double roomX = (width / 2 - sideFade(width) - ui.dp(14)) / scale;
+                double roomY = (height / 2 - topFade(height) - ui.dp(14)) / scale;
+                if (Math.abs(coinLongitude - longitude) * squash <= 2 * roomX
+                        && Math.abs(coinLatitude - latitude) <= 2 * roomY) {
+                    latitude = (latitude + coinLatitude) / 2;
+                    longitude = (longitude + coinLongitude) / 2;
+                }
+            }
             left = longitude * squash - width / scale / 2;
             top = latitude + height / scale / 2;
         }
@@ -287,10 +314,6 @@ final class AreaMapView extends View {
         project(width, height);
         // The land is drawn into its own layer, faded at the edges, then laid on the ground.
         int land = canvas.saveLayer(0, 0, width, height, null);
-        canvas.save();
-        path.reset();
-        path.addRoundRect(rect, ui.dp(12), ui.dp(12), Path.Direction.CW);
-        canvas.clipPath(path);
         drawGrid(canvas, width, height);
 
         double best = ranked.isEmpty() ? 0 : ranked.get(0).centsPerMile();
@@ -321,9 +344,9 @@ final class AreaMapView extends View {
         }
         if (here != null && !ranked.isEmpty()) drawTrail(canvas, ranked.get(0));
         for (int i = Math.min(3, ranked.size()) - 1; i >= 0; i--) drawMedal(canvas, ranked.get(i), i);
-        for (int i = Math.min(3, ranked.size()) - 1; i >= 0; i--) drawName(canvas, ranked.get(i));
+        namesShown = 0;
+        for (int i = 0; i < Math.min(3, ranked.size()); i++) drawName(canvas, ranked.get(i));
         if (here != null) drawHere(canvas);
-        canvas.restore();
         fadeEdges(canvas, width, height);
         canvas.restoreToCount(land);
         drawNorth(canvas, width);
@@ -346,18 +369,36 @@ final class AreaMapView extends View {
         line.setPathEffect(null);
     }
 
-    /** The square's neighbourhood on a small label under its coin, when the phone's place lookup knows it. */
+    /**
+     * The square's neighbourhood on a small label under its coin, when the phone's place lookup knows it. The best
+     * square's name goes first; a later one that would overlap a name already shown is left out.
+     */
     private void drawName(Canvas canvas, AreaMap.Cell cell) {
         String name = names.get(key(cell));
         if (name == null) return;
         float half = (float) (AreaMap.CELL_DEGREES * scale / 2);
         float cx = x(cell.longitude());
         float cy = y(cell.latitude()) + Math.min(half - ui.dp(4), ui.dp(14));
-        drawLabel(canvas, name, cx, cy);
+        CharSequence shown = measureLabel(name, cx, cy);
+        for (int i = 0; i < namesShown; i++) {
+            if (RectF.intersects(pill, namePills[i])) return;
+        }
+        namePills[namesShown++].set(pill);
+        drawLabel(canvas, shown, cx, cy);
     }
 
-    /** Text on a soft pill, so a name reads over any square. */
-    private void drawLabel(Canvas canvas, String label, float cx, float cy) {
+    void setLeastDp(int dp) {
+        leastDp = dp;
+        requestLayout();
+    }
+
+    /** How many place names the last drawing showed (for tests). */
+    int namesShown() {
+        return namesShown;
+    }
+
+    /** Fits the label and sets {@link #pill} to where it would be drawn. */
+    private CharSequence measureLabel(String label, float cx, float cy) {
         labelText.setFakeBoldText(true);
         labelText.setTextAlign(Paint.Align.CENTER);
         labelText.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
@@ -365,6 +406,12 @@ final class AreaMapView extends View {
         float halfWidth = labelText.measureText(shown, 0, shown.length()) / 2 + ui.dp(5);
         float halfHeight = labelText.getTextSize() * 0.75f;
         pill.set(cx - halfWidth, cy - halfHeight, cx + halfWidth, cy + halfHeight);
+        return shown;
+    }
+
+    /** Text on a soft pill, so a name reads over any square. */
+    private void drawLabel(Canvas canvas, CharSequence shown, float cx, float cy) {
+        float halfHeight = pill.height() / 2;
         fill.setColor(ui.dark ? 0xCC14171C : 0xE6FFFFFF);
         canvas.drawRoundRect(pill, halfHeight, halfHeight, fill);
         labelText.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF3A2A18);

@@ -411,6 +411,8 @@ public class AccessibilityAdapterTest {
         assertNotNull(tab);
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) tab.getLayoutParams();
         assertEquals(Math.round(screen.height() * DasherOverlay.TOP_SHARE), params.y);
+        assertTrue("placed in screen coordinates, as Dasher's window bounds are",
+                (params.flags & WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN) != 0);
 
         // Split: Offer Filter's own half has the mascot, so no tab.
         splitWithDasherBelow(node("Finding offers", false));
@@ -447,6 +449,8 @@ public class AccessibilityAdapterTest {
         assertTrue("inside Dasher's half", params.y >= BOTTOM_HALF.top && params.y < BOTTOM_HALF.bottom);
         assertTrue("touches pass through to Dasher",
                 (params.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
+        assertTrue("placed in screen coordinates, as Dasher's window bounds are",
+                (params.flags & WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN) != 0);
         assertTrue("the guide is not a touch watch", overlays().isEmpty());
 
         // An offer comes up in Dasher's half: the guide gets out of its way.
