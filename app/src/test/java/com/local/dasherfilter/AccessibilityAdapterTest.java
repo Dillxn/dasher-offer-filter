@@ -63,6 +63,7 @@ public class AccessibilityAdapterTest {
     @After
     public void stop() {
         controller.destroy();
+        OfferFilterService.sawDasherBeside(0);
     }
 
     /** A visible, enabled DoorDash node; clickable nodes expose ACTION_CLICK and report clicks as handled. */
@@ -368,6 +369,28 @@ public class AccessibilityAdapterTest {
         splitWithDasherBelow(offer("$25.00"));
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         assertTrue(Shadows.shadowOf(accept).getPerformedActions().isEmpty());
+    }
+
+    @Test
+    public void dasherInTheOtherHalfIsRememberedForAMomentOnly() {
+        controller.get().onServiceConnected();
+        OfferFilterService.sawDasherBeside(0);
+        Rect screen = new Rect(0, 0, 1080, 2040);
+        AccessibilityNodeInfo idle = node("Finding offers", false);
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Collections.singletonList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, idle, true, screen)));
+        show(idle);
+        assertFalse("Dasher filling the screen is not beside anything", OfferFilterService.dasherBeside());
+
+        splitWithDasherBelow(node("Finding offers", false));
+        assertTrue(OfferFilterService.dasherBeside());
+        // A moment under the shade or in recent apps does not count as gone; a long absence does.
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Collections.emptyList());
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(appRoot("com.android.systemui"));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        assertTrue(OfferFilterService.dasherBeside());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.BESIDE_MS));
+        assertFalse(OfferFilterService.dasherBeside());
     }
 
     @Test

@@ -1,3 +1,20 @@
+## 0.4.31 — no second map beside Dasher
+
+- **Split screen with Dasher shows one map: Dasher's.** Our map and its line step aside while Dasher is in the other half, since its own map is right there and the pointer over it shows the way to the best area. The room goes to the sky: the constellation is back at full size (about twice as large as in 0.4.30's header), above the skyline. Our map comes back if Dasher leaves the other half. A moment under the shade or in recent apps does not count as leaving (20 seconds do).
+- **Why no squares on Dasher's map:** Android does not tell other apps where Dasher's map is centred or how far it is zoomed, so squares drawn over it would land in the wrong places. Direction and distance from you are safe (Dasher keeps you in the middle, north up), which is what the pointer shows.
+- The road waits for a whole screen; in split screen Dasher's half is the ground below.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - half a split screen beside Dasher (411×410 dp): no map, the constellation in the page at 110 dp or more, the skyline, no scrolling;
+  - the map coming back and the constellation moving to the header when Dasher leaves;
+  - Dasher's half remembered for a moment under the shade, not for 20 s of absence;
+  - Dasher filling the screen never counting as beside.
+- **Renders** of the page beside Dasher were reviewed, light and dark.
+- **Not verified on a real phone:**
+  - the switch as Dasher comes and goes in the other half;
+  - the page at your exact split size.
+
 ## 0.4.30 — the whole picture in split screen
 
 - **The skyline is back in split screen.** Its street is the horizon again, so the hills and ground no longer cut a hard line across the map.

@@ -53,13 +53,24 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable syncAutomation = this::syncAutomation;
     private TouchWatch touchWatch;
     private DasherOverlay overlay;
-    /** While the filter tab is up, a light check that Dasher is still on screen (switching apps may send no event). */
+    /**
+     * While Dasher is on screen (or anything of ours is over it), a light check that it still is: switching apps may
+     * send no event.
+     */
     private final Runnable overlayCheck = new Runnable() {
         @Override public void run() {
-            syncOverlay();
-            if (overlay != null && overlay.isShowing()) handler.postDelayed(this, OVERLAY_CHECK_MS);
+            if (syncOverlay()) {
+                handler.postDelayed(this, OVERLAY_CHECK_MS);
+            } else {
+                overlayChecking = false;
+            }
         }
     };
+    private boolean overlayChecking;
+    /** When Dasher was last seen in one half of a split screen (uptime), 0 for never. */
+    private static volatile long dasherBesideAt;
+    /** How long that sighting holds: a moment under the shade or in recent apps does not count as gone. */
+    static final long BESIDE_MS = 20_000;
     private OfferSilencer silencer;
     private long recheckUntil;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
@@ -106,6 +117,15 @@ public final class OfferFilterService extends AccessibilityService {
     static boolean userHasOffer(OfferSnapshot facts) {
         OfferFilterService service = active;
         return service != null && service.isTakenOver(facts, SystemClock.uptimeMillis());
+    }
+
+    /**
+     * Whether Dasher is in the other half of a split screen, as last seen within {@link #BESIDE_MS}: the homepage
+     * then shows no map of its own.
+     */
+    static boolean dasherBeside() {
+        long at = dasherBesideAt;
+        return active != null && at != 0 && SystemClock.uptimeMillis() - at < BESIDE_MS;
     }
 
     /** Whether Dasher is on screen: the active window, or its half of a split screen. */
@@ -209,10 +229,13 @@ public final class OfferFilterService extends AccessibilityService {
         super.onDestroy();
     }
 
-    /** The filter tab over Dasher follows Dasher on and off the screen, and into its half of a split screen. */
-    private void syncOverlay() {
-        if (overlay == null) return;
-        boolean wasShowing = overlay.isShowing();
+    /**
+     * The filter tab over Dasher follows Dasher on and off the screen, and into its half of a split screen.
+     *
+     * @return whether to keep checking: Dasher is on screen, or something of ours is over it
+     */
+    private boolean syncOverlay() {
+        if (overlay == null) return false;
         Rect area = null;
         if (active == this) {
             try {
@@ -222,10 +245,17 @@ public final class OfferFilterService extends AccessibilityService {
             }
         }
         overlay.sync(area, area != null && splitSeen, offerOnScreen);
-        if (!wasShowing && overlay.isShowing()) {
-            handler.removeCallbacks(overlayCheck);
+        boolean watch = area != null || overlay.isShowing();
+        if (watch && !overlayChecking) {
+            overlayChecking = true;
             handler.postDelayed(overlayCheck, OVERLAY_CHECK_MS);
         }
+        return watch;
+    }
+
+    /** For tests: Dasher was just seen in the other half of a split screen, or (0) never. */
+    static void sawDasherBeside(long uptime) {
+        dasherBesideAt = uptime;
     }
 
     /** For tests: the filter tab over Dasher. */
@@ -236,6 +266,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void stop() {
         if (active == this) active = null;
         handler.removeCallbacks(overlayCheck);
+        overlayChecking = false;
         if (overlay != null) overlay.hide();
         handler.removeCallbacksAndMessages(null);
         declineState.reset();
@@ -677,6 +708,7 @@ public final class OfferFilterService extends AccessibilityService {
             }
         }
         splitSeen = split;
+        if (split && dasher != null) dasherBesideAt = SystemClock.uptimeMillis();
         if (dasher == null) return null;
         return dasherActive || (split && otherAppActive) ? dasher : null;
     }

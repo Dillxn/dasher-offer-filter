@@ -124,6 +124,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The main page's header, whose left holds the constellation in a short window. */
     private LinearLayout mainHeader;
     private TextView mainTitle;
+    /** The main page's column, and where the constellation stands in it when it is not in the header. */
+    private LinearLayout mainBody;
+    private int starIndex;
+    private LinearLayout.LayoutParams starParams;
+    /** The road along the bottom of the main page. */
+    private View road;
+    /**
+     * Split with Dasher: Dasher's own map is on screen in the other half, so this page shows no map of its own
+     * (the pointer over Dasher points to the best area); the constellation and the skyline take its room.
+     */
+    private boolean besideDasher;
     /** How tall the constellation stands in the header of a short window. */
     static final int HEADER_STAR_DP = 72;
     private AreaMapView areaMap;
@@ -346,11 +357,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /** The drawn hills and road a page ends on. */
-    private void ground(LinearLayout page, int heightDp) {
+    private View ground(LinearLayout page, int heightDp) {
         View ground = new View(this);
         ground.setBackground(new Scenery(Scenery.Part.GROUND, ui));
         ground.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         page.addView(ground, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(heightDp)));
+        return ground;
     }
 
     /** A share of the height left on one screen. */
@@ -479,29 +491,67 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // One picture from top to bottom: the minimums as a constellation in the sky, the offers as a skyline on
         // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
         addMinimums(body);
+        mainBody = body;
+        starIndex = body.indexOfChild(minimums);
+        starParams = (LinearLayout.LayoutParams) minimums.getLayoutParams();
         addOffers(body);
         addAreas(body);
-        // Short, the map runs down to the page's end; the road needs the room of a whole screen.
-        if (!compact) ground(page, 78);
+        road = ground(page, compact ? 40 : 78);
+        // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
+        mainTitle.setId(View.generateViewId());
+        minimums.setAccessibilityTraversalAfter(mainTitle.getId());
         if (compact) {
-            // Half a split screen: the constellation rises into the sky at the header's left, its icons beside the
-            // circle so it stands as tall as the header allows, and clear of the split screen's handle at the middle.
-            ((ViewGroup) minimums.getParent()).removeView(minimums);
-            minimums.setBeside(true);
-            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
-                    ui.dp(MinimumsStarView.besideWidthDp(HEADER_STAR_DP)), ui.dp(HEADER_STAR_DP)));
-            mainHeader.setPadding(mainHeader.getPaddingLeft(), ui.dp(4), mainHeader.getPaddingRight(), 0);
-            // The empty title still takes the room between, so screen readers reach it, and hear it first.
-            mainTitle.setId(View.generateViewId());
-            minimums.setAccessibilityTraversalAfter(mainTitle.getId());
             // Half a screen holds the whole picture only if each part settles for a little less.
             chart.setLeastDp(52);
             areaMap.setLeastDp(84);
             areaLine.setMinHeight(ui.dp(32));
             body.setPadding(body.getPaddingLeft(), 0, body.getPaddingRight(), ui.dp(4));
+            mainHeader.setPadding(mainHeader.getPaddingLeft(), ui.dp(4), mainHeader.getPaddingRight(), 0);
         }
+        besideDasher = !besideDasherNow();
+        arrangeForSplit();
         // The skyline's street (12 dp above the chart's bottom) is the horizon.
         scene.setHorizon(chart, ui.dp(11), noOffers);
+    }
+
+    /** Split screen with Dasher in the other half (as the screen reader last saw it). */
+    private boolean besideDasherNow() {
+        return isInMultiWindowMode() && OfferFilterService.dasherBeside();
+    }
+
+    /**
+     * Beside Dasher, no map of our own (Dasher's is right there), and the constellation stands in the sky at full
+     * size above a taller skyline, with the road. In any other short window the map stays and the constellation
+     * moves into the header, its icons beside the circle. A whole screen shows everything.
+     */
+    private void arrangeForSplit() {
+        boolean beside = besideDasherNow();
+        if (beside == besideDasher) return;
+        besideDasher = beside;
+        areaMap.setVisibility(beside ? View.GONE : View.VISIBLE);
+        if (beside || shownArea == null) areaLine.setVisibility(View.GONE);
+        else areaLine.setVisibility(View.VISIBLE);
+        // The road needs a whole screen; beside Dasher, Dasher's own half is the ground below.
+        road.setVisibility(compact ? View.GONE : View.VISIBLE);
+        // With no map of its own, the sky gets the room: the constellation most of all.
+        starParams.weight = beside ? 1.8f : 1.15f;
+        placeConstellation(compact && !beside);
+        minimums.requestLayout();
+    }
+
+    /** The constellation in the header's left (drawn with its icons beside the circle), or in the page's sky. */
+    private void placeConstellation(boolean inHeader) {
+        ViewGroup now = (ViewGroup) minimums.getParent();
+        if (inHeader == (now == mainHeader)) return;
+        if (now != null) now.removeView(minimums);
+        minimums.setBeside(inHeader);
+        if (inHeader) {
+            // Clear of the split screen's handle at the middle of the top edge.
+            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
+                    ui.dp(MinimumsStarView.besideWidthDp(HEADER_STAR_DP)), ui.dp(HEADER_STAR_DP)));
+        } else {
+            mainBody.addView(minimums, Math.min(starIndex, mainBody.getChildCount()), starParams);
+        }
     }
 
     private void addOffers(LinearLayout body) {
@@ -800,6 +850,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void refresh() {
         if (stateLine == null) return;
+        arrangeForSplit();
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
@@ -1184,7 +1235,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 + (where.isEmpty() ? "" : " · " + where) + " · " + rate;
         areaLine.setContentDescription(spoken + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
                 + when(cell.lastAt) + ". Opens it in Maps.");
-        areaLine.setVisibility(View.VISIBLE);
+        areaLine.setVisibility(besideDasher ? View.GONE : View.VISIBLE);
     }
 
     private void openArea() {

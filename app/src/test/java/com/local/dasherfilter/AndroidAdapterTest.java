@@ -1073,9 +1073,11 @@ public class AndroidAdapterTest {
     public void halfOfASplitScreenFitsOneScreenWithEverythingOnIt() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         DecisionLog.record(app, declinedEntry());
-        // Screen reading on, as while dashing; background offers still off, so one line asks for a fix.
+        // Screen reading on, as while dashing; background offers still off, so one line asks for a fix. The other
+        // half is not Dasher, so the page keeps its map.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
+        OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {
@@ -1102,6 +1104,48 @@ public class AndroidAdapterTest {
             assertTrue("the horizon is above the map", scene.horizonY() <= mapAt[1] - sceneAt[1]);
         } finally {
             service.destroy();
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h410dp-420dpi")
+    public void besideDasherThePageShowsNoSecondMapAndTheSkyTakesItsRoom() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
+        DecisionLog.record(app, declinedEntry());
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
+        OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            int width = content.getResources().getDisplayMetrics().widthPixels;
+            int height = content.getResources().getDisplayMetrics().heightPixels;
+            content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            content.layout(0, 0, width, height);
+            AreaMapView map = find(content, AreaMapView.class);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertFalse("Dasher's map is right below: no second one", map.isShown());
+            assertTrue("the constellation stands in the sky at full size", star.isShown() && !star.beside());
+            assertNull("not in the header", iconDescribed((View) star.getParent(), "Settings"));
+            assertTrue("the skyline stays", findChart(content).isShown());
+            ScenePage scene = find(content, ScenePage.class);
+            android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
+            assertTrue("no scrolling: " + scene.getHeight() + " in " + page.getHeight(),
+                    scene.getHeight() <= page.getHeight());
+            assertTrue("the constellation gets the room the map left: " + star.getHeight(),
+                    star.getHeight() >= new Ui(app).dp(110));
+
+            // Dasher leaves the other half: our map comes back, and the constellation moves up to make room.
+            OfferFilterService.sawDasherBeside(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertEquals(View.VISIBLE, map.getVisibility());
+            assertTrue("in the header again", star.beside());
+            assertNotNull(iconDescribed((View) star.getParent(), "Settings"));
+        } finally {
+            service.destroy();
+            OfferFilterService.sawDasherBeside(0);
         }
     }
 
