@@ -19,6 +19,7 @@ final class FilterStore {
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
     private static final String LAST_STATUS = "last_status";
     private static final String REPORT_EMAIL = "report_email";
+    private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
 
     static FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
@@ -73,6 +74,15 @@ final class FilterStore {
 
     static void setReportEmail(Context context, String address) {
         prefs(context).edit().putString(REPORT_EMAIL, address).apply();
+    }
+
+    /** Whether Dasher's own offer ring is turned down while a filtered offer is declined. On unless turned off. */
+    static boolean silenceWhileDeclining(Context context) {
+        return prefs(context).getBoolean(SILENCE_WHILE_DECLINING, true);
+    }
+
+    static void setSilenceWhileDeclining(Context context, boolean on) {
+        prefs(context).edit().putBoolean(SILENCE_WHILE_DECLINING, on).apply();
     }
 
     private static SharedPreferences prefs(Context context) {

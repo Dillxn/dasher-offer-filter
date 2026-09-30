@@ -170,14 +170,23 @@ public final class OfferNotificationService extends NotificationListenerService 
             DiagnosticLog.log(this, "notification", "parsed " + facts.summary() + "; " + decision.summary());
             logChannel(ranking, source.getKey(), notification);
 
-            DecisionLog.Action action = decision.result == OfferRule.Result.DECLINE
-                    ? filter(source, notification, offer, decision, signature, replay)
-                    : announce(notification, offer, facts, decision, signature, replay);
+            DecisionLog.Action action;
+            if (decision.result != OfferRule.Result.DECLINE) {
+                action = announce(notification, offer, facts, decision, signature, replay);
+            } else if (OfferFilterService.userHasOffer(facts)) {
+                action = leaveToUser(offer, decision, signature);
+            } else {
+                action = filter(source, notification, offer, decision, signature, replay);
+            }
             DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
                     AddOnOffer.isLikely(labels), decision.basis, decision, action, settings.enabled, labels));
         } catch (RuntimeException error) {
             DiagnosticLog.log(this, "notification",
                     "payload/handler rejected; original retained: " + error.getClass().getSimpleName());
+            // An oversized notification is refused on purpose; only real failures are worth a report.
+            if (!(error instanceof OversizedNotification)) {
+                ReportOutbox.fileAutomatic(this, ProblemReport.Kind.NOTIFICATION_ERROR, null, null, error);
+            }
         }
     }
 
@@ -262,6 +271,13 @@ public final class OfferNotificationService extends NotificationListenerService 
                         ? "Decline requested; completion unverified."
                         : "Notification hidden only; order not automatically declined."));
         return action;
+    }
+
+    /** The user touched the screen during this offer's decline: its notification is neither declined nor hidden. */
+    private DecisionLog.Action leaveToUser(TrackedOffer offer, OfferRule.Decision decision, String signature) {
+        offer.state.delivered(signature, decision.result, false);
+        DiagnosticLog.log(this, "notification", "offer taken over by the user; notification left alone");
+        return DecisionLog.Action.USER_TOOK_OVER;
     }
 
     /**
@@ -358,10 +374,17 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     private static void addLabel(List<String> labels, String value) {
         if (labels.size() >= MAX_NOTIFICATION_LABELS || value.length() > MAX_NOTIFICATION_LABEL_CHARS) {
-            throw new IllegalArgumentException("oversized notification");
+            throw new OversizedNotification();
         }
         String clean = OfferEvidence.normalize(value);
         if (!clean.isEmpty() && !labels.contains(clean)) labels.add(clean);
+    }
+
+    /** A notification too large to read safely; it is left alone, as intended, not reported as a failure. */
+    static final class OversizedNotification extends IllegalArgumentException {
+        OversizedNotification() {
+            super("oversized notification");
+        }
     }
 
     /** The lower-cased text after "go to ", e.g. "chick-fil-a"; empty when absent. */

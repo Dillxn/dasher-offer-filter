@@ -84,3 +84,38 @@ Observability: an always-on local decision history now records each decision's f
 
 Residual: all three false-decline repairs depend on DoorDash wording and layout that no real-screen capture has confirmed. Pause/Resume and the new screen were exercised in Robolectric and rendered for review, not on a handset.
 
+
+## Follow-up review — 0.4.9 (reports, fixer, takeover, ring)
+
+Scope: a new outbound data path, an automated release path, and two changes to the decline flow. An independent adversarial review of the first draft found the issues marked *(review)*; each was fixed and, where marked, reproduced first.
+
+- **Consent and scope.** Nothing leaves the phone until the user saves a token. The only destination is this private repository's issues endpoint, over HTTPS without redirects, and the response is capped at 256 KB. Turning reports off stops sending before the next report, discards queued reports and cancels the job. A rejected token keeps the queue and says so.
+  - An outage (5xx, 408) or a rate limit (429, or 403 with rate-limit headers) keeps everything and retries with backoff. *(review: 5xx and 429 used to drop reports; reproduced against a fake server.)*
+  - Only a refused report such as 422 is dropped.
+- **Masking.** Every screen line in a report has each word that is not offer vocabulary masked to its shape, and so does every run of four or more digits (ZIP codes, house and phone numbers). Offer figures and money stay. Exception messages are masked too, and name-like words ("will", "may") were taken out of the vocabulary. *(Second review.)* This covers the labels, the decision's evidence and the recent decisions. Reports are read by Claude in the fixer, so they reach Anthropic as well as GitHub, and the app and README say so. *(review: automatic reports used to carry full screen text.)*
+- **Volume.** Automatic reports are deduplicated by reading gap or error site plus app version, the record survives restarts, and a repeat costs one lookup before any report is built. Caps: 10 automatic and 20 user reports a day by the phone's local day, and 30 queued. The fixer closes exact resends (the same body after a lost reply) as duplicates. A deliberate "oversized notification" refusal is not reported. *(review)*
+- **Robustness.** A failure while queuing on the background thread is caught, where it used to be able to crash the app, screen reader included. The report job always calls `jobFinished`. *(review)*
+- **Unknown stays REVIEW.** Filing a report never changes a decision or taps anything.
+- **Fixer containment.** *(review: in the first draft Claude could reach a write token through Gradle, and the gate could be bypassed by renames or by tests that merely failed to compile; both bypasses were reproduced.)*
+  - **Diagnose job:** only a read-only token (no `id-token`, so the action cannot mint its App token). Claude's tools are limited to read/edit, Gradle and local git, and its commit leaves only as a git bundle. Neither this job nor the gate saves build caches that later runs would restore, and a session that did not finish ships nothing. *(Second review.)*
+  - **Gate job:** read-only, on a fresh machine. It applies that one commit to main and runs the gate as it was on main. The gate diffs with `--no-renames`, forbids the updater, requires the changed test classes to compile and fail on the old code, then the full suite, lint and packaging.
+  - **Ship job:** checks that the bundle is exactly the gated commit, pushes it, and verifies the live APK with the base's own code. It never checks out or runs the fix.
+  - **Runs:** serialized; cancelling a run pushes nothing. A report left marked `fixer:working` by a run that died is picked up again.
+  - **The gate script** is read in full before it runs, so the fix's tests cannot rewrite its remaining checks. The checks still run on the same machine as that code, so they guard against mistakes, not against a deliberately hostile fix. Render's own build and tests are the backstop.
+- **Touch takeover.** A 1×1 `TYPE_ACCESSIBILITY_OVERLAY` watching outside touches exists only while a decline is pending; the touch is handled after the event, since handling it removes that window.
+  - A touch revokes confirmation authority and restores sound.
+  - It blocks declining any frame that does not contradict the taken-over offer, on screen or through its notification, until idle, a delivery screen, a contradicting offer, or two minutes. *(Second review: the first version forgot the takeover on a half-drawn frame and declined again; reproduced.)*
+  - Accessibility clicks are not touches, so the app's own taps cannot trigger it.
+  - Per AOSP input dispatch, ACTION_OUTSIDE reaches watch-outside windows above the touched one on the first finger down. Manufacturer builds are unverified.
+- **Ring handling.** Only the media stream (ADJUST_MUTE) and the alarm stream (to its minimum) are turned down.
+  - **When:** only while the declined offer or its own confirmation is the latest read and no newer offer notification has arrived, and only when a player other than navigation, calls or the assistant runs on them. *(Second review: sound used to stay down over an unreadable next offer; reproduced. The ringer, notification and system streams were dropped entirely, since muting them flips ringer mode.)*
+  - **Calls:** a mode other than `MODE_NORMAL` restores everything at once.
+  - **Restoring:** previous levels, and for the alarm the level actually set, are committed before any change. They are restored when the decline ends, on a touch, on a passing alert, after 20 s, when the service stops, and at the next start or app open after a crash. An alarm level the user changed meanwhile is left alone.
+  - **Side effect:** the player's app is not visible to other apps, so music playing then is quieted too.
+- **Stuck declines.** A declined offer or its confirmation still showing 5 s after the first tap is reported once, with its masked screen lines.
+- **Residual risk.**
+  - Report text reaches the model; screen text crafted to steer it is contained by the read-only token and the gate, not prevented.
+  - The diagnose job does hold the Claude credential, so a steered session could leak it through Gradle's network access.
+  - Vibration cannot be stopped by another app.
+  - Whether ACTION_OUTSIDE reaches the overlay for every touch, and which stream Dasher rings on, are device behavior the simulated tests cannot establish.
+  - Actions minutes and Claude usage are spent per report, bounded by the caps.

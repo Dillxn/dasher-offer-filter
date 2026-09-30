@@ -101,6 +101,8 @@ final class OfferAlerts {
         if (open != null) builder.setContentIntent(open);
 
         try {
+            // A decline of an earlier offer may still have the sound turned down; this offer's bell must be heard.
+            if (audible) OfferSilencer.yieldToPassingAlert(context);
             context.getSystemService(NotificationManager.class).notify(tag, NOTIFICATION_ID, builder.build());
             DiagnosticLog.log(context, "alert", "posted " + result + " audibleRequested=" + audible);
             return true;

@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Insets;
+import android.graphics.Typeface;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -74,7 +75,9 @@ public final class MainActivity extends Activity {
     private TextView activitySummary;
     private DecisionChartView chart;
     private View legend;
+    private LinearLayout selectionPanel;
     private TextView selectionDetail;
+    private Button reportSelected;
     private LinearLayout history;
     private Button moreHistory;
     private boolean showAllHistory;
@@ -89,6 +92,9 @@ public final class MainActivity extends Activity {
     private TextView baselineNote;
 
     private EditText reportEmail;
+    private EditText reportToken;
+    private TextView reportStatus;
+    private Button stopReports;
     private Switch diagnostics;
     private TextView updateStatus;
     private Button allowInstalls;
@@ -130,6 +136,8 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        // Sound left turned down by a decline the screen reader could not finish is put back here too.
+        if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -183,7 +191,7 @@ public final class MainActivity extends Activity {
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
             selectionDetail.setText(describe(entry, true));
-            selectionDetail.setVisibility(View.VISIBLE);
+            selectionPanel.setVisibility(View.VISIBLE);
         });
         LinearLayout.LayoutParams chartParams = Ui.matchWidth();
         chartParams.topMargin = ui.dp(8);
@@ -191,14 +199,20 @@ public final class MainActivity extends Activity {
         legend = legend();
         card.addView(legend);
 
+        selectionPanel = ui.column();
+        selectionPanel.setVisibility(View.GONE);
         selectionDetail = ui.text("", 13, ui.inkSecondary, false);
-        selectionDetail.setVisibility(View.GONE);
         selectionDetail.setBackground(ui.rounded(ui.fieldFill, 0, 10));
         selectionDetail.setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10));
         selectionDetail.setTextIsSelectable(true);
-        LinearLayout.LayoutParams detailParams = Ui.matchWidth();
-        detailParams.topMargin = ui.dp(10);
-        card.addView(selectionDetail, detailParams);
+        selectionPanel.addView(selectionDetail, Ui.matchWidth());
+        reportSelected = ui.addButton(selectionPanel, "Report this offer", false, () -> {
+            DecisionLog.Entry selected = chart.selectedEntry();
+            if (selected != null) reportOffer(selected);
+        });
+        LinearLayout.LayoutParams panelParams = Ui.matchWidth();
+        panelParams.topMargin = ui.dp(10);
+        card.addView(selectionPanel, panelParams);
 
         history = ui.column();
         history.setPadding(0, ui.dp(6), 0, 0);
@@ -278,6 +292,8 @@ public final class MainActivity extends Activity {
         ui.buttonPair(body,
                 ui.button("Alert settings", false, this::configureOfferAlerts),
                 ui.button("DoorDash channel", false, this::openDoorDashChannel));
+        Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
+        mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
         body.addView(ui.divider());
 
         TextView caption = ui.text("Your email", 13, ui.inkSecondary, false);
@@ -298,6 +314,8 @@ public final class MainActivity extends Activity {
         ui.buttonPair(body,
                 ui.button("Share report", false, this::shareReport),
                 ui.button("Clear history", false, this::confirmClearHistory));
+        body.addView(ui.divider());
+        addAutomaticReports(body);
         body.addView(ui.divider());
 
         Switch updates = ui.toggle(body, "Automatic updates", Updater.enabled(this));
@@ -320,6 +338,29 @@ public final class MainActivity extends Activity {
             refresh();
         }));
         body.addView(routeRow);
+    }
+
+    /** A GitHub token turns on reports of unreadable offers and errors, filed where the fixer picks them up. */
+    private void addAutomaticReports(LinearLayout body) {
+        TextView caption = ui.text("Automatic reports (GitHub token)", 13, ui.inkSecondary, false);
+        caption.setPadding(0, ui.dp(8), 0, ui.dp(4));
+        body.addView(caption);
+        reportToken = new EditText(this);
+        reportToken.setId(View.generateViewId());
+        caption.setLabelFor(reportToken.getId());
+        reportToken.setSingleLine(true);
+        reportToken.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        // Password input switches to monospace; keep the field in the page's font like the others.
+        reportToken.setTypeface(Typeface.DEFAULT);
+        ui.styleField(reportToken);
+        body.addView(reportToken, Ui.matchWidth());
+        reportStatus = ui.text("", 13, ui.inkSecondary, false);
+        reportStatus.setPadding(0, ui.dp(4), 0, 0);
+        body.addView(reportStatus);
+        ui.buttonPair(body,
+                ui.button("Save token", false, this::saveReportToken),
+                ui.button("Send test", false, this::sendTestReport));
+        stopReports = ui.addButton(body, "Turn off reports", false, this::confirmStopReports);
     }
 
     // ---- State ----
@@ -360,6 +401,11 @@ public final class MainActivity extends Activity {
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("Active route: " + route.summary());
         if (diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
+        boolean reporting = ReportOutbox.enabled(this);
+        reportStatus.setText(ReportOutbox.status(this));
+        reportToken.setHint(reporting ? "Token saved · paste to replace" : "github_pat_…");
+        reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
+        stopReports.setVisibility(reporting ? View.VISIBLE : View.GONE);
     }
 
     private void refreshHistory() {
@@ -373,7 +419,7 @@ public final class MainActivity extends Activity {
         chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         legend.setVisibility(empty ? View.GONE : View.VISIBLE);
         DecisionLog.Entry selected = chart.selectedEntry();
-        selectionDetail.setVisibility(selected == null ? View.GONE : View.VISIBLE);
+        selectionPanel.setVisibility(selected == null ? View.GONE : View.VISIBLE);
         if (selected != null) selectionDetail.setText(describe(selected, true));
         history.removeAllViews();
         int rows = Math.min(showAllHistory ? MORE_HISTORY_ROWS : HISTORY_ROWS, recent.size());
@@ -415,6 +461,8 @@ public final class MainActivity extends Activity {
         texts.addView(top);
         TextView details = ui.text(plainReason(entry), 13, ui.inkSecondary, false);
         texts.addView(details);
+        Button report = ui.addButton(texts, "Report this offer", false, () -> reportOffer(entry));
+        report.setVisibility(View.GONE);
         row.addView(texts, Ui.weighted());
         row.setClickable(true);
         row.setContentDescription(Ui.resultLabel(entry.result) + ", " + headline(entry) + ", "
@@ -425,6 +473,7 @@ public final class MainActivity extends Activity {
         row.setOnClickListener(tapped -> {
             expanded[0] = !expanded[0];
             details.setText(expanded[0] ? describe(entry, false) : plainReason(entry));
+            report.setVisibility(expanded[0] && ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
         });
         return row;
     }
@@ -576,6 +625,71 @@ public final class MainActivity extends Activity {
 
     private static String money(int cents) {
         return String.format(Locale.US, "%.2f", cents / 100.0);
+    }
+
+    /** Asks what went wrong (optional) and files the offer, with what was read, for the fixer. */
+    private void reportOffer(DecisionLog.Entry entry) {
+        if (!ReportOutbox.enabled(this)) {
+            toast("Add a GitHub token under Setup & help first.");
+            return;
+        }
+        EditText note = new EditText(this);
+        note.setHint("What went wrong? (optional)");
+        note.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        note.setMaxLines(4);
+        LinearLayout frame = ui.column();
+        frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0);
+        frame.addView(note, Ui.matchWidth());
+        new AlertDialog.Builder(this)
+                .setTitle("Report this offer?")
+                .setMessage("Sends what the app read (other words masked, so names and streets stay here), your "
+                        + "rules and recent decisions to your private repository, where Claude diagnoses it.")
+                .setView(frame)
+                .setPositiveButton("Send", (dialog, which) -> {
+                    boolean queued = ReportOutbox.fileByUser(this, entry, note.getText().toString());
+                    toast(queued ? "Report queued. It sends when you're online." : "Daily report limit reached.");
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void saveReportToken() {
+        String token = reportToken.getText().toString().trim();
+        if (token.isEmpty()) {
+            toast("Paste a GitHub token first.");
+            return;
+        }
+        if (!token.matches("[A-Za-z0-9_]{20,255}")) {
+            toast("That doesn't look like a GitHub token.");
+            return;
+        }
+        ReportOutbox.setToken(this, token);
+        reportToken.setText("");
+        toast("Automatic reports are on.");
+        refresh();
+    }
+
+    private void confirmStopReports() {
+        new AlertDialog.Builder(this)
+                .setTitle("Turn off automatic reports?")
+                .setMessage("Removes the token from this phone and discards reports not yet sent.")
+                .setPositiveButton("Turn off", (dialog, which) -> {
+                    ReportOutbox.setToken(this, "");
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void sendTestReport() {
+        if (!ReportOutbox.enabled(this)) {
+            toast("Paste a GitHub token first.");
+            return;
+        }
+        toast(ReportOutbox.fileTest(this) ? "Test report queued." : "Daily report limit reached.");
+        refresh();
     }
 
     private void confirmClearHistory() {

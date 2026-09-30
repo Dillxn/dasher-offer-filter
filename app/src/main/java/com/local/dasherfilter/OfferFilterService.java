@@ -8,6 +8,7 @@ import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
+import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -25,6 +26,10 @@ public final class OfferFilterService extends AccessibilityService {
     private static final int MAX_SCAN_NODES = 1500;
     private static final int MAX_CLICK_TARGET_ANCESTORS = 8;
     private static final int MAX_ACCEPT_LABEL_ANCESTORS = 4;
+    /** A declined offer or its confirmation still showing this long after the decline tap is reported as stuck. */
+    static final long STUCK_MS = 5_000;
+    /** How long a takeover lasts at most; offers expire well before this. */
+    static final long TAKEOVER_MS = 120_000;
     /** Taps that prove delivery progress, making stored travel estimates stale. */
     private static final List<String> PROGRESS_TAPS = Arrays.asList(
             "confirm pickup", "complete pickup", "complete delivery", "confirm dropoff");
@@ -34,6 +39,9 @@ public final class OfferFilterService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final DeclineState declineState = new DeclineState();
     private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
+    private final Runnable syncAutomation = this::syncAutomation;
+    private TouchWatch touchWatch;
+    private OfferSilencer silencer;
     private long recheckUntil;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
     private long declineGeneration;
@@ -41,6 +49,18 @@ public final class OfferFilterService extends AccessibilityService {
     private OfferSnapshot declinedOffer = OfferSnapshot.UNKNOWN;
     /** Its decision-log entry, upgraded when the confirmation is tapped too. */
     private DecisionLog.Entry declinedEntry;
+    private String declinedKey = "";
+    private long declinedAt;
+    /** The offer the user took over by touching the screen: nothing automatic happens to it again. */
+    private OfferSnapshot takenOverOffer = OfferSnapshot.UNKNOWN;
+    /** When it was taken over (uptime), 0 for none. */
+    private long takenOverAt;
+    /** Whether the latest read showed the declined offer or its own confirmation, so its ring may be turned down. */
+    private boolean declinedOfferShowing;
+    /** The last declined offer already reported as stuck. */
+    private String reportedStuck = "";
+    /** The last offer already reported as unreadable, so repeated reads of it file nothing more. */
+    private String reportedOffer = "";
     private String lastStatus = "";
     private String lastDiagnosticSignature = "";
 
@@ -57,6 +77,12 @@ public final class OfferFilterService extends AccessibilityService {
 
     static boolean isConnected() {
         return active != null;
+    }
+
+    /** Whether the user took over an offer these facts could belong to, so the notification path leaves it alone. */
+    static boolean userHasOffer(OfferSnapshot facts) {
+        OfferFilterService service = active;
+        return service != null && service.isTakenOver(facts, SystemClock.uptimeMillis());
     }
 
     static boolean isDasherForeground() {
@@ -78,6 +104,14 @@ public final class OfferFilterService extends AccessibilityService {
             service.recheckUntil = SystemClock.uptimeMillis() + RECHECK_WINDOW_MS;
             service.handler.post(service.recheck);
         });
+    }
+
+    @Override public void onCreate() {
+        super.onCreate();
+        touchWatch = new TouchWatch(this, this::userTookOver);
+        silencer = new OfferSilencer(this);
+        // Puts back any sound left turned down if the app died during a decline.
+        OfferSilencer.restore(this);
     }
 
     @Override protected void onServiceConnected() {
@@ -102,6 +136,7 @@ public final class OfferFilterService extends AccessibilityService {
         handler.removeCallbacks(recheck);
         declineState.reset();
         acceptedTracker.reset();
+        syncAutomation();
         status("Accessibility interrupted; waiting for a new readable offer.");
     }
 
@@ -120,6 +155,7 @@ public final class OfferFilterService extends AccessibilityService {
         handler.removeCallbacksAndMessages(null);
         declineState.reset();
         acceptedTracker.reset();
+        syncAutomation();
     }
 
     private void observeClick(AccessibilityEvent event) {
@@ -138,9 +174,72 @@ public final class OfferFilterService extends AccessibilityService {
             declineState.reset();
             DiagnosticLog.log(this, "accessibility",
                     "scan rejected; no further action: " + error.getClass().getSimpleName());
+            ReportOutbox.fileAutomatic(this, ProblemReport.Kind.SCAN_ERROR, null, null, error);
             status("Screen read failed. No automatic action until a new readable screen.");
             return false;
+        } finally {
+            syncAutomation();
         }
+    }
+
+    /**
+     * The touch watch runs exactly while a decline this service requested is in progress: from the Decline tap until
+     * its confirmation closes, the offer is taken over, or the authority lapses. The silencer runs within that, and
+     * only while the declined offer or its confirmation is what the screen shows.
+     */
+    private void syncAutomation() {
+        if (touchWatch == null) return;
+        boolean declining = declineState.hasPendingConfirmation(SystemClock.uptimeMillis());
+        if (declining) touchWatch.start();
+        else touchWatch.stop();
+        // Quiet only while the declined offer itself is on screen: never over a next offer, even an unreadable one.
+        boolean quiet = declining && declinedOfferShowing
+                && declineGeneration == OfferNotificationService.generation()
+                && FilterStore.silenceWhileDeclining(this);
+        if (quiet) silencer.start();
+        else silencer.stop();
+    }
+
+    /**
+     * Any touch while a decline is in progress hands the offer back to the user: its confirmation is not tapped,
+     * the offer is not declined again, and the sound comes back. A confirmation already tapped cannot be undone.
+     */
+    private void userTookOver() {
+        if (!declineState.hasPendingConfirmation(SystemClock.uptimeMillis())) {
+            syncAutomation();
+            return;
+        }
+        boolean alreadyConfirmed = declineState.confirmationTapped();
+        takenOverOffer = declinedOffer;
+        takenOverAt = SystemClock.uptimeMillis();
+        declineState.reset();
+        handler.removeCallbacks(recheck);
+        syncAutomation();
+        if (declinedEntry != null && !alreadyConfirmed) {
+            DecisionLog.record(this, new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
+                    declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
+                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence));
+        }
+        DiagnosticLog.log(this, "accessibility", "screen touched; automatic decline stopped"
+                + (alreadyConfirmed ? " after its confirmation was tapped" : ""));
+        status(alreadyConfirmed
+                ? "You touched the screen after the decline was confirmed; nothing more will be tapped."
+                : "You touched the screen, so auto-decline stopped for this offer.");
+        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Offer Filter stopped tapping this offer";
+        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Whether these facts could be the offer the user took over. Anything that does not contradict it counts, so a
+     * partly drawn frame of that offer (pay without the route line, or the reverse) is never declined.
+     */
+    private boolean isTakenOver(OfferSnapshot offer, long now) {
+        return takenOverAt != 0 && now - takenOverAt < TAKEOVER_MS && !offer.contradicts(takenOverOffer);
+    }
+
+    private void forgetTakeover() {
+        takenOverAt = 0;
+        takenOverOffer = OfferSnapshot.UNKNOWN;
     }
 
     private boolean checkReadableOffer() {
@@ -156,6 +255,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         Scan scan = Scan.of(root);
         if (scan.truncated) {
+            declinedOfferShowing = false;
             status("Offer screen exceeded safe read limits; no automatic action.");
             return false;
         }
@@ -187,6 +287,7 @@ public final class OfferFilterService extends AccessibilityService {
     /** Second step of a decline this service requested. Pausing or a newer offer revokes the authority. */
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
         diagnostic("confirmation", confirmation, null, null);
+        declinedOfferShowing = true;
         if (!settings.enabled || !declineState.hasPendingConfirmation(now)) return false;
         if (declineGeneration != OfferNotificationService.generation()) {
             declineState.reset();
@@ -194,6 +295,7 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
+        reportIfStuck(confirmation, now);
         if (selected >= 0 && declineState.mayConfirm(now) && click(confirmation.declineTargets.get(selected))) {
             declineState.confirmationSent(now);
             if (declinedEntry != null) {
@@ -235,17 +337,23 @@ public final class OfferFilterService extends AccessibilityService {
             boolean pending = declineState.hasPendingConfirmation(now);
             ActiveRouteStore.clear(this);
             declineState.reset();
+            forgetTakeover();
             status(pending
                     ? "Dasher returned to the idle screen after decline; no active offer visible."
                     : "Dasher is finding offers.");
             return false;
         }
         // Declining an add-on returns straight to the delivery: no confirmation is coming after that.
-        if (AcceptedOfferTracker.isDeliveryScreen(scan.text)) declineState.endConfirmation();
+        if (AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
+            declineState.endConfirmation();
+            forgetTakeover();
+        }
         if (scan.accept == null && scan.decline == null) {
             declineState.offerGone();
             return declineState.hasPendingConfirmation(now);
         }
+        // Half an offer: still ours only if it positively shows the declined offer's facts.
+        declinedOfferShowing = offer.agreesWith(declinedOffer);
         diagnostic("incomplete-controls", scan, offer, null);
         status(offer.summary() + "\nBoth offer controls are not yet readable; no action.");
         return settings.enabled;
@@ -272,30 +380,78 @@ public final class OfferFilterService extends AccessibilityService {
                 ? OfferRule.evaluateAddOn(addOn, settings) : OfferRule.evaluate(offer, settings);
         diagnostic(isAddOn ? "add-on" : "offer", scan, offer, decision);
         String detail = isAddOn ? addOn.summary() : offer.summary();
+        String key = DeclineState.offerKey(offer, scan.text);
+        if (isTakenOver(offer, now)) {
+            declinedOfferShowing = false;
+            status(detail + "\nYou took over this offer; no automatic action.");
+            return false;
+        }
+        // A clearly different offer, or a long-expired takeover, ends it.
+        forgetTakeover();
+        declinedOfferShowing = decision.result == OfferRule.Result.DECLINE
+                && (key.equals(declinedKey) || offer.agreesWith(declinedOffer));
 
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             declineState.reset();
-            record(scan, isAddOn, decision, settings, !settings.enabled ? DecisionLog.Action.PAUSED
+            DecisionLog.Entry entry = record(scan, isAddOn, decision, settings, !settings.enabled
+                    ? DecisionLog.Action.PAUSED
                     : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
                     : DecisionLog.Action.NEEDS_REVIEW);
+            if (decision.result == OfferRule.Result.REVIEW) reportUnreadable(scan, offer, entry);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
-        String key = DeclineState.offerKey(offer, scan.text);
-        if (!declineState.mayDecline(key, now)) return declineState.hasPendingConfirmation(now);
+        if (!declineState.mayDecline(key, now)) {
+            if (key.equals(declinedKey)) reportIfStuck(scan, now);
+            return declineState.hasPendingConfirmation(now);
+        }
         // Re-check the active window just before acting: the screen can change while it is being read.
         if (isDasher(getRootInActiveWindow()) && click(scan.decline)) {
+            boolean firstTap = !key.equals(declinedKey) || !declineState.hasPendingConfirmation(now);
             declineState.declineSent(key, now);
             declineGeneration = OfferNotificationService.generation();
             declinedOffer = offer;
             declinedEntry = record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_TAPPED);
-            DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail);
+            if (firstTap) {
+                declinedKey = key;
+                declinedAt = now;
+            }
+            declinedOfferShowing = true;
+            // Silence and watch for a takeover at once; the pass's end would be a few milliseconds later.
+            syncAutomation();
+            handler.removeCallbacks(syncAutomation);
+            handler.postDelayed(syncAutomation, DeclineState.CONFIRMATION_WINDOW_MS + RECHECK_INTERVAL_MS);
+            DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail
+                    + "; sound playing: " + OfferSilencer.playing(this));
             status("Decline requested: " + detail + "\n" + decision.summary());
         } else {
             record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_REFUSED);
             status("Decline click was not accepted by Android. No completion claimed.");
         }
         return true;
+    }
+
+    /**
+     * A declined offer, or its confirmation, still on screen {@link #STUCK_MS} after the first Decline tap means
+     * Dasher is still ringing for it: report what the screen shows, once per offer.
+     */
+    private void reportIfStuck(Scan scan, long now) {
+        if (declinedKey.isEmpty() || declinedKey.equals(reportedStuck) || now - declinedAt < STUCK_MS) return;
+        reportedStuck = declinedKey;
+        List<String> labels = new ArrayList<>(scan.text);
+        labels.addAll(scan.metricParts);
+        DiagnosticLog.log(this, "accessibility", "decline still showing after " + (now - declinedAt) + " ms");
+        ReportOutbox.fileAutomatic(this, ProblemReport.Kind.DECLINE_STUCK, declinedEntry, labels, null);
+    }
+
+    /** A visible offer the rules could not judge is a reading gap worth fixing: report it once per offer. */
+    private void reportUnreadable(Scan scan, OfferSnapshot offer, DecisionLog.Entry entry) {
+        String key = DeclineState.offerKey(offer, scan.text);
+        if (key.equals(reportedOffer) || !ReportOutbox.enabled(this)) return;
+        reportedOffer = key;
+        List<String> labels = new ArrayList<>(scan.text);
+        labels.addAll(scan.metricParts);
+        ReportOutbox.fileAutomatic(this, ProblemReport.Kind.UNREADABLE_OFFER, entry, labels, null);
     }
 
     private DecisionLog.Entry record(Scan scan, boolean addOn, OfferRule.Decision decision, FilterSettings settings,

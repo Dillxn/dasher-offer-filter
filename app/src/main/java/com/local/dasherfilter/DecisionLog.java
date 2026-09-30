@@ -57,7 +57,8 @@ final class DecisionLog {
         DECLINE_TAPPED("Decline tapped", 3),
         NOTIFICATION_HIDDEN("Notification hidden; order NOT declined", 3),
         NOTIFICATION_DECLINE_SENT("Decline requested from the notification", 3),
-        CONFIRMATION_TAPPED("Decline and its confirmation tapped", 4);
+        CONFIRMATION_TAPPED("Decline and its confirmation tapped", 4),
+        USER_TOOK_OVER("You touched the screen and took over; nothing more tapped", 5);
 
         final String label;
         final int weight;

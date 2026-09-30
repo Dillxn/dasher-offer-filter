@@ -69,6 +69,8 @@ public class AndroidAdapterTest {
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
         DecisionLog.forgetCache();
+        ReportOutbox.forgetCache();
+        OfferSilencer.forgetCache();
     }
 
     @Test
@@ -411,6 +413,66 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void reportingNeedsATokenAndThenSendsTheOfferWithTheUsersNote() throws Exception {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            View row = (View) findTextContaining(content, "Below your per-mile rate").getParent().getParent();
+            row.performClick();
+            assertNull("no report button without a token", shownButton(content, "Report this offer"));
+            assertNotNull(findTextContaining(content, "Off. Paste a GitHub token"));
+
+            EditText token = fieldLabeled(content, "Automatic reports (GitHub token)");
+            token.setText("not a token");
+            findButton(content, "Save token").performClick();
+            assertFalse(ReportOutbox.enabled(app));
+
+            token.setText(" github_pat_11ABCDEFG0123456789_abcdefghijklmnop ");
+            findButton(content, "Save token").performClick();
+            assertTrue(ReportOutbox.enabled(app));
+            assertEquals("", token.getText().toString());
+            assertNotNull(findTextContaining(content, "On · no reports sent yet"));
+
+            row.performClick();
+            row.performClick();
+            shownButton(content, "Report this offer").performClick();
+            android.app.AlertDialog dialog = (android.app.AlertDialog)
+                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            findEditText(dialog.getWindow().getDecorView()).setText("It paid $12, not $7.90");
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            ReportOutbox.flush();
+
+            assertEquals(1, ReportOutbox.queued(app));
+            java.io.File[] queued = new java.io.File(app.getFilesDir(), "report-outbox").listFiles();
+            String report = new String(java.nio.file.Files.readAllBytes(queued[0].toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            org.json.JSONObject item = new org.json.JSONObject(report);
+            assertTrue(item.getString("title").startsWith("[offer-report] You reported: Declined $7.90"));
+            assertTrue(item.getString("body").contains("It paid $12, not $7.90"));
+            assertTrue(item.getString("body").contains("2 stops (7.2 mi)"));
+        }
+    }
+
+    @Test
+    public void turningReportsOffAsksFirst() {
+        ReportOutbox.setToken(app, "github_pat_existing");
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            findButton(content, "Save token").performClick();
+            assertTrue("an empty field changes nothing", ReportOutbox.enabled(app));
+            findButton(content, "Turn off reports").performClick();
+            android.app.AlertDialog dialog = (android.app.AlertDialog)
+                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertTrue(ReportOutbox.enabled(app));
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertFalse(ReportOutbox.enabled(app));
+            assertEquals(View.GONE, findButton(content, "Turn off reports").getVisibility());
+        }
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();
@@ -504,6 +566,28 @@ public class AndroidAdapterTest {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) collectButtons(group.getChildAt(i), out);
         }
+    }
+
+    /** The first button labeled {@code text} that is actually on screen (itself and every ancestor visible). */
+    private static Button shownButton(View root, String text) {
+        List<Button> buttons = new ArrayList<>();
+        collectButtons(root, buttons);
+        for (Button button : buttons) {
+            if (button.isShown() && text.contentEquals(button.getText())) return button;
+        }
+        return null;
+    }
+
+    private static EditText findEditText(View view) {
+        if (view instanceof EditText) return (EditText) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                EditText found = findEditText(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** The field a visible label names via {@code labelFor}. */

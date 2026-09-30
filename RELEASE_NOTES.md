@@ -1,3 +1,55 @@
+## 0.4.9 — touch to take over, a quieter decline, and an automatic fix loop
+
+- **Touch to take over.** Touching the screen while a filtered offer is being declined stops the automation for that offer, and a toast says "Offer Filter stopped tapping this offer".
+  - The confirmation isn't tapped, and the offer isn't declined again, either on screen (even while Dasher redraws it) or from its notification.
+  - A tiny invisible overlay notices the touch without receiving it, and only while a decline is in progress.
+  - A confirmation already tapped can't be undone.
+- **Dasher's ring is turned down while declining.** Dasher rings for an offer with its own sound, not its notifications, until the offer closes. While the declined offer or its confirmation is on screen, the media and alarm streams are turned down if something other than navigation is playing on them.
+  - The alarm stream goes to its lowest level, since Android can't mute it.
+  - The ringer, notification and system streams are never touched: muting them would flip the phone to vibrate.
+  - Sound comes back when the decline ends, a next offer or a passing bell arrives, a call starts, after 20 seconds, or at the next start after a crash.
+  - Turn it off with **Mute Dasher's ring while declining** under Setup & help.
+  - Android doesn't let one app stop another's vibration, so the buzz still lasts until Dasher closes the offer.
+- **Automatic reports (opt-in).** Under Setup & help, paste a GitHub fine-grained token limited to this repository's issues. The app then files an issue when:
+  - an offer can't be judged (once per reading gap per version);
+  - a decline is still on screen 5 seconds after the tap (once per offer);
+  - the screen reader or notification handler crashes (once per error site per version).
+
+  **Report this offer** on an opened history row or chart column files one with your note, and **Send test** checks the path. At most 10 automatic reports go out a day. Every word that isn't offer vocabulary, and every run of four or more digits, is masked before sending. Store names, customer names, streets, ZIP codes and phone numbers never leave the phone. Outages and rate limits are retried. **Turn off reports** removes the token and discards unsent reports.
+- **The fixer.** Each report issue starts a GitHub Actions run, not a schedule.
+  - **Diagnose:** Claude, with a read-only token and no shared build caches, explains a decision the rules made, or reproduces a misread or crash with a failing test, fixes it and bumps the version. A session that runs out of turns or time ships nothing.
+  - **Gate:** a separate read-only job applies that one commit to main and requires tests that compile and fail on the old code, then the full suite, lint and a packaged APK.
+  - **Ship:** only this job can push, and it runs none of the fix's code. It waits for Render and verifies the live APK before it comments and closes the issue. A cancelled run pushes nothing. Anything unfinished stays open, labeled `fixer:needs-human`.
+
+Two independent adversarial reviews ran before release, and everything they confirmed is fixed:
+- the model's session could reach a write token;
+- gate bypasses (renames; tests that merely fail to compile);
+- dropped reports on outages;
+- unmasked screen text;
+- a takeover forgotten on a half-drawn frame;
+- muting that outlasted the declined offer;
+- ringer-mode side effects of muting.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 (JUnit and Robolectric):**
+  - touch takeover: confirmation withheld, no re-decline even through half-drawn frames or the notification path, a different offer still judged, the overlay only during a decline;
+  - ring handling: media and alarm turned down only while the declined offer shows; restored after the decline, a touch, a next offer, a call, a passing bell or a crash; ringer streams never touched; navigation alone never triggers it; the setting honored;
+  - stuck-decline reports;
+  - report contents, masking, deduplication, daily caps and the network job;
+  - sending to a local fake GitHub (created, bad token, invalid, outage, rate limit, no connection).
+- **The gate** was dry-run on simulated fixer commits. It rejected:
+  - an edit to a protected file;
+  - a move of a protected file;
+  - an updater change;
+  - a test that only fails because it doesn't compile on the old code;
+  - a test that passes without the fix.
+
+  A real fix passed.
+- **Not tested:**
+  - The workflow runs only on GitHub, so its first real run is its first end-to-end test.
+  - Whether Dasher's ring actually stops, and which stream it uses, can only be heard on the phone.
+  - Detecting touches through the overlay relies on Android behavior that Robolectric can only simulate.
+
 ## 0.4.8 — fixes from the first real diagnostics report
 
 Built from the first real report sent from the phone:

@@ -60,6 +60,11 @@ final class DeclineState {
         confirmationAttempts++;
     }
 
+    /** Whether the declined offer's confirmation has been tapped, so the decline is already fully requested. */
+    boolean confirmationTapped() {
+        return confirmationAttempts > 0;
+    }
+
     /** True once we tapped a confirmation and at least {@link #CONFIRMATION_SETTLE_MS} has passed since. */
     boolean confirmationSettled(long now) {
         return confirmationAttempts > 0 && now - lastConfirmationAt >= CONFIRMATION_SETTLE_MS;

@@ -14,7 +14,19 @@ If a known-failing background offer exposes a safe DoorDash-owned non-activity D
 
 ## Sound, vibration and missed-offer tradeoffs
 
-Keep DoorDash notifications allowed and set its offer channel to Silent. Offer Filter cannot change another app's notification settings or guarantee suppression of sound/vibration generated inside Dasher. A channel's name does not establish its actual configuration; opt-in diagnostics record actual channel sound, vibration, importance, and presence of a full-screen intent when Android exposes these.
+Keep DoorDash notifications allowed and set its offer channel to Silent. Offer Filter cannot change another app's notification settings.
+
+Dasher also rings and vibrates for an offer with its own sound, outside its notifications, until the offer closes. **Mute Dasher's ring while declining** (Setup & help; on by default) turns down the media and alarm streams while a filtered offer is being declined on screen.
+
+- **What it touches.** Only the media and alarm streams, only while that declined offer or its own confirmation is showing, and only when something other than navigation or a call is playing on them.
+  - The alarm stream can't be muted, so it goes to its lowest level instead.
+  - The ringer, notification and system streams are never touched, because muting them switches the whole phone to vibrate.
+- **When it gives way.** Nothing is touched while a call rings or is in progress, and a call that starts mid-decline brings everything back at once. A next offer on screen, a new offer notification, or a passing offer's bell does the same.
+- **Restoring.** Everything comes back when the decline ends, after 20 seconds at most, or at the next start if the app died in between.
+
+Navigation voice shares the media stream, so if Dasher's ring plays there, directions are quiet for those seconds too. If Dasher rings on the ringer or notification stream, this setting can't help. The decision's diagnostics log which stream was playing. Android gives an app no way to stop another app's vibration, so the buzz lasts until Dasher closes the declined offer. Declines that don't finish within 5 seconds are reported.
+
+Touching the screen while a decline is in progress hands the offer back. The confirmation is not tapped, that offer is not declined again (from the screen or its notification), the sound comes back, and a toast says so. The takeover holds through partly drawn frames of that offer. It ends when Dasher goes idle or to a delivery, when a clearly different offer appears, or after two minutes. A tiny invisible accessibility overlay notices the touch without receiving it. The app's own taps are accessibility actions, not touches, so they never count. A decline whose confirmation was already tapped can't be undone. A channel's name does not establish its actual configuration; opt-in diagnostics record actual channel sound, vibration, importance, and presence of a full-screen intent when Android exposes these.
 
 Only proven passing offers request an audible Offer Filter alert. Unknown offers and disabled-filter offers use the silent review channel. Consequently a qualifying order with no background price/distance evidence will not produce a passing bell until adequate evidence is available. This is a deliberate uncertainty boundary, not fully automatic background classification. Silent review can be missed; inspect the review cards while parked.
 
@@ -40,13 +52,45 @@ Every offer the app evaluates is recorded on the phone, always on and bounded to
 
 **Email report** (under Setup & help) opens the mail app addressed to the user's own saved address, with the report as the body. Nothing is sent until the user presses Send. The subject always starts with `Offer Filter diagnostics`, so Claude can find the latest report through the user's Gmail connection when asked. **Share report** offers any app.
 
+## Automatic problem reports and the fixer
+
+Under Setup & help, **Automatic reports** takes a GitHub fine-grained token that can only write issues in this private repository. Saving it is the opt-in. **Turn off reports** removes it and discards anything not yet sent. With a token saved:
+
+- An offer screen the rules could not judge (pay, miles, time or stops not readable) is reported once per reading gap per app version.
+- A declined offer, or its confirmation, still on screen 5 seconds after the Decline tap is reported once per offer. Dasher keeps ringing while it shows.
+- A screen-read or notification-handler crash is reported once per error site per version.
+- **Report this offer** appears when a history row or chart column is opened. It asks what went wrong (optional) and files the offer with what was read.
+- **Send test** checks the whole path.
+
+At most 10 automatic and 20 user reports go out a day, by the phone's clock.
+
+Each report is an issue titled `[offer-report] …`, holding the rules, the decision, the screen lines and recent decisions as JSON. Before a report leaves the phone, every word that isn't offer vocabulary (pay, guaranteed, stops, mi, accept, decline…) is masked to its shape. "Order for Jane D. $7.90" becomes "Order for Xxxx X. $7.90", so store names, customer names and streets never leave. Runs of four or more digits (ZIP codes, house and phone numbers) become `#`, and so do error messages. Offer figures stay, so a misread can be reproduced. The issue is read by Claude in the fixer workflow, so a report goes to Anthropic as well as to GitHub.
+
+Reports queue on the phone and send when any network is available. An outage or rate limit is retried later with backoff. A rejected token keeps them until a new one is saved. Only a report GitHub refuses as invalid is dropped.
+
+Opening such an issue starts `.github/workflows/offer-report-fixer.yml`. It is event-driven, never scheduled. Each run handles every report still waiting, oldest first, one at a time, and closes exact resends as duplicates. Each report goes through `offer-report-fix-one.yml`, in three jobs with separate permissions:
+
+1. **Diagnose** (read-only token, no build caches). Claude follows `tools/fixer/PLAYBOOK.md`: explain a decision the rules made, or reproduce a misread or crash with a failing test, fix it, bump the version and commit. The commit leaves the job only as a git bundle. A session that runs out of turns or time ships nothing.
+2. **Gate** (read-only, fresh machine). The commit is applied on top of `main`, and `tools/fixer/gate.sh` runs as it was on `main` before the fix. It requires:
+   - exactly one commit, touching only app code, tests, the version lines and notes (never the updater, and moving a protected file counts);
+   - changed tests that compile against the old code and fail there;
+   - no skipped or removed tests;
+   - the full suite and lint passing;
+   - an APK that packages.
+3. **Ship** (the only job that can write, and it runs no code from the fix):
+   - pushes exactly the gated commit to `main`, where Render builds, signs and publishes as usual;
+   - waits for the live feed and runs `tools/verify_channel.py`;
+   - comments on the issue and closes it (shipped, or explained). Anything else stays open, labeled `fixer:needs-human`, with the reason.
+
+Set the repository variable `OFFER_FIXER_ENABLED` to `false` to stop it.
+
 Capture is local, explicit, bounded and expires after 30 minutes. Raw screen text can contain customer/store/address information; review before sharing. Reports include every saved rule (including the rising-payout baseline), notification-access and service readiness, the decision history, updater status, the latest advertised version and last check timestamps even when raw capture is off; the newest 48,000 characters of raw log are added only while capture has been on. Arbitrary notification-extra values are not interpreted as numeric evidence or dumped to logs. Clear diagnostics removes the local log.
 
 ## Build and release
 
 The private source repository feeds the existing Render static build. `render-build.sh` installs the SDK/JDK as needed, verifies the current public channel using the production Java downloader, runs the JUnit and Robolectric suite, builds/signs the APK with the existing Render-held key, checks embedded package/version, and publishes only APK, feed, receipt and install-page assets.
 
-`app/build.gradle` is the version source of truth. A changed source commit cannot reuse the live version code. A deliberate same-source redeploy reuses the already published APK/feed bytes after checking them, preventing mutable content under one version. `verification.json` reports test totals and the exact live version reached by the production-transport probe. The app trusts only the Render release host for the feed, the APK, and every redirect hop; the retired GitHub feed is neither trusted by the app nor published to by any script in this repository. The GitHub workflow is manual tests only and cannot create another signer.
+`app/build.gradle` is the version source of truth. A changed source commit cannot reuse the live version code. A deliberate same-source redeploy reuses the already published APK/feed bytes after checking them, preventing mutable content under one version. `verification.json` reports test totals and the exact live version reached by the production-transport probe. The app trusts only the Render release host for the feed, the APK, and every redirect hop; the retired GitHub feed is neither trusted by the app nor published to by any script in this repository. The manual-tests workflow and the offer-report fixer never sign or publish: the fixer only pushes a gated source commit to `main`, and Render signs with the existing key.
 
 Run `./gradlew --no-daemon testDebugUnitTest`, then `./build-local.sh` with the existing signing environment. The network probe is `python3 tools/verify_channel.py`. The app has minSdk 26 and no core-library desugaring, so Java APIs newer than Android 8 (for example `List.of`) crash on older phones even though the JVM-hosted tests pass; `./gradlew lintDebug` reports these as `NewApi`. Local pure-Java checks are not handset installation tests; Robolectric adapter tests are not a physical phone or the real DoorDash client.
 

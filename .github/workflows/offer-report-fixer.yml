@@ -1,0 +1,93 @@
+name: Offer report fixer
+
+# Event-driven, never scheduled: each problem report the phone files as an issue starts a run.
+# Each report goes through offer-report-fix-one.yml, which splits the work by what each part may touch:
+# Claude diagnoses with a read-only token, the gate runs the proposed fix with read-only access, and only the
+# ship job, which runs no code from the fix, can push to main and close the issue.
+# Turn off by setting the repository variable OFFER_FIXER_ENABLED to false.
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions: {}
+
+# One run at a time, so fixes land on main in order. GitHub keeps only the newest queued run, so every run
+# handles all reports still waiting rather than only the issue that started it.
+concurrency:
+  group: offer-report-fixer
+  cancel-in-progress: false
+
+jobs:
+  waiting:
+    # Runs for every opened issue, so a run for an unrelated issue that replaces a queued run still finds the
+    # waiting reports. The listing decides what counts as a report.
+    if: vars.OFFER_FIXER_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    outputs:
+      issues: ${{ steps.list.outputs.issues }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - id: list
+        name: List, deduplicate and claim waiting reports
+        run: |
+          for label in fixer:working fixer:shipped fixer:explained fixer:needs-human fixer:duplicate; do
+            gh label create "$label" --repo "$GITHUB_REPOSITORY" --color C5DEF5 --force >/dev/null
+          done
+          gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+              --json number,title,author,labels,createdAt,body > "$RUNNER_TEMP/open.json"
+          python3 - "$RUNNER_TEMP/open.json" > "$RUNNER_TEMP/plan.json" <<'PY'
+          import json, os, sys
+          owner = os.environ['GITHUB_REPOSITORY_OWNER']
+          issues = json.load(open(sys.argv[1]))
+          def waiting(issue):
+              labels = {label['name'] for label in issue['labels']}
+              # Runs never overlap, so a report still marked fixer:working was left by a run that died.
+              return (issue['title'].startswith('[offer-report]') and issue['author']['login'] == owner
+                      and not any(name.startswith('fixer:') and name != 'fixer:working' for name in labels))
+          reports = sorted(filter(waiting, issues), key=lambda issue: issue['createdAt'])
+          first, keep, duplicates = {}, [], []
+          for issue in reports:
+              # The same body twice is one report sent again after a lost reply.
+              if issue['body'] in first:
+                  duplicates.append([issue['number'], first[issue['body']]])
+              else:
+                  first[issue['body']] = issue['number']
+                  keep.append(issue['number'])
+          json.dump({'issues': keep[:10], 'duplicates': duplicates}, sys.stdout)
+          PY
+          jq -r '.duplicates[] | "\(.[0]) \(.[1])"' "$RUNNER_TEMP/plan.json" | while read -r duplicate original; do
+            gh issue comment "$duplicate" --repo "$GITHUB_REPOSITORY" \
+                --body "$(printf 'Same report as #%s, sent again.\n\n---\n_Offer Filter fixer (Claude Code)_' "$original")"
+            gh issue edit "$duplicate" --repo "$GITHUB_REPOSITORY" --add-label fixer:duplicate
+            gh issue close "$duplicate" --repo "$GITHUB_REPOSITORY" --reason "not planned"
+          done
+          issues="$(jq -c '.issues' "$RUNNER_TEMP/plan.json")"
+          for number in $(jq -r '.[]' <<<"$issues"); do
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --add-label fixer:working
+          done
+          echo "Waiting reports: $issues"
+          echo "issues=$issues" >> "$GITHUB_OUTPUT"
+
+  fix:
+    needs: waiting
+    if: needs.waiting.outputs.issues != '[]' && needs.waiting.outputs.issues != ''
+    strategy:
+      # One report at a time, each starting from main as the previous one left it.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        issue: ${{ fromJson(needs.waiting.outputs.issues) }}
+    permissions:
+      contents: write
+      issues: write
+    uses: ./.github/workflows/offer-report-fix-one.yml
+    with:
+      issue: ${{ matrix.issue }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
