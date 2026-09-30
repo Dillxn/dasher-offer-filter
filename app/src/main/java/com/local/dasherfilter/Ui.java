@@ -41,6 +41,8 @@ final class Ui {
     final int gridline;
     final int baseline;
     final int accent;
+    /** The second data series (adaptive minimums), apart from the status colors. */
+    final int learned;
     final int onAccent;
     final int fieldFill;
     final int selectionWash;
@@ -58,6 +60,7 @@ final class Ui {
         gridline = dark ? 0xFF2C2C2A : 0xFFE1E0D9;
         baseline = dark ? 0xFF383835 : 0xFFC3C2B7;
         accent = 0xFF256ABF;
+        learned = dark ? 0xFFB08CF0 : 0xFF7A4CC8;
         onAccent = 0xFFFFFFFF;
         fieldFill = dark ? 0xFF262625 : 0xFFF1F0EC;
         selectionWash = dark ? 0xFF262625 : 0xFFF1F0EC;

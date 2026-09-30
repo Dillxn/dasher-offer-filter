@@ -121,17 +121,43 @@ final class AcceptedBest {
 
     /** "$0.59/min" */
     String perMinuteLabel() {
-        return rate(minutePay, BigDecimal.valueOf(minutes)) + "/min";
+        return perMinute() + "/min";
     }
 
     /** "$2.37/mi" */
     String perMileLabel() {
-        return rate(milePay, BigDecimal.valueOf(miles)) + "/mi";
+        return perMile() + "/mi";
     }
 
     /** "$7.10/stop" */
     String perStopLabel() {
-        return rate(stopPay, BigDecimal.valueOf(stops)) + "/stop";
+        return perStop() + "/stop";
+    }
+
+    /** "$0.59": the best pay per minute without its unit, rounded as in the labels. */
+    String perMinute() {
+        return rate(minutePay, BigDecimal.valueOf(minutes));
+    }
+
+    String perMile() {
+        return rate(milePay, BigDecimal.valueOf(miles));
+    }
+
+    String perStop() {
+        return rate(stopPay, BigDecimal.valueOf(stops));
+    }
+
+    /** The best pay per minute in cents, for drawing only; decisions use the exact pay and amount. */
+    double perMinuteCents() {
+        return (double) minutePay / minutes;
+    }
+
+    double perMileCents() {
+        return milePay / miles;
+    }
+
+    double perStopCents() {
+        return (double) stopPay / stops;
     }
 
     /** "$0.59/min, $2.37/mi, $7.10/stop", or empty when nothing has been accepted yet. */

@@ -63,13 +63,15 @@ The app is one screen with a tab bar at the bottom. Tapping a tab swaps the page
 
 - **Home.** The filter picture, whether auto-decline is on, and one button. Below that, a row with a Fix button for each part of setup that is off, and the latest offer (tap it to open Offers). An active route shows here with a Forget button.
 - **Offers.** The chart, the selected offer, and the history.
-- **Rules.** The meter, the rule fields, the adaptive minimum and Save.
+- **Rules.** A star of your minimums, the meter, the rule fields, the adaptive minimum and Save.
 - **More.** Setup shortcuts and the mute switch, reports, updates and the version.
 
 The pages are mostly drawn rather than written.
 
 - **Filter picture.** Offer tickets flow into a funnel and out to passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. A failing offer left to you (paused, refused or taken over) counts as review. The funnel has its sieve when on, is open, dashed and amber when paused, and grey when off.
 - **Opened offer.** Tapping a chart bar or a history row draws the offer: its pay as a bar against the needed-pay tick, and its route from pickup bag to drop-off house with a dot per stop.
+- **Minimums star.** A radar chart with a spoke each for pay, per mile, per minute and per stop. The minimums you set form the solid shape and the adaptive minimums learned from accepted offers form the dashed one, with the exact values in the corners. Distance from the middle is what each minimum asks of the meter's example offer, on one dollar scale with labeled rings. The extra-stop fee has no spoke: it is added on top of the other minimums rather than being one.
+- **Mascot and scenery.** The funnel has a face: cheerful when on, asleep when paused, blank when off. Drawn scenery (sun or moon, clouds, hills, a road with a little car) sits behind the pages in colors close to the page, so text keeps its contrast.
 - **Rules.** A meter shows what an offer like your latest one needs, as one bar per rule with icons: minimum pay, per mile, per minute, extra stops, and each adaptive floor. The rule that sets the bar is highlighted. It follows the fields as you type, before you save.
 - **Large fonts.** The drawings size themselves from the system font setting. Labels shrink, or move to their own line, rather than overlap or get cut. With a large font, rule fields stack in one column.
 

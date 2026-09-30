@@ -104,7 +104,7 @@ public final class MainActivity extends Activity {
     private LinearLayout selectionPanel;
     private LinearLayout selectionDetail;
     private Button reportSelected;
-    private TextView emptyHistory;
+    private LinearLayout emptyHistory;
     private LinearLayout historyCard;
     private LinearLayout history;
     private Button moreHistory;
@@ -121,6 +121,10 @@ public final class MainActivity extends Activity {
     private Switch rising;
     private TextView baselineNote;
     private RuleMeterView ruleMeter;
+    private MinimumsStarView minimums;
+    private TextView minimumsNote;
+    private Mascot.Figure waitingMascot;
+    private Mascot.Figure footerMascot;
 
     private EditText reportEmail;
     private EditText reportToken;
@@ -140,9 +144,11 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(ui.page);
         pageTitle = ui.text("", 24, ui.ink, true);
         pageTitle.setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(10));
+        pageTitle.setBackground(new Scenery(Scenery.Part.SKY, ui));
         if (Build.VERSION.SDK_INT >= 28) pageTitle.setAccessibilityHeading(true);
         root.addView(pageTitle, Ui.matchWidth());
         FrameLayout frame = new FrameLayout(this);
+        frame.setBackground(new Scenery(Scenery.Part.GROUND, ui));
         root.addView(frame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         LinearLayout home = addPage(frame, HOME);
         addStatusCard(home);
@@ -206,7 +212,8 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setVisibility(View.GONE);
         LinearLayout page = ui.column();
-        page.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(12));
+        // Room at the end, so the last card scrolls clear of the drawn road and hills.
+        page.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(120));
         scroll.addView(page, Ui.matchWidth());
         frame.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -342,7 +349,12 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams panelParams = Ui.matchWidth();
         panelParams.topMargin = ui.dp(10);
         card.addView(selectionPanel, panelParams);
-        emptyHistory = ui.note("No offers yet. Each one Dasher shows appears here with what the filter did.");
+        emptyHistory = ui.row();
+        waitingMascot = new Mascot.Figure(this, ui, Mascot.Mood.HAPPY, 72);
+        emptyHistory.addView(waitingMascot);
+        TextView waiting = ui.note("No offers yet. Each one Dasher shows appears here with what the filter did.");
+        waiting.setPadding(ui.dp(12), 0, 0, 0);
+        emptyHistory.addView(waiting, Ui.weighted());
         card.addView(emptyHistory);
 
         historyCard = ui.card(page, null);
@@ -384,6 +396,13 @@ public final class MainActivity extends Activity {
     }
 
     private void addRulesCards(LinearLayout page, FilterSettings saved) {
+        minimums = new MinimumsStarView(this, ui);
+        LinearLayout star = ui.card(page, "Minimums");
+        LinearLayout.LayoutParams starParams = Ui.matchWidth();
+        starParams.topMargin = ui.dp(8);
+        star.addView(minimums, starParams);
+        minimumsNote = ui.note("");
+        star.addView(minimumsNote);
         ruleMeter = new RuleMeterView(this, ui);
         ui.card(page, null).addView(ruleMeter, Ui.matchWidth());
 
@@ -498,6 +517,12 @@ public final class MainActivity extends Activity {
         allowInstalls = ui.addButton(body, "Allow installs", false, () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
 
+        footerMascot = new Mascot.Figure(this, ui, Mascot.Mood.HAPPY, 56);
+        LinearLayout.LayoutParams mascotParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mascotParams.gravity = Gravity.CENTER_HORIZONTAL;
+        mascotParams.topMargin = ui.dp(8);
+        page.addView(footerMascot, mascotParams);
         TextView footer = ui.text("Offer Filter v" + Updater.version(this) + " · Not a DoorDash app.", 12,
                 ui.inkSecondary, false);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -555,8 +580,11 @@ public final class MainActivity extends Activity {
         offerAlerts.update(OfferAlerts.canNotify(this));
 
         refreshHistory();
-        refreshHero(saved.enabled ? FilterHeroView.State.ON
-                : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
+        FilterHeroView.State heroState = saved.enabled ? FilterHeroView.State.ON
+                : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF;
+        refreshHero(heroState);
+        waitingMascot.setMood(Mascot.moodOf(heroState));
+        footerMascot.setMood(Mascot.moodOf(heroState));
         baselineNote.setText(adaptiveNote(saved));
         updateStatus.setText(Updater.status(this));
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
@@ -644,7 +672,10 @@ public final class MainActivity extends Activity {
                 lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
                 lenientCents(stop, saved.extraStopCents), lenientStops(saved.maxStops), rising.isChecked(),
                 saved.lastAcceptedCents, saved.best);
-        ruleMeter.show(typed, exampleOffer());
+        OfferSnapshot example = exampleOffer();
+        ruleMeter.show(typed, example);
+        minimums.show(typed, example);
+        minimumsNote.setText(minimums.caption());
     }
 
     private static int lenientCents(EditText field, int fallback) {

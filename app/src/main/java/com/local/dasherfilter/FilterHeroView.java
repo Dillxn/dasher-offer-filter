@@ -11,9 +11,10 @@ import android.view.View;
 import java.util.Locale;
 
 /**
- * The status card's picture of what the filter does: offer tickets flow into a funnel lying on its side, and out
- * to three piles with the last 24 hours' counts. On, the funnel has its sieve and sends failing offers to the
- * filtered pile; paused, it is open (dashed, amber) and nothing reaches that pile; off, it is grey and idle.
+ * The status card's picture of what the filter does: offer tickets flow into a funnel lying on its side (the
+ * mascot, with a face), and out to three piles with the last 24 hours' counts. On, the funnel is cheerful and sends
+ * failing offers to the filtered pile; paused, it is asleep and open (dashed, amber) and nothing reaches that pile;
+ * off, it is grey and blank.
  * "Filtered" counts only offers the app acted on (a Decline tap, a decline request, or a hidden notification).
  */
 @SuppressLint("ViewConstructor")
@@ -40,6 +41,10 @@ final class FilterHeroView extends View {
         line.setStrokeCap(Paint.Cap.ROUND);
         line.setStrokeJoin(Paint.Join.ROUND);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+    }
+
+    Mascot.Mood mood() {
+        return Mascot.moodOf(state);
     }
 
     void set(State state, int passed, int filtered, int review) {
@@ -99,21 +104,10 @@ final class FilterHeroView extends View {
         canvas.drawOval(rect, line);
         line.setPathEffect(null);
 
-        if (state == State.ON) {
-            // The sieve: the rules every offer passes through.
-            line.setStrokeWidth(ui.dp(2));
-            for (int i = 1; i <= 3; i++) {
-                float x = mouthX + ui.dp(11) * i;
-                float half = mouthHalf - (mouthHalf - spoutHalf) * (x - mouthX) / (neckX - mouthX) - ui.dp(6);
-                canvas.drawLine(x, middle - half, x, middle + half, line);
-            }
-        } else if (state == State.PAUSED) {
-            fill.setColor(Ui.WARNING);
-            float barX = mouthX + ui.dp(18);
-            rect.set(barX, middle - ui.dp(9), barX + ui.dp(4), middle + ui.dp(9));
-            canvas.drawRoundRect(rect, ui.dp(1), ui.dp(1), fill);
-            rect.offset(ui.dp(8), 0);
-            canvas.drawRoundRect(rect, ui.dp(1), ui.dp(1), fill);
+        // The mascot's face on the funnel's body; asleep while paused.
+        Mascot.face(canvas, mood(), mouthX + ui.dp(19), middle, ui.dp(26), state == State.OFF ? ui.inkMuted : ui.ink);
+        if (state == State.PAUSED) {
+            Mascot.snore(canvas, mouthX + ui.dp(32), middle - ui.dp(22), ui.dp(12), ui.inkSecondary);
         }
 
         // Three outcomes fanned out from the spout.

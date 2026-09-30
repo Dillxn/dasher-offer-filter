@@ -22,6 +22,7 @@ import android.graphics.Canvas;
 import android.view.MotionEvent;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Switch;
 import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -562,9 +563,11 @@ public class AndroidAdapterTest {
             FilterHeroView hero = find(content, FilterHeroView.class);
             assertEquals("Auto-decline on. Last 24 hours: 1 passed, 1 filtered, 0 to review.",
                     hero.getContentDescription().toString());
+            assertEquals("the mascot is cheerful while on", Mascot.Mood.HAPPY, hero.mood());
 
             findButton(content, "Pause auto-decline").performClick();
             assertTrue(hero.getContentDescription().toString().startsWith("Auto-decline paused."));
+            assertEquals("and asleep while paused", Mascot.Mood.SLEEPY, hero.mood());
         }
     }
 
@@ -586,6 +589,34 @@ public class AndroidAdapterTest {
             assertTrue(meter.getContentDescription().toString().endsWith("declined. At most 1 stop: this one has 2"));
             // Unsaved: nothing changed in the saved rules.
             assertEquals(0, FilterStore.load(app).perMileCents);
+        }
+    }
+
+    @Test
+    public void theStarShowsSetAgainstAdaptiveMinimumsAsTheyAreTyped() {
+        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
+        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            openTab(content, "Rules");
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue(star.isShown());
+            assertEquals("Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
+                    + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
+                    + "Per stop: no set minimum, adaptive $7.10.", star.getContentDescription().toString());
+            // No offers yet, so the example is the meter's typical one; the largest ask is "more than $14.20".
+            assertNotNull(findText(content,
+                    "Farther out asks more of an offer like 20 min · 5 mi · 2 stops. Rings are $5.00 apart."));
+
+            fieldLabeled(content, "Per mile ($)").setText("0");
+            assertTrue(star.getContentDescription().toString()
+                    .contains("Per mile: no set minimum, adaptive $2.37."));
+            ((Switch) findButton(content, "Adaptive minimum")).setChecked(false);
+            assertTrue(star.getContentDescription().toString()
+                    .endsWith("Adaptive minimum is off, so the adaptive values are not applied."));
+            // Unsaved: the saved rules and the learned minimums are untouched.
+            assertEquals(150, FilterStore.load(app).perMileCents);
+            assertEquals("$2.37", FilterStore.load(app).best.perMile());
         }
     }
 
