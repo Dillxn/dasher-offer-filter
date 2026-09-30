@@ -908,6 +908,24 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void anOrderAcceptedWhileThePageIsOpenShowsOnTheStarWithoutWaitingForAnotherOffer() {
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
+        FilterStore.resetAccepted(app);
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            MinimumsStarView star = find(activity.get().findViewById(android.R.id.content), MinimumsStarView.class);
+            assertTrue(star.getContentDescription().toString().contains("Per mile: no set minimum, no adaptive minimum yet"));
+
+            // Accepted in Dasher while Offer Filter stays open behind it; no new offer has come in since.
+            FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            String described = star.getContentDescription().toString();
+            assertTrue(described, described.contains("Pay: set $10.00, adaptive more than $14.20"));
+            assertTrue(described, described.contains("Per mile: no set minimum, adaptive $2.37."));
+        }
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();

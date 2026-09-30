@@ -1,3 +1,12 @@
+## 0.4.20 — the adaptive minimums show as soon as they change
+
+- **The star shows what was just learned.** Accepting an order (or declining a passing one by hand) raises the adaptive minimums. Until now the star on the main page redrew only when the next offer arrived, so right after accepting it still showed the old sparkles, or none. It now redraws within a second of anything being learned, as the Adaptive minimum line in Settings already did.
+
+Evidence boundaries:
+
+- **Simulated Android 8 and 15 tests** cover an order accepted while the page is open showing on the star without another offer. The test fails on 0.4.19.
+- **Not verified:** that Dasher's screens after Accept are recognized on a real phone. If Settings → Adaptive minimum still says "None yet" after accepting orders, acceptances are not being seen, which is a separate problem.
+
 ## 0.4.19 — updates from GitHub without Render, and tips
 
 - **Updates no longer depend on Render's build minutes.** Settings → Updates → **Connect GitHub**:

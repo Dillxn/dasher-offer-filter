@@ -95,6 +95,8 @@ public final class MainActivity extends Activity {
     private Button reportSelected;
     private TextView noOffers;
     private long shownHistoryVersion = -1;
+    /** What the adaptive minimums had learned when the star was last drawn. */
+    private String shownLearned = "";
     private List<DecisionLog.Entry> recentEntries = Collections.emptyList();
     /** The ticket follows each new offer until an older one is picked. */
     private boolean followNewest = true;
@@ -622,6 +624,13 @@ public final class MainActivity extends Activity {
         if (route != null) routeNote.setText("On a route: " + route.summary());
 
         refreshHistory();
+        // An accepted order (or a declined one that taught) changes the adaptive minimums without a new offer in
+        // the history, so the star follows what was learned as well.
+        String learned = saved.lastAcceptedCents + "|" + saved.best.summary() + "|" + saved.declined.summary();
+        if (!learned.equals(shownLearned)) {
+            shownLearned = learned;
+            updateMeter();
+        }
         refreshAreas();
         refreshHero(saved.enabled ? FilterHeroView.State.ON
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
