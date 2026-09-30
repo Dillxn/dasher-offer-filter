@@ -105,7 +105,8 @@ final class AreaMap {
     // ---- Settings and permissions ----
 
     static boolean enabled(Context context) {
-        return prefs(context).getBoolean(ENABLED, false);
+        // On unless turned off: the homepage's ground is the map. Nothing is kept without location permission.
+        return prefs(context).getBoolean(ENABLED, true);
     }
 
     static void setEnabled(Context context, boolean on) {

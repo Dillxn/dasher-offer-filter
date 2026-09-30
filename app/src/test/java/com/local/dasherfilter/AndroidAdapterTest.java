@@ -793,27 +793,28 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void mappingIsTurnedOnInSettingsAndAsksOnlyForApproximateLocation() {
+    public void theMapIsAlwaysOnTheGroundAndAsksOnlyForApproximateLocation() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertFalse("no map, and no invitation to one, on the main page",
-                    find(content, AreaMapView.class).isShown());
-            iconButton(content, "Settings").performClick();
-            ((Switch) findButton(content, "Remember where offers come in")).setChecked(true);
-            assertTrue(AreaMap.enabled(app));
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue("the map is part of the page from the start", map.isShown());
+            assertTrue(map.getContentDescription().toString().startsWith("Tap to allow location"));
+            assertNull("nothing is asked before a tap", Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+            map.performClick();
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();
             assertEquals(Arrays.asList(Manifest.permission.ACCESS_COARSE_LOCATION),
                     Arrays.asList(request.requestedPermissions));
-            assertNotNull(shownTextContaining(content, "Needs location permission"));
+
+            // Turned off in Settings, the ground stays, and says a tap turns it back on.
+            iconButton(content, "Settings").performClick();
+            ((Switch) findButton(content, "Remember where offers come in")).setChecked(false);
             iconButton(content, "Back").performClick();
-            // The page stays one screen: a line on the ground opens the map in the sheet.
-            assertFalse(find(content, AreaMapView.class).isShown());
-            shownTextContaining(content, "Best areas").performClick();
-            assertTrue(find(content, AreaMapView.class).isShown());
-            activity.get().onBackPressed();
-            assertFalse("Back closes the sheet, not the app", find(content, AreaMapView.class).isShown());
-            assertFalse(activity.get().isFinishing());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertTrue(map.isShown());
+            assertTrue(map.getContentDescription().toString().startsWith("Tap to map where offers pay best"));
+            map.performClick();
+            assertTrue(AreaMap.enabled(app));
         }
     }
 
@@ -833,15 +834,14 @@ public class AndroidAdapterTest {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             AreaMapView map = find(content, AreaMapView.class);
-            assertNotNull("the best area is named on the ground", shownTextContaining(content,
-                    "Best area #1 · 3.6 mi NE of you"));
-            shownTextContaining(content, "Best area").performClick();
-            assertTrue(map.isShown());
+            assertTrue("on the page, no sheet or switch", map.isShown());
             assertEquals("Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
                     + "2, Around you, $2.00/mi over 3 offers.", map.getContentDescription().toString());
-            assertNotNull("the best area is shown until another is picked",
-                    shownTextContaining(content, "#1 · 3.6 mi NE of you"));
-            assertNotNull(shownButton(content, "Open in Maps"));
+            TextView best = shownTextContaining(content, "#1 · 3.6 mi NE of you · $3.00/mi · Open in Maps");
+            assertNotNull("the best area is shown until another is picked", best);
+            best.performClick();
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            assertTrue(opened.getDataString(), opened.getDataString().startsWith("geo:37.81"));
         }
     }
 
@@ -1113,6 +1113,22 @@ public class AndroidAdapterTest {
         // Once the screen is open, nothing more opens.
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             assertFalse(Updater.relaunchAfterUpdate(app));
+        }
+    }
+
+    @Test
+    public void anUpdateWaitsOnlyWhileTheUserIsMidTask() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertFalse("the main page does not hold an update back", activity.get().midTask());
+            openTicket(content);
+            assertTrue("reading a ticket does", activity.get().midTask());
+            activity.get().onBackPressed();
+            iconButton(content, "Settings").performClick();
+            assertTrue("typing rules in Settings does", activity.get().midTask());
+            iconButton(content, "Back").performClick();
+            assertFalse(activity.get().midTask());
         }
     }
 

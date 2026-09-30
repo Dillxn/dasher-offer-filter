@@ -56,6 +56,10 @@ final class ScenePage extends LinearLayout {
     private int horizonInset;
     private View fallback;
     private View sunAnchor;
+    /** The neighbourhood the phone is in, on a signpost on the hills; null hides it. */
+    private String place;
+    private final android.text.TextPaint signText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.RectF board = new android.graphics.RectF();
     private Shader sky;
     private Shader ground;
     private Shader sunGlow;
@@ -94,6 +98,13 @@ final class ScenePage extends LinearLayout {
 
     boolean watching() {
         return watching;
+    }
+
+    /** The neighbourhood the phone is in, shown on a signpost on the hills. */
+    void setPlace(String name) {
+        if (java.util.Objects.equals(name, place)) return;
+        place = name;
+        invalidate();
     }
 
     /** The sun (or moon) is drawn over this view, which is its button. */
@@ -147,6 +158,7 @@ final class ScenePage extends LinearLayout {
         if (!ui.dark) drawClouds(canvas, width, line);
         if (watching) drawSearchlights(canvas, width, line);
         drawHills(canvas, width, line);
+        if (place != null) drawSignpost(canvas, width, line);
         Motion.next(this);
     }
 
@@ -268,6 +280,29 @@ final class ScenePage extends LinearLayout {
         canvas.rotate(degrees);
         canvas.drawPath(beam, fill);
         canvas.restore();
+    }
+
+    /** A wooden signpost on the near hills at the left, naming where you are. */
+    private void drawSignpost(Canvas canvas, float width, float line) {
+        signText.setTextSize(Math.min(ui.sp(11), ui.dp(15)));
+        signText.setFakeBoldText(true);
+        signText.setTextAlign(Paint.Align.CENTER);
+        CharSequence name = Ui.fit(signText, place, width * 0.36f, 0.8f);
+        float halfWidth = signText.measureText(name, 0, name.length()) / 2 + ui.dp(7);
+        float x = Math.max(halfWidth + ui.dp(10), width * 0.15f);
+        float foot = line - ui.dp(4);
+        float top = foot - ui.dp(40);
+        fill.setColor(ui.dark ? 0xFF4A3D2A : 0xFF9C7A52);
+        canvas.drawRect(x - ui.dp(1.5f), top, x + ui.dp(1.5f), foot, fill);
+        float halfHeight = signText.getTextSize() * 0.8f;
+        board.set(x - halfWidth, top - halfHeight, x + halfWidth, top + halfHeight);
+        fill.setColor(ui.dark ? 0xFF5B4A33 : 0xFFC9A36F);
+        canvas.drawRoundRect(board, ui.dp(3), ui.dp(3), fill);
+        board.inset(ui.dp(2), ui.dp(2));
+        fill.setColor(ui.dark ? 0xFF2A2216 : 0xFFF6E8CF);
+        canvas.drawRoundRect(board, ui.dp(2), ui.dp(2), fill);
+        signText.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF3A2A18);
+        canvas.drawText(name, 0, name.length(), x, top + signText.getTextSize() / 3, signText);
     }
 
     /** Two ranges of hills along the horizon, behind the skyline, the nearer darker. */

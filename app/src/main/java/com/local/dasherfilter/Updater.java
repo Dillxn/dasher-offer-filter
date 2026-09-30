@@ -85,6 +85,11 @@ final class Updater {
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
     private static volatile Intent pendingConfirmation;
 
+    /** A screen that can say the user is mid-task (for example typing rules), which an update would interrupt. */
+    interface Busy {
+        boolean midTask();
+    }
+
     static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences("updates", Context.MODE_PRIVATE);
     }
@@ -433,8 +438,12 @@ final class Updater {
             retry(context, MIN_RETRY_DELAY_MS);
             return;
         }
-        if (!manual && foreground.get() != null) {
-            status(context, "Update verified; tap Check / install update to install.");
+        // With Offer Filter open, the update installs too (the screen shows it and reopens after), except while the
+        // user is in the middle of something an update would lose, such as typing rules.
+        Activity open = foreground.get();
+        if (!manual && open instanceof Busy && ((Busy) open).midTask()) {
+            status(context, "Update ready; it installs when you leave Settings.");
+            retry(context, MIN_RETRY_DELAY_MS);
             return;
         }
         if (Thread.currentThread().isInterrupted()) return;

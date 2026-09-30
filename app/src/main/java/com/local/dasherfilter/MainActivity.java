@@ -53,7 +53,7 @@ import java.util.regex.Pattern;
  * reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The drawings move
  * gently and shift with the phone's tilt while the app is open, unless Android's animations are off.
  */
-public final class MainActivity extends Activity {
+public final class MainActivity extends Activity implements Updater.Busy {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
@@ -115,9 +115,8 @@ public final class MainActivity extends Activity {
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
     private TextView minimumsNote;
-    private LinearLayout mapping;
     private AreaMapView areaMap;
-    private LinearLayout areaDetail;
+    private AreaMap.Cell shownArea;
     private String shownAreas = "";
     private double[] areaHere;
     private boolean pickedArea;
@@ -181,6 +180,11 @@ public final class MainActivity extends Activity {
         showSettings(state != null && state.getBoolean(SHOWING_SETTINGS, false));
         Updater.schedule(this);
         refresh();
+    }
+
+    /** In Settings, or reading a ticket or the map: an update waits rather than interrupt. */
+    @Override public boolean midTask() {
+        return showingSettings || (sheet != null && sheet.getVisibility() == View.VISIBLE);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -373,7 +377,6 @@ public final class MainActivity extends Activity {
         };
         LinearLayout content = ui.column();
         content.addView(ticket, Ui.matchWidth());
-        content.addView(mapping, Ui.matchWidth());
         scroll.addView(content, Ui.matchWidth());
         sheetCard.addView(scroll, Ui.matchWidth());
         sheet.addView(sheetCard, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -385,7 +388,6 @@ public final class MainActivity extends Activity {
     /** Slides the sheet up with {@code content} (the ticket or the map) in it. */
     private void openSheet(View content) {
         ticket.setVisibility(content == ticket ? View.VISIBLE : View.GONE);
-        mapping.setVisibility(content == mapping ? View.VISIBLE : View.GONE);
         if (sheet.getVisibility() == View.VISIBLE) return;
         sheet.setVisibility(View.VISIBLE);
         sheet.setAlpha(0f);
@@ -512,27 +514,32 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Only while mapping is on (turned on in Settings): one line on the ground naming the chosen area, which opens
-     * the map and the area's details in the sheet.
+     * The ground: the offer areas as a map, always on the page, and one line under it naming the chosen area, which
+     * opens it in Maps. Before location is allowed (or with mapping turned off), a tap on the ground asks for it.
      */
     private void addAreas(LinearLayout body) {
-        areaLine = ui.text("", 14, ui.ink, true);
-        areaLine.setGravity(Gravity.CENTER);
-        areaLine.setMinHeight(ui.dp(40));
-        areaLine.setBackground(ui.pressable(12));
-        areaLine.setOnClickListener(tapped -> openSheet(mapping));
-        areaLine.setVisibility(View.GONE);
-        body.addView(areaLine, Ui.matchWidth());
-        mapping = ui.column();
         areaMap = new AreaMapView(this, ui);
         areaMap.setOnSelect(cell -> {
             pickedArea = true;
             showArea(cell);
         });
-        mapping.addView(areaMap, Ui.matchWidth());
-        areaDetail = ui.column();
-        mapping.addView(areaDetail, Ui.matchWidth());
-        mapping.setVisibility(View.GONE);
+        areaMap.setOnClickListener(tapped -> {
+            if (!AreaMap.enabled(this)) {
+                AreaMap.setEnabled(this, true);
+                refresh();
+            }
+            if (!AreaMap.hasPermission(this)) askForLocation();
+        });
+        LinearLayout.LayoutParams mapParams = share(1f);
+        mapParams.topMargin = ui.dp(2);
+        body.addView(areaMap, mapParams);
+        areaLine = ui.text("", 13, ui.ink, true);
+        areaLine.setGravity(Gravity.CENTER);
+        areaLine.setMinHeight(ui.dp(36));
+        areaLine.setBackground(ui.pressable(12));
+        areaLine.setOnClickListener(tapped -> openArea());
+        areaLine.setVisibility(View.GONE);
+        body.addView(areaLine, Ui.matchWidth());
     }
 
     // ---- Settings page ----
@@ -628,9 +635,6 @@ public final class MainActivity extends Activity {
         ui.heading(body, "Sound & setup");
         Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
-        // A small fixed tab on Dasher's left edge that pauses or resumes, shown only while Dasher is on screen.
-        Switch tab = ui.toggle(body, "Filter button in Dasher", DasherOverlay.enabled(this));
-        tab.setOnCheckedChangeListener((view, on) -> DasherOverlay.setEnabled(this, on));
         ui.listRow(body, "Accessibility", () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         ui.listRow(body, "Notification access", this::openNotificationAccess);
         ui.listRow(body, "Alert settings", this::configureOfferAlerts);
@@ -879,7 +883,7 @@ public final class MainActivity extends Activity {
         if (empty) {
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
-            if (sheet != null && mapping.getVisibility() != View.VISIBLE) sheet.setVisibility(View.GONE);
+            if (sheet != null) sheet.setVisibility(View.GONE);
         }
         if (!empty) {
             DecisionLog.Entry selected = chart.selectedEntry();
@@ -1116,56 +1120,62 @@ public final class MainActivity extends Activity {
         areasFix.setVisibility(on && (!permitted || needsAllTheTime) ? View.VISIBLE : View.GONE);
         areasFix.setText(permitted ? "Allow all the time" : "Allow location");
         areasForget.setVisibility(cells.isEmpty() && unlocated == 0 ? View.GONE : View.VISIBLE);
-        areaLine.setVisibility(on ? View.VISIBLE : View.GONE);
         if (!on) {
-            if (mapping.getVisibility() == View.VISIBLE) closeSheet();
-            return;
+            areaMap.setEmptyMessage("Tap to map where offers pay best");
+        } else if (!permitted) {
+            areaMap.setEmptyMessage("Tap to allow location and map where offers pay best");
+        } else {
+            areaMap.setEmptyMessage("Offers you see will be pinned here");
         }
-
-        double[] here = permitted ? AreaMap.here(this) : null;
-        String shown = AreaMap.version() + "/" + (here == null ? "-" : Math.round(here[0] * 2000) + ","
-                + Math.round(here[1] * 2000));
+        List<AreaMap.Cell> shownCells = on ? cells : java.util.Collections.<AreaMap.Cell>emptyList();
+        double[] here = on && permitted ? AreaMap.here(this) : null;
+        String shown = on + "/" + AreaMap.version() + "/" + Places.version() + "/" + (here == null ? "-"
+                : Math.round(here[0] * 2000) + "," + Math.round(here[1] * 2000));
         if (shown.equals(shownAreas)) return;
         shownAreas = shown;
         areaHere = here;
-        areaMap.show(cells, here);
-        List<AreaMap.Cell> ranked = AreaMap.ranked(cells);
+        areaMap.show(shownCells, here);
+        List<AreaMap.Cell> ranked = AreaMap.ranked(shownCells);
+        // Place names from the phone's lookup: where you are, and near the best three.
+        java.util.Map<String, String> names = new java.util.HashMap<>();
+        for (int i = 0; i < Math.min(3, ranked.size()); i++) {
+            String name = Places.name(this, ranked.get(i).latitude(), ranked.get(i).longitude());
+            if (name != null) names.put(AreaMapView.key(ranked.get(i)), name);
+        }
+        String hereName = here == null ? null : Places.name(this, here[0], here[1]);
+        areaMap.setNames(names, hereName);
+        scene.setPlace(hereName);
         // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
         if (areaMap.selected() != null) {
             showArea(areaMap.selected());
         } else {
-            areaDetail.removeAllViews();
-            areaLine.setText("Best areas: none yet  ›");
+            shownArea = null;
+            areaLine.setVisibility(View.GONE);
         }
     }
 
-    /** The chosen square in two quiet lines, its place then its offers and pay, and a way to see it. */
+    /** The chosen square in one line under the map: its rank and place, its pay per mile, and a way to see it. */
     private void showArea(AreaMap.Cell cell) {
-        areaDetail.removeAllViews();
+        shownArea = cell;
         int rank = areaMap.rank(cell);
         String where = AreaMap.from(areaHere, cell);
-        TextView place = ui.text((rank > 0 ? "#" + rank : "Not ranked yet") + (where.isEmpty() ? "" : " · " + where),
-                16, ui.ink, true);
-        place.setGravity(Gravity.CENTER_HORIZONTAL);
-        place.setPadding(0, ui.dp(12), 0, 0);
-        areaDetail.addView(place, Ui.matchWidth());
-        areaLine.setText("Best area " + place.getText() + "  ›");
-        areaLine.setContentDescription("Best area " + place.getText() + ". Opens the map.");
-        TextView facts = ui.text(cell.offers + (cell.offers == 1 ? " offer" : " offers")
-                + (cell.ranked() ? " · " + cell.perMile() : " · ranked after " + AreaMap.MIN_OFFERS + " with miles")
-                + " · avg " + DecisionLog.money(cell.averagePayCents()) + " · last " + when(cell.lastAt), 13,
-                ui.inkSecondary, false);
-        facts.setGravity(Gravity.CENTER_HORIZONTAL);
-        areaDetail.addView(facts, Ui.matchWidth());
-        Button maps = ui.button("Open in Maps", false, () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(
-                String.format(Locale.US, "geo:%.4f,%.4f?q=%.4f,%.4f(Offer area)", cell.latitude(),
-                        cell.longitude(), cell.latitude(), cell.longitude())))));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.CENTER_HORIZONTAL;
-        params.topMargin = ui.dp(10);
-        areaDetail.addView(maps, params);
+        String name = Places.name(this, cell.latitude(), cell.longitude());
+        String line = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)
+                + (where.isEmpty() ? "" : " · " + where)
+                + (cell.ranked() ? " · " + cell.perMile() : " · " + cell.offers + (cell.offers == 1 ? " offer" : " offers"));
+        areaLine.setText(line + " · Open in Maps ›");
+        areaLine.setContentDescription(line + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
+                + when(cell.lastAt) + ". Opens it in Maps.");
+        areaLine.setVisibility(View.VISIBLE);
+    }
+
+    private void openArea() {
+        AreaMap.Cell cell = shownArea;
+        if (cell == null) return;
+        open(new Intent(Intent.ACTION_VIEW, Uri.parse(String.format(Locale.US,
+                "geo:%.4f,%.4f?q=%.4f,%.4f(Offer area)", cell.latitude(), cell.longitude(), cell.latitude(),
+                cell.longitude()))));
     }
 
     // ---- Actions ----

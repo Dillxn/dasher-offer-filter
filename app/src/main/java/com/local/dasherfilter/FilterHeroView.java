@@ -143,16 +143,28 @@ final class FilterHeroView extends View {
         int width = MeasureSpec.getSize(widthSpec);
         float scale = width / designWidth(width);
         int design = Math.round(ui.dp(ART_HEIGHT_DP) * scale) + ui.dp(COUNTS_HEIGHT_DP);
-        int least = Math.round(ui.dp(ART_HEIGHT_DP) * scale * MIN_SHARE) + ui.dp(COUNTS_HEIGHT_DP);
+        // Side by side, the drawing and the counts share one short row.
+        int least = Math.max(ui.dp(COUNTS_HEIGHT_DP) + ui.dp(16),
+                Math.round(ui.dp(ART_HEIGHT_DP) * scale * MIN_SHARE));
         int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? least
                 : resolveSize(design, heightSpec);
         setMeasuredDimension(width, height);
     }
 
-    /** The drawing's scale: the design fitted to the width, and to the height left above the counts. */
+    /**
+     * Wide and short (a phone's one-screen page), the drawing stands at the left with the counts beside it; tall
+     * enough, the counts sit under it.
+     */
+    boolean sideBySide() {
+        return getHeight() > 0 && getHeight() < ui.dp(ART_HEIGHT_DP) * 0.8f + ui.dp(COUNTS_HEIGHT_DP)
+                && getWidth() >= getHeight() * 1.9f;
+    }
+
+    /** The drawing's scale: the design fitted to the width, and to the height left above (or beside) the counts. */
     private float scale() {
         float byWidth = getWidth() / designWidth(getWidth());
         if (getHeight() <= 0) return byWidth;
+        if (sideBySide()) return Math.min(getHeight() / (float) ui.dp(ART_HEIGHT_DP), getWidth() * 0.44f / ui.dp(ART_HEIGHT_DP));
         float byHeight = (getHeight() - ui.dp(COUNTS_HEIGHT_DP)) / (float) ui.dp(ART_HEIGHT_DP);
         return Math.max(0.2f, Math.min(byWidth, byHeight));
     }
@@ -164,8 +176,11 @@ final class FilterHeroView extends View {
 
     @Override protected void onDraw(Canvas canvas) {
         float scale = scale();
-        float designWidth = getWidth() / scale;
-        float artTop = artTop(scale);
+        boolean side = sideBySide();
+        float artSize = ui.dp(ART_HEIGHT_DP) * scale;
+        // Side by side, the drawing's own width is one design height, centred in its square at the left.
+        float designWidth = side ? ui.dp(ART_HEIGHT_DP) : getWidth() / scale;
+        float artTop = side ? (getHeight() - artSize) / 2 : artTop(scale);
         canvas.save();
         canvas.translate(0, artTop);
         canvas.scale(scale, scale);
@@ -182,8 +197,13 @@ final class FilterHeroView extends View {
         }
         drawMascot(canvas, cx);
         canvas.restore();
-        // The counts keep the page's text size however small the drawing above them is.
-        drawCounts(canvas, getWidth() / 2f, getWidth(), artTop + ui.dp(ART_HEIGHT_DP) * scale);
+        // The counts keep the page's text size however small the drawing is.
+        if (side) {
+            float room = getWidth() - artSize;
+            drawCounts(canvas, artSize + room / 2f, room, (getHeight() - ui.dp(COUNTS_HEIGHT_DP)) / 2f);
+        } else {
+            drawCounts(canvas, getWidth() / 2f, getWidth(), artTop + ui.dp(ART_HEIGHT_DP) * scale);
+        }
         if (state != State.OFF) Motion.next(this);
     }
 

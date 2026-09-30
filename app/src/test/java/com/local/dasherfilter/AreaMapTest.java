@@ -20,7 +20,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 
-/** The offer areas: opt-in, approximate, counted once per offer, ranked fairly, and kept off reports. */
+/** The offer areas: on from the start but nothing kept without location, approximate, counted once per offer, ranked fairly, and kept off reports. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
 public class AreaMapTest {
@@ -58,12 +58,21 @@ public class AreaMapTest {
     }
 
     @Test
-    public void nothingIsKeptUntilTurnedOn() {
-        grantLocation();
+    public void onByDefaultButNothingIsKeptWhenTurnedOffOrWithoutLocation() {
+        assertTrue("the homepage's ground is the map from the start", AreaMap.enabled(app));
+        // No location permission yet: nothing is kept, not even a count of located offers.
         at(37.7749, -122.4194, 0);
+        DecisionLog.record(app, offer(1300, 6.5, false));
+        assertTrue(AreaMap.cells(app).isEmpty());
+
+        int unlocated = AreaMap.unlocated(app);
+
+        // Turned off: nothing more is kept, located or not.
+        grantLocation();
+        AreaMap.setEnabled(app, false);
         DecisionLog.record(app, offer(1200, 6.0, false));
         assertTrue(AreaMap.cells(app).isEmpty());
-        assertEquals(0, AreaMap.unlocated(app));
+        assertEquals(unlocated, AreaMap.unlocated(app));
     }
 
     @Test

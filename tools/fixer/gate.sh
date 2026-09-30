@@ -29,6 +29,8 @@ while IFS= read -r path; do
             fail "not allowed to change the updater: $path" ;;
         # Where tips go is the author's alone to set.
         app/src/main/java/*/Support.java) fail "not allowed to change where tips go: $path" ;;
+        # What the place lookup is asked (rounded positions only) is a privacy line, not a bug fix.
+        app/src/main/java/*/Places.java) fail "not allowed to change what the place lookup is asked: $path" ;;
         app/src/main/java/*|app/src/test/java/*|app/build.gradle|README.md|RELEASE_NOTES.md|AUDIT.md) ;;
         *) fail "not allowed to change $path" ;;
     esac
@@ -99,7 +101,7 @@ for path in glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml'):
     for key in totals:
         totals[key] += int(suite.get(key, 0))
 print('junit', totals)
-if totals['tests'] < 379 or totals['failures'] or totals['errors'] or totals['skipped']:
+if totals['tests'] < 391 or totals['failures'] or totals['errors'] or totals['skipped']:
     sys.exit('GATE FAILED: test totals ' + str(totals))
 PY
 

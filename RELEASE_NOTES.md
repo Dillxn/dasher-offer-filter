@@ -1,3 +1,28 @@
+## 0.4.25 — the map is the ground, and updates just happen
+
+- **The map is part of the homepage.**
+  - Below the skyline, the land around you shows where offers came in, gilded deeper where they pay more per mile, with coins on the best three and a dotted trail to the best.
+  - It is always there and centred on you, with squares big enough to read and tap.
+  - One line under it names the chosen area, with Open in Maps.
+  - Before location is allowed, a tap on the ground asks for it (approximate only).
+  - Mapping is now on from the start; nothing is kept without location permission.
+- **Neighbourhood names.** You, the best areas, and a signpost on the hills are named from the phone's own place lookup. Only rounded positions (about half a kilometre) are asked about, each once, and the names stay on the phone.
+- **The mascot stands beside its counts** on phone screens, leaving room for the map.
+- **Updates install by themselves**, even with Offer Filter open: the updating screen shows and the app reopens. They wait only while you are in Settings or reading a ticket, and still never during an offer, a delivery, or with Dasher on screen.
+- Fewer options: the switch for the button in Dasher is gone; it shows over Dasher.
+
+Evidence boundaries: the homepage was rendered and reviewed with and without mapped areas, in light and dark, paused and dashing.
+
+- **Java tests** cover mapping being on from the start, while keeping nothing without location or once turned off.
+- **Simulated place lookups** cover: positions rounded to about half a kilometre before asking, each asked once, names kept on the phone, and nothing asked while off.
+- **Simulated Android 8 and 15 tests** cover:
+  - the map always on the page, asking for approximate location only on a tap, and turning back on with a tap;
+  - the best area's line opening Maps;
+  - an update waiting only while mid-task.
+- **Not verified:**
+  - real place names from a phone's geocoder;
+  - a real automatic install with the app open.
+
 ## 0.4.24 — reports through GitHub, and a calm update
 
 - **Reports can use your GitHub connection.**
