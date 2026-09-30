@@ -75,6 +75,11 @@ public final class MainActivity extends Activity {
     private ScenePage scene;
     private LinearLayout liveRow;
     private TextView liveText;
+    private FrameLayout root;
+    /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
+    private FrameLayout sheet;
+    private LinearLayout sheetCard;
+    private TextView areaLine;
     private ScrollView settingsPage;
     private boolean showingSettings;
 
@@ -150,13 +155,14 @@ public final class MainActivity extends Activity {
         FilterStore.forgetRetiredEmail(this);
         FilterSettings saved = FilterStore.load(this);
 
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
         scene = new ScenePage(this, ui);
         mainPage = addPage(root, scene);
         settingsPage = addPage(root, ui.column());
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0), saved);
+        buildSheet(root);
 
         setContentView(root);
         styleSystemBars();
@@ -174,7 +180,8 @@ public final class MainActivity extends Activity {
     /** Back from Settings returns to the main page; back from the main page leaves. */
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
-        if (showingSettings) showSettings(false);
+        if (sheet.getVisibility() == View.VISIBLE) closeSheet();
+        else if (showingSettings) showSettings(false);
         else super.onBackPressed();
     }
 
@@ -212,6 +219,8 @@ public final class MainActivity extends Activity {
 
     private ScrollView addPage(FrameLayout root, LinearLayout page) {
         ScrollView scroll = new ScrollView(this);
+        // The main page fills exactly one screen; it scrolls only if a very large font leaves no other way.
+        scroll.setFillViewport(true);
         scroll.setVisibility(View.GONE);
         scroll.addView(page, Ui.matchWidth());
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -226,6 +235,9 @@ public final class MainActivity extends Activity {
         showingSettings = settings;
         mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
+        // Behind the status bar: the top of the main page's sky, or the Settings page.
+        root.setBackgroundColor(settings ? ui.page : ScenePage.skyTop(ui));
+        if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(settings ? ui.page : ScenePage.skyTop(ui));
         View focused = getCurrentFocus();
         if (focused != null && !focused.isShown()) focused.clearFocus();
         if (changed) {
@@ -239,8 +251,8 @@ public final class MainActivity extends Activity {
         LinearLayout header = ui.row();
         // The main page's sky is the whole scene behind it; Settings has its own strip of sky.
         if (back) header.setBackground(new Scenery(Scenery.Part.SKY, ui));
-        header.setPadding(ui.dp(back ? 8 : 20), ui.dp(18), ui.dp(12), ui.dp(12));
-        header.setMinimumHeight(ui.dp(84));
+        header.setPadding(ui.dp(back ? 8 : 20), ui.dp(back ? 18 : 10), ui.dp(12), ui.dp(back ? 12 : 4));
+        header.setMinimumHeight(ui.dp(back ? 84 : 62));
         if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
         TextView name = ui.text(title, 22, ui.ink, true);
         if (back) name.setPadding(ui.dp(8), 0, 0, 0);
@@ -270,11 +282,73 @@ public final class MainActivity extends Activity {
     }
 
     /** The drawn hills and road a page ends on. */
-    private void ground(LinearLayout page) {
+    private void ground(LinearLayout page, int heightDp) {
         View ground = new View(this);
         ground.setBackground(new Scenery(Scenery.Part.GROUND, ui));
         ground.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        page.addView(ground, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(170)));
+        page.addView(ground, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(heightDp)));
+    }
+
+    /** A share of the height left on one screen. */
+    private static LinearLayout.LayoutParams share(float weight) {
+        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, weight);
+    }
+
+    private void buildSheet(FrameLayout root) {
+        sheet = new FrameLayout(this);
+        sheet.setBackgroundColor(0x66000000);
+        sheet.setVisibility(View.GONE);
+        sheet.setClickable(true);
+        sheet.setOnClickListener(tapped -> closeSheet());
+        sheetCard = ui.column();
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(ui.page);
+        float corner = ui.dp(24);
+        shape.setCornerRadii(new float[] {corner, corner, corner, corner, 0, 0, 0, 0});
+        sheetCard.setBackground(shape);
+        sheetCard.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(16));
+        // Taps on the card stay on it; only the dimmed page around it closes the sheet.
+        sheetCard.setClickable(true);
+        View handle = new View(this);
+        handle.setBackground(ui.rounded(ui.baseline, 0, 2));
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ui.dp(36), ui.dp(4));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        handleParams.bottomMargin = ui.dp(10);
+        sheetCard.addView(handle, handleParams);
+        ScrollView scroll = new ScrollView(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int most = Math.round(root.getHeight() * 0.8f);
+                super.onMeasure(widthSpec, most > 0
+                        ? MeasureSpec.makeMeasureSpec(most, MeasureSpec.AT_MOST) : heightSpec);
+            }
+        };
+        LinearLayout content = ui.column();
+        content.addView(ticket, Ui.matchWidth());
+        content.addView(mapping, Ui.matchWidth());
+        scroll.addView(content, Ui.matchWidth());
+        sheetCard.addView(scroll, Ui.matchWidth());
+        sheet.addView(sheetCard, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+        root.addView(sheet, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /** Slides the sheet up with {@code content} (the ticket or the map) in it. */
+    private void openSheet(View content) {
+        ticket.setVisibility(content == ticket ? View.VISIBLE : View.GONE);
+        mapping.setVisibility(content == mapping ? View.VISIBLE : View.GONE);
+        if (sheet.getVisibility() == View.VISIBLE) return;
+        sheet.setVisibility(View.VISIBLE);
+        sheet.setAlpha(0f);
+        sheet.animate().alpha(1f).setDuration(160);
+        sheetCard.setTranslationY(ui.dp(120));
+        sheetCard.animate().translationY(0).setDuration(220);
+    }
+
+    private void closeSheet() {
+        if (sheet.getVisibility() != View.VISIBLE) return;
+        sheet.setVisibility(View.GONE);
+        if (ticketOpen) setTicketOpen(false);
     }
 
     // ---- Main page ----
@@ -282,11 +356,13 @@ public final class MainActivity extends Activity {
     private void buildMain(LinearLayout page) {
         page.addView(header("Offer Filter", false));
         LinearLayout body = body(page);
+        // Everything between the title and the road shares one screen.
+        body.setLayoutParams(share(1));
 
         // The mascot is the button: a tap pauses, resumes, or with no rule yet opens the rules.
         hero = new FilterHeroView(this, ui);
         hero.setOnClickListener(tapped -> toggleAutoDecline());
-        body.addView(hero, Ui.matchWidth());
+        body.addView(hero, share(1));
         stateLine = ui.text("", 17, ui.ink, true);
         stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
         stateLine.setPadding(0, ui.dp(4), 0, 0);
@@ -333,7 +409,7 @@ public final class MainActivity extends Activity {
         addMinimums(body);
         addOffers(body);
         addAreas(body);
-        ground(page);
+        ground(page, 78);
         // The skyline's street (12 dp above the chart's bottom) is the horizon.
         scene.setHorizon(chart, ui.dp(11), noOffers);
     }
@@ -349,47 +425,56 @@ public final class MainActivity extends Activity {
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
         chart.setOnClickListener(tapped -> setTicketOpen(true));
-        LinearLayout.LayoutParams chartParams = Ui.matchWidth();
-        chartParams.topMargin = ui.dp(12);
+        LinearLayout.LayoutParams chartParams = share(0.7f);
+        chartParams.topMargin = ui.dp(6);
         body.addView(chart, chartParams);
         chosenLine = ui.text("", 14, ui.inkSecondary, false);
-        chosenLine.setGravity(Gravity.CENTER_HORIZONTAL);
-        chosenLine.setPadding(0, ui.dp(10), 0, ui.dp(10));
-        chosenLine.setMinHeight(ui.dp(48));
+        chosenLine.setGravity(Gravity.CENTER);
+        chosenLine.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        chosenLine.setMinHeight(ui.dp(40));
         chosenLine.setOnClickListener(tapped -> setTicketOpen(!ticketOpen));
         body.addView(chosenLine, Ui.matchWidth());
+        // The ticket unfolds in the sheet over the page.
         ticket = ui.column();
         ticketShape = new Decor.Ticket(ui);
         ticket.setBackground(ticketShape);
         ticket.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(14));
         ticket.setVisibility(View.GONE);
-        LinearLayout.LayoutParams ticketParams = Ui.matchWidth();
-        ticketParams.topMargin = ui.dp(4);
-        body.addView(ticket, ticketParams);
     }
 
     /** Unfolds or folds the chosen offer's ticket. */
     private void setTicketOpen(boolean open) {
         ticketOpen = open;
         if (chart.selectedEntry() != null) showSelection(chart.selectedEntry());
+        if (open) openSheet(ticket);
+        else if (sheet != null && ticket.getVisibility() != View.VISIBLE) sheet.setVisibility(View.GONE);
     }
 
     private void addMinimums(LinearLayout body) {
         minimums = new MinimumsStarView(this, ui);
         minimums.setOnClickListener(tapped -> showSettings(true));
-        LinearLayout.LayoutParams starParams = Ui.matchWidth();
-        starParams.topMargin = ui.dp(28);
+        LinearLayout.LayoutParams starParams = share(1.15f);
+        starParams.topMargin = ui.dp(6);
         body.addView(minimums, starParams);
-        minimumsNote = ui.text("", 14, ui.inkSecondary, false);
+        minimumsNote = ui.text("", 13, ui.inkSecondary, false);
         minimumsNote.setGravity(Gravity.CENTER_HORIZONTAL);
-        minimumsNote.setPadding(0, ui.dp(8), 0, 0);
+        minimumsNote.setPadding(0, ui.dp(2), 0, 0);
         body.addView(minimumsNote, Ui.matchWidth());
     }
 
-    /** Only while mapping is on (turned on in Settings): the map and the chosen area. */
+    /**
+     * Only while mapping is on (turned on in Settings): one line on the ground naming the chosen area, which opens
+     * the map and the area's details in the sheet.
+     */
     private void addAreas(LinearLayout body) {
+        areaLine = ui.text("", 14, ui.ink, true);
+        areaLine.setGravity(Gravity.CENTER);
+        areaLine.setMinHeight(ui.dp(40));
+        areaLine.setBackground(ui.pressable(12));
+        areaLine.setOnClickListener(tapped -> openSheet(mapping));
+        areaLine.setVisibility(View.GONE);
+        body.addView(areaLine, Ui.matchWidth());
         mapping = ui.column();
-        mapping.setPadding(0, ui.dp(20), 0, 0);
         areaMap = new AreaMapView(this, ui);
         areaMap.setOnSelect(cell -> {
             pickedArea = true;
@@ -398,7 +483,7 @@ public final class MainActivity extends Activity {
         mapping.addView(areaMap, Ui.matchWidth());
         areaDetail = ui.column();
         mapping.addView(areaDetail, Ui.matchWidth());
-        body.addView(mapping, Ui.matchWidth());
+        mapping.setVisibility(View.GONE);
     }
 
     // ---- Settings page ----
@@ -417,7 +502,7 @@ public final class MainActivity extends Activity {
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(0, ui.dp(28), 0, 0);
         body.addView(footer, Ui.matchWidth());
-        ground(page);
+        ground(page, 170);
     }
 
     private void addRules(LinearLayout body, FilterSettings saved) {
@@ -693,6 +778,8 @@ public final class MainActivity extends Activity {
         boolean live = Dashing.now(this);
         scene.setWatching(live);
         liveRow.setVisibility(live ? View.VISIBLE : View.GONE);
+        // One line under the state either way: what a tap does, or that the app is watching.
+        stateHint.setVisibility(live ? View.GONE : View.VISIBLE);
         if (!live) return;
         String text = "Watching for offers";
         if (!recentEntries.isEmpty()) {
@@ -718,6 +805,7 @@ public final class MainActivity extends Activity {
         if (empty) {
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
+            if (sheet != null && mapping.getVisibility() != View.VISIBLE) sheet.setVisibility(View.GONE);
         }
         if (!empty) {
             DecisionLog.Entry selected = chart.selectedEntry();
@@ -755,13 +843,13 @@ public final class MainActivity extends Activity {
                 || action == DecisionLog.Action.NOTIFICATION_HIDDEN;
     }
 
-    /** "Last accepted $14.20 · best $0.59/min, $2.37/mi · beat declined $25.00", or what it waits for. */
+    /** "Highest accepted $14.20 · best $0.59/min, $2.37/mi · beat declined $25.00", or what it waits for. */
     private static String adaptiveNote(FilterSettings saved) {
         if (saved.lastAcceptedCents <= 0 && saved.best.isEmpty() && saved.declined.isEmpty()) {
-            return "Rises with the offers you accept, and ones you decline by hand. None yet.";
+            return "Rises with the offers you accept, and ones you decline by hand, and stays until you reset it. None yet.";
         }
         List<String> parts = new java.util.ArrayList<>();
-        if (saved.lastAcceptedCents > 0) parts.add("Last accepted " + DecisionLog.money(saved.lastAcceptedCents));
+        if (saved.lastAcceptedCents > 0) parts.add("Highest accepted " + DecisionLog.money(saved.lastAcceptedCents));
         if (!saved.best.isEmpty()) parts.add("best " + saved.best.summary());
         if (!saved.declined.isEmpty()) parts.add("beat declined " + saved.declined.summary());
         return String.join(" · ", parts);
@@ -868,6 +956,10 @@ public final class MainActivity extends Activity {
         if (reason.startsWith("combined route fails: ")) {
             return "Whole route: " + plainReason(reason.substring("combined route fails: ".length()));
         }
+        if (reason.startsWith("must beat highest accepted payout ")) {
+            return "Not above your highest accepted " + reason.substring("must beat highest accepted payout ".length());
+        }
+        // Recorded before 0.4.22, when the pay minimum followed the last accepted offer.
         if (reason.startsWith("must beat last accepted payout ")) {
             return "Not above last accepted " + reason.substring("must beat last accepted payout ".length());
         }
@@ -958,8 +1050,11 @@ public final class MainActivity extends Activity {
         areasFix.setVisibility(on && (!permitted || needsAllTheTime) ? View.VISIBLE : View.GONE);
         areasFix.setText(permitted ? "Allow all the time" : "Allow location");
         areasForget.setVisibility(cells.isEmpty() && unlocated == 0 ? View.GONE : View.VISIBLE);
-        mapping.setVisibility(on ? View.VISIBLE : View.GONE);
-        if (!on) return;
+        areaLine.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (!on) {
+            if (mapping.getVisibility() == View.VISIBLE) closeSheet();
+            return;
+        }
 
         double[] here = permitted ? AreaMap.here(this) : null;
         String shown = AreaMap.version() + "/" + (here == null ? "-" : Math.round(here[0] * 2000) + ","
@@ -971,8 +1066,12 @@ public final class MainActivity extends Activity {
         List<AreaMap.Cell> ranked = AreaMap.ranked(cells);
         // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
-        if (areaMap.selected() != null) showArea(areaMap.selected());
-        else areaDetail.removeAllViews();
+        if (areaMap.selected() != null) {
+            showArea(areaMap.selected());
+        } else {
+            areaDetail.removeAllViews();
+            areaLine.setText("Best areas: none yet  ›");
+        }
     }
 
     /** The chosen square in two quiet lines, its place then its offers and pay, and a way to see it. */
@@ -985,6 +1084,8 @@ public final class MainActivity extends Activity {
         place.setGravity(Gravity.CENTER_HORIZONTAL);
         place.setPadding(0, ui.dp(12), 0, 0);
         areaDetail.addView(place, Ui.matchWidth());
+        areaLine.setText("Best area " + place.getText() + "  ›");
+        areaLine.setContentDescription("Best area " + place.getText() + ". Opens the map.");
         TextView facts = ui.text(cell.offers + (cell.offers == 1 ? " offer" : " offers")
                 + (cell.ranked() ? " · " + cell.perMile() : " · ranked after " + AreaMap.MIN_OFFERS + " with miles")
                 + " · avg " + DecisionLog.money(cell.averagePayCents()) + " · last " + when(cell.lastAt), 13,

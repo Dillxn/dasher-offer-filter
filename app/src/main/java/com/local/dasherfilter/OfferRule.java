@@ -37,7 +37,7 @@ final class OfferRule {
 
     /**
      * Required pay is {@code max(flat, miles × rate, minutes × rate) + fee × max(0, stops - 2)}. The adaptive
-     * minimum raises it to one cent above the last accepted standalone payout, and to at least the best accepted
+     * minimum raises it to one cent above the highest accepted standalone payout, and to at least the best accepted
      * pay per minute, per mile and per stop applied to this offer; each is a floor of its own, never added on top.
      */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
@@ -84,7 +84,7 @@ final class OfferRule {
         }
         if (settings.risingOffers && settings.lastAcceptedCents > 0 && settings.lastAcceptedCents + 1L > required) {
             required = settings.lastAcceptedCents + 1L;
-            reason = String.format(Locale.US, "must beat last accepted payout $%.2f",
+            reason = String.format(Locale.US, "must beat highest accepted payout $%.2f",
                     settings.lastAcceptedCents / 100.0);
         }
         if (settings.risingOffers) {

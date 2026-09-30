@@ -1,3 +1,28 @@
+## 0.4.22 — one screen, a new icon, and adaptive minimums that stay
+
+- **The main page fits one screen.** No scrolling:
+  - the mascot, the constellation and the skyline share the height, and shrink to fit on shorter phones;
+  - the passed, filtered and review counts keep their size;
+  - the chosen offer's ticket slides up over the page instead of lengthening it, and Back or a tap outside puts it away;
+  - with mapping on, one line on the ground names the best area; tap it for the map.
+
+  Only a very large font on a small phone still scrolls, so nothing is ever cut off.
+- **A new app icon** in the style of the pictures: the mascot in its brush-drawn ring over a morning sky with the sun, a cloud, hills and the road. The themed (one-colour) icon keeps the ring and the funnel's face.
+- **Adaptive minimums stay until you reset them.**
+  - The pay minimum is now the highest pay you have accepted, not the last. Accepting a lower offer later no longer lowers it.
+  - Like the best rates, it is learned only while auto-decline and the adaptive minimum are both on.
+  - Pausing, switching the minimum off and on, clearing the history and updating all keep what was learned. Only **Reset** clears it.
+  - Declines now read "Not above your highest accepted $X".
+
+Evidence boundaries: the main page was rendered and reviewed on 360×640, 360×780 and 412×915 screens, in light and dark, while dashing, empty and with the map, with the ticket and the map sheets open, and at 2× font on a 320×640 screen (which scrolls). The icon was rendered under round, rounded-square and square masks, and as the themed icon.
+
+- **Java tests** cover a declined offer naming the highest accepted pay.
+- **Simulated Android 8 and 15 tests** cover:
+  - the page fitting a 360×740 screen, and the ticket sliding up and folding again with Back;
+  - the map opening from the ground line and closing with Back;
+  - accepted offers only raising the adaptive minimums, nothing being learned while off or paused, and all of it surviving pauses and toggling.
+- **Not verified:** anything on a real phone.
+
 ## 0.4.21 — one picture, live while dashing
 
 - **The main page is one illustration.** Instead of separate pictures stacked like magazine sections, the whole page is one scene:

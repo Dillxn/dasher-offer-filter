@@ -41,6 +41,8 @@ final class MinimumsStarView extends View {
     /** Offers far above every minimum stretch the scale only this far, so the minimums stay readable. */
     private static final double OFFER_STRETCH = 1.35;
     private static final long GLIDE_MS = 700;
+    /** The smallest circle, in dp, the constellation is drawn in when a screen is short. */
+    private static final int MIN_WINDOW_DP = 46;
 
     private final Ui ui;
     private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -275,22 +277,35 @@ final class MinimumsStarView extends View {
     /** The circle's radius: as large as fits with the names outside it at the corners, up to 130 dp. */
     private float windowRadius(float width) {
         float room = (width / 2 - nameWidth() - ui.dp(2)) / 0.7071f - ui.dp(6);
-        return Math.max(ui.dp(76), Math.min(ui.dp(130), room));
+        return Math.max(ui.dp(MIN_WINDOW_DP), Math.min(ui.dp(130), room));
     }
 
+    /**
+     * As tall as the circle at this width needs, or whatever the page gives it on one screen; asked with no limit
+     * (the page working out what fits), it answers the least it reads well at.
+     */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         measureName();
         int width = MeasureSpec.getSize(widthSpec);
-        float window = windowRadius(width);
+        float window = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? MIN_WINDOW_DP * ui.dp(1)
+                : windowRadius(width);
         setMeasuredDimension(width, resolveSize(Math.round(2 * window + ui.dp(8) + keyHeight()), heightSpec));
+    }
+
+    /** The circle's radius at this size: as wide as fits, and no taller than the height given. */
+    private float window(float width, float height) {
+        float byHeight = (height - ui.dp(8) - keyHeight()) / 2;
+        return Math.max(ui.dp(MIN_WINDOW_DP) * 0.8f, Math.min(windowRadius(width), byHeight));
     }
 
     @Override protected void onDraw(Canvas canvas) {
         measureName();
         float width = getWidth();
-        float window = windowRadius(width);
+        float window = window(width, getHeight());
         float cx = width / 2;
-        float cy = window + ui.dp(4);
+        // The circle and its key, centred in the height given.
+        float top = Math.max(0, (getHeight() - (2 * window + ui.dp(8) + keyHeight())) / 2);
+        float cy = top + window + ui.dp(4);
         float radius = window - ui.dp(12);
 
         drawGrid(canvas, cx, cy, radius);

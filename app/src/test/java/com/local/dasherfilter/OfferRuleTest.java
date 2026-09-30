@@ -489,4 +489,13 @@ public final class OfferRuleTest {
         // Unknown pay teaches nothing.
         assertTrue(DeclinedFloor.raisedBy(rules, new OfferSnapshot(null, 6.0, 24, 2)).isEmpty());
     }
+
+    @Test
+    public void theAdaptivePayMinimumNamesTheHighestAcceptedPay() {
+        FilterSettings rules = new FilterSettings(true, 1000, 0, 0, 0, 0, true, 1420);
+        OfferRule.Decision decision = OfferRule.evaluate(new OfferSnapshot(1400, 5.0, 20, 2), rules);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals("must beat highest accepted payout $14.20", decision.reason);
+        assertTrue(rules.describe().contains("more than highest accepted $14.20"));
+    }
 }

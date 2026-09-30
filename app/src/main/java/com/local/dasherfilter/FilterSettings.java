@@ -12,6 +12,7 @@ final class FilterSettings {
     final int extraStopCents;
     final int maxStops;
     final boolean risingOffers;
+    /** The highest standalone pay accepted while learning (the adaptive pay minimum); only Reset lowers it. */
     final int lastAcceptedCents;
     /** Best accepted pay per minute, mile and stop; floors while the adaptive minimum is on. */
     final AcceptedBest best;
@@ -73,8 +74,8 @@ final class FilterSettings {
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             rules.add(lastAcceptedCents > 0
-                    ? "more than last accepted " + DecisionLog.money(lastAcceptedCents)
-                    : "more than your last accepted pay (none yet)");
+                    ? "more than highest accepted " + DecisionLog.money(lastAcceptedCents)
+                    : "more than your highest accepted pay (none yet)");
             if (!best.isEmpty()) rules.add("at least your best accepted " + best.summary());
             if (!declined.isEmpty()) rules.add("more than you declined by hand: " + declined.summary());
         }
@@ -91,7 +92,7 @@ final class FilterSettings {
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             String adaptive = lastAcceptedCents > 0
-                    ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat last accepted";
+                    ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat highest accepted";
             rules.add(best.isEmpty() && declined.isEmpty() ? adaptive : adaptive + " + learned rates");
         }
         return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);

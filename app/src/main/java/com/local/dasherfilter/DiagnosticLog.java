@@ -116,7 +116,7 @@ final class DiagnosticLog {
                 + "; extra-stop cents=" + rules.extraStopCents
                 + "; max stops=" + rules.maxStops
                 + "; rising offers=" + rules.risingOffers
-                + "; last accepted cents=" + rules.lastAcceptedCents
+                + "; highest accepted cents=" + rules.lastAcceptedCents
                 + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
                 + "; learned from manual declines=" + (rules.declined.isEmpty() ? "none" : rules.declined.summary())
                 + "\n"

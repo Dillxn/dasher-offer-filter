@@ -29,6 +29,11 @@ final class FilterHeroView extends View {
     /** The drawing's own size; narrower screens scale it down whole. */
     private static final int DESIGN_WIDTH_DP = 320;
     private static final int DESIGN_HEIGHT_DP = 268;
+    /** The drawing (ring, mascot, ticket) takes the design's top; the counts under it keep their own size. */
+    private static final int ART_HEIGHT_DP = 196;
+    private static final int COUNTS_HEIGHT_DP = 58;
+    /** The least share of its size the drawing shrinks to when a screen is short. */
+    private static final float MIN_SHARE = 0.36f;
     private static final float ON_SWEEP = 324;
     private static final float PAUSED_SWEEP = 228;
     private static final long RING_DRAW_MS = 1100;
@@ -118,16 +123,39 @@ final class FilterHeroView extends View {
         return Math.max(width, ui.dp(DESIGN_WIDTH_DP));
     }
 
+    /**
+     * As tall as the design at this width, or whatever the page gives it on one screen; asked with no limit (the
+     * page working out what fits), it answers the least it reads well at.
+     */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
         float scale = width / designWidth(width);
-        setMeasuredDimension(width, resolveSize(Math.round(ui.dp(DESIGN_HEIGHT_DP) * scale), heightSpec));
+        int design = Math.round(ui.dp(ART_HEIGHT_DP) * scale) + ui.dp(COUNTS_HEIGHT_DP);
+        int least = Math.round(ui.dp(ART_HEIGHT_DP) * scale * MIN_SHARE) + ui.dp(COUNTS_HEIGHT_DP);
+        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? least
+                : resolveSize(design, heightSpec);
+        setMeasuredDimension(width, height);
+    }
+
+    /** The drawing's scale: the design fitted to the width, and to the height left above the counts. */
+    private float scale() {
+        float byWidth = getWidth() / designWidth(getWidth());
+        if (getHeight() <= 0) return byWidth;
+        float byHeight = (getHeight() - ui.dp(COUNTS_HEIGHT_DP)) / (float) ui.dp(ART_HEIGHT_DP);
+        return Math.max(0.2f, Math.min(byWidth, byHeight));
+    }
+
+    /** Where the drawing starts, so the drawing and the counts sit centred in the height given. */
+    private float artTop(float scale) {
+        return Math.max(0, (getHeight() - ui.dp(ART_HEIGHT_DP) * scale - ui.dp(COUNTS_HEIGHT_DP)) / 2);
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        float designWidth = designWidth(getWidth());
-        float scale = getWidth() / designWidth;
+        float scale = scale();
+        float designWidth = getWidth() / scale;
+        float artTop = artTop(scale);
         canvas.save();
+        canvas.translate(0, artTop);
         canvas.scale(scale, scale);
         float cx = designWidth / 2;
         // Tilting the phone slides the ring and its stars (far) against the ticket (near).
@@ -141,8 +169,9 @@ final class FilterHeroView extends View {
             canvas.restore();
         }
         drawMascot(canvas, cx);
-        drawCounts(canvas, cx, designWidth);
         canvas.restore();
+        // The counts keep the page's text size however small the drawing above them is.
+        drawCounts(canvas, getWidth() / 2f, getWidth(), artTop + ui.dp(ART_HEIGHT_DP) * scale + ui.dp(16));
         if (state != State.OFF) Motion.next(this);
     }
 
@@ -312,16 +341,16 @@ final class FilterHeroView extends View {
     }
 
     /** Three quiet counts under the mascot: a small badge, the number, and its word. */
-    private void drawCounts(Canvas canvas, float cx, float width) {
+    private void drawCounts(Canvas canvas, float cx, float width, float top) {
         float spacing = Math.min(ui.dp(96), width * 0.3f);
-        drawCount(canvas, cx - spacing, OfferRule.Result.KEEP, passed, "passed", state != State.OFF);
-        drawCount(canvas, cx, OfferRule.Result.DECLINE, filtered, "filtered", state == State.ON);
-        drawCount(canvas, cx + spacing, OfferRule.Result.REVIEW, review, "review", state != State.OFF);
+        drawCount(canvas, cx - spacing, top, OfferRule.Result.KEEP, passed, "passed", state != State.OFF);
+        drawCount(canvas, cx, top, OfferRule.Result.DECLINE, filtered, "filtered", state == State.ON);
+        drawCount(canvas, cx + spacing, top, OfferRule.Result.REVIEW, review, "review", state != State.OFF);
     }
 
-    private void drawCount(Canvas canvas, float x, OfferRule.Result result, int count, String word, boolean live) {
+    private void drawCount(Canvas canvas, float x, float top, OfferRule.Result result, int count, String word,
+                           boolean live) {
         int color = Ui.resultColor(result);
-        float top = ui.dp(210);
         // The number and its word size with the font setting, shrunk only as far as their space needs.
         text.setFakeBoldText(true);
         float numberSize = Math.min(ui.sp(18), ui.dp(26));

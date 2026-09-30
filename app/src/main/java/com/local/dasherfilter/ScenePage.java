@@ -78,6 +78,11 @@ final class ScenePage extends LinearLayout {
         fallback = otherwise;
     }
 
+    /** The color at the very top of the sky, for behind the status bar. */
+    static int skyTop(Ui ui) {
+        return ui.dark ? 0xFF070B16 : 0xFFD4E4F4;
+    }
+
     /** Searchlights sweep the sky while the user is dashing. */
     void setWatching(boolean on) {
         if (on == watching) return;
@@ -136,8 +141,8 @@ final class ScenePage extends LinearLayout {
         if (key == shadedFor) return;
         shadedFor = key;
         int[] skyColors = ui.dark
-                ? new int[] {0xFF070B16, 0xFF0D1428, 0xFF1C1B34}
-                : new int[] {0xFFD4E4F4, 0xFFE7EEF2, 0xFFF6E7D2};
+                ? new int[] {skyTop(ui), 0xFF0D1428, 0xFF1C1B34}
+                : new int[] {skyTop(ui), 0xFFE7EEF2, 0xFFF6E7D2};
         sky = new LinearGradient(0, 0, 0, line, skyColors, new float[] {0, 0.55f, 1}, Shader.TileMode.CLAMP);
         // Down to the colors the road strip at the bottom starts from, so they meet without a seam.
         ground = new LinearGradient(0, line, 0, height, ui.dark ? 0xFF121821 : 0xFFE3E7D6,

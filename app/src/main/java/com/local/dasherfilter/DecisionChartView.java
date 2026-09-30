@@ -97,7 +97,10 @@ final class DecisionChartView extends View {
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
-        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(ui.dp(160), heightSpec));
+        // Asked with no limit (the page working out what fits one screen), it answers the least it reads well at.
+        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(74)
+                : resolveSize(ui.dp(160), heightSpec);
+        setMeasuredDimension(MeasureSpec.getSize(widthSpec), height);
     }
 
     @Override protected void onDraw(Canvas canvas) {

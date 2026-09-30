@@ -1,11 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The launcher icon's backdrop: the app's accent blue. -->
+<!--
+  The launcher icon's backdrop, the home page's scene in small: a morning sky warming towards the horizon, a sun with
+  its glow and a cloud, two ranges of hills and the road. Launcher masks may cut the edges; nothing needed is there.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="0"
+                android:endX="54"
+                android:endY="82">
+                <item android:offset="0" android:color="#FF7FB5E6" />
+                <item android:offset="0.55" android:color="#FFCFE3F3" />
+                <item android:offset="1" android:color="#FFF8DFBC" />
+            </gradient>
+        </aapt:attr>
+    </path>
     <path
-        android:fillColor="#256ABF"
-        android:pathData="M0,0h108v108h-108z" />
+        android:fillColor="#4DFFE7A3"
+        android:pathData="M64,27a15,15 0 1,0 30,0a15,15 0 1,0 -30,0Z" />
+    <path
+        android:fillColor="#FFF8C85A"
+        android:pathData="M70.5,27a8.5,8.5 0 1,0 17,0a8.5,8.5 0 1,0 -17,0Z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M22,29a6,6 0 0,1 11.5,-1.5a4.5,4.5 0 0,1 4.5,6.5l-18,0a3.5,3.5 0 0,1 2,-5Z" />
+    <path
+        android:fillColor="#FFC9DDB6"
+        android:pathData="M0,74C16,66 32,68 48,72C64,76 84,64 108,69L108,108L0,108Z" />
+    <path
+        android:fillColor="#FFA9CB96"
+        android:pathData="M0,85C20,79 40,83 58,85C76,87 92,79 108,81L108,108L0,108Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFEFE7D4"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M-4,99C28,93 70,101 112,94" />
 </vector>

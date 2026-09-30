@@ -351,7 +351,7 @@ public class AndroidAdapterTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 30, 100, 3, true, 0));
         FilterStore.recordAccepted(app, new OfferSnapshot(2500, 6.0, 25, 2));
         String report = DiagnosticLog.report(app);
-        assertTrue(report.contains("max stops=3; rising offers=true; last accepted cents=2500"));
+        assertTrue(report.contains("max stops=3; rising offers=true; highest accepted cents=2500"));
         assertTrue(report.contains("best accepted=$1.00/min, $4.17/mi, $12.50/stop"));
         assertTrue(report.contains("Notification access granted: false"));
     }
@@ -799,7 +799,13 @@ public class AndroidAdapterTest {
                     Arrays.asList(request.requestedPermissions));
             assertNotNull(shownTextContaining(content, "Needs location permission"));
             iconButton(content, "Back").performClick();
+            // The page stays one screen: a line on the ground opens the map in the sheet.
+            assertFalse(find(content, AreaMapView.class).isShown());
+            shownTextContaining(content, "Best areas").performClick();
             assertTrue(find(content, AreaMapView.class).isShown());
+            activity.get().onBackPressed();
+            assertFalse("Back closes the sheet, not the app", find(content, AreaMapView.class).isShown());
+            assertFalse(activity.get().isFinishing());
         }
     }
 
@@ -819,6 +825,9 @@ public class AndroidAdapterTest {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             AreaMapView map = find(content, AreaMapView.class);
+            assertNotNull("the best area is named on the ground", shownTextContaining(content,
+                    "Best area #1 · 3.6 mi NE of you"));
+            shownTextContaining(content, "Best area").performClick();
             assertTrue(map.isShown());
             assertEquals("Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
                     + "2, Around you, $2.00/mi over 3 offers.", map.getContentDescription().toString());
@@ -881,23 +890,29 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void acceptedOffersRaiseTheBestRatesUntilReset() {
+    public void acceptedOffersOnlyRaiseTheAdaptiveMinimumsUntilReset() {
         // Nothing is learned while the adaptive minimum is off, or while auto-decline is paused.
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));
         FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
         FilterStore.save(app, new FilterSettings(false, 1000, 0, 0, 0, 0, true, 0));
         FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
         assertTrue(FilterStore.load(app).best.isEmpty());
-        assertEquals("the payout baseline still follows every acceptance", 3000,
+        assertEquals("nothing is learned while off or paused, the pay included", 0,
                 FilterStore.load(app).lastAcceptedCents);
 
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
         FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
         FilterStore.recordAccepted(app, new OfferSnapshot(900, 6.0, 24, 2));
         FilterSettings saved = FilterStore.load(app);
-        assertEquals(900, saved.lastAcceptedCents);
-        assertEquals("the lower offer is the last one, not a new best", "$0.59/min, $2.37/mi, $7.10/stop",
-                saved.best.summary());
+        assertEquals("a lower offer accepted later does not lower the pay minimum", 1420, saved.lastAcceptedCents);
+        assertEquals("nor any best rate", "$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
+        // Pausing, turning the adaptive minimum off and on, and accepting meanwhile keep what was learned.
+        FilterStore.save(app, saved.withEnabled(false));
+        FilterStore.recordAccepted(app, new OfferSnapshot(600, 6.0, 24, 2));
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
+        assertEquals(1420, FilterStore.load(app).lastAcceptedCents);
+        assertEquals("$0.59/min, $2.37/mi, $7.10/stop", FilterStore.load(app).best.summary());
 
         // Saving rules keeps what was learned; Reset starts over.
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
@@ -984,6 +999,32 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    @Config(qualifiers = "w360dp-h740dp-xxhdpi")
+    public void theMainPageFitsOneScreenAndTheTicketSlidesUpOverIt() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            int width = content.getResources().getDisplayMetrics().widthPixels;
+            int height = content.getResources().getDisplayMetrics().heightPixels;
+            content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            content.layout(0, 0, width, height);
+            ScenePage scene = find(content, ScenePage.class);
+            android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
+            assertTrue("the whole scene fits: " + scene.getHeight() + " in " + page.getHeight(),
+                    scene.getHeight() <= page.getHeight());
+            assertNotNull(shownTextContaining(content, "Auto-decline is"));
+
+            openTicket(content);
+            assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "▴"));
+            activity.get().onBackPressed();
+            assertFalse(activity.get().isFinishing());
+            assertNotNull("folded again", shownTextContaining(content, "▾"));
+        }
+    }
+
+    @Test
     public void chartDrawsUnknownPayAndSaturatedRequirements() {
         DecisionChartView chart = new DecisionChartView(app, new Ui(app));
         List<DecisionLog.Entry> entries = new ArrayList<>();
@@ -1046,6 +1087,8 @@ public class AndroidAdapterTest {
         assertEquals("Too many stops (4, max 3)", MainActivity.plainReason("4 stops exceeds maximum 3"));
         assertEquals("Not above last accepted $12.50",
                 MainActivity.plainReason("must beat last accepted payout $12.50"));
+        assertEquals("Not above your highest accepted $12.50",
+                MainActivity.plainReason("must beat highest accepted payout $12.50"));
         assertEquals("Whole route: Below your minimum pay",
                 MainActivity.plainReason("combined route fails: flat minimum"));
         assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));

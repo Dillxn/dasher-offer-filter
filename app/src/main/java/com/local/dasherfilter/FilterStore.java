@@ -96,17 +96,19 @@ final class FilterStore {
     }
 
     /**
-     * An accepted standalone offer: the new payout baseline, and, only while auto-decline and the adaptive minimum
-     * are both on, a new best for any rate it beats. Nothing is learned while either is off, so turning it on never
-     * applies highs gathered meanwhile.
+     * An accepted standalone offer, only while auto-decline and the adaptive minimum are both on: a new highest
+     * accepted pay, and a new best for any rate it beats. The adaptive minimums only ever rise; nothing lowers or
+     * forgets them but Reset. Nothing is learned while either is off, so turning it on never applies highs gathered
+     * meanwhile. (The stored key keeps its old name, "last accepted".)
      */
     static void recordAccepted(Context context, OfferSnapshot accepted) {
         if (accepted.payCents == null) return;
         SharedPreferences prefs = prefs(context);
         boolean learning = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
-        AcceptedBest best = learning ? best(prefs).raisedBy(accepted) : best(prefs);
+        if (!learning) return;
+        AcceptedBest best = best(prefs).raisedBy(accepted);
         prefs.edit()
-                .putInt(LAST_ACCEPTED, accepted.payCents)
+                .putInt(LAST_ACCEPTED, Math.max(prefs.getInt(LAST_ACCEPTED, 0), accepted.payCents))
                 .putInt(BEST_MINUTE_PAY, best.minutePay).putInt(BEST_MINUTES, best.minutes)
                 .putInt(BEST_MILE_PAY, best.milePay).putLong(BEST_MILES, Double.doubleToLongBits(best.miles))
                 .putInt(BEST_STOP_PAY, best.stopPay).putInt(BEST_STOPS, best.stops)

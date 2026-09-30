@@ -1,32 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The filter from the app's status card: a funnel with its sieve, and a passed-offer check. Drawn inside the
-  adaptive-icon safe zone (a 66dp circle at the centre of the 108dp canvas), so no launcher mask clips it.
+  The mascot as it stands on the home page: a funnel with a sieve rim, arms and a smiling face, in its brush-drawn
+  ring (an ensō), on a pale disc so it reads against the sky. Everything sits inside the adaptive-icon safe zone (a
+  66dp circle at the centre of the 108dp canvas), so no launcher mask clips it.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M33.5,31 L74.5,31 Q77,31 75.5,33 L59,54 L59,69.5 Q59,71 57.7,71.7 L52,74.9 Q50,76 50,73.7 L50,54 L32.5,33 Q31,31 33.5,31 Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#256ABF"
-        android:strokeWidth="2.6"
-        android:strokeLineCap="round"
-        android:pathData="M39,38.5 L69,38.5 M45,46 L63,46" />
-    <path
-        android:fillColor="#0CA30C"
-        android:strokeColor="#256ABF"
-        android:strokeWidth="3"
-        android:pathData="M58.5,67 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0 Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M64.4,67.4 L68.5,71.5 L75.8,63.6" />
+    <group
+        android:pivotX="54"
+        android:pivotY="56"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <!-- The pale disc inside the ring. -->
+        <path
+            android:fillColor="#A6F5FAFF"
+            android:pathData="M27.5,54a26.5,26.5 0 1,0 53,0a26.5,26.5 0 1,0 -53,0Z" />
+        <!-- The ensō: one brush stroke round, open at the lower left, heavier over the top, thinning at the end. -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF256ABF"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:pathData="M36.22,79.39A31,31 0 1,1 73.93,77.75" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF256ABF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:pathData="M24.87,43.4A31,31 0 0,1 77.75,34.07" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#B3256ABF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:pathData="M73.93,77.75A31,31 0 0,1 62.02,83.94" />
+        <!-- Arms. -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF256ABF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M39.6,54Q34.6,55.9 33.5,62M68.4,54Q73.4,55.9 74.5,62" />
+        <!-- The body, narrowing to the spout. -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M30.6,41.9L49.8,69.9L49.8,76.7L58.2,76.7L58.2,69.9L77.4,41.9Z" />
+        <path
+            android:fillColor="#2E256ABF"
+            android:strokeColor="#FF256ABF"
+            android:strokeWidth="1.5"
+            android:strokeLineJoin="round"
+            android:pathData="M30.6,41.9L49.8,69.9L49.8,76.7L58.2,76.7L58.2,69.9L77.4,41.9Z" />
+        <!-- The rim, a sieve. -->
+        <path
+            android:fillColor="#FFD6E5F6"
+            android:strokeColor="#FF256ABF"
+            android:strokeWidth="1.5"
+            android:pathData="M30.6,41.9a23.4,4.6 0 1,0 46.8,0a23.4,4.6 0 1,0 -46.8,0Z" />
+        <path
+            android:fillColor="#B3256ABF"
+            android:pathData="M39.2,41.9a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM43.7,40.1a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM43.7,43.7a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM48.2,41.9a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM52.7,40.1a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM52.7,43.7a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM57.2,41.9a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM61.7,40.1a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM61.7,43.7a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0ZM66.2,41.9a0.75,0.75 0 1,0 1.5,0a0.75,0.75 0 1,0 -1.5,0Z" />
+        <!-- Blush, eyes with a glint, and a smile. -->
+        <path
+            android:fillColor="#66F08A8A"
+            android:pathData="M42,59.5a2.6,1.7 0 1,0 5.2,0a2.6,1.7 0 1,0 -5.2,0ZM60.8,59.5a2.6,1.7 0 1,0 5.2,0a2.6,1.7 0 1,0 -5.2,0Z" />
+        <path
+            android:fillColor="#FF1E2633"
+            android:pathData="M47,55.4a2.1,2.1 0 1,0 4.2,0a2.1,2.1 0 1,0 -4.2,0ZM56.8,55.4a2.1,2.1 0 1,0 4.2,0a2.1,2.1 0 1,0 -4.2,0Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M48.6,54.6a0.7,0.7 0 1,0 1.4,0a0.7,0.7 0 1,0 -1.4,0ZM58.4,54.6a0.7,0.7 0 1,0 1.4,0a0.7,0.7 0 1,0 -1.4,0Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FF1E2633"
+            android:strokeWidth="1.4"
+            android:strokeLineCap="round"
+            android:pathData="M51,59.6Q54,62.6 57,59.6" />
+    </group>
 </vector>
