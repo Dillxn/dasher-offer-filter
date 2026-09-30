@@ -1,12 +1,8 @@
 package com.local.dasherfilter;
 
-import android.annotation.SuppressLint;
-import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
-import android.view.View;
 
 /**
  * The app's mascot: the filter funnel with a face. Its mood follows the filter: cheerful while on, asleep while
@@ -77,108 +73,5 @@ final class Mascot {
         canvas.drawText("z", x, y, text);
         text.setTextSize(size * 0.75f);
         canvas.drawText("z", x + size * 0.7f, y - size * 0.7f, text);
-    }
-
-    /**
-     * The whole character standing up: rim on top, a body narrowing to the spout, two feet, little arms (one waving
-     * when happy) and the face.
-     */
-    static void figure(Canvas canvas, Mood mood, float cx, float top, float height, Ui ui) {
-        int color = mood == Mood.IDLE ? ui.inkMuted : ui.accent;
-        float u = height / 100f;
-        Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-        stroke.setStyle(Paint.Style.STROKE);
-        stroke.setStrokeCap(Paint.Cap.ROUND);
-        stroke.setStrokeJoin(Paint.Join.ROUND);
-        stroke.setStrokeWidth(Math.max(1.5f, 2.6f * u));
-        stroke.setColor(color);
-        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        RectF oval = new RectF();
-        Path path = new Path();
-
-        float rimY = top + 12 * u;
-        float half = 40 * u;
-        float neckY = top + 68 * u;
-        float neck = 9 * u;
-        float spoutY = top + 84 * u;
-
-        // Arms first, so the body covers where they join.
-        float armY = top + 40 * u;
-        float side = half - (half - neck) * (armY - rimY) / (neckY - rimY);
-        path.moveTo(cx - side, armY);
-        path.quadTo(cx - side - 12 * u, armY + 4 * u, cx - side - 14 * u, armY + 16 * u);
-        if (mood == Mood.HAPPY) {
-            path.moveTo(cx + side, armY);
-            path.quadTo(cx + side + 12 * u, armY - 2 * u, cx + side + 16 * u, armY - 16 * u);
-        } else {
-            path.moveTo(cx + side, armY);
-            path.quadTo(cx + side + 12 * u, armY + 4 * u, cx + side + 14 * u, armY + 16 * u);
-        }
-        canvas.drawPath(path, stroke);
-
-        // Feet under the spout.
-        fill.setColor(color);
-        oval.set(cx - 15 * u, spoutY + 2 * u, cx - 2 * u, spoutY + 10 * u);
-        canvas.drawOval(oval, fill);
-        oval.set(cx + 2 * u, spoutY + 2 * u, cx + 15 * u, spoutY + 10 * u);
-        canvas.drawOval(oval, fill);
-
-        path.reset();
-        path.moveTo(cx - half, rimY);
-        path.lineTo(cx - neck, neckY);
-        path.lineTo(cx - neck, spoutY);
-        path.lineTo(cx + neck, spoutY);
-        path.lineTo(cx + neck, neckY);
-        path.lineTo(cx + half, rimY);
-        path.close();
-        fill.setColor(ui.surface);
-        canvas.drawPath(path, fill);
-        fill.setColor((color & 0x00FFFFFF) | 0x2E000000);
-        canvas.drawPath(path, fill);
-        canvas.drawPath(path, stroke);
-        oval.set(cx - half, rimY - 8 * u, cx + half, rimY + 8 * u);
-        fill.setColor(ui.surface);
-        canvas.drawOval(oval, fill);
-        fill.setColor((color & 0x00FFFFFF) | 0x55000000);
-        canvas.drawOval(oval, fill);
-        canvas.drawOval(oval, stroke);
-
-        face(canvas, mood, cx, top + 34 * u, 30 * u, ui.ink);
-        if (mood == Mood.SLEEPY) snore(canvas, cx + half - 2 * u, rimY - 6 * u, 14 * u, ui.inkSecondary);
-    }
-
-    /** The mascot on its own, for empty pages and the footer. Decorative, so screen readers skip it. */
-    @SuppressLint("ViewConstructor")
-    static final class Figure extends View {
-        private final Ui ui;
-        private final int heightDp;
-        private Mood mood;
-
-        Figure(Context context, Ui ui, Mood mood, int heightDp) {
-            super(context);
-            this.ui = ui;
-            this.mood = mood;
-            this.heightDp = heightDp;
-            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        }
-
-        void setMood(Mood mood) {
-            if (mood == this.mood) return;
-            this.mood = mood;
-            invalidate();
-        }
-
-        Mood mood() {
-            return mood;
-        }
-
-        @Override protected void onMeasure(int widthSpec, int heightSpec) {
-            int height = ui.dp(heightDp);
-            setMeasuredDimension(resolveSize(Math.round(height * 1.25f), widthSpec), resolveSize(height, heightSpec));
-        }
-
-        @Override protected void onDraw(Canvas canvas) {
-            figure(canvas, mood, getWidth() / 2f, 0, getHeight(), ui);
-        }
     }
 }

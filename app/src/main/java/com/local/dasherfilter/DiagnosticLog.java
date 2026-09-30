@@ -106,7 +106,8 @@ final class DiagnosticLog {
                 + "Notification listener connected: " + OfferNotificationService.isConnected() + "\n"
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
                 + "Raw capture active: " + isEnabled(context) + " (30-minute session)\n"
-                + "Last status: " + FilterStore.lastStatus(context).replace('\n', ' ') + "\n\n"
+                + "Last status: " + FilterStore.lastStatus(context).replace('\n', ' ') + "\n"
+                + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"
                 + "Auto-decline saved: " + rules.enabled
                 + "; flat cents=" + rules.flatCents

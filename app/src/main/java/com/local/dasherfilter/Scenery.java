@@ -42,9 +42,9 @@ final class Scenery extends Drawable {
         return part;
     }
 
-    /** How tall the ground is for a page area {@code height} high. */
+    /** The ground fills its strip, up to a height where the hills would look stretched. */
     private float groundHeight(float height) {
-        return Math.min(ui.dp(150), height * 0.4f);
+        return Math.min(ui.dp(180), height);
     }
 
     @Override protected void onBoundsChange(Rect bounds) {
@@ -86,8 +86,9 @@ final class Scenery extends Drawable {
         Rect bounds = getBounds();
         float width = bounds.width();
         float height = bounds.height();
-        float sunX = bounds.right - ui.dp(52);
-        float sunY = bounds.top + height * 0.55f;
+        // Off to the right of the title, clear of the round button at the edge.
+        float sunX = bounds.left + width * 0.66f;
+        float sunY = bounds.top + height * 0.5f;
         if (ui.dark) {
             fill.setColor(0xFF2E2D29);
             canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
@@ -105,8 +106,26 @@ final class Scenery extends Drawable {
             canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
         }
         int cloud = ui.dark ? 0xFF1A1A19 : 0xFFFBFAF7;
-        drawCloud(canvas, bounds.left + width * 0.6f, bounds.top + height * 0.42f, ui.dp(14), cloud);
-        drawCloud(canvas, bounds.right - ui.dp(20), bounds.top + height * 0.78f, ui.dp(11), cloud);
+        drawCloud(canvas, bounds.left + width * 0.55f, bounds.top + height * 0.4f, ui.dp(13), cloud);
+        drawCloud(canvas, bounds.left + width * 0.76f, bounds.top + height * 0.74f, ui.dp(11), cloud);
+        drawBirds(canvas, bounds.left + width * 0.44f, bounds.top + height * 0.3f);
+    }
+
+    /** Two small birds, a pair of curved strokes each. */
+    private void drawBirds(Canvas canvas, float x, float y) {
+        line.setPathEffect(null);
+        line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
+        line.setColor(ui.dark ? 0xFF3A3935 : 0xFFB9B6AC);
+        for (int i = 0; i < 2; i++) {
+            float bx = x + i * ui.dp(16);
+            float by = y + i * ui.dp(7);
+            float wing = ui.dp(i == 0 ? 6 : 5);
+            path.reset();
+            path.moveTo(bx - wing, by);
+            path.quadTo(bx - wing / 2, by - wing * 0.6f, bx, by);
+            path.quadTo(bx + wing / 2, by - wing * 0.6f, bx + wing, by);
+            canvas.drawPath(path, line);
+        }
     }
 
     /** A cloud of three puffs on a flat base, {@code size} being the middle puff's radius. */

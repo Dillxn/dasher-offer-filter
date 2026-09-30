@@ -96,7 +96,7 @@ for path in glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml'):
     for key in totals:
         totals[key] += int(suite.get(key, 0))
 print('junit', totals)
-if totals['tests'] < 288 or totals['failures'] or totals['errors'] or totals['skipped']:
+if totals['tests'] < 306 or totals['failures'] or totals['errors'] or totals['skipped']:
     sys.exit('GATE FAILED: test totals ' + str(totals))
 PY
 

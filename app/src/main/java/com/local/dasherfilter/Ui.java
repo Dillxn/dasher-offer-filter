@@ -1,13 +1,13 @@
 package com.local.dasherfilter;
 
 import android.content.Context;
-import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -22,7 +22,8 @@ import android.widget.TextView;
 
 /**
  * Framework-only styling for the app's screen: one palette per light/dark theme and the few components it is built
- * from. Status colors are fixed across themes and always travel with a symbol and a word, never color alone.
+ * from, dressed as drawn things (chunky buttons that press down, price-tag fields, switches with a face). Status
+ * colors are fixed across themes and always travel with a symbol and a word, never color alone.
  */
 final class Ui {
     static final int GOOD = 0xFF0CA30C;
@@ -124,22 +125,6 @@ final class Ui {
         return shape;
     }
 
-    /** A section card appended to {@code page}; returns the card so the caller can add rows. */
-    LinearLayout card(LinearLayout page, String title) {
-        LinearLayout card = column();
-        card.setBackground(rounded(surface, border, 16));
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        LinearLayout.LayoutParams params = matchWidth();
-        params.bottomMargin = dp(12);
-        page.addView(card, params);
-        if (title != null) {
-            TextView heading = text(title, 17, ink, true);
-            if (Build.VERSION.SDK_INT >= 28) heading.setAccessibilityHeading(true);
-            card.addView(heading);
-        }
-        return card;
-    }
-
     /** Two equal-width buttons side by side. */
     LinearLayout buttonPair(LinearLayout parent, Button first, Button second) {
         LinearLayout pair = row();
@@ -191,21 +176,39 @@ final class Ui {
         button.setAllCaps(false);
         button.setTypeface(MEDIUM);
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        button.setMinHeight(dp(48));
-        button.setMinimumHeight(dp(48));
+        button.setMinHeight(dp(52));
+        button.setMinimumHeight(dp(52));
         button.setStateListAnimator(null);
-        button.setPadding(dp(16), 0, dp(16), 0);
+        // The bottom padding matches the lip, so the label sits on the button's face.
+        button.setPadding(dp(16), 0, dp(16), dp(LIP_DP));
         style(button, primary);
         button.setOnClickListener(clicked -> action.run());
         return button;
     }
 
-    /** Restyles a button as filled accent (primary) or outlined (secondary). */
+    private static final int LIP_DP = 4;
+
+    /**
+     * Restyles a button as a chunky key, filled accent (primary) or plain (secondary), standing on a darker lip it
+     * sinks onto while pressed.
+     */
     void style(Button button, boolean primary) {
-        Drawable shape = primary ? rounded(accent, 0, 12) : rounded(surface, dark ? 0x40FFFFFF : 0x330B0B0B, 12);
-        int ripple = primary ? 0x33FFFFFF : (dark ? 0x22FFFFFF : 0x1A0B0B0B);
-        button.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), shape, null));
+        int face = primary ? accent : surface;
+        int lip = primary ? 0xFF1A4C8A : (dark ? 0xFF050505 : 0xFFD8D5CB);
+        int stroke = primary ? 0 : (dark ? 0x40FFFFFF : 0x330B0B0B);
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[] {android.R.attr.state_pressed}, key(face, lip, stroke, true));
+        states.addState(new int[] {}, key(face, lip, stroke, false));
+        button.setBackground(states);
         button.setTextColor(primary ? onAccent : ink);
+    }
+
+    private Drawable key(int face, int lip, int stroke, boolean pressed) {
+        int depth = dp(LIP_DP);
+        LayerDrawable key = new LayerDrawable(new Drawable[] {rounded(lip, 0, 14), rounded(face, stroke, 14)});
+        key.setLayerInset(0, 0, pressed ? depth - dp(1) : 0, 0, 0);
+        key.setLayerInset(1, 0, pressed ? depth - dp(1) : 0, 0, pressed ? 0 : depth);
+        return key;
     }
 
     /** A full-width button added to {@code parent} with standard spacing. */
@@ -243,32 +246,6 @@ final class Ui {
         ((GradientDrawable) badge.getBackground()).setColor(color);
     }
 
-    /** A labeled numeric field; the label is linked to the field for screen readers. */
-    EditText field(LinearLayout parent, String label, String value, boolean decimal) {
-        return field(parent, label, value, decimal, null);
-    }
-
-    /** A labeled numeric field whose label starts with a drawn icon for what it measures. */
-    EditText field(LinearLayout parent, String label, String value, boolean decimal, Glyph.Shape icon) {
-        TextView caption = text(label, 13, inkSecondary, false);
-        caption.setPadding(0, dp(10), 0, dp(4));
-        if (icon != null) {
-            caption.setCompoundDrawablesRelative(new Glyph(icon, inkSecondary, dp(16)), null, null, null);
-            caption.setCompoundDrawablePadding(dp(6));
-        }
-        EditText field = new EditText(context);
-        field.setId(View.generateViewId());
-        caption.setLabelFor(field.getId());
-        field.setSingleLine(true);
-        field.setInputType(InputType.TYPE_CLASS_NUMBER | (decimal ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0));
-        field.setText(value);
-        field.setSelectAllOnFocus(true);
-        styleField(field);
-        parent.addView(caption);
-        parent.addView(field, matchWidth());
-        return field;
-    }
-
     void styleField(EditText field) {
         field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         field.setTextColor(ink);
@@ -277,8 +254,17 @@ final class Ui {
         field.setPadding(dp(12), dp(10), dp(12), dp(10));
     }
 
+    /** A switch whose knob is the mascot's face: awake when on, asleep when off. */
     Switch toggle(LinearLayout parent, String label, boolean value) {
         Switch view = new Switch(context);
+        StateListDrawable knob = new StateListDrawable();
+        knob.addState(new int[] {android.R.attr.state_checked}, new Decor.FaceKnob(this, true));
+        knob.addState(new int[] {}, new Decor.FaceKnob(this, false));
+        view.setThumbDrawable(knob);
+        StateListDrawable track = new StateListDrawable();
+        track.addState(new int[] {android.R.attr.state_checked}, new Decor.Track(this, true));
+        track.addState(new int[] {}, new Decor.Track(this, false));
+        view.setTrackDrawable(track);
         view.setText(label);
         view.setTextColor(ink);
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
@@ -290,15 +276,53 @@ final class Ui {
         return view;
     }
 
-    View divider() {
-        View line = new View(context);
-        line.setBackgroundColor(gridline);
+    /** A section heading: an icon and a title over a hand-drawn wave. */
+    TextView heading(LinearLayout parent, Glyph.Shape icon, String title) {
+        TextView view = text(title, 19, ink, true);
+        view.setCompoundDrawablesRelative(new Glyph(icon, accent, dp(22)), null, null, null);
+        view.setCompoundDrawablePadding(dp(10));
+        view.setPadding(0, 0, dp(4), dp(10));
+        view.setBackground(new Decor.Squiggle(this));
+        if (Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(28);
+        params.bottomMargin = dp(8);
+        parent.addView(view, params);
+        return view;
+    }
+
+    /**
+     * A rule field drawn as a price tag: icon and label on top, the amount large beneath. The label is linked to
+     * the field for screen readers.
+     */
+    EditText tagField(LinearLayout parent, String label, String value, boolean decimal, Glyph.Shape icon) {
+        LinearLayout tag = column();
+        tag.setBackground(new Decor.Tag(this));
+        tag.setPadding(dp(30), dp(10), dp(14), dp(8));
+        TextView caption = text(label, 12, inkSecondary, false);
+        caption.setCompoundDrawablesRelative(new Glyph(icon, inkSecondary, dp(15)), null, null, null);
+        caption.setCompoundDrawablePadding(dp(6));
+        EditText field = new EditText(context);
+        field.setId(View.generateViewId());
+        caption.setLabelFor(field.getId());
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER | (decimal ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0));
+        field.setText(value);
+        field.setSelectAllOnFocus(true);
+        field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        field.setTypeface(MEDIUM);
+        field.setTextColor(ink);
+        field.setHintTextColor(inkMuted);
+        field.setBackground(null);
+        field.setPadding(0, dp(2), 0, dp(2));
+        tag.addView(caption);
+        tag.addView(field, matchWidth());
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                Math.max(1, dp(1)));
-        params.topMargin = dp(12);
-        params.bottomMargin = dp(4);
-        line.setLayoutParams(params);
-        return line;
+                ViewGroup.LayoutParams.MATCH_PARENT);
+        params.topMargin = dp(8);
+        parent.addView(tag, params);
+        return field;
     }
 
     static LinearLayout.LayoutParams matchWidth() {

@@ -70,6 +70,7 @@ public class AndroidAdapterTest {
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
         DecisionLog.forgetCache();
+        AreaMap.forgetCache();
         ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
     }
@@ -286,18 +287,13 @@ public class AndroidAdapterTest {
     public void settingsScreenStaysClearOfSystemBarsAndKeyboard() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View page = ((ViewGroup) activity.get().findViewById(android.R.id.content)).getChildAt(0);
-            View tabBar = ((ViewGroup) page).getChildAt(2);
             if (Build.VERSION.SDK_INT >= 35) {
-                // Keyboard up: the tab bar steps aside and the page ends above the keyboard.
                 dispatchEdgeToEdgeInsets(page, 300);
                 assertEquals(50, page.getPaddingTop());
-                assertEquals(300, page.getPaddingBottom());
-                assertEquals(View.GONE, tabBar.getVisibility());
-                // Keyboard down: the tab bar is back, its color running on under the navigation bar.
+                assertEquals("the keyboard, taller than the navigation bar, sets the bottom", 300,
+                        page.getPaddingBottom());
                 dispatchEdgeToEdgeInsets(page, 0);
-                assertEquals(0, page.getPaddingBottom());
-                assertEquals(View.VISIBLE, tabBar.getVisibility());
-                assertEquals(80, tabBar.getPaddingBottom());
+                assertEquals(80, page.getPaddingBottom());
             } else {
                 // Before Android 15 the platform itself lays the window out inside the system bars.
                 assertEquals(0, page.getPaddingTop());
@@ -354,54 +350,61 @@ public class AndroidAdapterTest {
             findButton(content, "Set up rules").performClick();
             settle();
             assertFalse(FilterStore.load(app).enabled);
-            assertTrue(find(content, RuleMeterView.class).isShown());
-            assertTrue(findTab(content, "Rules").isSelected());
+            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
         }
     }
 
     @Test
-    public void theTabBarSwapsPagesInPlaceAndBackReturnsHome() {
+    public void settingsOpenFromTheHeaderAndBackReturnsToTheMainPage() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            // Home: the filter picture and the latest offer; everything else waits behind its tab.
+            // One page for the filter, the offers, the minimums and the areas; what is set once is in Settings.
             assertTrue(find(content, FilterHeroView.class).isShown());
-            assertTrue(findTab(content, "Home").isSelected());
-            assertFalse(find(content, DecisionChartView.class).isShown());
-            assertFalse(find(content, RuleMeterView.class).isShown());
-            assertNull(shownButton(content, "Email report"));
+            assertTrue(find(content, DecisionChartView.class).isShown());
+            assertTrue(find(content, MinimumsStarView.class).isShown());
+            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertNull(shownButton(content, "Share report"));
 
-            openTab(content, "Rules");
-            assertTrue(find(content, RuleMeterView.class).isShown());
+            iconButton(content, "Settings").performClick();
+            settle();
+            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertNotNull(shownButton(content, "Share report"));
             assertFalse(find(content, FilterHeroView.class).isShown());
-            assertTrue(findTab(content, "Rules").isSelected());
-            assertFalse(findTab(content, "Home").isSelected());
 
-            // The shown tab survives the activity being recreated (rotation, dark mode switch).
+            // The page shown survives the activity being recreated (rotation, dark mode switch).
             activity.recreate();
             content = activity.get().findViewById(android.R.id.content);
-            assertTrue(find(content, RuleMeterView.class).isShown());
+            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
 
-            openTab(content, "More");
-            assertNotNull(shownButton(content, "Email report"));
             activity.get().onBackPressed();
             assertTrue(find(content, FilterHeroView.class).isShown());
-            assertNull(shownButton(content, "Email report"));
             assertFalse(activity.get().isFinishing());
+            iconButton(content, "Settings").performClick();
+            iconButton(content, "Back").performClick();
+            assertTrue(find(content, FilterHeroView.class).isShown());
         }
     }
 
     @Test
-    public void homeShowsTheLatestOfferAndATapOnItOpensOffers() {
+    public void theNewestOfferIsShownAsAStampedTicket() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            TextView reason = shownTextContaining(content, "Below your per-mile rate");
-            assertNotNull("the latest offer is on Home", reason);
-            ((View) reason.getParent().getParent()).performClick();
-            settle();
-            assertTrue(find(content, DecisionChartView.class).isShown());
-            assertTrue(findTab(content, "Offers").isSelected());
+            OfferCardView card = find(content, OfferCardView.class);
+            assertTrue(card.isShown());
+            assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
+                    card.getContentDescription().toString());
+            assertEquals("Declined", find(content, Decor.Stamp.class).getContentDescription().toString());
+            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+
+            // While no older offer is picked, the ticket follows each new one.
+            DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
+                    DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
+                    OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                    Collections.emptyList()));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
+            assertEquals("Passed", find(content, Decor.Stamp.class).getContentDescription().toString());
         }
     }
 
@@ -423,38 +426,47 @@ public class AndroidAdapterTest {
     public void everyButtonOnTheScreenHasALabel() {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
             List<Button> buttons = new ArrayList<>();
-            collectButtons(activity.get().findViewById(android.R.id.content), buttons);
+            collectButtons(content, buttons);
             assertTrue(buttons.size() >= 10);
             for (Button button : buttons) assertFalse("unlabeled button", button.getText().toString().trim().isEmpty());
+            // The round icon buttons have no text, so they must say what they do.
+            assertNotNull(iconButton(content, "Settings"));
+            assertNotNull(iconButton(content, "Back"));
         }
     }
 
     @Test
-    public void emailReportIsAddressedToTheUserWithDecisionHistory() {
+    public void shareReportCarriesTheDecisionHistory() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = activity.get().findViewById(android.R.id.content);
-            fieldLabeled(content, "Your email").setText(" me@example.com ");
-            findButton(content, "Email report").performClick();
+            findButton(activity.get().findViewById(android.R.id.content), "Share report").performClick();
 
-            Intent sent = Shadows.shadowOf(app).getNextStartedActivity();
+            Intent chooser = Shadows.shadowOf(app).getNextStartedActivity();
+            assertEquals(Intent.ACTION_CHOOSER, chooser.getAction());
+            Intent sent = chooser.getParcelableExtra(Intent.EXTRA_INTENT);
             assertEquals(Intent.ACTION_SEND, sent.getAction());
-            assertEquals(Arrays.asList("me@example.com"), Arrays.asList(sent.getStringArrayExtra(Intent.EXTRA_EMAIL)));
             assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Offer Filter diagnostics"));
             String body = sent.getStringExtra(Intent.EXTRA_TEXT);
             assertTrue(body.contains("== Decision history"));
             assertTrue(body.contains("DECLINE | pay $7.90 | needed $10.80"));
-            assertEquals("mailto:", sent.getSelector().getDataString());
-            assertEquals("me@example.com", FilterStore.reportEmail(app));
         }
     }
 
     @Test
-    public void emailReportNeedsAnAddress() {
+    public void clearingHistoryAsksFirst() {
+        DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            findButton(activity.get().findViewById(android.R.id.content), "Email report").performClick();
-            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+            View content = activity.get().findViewById(android.R.id.content);
+            findButton(content, "Clear history").performClick();
+            android.app.AlertDialog dialog = (android.app.AlertDialog)
+                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertEquals(1, DecisionLog.recent(app, 10).size());
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertTrue(DecisionLog.recent(app, 10).isEmpty());
+            assertNotNull(shownTextContaining(content, "No offers yet"));
         }
     }
 
@@ -463,30 +475,36 @@ public class AndroidAdapterTest {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNotNull(findText(content, "$7.90 · needed $10.80"));
-            assertNotNull(findTextContaining(content, "Below your per-mile rate"));
+            assertEquals("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review.",
+                    findChart(content).getContentDescription().toString());
+            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "Decline tapped · on screen"));
         }
     }
 
     @Test
     public void tappingAChartColumnShowsWhatWasRead() {
         DecisionLog.record(app, declinedEntry());
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000, DecisionLog.Source.SCREEN,
+                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.PASSES, true, Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            openTab(content, "Offers");
             DecisionChartView chart = findChart(content);
-            assertNotNull(chart);
-            assertNull(chart.selectedEntry());
+            assertEquals("the newest offer is shown first", Integer.valueOf(2500),
+                    chart.selectedEntry().facts.payCents);
+            assertNull(shownTextContaining(content, "Read: $7.90"));
 
+            // The older offer is the second building from the right.
             float density = app.getResources().getDisplayMetrics().density;
             float left = 44 * density;
             float slot = (chart.getWidth() - 4 * density - left) / DecisionChartView.SLOTS;
-            float x = left + slot * (DecisionChartView.SLOTS - 0.5f);
+            float x = left + slot * (DecisionChartView.SLOTS - 1.5f);
             chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, x, 40, 0));
             chart.dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, x, 40, 0));
 
             assertEquals(Integer.valueOf(790), chart.selectedEntry().facts.payCents);
-            assertNotNull(findTextContaining(content, "Read: $7.90"));
+            assertNotNull(shownTextContaining(content, "Read: $7.90"));
         }
     }
 
@@ -495,9 +513,6 @@ public class AndroidAdapterTest {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            openTab(content, "Offers");
-            View row = (View) shownTextContaining(content, "Below your per-mile rate").getParent().getParent();
-            row.performClick();
             assertNull("no report button without a token", shownButton(content, "Report this offer"));
             assertNotNull(findTextContaining(content, "Off. Paste a GitHub token"));
 
@@ -512,8 +527,6 @@ public class AndroidAdapterTest {
             assertEquals("", token.getText().toString());
             assertNotNull(findTextContaining(content, "On · no reports sent yet"));
 
-            row.performClick();
-            row.performClick();
             shownButton(content, "Report this offer").performClick();
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
@@ -572,21 +585,17 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void theRulesPictureFollowsTheRulesAsTheyAreTyped() {
+    public void theRulesPreviewFollowsTheRulesAsTheyAreTyped() {
         FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            RuleMeterView meter = find(content, RuleMeterView.class);
             // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops.
-            assertEquals("An offer like 21 min · 7.2 mi · 2 stops: needs $7.00",
-                    meter.getContentDescription().toString());
-
+            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops needs $7.00."));
             fieldLabeled(content, "Per mile ($)").setText("1.50");
-            assertEquals("An offer like 21 min · 7.2 mi · 2 stops: needs $10.80",
-                    meter.getContentDescription().toString());
+            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops needs $10.80."));
             fieldLabeled(content, "Max stops (1 order = 2)").setText("1");
-            assertTrue(meter.getContentDescription().toString().endsWith("declined. At most 1 stop: this one has 2"));
+            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops is declined: at most 1 stop."));
             // Unsaved: nothing changed in the saved rules.
             assertEquals(0, FilterStore.load(app).perMileCents);
         }
@@ -598,15 +607,14 @@ public class AndroidAdapterTest {
         FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            openTab(content, "Rules");
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.isShown());
             assertEquals("Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
                     + "Per stop: no set minimum, adaptive $7.10.", star.getContentDescription().toString());
-            // No offers yet, so the example is the meter's typical one; the largest ask is "more than $14.20".
-            assertNotNull(findText(content,
-                    "Farther out asks more of an offer like 20 min · 5 mi · 2 stops. Rings are $5.00 apart."));
+            // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
+            assertNotNull(findText(content, "An offer like 20 min · 5 mi · 2 stops needs $14.21. "
+                    + "Farther out asks more; rings are $5.00 apart."));
 
             fieldLabeled(content, "Per mile ($)").setText("0");
             assertTrue(star.getContentDescription().toString()
@@ -621,16 +629,43 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void anOpenedHistoryRowDrawsTheOffer() {
-        DecisionLog.record(app, declinedEntry());
+    public void startMappingAsksOnlyForApproximateLocation() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull("drawn only when opened", find(content, OfferCardView.class));
-            openTab(content, "Offers");
-            ((View) shownTextContaining(content, "Below your per-mile rate").getParent().getParent()).performClick();
-            OfferCardView card = find(content, OfferCardView.class);
-            assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
-                    card.getContentDescription().toString());
+            assertFalse(find(content, AreaMapView.class).isShown());
+            shownButton(content, "Start mapping").performClick();
+            assertTrue(AreaMap.enabled(app));
+            org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission();
+            assertEquals(Arrays.asList(Manifest.permission.ACCESS_COARSE_LOCATION),
+                    Arrays.asList(request.requestedPermissions));
+            assertTrue(find(content, AreaMapView.class).isShown());
+            assertNotNull(findTextContaining(content, "Needs location permission"));
+        }
+    }
+
+    @Test
+    public void theTreasureMapRanksAreasByPayPerMileAndShowsTheBest() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        AreaMap.setEnabled(app, true);
+        // Three offers near one spot at $2/mi, three near another at $3/mi.
+        noteOfferAt(37.7749, -122.4194, 1000, 5.0);
+        noteOfferAt(37.7749, -122.4194, 1200, 6.0);
+        noteOfferAt(37.7749, -122.4194, 800, 4.0);
+        noteOfferAt(37.8149, -122.3794, 1500, 5.0);
+        noteOfferAt(37.8149, -122.3794, 1800, 6.0);
+        noteOfferAt(37.8149, -122.3794, 1200, 4.0);
+        setLocation(37.7749, -122.4194);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue(map.isShown());
+            assertEquals("Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
+                    + "2, Around you, $2.00/mi over 3 offers.", map.getContentDescription().toString());
+            assertNotNull("the best area is shown until another is picked",
+                    shownTextContaining(content, "#1 · 3.6 mi NE of you"));
+            assertNotNull(shownButton(content, "Open in Maps"));
         }
     }
 
@@ -843,28 +878,43 @@ public class AndroidAdapterTest {
         return null;
     }
 
-    /** The tab bar item named {@code name}: clickable text that is not a button. */
-    private static TextView findTab(View view, String name) {
-        if (view instanceof TextView && !(view instanceof Button) && view.isClickable()
-                && name.contentEquals(((TextView) view).getText())) {
-            return (TextView) view;
+    /** The round icon button whose description is {@code description}, or null. */
+    private static android.widget.ImageButton iconButton(View view, String description) {
+        if (view instanceof android.widget.ImageButton && view.getContentDescription() != null
+                && description.contentEquals(view.getContentDescription())) {
+            return (android.widget.ImageButton) view;
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {
-                TextView found = findTab(group.getChildAt(i), name);
+                android.widget.ImageButton found = iconButton(group.getChildAt(i), description);
                 if (found != null) return found;
             }
         }
         return null;
     }
 
-    /** Taps a tab, as a user would, and lets the page swap and a layout pass run. */
-    private static void openTab(View root, String name) {
-        TextView tab = findTab(root, name);
-        assertNotNull(name, tab);
-        tab.performClick();
-        settle();
+    /** The phone's last known position, fresh, at approximate accuracy. */
+    private void setLocation(double latitude, double longitude) {
+        android.location.Location fix = new android.location.Location(android.location.LocationManager.NETWORK_PROVIDER);
+        fix.setLatitude(latitude);
+        fix.setLongitude(longitude);
+        fix.setAccuracy(1500);
+        fix.setTime(System.currentTimeMillis());
+        fix.setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos());
+        Shadows.shadowOf(app.getSystemService(android.location.LocationManager.class))
+                .setLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER, fix);
+    }
+
+    private int notedOffers;
+
+    /** A distinct standalone offer noted while the phone is at the given position. */
+    private void noteOfferAt(double latitude, double longitude, int payCents, double miles) {
+        setLocation(latitude, longitude);
+        notedOffers++;
+        AreaMap.note(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(payCents, miles, 20 + notedOffers, 2), 1000, OfferRule.Result.KEEP,
+                "meets enabled rules", DecisionLog.Action.PASSES, true, Collections.emptyList()));
     }
 
     private static void settle() {

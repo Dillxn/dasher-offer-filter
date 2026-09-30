@@ -24,7 +24,8 @@ final class FilterStore {
     private static final String BEST_STOPS = "best_stops";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
     private static final String LAST_STATUS = "last_status";
-    private static final String REPORT_EMAIL = "report_email";
+    /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
+    private static final String RETIRED_REPORT_EMAIL = "report_email";
     private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
 
     static FilterSettings load(Context context) {
@@ -105,13 +106,10 @@ final class FilterStore {
         return prefs(context).getString(LAST_STATUS, "No offer evaluated yet.");
     }
 
-    /** The user's own address for emailing diagnostics reports; empty until they enter it. */
-    static String reportEmail(Context context) {
-        return prefs(context).getString(REPORT_EMAIL, "");
-    }
-
-    static void setReportEmail(Context context, String address) {
-        prefs(context).edit().putString(REPORT_EMAIL, address).apply();
+    /** Removes the email address older versions kept, now that nothing uses it. */
+    static void forgetRetiredEmail(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.contains(RETIRED_REPORT_EMAIL)) prefs.edit().remove(RETIRED_REPORT_EMAIL).apply();
     }
 
     /** Whether Dasher's own offer ring is turned down while a filtered offer is declined. On unless turned off. */

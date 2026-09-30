@@ -15,10 +15,12 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Recent offers as columns, oldest left: bar height is the pay read, the ink tick is the pay the rules required,
- * and the badge above says what happened (✓ passed, ✕ declined, ? review). A bar that ends below its tick is a
- * decline by the rules as written, so a surprising decline shows either a misread pay or a rule to adjust.
- * Tapping a column selects it and reports it to the listener.
+ * Recent offers as a little skyline, oldest left: each offer is a building as tall as the pay read, the ink rope
+ * across it is the pay the rules required, and the flag on its roof says what happened (✓ passed, ✕ declined,
+ * ? review). Passed offers have their windows lit. A building that ends below its rope is a decline by the rules as
+ * written, so a surprising decline shows either a misread pay or a rule to adjust. An offer whose pay was not read
+ * is a signpost at street level. Tapping a building selects it (a spotlight picks it out) and reports it to the
+ * listener.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -49,7 +51,8 @@ final class DecisionChartView extends View {
         label.setColor(ui.inkMuted);
         symbol.setTextAlign(Paint.Align.CENTER);
         symbol.setFakeBoldText(true);
-        symbol.setTextSize(ui.sp(10));
+        // The symbol belongs to its circle, so it follows the font setting only as far as the circle allows.
+        symbol.setTextSize(Math.min(ui.sp(10), ui.dp(11)));
         line.setStyle(Paint.Style.STROKE);
         setClickable(true);
         setFocusable(true);
@@ -75,7 +78,7 @@ final class DecisionChartView extends View {
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
-        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(ui.dp(184), heightSpec));
+        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(ui.dp(200), heightSpec));
     }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -94,33 +97,55 @@ final class DecisionChartView extends View {
         long maxCents = scaleMax();
         drawGrid(canvas, left, right, top, bottom, maxCents);
         float slot = (right - left) / SLOTS;
-        float barWidth = Math.min(ui.dp(24), slot - ui.dp(4));
+        float barWidth = Math.min(ui.dp(26), slot - ui.dp(3));
         int firstSlot = SLOTS - entries.size();
+        if (selected >= 0 && selected < entries.size()) {
+            drawSpotlight(canvas, left + slot * (firstSlot + selected + 0.5f), barWidth, bottom);
+        }
         for (int i = 0; i < entries.size(); i++) {
             DecisionLog.Entry entry = entries.get(i);
             float center = left + slot * (firstSlot + i + 0.5f);
-            if (i == selected) {
-                // A short accent bar under the baseline marks the tapped offer without looking like data.
-                fill.setColor(ui.accent);
-                rect.set(center - barWidth / 2f, bottom + ui.dp(3), center + barWidth / 2f, bottom + ui.dp(6));
-                canvas.drawRoundRect(rect, ui.dp(2), ui.dp(2), fill);
-            }
-            int color = Ui.resultColor(entry.result);
-            float barTop = bottom;
+            float roof = bottom;
             if (entry.facts.payCents != null) {
-                barTop = y(entry.facts.payCents, maxCents, top, bottom);
-                drawBar(canvas, center - barWidth / 2f, barTop, center + barWidth / 2f, bottom, color);
+                roof = y(entry.facts.payCents, maxCents, top, bottom);
+                drawBuilding(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom, entry.result);
+            } else {
+                drawSignpost(canvas, center, bottom);
+                roof = bottom - ui.dp(14);
             }
             if (entry.requiredCents > 0) {
-                float tick = y(entry.requiredCents, maxCents, top, bottom);
+                float rope = y(entry.requiredCents, maxCents, top, bottom);
                 line.setColor(ui.ink);
                 line.setStrokeWidth(ui.dp(2));
                 line.setStrokeCap(Paint.Cap.ROUND);
-                canvas.drawLine(center - barWidth / 2f - ui.dp(3), tick, center + barWidth / 2f + ui.dp(3), tick, line);
+                canvas.drawLine(center - barWidth / 2f - ui.dp(3), rope, center + barWidth / 2f + ui.dp(3), rope, line);
             }
-            drawBadge(canvas, center, barTop - ui.dp(10), entry.result);
+            // A flag on a short pole on the roof.
+            line.setColor(ui.baseline);
+            line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
+            canvas.drawLine(center, roof, center, roof - ui.dp(5), line);
+            drawBadge(canvas, center, roof - ui.dp(12), entry.result);
         }
+        // The street.
+        fill.setColor(ui.gridline);
+        rect.set(left - ui.dp(4), bottom, right, bottom + ui.dp(4));
+        canvas.drawRect(rect, fill);
         drawTimes(canvas, left + slot * firstSlot, right);
+    }
+
+    /** A soft beam from the top of the chart down onto the selected building. */
+    private void drawSpotlight(Canvas canvas, float center, float barWidth, float bottom) {
+        path.reset();
+        path.moveTo(center - ui.dp(4), 0);
+        path.lineTo(center + ui.dp(4), 0);
+        path.lineTo(center + barWidth / 2f + ui.dp(8), bottom);
+        path.lineTo(center - barWidth / 2f - ui.dp(8), bottom);
+        path.close();
+        fill.setColor((ui.accent & 0x00FFFFFF) | 0x24000000);
+        canvas.drawPath(path, fill);
+        fill.setColor(ui.accent);
+        rect.set(center - barWidth / 2f, bottom + ui.dp(6), center + barWidth / 2f, bottom + ui.dp(9));
+        canvas.drawRoundRect(rect, ui.dp(2), ui.dp(2), fill);
     }
 
     private void drawGrid(Canvas canvas, float left, float right, float top, float bottom, long maxCents) {
@@ -136,14 +161,33 @@ final class DecisionChartView extends View {
         }
     }
 
-    /** A bar with a 4dp rounded data end and a square base. */
-    private void drawBar(Canvas canvas, float l, float t, float r, float b, int color) {
+    /** A building with a rounded roofline and a grid of windows, lit when the offer passed. */
+    private void drawBuilding(Canvas canvas, float l, float t, float r, float b, OfferRule.Result result) {
+        int color = Ui.resultColor(result);
         float radius = Math.min(ui.dp(4), Math.min((r - l) / 2f, (b - t) / 2f));
         path.reset();
         rect.set(l, t, r, b);
         path.addRoundRect(rect, new float[] {radius, radius, radius, radius, 0, 0, 0, 0}, Path.Direction.CW);
         fill.setColor(color);
         canvas.drawPath(path, fill);
+        float window = Math.max(ui.dp(2), Math.min(ui.dp(4), (r - l) / 6f));
+        int lit = result == OfferRule.Result.KEEP ? 0xFFFFE9A3 : result == OfferRule.Result.REVIEW ? 0x99FFFFFF
+                : 0x40000000;
+        fill.setColor(lit);
+        float gap = window * 1.2f;
+        for (float y = t + ui.dp(6); y + window <= b - ui.dp(4); y += window + gap) {
+            for (int column = 0; column < 2; column++) {
+                float x = l + (r - l) * (column == 0 ? 0.3f : 0.7f) - window / 2f;
+                canvas.drawRect(x, y, x + window, y + window, fill);
+            }
+        }
+    }
+
+    /** An offer whose pay was not read: a signpost at street level instead of a building. */
+    private void drawSignpost(Canvas canvas, float center, float bottom) {
+        line.setColor(ui.baseline);
+        line.setStrokeWidth(ui.dp(2));
+        canvas.drawLine(center, bottom, center, bottom - ui.dp(12), line);
     }
 
     private void drawBadge(Canvas canvas, float x, float y, OfferRule.Result result) {

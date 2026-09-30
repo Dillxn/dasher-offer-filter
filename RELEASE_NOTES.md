@@ -1,3 +1,30 @@
+## 0.4.14 — two drawn pages, and a map of where offers pay best
+
+- **Pruned to two pages.** The tab bar is gone. The main page is one scene you scroll through. Everything set once moves to **Settings** (the round button at the top right). The history list, the "Latest offer" card, the rules meter and the email-address field are gone. The ticket, the star and **Share report** now do their jobs.
+- **Drawn, not boxed.**
+  - The mascot stands up in a little machine: offer tickets parachute into it and drop into a basket, a bin and a crate with the day's counts, and a speech bubble says the state.
+  - Offers are a skyline with lit windows, needed-pay ropes and roof flags.
+  - The chosen offer is a ticket with its outcome rubber-stamped on the stub. It follows each new offer until you pick an older one.
+  - Minimums are constellations in a night-sky porthole, with the line "An offer like … needs $X".
+  - Warning signs mark setup problems.
+- **Creative controls.** The rules are price tags, and switches have the mascot's face for a knob (awake on, asleep off). Buttons are chunky keys that press down.
+- **Where offers pay best** (opt-in). Tap **Start mapping** and each new offer is added to the square of about 2 km you were in, using only approximate location from fixes the phone already has. A treasure map gilds squares by pay per mile, with coins on the best three and a trail from you to the best. It all stays on the phone: squares never go into reports, and the map uses no map service. Settings can turn it off or **Forget areas**.
+- An email address saved by older versions is removed, since nothing uses it now.
+
+Evidence boundaries: both pages were rendered and reviewed in light and dark, at 320 dp, and at 2× font.
+
+- **Simulated Android 8 and 15 tests** cover:
+  - the settings button, Back, and keeping the page through recreation
+  - the ticket following new offers, and tapping an older building
+  - the rules preview and the star as typed
+  - Share report and Clear history
+  - Start mapping asking only for approximate location
+  - the map's ranking and default area
+  - the area store (opt-in, one count per offer, stale or missing locations, add-ons, pooled ranking, no position in reports, Forget)
+- **Not verified:**
+  - Real location delivery while Dasher is in front. The app counts offers that arrive without a location, rather than assuming.
+  - Anything on a real phone.
+
 ## 0.4.13 — a star of your minimums, a mascot, and drawn scenery
 
 - **Minimums as a star.** At the top of Rules, a radar chart has a spoke each for pay, per mile, per minute and per stop. Your set minimums are the solid shape with round points. The adaptive minimums learned from offers you accepted are the dashed shape with diamond points. The corners give the exact values (for example `$1.50` set and `$3.13` adaptive per mile). Distance from the middle is what each minimum asks of the same example offer the meter uses, so every spoke shares one dollar scale. The rings are labeled in dollars. The extra-stop fee gets no spoke, because it is added on top of the other minimums rather than being one. It follows the fields as you type. With a large font, the values move under the star.

@@ -172,6 +172,8 @@ final class DecisionLog {
                 while (all.size() > MAX_ENTRIES) all.remove(0);
                 persist(context, all);
             }
+            // A new offer, not a later step of one already recorded: it counts once toward its area.
+            AreaMap.note(context, entry);
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "decision-log", "record failed: " + error.getClass().getSimpleName());
         }
