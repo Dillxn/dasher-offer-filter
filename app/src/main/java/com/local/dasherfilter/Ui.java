@@ -28,7 +28,7 @@ final class Ui {
     static final int GOOD = 0xFF0CA30C;
     static final int WARNING = 0xFFFAB219;
     static final int CRITICAL = 0xFFD03B3B;
-    private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
     final Context context;
     final boolean dark;
@@ -135,33 +135,6 @@ final class Ui {
             card.addView(heading);
         }
         return card;
-    }
-
-    /**
-     * A card that shows only its title until tapped; returns the body the caller fills. Keeps rarely used controls
-     * off the main screen.
-     */
-    LinearLayout foldingCard(LinearLayout page, String title) {
-        LinearLayout card = card(page, null);
-        LinearLayout header = row();
-        header.setMinimumHeight(dp(40));
-        TextView heading = text(title, 17, ink, true);
-        header.addView(heading, weighted());
-        TextView chevron = text("▾", 18, inkSecondary, false);
-        header.addView(chevron);
-        card.addView(header);
-        LinearLayout body = column();
-        body.setVisibility(View.GONE);
-        card.addView(body);
-        header.setClickable(true);
-        header.setContentDescription(title + ", collapsed");
-        header.setOnClickListener(tapped -> {
-            boolean open = body.getVisibility() != View.VISIBLE;
-            body.setVisibility(open ? View.VISIBLE : View.GONE);
-            chevron.setText(open ? "▴" : "▾");
-            header.setContentDescription(title + (open ? ", expanded" : ", collapsed"));
-        });
-        return body;
     }
 
     /** Two equal-width buttons side by side. */

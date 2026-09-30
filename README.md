@@ -16,7 +16,7 @@ If a known-failing background offer exposes a safe DoorDash-owned non-activity D
 
 Keep DoorDash notifications allowed and set its offer channel to Silent. Offer Filter cannot change another app's notification settings.
 
-Dasher also rings and vibrates for an offer with its own sound, outside its notifications, until the offer closes. **Mute Dasher's ring while declining** (Setup & help; on by default) turns down the media and alarm streams while a filtered offer is being declined on screen.
+Dasher also rings and vibrates for an offer with its own sound, outside its notifications, until the offer closes. **Mute Dasher's ring while declining** (More; on by default) turns down the media and alarm streams while a filtered offer is being declined on screen.
 
 - **What it touches.** Only the media and alarm streams, only while that declined offer or its own confirmation is showing, and only when something other than navigation or a call is playing on them.
   - The alarm stream can't be muted, so it goes to its lowest level instead.
@@ -59,24 +59,31 @@ Install the cloud-signed APK over an existing cloud-signed 0.4.x installation. D
 
 The app's icon is a white funnel on blue with a green check. It is an adaptive icon with a themed (one-colour) layer, and offer alerts use the same funnel in the status bar.
 
-The screen is kept short and mostly drawn rather than written.
+The app is one screen with a tab bar at the bottom. Tapping a tab swaps the page in place, and each page keeps its own scroll position. Back from another tab returns to Home. While the keyboard is up, the tab bar steps aside.
 
-- **Top card.** Offer tickets flow into a funnel and out to passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. A failing offer left to you (paused, refused or taken over) counts as review. The funnel has its sieve when on, is open, dashed and amber when paused, and grey when off.
+- **Home.** The filter picture, whether auto-decline is on, and one button. Below that, a row with a Fix button for each part of setup that is off, and the latest offer (tap it to open Offers). An active route shows here with a Forget button.
+- **Offers.** The chart, the selected offer, and the history.
+- **Rules.** The meter, the rule fields, the adaptive minimum and Save.
+- **More.** Setup shortcuts and the mute switch, reports, updates and the version.
+
+The pages are mostly drawn rather than written.
+
+- **Filter picture.** Offer tickets flow into a funnel and out to passed, filtered and review piles, with the last 24 hours' counts. "Filtered" counts only offers the app acted on. A failing offer left to you (paused, refused or taken over) counts as review. The funnel has its sieve when on, is open, dashed and amber when paused, and grey when off.
 - **Opened offer.** Tapping a chart bar or a history row draws the offer: its pay as a bar against the needed-pay tick, and its route from pickup bag to drop-off house with a dot per stop.
 - **Rules.** A meter shows what an offer like your latest one needs, as one bar per rule with icons: minimum pay, per mile, per minute, extra stops, and each adaptive floor. The rule that sets the bar is highlighted. It follows the fields as you type, before you save.
 - **Large fonts.** The drawings size themselves from the system font setting. Labels shrink, or move to their own line, rather than overlap or get cut. With a large font, rule fields stack in one column.
 
-Under the picture, the top card shows whether auto-decline is on, paused or off, the rules in one line (for example `$7 min · $1.50/mi · ≤3 stops`), and one button: **Pause auto-decline** takes effect at once, and **Resume auto-decline** saves the rules and turns auto-decline back on (it refuses when no rule is set). A row with a Fix button appears only while screen reading, background offers or alerts are off. **Rules** and **Setup & help** fold away until tapped; **Save rules** keeps the current on/paused state. While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
+Under the picture, Home shows whether auto-decline is on, paused or off, the rules in one line (for example `$7 min · $1.50/mi · ≤3 stops`), and one button. **Pause auto-decline** takes effect at once. **Resume auto-decline** saves the rules and turns auto-decline back on. With no rule saved the button reads **Set up rules** and opens the Rules tab. A row with a Fix button appears only while screen reading, background offers or alerts are off. **Save rules** keeps the current on/paused state. While paused nothing is declined and every offer gets a silent review card. No real-world acceptance is claimed merely from a KEEP decision or an attempted click.
 
 ## Decision history and diagnostics
 
-Every offer the app evaluates is recorded on the phone, always on and bounded to the latest 200: time, source (screen or notification), the pay/miles/minutes/stops read, the pay the rules required, the result and reason, what the app did (for example "Decline tapped", "Notification hidden; order NOT declined", "Passing alert rang"), and whether auto-decline was paused. It also keeps only the lines that carried a figure or a pay label (such as `$7.90`, `Guaranteed (incl. tips)`, `2 stops (7.2 mi) • 21 min`), never names or addresses, so a misread can be spotted. **Recent offers** charts the latest 14 as bars (pay) against ticks (needed pay), each with a ✓/✕/? badge, and lists the latest five as one line each (`$7.90 · needed $10.80`, reason in plain words). A bar ending below its tick was declined by the rules as written; tap it, or a row, to see what was read and what the app did. Clear history removes it.
+Every offer the app evaluates is recorded on the phone, always on and bounded to the latest 200: time, source (screen or notification), the pay/miles/minutes/stops read, the pay the rules required, the result and reason, what the app did (for example "Decline tapped", "Notification hidden; order NOT declined", "Passing alert rang"), and whether auto-decline was paused. It also keeps only the lines that carried a figure or a pay label (such as `$7.90`, `Guaranteed (incl. tips)`, `2 stops (7.2 mi) • 21 min`), never names or addresses, so a misread can be spotted. The **Offers** tab charts the latest 14 as bars (pay) against ticks (needed pay), each with a ✓/✕/? badge, and lists the latest ten as one line each (`$7.90 · needed $10.80`, reason in plain words). A bar ending below its tick was declined by the rules as written; tap it, or a row, to see what was read and what the app did. Clear history removes it.
 
-**Email report** (under Setup & help) opens the mail app addressed to the user's own saved address, with the report as the body. Nothing is sent until the user presses Send. The subject always starts with `Offer Filter diagnostics`, so Claude can find the latest report through the user's Gmail connection when asked. **Share report** offers any app.
+**Email report** (under More) opens the mail app addressed to the user's own saved address, with the report as the body. Nothing is sent until the user presses Send. The subject always starts with `Offer Filter diagnostics`, so Claude can find the latest report through the user's Gmail connection when asked. **Share report** offers any app.
 
 ## Automatic problem reports and the fixer
 
-Under Setup & help, **Automatic reports** takes a GitHub fine-grained token that can only write issues in this private repository. Saving it is the opt-in. **Turn off reports** removes it and discards anything not yet sent. With a token saved:
+Under More, **Automatic reports** takes a GitHub fine-grained token that can only write issues in this private repository. Saving it is the opt-in. **Turn off reports** removes it and discards anything not yet sent. With a token saved:
 
 - An offer screen the rules could not judge (pay, miles, time or stops not readable) is reported once per reading gap per app version.
 - A declined offer, or its confirmation, still on screen 5 seconds after the Decline tap is reported once per offer. Dasher keeps ringing while it shows.

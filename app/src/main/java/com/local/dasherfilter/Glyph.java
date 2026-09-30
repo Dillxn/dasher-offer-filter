@@ -11,10 +11,11 @@ import android.graphics.drawable.Drawable;
 /**
  * The app's small line icons, drawn on a 24-unit grid so they scale to any size without image files: a clock for
  * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, a
- * rising line for the adaptive minimum, and the funnel that stands for the filter itself.
+ * rising line for the adaptive minimum, the funnel that stands for the filter itself, and the tab bar's chart,
+ * sliders and "more" dots.
  */
 final class Glyph extends Drawable {
-    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, FUNNEL, STOPS }
+    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, FUNNEL, STOPS, CHART, SLIDERS, DOTS }
 
     private final Shape shape;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -126,6 +127,23 @@ final class Glyph extends Drawable {
                 break;
             case STOPS:
                 canvas.drawLine(3, 12, 21, 12, stroke);
+                canvas.drawCircle(5, 12, 2.2f, fill);
+                canvas.drawCircle(12, 12, 2.2f, fill);
+                canvas.drawCircle(19, 12, 2.2f, fill);
+                break;
+            case CHART:
+                canvas.drawLine(3, 21, 21, 21, stroke);
+                canvas.drawLine(6.5f, 20, 6.5f, 13, stroke);
+                canvas.drawLine(12, 20, 12, 5, stroke);
+                canvas.drawLine(17.5f, 20, 17.5f, 10, stroke);
+                break;
+            case SLIDERS:
+                canvas.drawLine(3, 7, 21, 7, stroke);
+                canvas.drawLine(3, 17, 21, 17, stroke);
+                canvas.drawCircle(9, 7, 2.6f, fill);
+                canvas.drawCircle(15, 17, 2.6f, fill);
+                break;
+            case DOTS:
                 canvas.drawCircle(5, 12, 2.2f, fill);
                 canvas.drawCircle(12, 12, 2.2f, fill);
                 canvas.drawCircle(19, 12, 2.2f, fill);

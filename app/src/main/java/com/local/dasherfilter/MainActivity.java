@@ -9,6 +9,9 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Insets;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -24,11 +27,13 @@ import android.text.format.DateUtils;
 import android.util.Patterns;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -43,14 +48,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The app's one screen, kept short: status with Pause/Resume and any setup problem, then recent offers. Rules and
- * setup/help fold away until tapped. Pause and Resume take effect at once; Save keeps the on/paused state.
+ * The app's one screen, with a tab bar that swaps what fills it: Home (the filter picture, Pause/Resume, any setup
+ * problem, the latest offer), Offers (chart and history), Rules, and More (setup, reports, updates). Pause and
+ * Resume take effect at once; Save keeps the on/paused state.
  */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000");
-    private static final int HISTORY_ROWS = 5;
+    private static final int HOME = 0;
+    private static final int OFFERS = 1;
+    private static final int RULES = 2;
+    private static final int MORE = 3;
+    private static final String[] TAB_NAMES = {"Home", "Offers", "Rules", "More"};
+    private static final Glyph.Shape[] TAB_ICONS = {
+            Glyph.Shape.FUNNEL, Glyph.Shape.CHART, Glyph.Shape.SLIDERS, Glyph.Shape.DOTS};
+    private static final String SHOWN_TAB = "tab";
+    private static final int HISTORY_ROWS = 10;
     private static final int MORE_HISTORY_ROWS = 60;
     private static final long DAY_MS = 86_400_000L;
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
@@ -64,6 +78,12 @@ public final class MainActivity extends Activity {
     };
     private Ui ui;
 
+    private TextView pageTitle;
+    private final ScrollView[] pages = new ScrollView[TAB_NAMES.length];
+    private final TextView[] tabs = new TextView[TAB_NAMES.length];
+    private LinearLayout tabBar;
+    private int tab = -1;
+
     private FilterHeroView hero;
     private TextView stateTitle;
     private TextView stateDetail;
@@ -73,12 +93,19 @@ public final class MainActivity extends Activity {
     private Readiness screenReading;
     private Readiness backgroundOffers;
     private Readiness offerAlerts;
+    private LinearLayout latestCard;
+    private LinearLayout latest;
+    private DecisionLog.Entry shownLatest;
+    private LinearLayout routeCard;
+    private TextView routeNote;
 
     private DecisionChartView chart;
     private View legend;
     private LinearLayout selectionPanel;
     private LinearLayout selectionDetail;
     private Button reportSelected;
+    private TextView emptyHistory;
+    private LinearLayout historyCard;
     private LinearLayout history;
     private Button moreHistory;
     private boolean showAllHistory;
@@ -102,8 +129,6 @@ public final class MainActivity extends Activity {
     private Switch diagnostics;
     private TextView updateStatus;
     private Button allowInstalls;
-    private LinearLayout routeRow;
-    private TextView routeNote;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -111,31 +136,42 @@ public final class MainActivity extends Activity {
         OfferAlerts.ensureChannel(this);
         FilterSettings saved = FilterStore.load(this);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(ui.page);
-        scroll.setClipToPadding(true);
-        LinearLayout page = ui.column();
-        page.setPadding(ui.dp(16), ui.dp(20), ui.dp(16), ui.dp(24));
-        scroll.addView(page, Ui.matchWidth());
+        LinearLayout root = ui.column();
+        root.setBackgroundColor(ui.page);
+        pageTitle = ui.text("", 24, ui.ink, true);
+        pageTitle.setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(10));
+        if (Build.VERSION.SDK_INT >= 28) pageTitle.setAccessibilityHeading(true);
+        root.addView(pageTitle, Ui.matchWidth());
+        FrameLayout frame = new FrameLayout(this);
+        root.addView(frame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout home = addPage(frame, HOME);
+        addStatusCard(home);
+        addLatestCard(home);
+        addRouteCard(home);
+        addActivityCards(addPage(frame, OFFERS));
+        addRulesCards(addPage(frame, RULES), saved);
+        addMoreCards(addPage(frame, MORE));
+        tabBar = tabBar();
+        root.addView(tabBar, Ui.matchWidth());
 
-        LinearLayout header = ui.row();
-        header.setPadding(0, 0, 0, ui.dp(14));
-        header.addView(ui.text("Offer Filter", 24, ui.ink, true), Ui.weighted());
-        header.addView(ui.text("v" + Updater.version(this), 13, ui.inkSecondary, false));
-        page.addView(header);
-        addStatusCard(page);
-        addActivityCard(page);
-        addRulesCard(page, saved);
-        addSetupCard(page);
-        TextView footer = ui.text("Not a DoorDash app.", 12, ui.inkSecondary, false);
-        footer.setGravity(Gravity.CENTER_HORIZONTAL);
-        page.addView(footer, Ui.matchWidth());
-
-        setContentView(scroll);
+        setContentView(root);
         styleSystemBars();
-        fitToSystemBars(scroll);
+        fitToSystemBars(root);
+        showTab(state == null ? HOME : state.getInt(SHOWN_TAB, HOME));
         Updater.schedule(this);
         refresh();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putInt(SHOWN_TAB, tab);
+    }
+
+    /** Back from another tab returns Home, as in any app with a tab bar; back from Home leaves. */
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() {
+        if (tab != HOME) showTab(HOME);
+        else super.onBackPressed();
     }
 
     @Override protected void onResume() {
@@ -165,6 +201,79 @@ public final class MainActivity extends Activity {
 
     // ---- Layout ----
 
+    /** One tab's scrolling page inside {@code frame}; returns the column the caller fills with cards. */
+    private LinearLayout addPage(FrameLayout frame, int index) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVisibility(View.GONE);
+        LinearLayout page = ui.column();
+        page.setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(12));
+        scroll.addView(page, Ui.matchWidth());
+        frame.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        pages[index] = scroll;
+        return page;
+    }
+
+    /** The bottom bar: an icon and a word per tab, the shown one marked by a tinted pill behind its icon. */
+    private LinearLayout tabBar() {
+        LinearLayout bar = ui.column();
+        bar.setBackgroundColor(ui.surface);
+        View edge = new View(this);
+        edge.setBackgroundColor(ui.gridline);
+        bar.addView(edge, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, ui.dp(1))));
+        LinearLayout items = ui.row();
+        for (int i = 0; i < tabs.length; i++) {
+            TextView item = ui.text(TAB_NAMES[i], 12, ui.inkSecondary, false);
+            item.setGravity(Gravity.CENTER);
+            item.setSingleLine(true);
+            item.setMinHeight(ui.dp(64));
+            item.setPadding(0, ui.dp(8), 0, ui.dp(8));
+            item.setCompoundDrawablePadding(ui.dp(4));
+            item.setBackground(new RippleDrawable(ColorStateList.valueOf(ui.selectionWash), null,
+                    new ColorDrawable(0xFFFFFFFF)));
+            int index = i;
+            item.setOnClickListener(tapped -> showTab(index));
+            tabs[i] = item;
+            items.addView(item, Ui.weighted());
+        }
+        bar.addView(items, Ui.matchWidth());
+        return bar;
+    }
+
+    private Drawable tabIcon(Glyph.Shape shape, boolean shown) {
+        Drawable pill = ui.rounded(shown ? (ui.accent & 0x00FFFFFF) | (ui.dark ? 0x4D000000 : 0x29000000) : 0, 0, 15);
+        LayerDrawable icon = new LayerDrawable(new Drawable[] {
+                pill, new Glyph(shape, shown ? (ui.dark ? ui.ink : ui.accent) : ui.inkSecondary, ui.dp(22))});
+        icon.setLayerSize(0, ui.dp(56), ui.dp(30));
+        icon.setLayerSize(1, ui.dp(22), ui.dp(22));
+        icon.setLayerGravity(0, Gravity.CENTER);
+        icon.setLayerGravity(1, Gravity.CENTER);
+        icon.setBounds(0, 0, ui.dp(56), ui.dp(30));
+        return icon;
+    }
+
+    /** Swaps the page in place, like a single-page app; each page keeps its own scroll position. */
+    private void showTab(int index) {
+        if (index < 0 || index >= pages.length) index = HOME;
+        boolean changed = index != tab;
+        tab = index;
+        for (int i = 0; i < pages.length; i++) {
+            boolean shown = i == index;
+            pages[i].setVisibility(shown ? View.VISIBLE : View.GONE);
+            tabs[i].setSelected(shown);
+            tabs[i].setTextColor(shown ? ui.ink : ui.inkSecondary);
+            tabs[i].setTypeface(shown ? Ui.MEDIUM : Typeface.DEFAULT);
+            tabs[i].setCompoundDrawablesRelative(null, tabIcon(TAB_ICONS[i], shown), null, null);
+        }
+        pageTitle.setText(index == HOME ? "Offer Filter" : TAB_NAMES[index]);
+        View focused = getCurrentFocus();
+        if (focused != null && !focused.isShown()) focused.clearFocus();
+        if (changed) {
+            pages[index].setAlpha(0f);
+            pages[index].animate().alpha(1f).setDuration(150);
+        }
+    }
+
     private void addStatusCard(LinearLayout page) {
         LinearLayout card = ui.card(page, null);
         hero = new FilterHeroView(this, ui);
@@ -185,17 +294,40 @@ public final class MainActivity extends Activity {
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
     }
 
-    private void addActivityCard(LinearLayout page) {
-        LinearLayout card = ui.card(page, "Recent offers");
+    /** The newest offer on Home, one line of what happened; tapping it opens Offers. */
+    private void addLatestCard(LinearLayout page) {
+        latestCard = ui.card(page, "Latest offer");
+        latest = ui.column();
+        latestCard.addView(latest, Ui.matchWidth());
+        latestCard.setVisibility(View.GONE);
+    }
+
+    /** Shown only while a route is known: add-on offers are judged against it. */
+    private void addRouteCard(LinearLayout page) {
+        routeCard = ui.card(page, null);
+        LinearLayout row = ui.row();
+        routeNote = ui.text("", 13, ui.inkSecondary, false);
+        routeNote.setCompoundDrawablesRelative(new Glyph(Glyph.Shape.ROAD, ui.inkSecondary, ui.dp(18)), null, null,
+                null);
+        routeNote.setCompoundDrawablePadding(ui.dp(8));
+        row.addView(routeNote, Ui.weighted());
+        row.addView(ui.button("Forget", false, () -> {
+            ActiveRouteStore.clear(this);
+            refresh();
+        }));
+        routeCard.addView(row);
+        routeCard.setVisibility(View.GONE);
+    }
+
+    private void addActivityCards(LinearLayout page) {
+        LinearLayout card = ui.card(page, null);
 
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
             showSelection(entry);
             selectionPanel.setVisibility(View.VISIBLE);
         });
-        LinearLayout.LayoutParams chartParams = Ui.matchWidth();
-        chartParams.topMargin = ui.dp(8);
-        card.addView(chart, chartParams);
+        card.addView(chart, Ui.matchWidth());
         legend = legend();
         card.addView(legend);
 
@@ -210,11 +342,13 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams panelParams = Ui.matchWidth();
         panelParams.topMargin = ui.dp(10);
         card.addView(selectionPanel, panelParams);
+        emptyHistory = ui.note("No offers yet. Each one Dasher shows appears here with what the filter did.");
+        card.addView(emptyHistory);
 
+        historyCard = ui.card(page, null);
         history = ui.column();
-        history.setPadding(0, ui.dp(6), 0, 0);
-        card.addView(history);
-        moreHistory = ui.addButton(card, "Show more", false, () -> {
+        historyCard.addView(history);
+        moreHistory = ui.addButton(historyCard, "Show more", false, () -> {
             showAllHistory = !showAllHistory;
             shownHistoryVersion = -1;
             refreshHistory();
@@ -249,14 +383,11 @@ public final class MainActivity extends Activity {
         return legend;
     }
 
-    private void addRulesCard(LinearLayout page, FilterSettings saved) {
-        LinearLayout body = ui.foldingCard(page, "Rules");
+    private void addRulesCards(LinearLayout page, FilterSettings saved) {
         ruleMeter = new RuleMeterView(this, ui);
-        LinearLayout.LayoutParams meterParams = Ui.matchWidth();
-        meterParams.topMargin = ui.dp(4);
-        body.addView(ruleMeter, meterParams);
-        body.addView(ui.divider());
+        ui.card(page, null).addView(ruleMeter, Ui.matchWidth());
 
+        LinearLayout body = ui.card(page, null);
         LinearLayout first = fieldRow();
         flat = ui.field(cell(first), "Minimum pay ($)", money(saved.flatCents), true, Glyph.Shape.COIN);
         maxStops = ui.field(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false,
@@ -273,6 +404,7 @@ public final class MainActivity extends Activity {
         TextView zero = ui.text("0 turns a rule off.", 12, ui.inkSecondary, false);
         zero.setPadding(0, ui.dp(6), 0, 0);
         body.addView(zero);
+        body.addView(ui.divider());
 
         rising = ui.toggle(body, "Adaptive minimum", saved.risingOffers);
         LinearLayout baseline = ui.row();
@@ -321,8 +453,8 @@ public final class MainActivity extends Activity {
         return cell;
     }
 
-    private void addSetupCard(LinearLayout page) {
-        LinearLayout body = ui.foldingCard(page, "Setup & help");
+    private void addMoreCards(LinearLayout page) {
+        LinearLayout body = ui.card(page, "Setup");
         ui.buttonPair(body,
                 ui.button("Accessibility", false, () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))),
                 ui.button("Notification access", false, this::openNotificationAccess));
@@ -331,10 +463,10 @@ public final class MainActivity extends Activity {
                 ui.button("DoorDash channel", false, this::openDoorDashChannel));
         Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
-        body.addView(ui.divider());
 
+        body = ui.card(page, "Reports");
         TextView caption = ui.text("Your email", 13, ui.inkSecondary, false);
-        caption.setPadding(0, ui.dp(8), 0, ui.dp(4));
+        caption.setPadding(0, ui.dp(10), 0, ui.dp(4));
         body.addView(caption);
         reportEmail = new EditText(this);
         reportEmail.setId(View.generateViewId());
@@ -353,8 +485,8 @@ public final class MainActivity extends Activity {
                 ui.button("Clear history", false, this::confirmClearHistory));
         body.addView(ui.divider());
         addAutomaticReports(body);
-        body.addView(ui.divider());
 
+        body = ui.card(page, "Updates");
         Switch updates = ui.toggle(body, "Automatic updates", Updater.enabled(this));
         updates.setOnCheckedChangeListener((view, on) -> {
             Updater.setEnabled(this, on);
@@ -366,15 +498,11 @@ public final class MainActivity extends Activity {
         allowInstalls = ui.addButton(body, "Allow installs", false, () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
 
-        routeRow = ui.row();
-        routeRow.setPadding(0, ui.dp(10), 0, 0);
-        routeNote = ui.text("", 13, ui.inkSecondary, false);
-        routeRow.addView(routeNote, Ui.weighted());
-        routeRow.addView(ui.button("Forget", false, () -> {
-            ActiveRouteStore.clear(this);
-            refresh();
-        }));
-        body.addView(routeRow);
+        TextView footer = ui.text("Offer Filter v" + Updater.version(this) + " · Not a DoorDash app.", 12,
+                ui.inkSecondary, false);
+        footer.setGravity(Gravity.CENTER_HORIZONTAL);
+        footer.setPadding(0, ui.dp(4), 0, 0);
+        page.addView(footer, Ui.matchWidth());
     }
 
     /** A GitHub token turns on reports of unreadable offers and errors, filed where the fixer picks them up. */
@@ -418,8 +546,8 @@ public final class MainActivity extends Activity {
             masterButton.setText("Resume auto-decline");
         } else {
             stateTitle.setText("Auto-decline off");
-            stateDetail.setText("Add a rule under Rules.");
-            masterButton.setText("Resume auto-decline");
+            stateDetail.setText("Set a minimum pay or rate to start.");
+            masterButton.setText("Set up rules");
         }
 
         screenReading.update(OfferFilterService.isConnected());
@@ -433,7 +561,7 @@ public final class MainActivity extends Activity {
         updateStatus.setText(Updater.status(this));
         allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
         OfferSnapshot route = ActiveRouteStore.load(this);
-        routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
+        routeCard.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("Active route: " + route.summary());
         if (diagnostics.isChecked() && !DiagnosticLog.isEnabled(this)) diagnostics.setChecked(false);
         boolean reporting = ReportOutbox.enabled(this);
@@ -453,6 +581,15 @@ public final class MainActivity extends Activity {
         boolean empty = recent.isEmpty();
         chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         legend.setVisibility(empty ? View.GONE : View.VISIBLE);
+        emptyHistory.setVisibility(empty ? View.VISIBLE : View.GONE);
+        historyCard.setVisibility(empty ? View.GONE : View.VISIBLE);
+        DecisionLog.Entry newest = empty ? null : recent.get(0);
+        latestCard.setVisibility(empty ? View.GONE : View.VISIBLE);
+        if (newest != shownLatest) {
+            shownLatest = newest;
+            latest.removeAllViews();
+            if (newest != null) latest.addView(offerRow(newest, false));
+        }
         DecisionLog.Entry selected = chart.selectedEntry();
         selectionPanel.setVisibility(selected == null ? View.GONE : View.VISIBLE);
         if (selected != null) showSelection(selected);
@@ -580,8 +717,16 @@ public final class MainActivity extends Activity {
         return detail;
     }
 
-    /** Badge, "$7.90 · needed $10.80", time, and the reason in plain words; tap for everything else. */
     private View historyRow(DecisionLog.Entry entry) {
+        return offerRow(entry, true);
+    }
+
+    /**
+     * Badge, "$7.90 · needed $10.80", time, and the reason in plain words.
+     *
+     * @param opens true to open the drawn offer in place on a tap; false (Home) to go to Offers instead
+     */
+    private View offerRow(DecisionLog.Entry entry, boolean opens) {
         LinearLayout row = ui.row();
         row.setGravity(Gravity.TOP);
         row.setPadding(0, ui.dp(8), 0, ui.dp(8));
@@ -597,18 +742,29 @@ public final class MainActivity extends Activity {
         top.addView(ui.text(when(entry.at), 13, ui.inkSecondary, false));
         texts.addView(top);
         texts.addView(ui.text(plainReason(entry), 13, ui.inkSecondary, false));
-        // The drawn offer appears on the first tap; built then, so a long history stays cheap.
-        LinearLayout expansion = ui.column();
-        expansion.setVisibility(View.GONE);
-        texts.addView(expansion, Ui.matchWidth());
-        Button report = ui.addButton(texts, "Report this offer", false, () -> reportOffer(entry));
-        report.setVisibility(View.GONE);
         row.addView(texts, Ui.weighted());
         row.setClickable(true);
         row.setContentDescription(Ui.resultLabel(entry.result) + ", " + headline(entry) + ", "
                 + plainReason(entry));
         row.setBackground(new RippleDrawable(ColorStateList.valueOf(ui.selectionWash), null,
                 ui.rounded(0xFFFFFFFF, 0, 8)));
+        if (!opens) {
+            TextView chevron = ui.text("›", 22, ui.inkSecondary, false);
+            chevron.setPadding(ui.dp(10), 0, 0, 0);
+            chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams centered = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            centered.gravity = Gravity.CENTER_VERTICAL;
+            row.addView(chevron, centered);
+            row.setOnClickListener(tapped -> showTab(OFFERS));
+            return row;
+        }
+        // The drawn offer appears on the first tap; built then, so a long history stays cheap.
+        LinearLayout expansion = ui.column();
+        expansion.setVisibility(View.GONE);
+        texts.addView(expansion, Ui.matchWidth());
+        Button report = ui.addButton(texts, "Report this offer", false, () -> reportOffer(entry));
+        report.setVisibility(View.GONE);
         row.setOnClickListener(tapped -> {
             boolean expand = expansion.getVisibility() != View.VISIBLE;
             if (expand && expansion.getChildCount() == 0) expansion.addView(offerDetail(entry, false));
@@ -675,9 +831,12 @@ public final class MainActivity extends Activity {
 
     // ---- Actions ----
 
+    /** Pause, Resume, or with no saved rule, off to the Rules tab to add one. */
     private void toggleAutoDecline() {
-        if (FilterStore.load(this).enabled) pause();
-        else resume();
+        FilterSettings saved = FilterStore.load(this);
+        if (saved.enabled) pause();
+        else if (saved.hasAnyRule()) resume();
+        else showTab(RULES);
     }
 
     /** Persists auto-decline off immediately, keeping every saved rule. */
@@ -692,7 +851,8 @@ public final class MainActivity extends Activity {
         try {
             FilterSettings next = readRules(true);
             if (!next.hasAnyRule()) {
-                toast("Add a rule under Rules first.");
+                toast("Add a rule first.");
+                showTab(RULES);
                 return;
             }
             FilterStore.save(this, next);
@@ -710,7 +870,9 @@ public final class MainActivity extends Activity {
             if (pausedForLackOfRules) next = next.withEnabled(false);
             FilterStore.save(this, next);
             rulesChanged();
-            toast(pausedForLackOfRules ? "No rules left, so auto-decline is paused." : "Rules saved.");
+            toast(pausedForLackOfRules ? "No rules left, so auto-decline is paused."
+                    : next.enabled || !next.hasAnyRule() ? "Rules saved."
+                    : "Rules saved. Auto-decline stays paused until you Resume it on Home.");
         } catch (IllegalArgumentException error) {
             toast(error.getMessage());
         }
@@ -754,7 +916,7 @@ public final class MainActivity extends Activity {
     /** Asks what went wrong (optional) and files the offer, with what was read, for the fixer. */
     private void reportOffer(DecisionLog.Entry entry) {
         if (!ReportOutbox.enabled(this)) {
-            toast("Add a GitHub token under Setup & help first.");
+            toast("Add a GitHub token under More first.");
             return;
         }
         EditText note = new EditText(this);
@@ -905,7 +1067,7 @@ public final class MainActivity extends Activity {
         Window window = getWindow();
         if (Build.VERSION.SDK_INT < 35) {
             window.setStatusBarColor(ui.page);
-            window.setNavigationBarColor(ui.page);
+            window.setNavigationBarColor(ui.surface);
         }
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = window.getInsetsController();
@@ -921,15 +1083,22 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Android 15 draws apps targeting API 35 edge to edge, so the page must keep itself clear of the status bar,
-     * navigation bar, cutouts, and keyboard. Earlier versions already lay the window out inside the system bars.
+     * Android 15 draws apps targeting API 35 edge to edge, so the screen must keep itself clear of the status bar,
+     * navigation bar, cutouts, and keyboard; the tab bar's own color runs on under the navigation bar. Earlier
+     * versions already lay the window out inside the system bars. While the keyboard is up (Android 11 and later
+     * report it), the tab bar steps aside so the field being typed in keeps the room.
      */
     private void fitToSystemBars(View content) {
-        if (Build.VERSION.SDK_INT < 35) return;
+        if (Build.VERSION.SDK_INT < 30) return;
         content.setOnApplyWindowInsetsListener((view, insets) -> {
-            Insets bars = insets.getInsets(WindowInsets.Type.systemBars()
-                    | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            int keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom;
+            boolean typing = keyboard > 0 || insets.isVisible(WindowInsets.Type.ime());
+            tabBar.setVisibility(typing ? View.GONE : View.VISIBLE);
+            if (Build.VERSION.SDK_INT >= 35) {
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, typing ? Math.max(keyboard, bars.bottom) : 0);
+                tabBar.setPadding(0, 0, 0, bars.bottom);
+            }
             return insets;
         });
     }

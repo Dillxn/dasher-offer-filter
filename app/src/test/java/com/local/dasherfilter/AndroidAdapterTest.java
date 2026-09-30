@@ -285,10 +285,18 @@ public class AndroidAdapterTest {
     public void settingsScreenStaysClearOfSystemBarsAndKeyboard() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View page = ((ViewGroup) activity.get().findViewById(android.R.id.content)).getChildAt(0);
+            View tabBar = ((ViewGroup) page).getChildAt(2);
             if (Build.VERSION.SDK_INT >= 35) {
-                dispatchEdgeToEdgeInsets(page);
+                // Keyboard up: the tab bar steps aside and the page ends above the keyboard.
+                dispatchEdgeToEdgeInsets(page, 300);
                 assertEquals(50, page.getPaddingTop());
                 assertEquals(300, page.getPaddingBottom());
+                assertEquals(View.GONE, tabBar.getVisibility());
+                // Keyboard down: the tab bar is back, its color running on under the navigation bar.
+                dispatchEdgeToEdgeInsets(page, 0);
+                assertEquals(0, page.getPaddingBottom());
+                assertEquals(View.VISIBLE, tabBar.getVisibility());
+                assertEquals(80, tabBar.getPaddingBottom());
             } else {
                 // Before Android 15 the platform itself lays the window out inside the system bars.
                 assertEquals(0, page.getPaddingTop());
@@ -337,11 +345,62 @@ public class AndroidAdapterTest {
     }
 
     @Test
-    public void resumeWithoutAnyRuleLeavesAutoDeclineOff() {
+    public void withoutAnyRuleTheMainButtonLeadsToTheRules() {
         FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            findButton(activity.get().findViewById(android.R.id.content), "Resume auto-decline").performClick();
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull(findButton(content, "Resume auto-decline"));
+            findButton(content, "Set up rules").performClick();
+            settle();
             assertFalse(FilterStore.load(app).enabled);
+            assertTrue(find(content, RuleMeterView.class).isShown());
+            assertTrue(findTab(content, "Rules").isSelected());
+        }
+    }
+
+    @Test
+    public void theTabBarSwapsPagesInPlaceAndBackReturnsHome() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            // Home: the filter picture and the latest offer; everything else waits behind its tab.
+            assertTrue(find(content, FilterHeroView.class).isShown());
+            assertTrue(findTab(content, "Home").isSelected());
+            assertFalse(find(content, DecisionChartView.class).isShown());
+            assertFalse(find(content, RuleMeterView.class).isShown());
+            assertNull(shownButton(content, "Email report"));
+
+            openTab(content, "Rules");
+            assertTrue(find(content, RuleMeterView.class).isShown());
+            assertFalse(find(content, FilterHeroView.class).isShown());
+            assertTrue(findTab(content, "Rules").isSelected());
+            assertFalse(findTab(content, "Home").isSelected());
+
+            // The shown tab survives the activity being recreated (rotation, dark mode switch).
+            activity.recreate();
+            content = activity.get().findViewById(android.R.id.content);
+            assertTrue(find(content, RuleMeterView.class).isShown());
+
+            openTab(content, "More");
+            assertNotNull(shownButton(content, "Email report"));
+            activity.get().onBackPressed();
+            assertTrue(find(content, FilterHeroView.class).isShown());
+            assertNull(shownButton(content, "Email report"));
+            assertFalse(activity.get().isFinishing());
+        }
+    }
+
+    @Test
+    public void homeShowsTheLatestOfferAndATapOnItOpensOffers() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            TextView reason = shownTextContaining(content, "Below your per-mile rate");
+            assertNotNull("the latest offer is on Home", reason);
+            ((View) reason.getParent().getParent()).performClick();
+            settle();
+            assertTrue(find(content, DecisionChartView.class).isShown());
+            assertTrue(findTab(content, "Offers").isSelected());
         }
     }
 
@@ -413,6 +472,7 @@ public class AndroidAdapterTest {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            openTab(content, "Offers");
             DecisionChartView chart = findChart(content);
             assertNotNull(chart);
             assertNull(chart.selectedEntry());
@@ -434,7 +494,8 @@ public class AndroidAdapterTest {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            View row = (View) findTextContaining(content, "Below your per-mile rate").getParent().getParent();
+            openTab(content, "Offers");
+            View row = (View) shownTextContaining(content, "Below your per-mile rate").getParent().getParent();
             row.performClick();
             assertNull("no report button without a token", shownButton(content, "Report this offer"));
             assertNotNull(findTextContaining(content, "Off. Paste a GitHub token"));
@@ -534,7 +595,8 @@ public class AndroidAdapterTest {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertNull("drawn only when opened", find(content, OfferCardView.class));
-            ((View) findTextContaining(content, "Below your per-mile rate").getParent().getParent()).performClick();
+            openTab(content, "Offers");
+            ((View) shownTextContaining(content, "Below your per-mile rate").getParent().getParent()).performClick();
             OfferCardView card = find(content, OfferCardView.class);
             assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
                     card.getContentDescription().toString());
@@ -735,6 +797,49 @@ public class AndroidAdapterTest {
         return null;
     }
 
+    /** Like {@link #findTextContaining}, but only text actually on screen (itself and every ancestor visible). */
+    private static TextView shownTextContaining(View view, String text) {
+        if (view instanceof TextView && view.isShown() && ((TextView) view).getText().toString().contains(text)) {
+            return (TextView) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = shownTextContaining(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    /** The tab bar item named {@code name}: clickable text that is not a button. */
+    private static TextView findTab(View view, String name) {
+        if (view instanceof TextView && !(view instanceof Button) && view.isClickable()
+                && name.contentEquals(((TextView) view).getText())) {
+            return (TextView) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findTab(group.getChildAt(i), name);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    /** Taps a tab, as a user would, and lets the page swap and a layout pass run. */
+    private static void openTab(View root, String name) {
+        TextView tab = findTab(root, name);
+        assertNotNull(name, tab);
+        tab.performClick();
+        settle();
+    }
+
+    private static void settle() {
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300));
+    }
+
     private static DecisionChartView findChart(View view) {
         if (view instanceof DecisionChartView) return (DecisionChartView) view;
         if (view instanceof ViewGroup) {
@@ -764,12 +869,12 @@ public class AndroidAdapterTest {
                 .putExtra(PackageInstaller.EXTRA_STATUS, status);
     }
 
-    /** Status bar 50 px, navigation bar 80 px, keyboard 300 px. Requires API 30+. */
-    private static void dispatchEdgeToEdgeInsets(View view) {
+    /** Status bar 50 px, navigation bar 80 px, and a keyboard of {@code keyboard} px (0: none). Requires API 30+. */
+    private static void dispatchEdgeToEdgeInsets(View view, int keyboard) {
         view.dispatchApplyWindowInsets(new WindowInsets.Builder()
                 .setInsets(WindowInsets.Type.statusBars(), Insets.of(0, 50, 0, 0))
                 .setInsets(WindowInsets.Type.navigationBars(), Insets.of(0, 0, 0, 80))
-                .setInsets(WindowInsets.Type.ime(), Insets.of(0, 0, 0, 300))
+                .setInsets(WindowInsets.Type.ime(), Insets.of(0, 0, 0, keyboard))
                 .build());
     }
 
