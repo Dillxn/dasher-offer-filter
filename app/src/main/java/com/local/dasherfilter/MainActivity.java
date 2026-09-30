@@ -849,9 +849,9 @@ public final class MainActivity extends Activity {
         areaHere = here;
         areaMap.show(cells, here);
         List<AreaMap.Cell> ranked = AreaMap.ranked(cells);
-        // Until a square is picked, the best one is shown.
+        // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
-        else if (areaMap.selected() != null) showArea(areaMap.selected());
+        if (areaMap.selected() != null) showArea(areaMap.selected());
         else areaDetail.removeAllViews();
     }
 

@@ -670,6 +670,58 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void theBestAreaIsFollowedUntilOneIsPicked() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        AreaMap.setEnabled(app, true);
+        noteOfferAt(37.7749, -122.4194, 1000, 5.0);
+        noteOfferAt(37.7749, -122.4194, 1200, 6.0);
+        noteOfferAt(37.7749, -122.4194, 800, 4.0);
+        setLocation(37.7749, -122.4194);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull(shownTextContaining(content, "#1 · Around you"));
+
+            // A better area turns up while the map is open: nothing was picked, so the details follow it.
+            noteOfferAt(37.8149, -122.3794, 1500, 5.0);
+            noteOfferAt(37.8149, -122.3794, 1800, 6.0);
+            noteOfferAt(37.8149, -122.3794, 1200, 4.0);
+            setLocation(37.7749, -122.4194);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
+            assertNotNull(shownTextContaining(content, "#1 · 3.6 mi NE of you"));
+            assertNull(shownTextContaining(content, "#2 · Around you"));
+        }
+    }
+
+    @Test
+    public void aPickedAreaStaysPickedAsTheRankingChanges() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        AreaMap.setEnabled(app, true);
+        noteOfferAt(37.7749, -122.4194, 1000, 5.0);
+        noteOfferAt(37.7749, -122.4194, 1200, 6.0);
+        noteOfferAt(37.7749, -122.4194, 800, 4.0);
+        noteOfferAt(37.8149, -122.3794, 1500, 5.0);
+        noteOfferAt(37.8149, -122.3794, 1800, 6.0);
+        noteOfferAt(37.8149, -122.3794, 1200, 4.0);
+        setLocation(37.7749, -122.4194);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            AreaMapView map = find(content, AreaMapView.class);
+            map.pick(AreaMap.ranked(AreaMap.cells(app)).get(1));
+            assertNotNull(shownTextContaining(content, "#2 · Around you"));
+
+            // An even better area turns up: the picked one stays, now third.
+            noteOfferAt(37.7349, -122.4594, 3000, 5.0);
+            noteOfferAt(37.7349, -122.4594, 3600, 6.0);
+            noteOfferAt(37.7349, -122.4594, 2400, 4.0);
+            setLocation(37.7749, -122.4194);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
+            assertNotNull(shownTextContaining(content, "#3 · Around you"));
+        }
+    }
+
+    @Test
     public void acceptedOffersRaiseTheBestRatesUntilReset() {
         // Nothing is learned while the adaptive minimum is off, or while auto-decline is paused.
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));

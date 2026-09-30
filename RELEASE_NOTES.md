@@ -1,3 +1,9 @@
+## 0.4.15 — the map keeps showing the best area
+
+- **Fix:** the map's details are meant to show the best area until you tap another. In 0.4.14, the first automatic choice counted as your tap, so when a better area turned up while the page was open, the details stayed on the old one. They now follow the best area until you pick one, and your pick then stays put as the ranking changes.
+
+Evidence boundaries: simulated Android 8 and 15 tests cover both. The first test fails on 0.4.14. Not seen on a real phone.
+
 ## 0.4.14 — two drawn pages, and a map of where offers pay best
 
 - **Pruned to two pages.** The tab bar is gone. The main page is one scene you scroll through. Everything set once moves to **Settings** (the round button at the top right). The history list, the "Latest offer" card, the rules meter and the email-address field are gone. The ticket, the star and **Share report** now do their jobs.

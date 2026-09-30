@@ -76,9 +76,15 @@ final class AreaMapView extends View {
         return selected;
     }
 
+    /** Shows {@code cell} as selected without telling the listener: the screen's own choice, not the user's. */
     void select(AreaMap.Cell cell) {
         selected = cell == null ? null : find(cell.row, cell.col);
         invalidate();
+    }
+
+    /** The user's choice of square: selected, and reported to the listener. */
+    void pick(AreaMap.Cell cell) {
+        select(cell);
         if (onSelect != null && selected != null) onSelect.selected(selected);
     }
 
@@ -358,7 +364,7 @@ final class AreaMapView extends View {
                     nearest = cell;
                 }
             }
-            if (nearest != null) select(nearest);
+            if (nearest != null) pick(nearest);
         }
         return super.onTouchEvent(event);
     }
