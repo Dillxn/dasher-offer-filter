@@ -21,10 +21,10 @@ def main():
         counts = {key: int(r.get(key, 0)) for key in totals}
         suites[r.get('name', path.name)] = counts
         for key, value in counts.items(): totals[key] += value
-    required = {'com.local.dasherfilter.AndroidAdapterTest': 120, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 102, 'com.local.dasherfilter.DecisionLogTest': 10, 'com.local.dasherfilter.ReportOutboxTest': 27, 'com.local.dasherfilter.MotionAdapterTest': 8, 'com.local.dasherfilter.GitHubConnectTest': 10, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
+    required = {'com.local.dasherfilter.AndroidAdapterTest': 122, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 104, 'com.local.dasherfilter.DecisionLogTest': 10, 'com.local.dasherfilter.ReportOutboxTest': 27, 'com.local.dasherfilter.MotionAdapterTest': 8, 'com.local.dasherfilter.GitHubConnectTest': 10, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
     for name, minimum in required.items():
         if suites.get(name, {}).get('tests', 0) < minimum: raise ValueError('Missing Android adapter coverage: ' + name)
-    if totals['tests'] < 421 or totals['failures'] or totals['errors'] or totals['skipped']:
+    if totals['tests'] < 425 or totals['failures'] or totals['errors'] or totals['skipped']:
         raise ValueError('Test gate failed: ' + json.dumps(totals))
     apk = ROOT / 'app/build/outputs/apk/debug/app-debug.apk'
     sdk = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'

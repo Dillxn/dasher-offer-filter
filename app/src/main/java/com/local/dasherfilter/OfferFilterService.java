@@ -760,18 +760,24 @@ public final class OfferFilterService extends AccessibilityService {
                 && node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
     }
 
-    /** The last other screen captured, and when: a screen whose words have not changed is kept once. */
+    /** The last other screen captured, and when. */
     private int lastOtherScreen;
     private long lastOtherScreenAt;
+    /** A screen whose only change is a number (a countdown, an ETA) is kept at most this often. */
+    static final long SAME_SCREEN_MS = 60_000;
 
-    /** With capture on, one line per distinct other Dasher screen (at most one a second): its words, as read. */
+    /**
+     * With capture on, one line per distinct other Dasher screen (at most one a second): its words, as read, into
+     * the screens log. Numbers alone changing (a clock ticking) does not make a new screen more than once a minute.
+     */
     private void captureOtherScreen(Scan scan, long now) {
         if (!DiagnosticLog.isEnabled(this)) return;
-        int words = scan.text.hashCode() * 31 + scan.metricParts.hashCode();
-        if (words == lastOtherScreen || now - lastOtherScreenAt < 1000) return;
+        int words = (scan.text.toString() + scan.metricParts).replaceAll("[0-9]", "#").hashCode();
+        long since = now - lastOtherScreenAt;
+        if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return;
         lastOtherScreen = words;
         lastOtherScreenAt = now;
-        DiagnosticLog.log(this, "screen", "other labels=" + scan.text + " metricParts=" + scan.metricParts);
+        DiagnosticLog.logScreen(this, "other labels=" + scan.text + " metricParts=" + scan.metricParts);
     }
 
     private void diagnostic(String phase, Scan scan, OfferSnapshot offer, OfferRule.Decision decision) {

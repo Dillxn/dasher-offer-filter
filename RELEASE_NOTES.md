@@ -1,3 +1,19 @@
+## 0.4.34 — shopping screens never push offers out of a report
+
+- **Two logs instead of one.** Offers, decisions and status go in one small log, Dasher's other screens (a shopping list, an item) in another, so a few minutes of shopping can no longer push the offers out of a report you share. Every report now has both: the newest offers log, then "Dasher's other screens (newest)", each starting at a whole line.
+- **Kept only as long as a report can carry**, never older than a day: less customer text sits on the phone.
+- **A ticking clock is not a new screen.** A screen whose only change is a number (a countdown, an ETA) is kept at most once a minute.
+- The line under **Share report** now says exactly that.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - an offer line still in the report after 40 large shopping screens;
+  - the newest screen kept;
+  - each section starting at a whole line;
+  - ten minutes of a ticking delivery clock kept once;
+  - a new item screen kept at once.
+- **Not verified on a real phone:** a full shopping order's screens.
+
 ## 0.4.33 — screen text capture is automatic
 
 - **No switch to remember.** What the screen reader sees, including Dasher's shopping screens, is always captured into a small rolling log on this phone: the last 24 hours, the newest 128 KB. **Share report** includes it; nothing else sends it, and automatic GitHub reports still carry only masked offer labels. **Clear history** now clears it too. The "Capture full screen text (30 min)" switch is gone; one line under **Share report** says what is kept.

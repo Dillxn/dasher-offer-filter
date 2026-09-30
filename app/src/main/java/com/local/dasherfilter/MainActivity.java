@@ -742,8 +742,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ui.heading(body, "Reports");
         ui.listRow(body, "Share report", this::shareReport);
         ui.listRow(body, "Clear history", this::confirmClearHistory);
-        TextView kept = ui.text("Dasher's screen text from the last day stays on this phone for reports. It leaves only "
-                + "in a report you share.", 13, ui.inkSecondary, false);
+        TextView kept = ui.text("The most recent screen text (never older than a day) stays on this phone for reports. "
+                + "It leaves only in a report you share.", 13, ui.inkSecondary, false);
         kept.setPadding(0, ui.dp(6), 0, 0);
         body.addView(kept);
 

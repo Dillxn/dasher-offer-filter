@@ -390,6 +390,26 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void aTickingClockOnAnOtherScreenIsKeptAtMostOnceAMinute() {
+        for (int minute = 30; minute < 40; minute++) {
+            AccessibilityNodeInfo screen = node("", false);
+            Shadows.shadowOf(screen).addChild(node("Deliver by 5:" + minute + " PM", false));
+            Shadows.shadowOf(screen).addChild(node("Kroger", false));
+            show(screen);
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        }
+        String kept = DiagnosticLog.readScreens(app);
+        assertEquals(kept, 1, kept.split("Deliver by", -1).length - 1);
+        // A minute later, the same screen is kept again; a different one at once.
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(OfferFilterService.SAME_SCREEN_MS / 1000));
+        AccessibilityNodeInfo item = node("", false);
+        Shadows.shadowOf(item).addChild(node("Organic bananas", false));
+        Shadows.shadowOf(item).addChild(node("Aisle 12", false));
+        show(item);
+        assertTrue(DiagnosticLog.readScreens(app).contains("Aisle 12"));
+    }
+
+    @Test
     public void dasherInTheOtherHalfIsRememberedForAMomentOnly() {
         controller.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(0);

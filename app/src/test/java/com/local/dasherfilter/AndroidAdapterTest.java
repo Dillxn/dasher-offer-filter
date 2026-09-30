@@ -215,6 +215,21 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void aFewMinutesOfShoppingNeverPushTheOffersOutOfAReport() {
+        DiagnosticLog.log(app, "screen", "offer|OFFER-MARKER $7.90 7.2 mi 21 min");
+        String big = String.join("", Collections.nCopies(3900, "z"));
+        for (int i = 0; i < 40; i++) DiagnosticLog.logScreen(app, "other labels=[Item " + i + " " + big + "]");
+        String report = DiagnosticLog.report(app);
+        assertTrue("the offer is still in the report", report.contains("OFFER-MARKER"));
+        assertTrue(report.contains("== Dasher's other screens (newest)"));
+        assertTrue("the newest screen is there", report.contains("Item 39 "));
+        assertTrue(String.valueOf(report.length()), report.length() <= 60_000 + 40);
+        // Each section's window starts at a whole line.
+        String screens = report.substring(report.indexOf("== Dasher's other screens (newest)\n") + 35);
+        assertTrue(screens, screens.startsWith("[older entries omitted]\n20") || screens.startsWith("20"));
+    }
+
+    @Test
     public void screenCaptureIsAutomaticAndKeepsOnlyTheLastDay() throws Exception {
         assertTrue("on from the start, with no switch", DiagnosticLog.isEnabled(app));
 
