@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * What one of Dasher's click events says about the tap: Accept, Decline, neither, or Offer Filter's own tap coming
- * back. Android Views put a button's text into the event; Jetpack Compose (which Dasher's screens look like) puts
+ * What one of Dasher's click events says about the tap: Accept, Decline, "End dash" (on Dasher's "End your current
+ * dash?"), none of them, or Offer Filter's own tap coming back. Android Views put a button's text into the event; Jetpack Compose (which Dasher's screens look like) puts
  * none there, and its clickable node sits above the label, so the label is looked for on the node, a few nodes
  * above it, a few below it (only when those are few and show none of an offer's facts, so a tap on an offer card's
  * body is no Accept), and by the node being the very control the last offer read found. A tap that shows both
@@ -21,7 +21,7 @@ final class ClickEvidence {
      */
     static final int MAX_BELOW_LABELS = 6;
 
-    enum Verdict { OWN, ACCEPT, DECLINE, BOTH, OTHER }
+    enum Verdict { OWN, ACCEPT, DECLINE, BOTH, END_DASH, OTHER }
 
     final List<String> eventText;
     final String description;
@@ -89,13 +89,34 @@ final class ClickEvidence {
         return !own && declineSignal() && !acceptSignal();
     }
 
+    /**
+     * The user's "End dash" (on Dasher's "End your current dash?"): not Offer Filter's own tap, its event, node or the
+     * nodes just above it (or the few below, as for Accept) say exactly that, and nothing about it names the
+     * question's other button ("Go back"), as a tap on the whole dialog would.
+     */
+    boolean endDash() {
+        if (own || acceptSignal() || declineSignal()) return false;
+        List<String> labels = new ArrayList<>(eventText);
+        labels.add(description);
+        labels.addAll(above);
+        if (belowNamesTheControl()) labels.addAll(below);
+        boolean endDash = false;
+        for (String label : labels) {
+            String name = label == null ? "" : OfferControls.normalize(label);
+            if (name.equals("go back")) return false;
+            if (name.equals("end dash")) endDash = true;
+        }
+        return endDash;
+    }
+
     Verdict verdict() {
         if (own) return Verdict.OWN;
         boolean accept = acceptSignal();
         boolean decline = declineSignal();
         if (accept && decline) return Verdict.BOTH;
         if (accept) return Verdict.ACCEPT;
-        return decline ? Verdict.DECLINE : Verdict.OTHER;
+        if (decline) return Verdict.DECLINE;
+        return endDash() ? Verdict.END_DASH : Verdict.OTHER;
     }
 
     /**

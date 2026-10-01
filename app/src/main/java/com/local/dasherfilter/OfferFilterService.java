@@ -1083,6 +1083,9 @@ public final class OfferFilterService extends AccessibilityService {
             // The user's own Decline: held until Dasher moves on (the wait for offers, or another offer), then it may
             // teach that the rules were too lenient; going back to the offer or accepting it counts nothing.
             acceptedTracker.declineTapped(now);
+        } else if (tap.endDash()) {
+            // The user's "End dash" on Dasher's "End your current dash?": the dash ends once its screen goes away.
+            acceptedTracker.endDashTapped(now);
         } else if (!tap.own && near && (offerTargetsEndedAt == NEVER || now < offerTargetsEndedAt)) {
             acceptedTracker.tapNotRecognized(now);
         }
@@ -1847,7 +1850,8 @@ public final class OfferFilterService extends AccessibilityService {
             // Back to the wait for offers (or the dash's end): the decline is over, and the same offer again is new.
             episode.end();
         }
-        boolean facts = anyFact(offer);
+        // An offer being drawn, less the figures the screen explains itself (navigation's, the dash summary's).
+        boolean facts = AcceptedOfferTracker.offerFacts(offer, withParts(scan));
         OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
         if (missed != null) {
             List<String> shown = new ArrayList<>(scan.text);
@@ -2501,18 +2505,32 @@ public final class OfferFilterService extends AccessibilityService {
         return null;
     }
 
-    /** The last other screen captured, and when. */
+    /** The last other screen captured (navigation aside), and when. */
     private int lastOtherScreen;
     private long lastOtherScreenAt;
+    /** When the last navigation screen was captured. */
+    private long lastNavigationAt = NEVER;
     /** A screen whose only change is a number (a countdown, an ETA) is kept at most this often. */
     static final long SAME_SCREEN_MS = 60_000;
+    /** Turn-by-turn navigation, whatever its words and numbers, is kept at most this often. */
+    static final long NAVIGATION_SCREEN_MS = 60_000;
 
     /**
      * With capture on, one line per distinct other Dasher screen (at most one a second): its words, as read, into
      * the screens log. Numbers alone changing (a clock ticking) does not make a new screen more than once a minute.
+     * Turn-by-turn navigation ({@link DasherScene#showsNavigation}: its speed and a distance) changes its words at
+     * every turn, so it is kept at most once a minute whatever it says, on a budget of its own: it never holds back
+     * another screen (the pickup leg after an Accept), and in the log it never pushes one of the last 30 minutes out
+     * ({@link DiagnosticLog#logNavigation}).
      */
     private boolean captureOtherScreen(Scan scan, long now, String kind) {
         if (!DiagnosticLog.isEnabled(this)) return false;
+        if (DasherScene.showsNavigation(withParts(scan))) {
+            if (lastNavigationAt != NEVER && now - lastNavigationAt < NAVIGATION_SCREEN_MS) return false;
+            lastNavigationAt = now;
+            DiagnosticLog.logNavigation(this, labelsLine(kind, scan));
+            return true;
+        }
         int words = (scan.text.toString() + scan.metricParts).replaceAll("[0-9]", "#").hashCode();
         long since = now - lastOtherScreenAt;
         if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return false;
@@ -2520,6 +2538,13 @@ public final class OfferFilterService extends AccessibilityService {
         lastOtherScreenAt = now;
         DiagnosticLog.logScreen(this, labelsLine(kind, scan));
         return true;
+    }
+
+    /** A read's labels and the metric parts joined from its sibling nodes ("0.4", "mi" read "0.4 mi"). */
+    private static List<String> withParts(Scan scan) {
+        List<String> labels = new ArrayList<>(scan.text);
+        labels.addAll(scan.metricParts);
+        return labels;
     }
 
     /**

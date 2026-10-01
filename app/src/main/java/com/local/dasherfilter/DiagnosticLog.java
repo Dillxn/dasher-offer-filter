@@ -10,8 +10,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
@@ -25,6 +28,8 @@ import java.util.function.Supplier;
  * Local diagnostics, captured automatically: what the screen reader and the notification path saw and did, in two
  * small rolling logs on this phone, never older than a day. One holds offers, decisions and status; the other holds
  * Dasher's other screens (a shopping list, an item), so a few minutes of shopping can never push the offers out.
+ * Turn-by-turn navigation goes into the screens log at most once a minute, and never pushes another screen of the
+ * last 30 minutes out of it or out of a report (the pickup leg after an Accept stays).
  * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares or, with
  * "Share diagnostics after each dash" on, in the one {@link DashDiagnostics} files after a dash. Every line is masked
  * ({@link PersonalText}) before it is written: names, addresses, phone numbers, emails and a customer's own words never
@@ -51,6 +56,11 @@ final class DiagnosticLog {
     private static final int KEEP_BYTES = 16 * 1024;
     private static final int SCREENS_MAX_BYTES = 16 * 1024;
     private static final int SCREENS_KEEP_BYTES = 12 * 1024;
+    /** The screens log's lines for Dasher's other screens, and for its turn-by-turn navigation. */
+    private static final String SCREEN_SOURCE = "screen";
+    private static final String NAVIGATION_SOURCE = "navigation";
+    /** Other screens this recent are never pushed out of the screens log by navigation ({@link #fitScreens}). */
+    static final long SCREENS_PROTECTED_MS = 30 * 60_000L;
     private static final int MAX_MESSAGE_CHARS = 4096;
     /** Keeps a shared report comfortably inside Android's intent size limit (strings travel as UTF-16, twice). */
     private static final int MAX_REPORT_LOG_CHARS = 14_000;
@@ -214,7 +224,73 @@ final class DiagnosticLog {
     static void logScreen(Context context, Supplier<String> message) {
         if (!isEnabled(context)) return;
         long at = System.currentTimeMillis();
-        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, "screen", message.get()));
+        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, SCREEN_SOURCE, message.get()));
+    }
+
+    /**
+     * One of Dasher's turn-by-turn navigation screens, in the screens log as a "[navigation]" line: when the log is
+     * full, navigation lines (and lines older than {@link #SCREENS_PROTECTED_MS}) go first, so navigation never
+     * pushes out another screen of the last 30 minutes ({@link #fitScreens}). Built (and masked) on the writer thread.
+     */
+    static void logNavigation(Context context, Supplier<String> message) {
+        if (!isEnabled(context)) return;
+        long at = System.currentTimeMillis();
+        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, NAVIGATION_SOURCE, message.get()));
+    }
+
+    /**
+     * Fits the screens log into {@code budget} (UTF-8 bytes, or characters), dropping whole lines, oldest first: first
+     * navigation lines and lines older than {@link #SCREENS_PROTECTED_MS} (or of no readable time), and only then, if
+     * the rest alone is still too big, the other lines of the last 30 minutes. So navigation never pushes out another
+     * screen of the last 30 minutes (the pickup leg after an Accept, say), however much of it there is.
+     *
+     * @return the lines kept, in order, each ending in a line break; {@code log} itself when it fits
+     */
+    static String fitScreens(String log, int budget, boolean bytes, long now) {
+        if (size(log, bytes) <= budget) return log;
+        List<String> lines = new ArrayList<>();
+        int start = 0;
+        while (start < log.length()) {
+            int end = log.indexOf('\n', start);
+            end = end < 0 ? log.length() : end + 1;
+            lines.add(log.substring(start, end));
+            start = end;
+        }
+        long total = size(log, bytes);
+        boolean[] dropped = new boolean[lines.size()];
+        SimpleDateFormat time = new SimpleDateFormat(TIME_PATTERN, Locale.US);
+        for (int i = 0; i < lines.size() && total > budget; i++) {
+            String line = lines.get(i);
+            Date at = time.parse(line, new ParsePosition(0));
+            boolean old = at == null || now - at.getTime() > SCREENS_PROTECTED_MS;
+            if (old || navigationLine(line)) {
+                dropped[i] = true;
+                total -= size(line, bytes);
+            }
+        }
+        for (int i = 0; i < lines.size() && total > budget; i++) {
+            if (dropped[i]) continue;
+            dropped[i] = true;
+            total -= size(lines.get(i), bytes);
+        }
+        StringBuilder kept = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            if (dropped[i]) continue;
+            String line = lines.get(i);
+            kept.append(line);
+            if (!line.endsWith("\n")) kept.append('\n');
+        }
+        return kept.toString();
+    }
+
+    /** Whether a stored line is one of {@link #logNavigation}'s: "[navigation]" right after its time. */
+    static boolean navigationLine(String line) {
+        int source = line.indexOf(" [");
+        return source >= 0 && line.startsWith("[" + NAVIGATION_SOURCE + "]", source + 1);
+    }
+
+    private static long size(String text, boolean bytes) {
+        return bytes ? text.getBytes(StandardCharsets.UTF_8).length : text.length();
     }
 
     private static void write(Context app, String name, Supplier<byte[]> line) {
@@ -281,7 +357,7 @@ final class DiagnosticLog {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
         String log = newest(PersonalText.maskLine(read(context)), MAX_REPORT_LOG_CHARS);
-        String screens = newest(PersonalText.maskLine(readScreens(context)), MAX_REPORT_SCREENS_CHARS);
+        String screens = newestScreens(PersonalText.maskLine(readScreens(context)), System.currentTimeMillis());
         return REPORT_SUBJECT + " — Offer Filter " + Updater.version(context) + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
                 + ". " + MASKED_NOTE + " Review before sharing.\n\n"
@@ -344,6 +420,16 @@ final class DiagnosticLog {
                 + "; learning last turned off=" + shown[1] + "; adaptive minimums last reset=" + shown[2];
     }
 
+    /**
+     * What a report carries of the screens log: at most {@link #MAX_REPORT_SCREENS_CHARS}, whole lines, fitted as the
+     * log itself is ({@link #fitScreens}), so navigation never pushes another screen of the last 30 minutes out.
+     */
+    static String newestScreens(String log, long now) {
+        if (log.length() <= MAX_REPORT_SCREENS_CHARS) return log;
+        String omitted = "[older entries omitted]\n";
+        return omitted + fitScreens(log, MAX_REPORT_SCREENS_CHARS - omitted.length(), false, now);
+    }
+
     /** The newest {@code chars} of a log, starting at a whole line. */
     static String newest(String log, int chars) {
         if (log.length() <= chars) return log;
@@ -385,10 +471,15 @@ final class DiagnosticLog {
                 try (OutputStream out = new FileOutputStream(file, true)) {
                     out.write(bytes);
                 }
-                if (file.length() > (screens ? SCREENS_MAX_BYTES : MAX_BYTES)) {
-                    trimToRecentLines(file, screens ? SCREENS_KEEP_BYTES : KEEP_BYTES);
-                }
                 long now = System.currentTimeMillis();
+                if (screens && file.length() > SCREENS_MAX_BYTES) {
+                    String log = new String(readBytes(file), StandardCharsets.UTF_8);
+                    try (OutputStream out = new FileOutputStream(file, false)) {
+                        out.write(fitScreens(log, SCREENS_KEEP_BYTES, true, now).getBytes(StandardCharsets.UTF_8));
+                    }
+                } else if (!screens && file.length() > MAX_BYTES) {
+                    trimToRecentLines(file, KEEP_BYTES);
+                }
                 if (now - prunedAt > PRUNE_EVERY_MS) {
                     prunedAt = now;
                     dropOlderThan(file, now - KEEP_MS);
