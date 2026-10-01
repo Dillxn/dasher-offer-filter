@@ -1,5 +1,7 @@
 package com.local.dasherfilter;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,7 +11,8 @@ final class FilterSettings {
     final int flatCents;
     final int perMileCents;
     final int perMinuteCents;
-    final int extraStopCents;
+    /** Minimum pay per stop, a floor like per mile and per minute: an offer needs at least stops × this. */
+    final int perStopCents;
     final int maxStops;
     final boolean risingOffers;
     /** The highest standalone pay accepted while learning (the adaptive pay minimum); only Reset lowers it. */
@@ -20,32 +23,32 @@ final class FilterSettings {
     final DeclinedFloor declined;
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
-                   int perMinuteCents, int extraStopCents, int maxStops) {
-        this(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops, false, 0);
+                   int perMinuteCents, int perStopCents, int maxStops) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, false, 0);
     }
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
-                   int perMinuteCents, int extraStopCents, int maxStops,
+                   int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents) {
-        this(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops, risingOffers,
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
                 lastAcceptedCents, AcceptedBest.NONE);
     }
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
-                   int perMinuteCents, int extraStopCents, int maxStops,
+                   int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best) {
-        this(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops, risingOffers,
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
                 lastAcceptedCents, best, DeclinedFloor.NONE);
     }
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
-                   int perMinuteCents, int extraStopCents, int maxStops,
+                   int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
         this.perMinuteCents = perMinuteCents;
-        this.extraStopCents = extraStopCents;
+        this.perStopCents = perStopCents;
         this.maxStops = maxStops;
         this.risingOffers = risingOffers;
         this.lastAcceptedCents = lastAcceptedCents;
@@ -55,13 +58,13 @@ final class FilterSettings {
 
     /** True when at least one rule can reject or require review of an offer. */
     boolean hasAnyRule() {
-        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || extraStopCents > 0
+        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0
                 || maxStops > 0 || risingOffers;
     }
 
     /** Rules whose cost scales with an add-on's own miles, minutes, or stops. */
     boolean hasMarginalRule() {
-        return perMileCents > 0 || perMinuteCents > 0 || extraStopCents > 0;
+        return perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0;
     }
 
     /** Plain-language summary of the enabled rules, e.g. "at least $7.00 · $1.50 per mile · at most 3 stops". */
@@ -70,7 +73,7 @@ final class FilterSettings {
         if (flatCents > 0) rules.add("at least " + DecisionLog.money(flatCents));
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perMinuteCents) + " per minute");
-        if (extraStopCents > 0) rules.add("+" + DecisionLog.money(extraStopCents) + " per stop after 2");
+        if (perStopCents > 0) rules.add(DecisionLog.money(perStopCents) + " per stop");
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             rules.add(lastAcceptedCents > 0
@@ -88,7 +91,7 @@ final class FilterSettings {
         if (flatCents > 0) rules.add(DecisionLog.shortMoney(flatCents) + " min");
         if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
         if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perMinuteCents) + "/min");
-        if (extraStopCents > 0) rules.add("+" + DecisionLog.shortMoney(extraStopCents) + "/extra stop");
+        if (perStopCents > 0) rules.add(DecisionLog.shortMoney(perStopCents) + "/stop");
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             String adaptive = lastAcceptedCents > 0
@@ -99,13 +102,93 @@ final class FilterSettings {
     }
 
     FilterSettings withEnabled(boolean value) {
-        return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
+        return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
                 risingOffers, lastAcceptedCents, best, declined);
+    }
+
+    /** The four set minimums in the constellation's spoke order: pay, per mile, per minute, per stop. */
+    int[] minimums() {
+        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents};
+    }
+
+    /** These rules with the four set minimums ({@link #minimums} order) replaced, and nothing else changed. */
+    FilterSettings withMinimums(int[] cents) {
+        return new FilterSettings(enabled, cents[0], cents[1], cents[2], cents[3], maxStops, risingOffers,
+                lastAcceptedCents, best, declined);
+    }
+
+    /**
+     * These rules with each set minimum raised to what the adaptive minimum on the same measure asks, so the set
+     * minimums alone are never looser than the adaptive ones, for an offer of any length. Pay: one cent above the
+     * highest accepted payout and above the payout declined by hand. Per mile, minute and stop: the smallest whole-cent
+     * rate that asks at least as much as the best accepted rate (which an offer must match, rounded up), so
+     * {@code ceil(pay ÷ amount)}, and more than the declined rate (which an offer must beat), so
+     * {@code floor(pay ÷ amount) + 1}. Worked exactly, never in floating point.
+     *
+     * <p>A set minimum is never lowered, a measure with nothing learned is left as it is, and nothing else changes:
+     * the on or paused state, max stops, the adaptive minimum and everything it learned stay as they are (it goes on
+     * rising, until Reset). Each is held to the most Settings accepts, {@link #MOST_CENTS}.
+     */
+    FilterSettings adoptAdaptive() {
+        long pay = 0;
+        if (lastAcceptedCents > 0) pay = lastAcceptedCents + 1L;
+        if (declined.payCents > 0) pay = Math.max(pay, declined.beatPay());
+        long mile = 0;
+        if (best.hasPerMile()) mile = matched(best.milePay, miles(best.miles));
+        if (declined.rates.hasPerMile()) {
+            mile = Math.max(mile, beaten(declined.rates.milePay, miles(declined.rates.miles)));
+        }
+        long minute = 0;
+        if (best.hasPerMinute()) minute = matched(best.minutePay, BigDecimal.valueOf(best.minutes));
+        if (declined.rates.hasPerMinute()) {
+            minute = Math.max(minute, beaten(declined.rates.minutePay, BigDecimal.valueOf(declined.rates.minutes)));
+        }
+        long stop = 0;
+        if (best.hasPerStop()) stop = matched(best.stopPay, BigDecimal.valueOf(best.stops));
+        if (declined.rates.hasPerStop()) {
+            stop = Math.max(stop, beaten(declined.rates.stopPay, BigDecimal.valueOf(declined.rates.stops)));
+        }
+        return withMinimums(new int[] {raised(flatCents, pay), raised(perMileCents, mile),
+                raised(perMinuteCents, minute), raised(perStopCents, stop)});
+    }
+
+    /** The most any minimum can be set to, as Settings accepts: $1,000 (in cents; a rate's cents per unit). */
+    static final int MOST_CENTS = 100_000;
+
+    /** A set minimum raised to {@code asks} (0 when nothing was learned), held to {@link #MOST_CENTS}; never lower. */
+    private static int raised(int set, long asks) {
+        if (asks <= 0) return set;
+        return (int) Math.max(set, Math.min(MOST_CENTS, asks));
+    }
+
+    /** Miles as the adaptive minimums compare them (their decimal form); null when not a usable amount. */
+    private static BigDecimal miles(double miles) {
+        return Double.isFinite(miles) && miles > 0 ? BigDecimal.valueOf(miles) : null;
+    }
+
+    /** The smallest whole-cent rate never below {@code pay ÷ amount}: {@code ceil(pay ÷ amount)}; saturates. */
+    private static long matched(int pay, BigDecimal amount) {
+        return perUnit(pay, amount, RoundingMode.CEILING, 0);
+    }
+
+    /** The smallest whole-cent rate always above {@code pay ÷ amount}: {@code floor(pay ÷ amount) + 1}; saturates. */
+    private static long beaten(int pay, BigDecimal amount) {
+        return perUnit(pay, amount, RoundingMode.FLOOR, 1);
+    }
+
+    private static long perUnit(int pay, BigDecimal amount, RoundingMode rounding, int plus) {
+        if (pay <= 0 || amount == null || amount.signum() <= 0) return 0;
+        try {
+            long rate = BigDecimal.valueOf(pay).divide(amount, 0, rounding).longValueExact();
+            return rate > Long.MAX_VALUE - plus ? Long.MAX_VALUE : rate + plus;
+        } catch (ArithmeticException overflow) {
+            return Long.MAX_VALUE;
+        }
     }
 
     /** Add-on routes are judged without the adaptive minimum: no payout baseline, best rates or decline floors. */
     FilterSettings withoutRisingBaseline() {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, extraStopCents, maxStops,
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
                 false, lastAcceptedCents, best, declined);
     }
 }

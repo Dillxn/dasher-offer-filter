@@ -143,7 +143,7 @@ final class ProblemReport {
     private static JSONObject rulesJson(FilterSettings rules) throws JSONException {
         return new JSONObject().put("enabled", rules.enabled).put("flatCents", rules.flatCents)
                 .put("perMileCents", rules.perMileCents).put("perMinuteCents", rules.perMinuteCents)
-                .put("extraStopCents", rules.extraStopCents).put("maxStops", rules.maxStops)
+                .put("perStopCents", rules.perStopCents).put("maxStops", rules.maxStops)
                 .put("risingOffers", rules.risingOffers).put("lastAcceptedCents", rules.lastAcceptedCents)
                 .put("bestAccepted", new JSONObject()
                         .put("minutePay", rules.best.minutePay).put("minutes", rules.best.minutes)

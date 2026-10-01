@@ -36,9 +36,9 @@ final class OfferRule {
     }
 
     /**
-     * Required pay is {@code max(flat, miles × rate, minutes × rate) + fee × max(0, stops - 2)}. The adaptive
-     * minimum raises it to one cent above the highest accepted standalone payout, and to at least the best accepted
-     * pay per minute, per mile and per stop applied to this offer; each is a floor of its own, never added on top.
+     * Required pay is {@code max(flat, miles × rate, minutes × rate, stops × rate)}. The adaptive minimum raises it
+     * to one cent above the highest accepted standalone payout, and to at least the best accepted pay per minute, per
+     * mile and per stop applied to this offer; each is a floor of its own, never added on top.
      */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
@@ -49,6 +49,9 @@ final class OfferRule {
         if (needsPay && offer.payCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer);
 
         boolean missing = settings.maxStops > 0 && offer.stops == null;
+        // A standalone order is at least a pickup and a drop-off, so fewer stops is a misread ("1 stop"). Every
+        // per-stop ask treats it as not found: priced as read, it would ask half as much and let the offer pass.
+        Integer stops = offer.stops != null && offer.stops >= AcceptedBest.PLAUSIBLE_STOPS ? offer.stops : null;
         long required = Math.max(0, settings.flatCents);
         String reason = "flat minimum";
         if (settings.perMileCents > 0) {
@@ -73,13 +76,15 @@ final class OfferRule {
                 }
             }
         }
-        if (settings.extraStopCents > 0) {
-            if (offer.stops == null) {
+        if (settings.perStopCents > 0) {
+            if (stops == null) {
                 missing = true;
             } else {
-                int extraStops = Math.max(0, offer.stops - 2);
-                required = saturatingAdd(required, (long) settings.extraStopCents * extraStops);
-                if (extraStops > 0) reason += " and extra stops";
+                long byStops = (long) settings.perStopCents * stops;
+                if (byStops > required) {
+                    required = byStops;
+                    reason = "dollars per stop";
+                }
             }
         }
         if (settings.risingOffers && settings.lastAcceptedCents > 0 && settings.lastAcceptedCents + 1L > required) {
@@ -106,10 +111,10 @@ final class OfferRule {
                 }
             }
             if (best.hasPerStop()) {
-                if (offer.stops == null) {
+                if (stops == null) {
                     missing = true;
-                } else if (best.forStops(offer.stops) > required) {
-                    required = best.forStops(offer.stops);
+                } else if (best.forStops(stops) > required) {
+                    required = best.forStops(stops);
                     reason = "must match best accepted " + best.perStopLabel();
                 }
             }
@@ -136,10 +141,10 @@ final class OfferRule {
                 }
             }
             if (declined.rates.hasPerStop()) {
-                if (offer.stops == null) {
+                if (stops == null) {
                     missing = true;
-                } else if (declined.beatStops(offer.stops) > required) {
-                    required = declined.beatStops(offer.stops);
+                } else if (declined.beatStops(stops) > required) {
+                    required = declined.beatStops(stops);
                     reason = "must beat declined " + declined.rates.perStopLabel();
                 }
             }
@@ -155,7 +160,8 @@ final class OfferRule {
 
     /**
      * An add-on must keep the combined route within the flat, rate, and stop limits, and its own explicit added
-     * pay must cover the marginal per-mile, per-minute, and extra-stop cost it introduces.
+     * pay must cover {@code max(added miles × rate, added minutes × rate, added stops × rate)}. Only the amounts the
+     * add-on explicitly adds count: none is worked out from route totals.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
         Decision combined = evaluate(addOn.combined, settings.withoutRisingBaseline());
@@ -177,14 +183,9 @@ final class OfferRule {
             if (added.minutes == null) missing = true;
             else marginalCost = Math.max(marginalCost, (long) settings.perMinuteCents * added.minutes);
         }
-        if (settings.extraStopCents > 0) {
-            if (added.stops == null || addOn.active.stops == null) {
-                missing = true;
-            } else {
-                long extraBefore = Math.max(0L, (long) addOn.active.stops - 2);
-                long extraAfter = Math.max(0L, (long) addOn.active.stops + added.stops - 2);
-                marginalCost = saturatingAdd(marginalCost, settings.extraStopCents * (extraAfter - extraBefore));
-            }
+        if (settings.perStopCents > 0) {
+            if (added.stops == null) missing = true;
+            else marginalCost = Math.max(marginalCost, (long) settings.perStopCents * added.stops);
         }
 
         if (added.payCents != null && added.payCents < marginalCost) {
@@ -205,10 +206,6 @@ final class OfferRule {
         } catch (ArithmeticException overflow) {
             return Long.MAX_VALUE;
         }
-    }
-
-    private static long saturatingAdd(long a, long b) {
-        return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
     }
 
     private OfferRule() {}

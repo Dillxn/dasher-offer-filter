@@ -30,6 +30,9 @@ requests, or comment on GitHub.
   If a fix needs one of those, the outcome is `needs-human`.
 - Never change the user's rules, thresholds or defaults. Never turn an unknown into KEEP or DECLINE. A review is
   fixed by reading the facts correctly, never by guessing them or by making the app decline more readily.
+- Per stop changed meaning in 0.4.37: up to 0.4.36 a report's `rules` JSON `extraStopCents` was a fee added for each
+  stop after two; from 0.4.37 `perStopCents` is a minimum (stops × rate). Decisions recorded before the update were
+  computed with the fee, so never map one onto the other.
 - Main code must run on Android API 26: no `List.of`, `Map.of`, `String.repeat`, `Optional.isEmpty` and the like, and
   guard newer Android APIs with `Build.VERSION.SDK_INT`.
 

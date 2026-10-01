@@ -211,7 +211,9 @@ final class DecisionChartView extends View {
         canvas.drawLine(center, bottom, center, bottom - ui.dp(12), line);
     }
 
+    /** The flag's badge, kept whole inside the view however tall its building. */
     private void drawBadge(Canvas canvas, float x, float y, OfferRule.Result result) {
+        y = Math.max(y, ui.dp(10));
         int color = Ui.resultColor(result);
         float radius = ui.dp(7);
         fill.setColor(ui.surface);
@@ -220,6 +222,35 @@ final class DecisionChartView extends View {
         canvas.drawCircle(x, y, radius, fill);
         symbol.setColor(Ui.onStatus(color));
         canvas.drawText(Ui.resultSymbol(result), x, y + symbol.getTextSize() / 3f, symbol);
+    }
+
+    /**
+     * The highest point, in this view's pixels, that a building, its rope or its flag reaches once risen between
+     * {@code from} and {@code to} across; the view's height where none stands.
+     */
+    float highestWithin(float from, float to) {
+        float highest = getHeight();
+        if (entries.isEmpty() || getWidth() <= 0) return highest;
+        float left = ui.dp(SIDE_DP);
+        float right = getWidth() - ui.dp(SIDE_DP);
+        float top = ui.dp(26);
+        float bottom = getHeight() - ui.dp(12);
+        long maxCents = scaleMax();
+        float slot = (right - left) / SLOTS;
+        float barWidth = Math.min(ui.dp(26), slot - ui.dp(3));
+        float reach = Math.max(barWidth / 2f + ui.dp(3), ui.dp(9));
+        int firstSlot = SLOTS - entries.size();
+        for (int i = 0; i < entries.size(); i++) {
+            DecisionLog.Entry entry = entries.get(i);
+            float center = left + slot * (firstSlot + i + 0.5f);
+            if (center + reach < from || center - reach > to) continue;
+            float roof = entry.facts.payCents != null ? y(entry.facts.payCents, maxCents, top, bottom)
+                    : bottom - ui.dp(14);
+            highest = Math.min(highest, Math.max(roof - ui.dp(12), ui.dp(10)) - ui.dp(9));
+            if (entry.requiredCents > 0) highest = Math.min(highest, y(entry.requiredCents, maxCents, top, bottom)
+                    - ui.dp(1));
+        }
+        return highest;
     }
 
     /** The smallest "nice" dollar ceiling at or above every pay and requirement shown. */

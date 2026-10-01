@@ -47,12 +47,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The app's two pages, kept quiet. The main page: the mascot in its ring with the day's three counts, which is also
- * the one button (a tap pauses or resumes), and one line saying whether auto-decline is on; then recent offers as a small skyline with one line about the chosen offer
- * (tap for its ticket); the minimums as a constellation with recent offers marked; and, only when mapping is on,
- * where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts, the offer map,
- * reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The drawings move
- * gently and shift with the phone's tilt while the app is open, unless Android's animations are off.
+ * The app's two pages, kept quiet. The main page is one picture: a sky where the minimums, as a very large
+ * constellation with recent offers marked (tap for the rules), spread behind the mascot in its ring and the dash's
+ * three counts (the mascot is the one button: a tap pauses or resumes), with a line only when something needs the
+ * user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the ground below it on a whole
+ * screen, a map of where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts,
+ * the offer map, reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The
+ * drawings move gently and shift with the phone's tilt while the app is open, unless Android's animations are off.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
@@ -124,12 +125,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The main page's header, whose left holds the constellation in a short window. */
     private LinearLayout mainHeader;
     private TextView mainTitle;
-    /** The main page's column, and where the constellation stands in it when it is not in the header. */
-    private LinearLayout mainBody;
-    private int starIndex;
-    private LinearLayout.LayoutParams starParams;
-    /** The road along the bottom of the main page. */
-    private View road;
+    /** The sun (or moon) button in the main page's header. */
+    private View sunButton;
+    /**
+     * The main page's sky: the header, the mascot with its counts and the page's few lines, with the constellation
+     * drawn large behind them all whenever it is not up in the header.
+     */
+    private SkyStage sky;
+    private LinearLayout.LayoutParams skyParams;
+    /** Below the sky: the skyline, and on a whole screen the map. */
+    private LinearLayout.LayoutParams groundParams;
+    /** The skyline's share of the ground, which a short window with the map holds at a fixed height instead. */
+    private LinearLayout.LayoutParams chartParams;
+    /** The skyline's height, weighted out of the ground, in a short window beside another app and its map. */
+    private static final int CHART_SHORT_DP = 56;
     /**
      * Split with Dasher: Dasher's own map is on screen in the other half, so this page shows no map of its own
      * (the pointer over Dasher points to the best area); the constellation and the skyline take its room.
@@ -137,6 +146,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private boolean besideDasher;
     /** How tall the constellation stands in the header of a short window. */
     static final int HEADER_STAR_DP = 72;
+    /**
+     * The sky's share of the page, on top of what must be in it, beside Dasher, in a short window with the map, and
+     * on a whole screen; the ground (the skyline, and the map where there is one) takes the rest.
+     */
+    private static final float SKY_BESIDE_DASHER = 2.8f;
+    private static final float SKY_WITH_MAP_SHORT = 1f;
+    private static final float SKY_WHOLE = 1.7f;
     private AreaMapView areaMap;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
@@ -148,6 +164,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private EditText mile;
     private EditText minute;
     private EditText stop;
+    /** "0 turns a rule off.", beside Per stop, and in its place once: the note that an extra-stop fee was retired. */
+    private TextView zeroHint;
+    private TextView stopFeeNotice;
     private EditText maxStops;
     private Switch rising;
     private TextView baselineNote;
@@ -292,9 +311,27 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(settings ? ui.page : ScenePage.skyTop(ui));
         View focused = getCurrentFocus();
         if (focused != null && !focused.isShown()) focused.clearFocus();
+        showStopFeeNotice(settings);
         if (changed) {
             shown.setAlpha(0f);
             shown.animate().alpha(1f).setDuration(160);
+        }
+    }
+
+    /**
+     * The first time Settings opens after an update retired an extra-stop fee, the note saying so stands beside Per
+     * stop until Settings is left; it is not shown again.
+     */
+    private void showStopFeeNotice(boolean settings) {
+        if (stopFeeNotice == null) return;
+        String notice = settings ? FilterStore.takeStopFeeNotice(this) : null;
+        if (notice != null) {
+            stopFeeNotice.setText(notice);
+            stopFeeNotice.setVisibility(View.VISIBLE);
+            zeroHint.setVisibility(View.GONE);
+        } else if (!settings) {
+            stopFeeNotice.setVisibility(View.GONE);
+            zeroHint.setVisibility(View.VISIBLE);
         }
     }
 
@@ -331,6 +368,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             sunParams.setMarginEnd(ui.dp(10));
             header.addView(sun, sunParams);
             scene.setSunAnchor(sun);
+            sunButton = sun;
             header.addView(iconButton(Glyph.Shape.SLIDERS, "Settings", () -> showSettings(true)));
         }
         return header;
@@ -349,7 +387,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** The padded column a page's content goes in, between its sky and its ground. */
     private LinearLayout body(LinearLayout page) {
-        LinearLayout body = ui.column();
+        return body(page, ui.column());
+    }
+
+    private LinearLayout body(LinearLayout page, LinearLayout body) {
         body.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(12));
         page.addView(body, Ui.matchWidth());
         return body;
@@ -454,25 +495,26 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void buildMain(LinearLayout page) {
         int heightDp = getResources().getConfiguration().screenHeightDp;
         compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
-        page.addView(header("Dash Buddy", false));
-        LinearLayout body = body(page);
-        // Everything between the title and the road shares one screen.
-        body.setLayoutParams(share(1));
+        View header = header("Dash Buddy", false);
 
         // The mascot is the button: a tap pauses, resumes, or with no rule yet opens the rules.
         hero = new FilterHeroView(this, ui);
         hero.setOnClickListener(tapped -> toggleAutoDecline());
-        body.addView(hero, share(1));
         // Words only when something needs the user: paused, or no rules yet. On, the picture says it all.
+        LinearLayout lines = ui.column();
+        lines.setPadding(ui.dp(16), 0, ui.dp(16), 0);
         stateLine = ui.text("", 16, ui.ink, true);
         stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
-        stateLine.setPadding(0, ui.dp(4), 0, 0);
+        // Only as wide as its words (and the veil the sky fades under them), so the constellation's knobs beside the
+        // words take their own touches rather than this line.
+        stateLine.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4));
         stateLine.setOnClickListener(tapped -> toggleAutoDecline());
-        body.addView(stateLine, Ui.matchWidth());
+        LinearLayout.LayoutParams stateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        stateParams.gravity = Gravity.CENTER_HORIZONTAL;
+        lines.addView(stateLine, stateParams);
         LinearLayout problems = ui.column();
-        LinearLayout.LayoutParams problemParams = Ui.matchWidth();
-        problemParams.topMargin = ui.dp(8);
-        body.addView(problems, problemParams);
+        lines.addView(problems, Ui.matchWidth());
         screenReading = new Readiness(problems, "Screen reading is off",
                 () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
@@ -488,17 +530,26 @@ public final class MainActivity extends Activity implements Updater.Busy {
             ActiveRouteStore.clear(this);
             refresh();
         }));
-        body.addView(routeRow);
+        lines.addView(routeRow);
 
-        // One picture from top to bottom: the minimums as a constellation in the sky, the offers as a skyline on
-        // the horizon, the chosen offer and the map on the ground, and the road along the bottom.
-        addMinimums(body);
-        mainBody = body;
-        starIndex = body.indexOfChild(minimums);
-        starParams = (LinearLayout.LayoutParams) minimums.getLayoutParams();
+        // One picture from top to bottom: the sky, where the minimums' constellation spreads behind the mascot and
+        // its counts; the offers as a skyline on the horizon; the map on the ground; and the road along the bottom.
+        addMinimums();
+        sky = new SkyStage(this, ui, minimums, hero, header, mainTitle, lines, sunButton);
+        // What must be in the sky (the header, the counts and the lines), then its share of the rest.
+        skyParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        page.addView(sky, skyParams);
+        // The skyline and the map share the ground, each keeping the least it reads well at.
+        LinearLayout body = body(page, new LeastColumn(this));
+        groundParams = share(1);
+        body.setLayoutParams(groundParams);
         addOffers(body);
         addAreas(body);
-        road = ground(page, compact ? 40 : 78);
+        // The road needs a whole screen; in a short window (beside Dasher or not) the page ends at the skyline or
+        // the map, and a window changing size builds the page again.
+        View road = ground(page, 78);
+        road.setVisibility(compact ? View.GONE : View.VISIBLE);
         // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
         mainTitle.setId(View.generateViewId());
         minimums.setAccessibilityTraversalAfter(mainTitle.getId());
@@ -514,6 +565,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         arrangeForSplit();
         // The skyline's street (12 dp above the chart's bottom) is the horizon.
         scene.setHorizon(chart, ui.dp(11), noOffers);
+        // The scene's stars, clouds and signpost keep out from under the sky's words and icons.
+        scene.setOver(sky, sky);
     }
 
     /** Split screen with Dasher in the other half (as the screen reader last saw it). */
@@ -522,9 +575,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Beside Dasher, no map of our own (Dasher's is right there), and the constellation stands in the sky at full
-     * size above a taller skyline, with the road. In any other short window the map stays and the constellation
-     * moves into the header, its icons beside the circle. A whole screen shows everything.
+     * Beside Dasher, no map of our own (Dasher's is right there): the sky takes nearly all the room, the
+     * constellation spread across it, over a skyline. In any other short window the map stays, the skyline keeps a
+     * fixed height above it, and the constellation moves into the header, its icons beside the circle. A whole screen
+     * shows everything, the sky above the map. (The road is set once, when the page is built.)
      */
     private void arrangeForSplit() {
         boolean beside = besideDasherNow();
@@ -533,18 +587,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
         areaMap.setVisibility(beside ? View.GONE : View.VISIBLE);
         if (beside || shownArea == null) areaLine.setVisibility(View.GONE);
         else areaLine.setVisibility(View.VISIBLE);
-        // The road needs a whole screen; beside Dasher, Dasher's own half is the ground below.
-        road.setVisibility(compact ? View.GONE : View.VISIBLE);
-        // With no map of its own, the sky gets the room: the constellation most of all.
-        starParams.weight = beside ? 1.8f : 1.15f;
-        placeConstellation(compact && !beside);
-        minimums.requestLayout();
+        boolean inHeader = compact && !beside;
+        placeConstellation(inHeader);
+        // Beside another app the map needs the room, so the skyline stands at a fixed height rather than a share.
+        chartParams.height = inHeader ? ui.dp(CHART_SHORT_DP) : 0;
+        chartParams.weight = inHeader ? 0 : 0.7f;
+        chart.setLayoutParams(chartParams);
+        // The sky's share against the ground's (the skyline, and the map where there is one).
+        skyParams.weight = beside ? SKY_BESIDE_DASHER : inHeader ? SKY_WITH_MAP_SHORT : SKY_WHOLE;
+        groundParams.weight = beside ? 0.7f : inHeader ? 3.2f : 1.7f;
+        sky.requestLayout();
     }
 
-    /** The constellation in the header's left (drawn with its icons beside the circle), or in the page's sky. */
+    /** The constellation in the header's left (drawn with its icons beside the circle), or spread across the sky. */
     private void placeConstellation(boolean inHeader) {
         ViewGroup now = (ViewGroup) minimums.getParent();
-        if (inHeader == (now == mainHeader)) return;
+        if (now != null && inHeader == (now == mainHeader)) return;
         if (now != null) now.removeView(minimums);
         minimums.setBeside(inHeader);
         if (inHeader) {
@@ -552,7 +610,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
                     ui.dp(MinimumsStarView.besideWidthDp(HEADER_STAR_DP)), ui.dp(HEADER_STAR_DP)));
         } else {
-            mainBody.addView(minimums, Math.min(starIndex, mainBody.getChildCount()), starParams);
+            sky.holdStar();
         }
     }
 
@@ -567,7 +625,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
         chart.setOnClickListener(tapped -> setTicketOpen(true));
-        LinearLayout.LayoutParams chartParams = share(0.7f);
+        chartParams = share(0.7f);
         chartParams.topMargin = ui.dp(6);
         body.addView(chart, chartParams);
         // The ticket unfolds in the sheet over the page.
@@ -586,12 +644,86 @@ public final class MainActivity extends Activity implements Updater.Busy {
         else if (sheet != null && ticket.getVisibility() != View.VISIBLE) sheet.setVisibility(View.GONE);
     }
 
-    private void addMinimums(LinearLayout body) {
+    /**
+     * The minimums' constellation; a tap opens them. The sky or the header holds it, as the window allows. In the sky
+     * its knobs set the minimums, and its button makes the learned ones the set ones (or undoes that), each saved as
+     * Settings saves them.
+     */
+    private void addMinimums() {
         minimums = new MinimumsStarView(this, ui);
         minimums.setOnClickListener(tapped -> showSettings(true));
-        LinearLayout.LayoutParams starParams = share(1.15f);
-        starParams.topMargin = ui.dp(6);
-        body.addView(minimums, starParams);
+        minimums.setChanges(new MinimumsStarView.Changes() {
+            @Override public void setMinimum(int axis, int cents) {
+                int[] one = {-1, -1, -1, -1};
+                one[axis] = cents;
+                setMinimums(one);
+            }
+
+            @Override public int[] adoptLearned() {
+                // From the saved rules, never from what is typed but unsaved in Settings: only the minimums the
+                // adoption raises are written and saved, and Undo puts back exactly the saved ones it replaced.
+                FilterSettings saved = FilterStore.load(MainActivity.this);
+                int[] before = saved.minimums();
+                int[] raised = saved.adoptAdaptive().minimums();
+                int[] only = {-1, -1, -1, -1};
+                int[] undo = {-1, -1, -1, -1};
+                boolean any = false;
+                for (int i = 0; i < before.length; i++) {
+                    if (raised[i] == before[i]) continue;
+                    only[i] = raised[i];
+                    undo[i] = before[i];
+                    any = true;
+                }
+                if (!any || !setMinimums(only)) return null;
+                return undo;
+            }
+
+            @Override public void restore(int[] cents) {
+                setMinimums(cents);
+            }
+        });
+    }
+
+    /** The minimums' fields in the constellation's spoke order: pay, per mile, per minute, per stop. */
+    private EditText[] minimumFields() {
+        return new EditText[] {flat, mile, minute, stop};
+    }
+
+    /**
+     * Minimums set on the constellation (a knob let go, the learned ones adopted, or that undone), as if typed into
+     * their fields and saved with Save rules: each field shows its new value, the same checks apply, and the rules are
+     * saved and applied to any offer on screen at once. Only these minimums change (-1 leaves one as saved); max stops,
+     * the adaptive minimum and the on or paused state stay as saved, except that no rule left pauses, as Save rules
+     * does; a first rule saved while paused says auto-decline stays paused, as Save rules does (nothing here ever
+     * turns auto-decline on). Nothing is saved when nothing changed. @return whether the rules were saved
+     */
+    private boolean setMinimums(int[] cents) {
+        FilterSettings saved = FilterStore.load(this);
+        EditText[] fields = minimumFields();
+        int[] next = saved.minimums();
+        for (int i = 0; i < fields.length; i++) {
+            if (cents[i] < 0) continue;
+            String typed = money(cents[i]);
+            if (!typed.contentEquals(fields[i].getText())) fields[i].setText(typed);
+            try {
+                next[i] = parseCents(fields[i]);
+            } catch (IllegalArgumentException error) {
+                toast(error.getMessage());
+                return false;
+            }
+        }
+        if (java.util.Arrays.equals(next, saved.minimums())) return false;
+        FilterSettings rules = saved.withMinimums(next);
+        boolean pausedForLackOfRules = rules.enabled && !rules.hasAnyRule();
+        if (pausedForLackOfRules) rules = rules.withEnabled(false);
+        boolean firstRule = !saved.hasAnyRule() && rules.hasAnyRule() && !rules.enabled;
+        FilterStore.save(this, rules);
+        rulesChanged();
+        // The fields may already have shown these values, so the constellation is told of the save itself.
+        updateMeter();
+        if (pausedForLackOfRules) toast("No rules left, so auto-decline is paused.");
+        else if (firstRule) toast("Rule saved. Auto-decline stays paused until you Resume it.");
+        return true;
     }
 
     /**
@@ -653,11 +785,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         mile = ui.tagField(cell(second), "Per mile ($)", money(saved.perMileCents), true, Glyph.Shape.ROAD);
         minute = ui.tagField(cell(second), "Per minute ($)", money(saved.perMinuteCents), true, Glyph.Shape.CLOCK);
         LinearLayout third = fieldRow(body);
-        stop = ui.tagField(cell(third), "Per extra stop ($)", money(saved.extraStopCents), true, Glyph.Shape.PIN);
+        stop = ui.tagField(cell(third), "Per stop ($)", money(saved.perStopCents), true, Glyph.Shape.PIN);
         LinearLayout hint = cell(third);
-        TextView zero = ui.text("0 turns a rule off.", 12, ui.inkSecondary, false);
-        zero.setPadding(ui.dp(6), ui.dp(14), 0, 0);
-        hint.addView(zero);
+        zeroHint = ui.text("0 turns a rule off.", 12, ui.inkSecondary, false);
+        zeroHint.setPadding(ui.dp(6), ui.dp(14), 0, 0);
+        hint.addView(zeroHint);
+        stopFeeNotice = ui.text("", 12, ui.ink, true);
+        stopFeeNotice.setPadding(ui.dp(6), ui.dp(4), 0, 0);
+        stopFeeNotice.setVisibility(View.GONE);
+        hint.addView(stopFeeNotice);
         rulesPreview = ui.text("", 14, ui.ink, true);
         rulesPreview.setPadding(0, ui.dp(12), 0, 0);
         body.addView(rulesPreview);
@@ -996,17 +1132,25 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return String.join(" · ", parts);
     }
 
-    /** Redraws the minimums from the rules as typed (unsaved), with the latest fully read offer. */
+    /**
+     * Redraws the minimums from the rules as typed (unsaved), with the latest fully read offer; whether the learned
+     * minimums can be adopted follows the saved rules, which adopting changes.
+     */
     private void updateMeter() {
         if (minimums == null || rising == null) return;
-        FilterSettings saved = FilterStore.load(this);
-        FilterSettings typed = new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
-                lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
-                lenientCents(stop, saved.extraStopCents), lenientStops(saved.maxStops), rising.isChecked(),
-                saved.lastAcceptedCents, saved.best, saved.declined);
+        FilterSettings typed = typedRules();
         OfferSnapshot example = exampleOffer();
-        minimums.show(typed, example, recentEntries);
+        minimums.show(typed, FilterStore.load(this), example, recentEntries);
         rulesPreview.setText(MinimumsStarView.needs(typed, example));
+    }
+
+    /** The rules as typed in Settings (saved or not), with what the adaptive minimums learned: what the star shows. */
+    private FilterSettings typedRules() {
+        FilterSettings saved = FilterStore.load(this);
+        return new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
+                lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
+                lenientCents(stop, saved.perStopCents), lenientStops(saved.maxStops), rising.isChecked(),
+                saved.lastAcceptedCents, saved.best, saved.declined);
     }
 
     private static int lenientCents(EditText field, int fallback) {
@@ -1023,11 +1167,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return raw.matches("[0-9]{1,2}") ? Integer.parseInt(raw) : fallback;
     }
 
-    /** The newest standalone offer whose miles, minutes and stops were all read, else a typical one. */
+    /**
+     * The newest standalone offer whose miles, minutes and stops were all read and none looks misread ("1 stop"),
+     * else a typical one.
+     */
     private OfferSnapshot exampleOffer() {
         for (DecisionLog.Entry entry : recentEntries) {
             OfferSnapshot facts = entry.facts;
-            if (!entry.addOn && facts.miles != null && facts.minutes != null && facts.stops != null) return facts;
+            if (!entry.addOn && facts.miles != null && facts.minutes != null && facts.stops != null
+                    && !AcceptedBest.looksMisread(facts)) {
+                return facts;
+            }
         }
         return new OfferSnapshot(null, 5.0, 20, 2);
     }
@@ -1109,6 +1259,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         Matcher stops = TOO_MANY_STOPS.matcher(reason);
         if (stops.matches()) return "Too many stops (" + stops.group(1) + ", max " + stops.group(2) + ")";
+        // Recorded while per stop was a fee added on top of the other minimums, before it became a minimum itself.
         boolean stopFees = reason.endsWith(" and extra stops");
         String base = stopFees ? reason.substring(0, reason.length() - " and extra stops".length()) : reason;
         String plain;
@@ -1116,6 +1267,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             case "flat minimum": plain = "Below your minimum pay"; break;
             case "dollars per mile": plain = "Below your per-mile rate"; break;
             case "dollars per minute": plain = "Below your per-minute rate"; break;
+            case "dollars per stop": plain = "Below your per-stop rate"; break;
             case "meets enabled rules": plain = "Meets your rules"; break;
             case "pay not found": plain = "Pay not readable"; break;
             case "an enabled value was not found": plain = "Miles, time or stops not readable"; break;

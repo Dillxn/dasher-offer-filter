@@ -12,7 +12,16 @@ final class FilterStore {
     private static final String FLAT = "flat";
     private static final String PER_MILE = "mile";
     private static final String PER_MINUTE = "minute";
-    private static final String EXTRA_STOP = "stop";
+    /** Minimum pay per stop. */
+    private static final String PER_STOP = "per_stop";
+    /**
+     * Where older versions kept the extra-stop fee, added on top of the other minimums for each stop after two. Per
+     * stop is now a minimum of its own, so the old fee is retired, never read as one: that would silently change
+     * which offers are declined.
+     */
+    private static final String RETIRED_EXTRA_STOP_FEE = "stop";
+    /** What Settings says once, beside Per stop, when a set extra-stop fee was retired. */
+    private static final String STOP_FEE_NOTICE = "stop_fee_notice";
     private static final String MAX_STOPS = "max_stops";
     private static final String RISING_OFFERS = "rising_offers";
     private static final String LAST_ACCEPTED = "last_accepted";
@@ -37,10 +46,59 @@ final class FilterStore {
 
     static FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
+        retireExtraStopFee(context, prefs);
+        return read(prefs);
+    }
+
+    private static FilterSettings read(SharedPreferences prefs) {
         return new FilterSettings(prefs.getBoolean(ENABLED, false),
                 prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
-                prefs.getInt(PER_MINUTE, 0), prefs.getInt(EXTRA_STOP, 0), prefs.getInt(MAX_STOPS, 0),
+                prefs.getInt(PER_MINUTE, 0), prefs.getInt(PER_STOP, 0), prefs.getInt(MAX_STOPS, 0),
                 prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs));
+    }
+
+    /**
+     * Removes an extra-stop fee saved by an older version, once. Per stop is left off (0) rather than taking the
+     * fee's value, which meant something else. A fee that was set is noted in the diagnostic log and the status, and
+     * Settings says so once beside Per stop; if it was the only rule, auto-decline is paused in the same edit, so the
+     * page never shows an active filter that filters nothing. A fee of 0 was never a rule and goes silently.
+     */
+    private static void retireExtraStopFee(Context context, SharedPreferences prefs) {
+        if (!prefs.contains(RETIRED_EXTRA_STOP_FEE)) return;
+        Object saved;
+        boolean paused = false;
+        synchronized (FilterStore.class) {
+            if (!prefs.contains(RETIRED_EXTRA_STOP_FEE)) return;
+            saved = prefs.getAll().get(RETIRED_EXTRA_STOP_FEE);
+            SharedPreferences.Editor edit = prefs.edit().remove(RETIRED_EXTRA_STOP_FEE);
+            if (saved instanceof Integer && (Integer) saved > 0) {
+                FilterSettings left = read(prefs);
+                paused = left.enabled && !left.hasAnyRule();
+                if (paused) edit.putBoolean(ENABLED, false);
+                String notice = "Your " + DecisionLog.money((Integer) saved) + " extra-stop fee was removed: Per stop "
+                        + "is now a minimum. Set one if you want it."
+                        + (paused ? " It was your only rule, so auto-decline is paused." : "");
+                edit.putString(STOP_FEE_NOTICE, notice).putString(LAST_STATUS, stamped(notice));
+            }
+            edit.apply();
+        }
+        if (!(saved instanceof Integer) || (Integer) saved <= 0) return;
+        DiagnosticLog.log(context, "rules", "the old extra-stop fee of " + DecisionLog.money((Integer) saved)
+                + " was retired; per stop is now a minimum like per mile and per minute, and starts off"
+                + (paused ? "; no rule was left, so auto-decline was paused" : ""));
+    }
+
+    /**
+     * The note about a retired extra-stop fee, once: it is forgotten as it is taken, so Settings shows it the first
+     * time it opens after the update and never again. Null when there is none.
+     */
+    static String takeStopFeeNotice(Context context) {
+        SharedPreferences prefs = prefs(context);
+        synchronized (FilterStore.class) {
+            String notice = prefs.getString(STOP_FEE_NOTICE, null);
+            if (notice != null) prefs.edit().remove(STOP_FEE_NOTICE).apply();
+            return notice;
+        }
     }
 
     /** The stored bests; anything that is not a positive, finite number reads as "none" rather than crashing a rule. */
@@ -89,7 +147,7 @@ final class FilterStore {
                 .putInt(FLAT, settings.flatCents)
                 .putInt(PER_MILE, settings.perMileCents)
                 .putInt(PER_MINUTE, settings.perMinuteCents)
-                .putInt(EXTRA_STOP, settings.extraStopCents)
+                .putInt(PER_STOP, settings.perStopCents)
                 .putInt(MAX_STOPS, settings.maxStops)
                 .putBoolean(RISING_OFFERS, settings.risingOffers)
                 .apply();
@@ -143,8 +201,12 @@ final class FilterStore {
     }
 
     static void setLastStatus(Context context, String status) {
+        prefs(context).edit().putString(LAST_STATUS, stamped(status)).apply();
+    }
+
+    private static String stamped(String status) {
         String timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date());
-        prefs(context).edit().putString(LAST_STATUS, timestamp + "\n" + status).apply();
+        return timestamp + "\n" + status;
     }
 
     static String lastStatus(Context context) {

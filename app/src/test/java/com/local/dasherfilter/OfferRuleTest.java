@@ -51,12 +51,107 @@ public final class OfferRuleTest {
     }
 
     @Test
-    public void chargesOnlyForStopsBeyondPickupAndDropoff() {
-        OfferSnapshot offer = parse("$7.00 Guaranteed", "1 mi", "3 stops");
-        FilterSettings settings = new FilterSettings(true, 600, 100, 0, 200, 0);
-        OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
-        assertEquals(OfferRule.Result.DECLINE, decision.result);
-        assertEquals(800L, decision.requiredCents);
+    public void perStopIsAMinimumLikePerMileAndPerMinute() {
+        // $6 minimum, $1.00/mi, $0.30/min, $4.00 per stop. A double order of 6 mi and 20 min: the minimum, per mile
+        // and per minute each ask $6.00, but 4 stops at $4.00 ask $16.00.
+        FilterSettings settings = new FilterSettings(true, 600, 100, 30, 400, 0);
+        OfferRule.Decision shortOfPerStop = OfferRule.evaluate(new OfferSnapshot(1599, 6.0, 20, 4), settings);
+        assertEquals(OfferRule.Result.DECLINE, shortOfPerStop.result);
+        assertEquals(1600L, shortOfPerStop.requiredCents);
+        assertEquals("dollars per stop", shortOfPerStop.reason);
+
+        // Meeting it passes: a floor, never a fee on top of the others (that would have asked $6 + 2 × $4 = $14).
+        OfferRule.Decision meetsIt = OfferRule.evaluate(new OfferSnapshot(1600, 6.0, 20, 4), settings);
+        assertEquals(OfferRule.Result.KEEP, meetsIt.result);
+        assertEquals(1600L, meetsIt.requiredCents);
+
+        // Every stop counts, the first two too: a single order of 2 stops asks 2 × $4.00.
+        assertEquals(800L, OfferRule.evaluate(new OfferSnapshot(900, 6.0, 20, 2), settings).requiredCents);
+        // A higher per-mile ask still wins over per stop; nothing is added up.
+        OfferRule.Decision byMiles = OfferRule.evaluate(new OfferSnapshot(1500, 20.0, 20, 2), settings);
+        assertEquals(2000L, byMiles.requiredCents);
+        assertEquals("dollars per mile", byMiles.reason);
+    }
+
+    @Test
+    public void unknownStopsUnderAPerStopMinimumNeedReviewUnlessAKnownFloorFails() {
+        FilterSettings settings = new FilterSettings(true, 600, 0, 0, 400, 0);
+        // Pay clears the known minimum, but the stops the per-stop minimum needs are not shown: review, never keep.
+        OfferRule.Decision unknownStops = OfferRule.evaluate(new OfferSnapshot(5000, 6.0, 20, null), settings);
+        assertEquals(OfferRule.Result.REVIEW, unknownStops.result);
+        assertEquals("an enabled value was not found", unknownStops.reason);
+        // Nor are stops ever assumed: "3 items" is not a stop count.
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(parse("$50.00 Guaranteed", "3 items"), settings)
+                .result);
+
+        // The known $6.00 minimum already fails: that declines even with the stops unknown.
+        OfferRule.Decision knownFailure = OfferRule.evaluate(new OfferSnapshot(500, null, null, null), settings);
+        assertEquals(OfferRule.Result.DECLINE, knownFailure.result);
+        assertEquals(600L, knownFailure.requiredCents);
+        assertEquals("flat minimum", knownFailure.reason);
+
+        // A known per-mile failure declines too.
+        FilterSettings withPerMile = new FilterSettings(true, 0, 150, 0, 400, 0);
+        assertEquals(OfferRule.Result.DECLINE,
+                OfferRule.evaluate(new OfferSnapshot(800, 6.0, null, null), withPerMile).result);
+
+        // Unknown pay with known stops is review.
+        assertEquals(OfferRule.Result.REVIEW,
+                OfferRule.evaluate(new OfferSnapshot(null, 6.0, 20, 4), settings).result);
+    }
+
+    @Test
+    public void aOneStopReadingIsAMisreadThatNoPerStopAskPricesAtHalf() {
+        // "$5.00 · 1 stop": a standalone order is a pickup and a drop-off at least, so "1 stop" is a misread. Priced
+        // as read, $4.00 per stop would ask $4.00 and keep it.
+        OfferSnapshot oneStop = parse("$5.00 Guaranteed", "3.0 mi", "1 stop");
+        assertEquals(Integer.valueOf(1), oneStop.stops);
+        FilterSettings perStop = new FilterSettings(true, 0, 0, 0, 400, 0);
+        OfferRule.Decision decision = OfferRule.evaluate(oneStop, perStop);
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+        assertEquals("an enabled value was not found", decision.reason);
+        // Nor is it read as 2 stops ($8.00 would decline it): the count is not known, and never guessed.
+        assertEquals(0L, decision.requiredCents);
+
+        // A separate known failure still declines: the $6.00 minimum.
+        OfferRule.Decision belowMinimum = OfferRule.evaluate(oneStop, new FilterSettings(true, 600, 0, 0, 400, 0));
+        assertEquals(OfferRule.Result.DECLINE, belowMinimum.result);
+        assertEquals(600L, belowMinimum.requiredCents);
+        assertEquals("flat minimum", belowMinimum.reason);
+
+        // Two stops is a real reading and is priced: 2 × $4.00 declines the $5.00.
+        OfferRule.Decision twoStops = OfferRule.evaluate(parse("$5.00 Guaranteed", "3.0 mi", "2 stops"), perStop);
+        assertEquals(OfferRule.Result.DECLINE, twoStops.result);
+        assertEquals(800L, twoStops.requiredCents);
+
+        // The adaptive per-stop floors treat it alike: $8.00 for "1 stop" would pass the best accepted $7.10/stop
+        // (asking $7.10) and a declined $5.00/stop (asking $5.01).
+        OfferSnapshot eightForOne = parse("$8.00 Guaranteed", "3.0 mi", "1 stop");
+        FilterSettings bestPerStop = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0,
+                new AcceptedBest(0, 0, 0, 0, 1420, 2));
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(eightForOne, bestPerStop).result);
+        FilterSettings declinedPerStop = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, AcceptedBest.NONE,
+                new DeclinedFloor(0, new AcceptedBest(0, 0, 0, 0, 1000, 2)));
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(eightForOne, declinedPerStop).result);
+        // With 2 stops read, both floors apply as usual: $14.20 and $10.01.
+        OfferSnapshot eightForTwo = parse("$8.00 Guaranteed", "3.0 mi", "2 stops");
+        assertEquals(1420L, OfferRule.evaluate(eightForTwo, bestPerStop).requiredCents);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(eightForTwo, bestPerStop).result);
+        assertEquals(1001L, OfferRule.evaluate(eightForTwo, declinedPerStop).requiredCents);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(eightForTwo, declinedPerStop).result);
+
+        // Without a per-stop ask a "1 stop" reading changes nothing: pay and the other rules decide.
+        assertEquals(OfferRule.Result.KEEP,
+                OfferRule.evaluate(oneStop, new FilterSettings(true, 400, 0, 0, 0, 3)).result);
+    }
+
+    @Test
+    public void perStopIsDescribedAsAMinimum() {
+        FilterSettings settings = new FilterSettings(true, 700, 0, 0, 350, 0);
+        assertEquals("at least $7.00 · $3.50 per stop", settings.describe());
+        assertEquals("$7 min · $3.50/stop", settings.brief());
+        assertTrue(settings.hasAnyRule());
+        assertTrue(settings.hasMarginalRule());
     }
 
     @Test
@@ -167,7 +262,7 @@ public final class OfferRuleTest {
     public void risingRuleCombinesWithPriceAndStopRulesWithoutDoubleCharging() {
         FilterSettings settings = new FilterSettings(true, 2200, 0, 0, 100, 3, true, 2500);
 
-        // The $25.01 rising floor replaces the flat-plus-extra-stop requirement instead of adding to it.
+        // The $25.01 rising floor replaces the flat and per-stop requirements instead of adding to them.
         OfferSnapshot threeStops = new OfferSnapshot(2501, null, null, 3);
         assertEquals(2501L, OfferRule.evaluate(threeStops, settings).requiredCents);
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(threeStops, settings).result);
@@ -390,7 +485,7 @@ public final class OfferRuleTest {
     }
 
     @Test
-    public void addOnUsesCombinedStopCeilingAndMarginalStopFee() {
+    public void addOnUsesCombinedStopCeilingAndPerStopForTheStopsItAdds() {
         OfferSnapshot active = new OfferSnapshot(2500, null, null, 2);
         AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+2 stops"));
 
@@ -398,11 +493,96 @@ public final class OfferRuleTest {
         FilterSettings stopCeiling = new FilterSettings(true, 0, 0, 0, 0, 3);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(addOn, stopCeiling).result);
 
-        // Both added stops are beyond pickup and dropoff: 2 x $2.00 exceeds the +$3.00 offered.
-        FilterSettings extraStopFee = new FilterSettings(true, 0, 0, 0, 200, 0);
-        OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, extraStopFee);
+        // The combined route ($28.00 for 4 stops) meets $2.00 per stop, but 2 added stops at $2.00 ask $4.00 of the
+        // +$3.00 the add-on pays.
+        FilterSettings perStop = new FilterSettings(true, 0, 0, 0, 200, 0);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, perStop);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
         assertEquals(400L, decision.requiredCents);
+        assertEquals("add-on marginal economics", decision.reason);
+
+        // Only the stops the add-on adds are priced, so an unknown active route does not stop a known failure.
+        AddOnOffer noRoute = AddOnOffer.parse(null, Arrays.asList("Add to route", "+$3.00", "+2 stops"));
+        OfferRule.Decision withoutRoute = OfferRule.evaluateAddOn(noRoute, perStop);
+        assertEquals(OfferRule.Result.DECLINE, withoutRoute.result);
+        assertEquals(400L, withoutRoute.requiredCents);
+    }
+
+    @Test
+    public void addOnPassesWhenItsAddedPayCoversItsAddedStops() {
+        OfferSnapshot active = new OfferSnapshot(2500, null, null, 2);
+        AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$4.00", "+2 stops"));
+        FilterSettings perStop = new FilterSettings(true, 0, 0, 0, 200, 0);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, perStop);
+        assertEquals(OfferRule.Result.KEEP, decision.result);
+        assertEquals(400L, decision.requiredCents);
+
+        // The added stops, miles and minutes are floors side by side: the highest ask ($4.00 for 2 stops, against
+        // $3.00 for 3 mi and $1.20 for 12 min) applies, never their sum.
+        FilterSettings allRates = new FilterSettings(true, 0, 100, 10, 200, 0);
+        AddOnOffer longer = AddOnOffer.parse(new OfferSnapshot(2500, 5.0, 20, 2),
+                Arrays.asList("Add to route", "+$4.00", "+2 stops", "+3 mi", "+12 min"));
+        OfferRule.Decision highest = OfferRule.evaluateAddOn(longer, allRates);
+        assertEquals(OfferRule.Result.KEEP, highest.result);
+        assertEquals(400L, highest.requiredCents);
+    }
+
+    @Test
+    public void addOnStopsThatDisagreeWithTheirNewTotalAreUnknown() {
+        // The route had 2 stops and the add-on says +1, but the new total says 4: which is right is not known.
+        OfferSnapshot active = new OfferSnapshot(2500, null, null, 2);
+        AddOnOffer disagreeing = AddOnOffer.parse(active,
+                Arrays.asList("Add to route", "+$3.00", "+1 stop", "New total 4 stops"));
+        assertNull(disagreeing.incremental.stops);
+        assertNull(disagreeing.combined.stops);
+        assertEquals("pay is read as before", Integer.valueOf(300), disagreeing.incremental.payCents);
+
+        // The total of 4 would have broken at most 3 stops, and +1 stop kept $2.00 per stop: both need review now.
+        OfferRule.Decision ceiling = OfferRule.evaluateAddOn(disagreeing, new FilterSettings(true, 0, 0, 0, 0, 3));
+        assertEquals(OfferRule.Result.REVIEW, ceiling.result);
+        OfferRule.Decision perStop = OfferRule.evaluateAddOn(disagreeing, new FilterSettings(true, 0, 0, 0, 200, 0));
+        assertEquals(OfferRule.Result.REVIEW, perStop.result);
+
+        // A separate known failure still declines: +3 mi at $1.50/mi asks $4.50 of the +$3.00.
+        AddOnOffer withMiles = AddOnOffer.parse(active,
+                Arrays.asList("Add to route", "+$3.00", "+1 stop", "+3 mi", "New total 4 stops"));
+        assertNull(withMiles.combined.stops);
+        assertEquals(OfferRule.Result.DECLINE,
+                OfferRule.evaluateAddOn(withMiles, new FilterSettings(true, 0, 150, 0, 200, 3)).result);
+
+        // Figures that agree stand: 2 + 1 = 3.
+        AddOnOffer agreeing = AddOnOffer.parse(active,
+                Arrays.asList("Add to route", "+$3.00", "+1 stop", "New total 3 stops"));
+        assertEquals(Integer.valueOf(1), agreeing.incremental.stops);
+        assertEquals(Integer.valueOf(3), agreeing.combined.stops);
+        assertEquals(OfferRule.Result.KEEP,
+                OfferRule.evaluateAddOn(agreeing, new FilterSettings(true, 0, 0, 0, 200, 3)).result);
+
+        // Without the route's stops there is nothing to disagree with: the explicit figures stand.
+        AddOnOffer noRoute = AddOnOffer.parse(null,
+                Arrays.asList("Add to route", "+$3.00", "+1 stop", "New total 4 stops"));
+        assertEquals(Integer.valueOf(1), noRoute.incremental.stops);
+        assertEquals(Integer.valueOf(4), noRoute.combined.stops);
+        assertEquals(OfferRule.Result.DECLINE,
+                OfferRule.evaluateAddOn(noRoute, new FilterSettings(true, 0, 0, 0, 0, 3)).result);
+    }
+
+    @Test
+    public void addOnWithoutExplicitAddedStopsNeedsReviewUnderAPerStopMinimum() {
+        // The new total says 4 stops and the route had 2, but "added 2" is never worked out from totals.
+        OfferSnapshot active = new OfferSnapshot(2500, null, null, 2);
+        AddOnOffer totalOnly = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$5.00", "New total 4 stops"));
+        assertNull(totalOnly.incremental.stops);
+        assertEquals(Integer.valueOf(4), totalOnly.combined.stops);
+        FilterSettings perStop = new FilterSettings(true, 0, 0, 0, 200, 0);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(totalOnly, perStop);
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+
+        // A separate known failure still declines: +3 mi at $1.50/mi asks $4.50 of the +$2.00 offered.
+        FilterSettings perMileAndStop = new FilterSettings(true, 0, 150, 0, 200, 0);
+        AddOnOffer shortPay = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$2.00", "+3 mi"));
+        assertNull(shortPay.incremental.stops);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(shortPay, perMileAndStop).result);
     }
 
     @Test
@@ -475,6 +655,15 @@ public final class OfferRuleTest {
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1510, 6.0, 24, 2), learned).result);
         // Add-ons are never judged by it.
         assertTrue(learned.withoutRisingBaseline().declined == floor && !learned.withoutRisingBaseline().risingOffers);
+    }
+
+    @Test
+    public void aManualDeclineWeighsTheSetPerStopMinimumLikeTheOtherRates() {
+        FilterSettings rules = new FilterSettings(true, 700, 0, 0, 400, 0, true, 0);
+        // $10 for 6 mi, 24 min and 2 stops: the minimum asks $7, per stop $8. Per stop came closest.
+        DeclinedFloor floor = DeclinedFloor.raisedBy(rules, new OfferSnapshot(1000, 6.0, 24, 2));
+        assertEquals("$5.00/stop", floor.rates.perStopLabel());
+        assertEquals(0, floor.payCents);
     }
 
     @Test

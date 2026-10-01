@@ -1,3 +1,43 @@
+## 0.4.37 — drag your minimums; a bigger sky; per stop is a minimum
+
+- **Knobs on the constellation.** Each minimum you set is a knob on its spoke. Drag it along the spoke to change it:
+  - It moves in steps: $0.50 of pay, $0.05 a mile, $0.01 a minute, $0.25 a stop. Each step gives a light tick, and a small readout shows the value while it moves.
+  - Letting go saves it, exactly like typing it in Settings and tapping **Save rules**. Every other rule and the on/paused state stay as they were.
+  - Dragging it into the middle turns that rule off.
+  - Only a finger moving along the spoke takes a knob. A scroll, or a slide across the spoke, sets nothing.
+  - Screen readers get each knob as an adjustable control.
+- **Make the learned minimums yours.** While a learned (dashed) minimum asks more than your set one, a round button beside the chart copies the learned minimums into your set ones.
+  - It never lowers a minimum. It rounds rates up, so the set rule is never looser than the learned one.
+  - Undo is offered for 8 seconds.
+  - Set minimums also judge add-ons, which learned ones never do, so adopting can decline add-ons that used to pass.
+- **A bigger, looser sky.** The constellation runs past the page edges, a little right of centre. Lines like "Paused" or a Fix row cross its lower part instead of shrinking it.
+  - At night, stars and clouds stay out from under words.
+  - The ring labels are bolder.
+  - With a very large font, the page scrolls a little rather than squeezing the skyline and map.
+- **Per stop is a minimum now,** like per mile and per minute: required pay is at least stops × rate.
+  - The old extra-stop fee meant something else, so updating removes it.
+  - If you had one, Settings says so once beside **Per stop**. If it was your only rule, auto-decline is paused rather than filtering nothing.
+- **Safer stop counts.** A "1 stop" reading is treated as a misread: a per-stop minimum sends that offer to review instead of halving the minimum. An add-on whose "New total N stops" disagrees with its own counts also goes to review. A separate known failure still declines.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - adopting: the rounding, never lowering, and spokes with nothing learned left alone;
+  - the "1 stop" misread;
+  - stop totals that disagree.
+- **Simulated Android 8 and 15 tests** cover:
+  - a knob drag saving the stepped value and showing it in Settings;
+  - a drag into the middle turning the rule off;
+  - a wobble or a scroll saving nothing;
+  - screen-reader steps;
+  - adopt and Undo;
+  - the fee's removal: silent for $0, paused with a one-time notice when it was the only rule;
+  - the constellation's size beside Dasher.
+- **Not verified on a real phone:**
+  - how dragging feels;
+  - the haptic tick;
+  - TalkBack;
+  - the look on your screen.
+
 ## 0.4.36 — drag the ticket down to close it
 
 - **The offer ticket is a drawer.** Pull it down to close it: from its handle any time, or from anywhere on it once its content is scrolled to the top.

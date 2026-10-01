@@ -152,7 +152,7 @@ final class DiagnosticLog {
                 + "; flat cents=" + rules.flatCents
                 + "; per-mile cents=" + rules.perMileCents
                 + "; per-minute cents=" + rules.perMinuteCents
-                + "; extra-stop cents=" + rules.extraStopCents
+                + "; per-stop cents=" + rules.perStopCents
                 + "; max stops=" + rules.maxStops
                 + "; rising offers=" + rules.risingOffers
                 + "; highest accepted cents=" + rules.lastAcceptedCents

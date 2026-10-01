@@ -104,8 +104,9 @@ final class DeclinedFloor {
                         rules.risingOffers && declined.rates.hasPerMinute() ? declined.beatMinutes(offer.minutes)
                                 : 0));
             case STOP:
-                return Math.max(rules.risingOffers && best.hasPerStop() ? best.forStops(offer.stops) : 0,
-                        rules.risingOffers && declined.rates.hasPerStop() ? declined.beatStops(offer.stops) : 0);
+                return Math.max((long) rules.perStopCents * offer.stops, Math.max(
+                        rules.risingOffers && best.hasPerStop() ? best.forStops(offer.stops) : 0,
+                        rules.risingOffers && declined.rates.hasPerStop() ? declined.beatStops(offer.stops) : 0));
             default:
                 return Math.max(rules.flatCents, Math.max(
                         rules.risingOffers && rules.lastAcceptedCents > 0 ? rules.lastAcceptedCents + 1L : 0,

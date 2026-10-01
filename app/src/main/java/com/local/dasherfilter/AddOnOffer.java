@@ -87,6 +87,11 @@ final class AddOnOffer {
         boolean stopsConflict = addedStops.conflict || totalStops.conflict;
         Integer stops = stopsConflict ? null : addedStops.integer();
         Integer stopsTotal = stopsConflict ? null : totalStops.integer();
+        if (stops != null && stopsTotal != null && active.stops != null && (long) active.stops + stops != stopsTotal) {
+            // As with pay: added stops and a new total that disagree with the accepted route leave both unknown.
+            stops = null;
+            stopsTotal = null;
+        }
 
         // Totals may be composed from known context plus explicit increments, never the other way around.
         if (milesTotal == null && miles != null && active.miles != null) milesTotal = active.miles + miles;
