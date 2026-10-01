@@ -29,13 +29,18 @@ import java.util.Locale;
  *   <li>Dasher never asked to confirm declining it, no Decline tap on it was seen, and no decline of it was
  *       requested, on screen or through Dasher's notification;</li>
  *   <li>within {@value #AFTER_MS} ms Dasher's next settled screen is a delivery screen ({@link #isDeliveryScreen}, or
- *       the pickup, drop-off or directions screens {@link DasherScene} knows), not the wait for offers.</li>
+ *       the pickup, drop-off or directions screens {@link DasherScene} knows, such as "Deliver to Sam", "Leave it at
+ *       the door" or "Confirm to complete delivery"), not the wait for offers (which includes the dash's summary
+ *       between deliveries, "This dash so far" / "Continue dashing", and the zone screens).</li>
  * </ul>
  * A next screen that is neither, once it has stayed {@value #SETTLE_MS} ms, teaches nothing, and its words go to the
- * screens log so a report shows them. So does a screen showing both a delivery and the wait for offers. A read that
- * shows any of an offer's facts (pay, miles, minutes, stops) is an offer being drawn, never a next screen. Dasher's
- * "New Delivery!" / "New Order: Go to …" is a new offer, never evidence of an acceptance; notifications never reach
- * this class.
+ * screens log so a report shows them. So does a screen showing both a delivery and the wait for offers, turn-by-turn
+ * navigation alone (its speed and distances, "Turn left", "Exit": it shows on the way to a customer and on the way
+ * back to a zone alike), and Dasher's "End your current dash?" (the dash counts as ended only once the user's "End
+ * dash" on it was seen and a screen without the dash followed). A read that shows any of an offer's facts (pay,
+ * miles, minutes, stops) is an offer being drawn, never a next screen, except the figures a screen explains itself:
+ * navigation's distances and times, and every figure on the dash's summary. Dasher's "New Delivery!" / "New Order:
+ * Go to …" is a new offer, never evidence of an acceptance; notifications never reach this class.
  *
  * <p><b>Declined by hand.</b> A seen Decline tap, or Dasher's own "Are you sure you want to decline this offer?" about
  * an offer Offer Filter left alone while no decline of its own is under way. Either is held until Dasher moves on,
@@ -136,9 +141,15 @@ final class AcceptedOfferTracker {
         ROUTE,
         /** The wait for offers. */
         WAITING,
-        /** The dash ended or paused, or Dasher's home before a dash. */
+        /**
+         * The dash ended or paused, or Dasher's home before a dash; or (in {@link #afterScreen} only) the screen after
+         * the user's "End dash" on Dasher's "End your current dash?" that shows no dash.
+         */
         DASH_OVER,
-        /** Something else, or a delivery and the wait for offers at once: settles after {@link #SETTLE_MS} unchanged. */
+        /**
+         * Something else, a delivery and the wait for offers at once, navigation alone, or Dasher's "End your current
+         * dash?": settles after {@link #SETTLE_MS} unchanged.
+         */
         UNCLEAR,
         /** Nothing readable yet (a screen between two others). */
         EMPTY,
@@ -170,14 +181,18 @@ final class AcceptedOfferTracker {
     }
 
     /**
-     * What a screen without an offer's controls on it shows. The words alone decide, never a stored route.
+     * What a screen without an offer's controls on it shows. The words alone decide, never a stored route. Dasher's
+     * "End your current dash?" is no answer either way here ({@link #afterScreen} counts the dash's end only after the
+     * user's "End dash" on it), and nor is turn-by-turn navigation alone ({@link DasherScene#showsNavigation}).
      *
-     * @param offerFacts the read found an offer's facts, which its words alone may not show (split metric parts)
+     * @param offerFacts the read found an offer's facts ({@link #offerFacts}), which its words alone may not show
+     *     (split metric parts)
      */
     static After classify(List<String> labels, boolean offerFacts) {
         if (labels == null || labels.isEmpty()) return After.EMPTY;
         if (DasherScene.showsNewOffer(labels)) return After.NEW_OFFER;
-        if (offerFacts || showsOfferFacts(labels)) return After.OFFER_FACTS;
+        if (offerFacts || offerFacts(OfferParser.parse(labels), labels)) return After.OFFER_FACTS;
+        if (DasherScene.showsEndDashQuestion(labels)) return After.UNCLEAR;
         boolean route = DasherScene.showsRoute(labels);
         boolean over = OfferEvidence.isDashOver(labels) || OfferEvidence.isPreDashHome(labels);
         boolean waiting = DasherScene.showsWaiting(labels);
@@ -194,6 +209,21 @@ final class AcceptedOfferTracker {
         OfferSnapshot facts = OfferParser.parse(labels);
         return facts.payCents != null || facts.payAtMostCents != null || facts.miles != null || facts.minutes != null
                 || facts.stops != null;
+    }
+
+    /**
+     * Whether a read of a screen without an offer's controls shows an offer being drawn: any of an offer's facts it
+     * parsed (pay or a bound on it, miles, minutes, stops), except figures the screen itself explains. On
+     * turn-by-turn navigation the distances and times are the navigation's own, so only pay or stops there are an
+     * offer's; on the dash's summary between deliveries ("This dash so far", "This offer $9.00") every figure is the
+     * dash's.
+     *
+     * @param read what the read parsed, from its labels and any metric parts joined from sibling nodes
+     */
+    static boolean offerFacts(OfferSnapshot read, List<String> labels) {
+        if (read == null || DasherScene.showsDashSummary(labels)) return false;
+        if (read.payCents != null || read.payAtMostCents != null || read.stops != null) return true;
+        return (read.miles != null || read.minutes != null) && !DasherScene.showsNavigation(labels);
     }
 
     /**
@@ -618,7 +648,7 @@ final class AcceptedOfferTracker {
      * @param offerFacts the read found an offer's facts, which its words alone may not show
      */
     void afterScreen(List<String> labels, boolean offerFacts, long now) {
-        After shown = classify(labels, offerFacts);
+        After shown = endOfDash(labels, classify(labels, offerFacts), now);
         if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) lastClear = shown;
         if (shown != After.EMPTY && shown != After.NEW_OFFER && shown != After.OFFER_FACTS) screenSinceOffer = true;
         Watch w = watch;
@@ -652,6 +682,73 @@ final class AcceptedOfferTracker {
             default:
                 resolve(w, End.DASH_OVER, now);
         }
+    }
+
+    // ---- Dasher's "End your current dash?" ----
+
+    /** The latest read showing Dasher's question before it ends a dash, -1 when none is being followed. */
+    private long endQuestionAt = -1;
+    /** The first read since that question showing neither it nor the dash, -1 for none yet. */
+    private long dashGoneAt = -1;
+    /** The user's "End dash" tap on that question, -1 for none seen. */
+    private long endTapAt = -1;
+
+    /**
+     * What a read means once Dasher asked "End your current dash?": the question itself is unclear (the user may go
+     * back); a screen without the question that shows neither the dash (a delivery, the wait for offers) nor an offer
+     * is the dash's end once the user's "End dash" on the question was seen, else as unclear as its words; anything of
+     * the dash means it went on.
+     */
+    private After endOfDash(List<String> labels, After shown, long now) {
+        if (DasherScene.showsEndDashQuestion(labels)) {
+            endQuestionAt = now;
+            dashGoneAt = -1;
+            return shown;
+        }
+        if (endQuestionAt < 0 || shown == After.EMPTY) return shown;
+        if (shown != After.UNCLEAR || (endTapAt >= 0 && now - endTapAt > AFTER_MS)) {
+            // The dash went on (or its own words say it is over), or the tap is long past.
+            forgetEndQuestion();
+            return shown;
+        }
+        if (endTapAt >= 0) {
+            forgetEndQuestion();
+            return After.DASH_OVER;
+        }
+        if (dashGoneAt < 0) {
+            dashGoneAt = now;
+        } else if (now - dashGoneAt > QUESTION_AGE_MS) {
+            // No "End dash" came with it: just another screen.
+            forgetEndQuestion();
+        }
+        return shown;
+    }
+
+    /**
+     * The user's "End dash" tap (Offer Filter never taps it), by the tap's own time: it counts only on Dasher's "End
+     * your current dash?" while that question was the last screen read. The dash is over once a read shows neither the
+     * question nor the dash: at once when one already has (its click is read after the read of what came next), else
+     * at the next such read. A dash's screen read again means it went on.
+     */
+    void endDashTapped(long at) {
+        if (endQuestionAt < 0) return;
+        if (dashGoneAt < 0) {
+            endTapAt = at;
+            return;
+        }
+        boolean madeItGo = at <= dashGoneAt && dashGoneAt - at <= QUESTION_AGE_MS;
+        forgetEndQuestion();
+        if (!madeItGo) return;
+        lastClear = After.DASH_OVER;
+        screenSinceOffer = true;
+        Watch w = watch;
+        if (w != null && w.leftAt >= 0) resolve(w, End.DASH_OVER, Math.max(at, dashGoneAt));
+    }
+
+    private void forgetEndQuestion() {
+        endQuestionAt = -1;
+        dashGoneAt = -1;
+        endTapAt = -1;
     }
 
     /**
@@ -899,6 +996,7 @@ final class AcceptedOfferTracker {
         watch = null;
         lastClear = null;
         notes.clear();
+        forgetEndQuestion();
     }
 
     private void clearPending() {
