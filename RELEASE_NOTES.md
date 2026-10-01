@@ -1,3 +1,37 @@
+## 0.4.41 — the adaptive minimum learns from what you do
+
+- **Your accepts teach it,** even when Dasher doesn't report your tap. An offer counts as accepted only when all of this holds:
+  - Dasher's wait for offers was on screen before it, so no delivery was under way;
+  - it closed with more than 3 seconds left on its countdown;
+  - Dasher asked no decline question and Offer Filter requested no decline;
+  - within a minute, Dasher moved on to a delivery screen.
+
+  When any of that is unclear, nothing is learned and the history says why.
+- **Your own declines teach it.** Your Decline tap, or Dasher's "Are you sure you want to decline this offer?", on an offer Offer Filter let through counts only once Dasher goes back to the wait for offers or the next offer comes. Going back to the offer or accepting it after all cancels it.
+- **Every step is in the offer's history:** what was learned, or why not ("Not learned: it may have run out…"). Dasher's first screen after an offer goes to the screens log, so a report shows its wording.
+- **The alert card names the store:** "Taco Bell offer: open Dasher to check it".
+- **The GitHub connection is sturdier.** Updates and reports renew it one at a time. If it ends anyway, the log says why, and reports through it turn off until you turn them back on.
+- **A quieter log.** Automatic update checks wait 5 minutes between tries (opening the app or tapping Check still checks at once), and are logged only when the result changes. Alert-channel details are logged once per change.
+
+Once it learns from an accepted offer, the adaptive minimum rises to that offer's pay and rates. Reset clears it.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - each acceptance and decline path;
+  - every case where nothing should be learned;
+  - restarts;
+  - taps found on Dasher's newer screens, including a tap on the card body not counting.
+- **Simulated Android 8 and 15 tests** cover:
+  - the history lines;
+  - the store-named card;
+  - the GitHub renewal;
+  - the update pacing.
+- **Not verified on a real phone:**
+  - Dasher's real wording after an Accept;
+  - whether Android reports your taps on Dasher.
+
+  A report after your next accepted offer will show both.
+
 ## 0.4.40 — the tab and pointer over Dasher get out of the way
 
 - **The pointer** (distance and pay per mile to the best area) shows only while Dasher is waiting for offers. During a delivery, shopping, an offer, or any screen it doesn't recognise, it stays hidden.

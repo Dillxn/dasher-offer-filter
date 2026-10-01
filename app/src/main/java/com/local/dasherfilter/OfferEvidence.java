@@ -99,6 +99,19 @@ final class OfferEvidence {
         return false;
     }
 
+    /**
+     * Dasher's home before a dash starts (or after it ends): it shows a button labelled exactly "Dash", as the user's
+     * report shows it. A decline held until the dash goes on is dropped there.
+     */
+    static boolean isPreDashHome(List<String> labels) {
+        if (labels == null) return false;
+        for (String raw : labels) {
+            String label = normalize(raw).toLowerCase(Locale.US);
+            if (TRAILING_PUNCTUATION.matcher(label).replaceAll("").equals("dash")) return true;
+        }
+        return false;
+    }
+
     static boolean isIdle(List<String> labels) {
         if (labels == null) return false;
         for (String raw : labels) {

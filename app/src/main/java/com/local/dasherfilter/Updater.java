@@ -52,7 +52,7 @@ import org.json.JSONObject;
 final class Updater {
     private static final int PERIODIC_JOB_ID = 7241;
     private static final int CONFIRMATION_NOTICE_ID = 7242;
-    private static final int RETRY_JOB_ID = 7243;
+    static final int RETRY_JOB_ID = 7243;
     private static final long PERIOD_MS = 900_000L;
     private static final long FLEX_MS = 300_000L;
     private static final long MIN_RETRY_DELAY_MS = 60_000L;
@@ -70,6 +70,12 @@ final class Updater {
     private static final String NEXT_CHECK_AT = "next_check_at";
     private static final String FAILURE_COUNT = "failure_count";
     private static final String ADVERTISED = "advertised";
+    /** Which feed the advertised version came from: "Render" or "GitHub". */
+    private static final String ADVERTISED_VIA = "advertised_via";
+    /** Automatic checks since the last logged update line that found the same, or were too soon to start. */
+    private static final String QUIET = "quiet_";
+    private static final String HELD = "held_";
+    private static final String CADENCE_AT = "cadence_at";
     private static final String MANUAL_RETRY_REQUIRED = "manual_retry_required";
     private static final String SESSION = "session";
     private static final String SESSION_AT = "session_at";
@@ -80,6 +86,19 @@ final class Updater {
     private static final long INSTALL_WINDOW_MS = 10 * 60_000L;
 
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
+
+    /** Reads a feed's JSON. Tests only stand in feed bytes here, which still pass every check; APKs never come here. */
+    interface FeedReader {
+        void read(UpdatePolicy.Channel channel, String address, String token, OutputStream out, long limit)
+                throws IOException;
+    }
+
+    static volatile FeedReader feedReader = UpdateTransport::download;
+
+    /** For tests: waits until checks queued so far have finished. */
+    static void awaitIdle(long ms) throws Exception {
+        WORKER.submit(() -> { }).get(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
     private static final AtomicBoolean BUSY = new AtomicBoolean();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
@@ -107,9 +126,72 @@ final class Updater {
         return prefs(context).getString(STATUS, "No update check has completed yet.");
     }
 
+    /**
+     * An event (downloading, installing, a confirmation, an install result): shown and always logged. The next
+     * automatic check's result is then logged again, whatever it says.
+     */
     static void status(Context context, String message) {
         prefs(context).edit().putString(STATUS, message).apply();
         DiagnosticLog.log(context, "update", message);
+        DiagnosticLog.forget(context, "update", "result");
+        resetCadence(context);
+    }
+
+    /** Shown in Settings only; whether it is logged is up to the caller. */
+    private static void show(Context context, String message) {
+        prefs(context).edit().putString(STATUS, message).apply();
+    }
+
+    private static void countQuiet(Context context, UpdateCadence.Trigger trigger) {
+        count(context, QUIET + trigger.label());
+    }
+
+    private static void countHeld(Context context, UpdateCadence.Trigger trigger) {
+        count(context, HELD + trigger.label());
+    }
+
+    private static void count(Context context, String key) {
+        SharedPreferences prefs = prefs(context);
+        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).putLong(CADENCE_AT, System.currentTimeMillis()).apply();
+    }
+
+    private static void resetCadence(Context context) {
+        SharedPreferences prefs = prefs(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        boolean any = false;
+        for (String key : prefs.getAll().keySet()) {
+            if (key.startsWith(QUIET) || key.startsWith(HELD) || key.equals(CADENCE_AT)) {
+                edit.remove(key);
+                any = true;
+            }
+        }
+        if (any) edit.apply();
+    }
+
+    /**
+     * For a shared report: the automatic checks since the last logged update line that found the same result, and
+     * those too soon to start, by what started them.
+     */
+    static String cadenceSummary(Context context) {
+        SharedPreferences prefs = prefs(context);
+        StringBuilder quiet = new StringBuilder();
+        StringBuilder held = new StringBuilder();
+        int quietTotal = 0;
+        int heldTotal = 0;
+        for (UpdateCadence.Trigger trigger : UpdateCadence.Trigger.values()) {
+            int q = prefs.getInt(QUIET + trigger.label(), 0);
+            int h = prefs.getInt(HELD + trigger.label(), 0);
+            if (q > 0) quiet.append(quiet.length() == 0 ? "" : ", ").append(trigger.label()).append(' ').append(q);
+            if (h > 0) held.append(held.length() == 0 ? "" : ", ").append(trigger.label()).append(' ').append(h);
+            quietTotal += q;
+            heldTotal += h;
+        }
+        long at = prefs.getLong(CADENCE_AT, 0);
+        return "Automatic checks since the last logged update line: same result " + quietTotal
+                + (quietTotal > 0 ? " (" + quiet + ")" : "") + "; too soon to start " + heldTotal
+                + (heldTotal > 0 ? " (" + held + ")" : "")
+                + (at > 0 ? "; latest " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX",
+                        java.util.Locale.US).format(new java.util.Date(at)) : "");
     }
 
     static void foreground(Activity activity) {
@@ -155,6 +237,11 @@ final class Updater {
 
     /** Schedules a real one-shot retry job, no sooner than one minute from now. */
     static void retry(Context context, long delay) {
+        retry(context, delay, true);
+    }
+
+    /** As {@link #retry(Context, long)}; logged when {@code log}, or when Android refused it. */
+    private static void retry(Context context, long delay, boolean log) {
         if (!enabled(context)) return;
         JobScheduler jobs = context.getSystemService(JobScheduler.class);
         if (jobs == null) return;
@@ -163,7 +250,10 @@ final class Updater {
                 .setMinimumLatency(Math.max(MIN_RETRY_DELAY_MS, delay))
                 .setPersisted(true)
                 .build());
-        DiagnosticLog.log(context, "update", "one-shot retry scheduled result=" + result + " earliestDelayMs=" + delay);
+        if (log || result != JobScheduler.RESULT_SUCCESS) {
+            DiagnosticLog.log(context, "update", "one-shot retry scheduled result=" + result + " earliestDelayMs="
+                    + delay);
+        }
     }
 
     private static ComponentName jobComponent(Context context) {
@@ -173,17 +263,30 @@ final class Updater {
     /**
      * Runs one check on the worker thread. A check already in progress absorbs this request.
      *
-     * @param manual the user asked: bypasses the cooldown and may install while the app is open
+     * @param manual the user asked: bypasses the cooldown and may install while the app is open; otherwise an
+     *               automatic check, which waits {@link UpdateCadence#AUTOMATIC_SPACING_MS} after the last one
      * @param done   posted to the main thread once this request is finished
      */
     static Future<?> check(Context context, boolean manual, Runnable done) {
+        return check(context, manual ? UpdateCadence.Trigger.MANUAL : UpdateCadence.Trigger.AUTOMATIC, done);
+    }
+
+    /**
+     * Runs one check on the worker thread, if what started it may start one now ({@link UpdateCadence}). A check
+     * already in progress absorbs this request. Only a manual check bypasses the cooldown and may install while the
+     * app is open. An automatic check logs its result only when it differs from the last one logged (or a day
+     * passed); a failure, a manual check and every install step are always logged.
+     *
+     * @param done posted to the main thread once this request is finished
+     */
+    static Future<?> check(Context context, UpdateCadence.Trigger trigger, Runnable done) {
         Context app = context.getApplicationContext();
         if (!BUSY.compareAndSet(false, true)) {
             if (done != null) MAIN.post(done);
             return CompletableFuture.completedFuture(null);
         }
         FutureTask<Void> task = new FutureTask<Void>(() -> {
-            runCheck(app, manual);
+            runCheck(app, trigger);
             return null;
         }) {
             @Override protected void done() {
@@ -195,34 +298,41 @@ final class Updater {
         return task;
     }
 
-    private static void runCheck(Context app, boolean manual) {
+    private static void runCheck(Context app, UpdateCadence.Trigger trigger) {
+        boolean manual = trigger.manual();
         try {
             if (!enabled(app) && !manual) return;
             long now = System.currentTimeMillis();
-            if (!manual && UpdatePolicy.coolingDown(now, prefs(app).getLong(NEXT_CHECK_AT, 0))) return;
-            prefs(app).edit().putLong(ATTEMPT_AT, now).apply();
-            DiagnosticLog.log(app, "update", "check start manual=" + manual + " installed=" + version(app));
+            SharedPreferences prefs = prefs(app);
+            if (!UpdateCadence.mayStart(trigger, now, prefs.getLong(ATTEMPT_AT, 0), prefs.getLong(NEXT_CHECK_AT, 0))) {
+                countHeld(app, trigger);
+                return;
+            }
+            prefs.edit().putLong(ATTEMPT_AT, now).apply();
+            if (manual) DiagnosticLog.log(app, "update", "check start manual=true installed=" + version(app));
             PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
-            status(app, "Checking for updates…");
+            if (manual) status(app, "Checking for updates…");
+            else show(app, "Checking for updates…");
 
-            Release release = newestRelease(app, now);
+            Release release = newestRelease(app, now, manual);
             long advertised = release.json.getLong("versionCode");
-            prefs(app).edit()
+            prefs.edit()
                     .putLong(CHECKED_AT, now)
                     .putLong(NEXT_CHECK_AT, now + SUCCESS_COOLDOWN_MS)
                     .putInt(FAILURE_COUNT, 0)
                     .putString(ADVERTISED, release.json.getString("versionName"))
+                    .putString(ADVERTISED_VIA, release.channel == UpdatePolicy.Channel.REPO ? "GitHub" : "Render")
                     .apply();
             if (!UpdatePolicy.isNewer(advertised, versionCode(installed))) {
-                status(app, (advertised == versionCode(installed)
+                settle(app, trigger, (advertised == versionCode(installed)
                         ? "Up to date: " + installed.versionName
-                        : "Feed is older than this installation; no downgrade attempted.") + release.caveat);
+                        : "Feed is older than this installation; no downgrade attempted.") + release.caveat, release);
                 clearReady(app);
                 JobScheduler jobs = app.getSystemService(JobScheduler.class);
                 if (jobs != null) jobs.cancel(RETRY_JOB_ID);
                 return;
             }
-            install(app, verifiedApk(app, release, installed), release, manual);
+            install(app, verifiedApk(app, release, installed), release, trigger);
         } catch (Exception error) {
             if (Thread.currentThread().isInterrupted()) {
                 status(app, "Update check interrupted; no installation started.");
@@ -234,9 +344,36 @@ final class Updater {
                     .putInt(FAILURE_COUNT, failures)
                     .putLong(NEXT_CHECK_AT, System.currentTimeMillis() + delay)
                     .apply();
-            status(app, "Update failed: " + error.getClass().getSimpleName() + ": " + error.getMessage()
-                    + ". Retry requested after " + delay / 60000 + " min; Android may defer it.");
+            String failed = "Update failed: " + error.getClass().getSimpleName() + ": " + error.getMessage()
+                    + ". Retry requested after " + delay / 60000 + " min; Android may defer it.";
+            // A failure is always logged, automatic or not.
+            show(app, failed);
+            DiagnosticLog.logAndRemember(app, "update", "result", failed,
+                    manual ? "" : "automatic check (" + trigger.label() + "): ");
+            resetCadence(app);
             retry(app, delay);
+        }
+    }
+
+    /**
+     * A check's result that is a state, not an event: shown in Settings, and logged in full when the user asked; an
+     * automatic check logs it only when it differs from the last one logged (with the feed it came from and the
+     * GitHub connection's state), and otherwise counts it for the report.
+     */
+    private static void settle(Context app, UpdateCadence.Trigger trigger, String message, Release release) {
+        show(app, message);
+        String state = message + " (installed " + version(app) + "; newest feed "
+                + release.json.optString("versionName", "?") + " via "
+                + (release.channel == UpdatePolicy.Channel.REPO ? "GitHub" : "Render") + "; GitHub "
+                + GitHubConnect.state(app).name().toLowerCase(java.util.Locale.US) + ")";
+        if (trigger.manual()) {
+            DiagnosticLog.logAndRemember(app, "update", "result", state, "");
+            resetCadence(app);
+        } else if (DiagnosticLog.logOnChange(app, "update", "result", state,
+                "automatic check (" + trigger.label() + "): ")) {
+            resetCadence(app);
+        } else {
+            countQuiet(app, trigger);
         }
     }
 
@@ -265,7 +402,7 @@ final class Updater {
      *
      * @throws Exception the first channel's failure when none answered
      */
-    private static Release newestRelease(Context app, long now) throws Exception {
+    private static Release newestRelease(Context app, long now, boolean manual) throws Exception {
         Release render = null;
         Release repo = null;
         Exception renderError = null;
@@ -281,7 +418,10 @@ final class Updater {
                 if (token != null) repo = fetchRelease(UpdatePolicy.Channel.REPO, UpdatePolicy.REPO_FEED, token);
             } catch (Exception error) {
                 repoError = error;
-                DiagnosticLog.log(app, "update", "repository feed failed: " + error.getClass().getSimpleName());
+                // An automatic check carries it in its result (the caveat), unless Render failed too.
+                if (manual || render == null) {
+                    DiagnosticLog.log(app, "update", "repository feed failed: " + error.getClass().getSimpleName());
+                }
             }
         }
         Release newest = newer(render, repo);
@@ -301,7 +441,7 @@ final class Updater {
     private static Release fetchRelease(UpdatePolicy.Channel channel, String address, String token)
             throws IOException, JSONException {
         ByteArrayOutputStream feed = new ByteArrayOutputStream();
-        UpdateTransport.download(channel, address, token, feed, MAX_FEED_BYTES);
+        feedReader.read(channel, address, token, feed, MAX_FEED_BYTES);
         Release release = new Release(channel, new JSONObject(feed.toString(StandardCharsets.UTF_8.name())), token);
         checkMetadata(release);
         return release;
@@ -419,31 +559,35 @@ final class Updater {
         return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
     }
 
-    private static void install(Context context, File file, Release checked, boolean manual) throws Exception {
+    private static void install(Context context, File file, Release checked, UpdateCadence.Trigger trigger)
+            throws Exception {
+        boolean manual = trigger.manual();
         JSONObject release = checked.json;
         SharedPreferences prefs = prefs(context);
         if (!enabled(context) && !manual) return;
         if (!manual && prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)) {
-            status(context, "Android declined the previous installation. Manual retry is required.");
+            settle(context, trigger, "Android declined the previous installation. Manual retry is required.", checked);
             return;
         }
         if (manual) prefs.edit().remove(MANUAL_RETRY_REQUIRED).apply();
         if (!context.getPackageManager().canRequestPackageInstalls()) {
-            status(context, "Update verified and ready. Enable Allow from this source under Allow automatic installs.");
+            settle(context, trigger, "Update verified and ready. Enable Allow from this source under Allow automatic "
+                    + "installs.", checked);
             return;
         }
         boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
         if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
-            status(context, "Update verified; installation deferred while an offer/delivery is active.");
-            retry(context, MIN_RETRY_DELAY_MS);
+            settle(context, trigger, "Update verified; installation deferred while an offer/delivery is active.",
+                    checked);
+            retry(context, MIN_RETRY_DELAY_MS, manual);
             return;
         }
         // With Offer Filter open, the update installs too (the screen shows it and reopens after), except while the
         // user is in the middle of something an update would lose, such as typing rules.
         Activity open = foreground.get();
         if (!manual && open instanceof Busy && ((Busy) open).midTask()) {
-            status(context, "Update ready; it installs when you leave Settings.");
-            retry(context, MIN_RETRY_DELAY_MS);
+            settle(context, trigger, "Update ready; it installs when you leave Settings.", checked);
+            retry(context, MIN_RETRY_DELAY_MS, manual);
             return;
         }
         if (Thread.currentThread().isInterrupted()) return;
@@ -458,7 +602,8 @@ final class Updater {
         if (old != null) {
             long age = System.currentTimeMillis() - prefs.getLong(SESSION_AT, 0);
             if (old.isSealed() && age >= 0 && age < PENDING_SESSION_GRACE_MS && !manual) {
-                status(context, "An installation is already pending; check Android's confirmation notification.");
+                settle(context, trigger, "An installation is already pending; check Android's confirmation "
+                        + "notification.", checked);
                 return;
             }
             installer.abandonSession(oldId);

@@ -30,7 +30,7 @@ requests, or comment on GitHub.
   If a fix needs one of those, the outcome is `needs-human`.
 - Never change the user's rules, thresholds or defaults. Never turn an unknown into KEEP or DECLINE. A review is
   fixed by reading the facts correctly, never by guessing them or by making the app decline more readily.
-- Two behaviours are the user's own decisions (see `AGENTS.md`); never widen, loosen or undo them:
+- Three behaviours are the user's own decisions (see `AGENTS.md`); never widen, loosen or undo them:
   - A "+$X" beside one total "$Y" on a single order: pay stays unknown, but by the user's own rule for this
     narrow shape (approved in chat) the offer is declined when the offer as a whole, Y + X, misses the set rules
     (never the adaptive floors), and is otherwise REVIEW, never KEEP. This is the user's choice, not a claim that
@@ -39,6 +39,17 @@ requests, or comment on GitHub.
   - When Android shows that Dasher's own post of an offer sounded, the "Offers to check" card is posted without
     ringing (action "Review card posted without sound: Dasher's own offer alert sounds"). That is intended, not a
     bug. A loud channel alone never counts; when Android does not show it sounded, the card rings once.
+  - The adaptive minimum learns from the user's own Accept and Decline, including an acceptance without a seen tap
+    (an offer the app left alone that came after Dasher's wait for offers was read and closed with time left into a
+    delivery screen, under every condition in `AGENTS.md`), and a Decline counted from Dasher's own "Are you sure
+    you want to decline this offer?" once Dasher goes back to the wait for offers or another offer comes. Whenever
+    that evidence is ambiguous nothing is learned ("Not learned" / "Not counted" lines say why): that is intended,
+    never a bug to fix by learning more readily. After an acceptance is learned, offers must pay more than it, so a
+    decline of an offer like ones the user used to take may be that rule working: `explained`, quoting the "highest
+    accepted" or "best accepted" figure in `rules`. Never change what counts as an acceptance or a decline by hand
+    (the wording of delivery or waiting screens, the countdown margin, the minute, the question): masked report
+    labels cannot show Dasher's real wording, so such a change is `needs-human`. Dasher's "New Delivery!" / "New
+    Order: Go to …" is a new offer, never an acceptance.
 - Per stop changed meaning in 0.4.37: up to 0.4.36 a report's `rules` JSON `extraStopCents` was a fee added for each
   stop after two; from 0.4.37 `perStopCents` is a minimum (stops × rate). Decisions recorded before the update were
   computed with the fee, so never map one onto the other.

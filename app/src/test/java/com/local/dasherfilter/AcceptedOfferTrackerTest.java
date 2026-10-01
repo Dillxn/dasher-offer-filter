@@ -62,4 +62,13 @@ public final class AcceptedOfferTrackerTest {
         tracker.acceptClicked(91001);
         assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 91100));
     }
+
+    @Test public void deliveryWordsMatchWithPunctuationAndOddSpacing() {
+        assertTrue(AcceptedOfferTracker.isDeliveryScreen(Arrays.asList("Arrived at store.")));
+        assertTrue(AcceptedOfferTracker.isDeliveryScreen(Arrays.asList("Confirm\u00a0pickup!")));
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker();
+        tracker.observeOffer(new OfferSnapshot(2500, 7.2, 21, 2), 1000);
+        tracker.acceptClicked(1100);
+        assertNotNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store."), 2000));
+    }
 }

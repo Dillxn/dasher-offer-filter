@@ -20,7 +20,10 @@ final class ManualDeclines {
 
     private ManualDeclines() {}
 
-    /** The user tapped Decline on {@code offer}, which the rules let through. */
+    /** How long after a decline its offer's history line still takes the steps of what it taught. */
+    private static final long STEP_WINDOW_MS = STALE_MS + 10 * 60_000L;
+
+    /** The user declined {@code offer} by hand, which the rules let through: held until the dash goes on. */
     static void declined(Context context, OfferSnapshot offer, long now) {
         if (offer.payCents == null) return;
         // A second manual decline is itself proof the dash went on after the first.
@@ -45,7 +48,16 @@ final class ManualDeclines {
 
     /** The dash ended or paused: a held decline was about stopping, not the offer. */
     static void dashEnded(Context context) {
+        dropped(context, "the dash ended or paused before another offer came");
+    }
+
+    /** A held decline no longer counts, for the reason given: its offer's history line says so. */
+    static void dropped(Context context, String why) {
+        OfferSnapshot held = pending(context, System.currentTimeMillis());
         forget(context);
+        if (held == null) return;
+        DecisionLog.markStep(context, held, DecisionLog.StepKind.DECLINE_DROPPED, why, STEP_WINDOW_MS);
+        DiagnosticLog.log(context, "learn", held.summary() + ": not counted as your Decline: " + why);
     }
 
     static void forget(Context context) {
@@ -71,8 +83,25 @@ final class ManualDeclines {
                 minutes > 0 ? minutes : null, stops > 0 ? stops : null);
     }
 
+    /** The held decline teaches now; its offer's history line, and the log, say what it taught. */
     private static void learn(Context context, OfferSnapshot declined) {
-        FilterStore.learnFromDecline(context, declined);
+        FilterStore.DeclineLesson lesson = FilterStore.learnFromDecline(context, declined);
+        String detail;
+        switch (lesson) {
+            case TAUGHT:
+                detail = "learned from declines by hand: " + FilterStore.load(context).declined.summary();
+                break;
+            case SWITCHES_OFF:
+                detail = "auto-decline or the adaptive minimum was off";
+                break;
+            default:
+                detail = "the minimums already ask more than it paid, or it looked misread";
+                break;
+        }
+        DecisionLog.StepKind kind = lesson == FilterStore.DeclineLesson.TAUGHT
+                ? DecisionLog.StepKind.DECLINE_TAUGHT : DecisionLog.StepKind.DECLINE_NOT_TAUGHT;
+        DecisionLog.markStep(context, declined, kind, detail, STEP_WINDOW_MS);
+        DiagnosticLog.log(context, "learn", declined.summary() + ": " + kind.label + ": " + detail);
     }
 
     private static SharedPreferences prefs(Context context) {

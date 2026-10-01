@@ -244,6 +244,144 @@ public class GitHubConnectTest {
     }
 
     @Test
+    public void aRefusedRefreshIsLoggedAndStopsReportsSentThroughTheConnection() {
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_old").putLong("access_expires_at", System.currentTimeMillis() - 1)
+                .putString("refresh_token", "ghr_old").putLong("refresh_expires_at", Long.MAX_VALUE).commit();
+        ReportOutbox.useGitHub(app, true);
+        on("/login/oauth/access_token", 200, "{\"error\":\"bad_refresh_token\"}");
+        assertThrows(IOException.class, () -> GitHubConnect.token(app));
+
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[github] connection ended: GitHub refused to renew it (bad_refresh_token); "
+                + "updates come only from Render until Connect GitHub is used again"));
+        assertTrue(log, !log.contains("ghr_old") && !log.contains("ghu_old"));
+        // As with Disconnect: reports through the connection stop, and connecting again never turns them back on.
+        assertTrue(!ReportOutbox.useGitHubChosen(app));
+        String report = DiagnosticLog.report(app);
+        assertTrue(report, report.contains("GitHub connection: off; last ended: "));
+        assertTrue(report, report.contains("(GitHub refused to renew it (bad_refresh_token))"));
+    }
+
+    @Test
+    public void connectingAgainAfterTheConnectionEndedByItselfNeverTurnsReportsOn() throws IOException {
+        // Connected, with reports sent through the connection turned on...
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_old").putLong("access_expires_at", 0)
+                .putString("refresh_token", "ghr_old").putLong("refresh_expires_at", Long.MAX_VALUE).commit();
+        ReportOutbox.useGitHub(app, true);
+        assertTrue(ReportOutbox.throughGitHub(app));
+        // ...then its renewal runs out (GitHub's limit) before anything asks for the token.
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putLong("refresh_expires_at", System.currentTimeMillis() - 1).commit();
+        assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
+
+        // The user taps Connect GitHub and approves the new code.
+        waitingForCode();
+        assertTrue("connecting again counts as the old connection ending", !ReportOutbox.useGitHubChosen(app));
+        on("/login/oauth/access_token", 200, "{\"access_token\":\"ghu_new\",\"expires_in\":28800,"
+                + "\"refresh_token\":\"ghr_new\",\"refresh_token_expires_in\":15897600}");
+        on("/user", 200, "{\"login\":\"Dillxn\",\"id\":1}");
+        assertEquals(GitHubConnect.Poll.CONNECTED, GitHubConnect.poll(app));
+
+        assertEquals(GitHubConnect.State.CONNECTED, GitHubConnect.state(app));
+        assertTrue("reports stay off until the user turns them on again", !ReportOutbox.throughGitHub(app));
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[github] connection ended: its renewal ran out (GitHub's limit for a connection)"));
+        assertTrue(log, !log.contains("ghr_old") && !log.contains("ghu_old"));
+
+        // A working connection replaced by connecting again ends the same way.
+        ReportOutbox.useGitHub(app, true);
+        assertTrue(ReportOutbox.throughGitHub(app));
+        on("/login/device/code", 200,
+                "{\"device_code\":\"device-2\",\"user_code\":\"ABCD-EFGH\",\"expires_in\":900,\"interval\":5}");
+        GitHubConnect.requestCode(app);
+        assertTrue(!ReportOutbox.useGitHubChosen(app));
+        assertTrue(DiagnosticLog.read(app).contains("[github] connection ended: replaced by connecting again"));
+    }
+
+    @Test
+    public void disconnectingAConnectedPhoneIsLoggedOnce() {
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit().putString("access_token", "ghu_x").commit();
+        GitHubConnect.disconnect(app);
+        GitHubConnect.disconnect(app);
+        String log = DiagnosticLog.read(app);
+        assertEquals(log, 1, log.split("\\[github\\] connection ended: disconnected in Settings", -1).length - 1);
+        assertTrue(log, !log.contains("ghu_x"));
+    }
+
+    @Test
+    public void disconnectNeverWaitsForGitHubAndALateRenewalIsNotKept() throws Exception {
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_old").putLong("access_expires_at", System.currentTimeMillis() - 1)
+                .putString("refresh_token", "ghr_old").putLong("refresh_expires_at", Long.MAX_VALUE).commit();
+        boolean[] disconnectedAtOnce = new boolean[1];
+        on("/login/oauth/access_token", 200, "{\"access_token\":\"ghu_late\",\"expires_in\":28800,"
+                + "\"refresh_token\":\"ghr_late\"}", () -> {
+                    // The user taps Disconnect while GitHub is answering: Settings must not freeze waiting for it.
+                    Thread tap = new Thread(() -> GitHubConnect.disconnect(app));
+                    tap.start();
+                    try {
+                        tap.join(2_000);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    disconnectedAtOnce[0] = !tap.isAlive();
+                });
+        assertNull("disconnected meanwhile: no token", GitHubConnect.token(app));
+        assertTrue("Disconnect waited for GitHub's answer", disconnectedAtOnce[0]);
+        assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
+        assertNull("the late renewal is not kept",
+                app.getSharedPreferences("github", Context.MODE_PRIVATE).getString("access_token", null));
+    }
+
+    @Test
+    public void oneRenewalAtATimeAndARefusedOneLeavesANewerConnection() throws Exception {
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_old").putLong("access_expires_at", System.currentTimeMillis() - 1)
+                .putString("refresh_token", "ghr_old").putLong("refresh_expires_at", Long.MAX_VALUE).commit();
+        String[] second = new String[1];
+        boolean[] renewSoonAtOnce = new boolean[1];
+        Thread[] waiting = new Thread[1];
+        on("/login/oauth/access_token", 200, "{\"access_token\":\"ghu_new\",\"expires_in\":28800,"
+                + "\"refresh_token\":\"ghr_new\",\"refresh_token_expires_in\":15897600}", () -> {
+                    // A second caller (the report job, say) arrives during the renewal: it waits, and asks nothing.
+                    waiting[0] = new Thread(() -> {
+                        try {
+                            second[0] = GitHubConnect.token(app);
+                        } catch (IOException unexpected) {
+                            second[0] = "failed";
+                        }
+                    });
+                    waiting[0].start();
+                    Thread renew = new Thread(() -> GitHubConnect.renewSoon(app));
+                    renew.start();
+                    try {
+                        renew.join(2_000);
+                        Thread.sleep(200);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    renewSoonAtOnce[0] = !renew.isAlive();
+                });
+        assertEquals("ghu_new", GitHubConnect.token(app));
+        waiting[0].join(5_000);
+        assertEquals("the second caller uses the renewal the first stored", "ghu_new", second[0]);
+        assertEquals("one renewal", 1, requests.size());
+        assertTrue("nothing else waits for GitHub's answer", renewSoonAtOnce[0]);
+
+        // A refused renewal while a newer connection was stored meanwhile leaves that connection alone.
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                .putLong("access_expires_at", System.currentTimeMillis() - 1).commit();
+        on("/login/oauth/access_token", 200, "{\"error\":\"bad_refresh_token\"}",
+                () -> app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
+                        .putString("access_token", "ghu_fresh").putLong("access_expires_at", 0)
+                        .putString("refresh_token", "ghr_fresh").commit());
+        assertEquals("ghu_fresh", GitHubConnect.token(app));
+        assertEquals(GitHubConnect.State.CONNECTED, GitHubConnect.state(app));
+    }
+
+    @Test
     public void anUnreachableGitHubKeepsTheConnectionForLater() {
         app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
                 .putString("access_token", "ghu_old").putLong("access_expires_at", System.currentTimeMillis() - 1)

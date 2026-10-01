@@ -43,6 +43,10 @@ final class FilterStore {
     /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
     private static final String RETIRED_REPORT_EMAIL = "report_email";
     private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
+    /** When learning last turned on and off, and when the adaptive minimums were last reset (wall clock). */
+    private static final String LEARNING_ON_SINCE = "learning_on_since";
+    private static final String LEARNING_OFF_AT = "learning_off_at";
+    private static final String ADAPTIVE_RESET_AT = "adaptive_reset_at";
 
     static FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
@@ -118,15 +122,25 @@ final class FilterStore {
                 positive(prefs.getInt(DECLINED_STOP_PAY, 0)), positive(prefs.getInt(DECLINED_STOPS, 0))));
     }
 
+    /** What a decline by hand taught. */
+    enum DeclineLesson {
+        /** A floor rose. */
+        TAUGHT,
+        /** Auto-decline or the adaptive minimum was off: nothing is learned then. */
+        SWITCHES_OFF,
+        /** The minimums already asked more than that offer (or it looked misread): nothing rose. */
+        NOTHING_NEW
+    }
+
     /**
      * An offer the user declined by hand, after the dash went on: the rule that came closest to catching it is
      * raised just past it. Learned only while auto-decline and the adaptive minimum are both on, like acceptances.
      */
-    static void learnFromDecline(Context context, OfferSnapshot declinedOffer) {
+    static DeclineLesson learnFromDecline(Context context, OfferSnapshot declinedOffer) {
         FilterSettings settings = load(context);
-        if (!settings.enabled || !settings.risingOffers) return;
+        if (!settings.enabled || !settings.risingOffers) return DeclineLesson.SWITCHES_OFF;
         DeclinedFloor floor = DeclinedFloor.raisedBy(settings, declinedOffer);
-        if (floor == settings.declined) return;
+        if (floor == settings.declined) return DeclineLesson.NOTHING_NEW;
         prefs(context).edit()
                 .putInt(DECLINED_PAY, floor.payCents)
                 .putInt(DECLINED_MINUTE_PAY, floor.rates.minutePay).putInt(DECLINED_MINUTES, floor.rates.minutes)
@@ -134,16 +148,25 @@ final class FilterStore {
                 .putLong(DECLINED_MILES, Double.doubleToLongBits(floor.rates.miles))
                 .putInt(DECLINED_STOP_PAY, floor.rates.stopPay).putInt(DECLINED_STOPS, floor.rates.stops)
                 .apply();
+        return DeclineLesson.TAUGHT;
     }
 
     private static int positive(int value) {
         return Math.max(0, value);
     }
 
-    /** Saves rules. The accepted baselines are owned by {@link #recordAccepted} and are not overwritten. */
+    /**
+     * Saves rules. The accepted baselines are owned by {@link #recordAccepted} and are not overwritten. When learning
+     * (auto-decline and the adaptive minimum both on) starts or stops, the time is kept for a shared report.
+     */
     static void save(Context context, FilterSettings settings) {
-        prefs(context).edit()
-                .putBoolean(ENABLED, settings.enabled)
+        SharedPreferences prefs = prefs(context);
+        boolean before = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
+        boolean after = settings.enabled && settings.risingOffers;
+        SharedPreferences.Editor edit = prefs.edit();
+        if (after && !before) edit.putLong(LEARNING_ON_SINCE, System.currentTimeMillis());
+        if (before && !after) edit.putLong(LEARNING_OFF_AT, System.currentTimeMillis());
+        edit.putBoolean(ENABLED, settings.enabled)
                 .putInt(FLAT, settings.flatCents)
                 .putInt(PER_MILE, settings.perMileCents)
                 .putInt(PER_MINUTE, settings.perMinuteCents)
@@ -180,12 +203,24 @@ final class FilterStore {
      * from the saved rules.
      */
     static void resetAccepted(Context context) {
-        prefs(context).edit().remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
+        prefs(context).edit().putLong(ADAPTIVE_RESET_AT, System.currentTimeMillis())
+                .remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
                 .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS)
                 .remove(DECLINED_PAY).remove(DECLINED_MINUTE_PAY).remove(DECLINED_MINUTES)
                 .remove(DECLINED_MILE_PAY).remove(DECLINED_MILES).remove(DECLINED_STOP_PAY).remove(DECLINED_STOPS)
                 .apply();
         ManualDeclines.forget(context);
+    }
+
+    /**
+     * For a shared report: when learning (auto-decline and the adaptive minimum both on) last turned on and off, and
+     * when the adaptive minimums were last reset, as wall-clock times; 0 when not recorded (older versions kept
+     * none).
+     */
+    static long[] learningTimes(Context context) {
+        SharedPreferences prefs = prefs(context);
+        return new long[] {prefs.getLong(LEARNING_ON_SINCE, 0), prefs.getLong(LEARNING_OFF_AT, 0),
+                prefs.getLong(ADAPTIVE_RESET_AT, 0)};
     }
 
     static void recordDoorDashOfferChannel(Context context, String channelId) {

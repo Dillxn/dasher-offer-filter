@@ -195,8 +195,11 @@ final class ProblemReport {
         return shape.toString();
     }
 
+    /** An entry as a report carries it: masked lines, and none of the learning steps kept on the phone. */
     private static JSONObject redacted(DecisionLog.Entry entry) throws JSONException {
-        return entry.toJson().put("evidence", new JSONArray(redact(entry.evidence)));
+        JSONObject json = entry.toJson().put("evidence", new JSONArray(redact(entry.evidence)));
+        json.remove("steps");
+        return json;
     }
 
     private static List<String> clipped(List<String> labels) {

@@ -36,12 +36,16 @@ public final class OfferNotificationService extends NotificationListenerService 
     private static final int MAX_NOTIFICATION_LABELS = 32;
     private static final int MAX_NOTIFICATION_LABEL_CHARS = 2048;
     private static final int MAX_LOGGED_EXTRA_KEYS = 40;
+    /** A store name longer than this is not shown on our card. */
+    private static final int MAX_STORE_CHARS = 40;
     private static final String[] TEXT_EXTRAS = {
             Notification.EXTRA_TITLE, Notification.EXTRA_TEXT, Notification.EXTRA_BIG_TEXT};
 
     private static volatile OfferNotificationService active;
     private static volatile boolean offerOutstanding;
     private static volatile long generation;
+    /** When Dasher's Decline action on a notification was last sent (uptime), 0 for never. */
+    private static volatile long declineActionAt;
 
     private static final int MAX_POSTED_KEYS = 32;
 
@@ -81,6 +85,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         final OfferAlertState state;
         final String alertTag;
         final String merchant;
+        /** The store as Dasher's notification names it ("Taco Bell"), for our card; empty when it names none. */
+        String store = "";
         Runnable expiry;
         /** How long after the previous post on this key the latest one came (wall clock), for the log. */
         long gapMs;
@@ -111,6 +117,32 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     private static void nextGeneration() {
         generation++;
+    }
+
+    /**
+     * Whether a Decline from a notification was requested within {@code ms}: Dasher's decline question then is not
+     * the user's own.
+     */
+    static boolean declineActionWithin(long ms) {
+        long at = declineActionAt;
+        long now = SystemClock.uptimeMillis();
+        return at > 0 && now >= at && now - at <= ms;
+    }
+
+    /** For tests: no Decline action was sent (the uptime clock starts again with each test). */
+    static void forgetDeclineAction() {
+        declineActionAt = 0;
+    }
+
+    /**
+     * Sends Dasher's own Decline action, marked as requested first: the screen reader (on its own thread) may read
+     * Dasher reacting to it before {@code send()} even returns, and must never take that for the user's own decline,
+     * or the offer for one the user accepted. A send that fails stays marked, which only means nothing is learned for
+     * a minute.
+     */
+    static void sendDecline(PendingIntent decline) throws PendingIntent.CanceledException {
+        declineActionAt = SystemClock.uptimeMillis();
+        decline.send();
     }
 
     static boolean hasAccess(Context context) {
@@ -176,7 +208,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         Updater.schedule(this);
         DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting");
         reconcile();
-        Updater.check(this, false, null);
+        Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
     }
 
     @Override public void onListenerDisconnected() {
@@ -243,6 +275,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (!NotificationOffer.isLikelyOffer(labels)) return;
             boolean foreground = OfferFilterService.isDasherOnScreenNow();
             TrackedOffer offer = track(source, merchant(labels), labels.toString(), foreground, replay);
+            offer.store = store(labels);
             FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
 
             // A notification's text may be cut short: its pay is never bounded, so nothing is declined or hidden on a
@@ -389,7 +422,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (decline != null) {
                 offer.state.actionRequested = true;
                 try {
-                    decline.send();
+                    sendDecline(decline);
                     DiagnosticLog.log(this, "notification",
                             "notification Decline action REQUESTED; awaiting DoorDash removal, not yet verified");
                 } catch (PendingIntent.CanceledException | RuntimeException error) {
@@ -442,8 +475,8 @@ public final class OfferNotificationService extends NotificationListenerService 
                 ? "Not classified: " + decision.reason
                         + ". Tap to open Dasher. No automatic decline or screen takeover."
                 : facts.summary() + "; " + decision.summary();
-        boolean posted = OfferAlerts.notifyOffer(
-                this, offer.alertTag, notification.contentIntent, decision.result, detail, ring);
+        boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, notification.contentIntent, decision.result,
+                detail, ring, offer.store);
         if (posted) offer.state.delivered(signature, decision.result, ring);
         if (review) {
             FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason
@@ -572,6 +605,20 @@ public final class OfferNotificationService extends NotificationListenerService 
         return "";
     }
 
+    /**
+     * The store Dasher's "New Order: Go to …" names, as written, for the title of our card ("Taco Bell offer"); empty
+     * when none, or when it is too long to be a store's name. It names a new offer, never one accepted.
+     */
+    static String store(List<String> labels) {
+        for (String label : labels) {
+            int index = label.toLowerCase(Locale.US).indexOf("go to ");
+            if (index < 0) continue;
+            String name = label.substring(index + "go to ".length()).trim();
+            return name.length() <= MAX_STORE_CHARS ? name : "";
+        }
+        return "";
+    }
+
     /** Drops the merchant and headline lines so a store name cannot contribute offer metrics. */
     private static List<String> metricLabels(List<String> labels) {
         List<String> out = new ArrayList<>();
@@ -621,10 +668,14 @@ public final class OfferNotificationService extends NotificationListenerService 
                 && !onlyOnce && !quietChild;
     }
 
-    /** Records the source channel's actual sound/vibration settings and extra key names (never their values). */
+    /**
+     * Records the source channel's actual sound/vibration settings and extra key names (never their values): each is
+     * a state, logged once when it changes (and at least daily), per channel.
+     */
     private void logChannel(NotificationChannel channel, Notification notification, boolean dasherSounded) {
         if (!DiagnosticLog.isEnabled(this)) return;
-        DiagnosticLog.log(this, "notification-channel", "id=" + notification.getChannelId()
+        String id = String.valueOf(notification.getChannelId());
+        DiagnosticLog.logOnChange(this, "notification-channel", id, "id=" + id
                 + " actualSound=" + (channel == null ? "unknown" : channel.getSound() != null)
                 + " actualVibration=" + (channel == null ? "unknown" : channel.shouldVibrate())
                 + " importance=" + (channel == null ? "unknown" : channel.getImportance())
@@ -634,7 +685,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             List<String> keys = new ArrayList<>(notification.extras.keySet());
             Collections.sort(keys);
             if (keys.size() > MAX_LOGGED_EXTRA_KEYS) keys = keys.subList(0, MAX_LOGGED_EXTRA_KEYS);
-            DiagnosticLog.log(this, "notification-meta", "extra keys only=" + keys);
+            DiagnosticLog.logOnChange(this, "notification-meta", id, "extra keys only=" + keys);
         }
     }
 }

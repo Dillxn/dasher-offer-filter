@@ -233,11 +233,14 @@ public class DasherOverlayTest {
         show(screen("Ratings", "Earnings", "Promos", "Help"));
         assertNull("unknown hides it", guide());
 
-        // A route still under way: the dash's screen behind it is no wait for offers.
+        // A route still under way (stored from an accepted offer): a screen that does not show the wait keeps it.
         ActiveRouteStore.save(app, new OfferSnapshot(900, 3.0, 20, 2));
-        show(screen("Zone offer wait", "5-10 min"));
+        show(screen("Navigate", "Heading to store"));
         assertNull(guide());
-        ActiveRouteStore.clear(app);
+        // Dasher's wait for offers, with no sign of a delivery, ends that route, so the guide comes back.
+        show(screen("Zone offer wait", "5-10 min"));
+        assertNull(ActiveRouteStore.load(app));
+        assertNotNull(guide());
 
         show(screen("Finding offers"));
         assertNotNull(guide());

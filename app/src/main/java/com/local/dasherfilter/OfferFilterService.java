@@ -64,8 +64,25 @@ public final class OfferFilterService extends AccessibilityService {
     private static final int MAX_ACCEPT_LABEL_ANCESTORS = 4;
     /** A click event this soon after the app's own tap is that tap's echo, not the user's. */
     private static final long OWN_TAP_ECHO_MS = 1500;
+    /**
+     * A click on the very node the app tapped this soon after is that tap's echo too: a read can take most of a second
+     * on a slow phone, so its echo may come later than {@link #OWN_TAP_ECHO_MS}.
+     */
+    private static final long OWN_TARGET_ECHO_MS = 5_000;
     /** A manual Decline counts for the offer seen on screen at most this long ago. */
     private static final long MANUAL_DECLINE_OFFER_AGE_MS = 90_000;
+    /** Below a tapped node, its labels are looked for this deep and in this many nodes at most. */
+    private static final int MAX_TAP_SUBTREE_DEPTH = 3;
+    private static final int MAX_TAP_SUBTREE_NODES = 24;
+    /** A tap away from any offer is logged (its shape only, no words) at most this often. */
+    private static final long BARE_TAP_LOG_MS = 10_000;
+    /** Dasher's screens after an offer left are kept in the screens log this long after, this many at most. */
+    private static final long AFTERMATH_CAPTURE_MS = 30_000;
+    private static final int AFTERMATH_LINES = 3;
+    /** A decline the notification path requested this recently makes Dasher's decline question not the user's. */
+    private static final long NOTIFICATION_DECLINE_MS = 60_000;
+    /** How far back an offer's history line still takes the steps of what the user did with it. */
+    private static final long STEP_WINDOW_MS = 10 * 60_000L;
     /** A declined offer or its confirmation still showing this long after the decline tap is reported as stuck. */
     static final long STUCK_MS = 5_000;
     /** How long a takeover lasts at most; offers expire well before this. */
@@ -81,6 +98,8 @@ public final class OfferFilterService extends AccessibilityService {
     private static final int WATCH_REFUSED = 2;
     /** Offer Filter's own window IDs remembered at most; more and they are forgotten (and learned again). */
     private static final int MAX_OWN_WINDOWS = 32;
+    /** No time yet. */
+    private static final long NEVER = Long.MIN_VALUE;
 
     private static volatile OfferFilterService active;
     /** For tests: reads run on this looper (the main looper, say) instead of the service's own thread. */
@@ -144,10 +163,22 @@ public final class OfferFilterService extends AccessibilityService {
 
     private final DeclineState declineState = new DeclineState();
     private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
-    private long ownTapAt = -OWN_TAP_ECHO_MS;
-    /** The last standalone offer on screen that the rules let through, for a manual Decline to refer to. */
-    private OfferSnapshot passingOffer;
-    private long passingOfferAt;
+    private long ownTapAt = Long.MIN_VALUE / 2;
+    /** The node the app last tapped, so its echo is known even when it comes late. */
+    private AccessibilityNodeInfo ownTapTarget;
+    /** The last offer read's Accept and Decline controls, and when (uptime): a tap on one names it. */
+    private AccessibilityNodeInfo offerAcceptTarget;
+    private AccessibilityNodeInfo offerDeclineTarget;
+    private long offerTargetsAt = Long.MIN_VALUE / 2;
+    /**
+     * When the first read after that offer showed neither of its controls nor their labels (uptime), {@link #NEVER}
+     * while it shows: a click after it is not on them.
+     */
+    private long offerTargetsEndedAt = NEVER;
+    private long bareTapLoggedAt = Long.MIN_VALUE / 2;
+    /** Which offer's aftermath the screens log is keeping, and how many of its screens it kept. */
+    private long aftermathOf = -1;
+    private int aftermathLines;
     private OfferSilencer silencer;
     private long recheckUntil;
     private boolean recheckPending;
@@ -283,6 +314,15 @@ public final class OfferFilterService extends AccessibilityService {
         onEvent(!change, null, eventsQueuedAt);
     };
     private final Runnable syncAutomation = this::syncAutomation;
+    /** What came after an offer left alone: an unrecognised screen settling, or the minute running out. */
+    private final Runnable aftermathTick = new Runnable() {
+        @Override public void run() {
+            if (stopped) return;
+            noteNotificationDecline();
+            acceptedTracker.tick(SystemClock.uptimeMillis(), screen.dasherReadable);
+            applyNotes();
+        }
+    };
 
     static boolean isConnected() {
         return active != null;
@@ -423,7 +463,7 @@ public final class OfferFilterService extends AccessibilityService {
             });
             watchWindows();
         });
-        Updater.check(this, false, null);
+        Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
     }
 
     /**
@@ -459,6 +499,7 @@ public final class OfferFilterService extends AccessibilityService {
             recheckPending = false;
             declineState.reset();
             acceptedTracker.reset();
+            scanner.removeCallbacks(aftermathTick);
             syncAutomation();
             status("Accessibility interrupted; waiting for a new readable offer.");
         });
@@ -629,27 +670,127 @@ public final class OfferFilterService extends AccessibilityService {
 
     // ---- What the user does (click facts arrive as values; touches as a flag) ----
 
+    /**
+     * A click Dasher reported: the user's Accept or Decline, Offer Filter's own tap coming back, or something else.
+     * Each near an offer goes in the screens log with its shape and words, so a report shows whether Dasher reports
+     * the user's taps at all; one away from offers, only its shape, now and then.
+     */
     private void observeClick(Click click) {
-        if (click.accept) {
-            OfferSnapshot accepting = acceptedTracker.acceptClicked(click.at);
+        long now = click.at;
+        ClickEvidence tap = readClick(click, now);
+        boolean near = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS;
+        if (tap.own || near) {
+            DiagnosticLog.logScreen(this, "tap (" + (tap.own ? "Offer Filter's own" : "not Offer Filter's") + ") "
+                    + tap.describe(true));
+        } else if (now - bareTapLoggedAt >= BARE_TAP_LOG_MS) {
+            bareTapLoggedAt = now;
+            DiagnosticLog.logScreen(this, "tap (not Offer Filter's) " + tap.describe(false));
+        }
+        if (tap.accept()) {
+            OfferSnapshot accepting = acceptedTracker.acceptClicked(now);
             // Each step toward learning from an accepted offer goes in the log, so a report shows where it stops.
             DiagnosticLog.log(this, "accept", accepting != null
                     ? "Accept tap seen on " + accepting.summary() + "; waiting up to 15 s for a delivery screen"
                     : "Accept tap seen, but no offer with readable pay was on screen in the last 90 s: nothing to learn");
-            passingOffer = null;
+        } else if (tap.decline()) {
+            // The user's own Decline: held until Dasher moves on (the wait for offers, or another offer), then it may
+            // teach that the rules were too lenient; going back to the offer or accepting it counts nothing.
+            acceptedTracker.declineTapped(now);
+        } else if (!tap.own && near && (offerTargetsEndedAt == NEVER || now < offerTargetsEndedAt)) {
+            acceptedTracker.tapNotRecognized(now);
         }
-        if (click.decline && click.at - ownTapAt > OWN_TAP_ECHO_MS) {
-            // The user's own Decline on an offer the rules let through: the rules were too lenient for them.
-            if (passingOffer != null && click.at - passingOfferAt <= MANUAL_DECLINE_OFFER_AGE_MS) {
-                OfferSnapshot declined = passingOffer;
-                long wall = System.currentTimeMillis();
-                // After that offer's own history line, which went to the main thread first.
-                onMain(() -> ManualDeclines.declined(this, declined, wall));
-                DiagnosticLog.log(this, "accessibility", "manual Decline of a passing offer; held until the next offer");
+        if (!tap.own && progressTap(tap)) ActiveRouteStore.invalidateTravel(this);
+        applyNotes();
+    }
+
+    /** A tap on a pickup or delivery step: the stored route's travel is stale. */
+    private static boolean progressTap(ClickEvidence tap) {
+        List<String> labels = new ArrayList<>(tap.eventText);
+        if (!tap.above.isEmpty()) labels.add(tap.above.get(0));
+        labels.addAll(tap.below);
+        for (String label : labels) {
+            if (PROGRESS_TAPS.contains(OfferEvidence.normalize(label).toLowerCase(Locale.US))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * What a click says, read on the scanner thread from the facts taken as it came: the labels on its node, on up to
+     * three nodes above it (where an Android View's button text is) and on a few below it (where Jetpack Compose puts
+     * a button's label), and whether the node is the Accept or Decline control the last offer read found. A click on
+     * the node Offer Filter tapped moments ago is that tap's echo; nothing around it is read then.
+     */
+    private ClickEvidence readClick(Click click, long now) {
+        AccessibilityNodeInfo source = click.source;
+        boolean ownTarget = source != null && ownTapTarget != null && now - ownTapAt <= OWN_TARGET_ECHO_MS
+                && sameNode(source, ownTapTarget);
+        boolean own = now - ownTapAt <= OWN_TAP_ECHO_MS || ownTarget;
+        // The last offer's controls name a click only until a read found that offer gone: a later click on a node
+        // with the same identity (Dasher may reuse it on its next screen) is not on that offer.
+        boolean fresh = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS
+                && (offerTargetsEndedAt == NEVER || now < offerTargetsEndedAt);
+        boolean isAccept = fresh && source != null && offerAcceptTarget != null && sameNode(source, offerAcceptTarget);
+        boolean isDecline = fresh && source != null && offerDeclineTarget != null
+                && sameNode(source, offerDeclineTarget);
+        List<String> above = new ArrayList<>();
+        List<String> below = new ArrayList<>();
+        String sourceClass = "";
+        try {
+            if (source != null) {
+                CharSequence name = source.getClassName();
+                if (name != null) {
+                    String full = name.toString();
+                    sourceClass = full.substring(full.lastIndexOf('.') + 1);
+                }
             }
-            passingOffer = null;
+            // Offer Filter's own tap coming back costs no further calls into Dasher.
+            AccessibilityNodeInfo node = own ? null : source;
+            for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++, node = node.getParent()) {
+                addTapLabel(above, node.getText());
+                addTapLabel(above, node.getContentDescription());
+            }
+            if (source != null && !own) readBelow(source, below);
+        } catch (RuntimeException unreadable) {
+            // What was read before the node went away is kept.
         }
-        if (click.progress) ActiveRouteStore.invalidateTravel(this);
+        return new ClickEvidence(click.text, click.description, source != null, sourceClass, isAccept, isDecline,
+                own, ownTapTarget == null ? -1 : Math.max(0, now - ownTapAt), above, below);
+    }
+
+    /** The labels of the visible nodes below {@code source}, breadth first, a few levels and nodes at most. */
+    private static void readBelow(AccessibilityNodeInfo source, List<String> labels) {
+        List<AccessibilityNodeInfo> level = Collections.singletonList(source);
+        int visited = 0;
+        for (int depth = 0; depth < MAX_TAP_SUBTREE_DEPTH && !level.isEmpty(); depth++) {
+            List<AccessibilityNodeInfo> next = new ArrayList<>();
+            for (AccessibilityNodeInfo parent : level) {
+                for (int i = 0; i < parent.getChildCount() && visited < MAX_TAP_SUBTREE_NODES; i++) {
+                    AccessibilityNodeInfo child = parent.getChild(i);
+                    if (child == null) continue;
+                    visited++;
+                    if (!child.isVisibleToUser()) continue;
+                    addTapLabel(labels, child.getText());
+                    addTapLabel(labels, child.getContentDescription());
+                    next.add(child);
+                }
+            }
+            level = next;
+        }
+    }
+
+    private static void addTapLabel(List<String> labels, CharSequence value) {
+        if (value == null) return;
+        String label = OfferEvidence.normalize(value.toString());
+        if (!label.isEmpty() && !labels.contains(label)) labels.add(label);
+    }
+
+    /** Whether two nodes are the same node of the same window, as Android identifies them. */
+    private static boolean sameNode(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
+        try {
+            return a == b || a.equals(b);
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
     }
 
     /**
@@ -815,7 +956,11 @@ public final class OfferFilterService extends AccessibilityService {
         AccessibilityNodeInfo root = look.dasherRoot;
         if (root == null) {
             declineState.reset();
-            acceptedTracker.reset();
+            // Dasher off screen for a moment (the shade, recent apps, our own screen): an Accept tap waiting for its
+            // delivery screen, and what came after an offer left, are kept; only what was on screen is forgotten.
+            acceptedTracker.forgetVisible();
+            offerAcceptTarget = null;
+            offerDeclineTarget = null;
             return false;
         }
         Scan scan = read(root);
@@ -861,7 +1006,18 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
         diagnostic("confirmation", confirmation, null, null);
         declinedOfferShowing = true;
-        if (!settings.enabled || !declineState.hasPendingConfirmation(now)) return false;
+        if (!declineState.hasPendingConfirmation(now)) {
+            // Dasher asks about declining with no decline of ours under way: the user tapped Decline on an offer we
+            // left alone (never an echo of a tap of ours, or of a decline the notification path requested). Nothing
+            // is tapped here.
+            if (DeclineConfirmation.hasPrompt(confirmation.text) && now - ownTapAt > OWN_TARGET_ECHO_MS
+                    && !OfferNotificationService.declineActionWithin(NOTIFICATION_DECLINE_MS)) {
+                acceptedTracker.declineQuestion(now);
+                applyNotes();
+            }
+            return false;
+        }
+        if (!settings.enabled) return false;
         if (declineGeneration != OfferNotificationService.generation()) {
             declineState.reset();
             status("A new notification arrived; old decline confirmation authority revoked.");
@@ -916,21 +1072,47 @@ public final class OfferFilterService extends AccessibilityService {
             // No offer is up: a re-post of a notification for an offer read before is a new offer.
             OfferNotificationService.screenOfferEnded();
         }
+        boolean offerGone = scan.accept == null && scan.decline == null && !scan.acceptLabel && !scan.declineLabel;
+        // The first read without the last offer's controls: a click from now on is not on them.
+        if (offerGone && offerTargetsEndedAt == NEVER) offerTargetsEndedAt = now;
+        // The wait for offers, the dash's end or its home, with no sign of a delivery: a stored route is over (it
+        // would otherwise hold the guide, the tab, update installs and what an acceptance needs, for hours).
+        if (AcceptedOfferTracker.showsNoRoute(scan.text)) ActiveRouteStore.clear(this);
+        boolean facts = anyFact(offer);
         OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
         if (missed != null) {
             DiagnosticLog.log(this, "accept", "Not learned: no delivery screen recognized within 15 s after Accept on "
                     + missed.summary() + "; screen now: " + scan.text);
         }
-        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, now);
+        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, facts, now);
         if (accepted != null) {
-            recordAcceptance(accepted);
+            recordAcceptance(accepted, "you tapped Accept, and Dasher showed a delivery screen");
+            applyNotes();
             return false;
         }
+        // Neither Accept nor Decline shows: the offer left alone has left the screen. What Dasher shows next is kept
+        // in the screens log for a little while, and decides whether the user took it.
+        long left = -1;
+        if (!scan.acceptLabel && !scan.declineLabel) {
+            left = acceptedTracker.leftFor(now);
+            if (left < 0 && acceptedTracker.watchedSince() >= 0) left = 0;
+            if (acceptedTracker.watchedSince() != aftermathOf) {
+                aftermathOf = acceptedTracker.watchedSince();
+                aftermathLines = 0;
+            }
+            noteNotificationDecline();
+            acceptedTracker.afterScreen(scan.text, facts, now);
+        }
+        applyNotes();
         if (OfferEvidence.isDashOver(scan.text)) {
             onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
         } else if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
             Dashing.seen(this);
+        } else if (OfferEvidence.isPreDashHome(scan.text)) {
+            // Dasher's home before a dash (its "Dash" button): a decline held until the dash goes on was about
+            // stopping. Whether a dash is on is left to the screens that say so.
+            onMain(() -> ManualDeclines.dashEnded(this));
         }
         if (OfferEvidence.isIdle(scan.text)) {
             boolean pending = declineState.hasPendingConfirmation(now);
@@ -950,7 +1132,11 @@ public final class OfferFilterService extends AccessibilityService {
         if (scan.accept == null && scan.decline == null) {
             // With capture on, Dasher's other screens (a shopping list, an item, a delivery) are kept too, so their
             // wording can be learned from a shared report. Nothing is decided from them.
-            captureOtherScreen(scan, now);
+            boolean aftermath = left >= 0 && left <= AFTERMATH_CAPTURE_MS && aftermathLines < AFTERMATH_LINES;
+            if (captureOtherScreen(scan, now, aftermath ? "after an offer left (" + Math.round(left / 1000.0) + " s)"
+                    : "other") && aftermath) {
+                aftermathLines++;
+            }
             declineState.offerGone();
             return declineState.hasPendingConfirmation(now);
         }
@@ -961,18 +1147,40 @@ public final class OfferFilterService extends AccessibilityService {
         return settings.enabled;
     }
 
-    private void recordAcceptance(AcceptedOfferTracker.Acceptance accepted) {
-        // Accepting after all means an earlier Decline tap on this offer was backed out of.
-        onMain(() -> ManualDeclines.forget(this));
-        if (!accepted.addOn && accepted.acceptedOffer.payCents != null) {
+    /**
+     * An accepted offer: learned from (while auto-decline and the adaptive minimum are both on), its route kept, and
+     * its history line told how it was seen and what it taught.
+     *
+     * @param how how the acceptance was seen, in fixed words and numbers
+     */
+    private void recordAcceptance(AcceptedOfferTracker.Acceptance accepted, String how) {
+        // Accepting after all means an earlier Decline of this offer was backed out of.
+        onMain(() -> ManualDeclines.dropped(this, "you accepted it after all"));
+        DecisionLog.StepKind kind;
+        String taught;
+        if (accepted.addOn) {
+            kind = DecisionLog.StepKind.ACCEPTED_ADD_ON;
+            taught = "";
+            DiagnosticLog.log(this, "accept", "Accepted an add-on: the standalone minimums do not learn from it");
+        } else if (accepted.acceptedOffer.payCents != null) {
             boolean learned = FilterStore.recordAccepted(this, accepted.acceptedOffer);
+            kind = learned ? DecisionLog.StepKind.ACCEPTED_LEARNED : DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
+            taught = learned ? "" : "; auto-decline or the adaptive minimum was off";
+            if (!accepted.tapSeen) {
+                DiagnosticLog.log(this, "accept", "Accepted without a seen tap: " + accepted.acceptedOffer.summary()
+                        + "; " + how);
+            }
             DiagnosticLog.log(this, "accept", learned
                     ? "Learned from accepted " + accepted.acceptedOffer.summary()
                     : "Accepted " + accepted.acceptedOffer.summary()
                             + " but not learned: auto-decline or Adaptive minimum was off");
         } else {
-            DiagnosticLog.log(this, "accept", "Accepted an add-on: the standalone minimums do not learn from it");
+            kind = DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
+            taught = "; its pay was not read";
+            DiagnosticLog.log(this, "accept", "Accepted " + accepted.acceptedOffer.summary()
+                    + " but not learned: its pay was not read");
         }
+        step(accepted.line, kind, how + taught);
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed. " + (accepted.addOn
                 ? "Add-on route updated; standalone baseline unchanged."
@@ -983,16 +1191,26 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean handleOffer(Scan scan, OfferSnapshot offer, FilterSettings settings, long now, long generation) {
         boolean isAddOn = AddOnOffer.isLikely(scan.text);
         AddOnOffer addOn = isAddOn ? AddOnOffer.parse(ActiveRouteStore.load(this), scan.text) : null;
-        // An add-on's own pay is its explicit "+$" increment, which is never standalone pay.
-        acceptedTracker.observeOffer(
-                isAddOn ? addOn.incremental : offer, isAddOn ? addOn.combined : offer, isAddOn, now);
         OfferRule.Decision decision = isAddOn
                 ? OfferRule.evaluateAddOn(addOn, settings) : OfferRule.evaluate(offer, settings);
+        // An add-on's own pay is its explicit "+$" increment, which is never standalone pay.
+        OfferSnapshot learn = isAddOn ? addOn.incremental : offer;
+        OfferSnapshot routeAfter = isAddOn ? addOn.combined : offer;
+        int secondsLeft = countdown(scan.text);
+        boolean routeStored = ActiveRouteStore.load(this) != null;
+        acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
+        offerAcceptTarget = scan.accept;
+        offerDeclineTarget = scan.decline;
+        offerTargetsAt = now;
+        offerTargetsEndedAt = NEVER;
         diagnostic(isAddOn ? "add-on" : "offer", scan, offer, decision);
         String detail = isAddOn ? addOn.summary() : offer.summary();
         String key = DeclineState.offerKey(offer, scan.text);
         if (isTakenOver(offer, now)) {
             declinedOfferShowing = false;
+            // Its decline was ours, even though the user has it now: a seen Accept tap is still learned from.
+            acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
+            applyNotes();
             status(detail + "\nYou took over this offer; no automatic action.");
             return false;
         }
@@ -1001,15 +1219,14 @@ public final class OfferFilterService extends AccessibilityService {
         declinedOfferShowing = decision.result == OfferRule.Result.DECLINE
                 && (key.equals(declinedKey) || offer.agreesWith(declinedOffer));
 
-        boolean letThrough = settings.enabled && decision.result == OfferRule.Result.KEEP;
-        if (letThrough && !isAddOn) {
-            passingOffer = offer;
-            passingOfferAt = now;
-        } else if (passingOffer != null && !offer.agreesWith(passingOffer)) {
-            passingOffer = null;
-        }
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             declineState.reset();
+            // Left alone: what the user does with it, and what Dasher shows after it, may teach. The step of the
+            // offer before (another offer came first) goes to the main thread ahead of this offer's line.
+            acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn,
+                    settings.enabled && decision.result == OfferRule.Result.KEEP, secondsLeft, routeStored, now);
+            noteNotificationDecline();
+            applyNotes();
             DecisionLog.Entry entry = record(scan, isAddOn, decision, settings, !settings.enabled
                     ? DecisionLog.Action.PAUSED
                     : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
@@ -1025,6 +1242,9 @@ public final class OfferFilterService extends AccessibilityService {
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
         Tap tap = dasherStillReadable() ? ownTap(scan.decline, offer) : Tap.REFUSED;
         if (stopped) return false;
+        // After the tap, so nothing delays it; ahead of this offer's line, so the offer before has its step first.
+        acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
+        applyNotes();
         if (tap == Tap.TAKEN_OVER) {
             declinedOfferShowing = false;
             status(detail + "\nYou took over this offer; no automatic action.");
@@ -1156,6 +1376,7 @@ public final class OfferFilterService extends AccessibilityService {
         // The service stopped (Accessibility turned off, an update) while this read was under way: nothing is tapped.
         if (stopped) return Tap.REFUSED;
         ownTapAt = now;
+        ownTapTarget = node;
         return click(node) ? Tap.TAPPED : Tap.REFUSED;
     }
 
@@ -1365,14 +1586,78 @@ public final class OfferFilterService extends AccessibilityService {
      * With capture on, one line per distinct other Dasher screen (at most one a second): its words, as read, into
      * the screens log. Numbers alone changing (a clock ticking) does not make a new screen more than once a minute.
      */
-    private void captureOtherScreen(Scan scan, long now) {
-        if (!DiagnosticLog.isEnabled(this)) return;
+    private boolean captureOtherScreen(Scan scan, long now, String kind) {
+        if (!DiagnosticLog.isEnabled(this)) return false;
         int words = (scan.text.toString() + scan.metricParts).replaceAll("[0-9]", "#").hashCode();
         long since = now - lastOtherScreenAt;
-        if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return;
+        if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return false;
         lastOtherScreen = words;
         lastOtherScreenAt = now;
-        DiagnosticLog.logScreen(this, "other labels=" + scan.text + " metricParts=" + scan.metricParts);
+        DiagnosticLog.logScreen(this, kind + " labels=" + scan.text + " metricParts=" + scan.metricParts);
+        return true;
+    }
+
+    /**
+     * The steps the acceptance tracker noted: each onto its offer's history line (on the main thread, after that
+     * line) and into the log; an acceptance is learned from, a decline by hand held until the dash goes on, and an
+     * unrecognised screen after an offer goes to the screens log. Then the tracker's next deadline is set.
+     */
+    private void applyNotes() {
+        for (AcceptedOfferTracker.Note note : acceptedTracker.takeNotes()) {
+            if (note.accepted != null) {
+                recordAcceptance(note.accepted, note.detail);
+                continue;
+            }
+            step(note.line, note.kind, note.detail);
+            DiagnosticLog.log(this, "learn", note.line.summary() + ": " + note);
+            if (note.screen != null) {
+                DiagnosticLog.logScreen(this, "after an offer left, neither a delivery nor the wait for offers: labels="
+                        + note.screen);
+            }
+            if (note.declined != null) {
+                OfferSnapshot declined = note.declined;
+                long wall = System.currentTimeMillis();
+                onMain(() -> ManualDeclines.declined(this, declined, wall));
+            }
+        }
+        scanner.removeCallbacks(aftermathTick);
+        long due = acceptedTracker.nextDeadline();
+        if (due >= 0 && !stopped) scanner.postAtTime(aftermathTick, Math.max(due, SystemClock.uptimeMillis()));
+    }
+
+    /**
+     * A decline requested through Dasher's notification lately: the offer watched is never taken as accepted without
+     * a tap (Dasher's decline question is already never taken as the user's then).
+     */
+    private void noteNotificationDecline() {
+        if (OfferNotificationService.declineActionWithin(NOTIFICATION_DECLINE_MS)) {
+            acceptedTracker.declineRequestedElsewhere();
+        }
+    }
+
+    /** A learning step onto an offer's history line, on the main thread after that line. */
+    private void step(OfferSnapshot line, DecisionLog.StepKind kind, String detail) {
+        if (line == null) return;
+        onMain(() -> DecisionLog.markStep(this, line, kind, detail, STEP_WINDOW_MS));
+    }
+
+    /**
+     * Seconds left on the offer's countdown: a label that is only the countdown ("0:35"), or Accept with it ("Accept
+     * 0:30"); -1 when none shows.
+     */
+    static int countdown(List<String> labels) {
+        int seconds = OfferEvidence.secondsLeft(labels);
+        if (seconds >= 0) return seconds;
+        for (String label : labels) {
+            if (!OfferControls.isButton(label, "accept")) continue;
+            java.util.regex.Matcher clock = java.util.regex.Pattern.compile("(\\d{1,2}):([0-5]\\d)")
+                    .matcher(OfferEvidence.normalize(label));
+            if (clock.find()) {
+                int value = Integer.parseInt(clock.group(1)) * 60 + Integer.parseInt(clock.group(2));
+                if (value <= 60) return value;
+            }
+        }
+        return -1;
     }
 
     private void diagnostic(String phase, Scan scan, OfferSnapshot offer, OfferRule.Decision decision) {
@@ -1397,27 +1682,41 @@ public final class OfferFilterService extends AccessibilityService {
 
     // ---- Values handed between threads ----
 
-    /** What a click event said, read on the main thread as it came. */
+    /**
+     * What a click event said, taken on the main thread as it came (Android recycles the event afterwards): its text,
+     * its description and its node, whose surroundings the scanner reads.
+     */
     private static final class Click {
-        final boolean accept;
-        final boolean decline;
-        final boolean progress;
+        final List<String> text;
+        final String description;
+        final AccessibilityNodeInfo source;
         final long at;
 
-        private Click(boolean accept, boolean decline, boolean progress, long at) {
-            this.accept = accept;
-            this.decline = decline;
-            this.progress = progress;
+        private Click(List<String> text, String description, AccessibilityNodeInfo source, long at) {
+            this.text = text;
+            this.description = description;
+            this.source = source;
             this.at = at;
         }
 
+        /**
+         * @param at when the event reached the service (uptime); the click's own time is used when Android gives it,
+         *     so a busy main thread never makes Offer Filter's own tap look like a later one of the user's
+         */
         static Click of(AccessibilityEvent event, long at) {
-            boolean progress = false;
-            for (CharSequence label : event.getText()) {
-                String text = OfferEvidence.normalize(label == null ? null : label.toString()).toLowerCase(Locale.US);
-                if (PROGRESS_TAPS.contains(text)) progress = true;
+            long when = event.getEventTime();
+            if (when > 0 && when <= at) at = when;
+            List<String> text = new ArrayList<>();
+            for (CharSequence label : event.getText()) addTapLabel(text, label);
+            CharSequence description = event.getContentDescription();
+            AccessibilityNodeInfo source = null;
+            try {
+                source = event.getSource();
+            } catch (RuntimeException unavailable) {
+                // The click still counts by its text.
             }
-            return new Click(isAcceptClick(event), isDeclineClick(event), progress, at);
+            return new Click(text, description == null ? "" : OfferEvidence.normalize(description.toString()), source,
+                    at);
         }
     }
 
@@ -1492,38 +1791,6 @@ public final class OfferFilterService extends AccessibilityService {
         @Override public int hashCode() {
             return (split ? 1 : 0) + scene.ordinal() * 2 + (area == null ? 0 : area.hashCode());
         }
-    }
-
-    private static boolean isAcceptClick(AccessibilityEvent event) {
-        for (CharSequence label : event.getText()) {
-            if (isAcceptLabel(label)) return true;
-        }
-        if (isAcceptLabel(event.getContentDescription())) return true;
-        AccessibilityNodeInfo node = event.getSource();
-        for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++, node = node.getParent()) {
-            if (isAcceptLabel(node.getText()) || isAcceptLabel(node.getContentDescription())) return true;
-        }
-        return false;
-    }
-
-    private static boolean isAcceptLabel(CharSequence label) {
-        return label != null && OfferControls.isButton(label.toString(), "accept");
-    }
-
-    private static boolean isDeclineClick(AccessibilityEvent event) {
-        for (CharSequence label : event.getText()) {
-            if (isDeclineLabel(label)) return true;
-        }
-        if (isDeclineLabel(event.getContentDescription())) return true;
-        AccessibilityNodeInfo node = event.getSource();
-        for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++, node = node.getParent()) {
-            if (isDeclineLabel(node.getText()) || isDeclineLabel(node.getContentDescription())) return true;
-        }
-        return false;
-    }
-
-    private static boolean isDeclineLabel(CharSequence label) {
-        return label != null && OfferControls.isButton(label.toString(), "decline");
     }
 
     /** One bounded read of a window: distinct labels, joined metric siblings, and offer control targets. */

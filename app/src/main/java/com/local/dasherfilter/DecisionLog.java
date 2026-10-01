@@ -81,6 +81,54 @@ final class DecisionLog {
         }
     }
 
+    /**
+     * One step of learning from what the user did with an offer the app left alone (accepted, declined by hand, or
+     * neither, and why), kept on that offer's line. Steps never change the offer's action, its tally or the totals,
+     * and never leave the phone in an automatic report.
+     */
+    enum StepKind {
+        TAP_NOT_RECOGNIZED("A tap on Dasher while this offer showed was neither Accept nor Decline"),
+        ACCEPT_TAPPED("You tapped Accept"),
+        ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
+        ACCEPTED_LEARNED("Accepted; the adaptive minimum learned from it"),
+        ACCEPTED_NOT_LEARNED("Accepted; nothing learned"),
+        ACCEPTED_ADD_ON("Accepted add-on; the standalone minimums never learn from add-ons"),
+        NOT_ACCEPTED("Not accepted"),
+        NOT_LEARNED("Not learned"),
+        DECLINE_TAPPED("You tapped Decline on it"),
+        DECLINE_QUESTION("Dasher asked to confirm declining it; Offer Filter did not decline it"),
+        DECLINE_COUNTED("Counted as your Decline"),
+        DECLINE_DROPPED("Not counted as your Decline"),
+        DECLINE_TAUGHT("Your Decline raised the adaptive minimum"),
+        DECLINE_NOT_TAUGHT("Your Decline taught nothing");
+
+        final String label;
+
+        StepKind(String label) {
+            this.label = label;
+        }
+    }
+
+    /** A learning step: what, when (wall clock), and a detail of fixed words and numbers only, never screen text. */
+    static final class Step {
+        final StepKind kind;
+        final long at;
+        final String detail;
+
+        Step(StepKind kind, long at, String detail) {
+            this.kind = kind;
+            this.at = at;
+            this.detail = detail == null ? "" : detail;
+        }
+
+        String text() {
+            return kind.label + (detail.isEmpty() ? "" : ": " + detail);
+        }
+    }
+
+    /** Steps kept on one line at most; the oldest go first. */
+    static final int MAX_STEPS = 8;
+
     static final class Entry {
         final long at;
         final Source source;
@@ -98,16 +146,18 @@ final class DecisionLog {
         final String alertTag;
         /** Memory only: recorded on a replay, which re-evaluates a post already recorded and is never a new offer. */
         final boolean replay;
+        /** What was learned from this offer afterwards, oldest first ({@link #MAX_STEPS} at most). */
+        final List<Step> steps;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false);
+                    false, Collections.<Step>emptyList());
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
-                      Entry notification, String alertTag, boolean replay) {
+                      Entry notification, String alertTag, boolean replay, List<Step> steps) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -121,6 +171,7 @@ final class DecisionLog {
             this.notification = notification;
             this.alertTag = alertTag;
             this.replay = replay;
+            this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
         }
 
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
@@ -142,19 +193,19 @@ final class DecisionLog {
 
         private Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false);
+                    notification, alertTag, false, steps);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay);
+                    notification, alertTag, replay, steps);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay);
+                    notification, tag, replay, steps);
         }
 
         /** This line with Dasher's notification of the same offer folded in, without that notification's lines. */
@@ -162,7 +213,20 @@ final class DecisionLog {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
                     n.autoDecline, Collections.emptyList());
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay);
+                    nested, alertTag, replay, steps);
+        }
+
+        /** This line with one more learning step; an exact repeat of the last step is not added again. */
+        Entry withStep(Step step) {
+            if (!steps.isEmpty()) {
+                Step last = steps.get(steps.size() - 1);
+                if (last.kind == step.kind && last.detail.equals(step.detail)) return this;
+            }
+            List<Step> next = new ArrayList<>(steps);
+            next.add(step);
+            while (next.size() > MAX_STEPS) next.remove(0);
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, next);
         }
 
         JSONObject toJson() throws JSONException {
@@ -176,6 +240,14 @@ final class DecisionLog {
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
             if (notification != null) json.put("notification", notification.toJson());
+            if (!steps.isEmpty()) {
+                JSONArray kept = new JSONArray();
+                for (Step step : steps) {
+                    kept.put(new JSONObject().put("kind", step.kind.name()).put("at", step.at)
+                            .put("detail", step.detail));
+                }
+                json.put("steps", kept);
+            }
             return json;
         }
 
@@ -183,7 +255,19 @@ final class DecisionLog {
             Entry entry = plainFromJson(json);
             JSONObject nested = json.optJSONObject("notification");
             // Always without lines of its own and never nested deeper, whatever the file says.
-            return nested == null ? entry : entry.withNotification(plainFromJson(nested));
+            if (nested != null) entry = entry.withNotification(plainFromJson(nested));
+            JSONArray kept = json.optJSONArray("steps");
+            for (int i = 0; kept != null && i < kept.length(); i++) {
+                // A step this version does not know (written by a newer one) is skipped; the line is kept.
+                try {
+                    JSONObject step = kept.getJSONObject(i);
+                    entry = entry.withStep(new Step(StepKind.valueOf(step.getString("kind")), step.getLong("at"),
+                            step.optString("detail")));
+                } catch (JSONException | IllegalArgumentException unknown) {
+                    // Skipped.
+                }
+            }
+            return entry;
         }
 
         private static Entry plainFromJson(JSONObject json) throws JSONException {
@@ -359,6 +443,46 @@ final class DecisionLog {
         }
     }
 
+    /**
+     * Adds a learning step to the screen line of the offer with these facts, recorded at most {@code withinMs} ago:
+     * the newest line with exactly these facts, else the newest whose facts agree with them. The line's action, its
+     * tally and the totals never change, and nothing is counted toward areas or declines by hand.
+     *
+     * @return whether a line took the step
+     */
+    static boolean markStep(Context context, OfferSnapshot facts, StepKind kind, String detail, long withinMs) {
+        if (facts == null) return false;
+        long now = System.currentTimeMillis();
+        try {
+            synchronized (LOCK) {
+                List<Entry> all = loaded(context);
+                int found = -1;
+                for (int pass = 0; pass < 2 && found < 0; pass++) {
+                    for (int i = all.size() - 1; i >= 0; i--) {
+                        Entry entry = all.get(i);
+                        if (entry.at < now - withinMs) break;
+                        if (entry.source != Source.SCREEN) continue;
+                        boolean match = pass == 0 ? entry.facts.fingerprint().equals(facts.fingerprint())
+                                : entry.facts.agreesWith(facts);
+                        if (match) {
+                            found = i;
+                            break;
+                        }
+                    }
+                }
+                if (found < 0) return false;
+                Entry marked = all.get(found).withStep(new Step(kind, now, detail));
+                if (marked == all.get(found)) return true;
+                all.set(found, marked);
+                persist(context, all);
+                return true;
+            }
+        } catch (RuntimeException error) {
+            DiagnosticLog.log(context, "decision-log", "step failed: " + error.getClass().getSimpleName());
+            return false;
+        }
+    }
+
     /** Up to {@code limit} entries, newest first. */
     static List<Entry> recent(Context context, int limit) {
         synchronized (LOCK) {
@@ -416,6 +540,11 @@ final class DecisionLog {
                         .append(" | pay ").append(n.facts.payCents == null ? "?" : money(n.facts.payCents))
                         .append(" | ").append(n.reason)
                         .append(" | ").append(n.action.label)
+                        .append('\n');
+            }
+            SimpleDateFormat clock = new SimpleDateFormat("HH:mm:ss", Locale.US);
+            for (Step step : entry.steps) {
+                out.append("    learning ").append(clock.format(new Date(step.at))).append(' ').append(step.text())
                         .append('\n');
             }
         }

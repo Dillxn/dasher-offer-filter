@@ -24,7 +24,7 @@ public final class UpdateJobService extends JobService {
         int jobId = parameters.getJobId();
         Run run = new Run(parameters);
         running.put(jobId, run);
-        run.task = Updater.check(this, false, () -> {
+        run.task = Updater.check(this, UpdateCadence.forJob(jobId, Updater.RETRY_JOB_ID), () -> {
             if (running.get(jobId) == run) {
                 running.remove(jobId);
                 jobFinished(parameters, false);

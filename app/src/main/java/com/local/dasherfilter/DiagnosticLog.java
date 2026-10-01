@@ -26,6 +26,11 @@ import java.util.concurrent.TimeoutException;
  * Dasher's other screens (a shopping list, an item), so a few minutes of shopping can never push the offers out.
  * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares.
  * Bounded I/O never blocks screen-decision callbacks.
+ *
+ * <p>Some lines are states, not events (what an automatic update check found, DoorDash's alert-channel settings):
+ * {@link #logOnChange} writes one only when it differs from the copy kept, or that copy is a day old, and the latest
+ * copy of each is in the shared report's "Latest states". States never hold screen text, notification values,
+ * tokens, the GitHub account name or a sign-in code.
  */
 final class DiagnosticLog {
     private static final String PREFS = "offer_filter_diagnostics";
@@ -55,6 +60,14 @@ final class DiagnosticLog {
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
     private static final Object LOCK = new Object();
+    /** Kept states, by source and topic, and when each was last written (wall clock). */
+    private static final String STATE = "state:";
+    private static final String STATE_AT = "state_at:";
+    private static final int MAX_STATES = 12;
+    private static final int MAX_STATE_CHARS = 1_000;
+    private static final int MAX_REPORT_STATES_CHARS = 4_000;
+    /** States are written from the main thread (notifications) and the updater's: one at a time. */
+    private static final Object STATES = new Object();
 
     /** On unless turned off. There is no switch for it; tests turn it off. */
     static boolean isEnabled(Context context) {
@@ -73,6 +86,102 @@ final class DiagnosticLog {
         String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date());
         byte[] line = (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
         write(app, FILE, line);
+    }
+
+    /**
+     * A state, not an event: logged (with {@code prefix} before it) only when it differs from the copy kept for this
+     * source and topic, or that copy is older than a day. The copy is kept for the shared report's "Latest states".
+     *
+     * @return whether it was logged
+     */
+    static boolean logOnChange(Context context, String source, String topic, String message, String prefix) {
+        if (!isEnabled(context)) return false;
+        String state = clip(message);
+        String key = source + "|" + topic;
+        long now = System.currentTimeMillis();
+        synchronized (STATES) {
+            SharedPreferences prefs = prefs(context);
+            long at = prefs.getLong(STATE_AT + key, 0);
+            if (state.equals(prefs.getString(STATE + key, null)) && at <= now && now - at < KEEP_MS) return false;
+            remember(prefs, key, state, now);
+        }
+        log(context, source, prefix + state);
+        return true;
+    }
+
+    static boolean logOnChange(Context context, String source, String topic, String message) {
+        return logOnChange(context, source, topic, message, "");
+    }
+
+    /** A state logged every time (a manual check, a failure), and kept as the latest copy all the same. */
+    static void logAndRemember(Context context, String source, String topic, String message, String prefix) {
+        if (!isEnabled(context)) return;
+        String state = clip(message);
+        synchronized (STATES) {
+            remember(prefs(context), source + "|" + topic, state, System.currentTimeMillis());
+        }
+        log(context, source, prefix + state);
+    }
+
+    /** Forgets the copy kept, so the next {@link #logOnChange} of it logs whatever it says. */
+    static void forget(Context context, String source, String topic) {
+        synchronized (STATES) {
+            SharedPreferences prefs = prefs(context);
+            String key = source + "|" + topic;
+            if (prefs.contains(STATE + key)) prefs.edit().remove(STATE + key).remove(STATE_AT + key).apply();
+        }
+    }
+
+    private static String clip(String message) {
+        String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
+        return safe.length() > MAX_STATE_CHARS ? safe.substring(0, MAX_STATE_CHARS) + " [truncated]" : safe;
+    }
+
+    /** Keeps one state, dropping the oldest beyond {@link #MAX_STATES}. Under {@link #STATES}. */
+    private static void remember(SharedPreferences prefs, String key, String state, long now) {
+        SharedPreferences.Editor edit = prefs.edit().putString(STATE + key, state).putLong(STATE_AT + key, now);
+        java.util.Map<String, ?> all = prefs.getAll();
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (String name : all.keySet()) {
+            if (name.startsWith(STATE_AT) && !name.equals(STATE_AT + key)) keys.add(name.substring(STATE_AT.length()));
+        }
+        // The kept ones, oldest first; this one is the newest.
+        java.util.Collections.sort(keys, (a, b) -> Long.compare(prefs.getLong(STATE_AT + a, 0),
+                prefs.getLong(STATE_AT + b, 0)));
+        for (int i = 0; i < keys.size() + 1 - MAX_STATES; i++) {
+            edit.remove(STATE + keys.get(i)).remove(STATE_AT + keys.get(i));
+        }
+        edit.apply();
+    }
+
+    /** The kept states newer than a day, newest first, as report lines. */
+    private static String states(Context context) {
+        SharedPreferences prefs = prefs(context);
+        java.util.Map<String, ?> all = prefs.getAll();
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (String name : all.keySet()) {
+            if (!name.startsWith(STATE_AT)) continue;
+            String key = name.substring(STATE_AT.length());
+            long at = prefs.getLong(name, 0);
+            if (at <= now && now - at < KEEP_MS && prefs.getString(STATE + key, null) != null) keys.add(key);
+        }
+        if (keys.isEmpty()) return "None in the last day.\n";
+        java.util.Collections.sort(keys, (a, b) -> Long.compare(prefs.getLong(STATE_AT + b, 0),
+                prefs.getLong(STATE_AT + a, 0)));
+        SimpleDateFormat time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US);
+        StringBuilder out = new StringBuilder();
+        for (String key : keys) {
+            int bar = key.indexOf('|');
+            String line = time.format(new Date(prefs.getLong(STATE_AT + key, 0))) + " ["
+                    + (bar < 0 ? key : key.substring(0, bar)) + "] " + prefs.getString(STATE + key, "") + "\n";
+            if (out.length() + line.length() > MAX_REPORT_STATES_CHARS) {
+                out.append("[older states omitted]\n");
+                break;
+            }
+            out.append(line);
+        }
+        return out.toString();
     }
 
     /** One of Dasher's other screens, as read: kept in its own log. */
@@ -158,19 +267,41 @@ final class DiagnosticLog {
                 + "; highest accepted cents=" + rules.lastAcceptedCents
                 + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
                 + "; learned from manual declines=" + (rules.declined.isEmpty() ? "none" : rules.declined.summary())
+                + learningTimes(context)
                 + "\n"
                 + "In words: " + rules.describe() + "\n\n"
                 + "== Decision history (newest first)\n"
                 + DecisionLog.report(context, REPORT_DECISIONS) + "\n"
                 + "== Updater\n"
                 + "Status: " + Updater.status(context) + "\n"
-                + "Latest advertised version: " + updates.getString("advertised", "none") + "\n"
+                + "Latest advertised version: " + updates.getString("advertised", "none")
+                + (updates.contains("advertised_via") ? " (" + updates.getString("advertised_via", "") + ")" : "")
+                + "\n"
                 + "Last update attempt epoch ms: " + updates.getLong("attempt_at", 0) + "\n"
-                + "Last successful feed check epoch ms: " + updates.getLong("checked_at", 0) + "\n\n"
+                + "Last successful feed check epoch ms: " + updates.getLong("checked_at", 0) + "\n"
+                + Updater.cadenceSummary(context) + "\n"
+                + GitHubConnect.reportLine(context) + "\n\n"
+                + "== Latest states (each logged once when it changes, and at least daily)\n"
+                + states(context) + "\n"
                 + "== Raw diagnostic log\n"
                 + log + "\n\n"
                 + "== Dasher's other screens (newest)\n"
                 + screens;
+    }
+
+    /**
+     * When learning was on (auto-decline and the adaptive minimum both), and when the adaptive minimums were last
+     * reset, so a report can tell whether an offer accepted then could have taught.
+     */
+    private static String learningTimes(Context context) {
+        long[] times = FilterStore.learningTimes(context);
+        SimpleDateFormat time = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+        String[] shown = new String[times.length];
+        for (int i = 0; i < times.length; i++) {
+            shown[i] = times[i] > 0 ? time.format(new Date(times[i])) : "not recorded";
+        }
+        return "; learning (auto-decline and Adaptive minimum both on) since=" + shown[0]
+                + "; learning last turned off=" + shown[1] + "; adaptive minimums last reset=" + shown[2];
     }
 
     /** The newest {@code chars} of a log, starting at a whole line. */
@@ -187,6 +318,7 @@ final class DiagnosticLog {
                 + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
     }
 
+    /** Removes both logs and every kept state (Clear history). */
     static void clear(Context context) {
         flush();
         synchronized (LOCK) {
@@ -194,6 +326,14 @@ final class DiagnosticLog {
             file(context).delete();
             //noinspection ResultOfMethodCallIgnored
             new File(context.getFilesDir(), SCREENS_FILE).delete();
+        }
+        synchronized (STATES) {
+            SharedPreferences prefs = prefs(context);
+            SharedPreferences.Editor edit = prefs.edit();
+            for (String name : prefs.getAll().keySet()) {
+                if (name.startsWith(STATE) || name.startsWith(STATE_AT)) edit.remove(name);
+            }
+            edit.commit();
         }
     }
 

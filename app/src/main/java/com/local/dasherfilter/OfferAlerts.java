@@ -87,6 +87,15 @@ final class OfferAlerts {
 
     static boolean notifyOffer(Context context, String tag, PendingIntent doorDashIntent, OfferRule.Result result,
                                String detail, boolean ring) {
+        return notifyOffer(context, tag, doorDashIntent, result, detail, ring, "");
+    }
+
+    /**
+     * As {@link #notifyOffer(Context, String, PendingIntent, OfferRule.Result, String, boolean)}, titled with the
+     * store Dasher's notification names ("Taco Bell offer: open Dasher to check it") when it names one.
+     */
+    static boolean notifyOffer(Context context, String tag, PendingIntent doorDashIntent, OfferRule.Result result,
+                               String detail, boolean ring, String store) {
         if (result == OfferRule.Result.DECLINE) {
             clear(context, tag);
             return false;
@@ -104,8 +113,7 @@ final class OfferAlerts {
         boolean audible = ring;
         Notification.Builder builder = new Notification.Builder(context, channel)
                 .setSmallIcon(smallIcon(context))
-                .setContentTitle(result == OfferRule.Result.KEEP
-                        ? "DoorDash offer meets your rules" : "DoorDash offer: open Dasher to check it")
+                .setContentTitle(title(result, store))
                 .setContentText(body)
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -130,6 +138,12 @@ final class OfferAlerts {
             DiagnosticLog.log(context, "alert", "post failed; original retained: " + error.getClass().getSimpleName());
             return false;
         }
+    }
+
+    /** "Taco Bell offer: open Dasher to check it", or "DoorDash offer …" when the store is not named. */
+    static String title(OfferRule.Result result, String store) {
+        String offer = (store == null || store.trim().isEmpty() ? "DoorDash" : store.trim()) + " offer";
+        return result == OfferRule.Result.KEEP ? offer + " meets your rules" : offer + ": open Dasher to check it";
     }
 
     /**

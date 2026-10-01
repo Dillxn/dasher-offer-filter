@@ -66,7 +66,14 @@ final class GitHubConnect {
 
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean POLLING = new AtomicBoolean();
+    /** Guards the stored connection; held only to read or write it, never across a call to GitHub. */
     private static final Object LOCK = new Object();
+    /** One refresh at a time: a second caller waits, then uses what the first stored. */
+    private static final Object REFRESHING = new Object();
+    /** Why the connection last ended, and when (wall clock); kept apart, so connecting again does not erase it. */
+    private static final String HISTORY = "github_history";
+    private static final String ENDED_AT = "ended_at";
+    private static final String ENDED_WHY = "ended_why";
 
     static boolean configured() {
         return !clientId.isEmpty();
@@ -147,21 +154,55 @@ final class GitHubConnect {
 
     /** Forgets the connection on this phone. Updates then come from Render only, and reports sent through it stop. */
     static void disconnect(Context context) {
+        State was;
         synchronized (LOCK) {
+            was = state(context);
             prefs(context).edit().clear().commit();
         }
         ReportOutbox.connectionRemoved(context);
+        if (was == State.CONNECTED) ended(context, "disconnected in Settings");
+        else if (was == State.WAITING) DiagnosticLog.log(context, "github", "connecting cancelled in Settings");
     }
 
-    /** Asks GitHub for a device code and remembers it. */
+    /**
+     * The connection ended: the reason is logged and kept (never a token, the account name or a code), so the next
+     * shared report says why updates come only from Render, and reports sent through the connection stop.
+     */
+    private static void ended(Context context, String why) {
+        context.getSharedPreferences(HISTORY, Context.MODE_PRIVATE).edit()
+                .putLong(ENDED_AT, System.currentTimeMillis()).putString(ENDED_WHY, why).apply();
+        DiagnosticLog.log(context, "github", "connection ended: " + why
+                + "; updates come only from Render until Connect GitHub is used again");
+    }
+
+    /** For a shared report: the connection's state now, and when and why it last ended. Never a token or name. */
+    static String reportLine(Context context) {
+        if (!configured()) return "GitHub connection: not set up in this build";
+        SharedPreferences history = context.getSharedPreferences(HISTORY, Context.MODE_PRIVATE);
+        long at = history.getLong(ENDED_AT, 0);
+        String last = at <= 0 ? "never recorded"
+                : new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", java.util.Locale.US)
+                        .format(new java.util.Date(at)) + " (" + history.getString(ENDED_WHY, "") + ")";
+        return "GitHub connection: " + state(context).name().toLowerCase(java.util.Locale.US)
+                + "; last ended: " + last;
+    }
+
+    /**
+     * Asks GitHub for a device code and remembers it. A connection still stored (one that ended by itself and was not
+     * noticed yet, or one still working) is forgotten as with Disconnect: reports sent through it stop.
+     */
     static void requestCode(Context context) throws IOException {
         JSONObject answer = post(deviceCodeEndpoint, "client_id=" + encode(clientId));
+        State was;
         try {
             long now = System.currentTimeMillis();
+            String deviceCode = answer.getString("device_code");
+            String userCode = answer.getString("user_code");
             synchronized (LOCK) {
+                was = stored(context);
                 prefs(context).edit().clear()
-                        .putString(DEVICE_CODE, answer.getString("device_code"))
-                        .putString(USER_CODE, answer.getString("user_code"))
+                        .putString(DEVICE_CODE, deviceCode)
+                        .putString(USER_CODE, userCode)
                         .putLong(CODE_EXPIRES_AT, now + answer.optLong("expires_in", 900) * 1000L)
                         .putLong(INTERVAL, Math.max(5, answer.optLong("interval", 5)))
                         .commit();
@@ -169,6 +210,29 @@ final class GitHubConnect {
         } catch (JSONException malformed) {
             throw new IOException("GitHub sent no code", malformed);
         }
+        forgotten(context, was, "replaced by connecting again");
+    }
+
+    /**
+     * What a connection still stored is: {@link State#CONNECTED}, {@link State#OFF} for one that ended by itself (its
+     * renewal ran out) but is still stored, or null when none is stored. Under {@link #LOCK}.
+     */
+    private static State stored(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (!prefs.contains(ACCESS) && !prefs.contains(REFRESH)) return null;
+        return state(context) == State.CONNECTED ? State.CONNECTED : State.OFF;
+    }
+
+    /**
+     * A stored connection was just wiped: reports sent through it stop and unsent ones are discarded, as with
+     * Disconnect, and why it ended is kept.
+     *
+     * @param was what {@link #stored} said before the wipe
+     */
+    private static void forgotten(Context context, State was, String whyWorking) {
+        if (was == null) return;
+        ReportOutbox.connectionRemoved(context);
+        ended(context, was == State.CONNECTED ? whyWorking : "its renewal ran out (GitHub's limit for a connection)");
     }
 
     private static void pollUntilDone(Context context) {
@@ -206,6 +270,9 @@ final class GitHubConnect {
         }
         switch (error) {
             case "":
+                // A new connection: reports go through it only once the user turns that on again, however the last
+                // one ended.
+                ReportOutbox.connectionRemoved(context);
                 fetchLogin(context);
                 return Poll.CONNECTED;
             case "authorization_pending":
@@ -226,33 +293,86 @@ final class GitHubConnect {
         }
     }
 
+    /** What the stored connection holds now: a token to use, or the refresh token to renew it with. */
+    private static final class Held {
+        final boolean connected;
+        final String access;
+        final String refresh;
+        final boolean fresh;
+        final boolean refreshRanOut;
+
+        Held(Context context) {
+            SharedPreferences prefs = prefs(context);
+            long now = System.currentTimeMillis();
+            access = prefs.getString(ACCESS, null);
+            refresh = prefs.getString(REFRESH, null);
+            long expires = prefs.getLong(ACCESS_EXPIRES_AT, 0);
+            fresh = access != null && (expires == 0 || now < expires - REFRESH_MARGIN_MS);
+            refreshRanOut = refresh != null && now >= prefs.getLong(REFRESH_EXPIRES_AT, Long.MAX_VALUE);
+            connected = state(context) == State.CONNECTED;
+        }
+    }
+
     /**
      * A usable access token, refreshed first when it is about to expire; null when not connected. Blocking: call it
      * off the main thread.
+     *
+     * <p>One refresh at a time: a caller that finds one under way waits for it, then reads the stored connection
+     * again and uses the token it stored. The stored connection is locked only to read or write it, never while
+     * GitHub answers, so Disconnect (on the main thread) never waits for GitHub. A refused refresh forgets the
+     * connection only if it is still the one that refresh renewed: a disconnect, a new connection or another refresh
+     * stored meanwhile is left as it is.
      *
      * @throws IOException when GitHub could not be reached to refresh it (the connection is kept), or refused the
      *     refresh (the connection is forgotten and must be made again)
      */
     static String token(Context context) throws IOException {
         synchronized (LOCK) {
-            SharedPreferences prefs = prefs(context);
-            if (state(context) != State.CONNECTED) return null;
-            long now = System.currentTimeMillis();
-            String access = prefs.getString(ACCESS, null);
-            long expires = prefs.getLong(ACCESS_EXPIRES_AT, 0);
-            if (access != null && (expires == 0 || now < expires - REFRESH_MARGIN_MS)) return access;
-            String refresh = prefs.getString(REFRESH, null);
-            if (refresh == null) return access;
+            Held held = new Held(context);
+            if (held.refreshRanOut) {
+                ranOut(context);
+                return null;
+            }
+            if (!held.connected) return null;
+            if (held.fresh || held.refresh == null) return held.access;
+        }
+        synchronized (REFRESHING) {
+            String refresh;
+            synchronized (LOCK) {
+                // After waiting: another refresh may have stored a fresh token, or the connection may be gone.
+                Held held = new Held(context);
+                if (!held.connected) return null;
+                if (held.fresh || held.refresh == null) return held.access;
+                refresh = held.refresh;
+            }
             JSONObject answer = post(tokenEndpoint, "client_id=" + encode(clientId) + "&grant_type=refresh_token"
                     + "&refresh_token=" + encode(refresh));
-            if (!answer.optString("error", "").isEmpty() || !answer.has("access_token")) {
-                prefs.edit().clear().putString(NOTE, "The GitHub connection ran out. Tap Connect GitHub again.")
-                        .commit();
-                throw new IOException("GitHub connection expired");
+            String error = answer.optString("error", "");
+            synchronized (LOCK) {
+                Held now = new Held(context);
+                if (!refresh.equals(now.refresh)) {
+                    // Disconnected, connected again or renewed meanwhile: that stands, whatever GitHub said here.
+                    return now.connected ? now.access : null;
+                }
+                if (error.isEmpty() && answer.has("access_token")) {
+                    store(context, answer);
+                    return prefs(context).getString(ACCESS, null);
+                }
+                prefs(context).edit().clear()
+                        .putString(NOTE, "The GitHub connection ran out. Tap Connect GitHub again.").commit();
             }
-            store(context, answer);
-            return prefs.getString(ACCESS, null);
+            ReportOutbox.connectionRemoved(context);
+            ended(context, "GitHub refused to renew it (" + (error.isEmpty() ? "no token in its answer" : error) + ")");
+            throw new IOException("GitHub connection expired");
         }
+    }
+
+    /** The refresh token's own time ran out (GitHub's limit): the connection is forgotten, and that is said once. */
+    private static void ranOut(Context context) {
+        prefs(context).edit().clear().putString(NOTE, "The GitHub connection ran out. Tap Connect GitHub again.")
+                .commit();
+        ReportOutbox.connectionRemoved(context);
+        ended(context, "its renewal ran out (GitHub's limit for a connection)");
     }
 
     private static void store(Context context, JSONObject answer) throws IOException {
@@ -299,9 +419,12 @@ final class GitHubConnect {
     }
 
     private static void note(Context context, String note) {
+        State was;
         synchronized (LOCK) {
+            was = stored(context);
             prefs(context).edit().clear().putString(NOTE, note).commit();
         }
+        forgotten(context, was, "forgotten when connecting again failed");
     }
 
     /** A form POST to GitHub's sign-in endpoints; GitHub answers JSON, with an "error" field when it declines. */

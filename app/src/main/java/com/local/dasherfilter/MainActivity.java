@@ -205,6 +205,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Button githubDisconnect;
     private GitHubConnect.State shownGitHub;
     private boolean askingGitHub;
+    /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
+    private boolean freshScreen;
 
     /** Day or night as chosen with the sun and moon, for every view and dialog of this screen. */
     @Override protected void attachBaseContext(android.content.Context base) {
@@ -215,6 +217,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        freshScreen = state == null;
         ui = new Ui(this);
         OfferAlerts.ensureChannel(this);
         FilterStore.forgetRetiredEmail(this);
@@ -271,7 +274,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
-        Updater.check(this, false, null);
+        // Opening the app checks at once; coming back to it checks at most every five minutes.
+        Updater.check(this, freshScreen ? UpdateCadence.Trigger.OPENED : UpdateCadence.Trigger.RESUMED, null);
+        freshScreen = false;
         ReportOutbox.retryRefused(this);
         DasherSplit.resumed(this);
     }
@@ -991,7 +996,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Switch updates = ui.toggle(body, "Automatic updates", Updater.enabled(this));
         updates.setOnCheckedChangeListener((view, on) -> {
             Updater.setEnabled(this, on);
-            if (on) Updater.check(this, false, null);
+            if (on) Updater.check(this, UpdateCadence.Trigger.TURNED_ON, null);
         });
         updateStatus = ui.text("", 13, ui.inkSecondary, false);
         body.addView(updateStatus);
