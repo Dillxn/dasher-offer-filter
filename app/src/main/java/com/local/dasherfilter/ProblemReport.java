@@ -100,6 +100,7 @@ final class ProblemReport {
                     .append("**Read:** pay ").append(pay(entry.facts)).append(", ")
                     .append(DecisionLog.facts(entry.facts))
                     .append(entry.requiredCents > 0 ? ", needed " + DecisionLog.money(entry.requiredCents) : "")
+                    .append(entry.scorePercent >= 0 ? ", score " + entry.scorePercent + "%" : "")
                     .append('\n');
         }
         if (error != null) summary.append("**Error:** ").append(error.getClass().getName()).append('\n');
@@ -144,7 +145,8 @@ final class ProblemReport {
         return new JSONObject().put("enabled", rules.enabled).put("flatCents", rules.flatCents)
                 .put("perMileCents", rules.perMileCents).put("perMinuteCents", rules.perMinuteCents)
                 .put("perStopCents", rules.perStopCents).put("maxStops", rules.maxStops)
-                .put("risingOffers", rules.risingOffers).put("lastAcceptedCents", rules.lastAcceptedCents)
+                .put("risingOffers", rules.risingOffers).put("scoreByArea", rules.scoreByArea)
+                .put("lastAcceptedCents", rules.lastAcceptedCents)
                 .put("bestAccepted", new JSONObject()
                         .put("minutePay", rules.best.minutePay).put("minutes", rules.best.minutes)
                         .put("milePay", rules.best.milePay).put("miles", rules.best.miles)

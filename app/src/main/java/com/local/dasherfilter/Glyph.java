@@ -14,11 +14,14 @@ import android.graphics.drawable.Drawable;
  * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, a
  * rising line for the adaptive minimum, dots for the stop count, sliders for settings, a back arrow, a warning
  * sign, the chevron at the end of a row that opens something, a dashed shape passing into a solid one for making the
- * learned minimums the set ones (in the constellation's learned and set colors, where it is given them), and a curved
- * arrow back for undoing that.
+ * learned minimums the set ones (in the constellation's learned and set colors, where it is given them), a curved
+ * arrow back for undoing that, and an area chart (two crossing spokes and an offer's shape on them) for score by area,
+ * its shape filled while the drawable's level is above 0, that is while score by area is on.
  */
 final class Glyph extends Drawable {
-    enum Shape { CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO }
+    enum Shape {
+        CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA
+    }
 
     private final Shape shape;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -213,6 +216,33 @@ final class Glyph extends Drawable {
                 canvas.drawPath(path, stroke);
                 break;
             }
+            case AREA: {
+                // An area chart: the constellation's two crossing spokes and an offer's shape on them; lit (score by
+                // area on), the shape is filled.
+                int ink = stroke.getColor();
+                float width = stroke.getStrokeWidth();
+                stroke.setColor((learnedInk & 0x00FFFFFF) | 0x80000000);
+                stroke.setStrokeWidth(1.1f);
+                canvas.drawLine(2.9f, 6.75f, 21.1f, 17.25f, stroke);
+                canvas.drawLine(21.1f, 6.75f, 2.9f, 17.25f, stroke);
+                path.moveTo(3.35f, 7f);
+                path.lineTo(18.05f, 8.5f);
+                path.lineTo(20.65f, 17f);
+                path.lineTo(6.35f, 15.25f);
+                path.close();
+                if (getLevel() > 0) {
+                    int fillInk = fill.getColor();
+                    fill.setColor((setInk & 0x00FFFFFF) | 0x70000000);
+                    canvas.drawPath(path, fill);
+                    fill.setColor(fillInk);
+                }
+                stroke.setColor(setInk);
+                stroke.setStrokeWidth(1.8f);
+                canvas.drawPath(path, stroke);
+                stroke.setColor(ink);
+                stroke.setStrokeWidth(width);
+                break;
+            }
             case UNDO:
                 // A curved arrow back.
                 path.moveTo(9, 14);
@@ -235,6 +265,11 @@ final class Glyph extends Drawable {
                 break;
         }
         canvas.restore();
+    }
+
+    @Override protected boolean onLevelChange(int level) {
+        invalidateSelf();
+        return true;
     }
 
     @Override public int getIntrinsicWidth() {

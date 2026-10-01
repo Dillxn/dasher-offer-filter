@@ -9,6 +9,11 @@ import java.util.Locale;
  * missing value that an enabled rule needs yields REVIEW, never KEEP or DECLINE. A known ceiling on unknown pay (a
  * "+$" amount beside a total) declines an offer that misses the set rules even at that ceiling (the user's own rule
  * for that shape), and never passes one.
+ *
+ * <p>Strict (the default) holds a standalone offer to every minimum. Score by area (the user's choice) holds it to
+ * its {@link AreaScore area score} instead: 100% passes, less declines; max stops stays a hard limit, an active
+ * minimum whose amount was not read leaves the offer to review (it could lift the score), and add-ons keep the
+ * strict rules. Either way a decision carries the offer's score where it can be worked out.
  */
 final class OfferRule {
     enum Result { DECLINE, KEEP, REVIEW }
@@ -19,30 +24,96 @@ final class OfferRule {
         final String reason;
         /** The facts the requirement was compared with: the offer, an add-on's increment, or its combined route. */
         final OfferSnapshot basis;
+        /** The offer's area score as a whole percent ({@link AreaScore#percent}), in either mode; -1 when none. */
+        final int scorePercent;
 
         Decision(Result result, long requiredCents, String reason) {
             this(result, requiredCents, reason, OfferSnapshot.UNKNOWN);
         }
 
         Decision(Result result, long requiredCents, String reason, OfferSnapshot basis) {
+            this(result, requiredCents, reason, basis, -1);
+        }
+
+        Decision(Result result, long requiredCents, String reason, OfferSnapshot basis, int scorePercent) {
             this.result = result;
             this.requiredCents = requiredCents;
             this.reason = reason;
             this.basis = basis;
+            this.scorePercent = scorePercent;
         }
 
         String summary() {
             if (requiredCents == 0) return result + ": " + reason;
+            if (reason.startsWith(SCORE_REASON)) {
+                return String.format(Locale.US, "%s: %s; $%.2f would score 100%%", result, reason,
+                        requiredCents / 100.0);
+            }
             return String.format(Locale.US, "%s: required at least $%.2f (%s)", result, requiredCents / 100.0, reason);
         }
     }
 
-    /**
-     * Required pay is {@code max(flat, miles × rate, minutes × rate, stops × rate)}. The adaptive minimum raises it
-     * to one cent above the highest accepted standalone payout, and to at least the best accepted pay per minute, per
-     * mile and per stop applied to this offer; each is a floor of its own, never added on top.
-     */
+    /** How a reason by area score begins: "score 87% (needs 100%)". */
+    static final String SCORE_REASON = "score ";
+
+    static String scoreReason(int percent) {
+        return SCORE_REASON + percent + "% (needs 100%)";
+    }
+
+    /** The rules applied to a standalone offer, strictly or by area score as the user chose. */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
+        if (settings.scoreByArea) return byArea(offer, settings);
+        Decision strict = strict(offer, settings);
+        return new Decision(strict.result, strict.requiredCents, strict.reason, strict.basis,
+                AreaScore.percent(settings, offer));
+    }
+
+    /**
+     * Score by area: max stops declines above it, as a hard limit; pay not read, or an active minimum's amount not
+     * read, is review (no score from what is missing); otherwise 100% or more passes and less declines, with the
+     * reason "score 87% (needs 100%)" and, as the pay required, the least pay that would score 100%. A "+$" ceiling on
+     * unknown pay declines only when even that ceiling scores under 100% on the set minimums alone (the adaptive
+     * minimum never judges an add-on, so under that reading it would not fail), else review. With no minimum to score,
+     * the strict rules apply (they have only max stops and an adaptive minimum with nothing learned yet left to ask).
+     */
+    private static Decision byArea(OfferSnapshot offer, FilterSettings settings) {
+        AreaScore.Floors floors = AreaScore.floors(settings, offer);
+        if (!floors.anyActive()) {
+            Decision strict = strict(offer, settings);
+            return new Decision(strict.result, strict.requiredCents, strict.reason, strict.basis, -1);
+        }
+        int percent = offer.payCents == null ? -1 : AreaScore.percent(floors, offer.payCents);
+        if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
+            return new Decision(Result.DECLINE, 0, offer.stops + " stops exceeds maximum " + settings.maxStops, offer,
+                    percent);
+        }
+        if (offer.payCents == null) {
+            if (offer.payAtMostCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer);
+            AreaScore.Floors set = AreaScore.floors(settings.withoutRisingBaseline(), offer);
+            if (set.anyActive() && set.readable() && !AreaScore.reaches(set, offer.payAtMostCents)) {
+                return new Decision(Result.DECLINE, AreaScore.requiredPay(set), "pay at most "
+                        + DecisionLog.money(offer.payAtMostCents) + " with its +$ amount; "
+                        + scoreReason(AreaScore.percent(set, offer.payAtMostCents)), offer);
+            }
+            return new Decision(Result.REVIEW, AreaScore.requiredPay(floors), "pay unclear beside a +$ amount", offer);
+        }
+        if (!floors.readable()) return new Decision(Result.REVIEW, 0, "an enabled value was not found", offer);
+        long required = AreaScore.requiredPay(floors);
+        if (!AreaScore.reaches(floors, offer.payCents)) {
+            return new Decision(Result.DECLINE, required, scoreReason(percent), offer, percent);
+        }
+        if (settings.maxStops > 0 && offer.stops == null) {
+            return new Decision(Result.REVIEW, required, "an enabled value was not found", offer, percent);
+        }
+        return new Decision(Result.KEEP, required, scoreReason(percent), offer, percent);
+    }
+
+    /**
+     * The strict rules. Required pay is {@code max(flat, miles × rate, minutes × rate, stops × rate)}. The adaptive
+     * minimum raises it to one cent above the highest accepted standalone payout, and to at least the best accepted pay
+     * per minute, per mile and per stop applied to this offer; each is a floor of its own, never added on top.
+     */
+    static Decision strict(OfferSnapshot offer, FilterSettings settings) {
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
             String reason = offer.stops + " stops exceeds maximum " + settings.maxStops;
             return new Decision(Result.DECLINE, 0, reason, offer);
@@ -178,10 +249,11 @@ final class OfferRule {
     /**
      * An add-on must keep the combined route within the flat, rate, and stop limits, and its own explicit added
      * pay must cover {@code max(added miles × rate, added minutes × rate, added stops × rate)}. Only the amounts the
-     * add-on explicitly adds count: none is worked out from route totals.
+     * add-on explicitly adds count: none is worked out from route totals. Always strict, score by area or not: an
+     * add-on's increment has its own meaning, which an area score of a standalone offer does not capture.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
-        Decision combined = evaluate(addOn.combined, settings.withoutRisingBaseline());
+        Decision combined = strict(addOn.combined, settings.withoutRisingBaseline());
         if (combined.result == Result.DECLINE) {
             return new Decision(Result.DECLINE, combined.requiredCents, "combined route fails: " + combined.reason,
                     addOn.combined);

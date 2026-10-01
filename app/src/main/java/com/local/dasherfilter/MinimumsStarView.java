@@ -26,6 +26,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.Button;
 import android.widget.SeekBar;
+import android.widget.Switch;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -64,6 +65,19 @@ import java.util.List;
  * undoes that (longer where Android's accessibility timeout asks, and for as long as a screen reader is on it).
  * Screen readers reach each knob as an adjustable control and the button as a button. In a header the chart takes a
  * tap only.
+ *
+ * <p>Each recent offer's points are also joined into a polygon of its own, faint (about a twentieth of its color, in a
+ * faint outline), in the spokes' order, leaving out a spoke it did not say. A second round button beside the adopt
+ * button's place (an offer's shape around the minimums' smaller one) turns score by area on and off ({@link
+ * AreaScore}); screen readers reach it as a switch. By area the chart is drawn in normalized space: every active
+ * minimum (the set one, or the adaptive one where that asks more and is on) stands at the same radius, 100%, so the
+ * minimums' area is a filled polygon in the middle; the rings stand 50% apart, labeled at 100% and the outer ring; an
+ * offer's points stand at its ratio on each spoke ({@code pay ÷ the floor that spoke puts on that offer}), so its
+ * polygon's area against the minimums' is its score squared, exactly, within the outer ring. The newest offer's polygon
+ * (or the one chosen on the skyline) stands out, with its score beside it ("121%"). The knobs still set the minimums,
+ * in dollars: while one is held the scale holds still (the minimums' polygon follows the knob along its spoke, its
+ * readout says the dollars, and the chosen offer's score follows what it asks), and when it is let go everything
+ * settles to the new minimums, each again at 100%.
  */
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
@@ -76,8 +90,9 @@ final class MinimumsStarView extends View {
      * The spokes stand this many degrees above and below level: top-left, top-right, bottom-right, bottom-left. The
      * same in a header and as the sky, so the shapes look alike wherever the chart is.
      */
-    static final float SPREAD = 30;
-    private static final float[] ANGLES = {SPREAD - 180, -SPREAD, SPREAD, 180 - SPREAD};
+    static final float SPREAD = AreaScore.SPREAD;
+    /** The spokes' angles, shared with the area score so its pairs of neighbors are the ones drawn. */
+    private static final float[] ANGLES = AreaScore.ANGLES;
     private static final float COS = (float) Math.cos(Math.toRadians(SPREAD));
     private static final float SIN = (float) Math.sin(Math.toRadians(SPREAD));
     /** A pay no rule can ask more than, for working out what an example offer needs. */
@@ -90,6 +105,13 @@ final class MinimumsStarView extends View {
     private static final int NIGHT_REVIEW = 0xFFFFD27A;
     /** At most this many recent offers are marked, as on the skyline. */
     private static final int MARKS = DecisionChartView.SLOTS;
+    /** Each recent offer's own polygon: about a twentieth of its color, in a faint outline. */
+    private static final int OFFER_FILL = 0x0D000000;
+    private static final int OFFER_LINE = 0x38000000;
+    /** By area, the rings stand this far apart (50%), and the outer one between these. */
+    private static final double AREA_RING = 0.5;
+    private static final double AREA_LEAST = 1.5;
+    private static final double AREA_MOST = 2.5;
     /** Offers far above every minimum stretch the scale only this far, so the minimums stay readable. */
     private static final double OFFER_STRETCH = 1.35;
     private static final long GLIDE_MS = 700;
@@ -117,6 +139,9 @@ final class MinimumsStarView extends View {
     private final Path diamond = new Path();
     private final DashPathEffect dash;
     /** Cents the minimum asks of the example offer; NaN where there is no such minimum. */
+    private final double[] setCents = new double[NAMES.length];
+    private final double[] learnedCents = new double[NAMES.length];
+    /** The same in the scale's units (cents, strict; shares of the floor, by area); NaN where there is none. */
     private final double[] set = new double[NAMES.length];
     private final double[] learned = new double[NAMES.length];
     /** Where each point is heading and where it set out from, as fractions of the outer ring. */
@@ -125,11 +150,45 @@ final class MinimumsStarView extends View {
     private final float[] learnedTo = new float[NAMES.length];
     private final float[] learnedFrom = new float[NAMES.length];
     private long glideStart;
-    /** Recent offers, newest first: result, then cents on each spoke (NaN where the offer did not say). */
+    /**
+     * Recent offers, newest first: result, then their value on each spoke in the scale's units (NaN where the offer
+     * did not say, or by area where the spoke has no minimum), when each was recorded, its score by area under the
+     * rules as shown (-1 where none), and where each mark glides from and to (shares of the outer ring).
+     */
     private final List<OfferRule.Result> markResults = new ArrayList<>();
     private final List<double[]> marks = new ArrayList<>();
+    private final List<Long> markTimes = new ArrayList<>();
+    private final List<Integer> markScores = new ArrayList<>();
+    private final List<OfferSnapshot> markFacts = new ArrayList<>();
+    private final List<float[]> markFrom = new ArrayList<>();
+    private final List<float[]> markTo = new ArrayList<>();
+    /** The offer chosen on the skyline (by when it was recorded), whose polygon stands out by area; -1: the newest. */
+    private long emphasizedAt = -1;
     /** Dollars between rings; three rings. */
     private long ringCents;
+
+    // ---- Score by area: the chart in normalized space, where every active minimum stands at one radius. ----
+
+    /** The rules as shown are scored by area. */
+    private boolean byArea;
+    /** The rules as shown, for the chosen offer's score (worked out afresh while a knob is held). */
+    private FilterSettings shownRules = new FilterSettings(false, 0, 0, 0, 0, 0);
+    /**
+     * Cents per unit of the scale on each spoke: 1 when strict (the scale is in cents); by area, the floor that spoke
+     * puts on the example offer (so the minimums all stand at 1), or for a spoke with no minimum, the strict scale's
+     * cents per unit, so a knob dragged out from rest moves as it would strictly. The scale's units at the outer ring,
+     * and how many rings it has. All three hold still while a knob is held.
+     */
+    private final double[] unit = {1, 1, 1, 1};
+    private final double[] shownUnit = {1, 1, 1, 1};
+    private double outer;
+    private double shownOuter;
+    private int rings = 3;
+    private int shownRings = 3;
+    /** By area, the minimums' polygon: 1 on each active spoke, NaN elsewhere; and where its points glide. */
+    private final double[] areaMin = new double[NAMES.length];
+    private final float[] areaFrom = new float[NAMES.length];
+    private final float[] areaTo = new float[NAMES.length];
     private String needs = "";
     private final String[] setText = new String[NAMES.length];
     private final String[] learnedText = new String[NAMES.length];
@@ -172,6 +231,9 @@ final class MinimumsStarView extends View {
 
         /** Puts back the set minimums {@code cents} (pay, per mile, per minute, per stop; -1 leaves one alone). */
         void restore(int[] cents);
+
+        /** Turns score by area on or off, saving it at once. */
+        default void setScoreByArea(boolean on) {}
     }
 
     /** A knob moves in these steps of its spoke's own unit: $0.50 of pay, $0.05 a mile, $0.01 a minute, $0.25 a stop. */
@@ -198,8 +260,12 @@ final class MinimumsStarView extends View {
     private static final int ADOPT_REACH_DP = 24;
     static final long UNDO_MS = 8000;
     static final String ADOPT_SAID = "Make the learned minimums your set minimums";
-    /** The screen reader's ids for the knobs (0 to 3, by spoke) and the adopt button. */
+    /** The screen reader's ids for the knobs (0 to 3, by spoke), the adopt button and the score by area toggle. */
     static final int ADOPT_ID = NAMES.length;
+    static final int SCORE_ID = NAMES.length + 1;
+    static final String SCORE_SAID = "Score by area";
+    /** The toggle stands to the left of the adopt button's place, their middles this far apart. */
+    private static final int BUTTONS_APART_DP = 60;
     private static final int NO_NODE = Integer.MIN_VALUE;
 
     private Changes changes;
@@ -260,6 +326,15 @@ final class MinimumsStarView extends View {
     private boolean pressingAdopt;
     private final RectF adoptBox = new RectF();
     private boolean adoptPlaced;
+    /** The score by area toggle: where it stands, whether the row of buttons found a place, and a finger on it. */
+    private final RectF scoreBox = new RectF();
+    private boolean togglePlaced;
+    private boolean buttonsPlaced;
+    private boolean scorePressed;
+    private final Glyph areaGlyph;
+    /** By area, the chosen offer's score: its words and where it stands. */
+    private final TextPaint scoreText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF labelBox = new RectF();
     private boolean adoptStale = true;
     /** The circle moved or the view changed size since the button was placed. */
     private boolean layoutMoved = true;
@@ -315,6 +390,10 @@ final class MinimumsStarView extends View {
         pillText.setTextSize(Math.min(ui.sp(14), ui.dp(18)));
         pillText.setTextAlign(Paint.Align.CENTER);
         adoptGlyph = new Glyph(Glyph.Shape.ADOPT, ui.ink, ui.dp(24));
+        areaGlyph = new Glyph(Glyph.Shape.AREA, ui.ink, ui.dp(24));
+        scoreText.setTypeface(levelText.getTypeface());
+        scoreText.setTextSize(Math.min(ui.sp(12), ui.dp(15)));
+        scoreText.setTextAlign(Paint.Align.CENTER);
         undoGlyph = new Glyph(Glyph.Shape.UNDO, ui.ink, ui.dp(24));
         slop = ViewConfiguration.get(context).getScaledTouchSlop();
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -377,6 +456,8 @@ final class MinimumsStarView extends View {
                 declined.rates.hasPerStop() ? declined.beatStops(stops) : 0,
                 declined.rates.hasPerStop() ? "more than " + declined.rates.perStop() : null);
         adaptiveOn = rules.risingOffers;
+        byArea = rules.scoreByArea;
+        shownRules = rules;
         int[] rates = rules.minimums();
         for (int i = 0; i < NAMES.length; i++) setRates[i] = Math.max(0, rates[i]);
         exampleMiles = miles;
@@ -389,21 +470,23 @@ final class MinimumsStarView extends View {
         if (undoValues != null && !Arrays.equals(savedRates, adoptedRates)) stopUndo();
         adoptStale = true;
         needs = needs(rules, example);
-        markOffers(recent, example);
+        markOffers(recent, example, rules);
 
         double top = 0;
         for (int i = 0; i < NAMES.length; i++) {
-            if (!Double.isNaN(set[i])) top = Math.max(top, set[i]);
-            if (!Double.isNaN(learned[i])) top = Math.max(top, learned[i]);
+            if (!Double.isNaN(setCents[i])) top = Math.max(top, setCents[i]);
+            if (!Double.isNaN(learnedCents[i])) top = Math.max(top, learnedCents[i]);
         }
         double offers = 0;
-        for (double[] mark : marks) {
+        for (double[] mark : strictMarks) {
             for (double cents : mark) if (!Double.isNaN(cents)) offers = Math.max(offers, cents);
         }
         top = top > 0 ? Math.max(top, Math.min(offers, top * OFFER_STRETCH)) : offers;
         shownRing = top > 0 ? ringStep(top) : 0;
-        // The rings hold still under a moving knob; they settle to fit when it is let go.
-        if (!dragging) ringCents = shownRing;
+        scaleTo(rules, example);
+        // The rings and the scale hold still under a moving knob; they settle to fit when it is let go.
+        if (!dragging) takeScale();
+        inUnits();
         glideTo();
         setContentDescription(caption() + " " + describe());
         dropGoneFocus();
@@ -412,33 +495,122 @@ final class MinimumsStarView extends View {
     }
 
     /** A spoke's set minimum and its adaptive one: the higher of what accepted and declined offers taught. */
-    private void put(int axis, String setLabel, long setCents, long acceptedCents, String acceptedLabel,
+    private void put(int axis, String setLabel, long setAsk, long acceptedCents, String acceptedLabel,
                      long declinedCents, String declinedLabel) {
-        set[axis] = setLabel != null && setCents > 0 ? setCents : Double.NaN;
+        setCents[axis] = setLabel != null && setAsk > 0 ? setAsk : Double.NaN;
         setText[axis] = setLabel;
         boolean fromDecline = declinedCents > acceptedCents;
         long cents = fromDecline ? declinedCents : acceptedCents;
         String label = fromDecline ? declinedLabel : acceptedLabel;
-        learned[axis] = label != null && cents > 0 && cents < Long.MAX_VALUE ? cents : Double.NaN;
-        learnedText[axis] = Double.isNaN(learned[axis]) ? null : label;
+        learnedCents[axis] = label != null && cents > 0 && cents < Long.MAX_VALUE ? cents : Double.NaN;
+        learnedText[axis] = Double.isNaN(learnedCents[axis]) ? null : label;
     }
 
-    /** Each recent standalone offer with pay, at what its own rates would pay for the example offer. */
-    private void markOffers(List<DecisionLog.Entry> recent, OfferSnapshot example) {
+    /** Each recent offer's cents on each spoke for the example offer, as the strict chart places it. */
+    private final List<double[]> strictMarks = new ArrayList<>();
+
+    /**
+     * Each recent standalone offer with pay: strictly, at what its own rates would pay for the example offer; by area,
+     * at its ratio on each spoke with a minimum, {@code pay ÷ the floor that spoke puts on this offer} (as its score
+     * takes it), so its polygon's area against the minimums' is its score.
+     */
+    private void markOffers(List<DecisionLog.Entry> recent, OfferSnapshot example, FilterSettings rules) {
+        List<Long> before = new ArrayList<>(markTimes);
+        List<float[]> drawn = new ArrayList<>();
+        float glide = Motion.settle(glideStart, GLIDE_MS);
+        for (int m = 0; m < markTo.size(); m++) drawn.add(markShown(m, glide));
         markResults.clear();
         marks.clear();
+        strictMarks.clear();
+        markTimes.clear();
+        markScores.clear();
+        markFacts.clear();
+        markFrom.clear();
+        markTo.clear();
         if (recent == null) return;
         for (DecisionLog.Entry entry : recent) {
             if (marks.size() >= MARKS) break;
             OfferSnapshot offer = entry.facts;
             if (entry.addOn || offer.payCents == null || offer.payCents <= 0) continue;
             double pay = offer.payCents;
-            marks.add(new double[] {
+            double[] cents = {
                     pay,
                     offer.miles != null && offer.miles > 0 ? pay * example.miles / offer.miles : Double.NaN,
                     offer.minutes != null && offer.minutes > 0 ? pay * example.minutes / offer.minutes : Double.NaN,
-                    offer.stops != null && offer.stops > 0 ? pay * example.stops / offer.stops : Double.NaN});
+                    offer.stops != null && offer.stops > 0 ? pay * example.stops / offer.stops : Double.NaN};
+            strictMarks.add(cents);
+            AreaScore.Floors floors = AreaScore.floors(rules, offer);
+            marks.add(byArea ? AreaScore.ratios(floors, offer.payCents) : cents);
             markResults.add(entry.result);
+            markTimes.add(entry.at);
+            markScores.add(AreaScore.percent(floors, offer.payCents));
+            markFacts.add(offer);
+            // Glides from where the same offer was drawn, if it was.
+            int was = before.indexOf(entry.at);
+            markFrom.add(was >= 0 && was < drawn.size() ? drawn.get(was) : null);
+            markTo.add(null);
+        }
+    }
+
+    /** Where mark {@code m} is drawn now on each spoke, as shares of the outer ring. */
+    private float[] markShown(int m, float glide) {
+        float[] to = markTo.get(m);
+        float[] from = markFrom.get(m);
+        if (from == null || to == null) return to == null ? new float[NAMES.length] : to.clone();
+        float[] at = new float[NAMES.length];
+        for (int i = 0; i < at.length; i++) at[i] = from[i] + (to[i] - from[i]) * glide;
+        return at;
+    }
+
+    /**
+     * The scale the values just shown ask for: strictly, three rings of {@link #shownRing}; by area, rings 50% apart
+     * out to as far as the offers reach (from 150% to 250%; the minimums at 100%), each spoke's unit being the floor it
+     * puts on the example offer.
+     */
+    private void scaleTo(FilterSettings rules, OfferSnapshot example) {
+        double strictOuter = (shownRing > 0 ? shownRing : FIRST_RING_CENTS) * 3.0;
+        if (!byArea) {
+            Arrays.fill(shownUnit, 1);
+            shownOuter = shownRing * 3.0;
+            shownRings = 3;
+            return;
+        }
+        AreaScore.Floors floors = AreaScore.floors(rules, example);
+        double reach = 1;
+        for (int i = 0; i < NAMES.length; i++) {
+            boolean floor = floors.active[i] && floors.cents[i] != null;
+            shownUnit[i] = floor ? floors.cents[i].doubleValue() : 0;
+            if (floor && !adaptiveOn && !Double.isNaN(learnedCents[i])) {
+                reach = Math.max(reach, learnedCents[i] / shownUnit[i]);
+            }
+        }
+        double offers = 0;
+        for (double[] mark : marks) for (double r : mark) if (!Double.isNaN(r)) offers = Math.max(offers, r);
+        double most = Math.min(AREA_MOST, Math.max(reach, offers) * 1.05);
+        shownRings = (int) Math.max(AREA_LEAST / AREA_RING, Math.ceil(most / AREA_RING - 1e-9));
+        shownOuter = shownRings * AREA_RING;
+        for (int i = 0; i < NAMES.length; i++) if (shownUnit[i] <= 0) shownUnit[i] = strictOuter / shownOuter;
+    }
+
+    /** The scale just worked out becomes the one drawn (never while a knob is held). */
+    private void takeScale() {
+        ringCents = shownRing;
+        System.arraycopy(shownUnit, 0, unit, 0, unit.length);
+        outer = shownOuter;
+        rings = shownRings;
+    }
+
+    /**
+     * The minimums in the scale's units; by area, the minimums' polygon at 1 on each active spoke, and an adaptive
+     * minimum that is off only where a set one gives its spoke a scale.
+     */
+    private void inUnits() {
+        boolean[] active = AreaScore.active(shownRules);
+        for (int i = 0; i < NAMES.length; i++) {
+            set[i] = setCents[i] / unit[i];
+            learned[i] = learnedCents[i] / unit[i];
+            areaMin[i] = byArea && active[i] ? 1 : Double.NaN;
+            if (byArea && !active[i]) learned[i] = Double.NaN;
         }
     }
 
@@ -449,14 +621,30 @@ final class MinimumsStarView extends View {
         for (int i = 0; i < NAMES.length; i++) {
             float nextSet = fraction(set[i]);
             float nextLearned = fraction(learned[i]);
-            moved |= nextSet != setTo[i] || nextLearned != learnedTo[i];
+            moved |= nextSet != setTo[i] || nextLearned != learnedTo[i] || fraction(areaMin[i]) != areaTo[i];
+        }
+        float[][] nextMarks = new float[marks.size()][];
+        for (int m = 0; m < marks.size(); m++) {
+            nextMarks[m] = new float[NAMES.length];
+            for (int i = 0; i < NAMES.length; i++) {
+                double value = marks.get(m)[i];
+                nextMarks[m][i] = Double.isNaN(value) || outer <= 0 ? 0 : (float) Math.min(MARK_REACH, value / outer);
+            }
+            float[] from = markFrom.get(m);
+            moved |= from != null && !Arrays.equals(from, nextMarks[m]);
+        }
+        for (int m = 0; m < marks.size(); m++) {
+            markTo.set(m, nextMarks[m]);
+            if (!moved || markFrom.get(m) == null) markFrom.set(m, nextMarks[m]);
         }
         if (!moved) return;
         for (int i = 0; i < NAMES.length; i++) {
             setFrom[i] = setFrom[i] + (setTo[i] - setFrom[i]) * progress;
             learnedFrom[i] = learnedFrom[i] + (learnedTo[i] - learnedFrom[i]) * progress;
+            areaFrom[i] = areaFrom[i] + (areaTo[i] - areaFrom[i]) * progress;
             setTo[i] = fraction(set[i]);
             learnedTo[i] = fraction(learned[i]);
+            areaTo[i] = fraction(areaMin[i]);
         }
         glideStart = SystemClock.uptimeMillis();
     }
@@ -490,7 +678,8 @@ final class MinimumsStarView extends View {
                 new OfferSnapshot(ANY_PAY, example.miles, example.minutes, example.stops), rules);
         if (decision.result == OfferRule.Result.DECLINE) return like + " is declined by your rules.";
         if (decision.requiredCents > 0 && decision.requiredCents < ANY_PAY) {
-            return like + " needs " + DecisionLog.money(decision.requiredCents) + ".";
+            return like + " needs " + DecisionLog.money(decision.requiredCents)
+                    + (rules.scoreByArea ? " to score 100%." : ".");
         }
         return like + " passes at any pay.";
     }
@@ -498,18 +687,20 @@ final class MinimumsStarView extends View {
     /** The line under the star: what the example offer needs. */
     String caption() {
         boolean anyMinimum = false;
-        for (int i = 0; i < NAMES.length; i++) anyMinimum |= !Double.isNaN(set[i]) || !Double.isNaN(learned[i]);
+        for (int i = 0; i < NAMES.length; i++) {
+            anyMinimum |= !Double.isNaN(setCents[i]) || !Double.isNaN(learnedCents[i]);
+        }
         return anyMinimum ? needs : needs + " No minimums yet.";
     }
 
     /** Cents the set minimum on spoke {@code axis} asks of the example offer; NaN where none is set (for tests). */
     double setAsks(int axis) {
-        return set[axis];
+        return setCents[axis];
     }
 
     /** Cents the adaptive minimum on spoke {@code axis} asks of the example offer; NaN where none (for tests). */
     double learnedAsks(int axis) {
-        return learned[axis];
+        return learnedCents[axis];
     }
 
     private String describe() {
@@ -519,7 +710,15 @@ final class MinimumsStarView extends View {
                     + (learnedText[i] == null ? "no adaptive minimum yet" : "adaptive " + learnedText[i]));
         }
         String described = "Minimums, set and adaptive now. " + String.join(". ", spokes) + "."
-                + (adaptiveOn ? "" : " Adaptive minimum is off, so the adaptive values are not applied.");
+                + (adaptiveOn ? "" : " Adaptive minimum is off, so the adaptive values are not applied.")
+                + (byArea ? " " + SCORE_SAID + " is on: an offer passes when its shape covers at least the minimums' "
+                        + "area" + (shownRules.maxStops > 0 ? ", and declines above " + shownRules.maxStops
+                        + (shownRules.maxStops == 1 ? " stop." : " stops.") : ".") : "");
+        int chosen = emphasized();
+        if (chosen >= 0 && markScores.get(chosen) >= 0) {
+            described += " " + (chosen == 0 && emphasizedAt < 0 ? "The newest offer" : "The chosen offer") + " scores "
+                    + markScores.get(chosen) + "% by area.";
+        }
         if (marks.isEmpty()) return described;
         int passed = 0;
         int declined = 0;
@@ -631,6 +830,7 @@ final class MinimumsStarView extends View {
             if (skyIcon(i, skyX, skyY, skyRadius, box)) out.add(box);
         }
         if (adoptShown()) out.add(new RectF(adoptBox));
+        if (scoreToggleShown()) out.add(new RectF(scoreBox));
     }
 
     /** As the sky, where the rings' dollars stand now, halo and all, in this view's pixels. */
@@ -746,10 +946,12 @@ final class MinimumsStarView extends View {
         detail = Math.max(0.6f, Math.min(1, radius / ui.dp(45)));
 
         drawGrid(canvas, cx, cy, radius);
+        drawOfferShapes(canvas, cx, cy, radius);
         drawMarks(canvas, cx, cy, radius);
         float glide = Motion.settle(glideStart, GLIDE_MS);
-        drawShape(canvas, cx, cy, radius, set, setFrom, setTo, glide, setColor(), true, false);
-        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true);
+        holdSet();
+        drawMinimums(canvas, cx, cy, radius, glide);
+        drawChosenOutline(canvas, cx, cy, radius);
         for (int i = 0; i < NAMES.length; i++) {
             if (beside) drawIconBeside(canvas, i, cx, cy, radius);
             else drawIcon(canvas, i, cx, cy, window, width, ui.dp(ICON_DP));
@@ -778,13 +980,15 @@ final class MinimumsStarView extends View {
         int layer = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
         drawGrid(canvas, cx, cy, radius);
         fadeEdges(canvas, cy, radius);
+        drawOfferShapes(canvas, cx, cy, radius);
         drawMarks(canvas, cx, cy, radius);
         float glide = Motion.settle(glideStart, GLIDE_MS);
         holdSet();
-        drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), true, false);
-        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true);
+        drawMinimums(canvas, cx, cy, radius, glide);
+        drawChosenOutline(canvas, cx, cy, radius);
         boolean knobs = knobsOn();
         if (knobs) drawKnobs(canvas, cx, cy, radius, glide);
+        if (byArea) drawScoreLabel(canvas, cx, cy, radius);
         for (int i = 0; i < NAMES.length; i++) {
             if (!skyIcon(i, cx, cy, radius, iconBox)) continue;
             icons[i].setBounds(Math.round(iconBox.left), Math.round(iconBox.top), Math.round(iconBox.right),
@@ -797,8 +1001,9 @@ final class MinimumsStarView extends View {
         if (dragging) placeReadout(cx, cy, radius);
         drawLevelLabels(canvas, cx, cy, radius, glide);
         if (!knobs) return;
-        // Over everything, never faded: the button, and the knob under the finger (with what it is set to, once it
+        // Over everything, never faded: the buttons, and the knob under the finger (with what it is set to, once it
         // moves).
+        if (scoreToggleShown()) drawScoreToggle(canvas);
         if (adoptShown()) drawAdopt(canvas);
         if (dragging) {
             drawHeld(canvas, point(cx, cy, radius, held, heldFraction()), dragValue, true);
@@ -904,18 +1109,19 @@ final class MinimumsStarView extends View {
     private void placeLevelLabels(float cx, float cy, float radius, float glide) {
         levelBoxes.clear();
         levelWords.clear();
-        if (ringCents <= 0) return;
+        if (outer <= 0) return;
         Paint.FontMetrics metrics = levelText.getFontMetrics();
         float baseline = cy - (metrics.ascent + metrics.descent) / 2;
         holdSet();
-        float[] edges = {edgeCrossing(drawnSet, drawnFrom, drawnTo, glide, cx, radius),
-                edgeCrossing(learned, learnedFrom, learnedTo, glide, cx, radius)};
+        float[] edges = byArea ? new float[] {rightCrossing(minimumPolygon(cx, cy, radius, glide), cx, cy)}
+                : new float[] {edgeCrossing(drawnSet, drawnFrom, drawnTo, glide, cx, radius),
+                        edgeCrossing(learned, learnedFrom, learnedTo, glide, cx, radius)};
         float clear = ui.dp(4) + ui.dp(1) * Math.max(1, detail);
         float before = -Float.MAX_VALUE;
-        for (int ring = 2; ring <= 3; ring++) {
+        for (int ring : labelRings(false)) {
             String words = levelLabel(ring);
             float width = levelText.measureText(words);
-            float at = cx + radius * ring / 3;
+            float at = cx + radius * ring / rings;
             for (int side = 0; side < 2; side++) {
                 float left = side == 0 ? at - ui.dp(5) - width : at + ui.dp(5);
                 RectF box = new RectF(left, baseline + metrics.ascent, left + width, baseline + metrics.descent);
@@ -945,28 +1151,43 @@ final class MinimumsStarView extends View {
         return cx + radius * COS * 2 * upper * lower / (upper + lower);
     }
 
+    /** A ring's label: its dollars strictly ("$12"), its share of the minimums by area ("150%"). */
     private String levelLabel(int ring) {
+        if (byArea) return Math.round(ring * AREA_RING * 100) + "%";
         return "$" + (ringCents * ring / 100);
+    }
+
+    /**
+     * The rings that are labeled: strictly the middle and outer rings (only the outer on a small circle); by area the
+     * minimums' ring, 100%, and the one at 200% (or 150%, the outer one when there are only three).
+     */
+    private int[] labelRings(boolean small) {
+        if (byArea) {
+            int hundred = (int) Math.round(1 / AREA_RING);
+            return small ? new int[] {hundred} : new int[] {hundred, Math.min(rings, 2 * hundred)};
+        }
+        return small ? new int[] {3} : new int[] {2, 3};
     }
 
     /** Faint rings and spokes, with the rings' dollars in the gap between the two top spokes. */
     private void drawGrid(Canvas canvas, float cx, float cy, float radius) {
+        line.setPathEffect(null);
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         line.setColor(ui.dark ? 0x2EFFFFFF : 0x260B2A55);
-        for (int ring = 1; ring <= 3; ring++) canvas.drawCircle(cx, cy, radius * ring / 3, line);
+        for (int ring = 1; ring <= rings; ring++) canvas.drawCircle(cx, cy, radius * ring / rings, line);
         for (int i = 0; i < NAMES.length; i++) {
             float[] tip = point(cx, cy, radius, i, 1);
             canvas.drawLine(cx, cy, tip[0], tip[1], line);
         }
-        if (ringCents <= 0 || backdrop()) return;
+        if (outer <= 0 || backdrop()) return;
         text.setFakeBoldText(false);
         text.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
         text.setColor(ui.dark ? 0x80FFFFFF : 0xB0214066);
         text.setTextAlign(Paint.Align.CENTER);
         float below = -text.getFontMetrics().ascent + ui.dp(1);
         // On a small circle the two labels would run into each other and the points: only the outer ring's.
-        for (int ring = radius < ui.dp(40) ? 3 : 2; ring <= 3; ring++) {
-            canvas.drawText("$" + (ringCents * ring / 100), cx, cy - radius * ring / 3 + below, text);
+        for (int ring : labelRings(radius < ui.dp(40))) {
+            canvas.drawText(levelLabel(ring), cx, cy - radius * ring / rings + below, text);
         }
     }
 
@@ -986,25 +1207,26 @@ final class MinimumsStarView extends View {
         return point(cx, cy, radius, axis, fraction, 0);
     }
 
-    /** How far out a value sits on the shared dollar scale, the outer ring being three steps. */
-    private float fraction(double cents) {
-        if (Double.isNaN(cents) || ringCents <= 0) return 0;
-        return (float) Math.min(1, cents / (ringCents * 3.0));
+    /** How far out a value sits on the scale (cents strictly, shares of the floor by area), the outer ring being 1. */
+    private float fraction(double value) {
+        if (Double.isNaN(value) || outer <= 0) return 0;
+        return (float) Math.min(1, value / outer);
     }
 
     /** Each recent offer on each spoke it can be placed on; older ones fainter, the newest with a soft pulse. */
     private void drawMarks(Canvas canvas, float cx, float cy, float radius) {
+        float glide = Motion.settle(glideStart, GLIDE_MS);
         for (int m = marks.size() - 1; m >= 0; m--) {
             double[] mark = marks.get(m);
+            float[] shown = markShown(m, glide);
             OfferRule.Result result = markResults.get(m);
             int color = markColor(result);
             int alpha = m == 0 ? 0xFF : Math.max(0x60, 0xE0 - m * 0x0C);
             // Offers side by side on a spoke step a little aside so they do not hide one another.
             float aside = ((m % 5) - 2) * ui.dp(MARK_STEP_DP) * detail;
             for (int axis = 0; axis < NAMES.length; axis++) {
-                if (Double.isNaN(mark[axis]) || ringCents <= 0) continue;
-                float out = (float) Math.min(MARK_REACH, mark[axis] / (ringCents * 3.0));
-                float[] at = point(cx, cy, radius, axis, out, aside);
+                if (Double.isNaN(mark[axis]) || outer <= 0) continue;
+                float[] at = point(cx, cy, radius, axis, shown[axis], aside);
                 if (m == 0) {
                     float pulse = Motion.on() ? Motion.loop(2.4f, 0) : 1;
                     line.setPathEffect(null);
@@ -1036,8 +1258,271 @@ final class MinimumsStarView extends View {
         }
     }
 
+    /**
+     * The minimums: strictly, the set shape (solid, filled) and the adaptive one (dashed); by area, the minimums'
+     * area, a filled polygon over the active spokes where every minimum stands at 100% (while a knob is held, its
+     * spoke where the knob asks), with the set minimums' stars and the adaptive sparkles on their spokes.
+     */
+    private void drawMinimums(Canvas canvas, float cx, float cy, float radius, float glide) {
+        if (!byArea) {
+            drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), true, false, true);
+            drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true,
+                    true);
+            return;
+        }
+        List<float[]> area = minimumPolygon(cx, cy, radius, glide);
+        if (area.size() >= 2) {
+            path.reset();
+            for (int i = 0; i < area.size(); i++) {
+                if (i == 0) path.moveTo(area.get(i)[0], area.get(i)[1]);
+                else path.lineTo(area.get(i)[0], area.get(i)[1]);
+            }
+            path.close();
+            int color = setColor();
+            fill.setColor((color & 0x00FFFFFF) | 0x38000000);
+            canvas.drawPath(path, fill);
+            line.setPathEffect(null);
+            line.setColor(color);
+            line.setStrokeWidth(ui.dp(2) * Math.max(1, detail));
+            canvas.drawPath(path, line);
+        }
+        drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false, false, false);
+        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), false, true, false);
+    }
+
+    /**
+     * By area, the minimums' polygon as drawn now: a point on each active spoke at 100%, gliding; while a knob is
+     * held, its spoke at what the knob asks (or the adaptive minimum there, if that asks more and is on), on the scale
+     * held still for the drag.
+     */
+    private List<float[]> minimumPolygon(float cx, float cy, float radius, float glide) {
+        List<float[]> points = new ArrayList<>();
+        for (int i = 0; i < NAMES.length; i++) {
+            float at = areaFrom[i] + (areaTo[i] - areaFrom[i]) * glide;
+            boolean on = !Double.isNaN(areaMin[i]);
+            if (dragging && i == held && outer > 0) {
+                double ask = dragValue > 0 ? askCents(held, dragValue) / unit[held] : 0;
+                if (adaptiveOn && !Double.isNaN(learned[i])) ask = Math.max(ask, learned[i]);
+                on = ask > 0;
+                at = (float) Math.min(1, ask / outer);
+            }
+            if (on) points.add(point(cx, cy, radius, i, at));
+        }
+        return points;
+    }
+
+    /** The rightmost point where a closed polygon crosses the level line right of the middle; NaN where none does. */
+    private static float rightCrossing(List<float[]> polygon, float cx, float cy) {
+        float most = Float.NaN;
+        for (int i = 0; i < polygon.size() && polygon.size() >= 2; i++) {
+            float[] a = polygon.get(i);
+            float[] b = polygon.get((i + 1) % polygon.size());
+            if (a[1] == b[1] || (a[1] - cy) * (b[1] - cy) > 0) continue;
+            float x = a[0] + (cy - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+            if (x > cx && (Float.isNaN(most) || x > most)) most = x;
+        }
+        return most;
+    }
+
+    /**
+     * How far below ({@code side} 1) or above (-1) the middle a closed polygon's edges cross the upright line at
+     * {@code x}; 0 where none does.
+     */
+    private static float uprightReach(List<float[]> polygon, float x, float cy, int side) {
+        float reach = 0;
+        for (int i = 0; i < polygon.size() && polygon.size() >= 2; i++) {
+            float[] a = polygon.get(i);
+            float[] b = polygon.get((i + 1) % polygon.size());
+            if (a[0] == b[0] || (a[0] - x) * (b[0] - x) > 0) continue;
+            float y = a[1] + (x - a[0]) * (b[1] - a[1]) / (b[0] - a[0]);
+            reach = Math.max(reach, (y - cy) * side);
+        }
+        return reach;
+    }
+
+    /**
+     * Each recent offer's own polygon, its points joined in the spokes' order (those it did not say left out): faint,
+     * the newest drawn last; by area, the chosen offer's (the newest unless one is chosen on the skyline) stands out.
+     */
+    private void drawOfferShapes(Canvas canvas, float cx, float cy, float radius) {
+        float glide = Motion.settle(glideStart, GLIDE_MS);
+        int chosen = byArea ? emphasized() : -1;
+        for (int m = marks.size() - 1; m >= 0; m--) {
+            if (m != chosen) drawOfferShape(canvas, cx, cy, radius, m, glide, false);
+        }
+        if (chosen >= 0) drawOfferShape(canvas, cx, cy, radius, chosen, glide, true);
+    }
+
+    /** By area, the chosen offer's outline once more, over the minimums' filled shape, so it reads where they cross. */
+    private void drawChosenOutline(Canvas canvas, float cx, float cy, float radius) {
+        int chosen = byArea ? emphasized() : -1;
+        if (chosen < 0) return;
+        List<float[]> points = offerPolygon(cx, cy, radius, chosen, Motion.settle(glideStart, GLIDE_MS));
+        if (points.size() < 2) return;
+        path.reset();
+        for (int i = 0; i < points.size(); i++) {
+            if (i == 0) path.moveTo(points.get(i)[0], points.get(i)[1]);
+            else path.lineTo(points.get(i)[0], points.get(i)[1]);
+        }
+        path.close();
+        line.setPathEffect(null);
+        line.setColor((markColor(markResults.get(chosen)) & 0x00FFFFFF) | 0xC0000000);
+        line.setStrokeWidth(ui.dp(1.8f) * Math.max(1, detail));
+        canvas.drawPath(path, line);
+    }
+
+    private void drawOfferShape(Canvas canvas, float cx, float cy, float radius, int m, float glide, boolean strong) {
+        List<float[]> points = offerPolygon(cx, cy, radius, m, glide);
+        if (points.size() < 2) return;
+        path.reset();
+        for (int i = 0; i < points.size(); i++) {
+            if (i == 0) path.moveTo(points.get(i)[0], points.get(i)[1]);
+            else path.lineTo(points.get(i)[0], points.get(i)[1]);
+        }
+        path.close();
+        int color = markColor(markResults.get(m)) & 0x00FFFFFF;
+        if (points.size() > 2) {
+            fill.setColor(color | (strong ? 0x24000000 : OFFER_FILL));
+            canvas.drawPath(path, fill);
+        }
+        line.setPathEffect(null);
+        line.setColor(color | (strong ? 0xE0000000 : OFFER_LINE));
+        line.setStrokeWidth(strong ? ui.dp(1.8f) * Math.max(1, detail) : Math.max(1, ui.dp(0.8f)));
+        canvas.drawPath(path, line);
+    }
+
+    /** Mark {@code m}'s points as drawn now, on the spokes it has a value for, in their order. */
+    private List<float[]> offerPolygon(float cx, float cy, float radius, int m, float glide) {
+        List<float[]> points = new ArrayList<>();
+        double[] mark = marks.get(m);
+        float[] shown = markShown(m, glide);
+        for (int i = 0; i < NAMES.length; i++) {
+            if (!Double.isNaN(mark[i]) && outer > 0) points.add(point(cx, cy, radius, i, shown[i]));
+        }
+        return points;
+    }
+
+    /** The offer whose polygon stands out by area: the one chosen on the skyline, else the newest; -1 for none. */
+    private int emphasized() {
+        if (marks.isEmpty()) return -1;
+        return emphasizedAt < 0 ? 0 : markTimes.indexOf(emphasizedAt);
+    }
+
+    /**
+     * The offer chosen on the skyline ({@code null}: follow the newest): by area its polygon stands out, with its
+     * score beside it, and screen readers hear that score.
+     */
+    void emphasize(DecisionLog.Entry entry) {
+        long at = entry == null ? -1 : entry.at;
+        if (at == emphasizedAt) return;
+        emphasizedAt = at;
+        setContentDescription(caption() + " " + describe());
+        invalidate();
+    }
+
+    /**
+     * The chosen offer's score as the chart labels it, worked out from the rules as shown; while a knob is held, from
+     * the minimum the knob asks; -1 when none can be worked out (for tests too).
+     */
+    int emphasizedScore() {
+        int chosen = emphasized();
+        if (chosen < 0) return -1;
+        if (!dragging || held < 0) return markScores.get(chosen);
+        int[] rates = shownRules.minimums();
+        rates[held] = dragValue;
+        return AreaScore.percent(shownRules.withMinimums(rates), markFacts.get(chosen));
+    }
+
+    /** The chosen offer's score ("121%") in a small pill in its color, just outside its polygon's farthest point. */
+    private void drawScoreLabel(Canvas canvas, float cx, float cy, float radius) {
+        int chosen = emphasized();
+        int score = emphasizedScore();
+        if (chosen < 0 || score < 0 || !placeScoreLabel(cx, cy, radius, chosen, score + "%")) return;
+        int color = markColor(markResults.get(chosen));
+        float height = labelBox.height();
+        fill.setColor(color);
+        canvas.drawRoundRect(labelBox, height / 2, height / 2, fill);
+        scoreText.setColor(ui.dark ? 0xFF0D1428 : Ui.onStatus(color));
+        Paint.FontMetrics metrics = scoreText.getFontMetrics();
+        canvas.drawText(score + "%", labelBox.centerX(), labelBox.centerY() - (metrics.ascent + metrics.descent) / 2,
+                scoreText);
+    }
+
+    /**
+     * Where the chosen offer's score stands, into the label box: just outside its polygon's farthest point (then the
+     * next farthest), inside the page and clear of words, the mascot, the icons, the rings' dollars and the buttons.
+     */
+    private boolean placeScoreLabel(float cx, float cy, float radius, int m, String words) {
+        float glide = Motion.settle(glideStart, GLIDE_MS);
+        double[] mark = marks.get(m);
+        float[] shown = markShown(m, glide);
+        float height = Math.max(ui.dp(20), Ui.lineHeight(scoreText) + ui.dp(4));
+        float width = scoreText.measureText(words) + ui.dp(12);
+        Integer[] order = {0, 1, 2, 3};
+        Arrays.sort(order, (a, b) -> Float.compare(shown[b], shown[a]));
+        // Outside a point (the farthest first), else just inside one, else in the polygon's middle.
+        float sumX = 0;
+        float sumY = 0;
+        int points = 0;
+        for (int way = 1; way >= -1; way -= 2) {
+            for (int axis : order) {
+                if (Double.isNaN(mark[axis])) continue;
+                float[] tip = point(cx, cy, radius, axis, shown[axis]);
+                if (way > 0) {
+                    sumX += tip[0];
+                    sumY += tip[1];
+                    points++;
+                }
+                double angle = Math.toRadians(ANGLES[axis]);
+                float out = ui.dp(8) + (float) Math.hypot(width / 2 * Math.cos(angle), height / 2 * Math.sin(angle));
+                float x = tip[0] + way * (float) Math.cos(angle) * out;
+                float y = tip[1] + way * (float) Math.sin(angle) * out;
+                labelBox.set(x - width / 2, y - height / 2, x + width / 2, y + height / 2);
+                if (labelFits()) return true;
+            }
+        }
+        if (points == 0) return false;
+        labelBox.set(sumX / points - width / 2, sumY / points - height / 2, sumX / points + width / 2,
+                sumY / points + height / 2);
+        return labelFits();
+    }
+
+    private boolean labelFits() {
+        float margin = ui.dp(2);
+        if (labelBox.left < margin || labelBox.top < margin || labelBox.right > getWidth() - margin
+                || labelBox.bottom > getHeight() - margin) {
+            return false;
+        }
+        if (underWords(labelBox) || onMascot(labelBox)) return false;
+        for (RectF level : levelBoxes) if (RectF.intersects(level, labelBox)) return false;
+        for (int i = 0; i < ICONS.length; i++) {
+            if (skyIcon(i, skyX, skyY, skyRadius, iconBox) && RectF.intersects(iconBox, labelBox)) return false;
+        }
+        // Clear of the minimums' points (knobs, stars and sparkles) where they stand.
+        float clear = ui.dp(10) * Math.max(1, detail);
+        float glide = Motion.settle(glideStart, GLIDE_MS);
+        for (int i = 0; i < NAMES.length; i++) {
+            float[][] spots = {
+                    Double.isNaN(areaMin[i]) ? null : point(skyX, skyY, skyRadius, i, areaTo[i]),
+                    Double.isNaN(set[i]) && !(knobsOn() && knobShown(i)) ? null
+                            : point(skyX, skyY, skyRadius, i, knobsOn() ? knobFraction(i, glide) : setTo[i]),
+                    Double.isNaN(learned[i]) ? null : point(skyX, skyY, skyRadius, i, learnedTo[i])};
+            for (float[] spot : spots) {
+                if (spot == null) continue;
+                float dx = Math.max(0, Math.max(labelBox.left - spot[0], spot[0] - labelBox.right));
+                float dy = Math.max(0, Math.max(labelBox.top - spot[1], spot[1] - labelBox.bottom));
+                if (dx * dx + dy * dy < clear * clear) return false;
+            }
+        }
+        if (knobsOn() && buttonsPlaced && (RectF.intersects(scoreBox, labelBox)
+                || (adoptPlaced && (adoptable || undoValues != null) && RectF.intersects(adoptBox, labelBox)))) {
+            return false;
+        }
+        return true;
+    }
+
     private void drawShape(Canvas canvas, float cx, float cy, float radius, double[] values, float[] from, float[] to,
-                           float glide, int color, boolean filled, boolean dashed) {
+                           float glide, int color, boolean filled, boolean dashed, boolean polygon) {
         int known = 0;
         for (double value : values) if (!Double.isNaN(value)) known++;
         if (known == 0) return;
@@ -1052,14 +1537,14 @@ final class MinimumsStarView extends View {
             else path.lineTo(points[i][0], points[i][1]);
         }
         path.close();
-        if (filled) {
+        if (filled && polygon) {
             fill.setColor((color & 0x00FFFFFF) | (dashed ? 0x22000000 : 0x30000000));
             canvas.drawPath(path, fill);
         }
         line.setColor(color);
         line.setStrokeWidth(ui.dp(2) * Math.max(1, detail));
         line.setPathEffect(dashed ? dash : null);
-        canvas.drawPath(path, line);
+        if (polygon) canvas.drawPath(path, line);
         line.setPathEffect(null);
         // The adaptive sparkles breathe slowly.
         float breathe = dashed ? 1 + 0.14f * Motion.wave(3.2f, 0) : 1;
@@ -1152,8 +1637,8 @@ final class MinimumsStarView extends View {
 
     /** Where the held knob stands, on the scale held still for the drag, at most as far as it may be pushed. */
     private float heldFraction() {
-        if (dragValue <= 0 || ringCents <= 0) return restFraction();
-        float at = (float) (askCents(held, dragValue) / (ringCents * 3.0));
+        if (dragValue <= 0 || outer <= 0) return restFraction();
+        float at = (float) (askCents(held, dragValue) / unit[held] / outer);
         return Math.min(at, pushLimit(held) / skyRadius);
     }
 
@@ -1204,16 +1689,16 @@ final class MinimumsStarView extends View {
      */
     private int rateAt(int axis, float distance) {
         float out = Math.min(distance, pushLimit(axis));
-        if (out <= offAt || ringCents <= 0) return 0;
-        double cents = out / skyRadius * ringCents * 3.0;
+        if (out <= offAt || outer <= 0) return 0;
+        double cents = out / skyRadius * outer * unit[axis];
         long steps = Math.max(1, Math.round(cents / units(axis) / STEPS[axis]));
         return (int) Math.min(FilterSettings.MOST_CENTS, steps * STEPS[axis]);
     }
 
     /** Half a step of spoke {@code axis}'s knob, in pixels along it, on the scale the drag holds still. */
     private float halfStep(int axis) {
-        if (ringCents <= 0 || skyRadius <= 0) return 0;
-        return (float) (askCents(axis, STEPS[axis]) / (ringCents * 3.0) * skyRadius / 2);
+        if (outer <= 0 || skyRadius <= 0) return 0;
+        return (float) (askCents(axis, STEPS[axis]) / unit[axis] / outer * skyRadius / 2);
     }
 
     /** Where spoke {@code axis}'s knob stands now, in this view's pixels; null where there is none (for tests). */
@@ -1264,11 +1749,19 @@ final class MinimumsStarView extends View {
                 found = i;
             }
         }
+        float button = ui.dp(ADOPT_REACH_DP);
         if (adoptShown()) {
             float dx = x - adoptBox.centerX();
             float dy = y - adoptBox.centerY();
-            float button = ui.dp(ADOPT_REACH_DP);
-            if (dx * dx + dy * dy <= Math.min(nearest, button * button)) found = ADOPT_ID;
+            if (dx * dx + dy * dy <= Math.min(nearest, button * button)) {
+                nearest = dx * dx + dy * dy;
+                found = ADOPT_ID;
+            }
+        }
+        if (scoreToggleShown()) {
+            float dx = x - scoreBox.centerX();
+            float dy = y - scoreBox.centerY();
+            if (dx * dx + dy * dy <= Math.min(nearest, button * button)) found = SCORE_ID;
         }
         return found;
     }
@@ -1298,7 +1791,8 @@ final class MinimumsStarView extends View {
                 downY = y;
                 int on = target(x, y);
                 adoptPressed = on == ADOPT_ID;
-                if (on != NO_NODE && !adoptPressed) {
+                scorePressed = on == SCORE_ID;
+                if (on != NO_NODE && !adoptPressed && !scorePressed) {
                     held = on;
                     grabDistance = knobFraction(on, Motion.settle(glideStart, GLIDE_MS)) * skyRadius;
                     grabOffset = grabDistance - along(on, x, y);
@@ -1323,15 +1817,23 @@ final class MinimumsStarView extends View {
                     adoptPressed = false;
                     invalidate();
                 }
+                if (scorePressed && target(x, y) != SCORE_ID) {
+                    scorePressed = false;
+                    invalidate();
+                }
                 if (dragging) moveKnob(along(held, x, y) + grabOffset);
                 return true;
             case MotionEvent.ACTION_UP: {
                 boolean button = adoptPressed;
+                boolean toggle = scorePressed;
                 boolean tap = tapping;
                 endTouch(true);
                 if (button) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     pressAdopt();
+                } else if (toggle) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    pressScore();
                 } else if (tap) {
                     performClick();
                 }
@@ -1350,8 +1852,9 @@ final class MinimumsStarView extends View {
         boolean pressed = pressing();
         touching = false;
         tapping = false;
-        if (adoptPressed || pressed) {
+        if (adoptPressed || scorePressed || pressed) {
             adoptPressed = false;
+            scorePressed = false;
             invalidate();
         }
         if (dragging) letGo(lifted);
@@ -1375,7 +1878,12 @@ final class MinimumsStarView extends View {
      */
     private void takeKnob() {
         dragging = true;
-        if (ringCents <= 0) ringCents = FIRST_RING_CENTS;
+        if (outer <= 0) {
+            ringCents = FIRST_RING_CENTS;
+            Arrays.fill(unit, 1);
+            outer = ringCents * 3.0;
+            rings = 3;
+        }
         dragMiles = exampleMiles;
         dragMinutes = exampleMinutes;
         dragStops = exampleStops;
@@ -1410,16 +1918,31 @@ final class MinimumsStarView extends View {
         int value = dragValue;
         float at = heldFraction();
         float glide = Motion.settle(glideStart, GLIDE_MS);
+        // By area, the minimums' polygon sets out from where the held knob left its spoke.
+        float areaAt = Float.NaN;
+        if (byArea) {
+            double ask = value > 0 ? askCents(axis, value) / unit[axis] : 0;
+            if (adaptiveOn && !Double.isNaN(learned[axis])) ask = Math.max(ask, learned[axis]);
+            areaAt = (float) Math.min(1, ask / outer);
+        }
         for (int i = 0; i < NAMES.length; i++) {
             setFrom[i] = setTo[i] = setFrom[i] + (setTo[i] - setFrom[i]) * glide;
             learnedFrom[i] = learnedTo[i] = learnedFrom[i] + (learnedTo[i] - learnedFrom[i]) * glide;
+            areaFrom[i] = areaTo[i] = areaFrom[i] + (areaTo[i] - areaFrom[i]) * glide;
+        }
+        for (int m = 0; m < markTo.size(); m++) {
+            float[] shown = markShown(m, glide);
+            markFrom.set(m, shown);
+            markTo.set(m, shown.clone());
         }
         if (save) setFrom[axis] = setTo[axis] = value > 0 ? at : 0;
+        if (save && !Float.isNaN(areaAt)) areaFrom[axis] = areaTo[axis] = areaAt;
         glideStart = SystemClock.uptimeMillis();
         dragging = false;
         held = -1;
         keepTouch(false);
-        ringCents = shownRing;
+        takeScale();
+        inUnits();
         adoptStale = true;
         if (save && value != setRates[axis] && changes != null) changes.setMinimum(axis, value);
         glideTo();
@@ -1434,7 +1957,7 @@ final class MinimumsStarView extends View {
         System.arraycopy(setTo, 0, drawnTo, 0, setTo.length);
         if (!dragging || held < 0) return;
         float at = heldFraction();
-        drawnSet[held] = dragValue > 0 ? askCents(held, dragValue) : Double.NaN;
+        drawnSet[held] = dragValue > 0 ? askCents(held, dragValue) / unit[held] : Double.NaN;
         drawnFrom[held] = at;
         drawnTo[held] = at;
     }
@@ -1550,7 +2073,18 @@ final class MinimumsStarView extends View {
 
     /** Shown as the sky while an adaptive minimum asks more than its set one, or while Undo is offered. */
     boolean adoptShown() {
-        return knobsOn() && (adoptable || undoValues != null) && placeAdopt();
+        return knobsOn() && (adoptable || undoValues != null) && placeButtons() && adoptPlaced;
+    }
+
+    /** The score by area toggle: shown as the sky whenever some minimum is on. */
+    boolean scoreToggleShown() {
+        return knobsOn() && anyMinimumOn() && placeButtons() && togglePlaced;
+    }
+
+    /** Some spoke has a minimum under the rules as shown: something to score. */
+    private boolean anyMinimumOn() {
+        for (boolean on : AreaScore.active(shownRules)) if (on) return true;
+        return false;
     }
 
     /** Undo is offered (for tests). */
@@ -1563,69 +2097,138 @@ final class MinimumsStarView extends View {
         return adoptShown() ? new RectF(adoptBox) : null;
     }
 
+    /** Where the score by area toggle stands, in this view's pixels (for tests); null when it is not shown. */
+    RectF scoreToggleBox() {
+        return scoreToggleShown() ? new RectF(scoreBox) : null;
+    }
+
+    /** The chart is drawn scored by area (for tests). */
+    boolean byArea() {
+        return byArea;
+    }
+
+    /** Recent offer {@code m}'s polygon (newest first) where it is heading, in this view's pixels (for tests). */
+    List<float[]> offerShape(int m) {
+        return offerPolygon(skyX, skyY, skyRadius, m, 1);
+    }
+
+    /** By area, the minimums' polygon where it is heading, in this view's pixels (for tests). */
+    List<float[]> minimumShape() {
+        return minimumPolygon(skyX, skyY, skyRadius, 1);
+    }
+
     /**
-     * Where the button stands: straight below the circle's middle, just outside where the shapes cross that line
-     * (else above it), clear of the knobs, the icons, the rings' dollars, the words and the mascot, and within the
-     * spokes' height, which the stage keeps inside the page and below the counts. Worked out from where the shapes are
-     * heading, so it does not drift while they glide, and not at all while a knob is held; while it offers Undo it
-     * stays where it was tapped, unless the circle itself moves.
+     * Where the buttons stand: side by side, the toggle on the left and the adopt button's place on the right (kept
+     * free even while that button is not shown, so the toggle never moves when it comes or goes), straight below the
+     * circle's middle, just outside where the shapes cross there (else above it), clear of the knobs, the icons, the
+     * rings' dollars, the words and the mascot, and within the spokes' height, which the stage keeps inside the page
+     * and below the counts. Where no such row fits, each finds a place of its own. Worked out from where the shapes are
+     * heading, so they do not drift while they glide, and not at all while a knob is held; while Undo is offered they
+     * stay where they were tapped, unless the circle itself moves.
      */
-    private boolean placeAdopt() {
-        if (dragging || (!adoptStale && !layoutMoved)) return adoptPlaced;
-        if (undoValues != null && adoptPlaced && !layoutMoved) return true;
+    private boolean placeButtons() {
+        if (dragging || (!adoptStale && !layoutMoved)) return buttonsPlaced;
+        if (undoValues != null && buttonsPlaced && !layoutMoved) return true;
         adoptStale = false;
         layoutMoved = false;
         float half = ui.dp(ADOPT_DP) / 2f;
+        float apart = ui.dp(BUTTONS_APART_DP) / 2f;
         float band = backdropHalfHeight(skyRadius) - half;
         placeLevelLabels(skyX, skyY, skyRadius, 1);
-        for (int pass = 0; pass < 2; pass++) {
-            for (int side = 1; side >= -1; side -= 2) {
+        togglePlaced = false;
+        adoptPlaced = false;
+        for (int pass = 0; pass < 2 && !togglePlaced; pass++) {
+            for (int side = 1; side >= -1 && !togglePlaced; side -= 2) {
                 float from = half + ui.dp(KNOB_REST_DP);
                 // First just outside the shapes; failing that, over them.
-                if (pass == 0) from = Math.max(from, shapesReach(side) + ui.dp(10) + half);
+                if (pass == 0) {
+                    from = Math.max(from, shapesReach(side, new float[] {skyX - apart - half, skyX - apart,
+                            skyX, skyX + apart, skyX + apart + half}) + ui.dp(10) + half);
+                }
                 for (float d = from; d <= band; d += ui.dp(2)) {
-                    adoptBox.set(skyX - half, skyY + side * d - half, skyX + half, skyY + side * d + half);
-                    if (adoptFits()) return adoptPlaced = true;
+                    float y = skyY + side * d;
+                    scoreBox.set(skyX - apart - half, y - half, skyX - apart + half, y + half);
+                    adoptBox.set(skyX + apart - half, y - half, skyX + apart + half, y + half);
+                    if (buttonFits(scoreBox, null) && buttonFits(adoptBox, scoreBox)) {
+                        togglePlaced = adoptPlaced = true;
+                        break;
+                    }
                 }
             }
         }
-        return adoptPlaced = false;
+        if (!togglePlaced) {
+            togglePlaced = placeAlone(scoreBox, null, half, band);
+            adoptPlaced = placeAlone(adoptBox, togglePlaced ? scoreBox : null, half, band);
+        }
+        return buttonsPlaced = togglePlaced || adoptPlaced;
     }
 
-    /** How far below ({@code side} 1) or above (-1) the middle the shapes' edges cross the line through it. */
-    private float shapesReach(int side) {
-        int right = side > 0 ? 2 : 1;
-        int left = side > 0 ? 3 : 0;
+    /** One button in a place of its own, below the middle (else above it), clear of {@code other}. */
+    private boolean placeAlone(RectF box, RectF other, float half, float band) {
+        for (int pass = 0; pass < 2; pass++) {
+            for (int side = 1; side >= -1; side -= 2) {
+                float from = half + ui.dp(KNOB_REST_DP);
+                if (pass == 0) from = Math.max(from, shapesReach(side, new float[] {skyX}) + ui.dp(10) + half);
+                for (float d = from; d <= band; d += ui.dp(2)) {
+                    box.set(skyX - half, skyY + side * d - half, skyX + half, skyY + side * d + half);
+                    if (buttonFits(box, other)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * How far below ({@code side} 1) or above (-1) the middle the shapes' edges cross the upright lines at {@code xs},
+     * as they are heading: strictly the set and adaptive shapes, by area the minimums' polygon.
+     */
+    private float shapesReach(int side, float[] xs) {
+        List<List<float[]>> shapes = new ArrayList<>();
+        if (byArea) {
+            List<float[]> area = new ArrayList<>();
+            for (int i = 0; i < NAMES.length; i++) {
+                if (!Double.isNaN(areaMin[i])) area.add(point(skyX, skyY, skyRadius, i, areaTo[i]));
+            }
+            shapes.add(area);
+        } else {
+            double[][] values = {set, learned};
+            float[][] to = {setTo, learnedTo};
+            for (int shape = 0; shape < 2; shape++) {
+                boolean any = false;
+                for (double value : values[shape]) any |= !Double.isNaN(value);
+                if (!any) continue;
+                List<float[]> points = new ArrayList<>();
+                for (int i = 0; i < NAMES.length; i++) {
+                    points.add(point(skyX, skyY, skyRadius, i, Double.isNaN(values[shape][i]) ? 0 : to[shape][i]));
+                }
+                shapes.add(points);
+            }
+        }
         float reach = 0;
-        double[][] values = {set, learned};
-        float[][] to = {setTo, learnedTo};
-        for (int shape = 0; shape < 2; shape++) {
-            boolean any = false;
-            for (double value : values[shape]) any |= !Double.isNaN(value);
-            if (!any) continue;
-            float a = Double.isNaN(values[shape][right]) ? 0 : to[shape][right];
-            float b = Double.isNaN(values[shape][left]) ? 0 : to[shape][left];
-            if (a + b > 0) reach = Math.max(reach, skyRadius * SIN * 2 * a * b / (a + b));
+        for (List<float[]> shape : shapes) {
+            for (float x : xs) reach = Math.max(reach, uprightReach(shape, x, skyY, side));
         }
         return reach;
     }
 
-    private boolean adoptFits() {
+    /** Whether a button at {@code box} fits: in the page, clear of words, the mascot, labels, icons, knobs, other. */
+    private boolean buttonFits(RectF box, RectF other) {
         float margin = ui.dp(4);
-        if (adoptBox.left < margin || adoptBox.top < margin || adoptBox.right > getWidth() - margin
-                || adoptBox.bottom > getHeight() - margin) {
+        if (box.left < margin || box.top < margin || box.right > getWidth() - margin
+                || box.bottom > getHeight() - margin) {
             return false;
         }
-        RectF around = new RectF(adoptBox);
+        RectF around = new RectF(box);
         around.inset(-ui.dp(4), -ui.dp(4));
-        if (underWords(around) || onMascot(adoptBox)) return false;
+        if (underWords(around) || onMascot(box)) return false;
+        if (other != null && RectF.intersects(other, around)) return false;
         for (RectF label : levelBoxes) if (RectF.intersects(label, around)) return false;
-        float clear = ui.dp(KNOB_REACH_DP) + adoptBox.width() / 2;
+        float clear = ui.dp(KNOB_REACH_DP) + box.width() / 2;
         for (int i = 0; i < NAMES.length; i++) {
             if (skyIcon(i, skyX, skyY, skyRadius, iconBox) && RectF.intersects(iconBox, around)) return false;
             if (!knobShown(i)) continue;
             float[] at = point(skyX, skyY, skyRadius, i, Double.isNaN(set[i]) ? restFraction() : setTo[i]);
-            if (Math.hypot(at[0] - adoptBox.centerX(), at[1] - adoptBox.centerY()) < clear) return false;
+            if (Math.hypot(at[0] - box.centerX(), at[1] - box.centerY()) < clear) return false;
         }
         return true;
     }
@@ -1649,6 +2252,47 @@ final class MinimumsStarView extends View {
         int top = Math.round(y - size / 2f);
         glyph.setBounds(left, top, left + size, top + size);
         glyph.draw(canvas);
+    }
+
+    /**
+     * The score by area toggle, a round button like the adopt one with the area icon: the minimums' small shape inside
+     * an offer's larger one. On, the small shape is filled in the set minimums' color and the button is ringed in it.
+     */
+    private void drawScoreToggle(Canvas canvas) {
+        float x = scoreBox.centerX();
+        float y = scoreBox.centerY();
+        float radius = scoreBox.width() / 2;
+        fill.setColor(scorePressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
+        canvas.drawCircle(x, y, radius, fill);
+        line.setPathEffect(null);
+        if (byArea) {
+            line.setColor(setColor());
+            line.setStrokeWidth(ui.dp(2));
+        } else {
+            line.setColor(ui.dark ? 0x40FFFFFF : 0x330B0B0B);
+            line.setStrokeWidth(Math.max(1, ui.dp(1)));
+        }
+        canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
+        areaGlyph.setAccents(byArea ? setColor() : ui.inkSecondary, byArea ? setColor() : ui.inkSecondary);
+        areaGlyph.setLevel(byArea ? 1 : 0);
+        int size = areaGlyph.getBounds().width();
+        int left = Math.round(x - size / 2f);
+        int top = Math.round(y - size / 2f);
+        areaGlyph.setBounds(left, top, left + size, top + size);
+        areaGlyph.draw(canvas);
+    }
+
+    /** The toggle: score by area on or off, saved at once; screen readers hear which, and what it means. */
+    private void pressScore() {
+        if (changes == null) return;
+        boolean on = !byArea;
+        changes.setScoreByArea(on);
+        say(on ? SCORE_SAID + " on. An offer passes when its shape covers at least the minimums' area."
+                + (shownRules.maxStops > 0 ? " Max stops still declines." : "")
+                : SCORE_SAID + " off. An offer must meet every minimum.");
+        dropGoneFocus();
+        invalidate();
+        nodesChanged();
     }
 
     /**
@@ -1728,7 +2372,8 @@ final class MinimumsStarView extends View {
     /** A screen reader's focus on a knob or the button that is no longer there is let go, and it is told so. */
     private void dropGoneFocus() {
         if (focusedNode == NO_NODE || pressingAdopt) return;
-        boolean gone = !knobsOn() || (focusedNode == ADOPT_ID ? !adoptShown() : !knobShown(focusedNode));
+        boolean gone = !knobsOn() || (focusedNode == ADOPT_ID ? !adoptShown()
+                : focusedNode == SCORE_ID ? !scoreToggleShown() : !knobShown(focusedNode));
         if (!gone) return;
         int was = focusedNode;
         focusedNode = NO_NODE;
@@ -1812,7 +2457,9 @@ final class MinimumsStarView extends View {
         if (manager == null || !manager.isEnabled() || getParent() == null) return;
         AccessibilityEvent event = newEvent(type);
         event.setPackageName(getContext().getPackageName());
-        event.setClassName(node == ADOPT_ID ? Button.class.getName() : SeekBar.class.getName());
+        event.setClassName(node == ADOPT_ID ? Button.class.getName()
+                : node == SCORE_ID ? Switch.class.getName() : SeekBar.class.getName());
+        if (node == SCORE_ID) event.setChecked(byArea);
         event.setContentDescription(nodeSaid(node));
         event.setSource(this, node);
         event.setEnabled(true);
@@ -1820,6 +2467,7 @@ final class MinimumsStarView extends View {
     }
 
     private String nodeSaid(int node) {
+        if (node == SCORE_ID) return SCORE_SAID;
         return node == ADOPT_ID ? (undoValues != null ? "Undo" : ADOPT_SAID) : knobSaid(node);
     }
 
@@ -1830,10 +2478,11 @@ final class MinimumsStarView extends View {
 
     /** A node's box, in this view's pixels. */
     private void nodeBox(int node, Rect out) {
-        if (node == ADOPT_ID) {
+        if (node == ADOPT_ID || node == SCORE_ID) {
+            RectF box = node == ADOPT_ID ? adoptBox : scoreBox;
             float reach = ui.dp(ADOPT_REACH_DP);
-            out.set(Math.round(adoptBox.centerX() - reach), Math.round(adoptBox.centerY() - reach),
-                    Math.round(adoptBox.centerX() + reach), Math.round(adoptBox.centerY() + reach));
+            out.set(Math.round(box.centerX() - reach), Math.round(box.centerY() - reach),
+                    Math.round(box.centerX() + reach), Math.round(box.centerY() + reach));
             return;
         }
         float[] at = point(skyX, skyY, skyRadius, node, knobFraction(node, Motion.settle(glideStart, GLIDE_MS)));
@@ -1842,9 +2491,10 @@ final class MinimumsStarView extends View {
                 Math.round(at[1]) + reach);
     }
 
-    /** A knob (0 to 3) or the button that is there now. */
+    /** A knob (0 to 3), the button or the toggle that is there now. */
     private boolean shownNode(int id) {
-        if (id < 0 || id > ADOPT_ID || !knobsOn()) return false;
+        if (id < 0 || id > SCORE_ID || !knobsOn()) return false;
+        if (id == SCORE_ID) return scoreToggleShown();
         return id == ADOPT_ID ? adoptShown() : knobShown(id);
     }
 
@@ -1853,7 +2503,7 @@ final class MinimumsStarView extends View {
         return focusedNode == NO_NODE ? -1 : focusedNode;
     }
 
-    /** The knobs (ids 0 to 3, by spoke) and the adopt button, for screen readers. */
+    /** The knobs (ids 0 to 3, by spoke), the adopt button and the score by area toggle, for screen readers. */
     private final class Nodes extends AccessibilityNodeProvider {
         @SuppressWarnings("deprecation")
         @Override public AccessibilityNodeInfo createAccessibilityNodeInfo(int id) {
@@ -1864,6 +2514,7 @@ final class MinimumsStarView extends View {
                 onInitializeAccessibilityNodeInfo(info);
                 for (int axis = 0; axis < NAMES.length; axis++) if (knobShown(axis)) info.addChild(host, axis);
                 if (adoptShown()) info.addChild(host, ADOPT_ID);
+                if (scoreToggleShown()) info.addChild(host, SCORE_ID);
                 return info;
             }
             if (!shownNode(id)) return null;
@@ -1891,6 +2542,16 @@ final class MinimumsStarView extends View {
             }
             if (id == ADOPT_ID) {
                 info.setClassName(Button.class.getName());
+                info.setClickable(true);
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+                return info;
+            }
+            if (id == SCORE_ID) {
+                // "Score by area, switch, on": a switch, as Settings' own.
+                info.setClassName(Switch.class.getName());
+                info.setCheckable(true);
+                info.setChecked(byArea);
+                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(byArea ? "On" : "Off");
                 info.setClickable(true);
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
                 return info;
@@ -1935,6 +2596,10 @@ final class MinimumsStarView extends View {
                     if (id == ADOPT_ID) timeUndo();
                     return true;
                 case AccessibilityNodeInfo.ACTION_CLICK:
+                    if (id == SCORE_ID) {
+                        pressScore();
+                        return true;
+                    }
                     if (id != ADOPT_ID || !adoptShown()) return false;
                     pressAdopt();
                     return true;

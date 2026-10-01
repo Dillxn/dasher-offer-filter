@@ -24,6 +24,8 @@ final class FilterStore {
     private static final String STOP_FEE_NOTICE = "stop_fee_notice";
     private static final String MAX_STOPS = "max_stops";
     private static final String RISING_OFFERS = "rising_offers";
+    /** Score by area (the user's choice) rather than every minimum; off unless turned on. */
+    private static final String SCORE_BY_AREA = "score_by_area";
     private static final String LAST_ACCEPTED = "last_accepted";
     private static final String BEST_MINUTE_PAY = "best_minute_pay";
     private static final String BEST_MINUTES = "best_minutes";
@@ -58,7 +60,8 @@ final class FilterStore {
         return new FilterSettings(prefs.getBoolean(ENABLED, false),
                 prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(PER_STOP, 0), prefs.getInt(MAX_STOPS, 0),
-                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs));
+                prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs),
+                prefs.getBoolean(SCORE_BY_AREA, false));
     }
 
     /**
@@ -156,7 +159,8 @@ final class FilterStore {
     }
 
     /**
-     * Saves rules. The accepted baselines are owned by {@link #recordAccepted} and are not overwritten. When learning
+     * Saves rules, score by area among them. The accepted baselines are owned by {@link #recordAccepted} and are not
+     * overwritten. When learning
      * (auto-decline and the adaptive minimum both on) starts or stops, the time is kept for a shared report.
      */
     static void save(Context context, FilterSettings settings) {
@@ -173,6 +177,7 @@ final class FilterStore {
                 .putInt(PER_STOP, settings.perStopCents)
                 .putInt(MAX_STOPS, settings.maxStops)
                 .putBoolean(RISING_OFFERS, settings.risingOffers)
+                .putBoolean(SCORE_BY_AREA, settings.scoreByArea)
                 .apply();
     }
 

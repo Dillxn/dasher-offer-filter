@@ -10,7 +10,8 @@ import android.view.WindowManager;
 /**
  * Notices when the user touches the screen while an automatic decline is in progress, so they can take over. It is
  * a one-pixel, invisible accessibility overlay that asks Android for a note of touches outside it: the touch itself
- * still goes to Dasher untouched. Our own taps are accessibility actions, not touches, so they never trigger it.
+ * still goes to Dasher untouched. Our own taps are accessibility actions, not touches, but Android can report one to
+ * the watch as a touch outside it, so each touch is passed on with its time and the listener tells the two apart.
  * It is a view, so it is started, stopped and told of touches on the main thread only.
  */
 final class TouchWatch {
@@ -18,8 +19,11 @@ final class TouchWatch {
         /**
          * On the main thread, the moment the touch is delivered, so an automatic tap already under way on another
          * thread can still be stopped. Must not remove this watch itself: the touch is still being delivered to it.
+         *
+         * @param at when the touch landed ({@link android.os.SystemClock#uptimeMillis} time base), as Android stamped
+         *     it: the listener tells the app's own tap echoing back from the user's finger by it
          */
-        void touched();
+        void touched(long at);
     }
 
     private final AccessibilityService service;
@@ -48,7 +52,9 @@ final class TouchWatch {
         View watcher = new View(service);
         watcher.setOnTouchListener((touched, event) -> {
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_OUTSIDE || action == MotionEvent.ACTION_DOWN) listener.touched();
+            if (action == MotionEvent.ACTION_OUTSIDE || action == MotionEvent.ACTION_DOWN) {
+                listener.touched(event.getEventTime());
+            }
             return false;
         });
         try {

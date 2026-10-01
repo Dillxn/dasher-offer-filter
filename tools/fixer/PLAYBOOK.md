@@ -30,8 +30,9 @@ requests, or comment on GitHub.
   If a fix needs one of those, the outcome is `needs-human`.
 - Never change the user's rules, thresholds or defaults. Never turn an unknown into KEEP or DECLINE. A review is
   fixed by reading the facts correctly, never by guessing them or by making the app decline more readily.
-- Three behaviours are the user's own decisions (see `AGENTS.md`); never widen, loosen or undo them:
-  - A "+$X" beside one total "$Y" on a single order: pay stays unknown, but by the user's own rule for this
+- Four behaviours are the user's own decisions (see `AGENTS.md`); never widen, loosen or undo them:
+  - A "+$X" beside one total "$Y" on a single order (only the offer's Decline or Accept, a countdown or the "Very
+    busy"/"Busy" badge may sit between them): pay stays unknown, but by the user's own rule for this
     narrow shape (approved in chat) the offer is declined when the offer as a whole, Y + X, misses the set rules
     (never the adaptive floors), and is otherwise REVIEW, never KEEP. This is the user's choice, not a claim that
     every reading fails (an add-on reading might pass the add-on rules). Reports of such REVIEWs (reason "pay
@@ -50,6 +51,14 @@ requests, or comment on GitHub.
     (the wording of delivery or waiting screens, the countdown margin, the minute, the question): masked report
     labels cannot show Dasher's real wording, so such a change is `needs-human`. Dasher's "New Delivery!" / "New
     Order: Go to …" is a new offer, never an acceptance.
+  - Score by area (`rules` JSON `scoreByArea: true`): a standalone offer passes at an area score of 100% or more
+    and declines below it (reason "score 87% (needs 100%)"; the entry's `score` is its percent, its `required` the
+    least pay that scores 100%), with no floor on any single minimum: an offer far below one minimum may pass on the
+    others, which is intended (`explained`, with the score's arithmetic from `AreaScore`), never a bug. Only max
+    stops is a hard limit. Unread pay or an unread amount an active minimum needs is REVIEW; a "+$X" ceiling declines
+    only when even Y + X scores under 100% on the set minimums alone; add-ons keep the strict rules. Never change the
+    formula, the spokes' order, the exact 100% comparison or which mode is used; a misread that changed the score is
+    still a bug in the reading. With `scoreByArea` false the strict rules decided it, and `score` is only shown.
 - Per stop changed meaning in 0.4.37: up to 0.4.36 a report's `rules` JSON `extraStopCents` was a fee added for each
   stop after two; from 0.4.37 `perStopCents` is a minimum (stops × rate). Decisions recorded before the update were
   computed with the fee, so never map one onto the other.
@@ -60,8 +69,9 @@ requests, or comment on GitHub.
 
 - **Test report** (`kind` `TEST`): outcome `explained`, comment "Report pipeline works: phone → issue → fixer."
 - **The rules decided it.** The decision follows the rules as written. For example, $0.60/min needs $18.00 on a
-  30-minute offer, or max stops 2 rejects every double order (DoorDash counts pickups and drop-offs). Outcome
-  `explained`: show the arithmetic and which rule to change in the app. No code change.
+  30-minute offer, or max stops 2 rejects every double order (DoorDash counts pickups and drop-offs); by area, the
+  offer scored under 100% (or over it). Outcome `explained`: show the arithmetic and which rule to change in the
+  app. No code change.
 - **Bug.** Go to step 2. A bug is any of these:
   - a misread: pay, miles, minutes or stops read wrong, or read as missing although the `labels` show them;
   - a screen classified wrongly;
@@ -78,7 +88,7 @@ Write a failing test built from the report, at the lowest level that shows the p
 | --- | --- |
 | Screen text | `OfferParserTest` |
 | Notifications | `NotificationOfferTest` |
-| Rules | `OfferRuleTest` |
+| Rules | `OfferRuleTest` (by area: `AreaScoreTest` for the score itself) |
 | Whole screens | `AccessibilityAdapterTest` (its `node`/`show` helpers) |
 | Crashes | the class in the stack |
 

@@ -21,6 +21,11 @@ final class FilterSettings {
     final AcceptedBest best;
     /** What offers declined by hand taught the adaptive minimum: values later offers must beat. */
     final DeclinedFloor declined;
+    /**
+     * Score by area, the user's choice: a standalone offer passes when its area score ({@link AreaScore}) reaches
+     * 100%, rather than when it meets every minimum. Max stops stays a hard limit, and add-ons keep the strict rules.
+     */
+    final boolean scoreByArea;
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops) {
@@ -44,6 +49,14 @@ final class FilterSettings {
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
+                lastAcceptedCents, best, declined, false);
+    }
+
+    FilterSettings(boolean enabled, int flatCents, int perMileCents,
+                   int perMinuteCents, int perStopCents, int maxStops,
+                   boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
+                   boolean scoreByArea) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
@@ -54,6 +67,7 @@ final class FilterSettings {
         this.lastAcceptedCents = lastAcceptedCents;
         this.best = best == null ? AcceptedBest.NONE : best;
         this.declined = declined == null ? DeclinedFloor.NONE : declined;
+        this.scoreByArea = scoreByArea;
     }
 
     /** True when at least one rule can reject or require review of an offer. */
@@ -67,10 +81,15 @@ final class FilterSettings {
         return perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0;
     }
 
-    /** Plain-language summary of the enabled rules, e.g. "at least $7.00 · $1.50 per mile · at most 3 stops". */
+    /**
+     * Plain-language summary of the enabled rules, e.g. "at least $7.00 · $1.50 per mile · at most 3 stops"; by area,
+     * "scored by area, 100% needed (max stops is a hard limit) · $7.00 pay · $1.50 per mile · at most 3 stops".
+     */
     String describe() {
         List<String> rules = new ArrayList<>();
-        if (flatCents > 0) rules.add("at least " + DecisionLog.money(flatCents));
+        // By area no single minimum is a floor of its own, so pay reads like the others.
+        if (flatCents > 0) rules.add(scoreByArea ? DecisionLog.money(flatCents) + " pay"
+                : "at least " + DecisionLog.money(flatCents));
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perMinuteCents) + " per minute");
         if (perStopCents > 0) rules.add(DecisionLog.money(perStopCents) + " per stop");
@@ -81,6 +100,9 @@ final class FilterSettings {
                     : "more than your highest accepted pay (none yet)");
             if (!best.isEmpty()) rules.add("at least your best accepted " + best.summary());
             if (!declined.isEmpty()) rules.add("more than you declined by hand: " + declined.summary());
+        }
+        if (scoreByArea && !rules.isEmpty()) {
+            rules.add(0, "scored by area, 100% needed" + (maxStops > 0 ? " (max stops is a hard limit)" : ""));
         }
         return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
     }
@@ -98,12 +120,19 @@ final class FilterSettings {
                     ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat highest accepted";
             rules.add(best.isEmpty() && declined.isEmpty() ? adaptive : adaptive + " + learned rates");
         }
+        if (scoreByArea && !rules.isEmpty()) rules.add(0, "by area");
         return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
     }
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea);
+    }
+
+    /** These rules decided by area score ({@code on}) or by every minimum; nothing else changes. */
+    FilterSettings withScoreByArea(boolean on) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
+                risingOffers, lastAcceptedCents, best, declined, on);
     }
 
     /** The four set minimums in the constellation's spoke order: pay, per mile, per minute, per stop. */
@@ -114,7 +143,7 @@ final class FilterSettings {
     /** These rules with the four set minimums ({@link #minimums} order) replaced, and nothing else changed. */
     FilterSettings withMinimums(int[] cents) {
         return new FilterSettings(enabled, cents[0], cents[1], cents[2], cents[3], maxStops, risingOffers,
-                lastAcceptedCents, best, declined);
+                lastAcceptedCents, best, declined, scoreByArea);
     }
 
     /**
@@ -186,9 +215,13 @@ final class FilterSettings {
         }
     }
 
-    /** Add-on routes are judged without the adaptive minimum: no payout baseline, best rates or decline floors. */
+    /**
+     * Without the adaptive minimum (no payout baseline, best rates or decline floors): how add-on routes are judged,
+     * and all that a bound on unknown pay is judged by. Score by area is kept; add-ons ask for the strict rules
+     * themselves.
+     */
     FilterSettings withoutRisingBaseline() {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                false, lastAcceptedCents, best, declined);
+                false, lastAcceptedCents, best, declined, scoreByArea);
     }
 }

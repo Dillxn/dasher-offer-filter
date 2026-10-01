@@ -1737,7 +1737,7 @@ public class AndroidAdapterTest {
             assertNotNull("each knob is its own control", nodes);
             android.view.accessibility.AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("four knobs and the adopt button", 5, host.getChildCount());
+            assertEquals("four knobs, the adopt button and the score by area toggle", 6, host.getChildCount());
             android.view.accessibility.AccessibilityNodeInfo mile = nodes.createAccessibilityNodeInfo(1);
             assertEquals("Minimum per mile, $1.50; adaptive $2.37, learned", mile.getContentDescription().toString());
             assertEquals(android.widget.SeekBar.class.getName(), mile.getClassName().toString());
@@ -1798,7 +1798,7 @@ public class AndroidAdapterTest {
             assertTrue(star.backdrop());
             assertNull("nothing learned yet, so no button", star.adoptBox());
             android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertEquals(4, nodes.createAccessibilityNodeInfo(
+            assertEquals("four knobs and the score by area toggle", 5, nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
 
             // An accepted offer teaches the adaptive minimums a best rate: now they ask more than the set ones.
@@ -1858,7 +1858,7 @@ public class AndroidAdapterTest {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
             assertFalse(star.offeringUndo());
             assertNull("set minimums no looser than the learned ones: no button", star.adoptBox());
-            assertEquals(4, nodes.createAccessibilityNodeInfo(
+            assertEquals(5, nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
         } finally {
             service.destroy();

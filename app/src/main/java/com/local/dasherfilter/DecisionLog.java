@@ -148,16 +148,21 @@ final class DecisionLog {
         final boolean replay;
         /** What was learned from this offer afterwards, oldest first ({@link #MAX_STEPS} at most). */
         final List<Step> steps;
+        /**
+         * The offer's area score under the rules it was decided by, as a whole percent ({@link AreaScore#percent});
+         * -1 when it could not be worked out, for an add-on, or for a line recorded before scores were kept.
+         */
+        final int scorePercent;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false, Collections.<Step>emptyList());
+                    false, Collections.<Step>emptyList(), -1);
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
-                      Entry notification, String alertTag, boolean replay, List<Step> steps) {
+                      Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -172,12 +177,20 @@ final class DecisionLog {
             this.alertTag = alertTag;
             this.replay = replay;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
+            this.scorePercent = scorePercent < 0 ? -1 : scorePercent;
         }
 
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
                         Action action, boolean autoDecline, List<String> labels) {
             return new Entry(System.currentTimeMillis(), source, addOn, facts, decision.requiredCents,
-                    decision.result, decision.reason, action, autoDecline, evidence(labels));
+                    decision.result, decision.reason, action, autoDecline, evidence(labels)).withScore(
+                    addOn ? -1 : decision.scorePercent);
+        }
+
+        /** This line with the offer's area score as a whole percent (-1 for none). */
+        Entry withScore(int percent) {
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, percent);
         }
 
         private boolean sameOffer(Entry other) {
@@ -193,27 +206,27 @@ final class DecisionLog {
 
         private Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false, steps);
+                    notification, alertTag, false, steps, scorePercent);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps);
+                    notification, alertTag, replay, steps, scorePercent);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay, steps);
+                    notification, tag, replay, steps, scorePercent);
         }
 
         /** This line with Dasher's notification of the same offer folded in, without that notification's lines. */
         Entry withNotification(Entry n) {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
-                    n.autoDecline, Collections.emptyList());
+                    n.autoDecline, Collections.emptyList()).withScore(n.scorePercent);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay, steps);
+                    nested, alertTag, replay, steps, scorePercent);
         }
 
         /** This line with one more learning step; an exact repeat of the last step is not added again. */
@@ -226,7 +239,7 @@ final class DecisionLog {
             next.add(step);
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, next);
+                    notification, alertTag, replay, next, scorePercent);
         }
 
         JSONObject toJson() throws JSONException {
@@ -239,6 +252,7 @@ final class DecisionLog {
             if (facts.miles != null) json.put("miles", facts.miles);
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
+            if (scorePercent >= 0) json.put("score", scorePercent);
             if (notification != null) json.put("notification", notification.toJson());
             if (!steps.isEmpty()) {
                 JSONArray kept = new JSONArray();
@@ -282,7 +296,7 @@ final class DecisionLog {
             return new Entry(json.getLong("at"), Source.valueOf(json.getString("source")), json.optBoolean("addOn"),
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
-                    json.optBoolean("autoDecline"), evidence);
+                    json.optBoolean("autoDecline"), evidence).withScore(json.optInt("score", -1));
         }
     }
 
@@ -524,6 +538,7 @@ final class DecisionLog {
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : money(entry.facts.payCents))
                     .append(" | needed ").append(entry.requiredCents == 0 ? "-" : money(entry.requiredCents))
+                    .append(entry.scorePercent >= 0 ? " | score " + entry.scorePercent + "%" : "")
                     .append(" | ").append(facts(entry.facts))
                     .append(" | ").append(entry.reason)
                     .append(" | ").append(entry.action.label)
@@ -538,6 +553,7 @@ final class DecisionLog {
                 out.append("    notification ").append(noticeWhen(entry))
                         .append(" | ").append(n.result)
                         .append(" | pay ").append(n.facts.payCents == null ? "?" : money(n.facts.payCents))
+                        .append(n.scorePercent >= 0 ? " | score " + n.scorePercent + "%" : "")
                         .append(" | ").append(n.reason)
                         .append(" | ").append(n.action.label)
                         .append('\n');

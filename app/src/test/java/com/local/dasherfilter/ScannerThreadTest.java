@@ -29,6 +29,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.After;
@@ -101,6 +102,7 @@ public class ScannerThreadTest {
         OfferFilterService.sawDasherBeside(0);
         OfferFilterService.scanLooperForTests = null;
         OfferFilterService.takeoverBeginsForTests = null;
+        OfferFilterService.nodeFetchForTests = null;
         RefusingWindowManager.refuse = false;
     }
 
@@ -331,6 +333,7 @@ public class ScannerThreadTest {
         CountDownLatch gate = new CountDownLatch(1);
         service.windowSource = slowWindows(service, looks, entered, gate);
         dasherShows(service, offer("$7.90"));
+        int roots = service.rootFetches;
 
         // A phone that takes its time listing the windows. Before, the event waited for the read on the main thread.
         long started = System.nanoTime();
@@ -354,8 +357,10 @@ public class ScannerThreadTest {
         gate.countDown();
         settle(service);
         assertEquals("declined once the read finished", 1, Shadows.shadowOf(decline).getPerformedActions().size());
-        // The slow read, and one more for all hundred changes noted meanwhile: never one read per event.
-        assertEquals(2, looks.get());
+        // The slow read, and one more for all hundred changes noted meanwhile: never one read per event. Each read asks
+        // for the active window's root once, the first once more right before its tap. (The decline's poll for its
+        // question may list the windows once more meanwhile; that asks Android, not Dasher, and reads nothing.)
+        assertEquals(3, service.rootFetches - roots);
         assertEquals(1, DecisionLog.recent(app, 10).size());
     }
 
@@ -973,7 +978,7 @@ public class ScannerThreadTest {
     // ---- The slow-read line ----
 
     @Test
-    public void aSlowReadIsLoggedOnceAMinuteWithItsCost() {
+    public void everySlowReadAroundAnOfferIsLoggedWithWhereItsTimeWentAndAnIdleOneOnceAMinute() {
         OfferFilterService service = service(true);
         // Each look at the windows takes a fifth of a second, as on the user's phone.
         service.windowSource = () -> {
@@ -985,15 +990,364 @@ public class ScannerThreadTest {
             return service.getWindows();
         };
         show(service, offer("$25.00"));
-        show(service, idle());
         String log = DiagnosticLog.read(app);
         assertEquals(log, 1, count(log, "[scan] slow read: "));
         assertTrue(log, log.matches("(?s).*\\[scan\\] slow read: \\d+ ms, \\d+ nodes, 1 windows, after change "
-                + "\\(waited \\d+ ms\\).*"));
-
-        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.SLOW_SCAN_LOG_EVERY_MS));
+                + "\\(waited \\d+ ms\\); windows \\d{3,} ms, root \\d+ ms, traversal \\d+ ms; offer up\\n.*"));
+        // While the offer is up, every slow read is logged: before, once a minute at most, so a report showed one.
         show(service, offer("$25.00"));
-        assertEquals(2, count(DiagnosticLog.read(app), "[scan] slow read: "));
+        show(service, idle());
+        assertEquals(3, count(DiagnosticLog.read(app), "[scan] slow read: "));
+
+        // Nothing up for a while: once a minute.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.HOT_MS));
+        show(service, idle());
+        show(service, idle());
+        log = DiagnosticLog.read(app);
+        assertEquals(log, 4, count(log, "[scan] slow read: "));
+        assertFalse(log, lastLine(log, "[scan] slow read: ").endsWith("; offer up"));
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.SLOW_SCAN_LOG_EVERY_MS));
+        show(service, idle());
+        assertEquals(5, count(DiagnosticLog.read(app), "[scan] slow read: "));
+    }
+
+    // ---- Offer reads first ----
+
+    /** A window list that takes {@code msEach} to give each of {@code size} windows, as a slow phone might. */
+    private static List<AccessibilityWindowInfo> slowList(List<AccessibilityWindowInfo> real, int size, long msEach,
+                                                          CountDownLatch entered) {
+        return new AbstractList<AccessibilityWindowInfo>() {
+            @Override public AccessibilityWindowInfo get(int index) {
+                entered.countDown();
+                try {
+                    Thread.sleep(msEach);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                return real.get(index % real.size());
+            }
+
+            @Override public int size() {
+                return size;
+            }
+        };
+    }
+
+    @Test
+    public void anOffersReadStartsAtOnceWhileTheWindowWatchIsInASlowLook() throws Exception {
+        OfferFilterService service = service(false);
+        show(service, idle());
+        // The window watch's next look finds a phone slow to list its windows: a second for the lot.
+        AtomicBoolean slow = new AtomicBoolean(true);
+        AtomicLong offerReadAt = new AtomicLong();
+        CountDownLatch watching = new CountDownLatch(1);
+        service.windowSource = () -> {
+            List<AccessibilityWindowInfo> real = service.getWindows();
+            if (slow.get()) return slowList(real, 100, 10, watching);
+            offerReadAt.compareAndSet(0, System.nanoTime());
+            return real;
+        };
+        Handler scanner = new Handler(service.scanLooper());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.WINDOW_WATCH_MS));
+        scanner.post(() -> { });
+        assertTrue("the watch is looking", watching.await(2, TimeUnit.SECONDS));
+        // Something the scanner was asked to do before the offer came waits in its queue.
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        scanner.post(() -> order.add("queued before the offer"));
+
+        // The offer opens as a new screen.
+        slow.set(false);
+        dasherShows(service, offer("$7.90"));
+        AtomicLong declinedAt = new AtomicLong();
+        Shadows.shadowOf(decline).setOnPerformActionListener((action, args) -> {
+            declinedAt.set(System.nanoTime());
+            order.add("decline");
+            return true;
+        });
+        long sentAt = System.nanoTime();
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        settle(service);
+
+        assertEquals("declined", 1, Shadows.shadowOf(decline).getPerformedActions().size());
+        long startedMs = (offerReadAt.get() - sentAt) / 1_000_000L;
+        long declinedMs = (declinedAt.get() - sentAt) / 1_000_000L;
+        System.out.println("offer read began " + startedMs + " ms, declined " + declinedMs + " ms after its event");
+        // Before, the read waited for the watch's whole second, and for what was queued before it.
+        assertTrue("the watch stopped at its next step: read " + startedMs + " ms after", startedMs < 100);
+        assertEquals(Arrays.asList("decline", "queued before the offer"), order);
+    }
+
+    @Test
+    public void readingAroundAClickStopsForAnOffer() throws Exception {
+        OfferFilterService service = service(false);
+        show(service, idle());
+        // The user taps a button on Dasher's idle screen. Reading around it, Dasher answers slowly: 100 ms a node.
+        AccessibilityNodeInfo button = node(null, true);
+        for (int i = 0; i < 10; i++) Shadows.shadowOf(button).addChild(node("Label " + i, false));
+        AtomicBoolean slow = new AtomicBoolean(true);
+        CountDownLatch walking = new CountDownLatch(1);
+        OfferFilterService.nodeFetchForTests = () -> {
+            if (!slow.get() || !onStack("readClick")) return;
+            walking.countDown();
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        AccessibilityEvent tap = event(AccessibilityEvent.TYPE_VIEW_CLICKED);
+        ((org.robolectric.shadows.ShadowAccessibilityRecord) Shadow.extract(tap)).setSourceNode(button);
+        service.onAccessibilityEvent(tap);
+        assertTrue("reading around the click", walking.await(2, TimeUnit.SECONDS));
+
+        // An offer opens meanwhile, a moment after the click.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(10));
+        dasherShows(service, offer("$7.90"));
+        AtomicLong declinedAt = new AtomicLong();
+        Shadows.shadowOf(decline).setOnPerformActionListener((action, args) -> {
+            declinedAt.set(System.nanoTime());
+            return true;
+        });
+        long sentAt = System.nanoTime();
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        settle(service);
+        slow.set(false);
+        settle(service);
+
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+        long declinedMs = (declinedAt.get() - sentAt) / 1_000_000L;
+        // Before, the click's reading went on for its whole second first.
+        assertTrue("declined " + declinedMs + " ms after the offer's event", declinedMs < 400);
+        // The click is still noted after the offer's read, named by what its event says (an offer is up now: nothing
+        // is read around it), and never as an echo of the app's Decline tap, which came after it.
+        String screens = DiagnosticLog.readScreens(app);
+        assertTrue(screens, screens.contains("tap (not Offer Filter's) "));
+        assertFalse(screens, screens.contains("tap (Offer Filter's own) "));
+    }
+
+    private static boolean onStack(String method) {
+        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+            if (OfferFilterService.class.getName().equals(frame.getClassName())
+                    && method.equals(frame.getMethodName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ---- Dasher's question after the first Decline tap ----
+
+    /** Lets {@code ms} of the scanner's time pass, and the scanner and the main thread do what fell due. */
+    private void pass(OfferFilterService service, long ms) {
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ms));
+        settle(service);
+    }
+
+    /** Records when (uptime) {@code button} is tapped. */
+    private static AtomicLong tapTime(AccessibilityNodeInfo button) {
+        AtomicLong at = new AtomicLong(-1);
+        Shadows.shadowOf(button).setOnPerformActionListener((action, args) -> {
+            at.set(android.os.SystemClock.uptimeMillis());
+            return true;
+        });
+        return at;
+    }
+
+    @Test
+    public void dashersQuestionIsFoundByThePollWithNoEventAndTappedAtOnce() {
+        OfferFilterService service = service(false);
+        AccessibilityNodeInfo offerScreen = offer("$7.90");
+        AtomicLong declineTapAt = tapTime(decline);
+        show(service, offerScreen);
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+
+        // The offer stays as it was: the poll asks Android for the windows, sees nothing new, and reads nothing.
+        // Before, the whole screen was read again every 200 ms.
+        int roots = service.rootFetches;
+        pass(service, 100);
+        pass(service, 100);
+        pass(service, 50);
+        assertEquals("nothing changed, nothing read", roots, service.rootFetches);
+
+        // Then Dasher's question opens in a window of its own; no event of it reaches the service.
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        AtomicLong confirmTapAt = tapTime(confirm);
+        AccessibilityNodeInfo question = confirmation(confirm);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, question, true, BOTTOM_HALF),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, offerScreen, false, SCREEN)));
+        Shadows.shadowOf(service).setRootInActiveWindow(question);
+        long appearedAt = android.os.SystemClock.uptimeMillis();
+        pass(service, 50);
+        pass(service, 50);
+
+        // Before, it waited for the next full read, 200 ms after the last one.
+        assertEquals("tapped by the next poll", 1, Shadows.shadowOf(confirm).getPerformedActions().size());
+        long afterAppearing = confirmTapAt.get() - appearedAt;
+        assertTrue("tapped " + afterAppearing + " ms after it appeared",
+                afterAppearing <= OfferFilterService.CONFIRM_POLL_MS);
+        String log = DiagnosticLog.read(app);
+        long sinceFirstTap = confirmTapAt.get() - declineTapAt.get();
+        assertTrue(log, log.contains("confirmation found " + sinceFirstTap + " ms and tapped " + sinceFirstTap
+                + " ms after the first Decline tap (read after confirmation poll)"));
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+
+        // The poll ends with the question tapped; Dasher closing it is read as before, and nothing is tapped twice.
+        dasherShows(service, idle());
+        pass(service, OfferFilterService.CONFIRM_POLL_WINDOW_MS);
+        assertEquals(1, Shadows.shadowOf(confirm).getPerformedActions().size());
+    }
+
+    @Test
+    public void aReadOfTheOfferWaitingForItsQuestionStopsWhenTheQuestionsWindowOpens() throws Exception {
+        OfferFilterService service = service(false);
+        AccessibilityNodeInfo offerScreen = offer("$7.90");
+        for (int i = 0; i < 20; i++) Shadows.shadowOf(offerScreen).addChild(node("Detail " + i, false));
+        show(service, offerScreen);
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+
+        // Dasher's countdown ticks: the offer is read again, and Dasher, animating, answers 50 ms a node.
+        CountDownLatch reading = new CountDownLatch(1);
+        OfferFilterService.nodeFetchForTests = () -> {
+            reading.countDown();
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        assertTrue(reading.await(2, TimeUnit.SECONDS));
+
+        // Dasher's question opens in a window of its own, with its window change.
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        AtomicLong tappedAt = new AtomicLong();
+        Shadows.shadowOf(confirm).setOnPerformActionListener((action, args) -> {
+            tappedAt.set(System.nanoTime());
+            return true;
+        });
+        AccessibilityNodeInfo question = confirmation(confirm);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, question, true, BOTTOM_HALF),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, offerScreen, false, SCREEN)));
+        Shadows.shadowOf(service).setRootInActiveWindow(question);
+        long sentAt = System.nanoTime();
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        settle(service);
+
+        assertEquals(1, Shadows.shadowOf(confirm).getPerformedActions().size());
+        long tappedMs = (tappedAt.get() - sentAt) / 1_000_000L;
+        System.out.println("question tapped " + tappedMs + " ms after its window opened");
+        // Before, the read of the offer went on node by node (over a second), then the offer was read again.
+        assertTrue("tapped " + tappedMs + " ms after its window opened", tappedMs < 600);
+        assertEquals(1, count(DiagnosticLog.read(app), "[scan] read cut short by a window change while the question is "
+                + "awaited, after "));
+    }
+
+    @Test
+    public void whileItsQuestionIsAwaitedTheOffersWindowIsReadOnceARead() {
+        OfferFilterService service = service(true);
+        show(service, offer("$7.90"));
+        int before = service.rootFetches;
+        // Dasher's countdown ticks while the question is awaited.
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        // Before, the window just read was asked for again and read a second time, looking for the question.
+        assertEquals("the active window's root alone", 1, service.rootFetches - before);
+    }
+
+    @Test
+    public void theConfirmationWaitsForTheTouchWatchFiftyMillisecondsAtMost() {
+        OfferFilterService service = service(false);
+        // The main thread is busy: it does not put the touch watch up.
+        AccessibilityNodeInfo offerScreen = offer("$7.90");
+        AtomicLong declineTapAt = tapTime(decline);
+        dasherShows(service, offerScreen);
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        Shadows.shadowOf(service.scanLooper()).idle();
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        AtomicLong confirmTapAt = tapTime(confirm);
+        dasherShows(service, confirmation(confirm));
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        Shadows.shadowOf(service.scanLooper()).idle();
+        assertTrue("held for the watch at first", Shadows.shadowOf(confirm).getPerformedActions().isEmpty());
+
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.WATCH_HOLD_MS));
+        Shadows.shadowOf(service.scanLooper()).idle();
+        // Before, it waited until the main thread put the watch up, however long that took.
+        assertEquals("tapped 50 ms on all the same", 1, Shadows.shadowOf(confirm).getPerformedActions().size());
+        assertTrue(touchWatches().isEmpty());
+        assertEquals(OfferFilterService.WATCH_HOLD_MS, confirmTapAt.get() - declineTapAt.get());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("confirmation found 0 ms and tapped 50 ms after the first Decline tap (read after "
+                + "touch watch not up after 50 ms; touch watch not up)"));
+
+        // The main thread gets to it: the watch comes up, and nothing is tapped twice.
+        settle(service);
+        assertEquals(1, touchWatches().size());
+        assertEquals(1, Shadows.shadowOf(confirm).getPerformedActions().size());
+    }
+
+    // ---- Touches on the watch that are the app's own taps coming back ----
+
+    /** A touch Android reports to the watch as landing at {@code at} (uptime). */
+    private void touchAt(long at) {
+        assertEquals("one touch watch while declining", 1, touchWatches().size());
+        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+    }
+
+    @Test
+    public void theAppsOwnTapsEchoingOnTheTouchWatchHandNothingBack() {
+        OfferFilterService service = service(true);
+        AccessibilityNodeInfo offerScreen = offer("$7.90");
+        AtomicLong declineTapAt = tapTime(decline);
+        show(service, offerScreen);
+        // Android reports Offer Filter's own Decline tap to the watch as a touch, 15 ms after it.
+        touchAt(declineTapAt.get() + 15);
+        settle(service);
+        assertFalse(OfferFilterService.userHasOffer(new OfferSnapshot(790, null, null, null)));
+
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        AtomicLong confirmTapAt = tapTime(confirm);
+        show(service, confirmation(confirm));
+        assertEquals("the decline goes on", 1, Shadows.shadowOf(confirm).getPerformedActions().size());
+        // Its confirmation tap comes back 20 ms later too. Before, this was "screen touched; automatic decline stopped
+        // after its confirmation was tapped" and a toast, as both of the user's 0.4.41 declines showed.
+        touchAt(confirmTapAt.get() + 20);
+        settle(service);
+
+        String log = DiagnosticLog.read(app);
+        assertEquals(log, 1, count(log, "touch ignored: own-action echo, 15 ms after Offer Filter's tap"));
+        assertEquals(log, 1, count(log, "touch ignored: own-action echo, 20 ms after Offer Filter's tap"));
+        assertFalse(log, log.contains("screen touched"));
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+        assertEquals(null, ShadowToast.getTextOfLatestToast());
+    }
+
+    @Test
+    public void aTouchLaterThanAnEchoIsTheUsersAndHandsTheOfferBack() {
+        OfferFilterService service = service(true);
+        AccessibilityNodeInfo offerScreen = offer("$7.90");
+        AtomicLong declineTapAt = tapTime(decline);
+        show(service, offerScreen);
+        ShadowSystemClock.advanceBy(Duration.ofMillis(400));
+        touchAt(declineTapAt.get() + OfferFilterService.OWN_ACTION_ECHO_MS + 1);
+        settle(service);
+
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        show(service, confirmation(confirm));
+        assertTrue("handed back", Shadows.shadowOf(confirm).getPerformedActions().isEmpty());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("touch during decline: the user's, 151 ms after Offer Filter's last tap"));
+        assertTrue(log, log.contains("screen touched (151 ms after Offer Filter's last tap); automatic decline stopped"));
+        assertEquals(DecisionLog.Action.USER_TOOK_OVER, DecisionLog.recent(app, 1).get(0).action);
+        assertEquals("Offer Filter stopped tapping this offer", ShadowToast.getTextOfLatestToast());
+    }
+
+    private static String lastLine(String text, String part) {
+        String last = "";
+        for (String line : text.split("\n")) if (line.contains(part)) last = line;
+        return last;
     }
 
     private static int count(String text, String part) {

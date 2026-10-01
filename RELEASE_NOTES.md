@@ -1,3 +1,26 @@
+## 0.4.42 — declines are quick again; "+$1" offers decline; score by area
+
+- **Declines are quick again.** Since 0.4.39 every read of Dasher's screen waited in one line, and new background reads (for learning, logging and taps) sat in it ahead of the offer. Reads on your phone often take 1–4 seconds, so Dasher's confirmation question was tapped 2–4 seconds after the first Decline, and once you beat Offer Filter to it.
+  - Offer and confirmation reads now jump the line, and background reads stop for them.
+  - After the first Decline tap, Offer Filter watches for Dasher's question every 0.1 s and taps it as soon as it shows. It no longer re-reads the offer's whole screen.
+  - Its own taps no longer count as your touch.
+- **"+$1" offers decline when they should.** Dasher draws "Very busy · +$1 · Decline · $5.75". Offer Filter now sees that "+$1" too, so an offer that misses your minimum even with it is declined; otherwise it's left for you.
+- **Score by area (optional, off by default).** A small button by the chart switches the minimums from "every axis at least its minimum" to "the offer's shape covers at least your minimums' area".
+  - Every offer's dots form a faint polygon. In score mode your minimum area sits in the middle and each offer's area is its score ("Score 121%", also on its ticket).
+  - Max stops stays a hard limit. A missing number makes it Review. Add-ons keep the strict rules.
+- **The log shows where read time goes:** every slow read near an offer, with its window, root and node times, and how long the confirmation took.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - the score;
+  - "+$1" with Dasher's real label order.
+- **Simulated Android 8 and 15 tests**, on the real reading thread, cover:
+  - an offer read starting within about 10 ms while a slow background read is running (about 1 s before);
+  - Dasher's question tapped about 0.1 s after it appears (about 2.5 s before);
+  - echoes of the app's own taps ignored;
+  - the score toggle and chart.
+- **Not verified on a real phone:** real decline and confirmation times. Your next report shows them.
+
 ## 0.4.41 — the adaptive minimum learns from what you do
 
 - **Your accepts teach it,** even when Dasher doesn't report your tap. An offer counts as accepted only when all of this holds:

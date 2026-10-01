@@ -339,7 +339,11 @@ public class AcceptanceEvidenceTest {
         contains(DiagnosticLog.read(app), "Accept tap seen on Pay $25.00");
         String screens = DiagnosticLog.readScreens(app);
         contains(screens, "tap (not Offer Filter's) ");
-        contains(screens, "below=[Accept] -> accept");
+        // While the offer is up nothing around the tap is read (each node is a call into Dasher, whose UI thread is
+        // drawing the offer): the tap is named by the offer's own Accept control, which the read found. Before, the
+        // nodes below it were read too ("below=[Accept]").
+        contains(screens, "target=accept");
+        contains(screens, "above=[] below=[] -> accept");
         String history = history();
         contains(history, "You tapped Accept: waiting for a delivery screen");
         contains(history, "Accepted; the adaptive minimum learned from it: you tapped Accept, and Dasher showed a "
@@ -459,6 +463,24 @@ public class AcceptanceEvidenceTest {
         show(screen("Side Menu", "This week", "Earnings Mode Switcher", "Time mode off", "Dash", "Home",
                 "Schedule", "Account"));
         assertNull(ActiveRouteStore.load(app));
+    }
+
+    @Test
+    public void withNothingUpATapIsStillReadAroundAfterItsRead() {
+        // A delivery under way: its stored route has travel the next add-on would be judged against.
+        ActiveRouteStore.save(app, new OfferSnapshot(2500, 7.2, 21, 2));
+        AccessibilityNodeInfo step = button("Complete delivery");
+        AccessibilityNodeInfo root = node(null, false);
+        Shadows.shadowOf(root).addChild(node("Deliver by 9:45 PM", false));
+        Shadows.shadowOf(root).addChild(step);
+        show(root);
+        // A Compose button reports a click with no text: its label is below it, read once the click's read is done.
+        clicked(step);
+
+        OfferSnapshot route = ActiveRouteStore.load(app);
+        assertEquals("pay kept", Integer.valueOf(2500), route.payCents);
+        assertNull("delivery progress makes the old travel stale", route.miles);
+        contains(DiagnosticLog.read(app), "delivery progress observed");
     }
 
     @Test

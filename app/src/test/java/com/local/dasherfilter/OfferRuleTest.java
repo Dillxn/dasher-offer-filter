@@ -804,6 +804,74 @@ public final class OfferRuleTest {
         }
     }
 
+    /** The user's rules at 0.4.41: $10, $2.00 a mile, $0.50 a minute, $4.75 a stop, at most 3, adaptive on, unlearned. */
+    private static final FilterSettings USER_RULES_0441 = new FilterSettings(true, 1000, 200, 50, 475, 3, true, 0);
+
+    /** Dasher's real 0.4.41 screen, Decline drawn between the "+$" amount and the total (the address replaced). */
+    private static OfferSnapshot realPlusScreen(String total, String... afterTotal) {
+        java.util.List<String> labels = new java.util.ArrayList<>(Arrays.asList("Very busy", "+$1", "Decline", total));
+        labels.addAll(Arrays.asList(afterTotal));
+        labels.addAll(Arrays.asList("McDonald's", "100 Example Ave", "Customer dropoff",
+                "Guaranteed earnings for completing the offer.", "Accept", "0:35"));
+        return OfferParser.parse(labels);
+    }
+
+    @Test
+    public void theRealScreenWithDeclineBetweenThePlusAmountAndTheTotalDeclinesBelowTheSum() {
+        // Before, "Decline" between "+$1" and "$5.75" kept them apart: pay not found, left for review.
+        OfferSnapshot offer = realPlusScreen("$5.75", "2 stops (3.4 mi) • 17 min");
+        assertNull("pay itself stays unknown", offer.payCents);
+        assertEquals(Integer.valueOf(675), offer.payAtMostCents);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, USER_RULES_0441);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals("pay at most $6.75 with its +$ amount; flat minimum", decision.reason);
+        assertEquals(1000, decision.requiredCents);
+
+        OfferRule.Decision byArea = OfferRule.evaluate(offer, USER_RULES_0441.withScoreByArea(true));
+        assertEquals(OfferRule.Result.DECLINE, byArea.result);
+        assertTrue(byArea.reason, byArea.reason.startsWith("pay at most $6.75 with its +$ amount; score "));
+        assertTrue(byArea.reason, byArea.reason.endsWith("% (needs 100%)"));
+    }
+
+    @Test
+    public void theRealScreenWhoseSumMayPassIsReviewedInBothModes() {
+        OfferSnapshot offer = realPlusScreen("$9.00", "incl. tips", "2 stops (3.7 mi) • 17 min");
+        assertEquals("$9.00 + $1", Integer.valueOf(1000), offer.payAtMostCents);
+        for (FilterSettings rules : new FilterSettings[] {USER_RULES_0441, USER_RULES_0441.withScoreByArea(true)}) {
+            OfferRule.Decision decision = OfferRule.evaluate(offer, rules);
+            assertEquals(OfferRule.Result.REVIEW, decision.result);
+            assertEquals("pay unclear beside a +$ amount", decision.reason);
+        }
+    }
+
+    @Test
+    public void onlyOfferChromeMayStandBetweenThePlusAmountAndTheTotal() {
+        String route = "2 stops (7.1 mi) • 23 min";
+        // The offer's controls, a countdown and the busy badge are chrome: the two still sit side by side.
+        for (String[] labels : new String[][] {
+                {"+$1", "Decline", "$5.00", route},
+                {"+$1", "Accept", "Decline", "$5.00", route},
+                {"$5.00", "0:35", "+$1", route},
+                {"+$1", "Busy", "$5.00", route},
+                {"+$1", "Decline offer", "0:47", "$5.00", route}}) {
+            OfferSnapshot offer = parse(labels);
+            assertEquals(Arrays.toString(labels), Integer.valueOf(600), offer.payAtMostCents);
+            assertEquals(Arrays.toString(labels), OfferRule.Result.DECLINE,
+                    OfferRule.evaluate(offer, REPORT_RULES).result);
+        }
+        // Anything else between them keeps them apart, as before.
+        for (String[] labels : new String[][] {
+                {"+$1", "Decline", "incl. tips", "$5.00", route},
+                {"+$1", "Peak pay", "$5.00", route},
+                {"+$1", "Decline", "5", "$5.00", route},
+                {"+$1", "Not busy at all", "$5.00", route},
+                {"+$1", "9:45 PM", "$5.00", route}}) {
+            OfferRule.Decision decision = OfferRule.evaluate(parse(labels), REPORT_RULES);
+            assertEquals(Arrays.toString(labels), OfferRule.Result.REVIEW, decision.result);
+            assertEquals(Arrays.toString(labels), "pay not found", decision.reason);
+        }
+    }
+
     @Test
     public void aPlusAmountMattersOnlyToPayRules() {
         FilterSettings stopsOnly = new FilterSettings(true, 0, 0, 0, 0, 3);
@@ -826,5 +894,161 @@ public final class OfferRuleTest {
         OfferRule.Decision decision = OfferRule.evaluate(offer, REPORT_RULES);
         assertEquals(OfferRule.Result.REVIEW, decision.result);
         assertEquals("pay not found", decision.reason);
+    }
+
+    // ---- Score by area (the user's choice): a standalone offer passes at a 100% area score ----
+
+    /** The user's rules: $13 pay, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops. */
+    private static final FilterSettings USER = new FilterSettings(true, 1300, 385, 41, 475, 3);
+    private static final FilterSettings USER_BY_AREA = USER.withScoreByArea(true);
+
+    @Test
+    public void byAreaTheWorkedExamplePassesThoughStrictDeclinesIt() {
+        OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 2);
+        OfferRule.Decision strict = OfferRule.evaluate(offer, USER);
+        assertEquals("6 mi at $3.85 asks $23.10", OfferRule.Result.DECLINE, strict.result);
+        assertEquals(2310, strict.requiredCents);
+        assertEquals("strict mode shows the score too", 121, strict.scorePercent);
+
+        OfferRule.Decision byArea = OfferRule.evaluate(offer, USER_BY_AREA);
+        assertEquals(OfferRule.Result.KEEP, byArea.result);
+        assertEquals("score 121% (needs 100%)", byArea.reason);
+        assertEquals(121, byArea.scorePercent);
+        assertEquals("the least pay that scores 100%", 1243, byArea.requiredCents);
+    }
+
+    @Test
+    public void byAreaAnOfferUnder100PercentIsDeclinedWithItsScore() {
+        // The user's report: $4.25, 2.1 mi, 16 min, 2 stops, declined by the strict rules.
+        OfferRule.Decision decision = OfferRule.evaluate(new OfferSnapshot(425, 2.1, 16, 2), USER_BY_AREA);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals("score 49% (needs 100%)", decision.reason);
+        assertEquals(873, decision.requiredCents);
+        assertEquals("DECLINE: score 49% (needs 100%); $8.73 would score 100%", decision.summary());
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(873, 2.1, 16, 2), USER_BY_AREA)
+                .result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(872, 2.1, 16, 2), USER_BY_AREA)
+                .result);
+    }
+
+    @Test
+    public void byAreaMaxStopsStaysAHardLimit() {
+        OfferRule.Decision decision = OfferRule.evaluate(new OfferSnapshot(9000, 6.0, 25, 4), USER_BY_AREA);
+        assertEquals("a score far above 100% does not lift it", OfferRule.Result.DECLINE, decision.result);
+        assertEquals("4 stops exceeds maximum 3", decision.reason);
+        assertTrue(decision.scorePercent > 100);
+    }
+
+    @Test
+    public void byAreaAnActiveMinimumWhoseAmountIsUnreadIsReviewed() {
+        // A missing amount could lift the score, so even very high pay is not kept, and low pay is not declined.
+        for (OfferSnapshot offer : new OfferSnapshot[] {
+                new OfferSnapshot(9000, null, 25, 2), new OfferSnapshot(9000, 6.0, null, 2),
+                new OfferSnapshot(9000, 6.0, 25, null), new OfferSnapshot(9000, 6.0, 25, 1),
+                new OfferSnapshot(100, null, 25, 2)}) {
+            OfferRule.Decision decision = OfferRule.evaluate(offer, USER_BY_AREA);
+            assertEquals(offer.summary(), OfferRule.Result.REVIEW, decision.result);
+            assertEquals("an enabled value was not found", decision.reason);
+            assertEquals(-1, decision.scorePercent);
+        }
+        assertEquals("pay not found", OfferRule.evaluate(new OfferSnapshot(null, 6.0, 25, 2), USER_BY_AREA).reason);
+        // A spoke with no minimum needs nothing read.
+        FilterSettings noMile = new FilterSettings(true, 1300, 0, 41, 475, 3, false, 0).withScoreByArea(true);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(1500, null, 25, 2), noMile).result);
+    }
+
+    @Test
+    public void byAreaUnreadStopsUnderAMaxStopsRuleCanStillDeclineOnTheScore() {
+        FilterSettings strict = new FilterSettings(true, 1300, 385, 41, 0, 3);
+        FilterSettings rules = strict.withScoreByArea(true);
+        OfferRule.Decision low = OfferRule.evaluate(new OfferSnapshot(500, 6.0, 25, null), rules);
+        assertEquals("a known failure", OfferRule.Result.DECLINE, low.result);
+        // $17.00 scores 104% on pay, per mile and per minute, though per mile asks $23.10: strictly a known failure.
+        OfferSnapshot offer = new OfferSnapshot(1700, 6.0, 25, null);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(offer, strict).result);
+        OfferRule.Decision high = OfferRule.evaluate(offer, rules);
+        assertEquals("max stops unknown", OfferRule.Result.REVIEW, high.result);
+        assertEquals("an enabled value was not found", high.reason);
+        assertEquals(104, high.scorePercent);
+    }
+
+    @Test
+    public void byAreaThePlusCeilingDeclinesOnlyWhenEvenItScoresUnder100Percent() {
+        FilterSettings rules = REPORT_RULES.withScoreByArea(true);
+        // $10 pay and $1.00 a mile: two spokes, √(835 ÷ 1000 × 835 ÷ 710) = 99.1%.
+        OfferRule.Decision decision = OfferRule.evaluate(plusOffer("+$1", "$7.35", "2 stops (7.1 mi) • 23 min"),
+                rules);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals("pay at most $8.35 with its +$ amount; score 99% (needs 100%)", decision.reason);
+        assertEquals("√(1000 × 710) = 842.6", 843, decision.requiredCents);
+        for (OfferSnapshot offer : new OfferSnapshot[] {
+                plusOffer("+$1", "$10.10", "2 stops (7.5 mi) • 23 min"),
+                plusOffer("+$1", "$10.60", "2 stops (5.3 mi) • 30 min")}) {
+            OfferRule.Decision mayPass = OfferRule.evaluate(offer, rules);
+            assertEquals(OfferRule.Result.REVIEW, mayPass.result);
+            assertEquals("pay unclear beside a +$ amount", mayPass.reason);
+            assertEquals(-1, mayPass.scorePercent);
+        }
+    }
+
+    @Test
+    public void byAreaAnAdaptiveOnlyShortfallBesideAPlusAmountStaysReview() {
+        // $10 pay, $1.00 a mile, and the adaptive minimum beating an accepted $15.00. +$1 beside $10.10, 12 mi: on the
+        // set minimums $11.10 scores √(1110 ÷ 1000 × 1110 ÷ 1200) = 101%, so some reading may pass (strictly, the
+        // 12 mi alone ask $12.00 and decline it). With the adaptive $15.01 it would score 83%, but the adaptive minimum
+        // never judges add-ons, so it does not count toward this decline.
+        OfferSnapshot offer = plusOffer("+$1", "$10.10", "2 stops (12.0 mi) • 30 min");
+        FilterSettings strict = new FilterSettings(true, 1000, 100, 0, 0, 3, true, 1500);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(offer, strict).result);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, strict.withScoreByArea(true));
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+        assertEquals("pay unclear beside a +$ amount", decision.reason);
+        assertEquals("√(1501 × 1200) = 1342.1", 1343, decision.requiredCents);
+    }
+
+    @Test
+    public void byAreaTheAdaptiveMinimumRaisesTheFloorsTheScoreIsTakenAgainst() {
+        FilterSettings rules = new FilterSettings(true, 1300, 385, 41, 475, 3, true, 1420,
+                AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2)),
+                new DeclinedFloor(0, new AcceptedBest(0, 0, 0, 0, 1200, 2))).withScoreByArea(true);
+        OfferRule.Decision decision = OfferRule.evaluate(new OfferSnapshot(1500, 6.0, 25, 2), rules);
+        assertEquals("121% on the set minimums, 94% on the learned ones", OfferRule.Result.DECLINE, decision.result);
+        assertEquals("score 94% (needs 100%)", decision.reason);
+        assertEquals(1597, decision.requiredCents);
+    }
+
+    @Test
+    public void byAreaAddOnsKeepTheStrictRules() {
+        // The combined route pays $28.00 for 11 mi, which $3.00 a mile prices at $33.00: strict declines it. By area,
+        // √(2800 ÷ 2000 × 2800 ÷ 3300) = 109% would have passed it.
+        OfferSnapshot active = new OfferSnapshot(2500, 10.0, null, 2);
+        AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+1 mi"));
+        FilterSettings strict = new FilterSettings(true, 2000, 300, 0, 0, 0);
+        OfferRule.Decision byArea = OfferRule.evaluateAddOn(addOn, strict.withScoreByArea(true));
+        assertEquals(OfferRule.Result.DECLINE, byArea.result);
+        assertEquals(OfferRule.evaluateAddOn(addOn, strict).reason, byArea.reason);
+        assertEquals(-1, byArea.scorePercent);
+    }
+
+    @Test
+    public void byAreaWithNoMinimumOnlyMaxStopsAsks() {
+        FilterSettings stopsOnly = new FilterSettings(true, 0, 0, 0, 0, 3).withScoreByArea(true);
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(500, 6.0, 25, 2), stopsOnly).result);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(500, 6.0, 25, 4), stopsOnly)
+                .result);
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(500, 6.0, 25, null), stopsOnly)
+                .result);
+    }
+
+    @Test
+    public void theModeIsDescribedAndKeptThroughEveryChange() {
+        assertTrue(USER_BY_AREA.describe(), USER_BY_AREA.describe().startsWith(
+                "scored by area, 100% needed (max stops is a hard limit) · $13.00 pay · $3.85 per mile"));
+        assertTrue(USER.describe().startsWith("at least $13.00"));
+        assertTrue(USER_BY_AREA.withEnabled(false).scoreByArea);
+        assertTrue(USER_BY_AREA.withMinimums(new int[] {1, 2, 3, 4}).scoreByArea);
+        assertTrue(USER_BY_AREA.adoptAdaptive().scoreByArea);
+        assertFalse(USER_BY_AREA.withScoreByArea(false).scoreByArea);
+        assertFalse("strict is the default", USER.scoreByArea);
     }
 }

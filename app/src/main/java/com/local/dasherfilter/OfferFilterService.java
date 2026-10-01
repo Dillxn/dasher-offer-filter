@@ -18,8 +18,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -37,6 +40,15 @@ import java.util.function.Supplier;
  * cards goes back to the main thread in order, where Dasher's notifications are handled, so a screen reading and a
  * notification of the same offer are folded one after the other, never at once. Views (the tab, the guide, the touch
  * watch) and toasts are only ever touched on the main thread.
+ *
+ * <p>Offer reads first. Every call into Dasher waits for Dasher's own UI thread, which is busiest exactly while an offer
+ * animates in, so the scanner never makes an offer's read wait for work that can wait. A window change, and any event
+ * of Dasher's while an offer or confirmation is up or a decline is under way (or one was seen in the last
+ * {@link #HOT_MS}), is handed to the front of the scanner's queue. What is not essential (the window watch, reading
+ * around a click, the after-offer captures and settling) does not run while an offer or confirmation is up or a decline
+ * is under way, runs only after the read an event asked for, and stops at its next call into Dasher when Dasher sends
+ * another event. After the first Decline tap, Dasher's question is looked for every {@link #CONFIRM_POLL_MS} for
+ * {@link #CONFIRM_POLL_WINDOW_MS} without reading any window twice, and tapped the moment it is found.
  */
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -55,9 +67,43 @@ public final class OfferFilterService extends AccessibilityService {
      * read looked moments ago.
      */
     static final long WINDOW_WATCH_MS = 500;
-    /** A read slower than this is logged (once a minute at most), so a report shows the phone's real timings. */
+    /**
+     * A read slower than this is logged, so a report shows the phone's real timings: every one while an offer or
+     * confirmation is up or a decline is under way, otherwise once a minute at most.
+     */
     static final long SLOW_SCAN_MS = 150;
     static final long SLOW_SCAN_LOG_EVERY_MS = 60_000;
+    /**
+     * An offer or confirmation seen this recently keeps every event of Dasher's urgent: its read goes to the front of
+     * the scanner's queue, ahead of anything that can wait.
+     */
+    static final long HOT_MS = 3_000;
+    /** After the first Decline tap, Dasher's question is looked for this often, for this long. */
+    static final long CONFIRM_POLL_MS = 100;
+    static final long CONFIRM_POLL_WINDOW_MS = 3_000;
+    /**
+     * Besides the window a read just read, Dasher's question is looked for in this many of Dasher's other windows at
+     * most (the newest first), each read to this many nodes at most: a dialog is a few nodes, never a whole screen.
+     */
+    private static final int MAX_CONFIRM_WINDOWS = 2;
+    static final int MAX_CONFIRM_NODES = 200;
+    /**
+     * A read waiting for Dasher's question stops when a window change comes this many times in a row at most (the
+     * question's own window, perhaps): the read for that change, first in the queue, reads the new window at once.
+     */
+    private static final int MAX_CUT_READS = 2;
+    /** A confirmation waits for the touch watch to come up this long at most, then is tapped all the same. */
+    static final long WATCH_HOLD_MS = 50;
+    /**
+     * A touch this soon after the app's own tap (or during it) is that tap's echo, not the user's: Android can report
+     * the app's own action to the touch watch as a touch outside it.
+     */
+    static final long OWN_ACTION_ECHO_MS = 150;
+    /** Reading around a click held back by Dasher's events is tried this many times, this long at most. */
+    private static final int CLICK_READ_TRIES = 3;
+    private static final long CLICK_READ_WAIT_MS = 2_000;
+    /** Settling what came after an offer waits this long while an offer is up or a decline is under way. */
+    private static final long BUSY_RETRY_MS = 250;
     private static final int MAX_SCAN_DEPTH = 60;
     private static final int MAX_SCAN_NODES = 1500;
     private static final int MAX_CLICK_TARGET_ANCESTORS = 8;
@@ -106,6 +152,11 @@ public final class OfferFilterService extends AccessibilityService {
     static volatile Looper scanLooperForTests;
     /** For tests: runs on the scanner thread as it begins handing an offer back after a touch. */
     static volatile Runnable takeoverBeginsForTests;
+    /**
+     * For tests: runs right before each node is fetched from Dasher (a child or a parent, each a call into Dasher's
+     * process), so a phone whose Dasher is slow to answer can be simulated.
+     */
+    static volatile Runnable nodeFetchForTests;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private HandlerThread scannerThread;
@@ -140,6 +191,8 @@ public final class OfferFilterService extends AccessibilityService {
     private final AtomicLong touches = new AtomicLong();
     /** {@link #WATCH_DOWN}, {@link #WATCH_UP} or {@link #WATCH_REFUSED}: written on the main thread after each change. */
     private volatile int watchState = WATCH_DOWN;
+    /** How often Android would not add the touch watch: written on the main thread only. */
+    private volatile int watchRefusals;
     /** A look at the windows owed to the notification path, which saw Dasher gone before the scanner did. */
     private final AtomicBoolean lookQueued = new AtomicBoolean();
     /**
@@ -147,12 +200,38 @@ public final class OfferFilterService extends AccessibilityService {
      * thread can give them, and it may be busy drawing). Window IDs are not reused. Any thread may read it.
      */
     private final Set<Integer> ownWindows = ConcurrentHashMap.newKeySet();
-    /** Dasher's events since the scanner last took them: one hand-off for any number of them. */
-    private final AtomicBoolean eventsQueued = new AtomicBoolean();
+    /**
+     * Dasher's events since the scanner last took them: one hand-off for any number of them, queued nowhere
+     * ({@link #QUEUED_NONE}), at the back of the scanner's queue, or at its front (an event that may be an offer).
+     */
+    private final AtomicInteger queued = new AtomicInteger(QUEUED_NONE);
+    private static final int QUEUED_NONE = 0;
+    private static final int QUEUED_BACK = 1;
+    private static final int QUEUED_FRONT = 2;
     /** Whether a window change (not only content changes) is among them. */
     private final AtomicBoolean changeNoted = new AtomicBoolean();
+    /** The clicks among them, in order. */
+    private final ConcurrentLinkedQueue<Click> clicks = new ConcurrentLinkedQueue<>();
     /** When the first of them came (uptime), for the slow-read log. */
     private volatile long eventsQueuedAt;
+    /** Every event of Dasher's so far: work that is not essential stops at its next step when this changes. */
+    private final AtomicLong dasherEvents = new AtomicLong();
+    /** Every window change so far (not content changes or clicks): a read waiting for Dasher's question stops on it. */
+    private final AtomicLong windowChanges = new AtomicLong();
+    /**
+     * Published by the scanner after each read: an offer or confirmation is up or a decline is under way, and until
+     * when (uptime) an offer seen lately keeps Dasher's events urgent.
+     */
+    private volatile boolean busyPublished;
+    private volatile long hotUntil = Long.MIN_VALUE / 2;
+    /**
+     * When the app's last own tap began and ended (uptime; ended before it began while under way): a touch during it
+     * or within {@link #OWN_ACTION_ECHO_MS} after is its echo. Written on the scanner, read by the touch watch.
+     */
+    private volatile long ownActionAt = Long.MIN_VALUE / 2;
+    private volatile long ownActionDoneAt = Long.MIN_VALUE / 2;
+    /** When the user's last touch during a decline landed, and how long after the app's own tap (ms, -1 none). */
+    private volatile long touchSinceOwnAction = -1;
 
     // ---- Main thread only ----
 
@@ -189,10 +268,40 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean watchPending;
     /** When the windows were last looked at (uptime). */
     private long lastLookAt = Long.MIN_VALUE / 2;
-    /** Whether the touch watch was last asked to run. */
+    /** Whether the touch watch was last asked to run, and when it was last asked to come up (uptime). */
     private boolean touchWatchOn;
-    /** A confirmation not tapped yet because the touch watch was not up: read again the moment it is. */
-    private boolean confirmationHeld;
+    /** The refusals of the touch watch already taken into account. */
+    private int watchRefusalsSeen;
+    private long watchAskedAt = Long.MIN_VALUE / 2;
+    /**
+     * A confirmation not tapped yet because the touch watch was not up: tapped the moment it is, or once it has been
+     * asked for {@link #WATCH_HOLD_MS}, whichever comes first (its authority is checked again then).
+     */
+    private Scan heldConfirmation;
+    /** When the first Decline tap of the offer being declined was made, and when its question was found (uptime). */
+    private long firstTapAt = NEVER;
+    private long confirmationFoundAt = NEVER;
+    /** Until when (uptime) Dasher's question is looked for every {@link #CONFIRM_POLL_MS}; {@link #NEVER} for not. */
+    private long confirmPollUntil = NEVER;
+    private boolean confirmPollPending;
+    /** Dasher's events as the last read began: a poll reads when they, or the windows, changed since. */
+    private long lastReadEvents = -1;
+    /** Reads waiting for Dasher's question cut short in a row by a window change. */
+    private int cutReads;
+    /** The window changes so far as this read began, and how many nodes it reads at most. */
+    private long readWindowChanges;
+    private int readCap = MAX_SCAN_NODES;
+    /** What the last look at the windows found, as {@link #windowsSignature}. */
+    private long lastLookWindows;
+    /** When a read last showed an offer or confirmation, or a decline was under way (uptime). */
+    private long offerSeenAt = Long.MIN_VALUE / 2;
+    /** Clicks still to be read around, after the read their events asked for. */
+    private final java.util.ArrayDeque<LateClick> lateClicks = new java.util.ArrayDeque<>();
+    private boolean lateClicksPending;
+    /** This read's time so far in listing the windows, fetching roots and walking nodes (ns). */
+    private long readWindowsNanos;
+    private long readRootNanos;
+    private long readTraversalNanos;
     /** When the last read ended (uptime). */
     private long lastScanEndAt = Long.MIN_VALUE / 2;
     /** What started this read, and how long it waited after that (ms), for the decline line. */
@@ -244,9 +353,10 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable recheck = new Runnable() {
         @Override public void run() {
             recheckPending = false;
-            if (stopped) return;
+            // A read for Dasher's events is queued: it reads the newest screen, and keeps reading after it.
+            if (stopped || queued.get() != QUEUED_NONE) return;
             long now = SystemClock.uptimeMillis();
-            boolean more = checkOffer("recheck", now);
+            boolean more = checkOffer("recheck", now, MAX_SCAN_NODES);
             if (more && (now < recheckUntil || declineState.hasPendingConfirmation(now))) scheduleRecheck();
             watchWindows();
         }
@@ -262,13 +372,30 @@ public final class OfferFilterService extends AccessibilityService {
     };
     /**
      * While Dasher is on screen, a light look that it still is (no read of its content): switching apps sends no
-     * event of Dasher's, and the tab over Dasher goes by what this finds. Skipped while reads are looking anyway.
+     * event of Dasher's, and the tab over Dasher goes by what this finds. Skipped while reads are looking anyway, and
+     * whenever a read Dasher's events asked for is queued. It is not essential: while an offer or confirmation is up
+     * or a decline is under way it asks Dasher nothing (only Android's list of windows, and a read follows at once when
+     * that list changed), and otherwise it stops at its next step when Dasher sends an event.
      */
     private final Runnable windowWatch = new Runnable() {
         @Override public void run() {
             watchPending = false;
             if (stopped) return;
-            if (SystemClock.uptimeMillis() - lastLookAt >= WINDOW_WATCH_MS) lookAndPlace();
+            long now = SystemClock.uptimeMillis();
+            if (queued.get() != QUEUED_NONE) {
+                watchWindows(now + WINDOW_WATCH_MS);
+                return;
+            }
+            if (now - lastLookAt < WINDOW_WATCH_MS) {
+                watchWindows();
+                return;
+            }
+            if (busy(now)) {
+                if (windowsChangedSinceLastLook()) scanNow(now, "windows changed");
+                watchWindows(now + WINDOW_WATCH_MS);
+                return;
+            }
+            lookAndPlace(true);
             watchWindows();
         }
     };
@@ -277,20 +404,47 @@ public final class OfferFilterService extends AccessibilityService {
         @Override public void run() {
             lookQueued.set(false);
             if (stopped) return;
-            lookAndPlace();
+            lookAndPlace(false);
             watchWindows();
         }
     };
-    /** The touch watch came up: a confirmation held back for it is read (and tapped) now. */
-    private final Runnable watchCameUp = new Runnable() {
+    /** The touch watch came up: a confirmation held back for it is tapped now. */
+    private final Runnable watchCameUp = () -> {
+        if (!stopped) tapHeldConfirmation("touch watch up");
+    };
+    /** The touch watch is still not up {@link #WATCH_HOLD_MS} after it was asked for: the confirmation goes on. */
+    private final Runnable watchHoldOver = () -> {
+        if (!stopped) tapHeldConfirmation("touch watch not up after " + WATCH_HOLD_MS + " ms");
+    };
+    /**
+     * After the first Decline tap, every {@link #CONFIRM_POLL_MS}: Dasher's question is looked for. A read that
+     * Dasher's events asked for comes first and looks anyway; otherwise Android's list of windows is asked for (not
+     * Dasher), and the windows are read (each at most once, and only so far) when that list, or Dasher's events,
+     * changed since the last read began. Ends after {@link #CONFIRM_POLL_WINDOW_MS}, or once the question is tapped.
+     */
+    private final Runnable confirmPoll = new Runnable() {
         @Override public void run() {
-            if (!confirmationHeld || stopped) return;
-            confirmationHeld = false;
-            scanNow(SystemClock.uptimeMillis(), "touch watch up");
+            confirmPollPending = false;
+            if (stopped) return;
+            long now = SystemClock.uptimeMillis();
+            if (!polling(now)) {
+                endConfirmationPoll(now);
+                return;
+            }
+            if (queued.get() == QUEUED_NONE
+                    && (dasherEvents.get() != lastReadEvents || windowsChangedSinceLastLook())) {
+                // Once the question is tapped, the offer closing is read again every moment, as after any read.
+                if (checkOffer("confirmation poll", now, MAX_CONFIRM_NODES)) scheduleRecheck();
+                watchWindows();
+            }
+            schedulePoll();
         }
     };
-    /** Android would not add the touch watch: asked again at the next read. */
-    private final Runnable watchRefused = () -> touchWatchOn = false;
+    /** Clicks left for after the read their events asked for. */
+    private final Runnable lateClicksRun = () -> {
+        lateClicksPending = false;
+        if (!stopped) readLateClicks();
+    };
     /**
      * On the main thread: puts the touch watch up or down as the scanner last asked, whatever order these runs come
      * in, and publishes whether a touch would now be noticed.
@@ -302,24 +456,49 @@ public final class OfferFilterService extends AccessibilityService {
             else touchWatch.stop();
             boolean up = touchWatch.isWatching();
             watchState = up ? WATCH_UP : wanted ? WATCH_REFUSED : WATCH_DOWN;
+            // Android would not add it: the scanner asks again at its next read (a count, not a message, so a read
+            // first in the queue sees it all the same).
+            if (wanted && !up) watchRefusals++;
             if (stopped) return;
-            if (up) scanner.post(watchCameUp);
-            else if (wanted) scanner.post(watchRefused);
+            if (up) scanner.postAtFrontOfQueue(watchCameUp);
         }
     };
-    /** Takes every event noted since the last hand-off: one read for all of them. */
-    private final Runnable queuedEvents = () -> {
-        eventsQueued.set(false);
-        boolean change = changeNoted.getAndSet(false);
-        onEvent(!change, null, eventsQueuedAt);
+    /** Takes every event noted since the last hand-off: its clicks, then one read for all of them. */
+    private final Runnable queuedEvents = new Runnable() {
+        @Override public void run() {
+            // Before the hand-off is marked taken: the main thread sets the time only when it queues the next one.
+            long at = eventsQueuedAt;
+            int state = queued.getAndSet(QUEUED_NONE);
+            boolean change = changeNoted.getAndSet(false);
+            List<Click> taken = new ArrayList<>();
+            for (Click click = clicks.poll(); click != null; click = clicks.poll()) taken.add(click);
+            onEvents(change, taken, at);
+            // Read after read at the front, nothing else would ever run (Android's news of Dasher's ring, the
+            // timers): when events came during a read taken from the front, the next read waits for what is due
+            // behind it. What waits there and can wait (the window watch, settling, clicks) sees that read queued
+            // and steps aside.
+            if (state == QUEUED_FRONT && queued.compareAndSet(QUEUED_FRONT, QUEUED_BACK)) {
+                scanner.removeCallbacks(this);
+                scanner.post(this);
+            }
+        }
     };
     private final Runnable syncAutomation = this::syncAutomation;
-    /** What came after an offer left alone: an unrecognised screen settling, or the minute running out. */
+    /**
+     * What came after an offer left alone: an unrecognised screen settling, or the minute running out. It can wait:
+     * while an offer or confirmation is up, a decline is under way, or a read Dasher's events asked for is queued, it
+     * comes back a moment later.
+     */
     private final Runnable aftermathTick = new Runnable() {
         @Override public void run() {
             if (stopped) return;
+            long now = SystemClock.uptimeMillis();
+            if (busy(now) || queued.get() != QUEUED_NONE) {
+                scanner.postAtTime(this, now + BUSY_RETRY_MS);
+                return;
+            }
             noteNotificationDecline();
-            acceptedTracker.tick(SystemClock.uptimeMillis(), screen.dasherReadable);
+            acceptedTracker.tick(now, screen.dasherReadable);
             applyNotes();
         }
     };
@@ -373,7 +552,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (service == null || !service.screen.dasherReadable) return false;
         boolean onScreen;
         try {
-            onScreen = service.see(false).dasherRoot != null;
+            onScreen = service.see(false, null).dasherRoot != null;
         } catch (RuntimeException unreadable) {
             onScreen = false;
         }
@@ -421,12 +600,15 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
-    /** Asks for a fresh screen read, e.g. after a notification or a rules change. Never opens Dasher. */
+    /**
+     * Asks for a fresh screen read, e.g. after a notification or a rules change. Never opens Dasher. A notification
+     * may be an offer's, so the read goes ahead of anything else queued.
+     */
     static void requestCheckFromNotification() {
         OfferFilterService service = active;
         if (service == null) return;
         long at = SystemClock.uptimeMillis();
-        service.scanner.post(() -> {
+        service.scanner.postAtFrontOfQueue(() -> {
             if (!service.stopped) service.scanNow(at, "check");
         });
     }
@@ -478,18 +660,39 @@ public final class OfferFilterService extends AccessibilityService {
         long at = SystemClock.uptimeMillis();
         Click click = type == AccessibilityEvent.TYPE_VIEW_CLICKED ? Click.of(event, at) : null;
         boolean content = type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED;
+        boolean change = click == null && !content;
+        // First: work that is not essential, under way on the scanner, stops at its next step.
+        if (change) windowChanges.incrementAndGet();
+        dasherEvents.incrementAndGet();
         if (onScannerThread()) {
-            onEvent(content, click, at);
-        } else if (click != null) {
-            scanner.post(() -> onEvent(false, click, at));
-        } else {
-            // Noted before the hand-off is queued, so the scanner taking the hand-off always sees it.
-            if (!content) changeNoted.set(true);
-            // A read already queued is not queued again: it reads the newest screen anyway.
-            if (eventsQueued.compareAndSet(false, true)) {
-                eventsQueuedAt = at;
+            onEvents(change, click == null ? Collections.<Click>emptyList() : Collections.singletonList(click), at);
+            return;
+        }
+        // Noted before the hand-off is queued, so the scanner taking the hand-off always sees it.
+        if (click != null) clicks.add(click);
+        else if (change) changeNoted.set(true);
+        // A window change may be an offer or its confirmation, and so may anything while an offer is (or lately was)
+        // up or a decline is under way: read ahead of everything else queued.
+        handOff(change || busyPublished || at < hotUntil, at);
+    }
+
+    /**
+     * Queues the scanner's hand-off of Dasher's events: once for any number of them (it reads the newest screen
+     * anyway), at the back of its queue, or at the front when {@code urgent} (moved there if it was queued behind).
+     */
+    private void handOff(boolean urgent, long at) {
+        while (true) {
+            int state = queued.get();
+            if (state == QUEUED_FRONT || (state == QUEUED_BACK && !urgent)) return;
+            if (!queued.compareAndSet(state, urgent ? QUEUED_FRONT : QUEUED_BACK)) continue;
+            if (state == QUEUED_NONE) eventsQueuedAt = at;
+            if (urgent) {
+                scanner.removeCallbacks(queuedEvents);
+                scanner.postAtFrontOfQueue(queuedEvents);
+            } else {
                 scanner.post(queuedEvents);
             }
+            return;
         }
     }
 
@@ -576,14 +779,22 @@ public final class OfferFilterService extends AccessibilityService {
     // ---- Scheduling (scanner thread) ----
 
     /**
-     * One event of Dasher's, or a click with its facts. Read at once, except a content change while nothing is up
-     * that comes within {@link #QUIET_SCAN_GAP_MS} of the last such read: it waits for one read at the end of that
-     * gap, which takes in every change until then.
+     * Dasher's events, handed over as one: the clicks among them, then one read. A click while an offer or
+     * confirmation is up or a decline is under way is named at once by what its event says and by the last offer
+     * read's controls (no reading around it); any other click is read around after the read. The read is at once,
+     * except a content change while nothing is up that comes within {@link #QUIET_SCAN_GAP_MS} of the last such read:
+     * it waits for one read at the end of that gap, which takes in every change until then.
+     *
+     * @param change whether a window change is among them
      */
-    private void onEvent(boolean content, Click click, long at) {
+    private void onEvents(boolean change, List<Click> taken, long at) {
         if (stopped) return;
-        if (click != null) observeClick(click);
         long now = SystemClock.uptimeMillis();
+        for (Click click : taken) {
+            if (busy(now)) observeClick(click, false);
+            else lateClicks.addLast(new LateClick(click));
+        }
+        boolean content = !change && taken.isEmpty();
         if (content && quiet(now)) {
             if (quietScanPending) return;
             long due = quietReadEndAt + QUIET_SCAN_GAP_MS;
@@ -598,7 +809,8 @@ public final class OfferFilterService extends AccessibilityService {
             quietReadEndAt = lastScanEndAt;
             return;
         }
-        scanNow(at, click != null ? "click" : content ? "content" : "change");
+        scanNow(at, change ? "change" : !taken.isEmpty() ? "click" : "content");
+        readLateClicks();
     }
 
     /**
@@ -609,6 +821,19 @@ public final class OfferFilterService extends AccessibilityService {
         return !offerEvidence && !recheckPending && !declineState.hasPendingConfirmation(now);
     }
 
+    /**
+     * An offer or confirmation is up (the last read showed one, or any of an offer's facts or controls), or a decline
+     * is under way.
+     */
+    private boolean busy(long now) {
+        return offerOnScreen || offerEvidence || declineState.hasPendingConfirmation(now);
+    }
+
+    /** {@link #busy}, or an offer or confirmation was seen within {@link #HOT_MS}. */
+    private boolean hot(long now) {
+        return busy(now) || now - offerSeenAt < HOT_MS;
+    }
+
     /** Reads now, and keeps reading while the screen settles. */
     private void scanNow(long eventAt, String trigger) {
         scanner.removeCallbacks(quietScan);
@@ -616,26 +841,131 @@ public final class OfferFilterService extends AccessibilityService {
         scanner.removeCallbacks(recheck);
         recheckPending = false;
         recheckUntil = SystemClock.uptimeMillis() + RECHECK_WINDOW_MS;
-        if (checkOffer(trigger, eventAt)) scheduleRecheck();
+        if (checkOffer(trigger, eventAt, MAX_SCAN_NODES)) scheduleRecheck();
         watchWindows();
     }
 
+    /**
+     * Reads again {@link #RECHECK_INTERVAL_MS} from now. Not while Dasher's question is polled for after the first
+     * Decline tap: the poll reads instead, and only what changed.
+     */
     private void scheduleRecheck() {
+        if (recheckPending || polling(SystemClock.uptimeMillis())) return;
         recheckPending = true;
         scanner.postDelayed(recheck, RECHECK_INTERVAL_MS);
     }
 
     /** Keeps looking at the windows while Dasher is on screen: {@link #WINDOW_WATCH_MS} after the last look. */
     private void watchWindows() {
-        if (watchPending || stopped || active != this || screen.area == null) return;
-        watchPending = true;
-        scanner.postAtTime(windowWatch, Math.max(lastLookAt + WINDOW_WATCH_MS, SystemClock.uptimeMillis()));
+        watchWindows(SystemClock.uptimeMillis());
     }
 
-    /** A look at the windows, then the tab and guide placed by it. */
-    private void lookAndPlace() {
-        lookSafely();
+    /** As {@link #watchWindows()}, not before {@code notBefore} (uptime). */
+    private void watchWindows(long notBefore) {
+        if (watchPending || stopped || active != this || screen.area == null) return;
+        watchPending = true;
+        scanner.postAtTime(windowWatch, Math.max(lastLookAt + WINDOW_WATCH_MS, notBefore));
+    }
+
+    /**
+     * A look at the windows, then the tab and guide placed by it. When {@code yielding}, it is cut short at Dasher's
+     * next event (whose read looks anyway), and then places nothing.
+     */
+    private void lookAndPlace(boolean yielding) {
+        BooleanSupplier stop = null;
+        if (yielding) {
+            long events = dasherEvents.get();
+            stop = () -> dasherEvents.get() != events;
+        }
+        try {
+            if (look(stop) == null) return;
+        } catch (RuntimeException unreadable) {
+            if (!Screen.NOT_SHOWN.equals(screen)) screen = Screen.NOT_SHOWN;
+        }
         syncOverlay();
+    }
+
+    /**
+     * Whether Android's list of windows differs from what the last look found (another app in front, the shade, a
+     * dialog of Dasher's). It asks Android only, never Dasher; a list that cannot be had counts as changed.
+     */
+    private boolean windowsChangedSinceLastLook() {
+        try {
+            List<AccessibilityWindowInfo> listed = windowSource.get();
+            return windowsSignature(listed == null ? Collections.<AccessibilityWindowInfo>emptyList() : listed)
+                    != lastLookWindows;
+        } catch (RuntimeException unreadable) {
+            return true;
+        }
+    }
+
+    /**
+     * A fingerprint of the windows that matter to a read (apps' windows, the split divider, system surfaces), from
+     * what Android listed: their kinds, IDs, layers, which is active and where they are. Offer Filter's own are left
+     * out, and so are overlays (ours, the touch watch).
+     */
+    private long windowsSignature(List<AccessibilityWindowInfo> listed) {
+        long signature = 17;
+        Rect bounds = new Rect();
+        for (AccessibilityWindowInfo window : listed) {
+            int type = window.getType();
+            if (type != AccessibilityWindowInfo.TYPE_APPLICATION && type != AccessibilityWindowInfo.TYPE_SYSTEM
+                    && type != AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) {
+                continue;
+            }
+            if (isOwnWindow(window.getId())) continue;
+            window.getBoundsInScreen(bounds);
+            signature = signature * 31 + java.util.Objects.hash(type, window.getId(), window.getLayer(),
+                    window.isActive(), bounds.left, bounds.top, bounds.right, bounds.bottom);
+        }
+        return signature;
+    }
+
+    // ---- Dasher's question after the first Decline tap (scanner thread) ----
+
+    /** A decline of ours is under way and its question has not been tapped yet. */
+    private boolean awaitingConfirmation(long now) {
+        return declineState.hasPendingConfirmation(now) && !declineState.confirmationTapped();
+    }
+
+    /** Whether the question is being polled for. */
+    private boolean polling(long now) {
+        return confirmPollUntil != NEVER && now < confirmPollUntil && awaitingConfirmation(now);
+    }
+
+    /** From a Decline tap: the question is looked for every {@link #CONFIRM_POLL_MS}, instead of a full re-read. */
+    private void startConfirmationPoll(long tappedAt) {
+        confirmPollUntil = tappedAt + CONFIRM_POLL_WINDOW_MS;
+        scanner.removeCallbacks(recheck);
+        recheckPending = false;
+        schedulePoll();
+    }
+
+    private void schedulePoll() {
+        if (confirmPollPending || stopped || confirmPollUntil == NEVER) return;
+        confirmPollPending = true;
+        long now = SystemClock.uptimeMillis();
+        scanner.postAtTime(confirmPoll, Math.min(now + CONFIRM_POLL_MS, Math.max(now, confirmPollUntil)));
+    }
+
+    /** The poll is over: a decline still waiting for its question goes back to being read again every moment. */
+    private void endConfirmationPoll(long now) {
+        confirmPollUntil = NEVER;
+        scanner.removeCallbacks(confirmPoll);
+        confirmPollPending = false;
+        if (awaitingConfirmation(now)) scheduleRecheck();
+    }
+
+    /** A confirmation held back for the touch watch: tapped now, its authority checked again. */
+    private void tapHeldConfirmation(String why) {
+        Scan held = heldConfirmation;
+        if (held == null) return;
+        heldConfirmation = null;
+        scanner.removeCallbacks(watchHoldOver);
+        readTrigger = why;
+        boolean more = handleConfirmation(held, FilterStore.load(this), SystemClock.uptimeMillis());
+        syncAutomation();
+        if (more) scheduleRecheck();
     }
 
     /**
@@ -674,10 +1004,15 @@ public final class OfferFilterService extends AccessibilityService {
      * A click Dasher reported: the user's Accept or Decline, Offer Filter's own tap coming back, or something else.
      * Each near an offer goes in the screens log with its shape and words, so a report shows whether Dasher reports
      * the user's taps at all; one away from offers, only its shape, now and then.
+     *
+     * @param walk whether the nodes around the click may be read (nothing is up); without it, only what the event
+     *     and its node say, and whether the node is the last offer's control
+     * @return false when that reading was cut short by Dasher's next event: nothing was done, try again later
      */
-    private void observeClick(Click click) {
+    private boolean observeClick(Click click, boolean walk) {
         long now = click.at;
-        ClickEvidence tap = readClick(click, now);
+        ClickEvidence tap = readClick(click, now, walk);
+        if (tap == null) return false;
         boolean near = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS;
         if (tap.own || near) {
             DiagnosticLog.logScreen(this, "tap (" + (tap.own ? "Offer Filter's own" : "not Offer Filter's") + ") "
@@ -701,6 +1036,39 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (!tap.own && progressTap(tap)) ActiveRouteStore.invalidateTravel(this);
         applyNotes();
+        return true;
+    }
+
+    /**
+     * Reads around the clicks left for after their read, oldest first, while no read of Dasher's events is waiting
+     * and nothing is up. A reading cut short by Dasher's next event is tried again after that event's read, a few
+     * times within {@link #CLICK_READ_WAIT_MS}; after that, or once an offer is up, the click is named without it.
+     */
+    private void readLateClicks() {
+        while (!lateClicks.isEmpty() && !stopped) {
+            long now = SystemClock.uptimeMillis();
+            LateClick late = lateClicks.peekFirst();
+            boolean mayWalk = late.tries < CLICK_READ_TRIES && now - late.click.at < CLICK_READ_WAIT_MS;
+            if (mayWalk && queued.get() != QUEUED_NONE) {
+                postLateClicks();
+                return;
+            }
+            lateClicks.pollFirst();
+            boolean walk = mayWalk && !busy(now);
+            late.tries++;
+            if (!observeClick(late.click, walk)) {
+                lateClicks.addFirst(late);
+                postLateClicks();
+                return;
+            }
+        }
+    }
+
+    /** At the back of the scanner's queue: after the reads Dasher's events asked for. */
+    private void postLateClicks() {
+        if (lateClicksPending || stopped) return;
+        lateClicksPending = true;
+        scanner.post(lateClicksRun);
     }
 
     /** A tap on a pickup or delivery step: the stored route's travel is stale. */
@@ -718,13 +1086,19 @@ public final class OfferFilterService extends AccessibilityService {
      * What a click says, read on the scanner thread from the facts taken as it came: the labels on its node, on up to
      * three nodes above it (where an Android View's button text is) and on a few below it (where Jetpack Compose puts
      * a button's label), and whether the node is the Accept or Decline control the last offer read found. A click on
-     * the node Offer Filter tapped moments ago is that tap's echo; nothing around it is read then.
+     * the node Offer Filter tapped moments ago is that tap's echo; nothing around it is read then. Without {@code walk}
+     * (an offer is up) nothing around it is read either: each node is a call into Dasher, whose UI thread is drawing
+     * the offer.
+     *
+     * @return null when reading around it was cut short by Dasher's next event
      */
-    private ClickEvidence readClick(Click click, long now) {
+    private ClickEvidence readClick(Click click, long now, boolean walk) {
         AccessibilityNodeInfo source = click.source;
-        boolean ownTarget = source != null && ownTapTarget != null && now - ownTapAt <= OWN_TARGET_ECHO_MS
-                && sameNode(source, ownTapTarget);
-        boolean own = now - ownTapAt <= OWN_TAP_ECHO_MS || ownTarget;
+        // An echo comes after the tap: a click from before it (read around later than the tap) is not its echo.
+        long sinceOwnTap = now - ownTapAt;
+        boolean ownTarget = source != null && ownTapTarget != null && sinceOwnTap >= 0
+                && sinceOwnTap <= OWN_TARGET_ECHO_MS && sameNode(source, ownTapTarget);
+        boolean own = (sinceOwnTap >= 0 && sinceOwnTap <= OWN_TAP_ECHO_MS) || ownTarget;
         // The last offer's controls name a click only until a read found that offer gone: a later click on a node
         // with the same identity (Dasher may reuse it on its next screen) is not on that offer.
         boolean fresh = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS
@@ -743,13 +1117,20 @@ public final class OfferFilterService extends AccessibilityService {
                     sourceClass = full.substring(full.lastIndexOf('.') + 1);
                 }
             }
-            // Offer Filter's own tap coming back costs no further calls into Dasher.
+            // Offer Filter's own tap coming back costs no further calls into Dasher, and nor does a click while an
+            // offer is up: the node's own labels are already here.
             AccessibilityNodeInfo node = own ? null : source;
-            for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++, node = node.getParent()) {
+            long events = dasherEvents.get();
+            BooleanSupplier stop = () -> dasherEvents.get() != events;
+            for (int depth = 0; depth < MAX_ACCEPT_LABEL_ANCESTORS && node != null; depth++) {
                 addTapLabel(above, node.getText());
                 addTapLabel(above, node.getContentDescription());
+                if (!walk || depth + 1 >= MAX_ACCEPT_LABEL_ANCESTORS) break;
+                if (stop.getAsBoolean()) return null;
+                beforeNodeFetch();
+                node = node.getParent();
             }
-            if (source != null && !own) readBelow(source, below);
+            if (source != null && !own && walk && !readBelow(source, below, stop)) return null;
         } catch (RuntimeException unreadable) {
             // What was read before the node went away is kept.
         }
@@ -757,14 +1138,20 @@ public final class OfferFilterService extends AccessibilityService {
                 own, ownTapTarget == null ? -1 : Math.max(0, now - ownTapAt), above, below);
     }
 
-    /** The labels of the visible nodes below {@code source}, breadth first, a few levels and nodes at most. */
-    private static void readBelow(AccessibilityNodeInfo source, List<String> labels) {
+    /**
+     * The labels of the visible nodes below {@code source}, breadth first, a few levels and nodes at most.
+     *
+     * @return false when {@code stop} said to stop before a node was fetched
+     */
+    private static boolean readBelow(AccessibilityNodeInfo source, List<String> labels, BooleanSupplier stop) {
         List<AccessibilityNodeInfo> level = Collections.singletonList(source);
         int visited = 0;
         for (int depth = 0; depth < MAX_TAP_SUBTREE_DEPTH && !level.isEmpty(); depth++) {
             List<AccessibilityNodeInfo> next = new ArrayList<>();
             for (AccessibilityNodeInfo parent : level) {
                 for (int i = 0; i < parent.getChildCount() && visited < MAX_TAP_SUBTREE_NODES; i++) {
+                    if (stop.getAsBoolean()) return false;
+                    beforeNodeFetch();
                     AccessibilityNodeInfo child = parent.getChild(i);
                     if (child == null) continue;
                     visited++;
@@ -776,12 +1163,18 @@ public final class OfferFilterService extends AccessibilityService {
             }
             level = next;
         }
+        return true;
     }
 
     private static void addTapLabel(List<String> labels, CharSequence value) {
         if (value == null) return;
         String label = OfferEvidence.normalize(value.toString());
         if (!label.isEmpty() && !labels.contains(label)) labels.add(label);
+    }
+
+    private static void beforeNodeFetch() {
+        Runnable hook = nodeFetchForTests;
+        if (hook != null) hook.run();
     }
 
     /** Whether two nodes are the same node of the same window, as Android identifies them. */
@@ -795,11 +1188,27 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * On the main thread, at the touch itself: the offer is the user's from this moment. The scanner hands it back
-     * before any further tap, even in the middle of a read; the watch is removed after this touch is delivered.
+     * before any further tap, even in the middle of a read; the watch is removed after this touch is delivered. A touch
+     * during the app's own tap, or within {@link #OWN_ACTION_ECHO_MS} after it, is that tap's echo (Android can report
+     * the app's own action as a touch outside the watch): it is logged and changes nothing.
+     *
+     * @param touchAt when the touch landed (uptime), as Android stamped it
      */
-    private void touchedDuringDecline() {
+    private void touchedDuringDecline(long touchAt) {
+        long tapAt = ownActionAt;
+        long tapDoneAt = ownActionDoneAt;
+        boolean tapped = tapAt > Long.MIN_VALUE / 2;
+        if (tapped && touchAt >= tapAt && (tapDoneAt < tapAt || touchAt - tapDoneAt <= OWN_ACTION_ECHO_MS)) {
+            DiagnosticLog.log(this, "accessibility", "touch ignored: own-action echo, " + (touchAt - tapAt)
+                    + " ms after Offer Filter's tap");
+            return;
+        }
+        long since = tapped && touchAt >= tapAt ? touchAt - tapAt : -1;
+        touchSinceOwnAction = since;
+        DiagnosticLog.log(this, "accessibility", "touch during decline: the user's"
+                + (since >= 0 ? ", " + since + " ms after Offer Filter's last tap" : ""));
         touches.incrementAndGet();
-        scanner.post(this::takeOverIfTouched);
+        scanner.postAtFrontOfQueue(this::takeOverIfTouched);
     }
 
     private void takeOverIfTouched() {
@@ -827,14 +1236,20 @@ public final class OfferFilterService extends AccessibilityService {
         declineState.reset();
         scanner.removeCallbacks(recheck);
         recheckPending = false;
+        heldConfirmation = null;
+        scanner.removeCallbacks(watchHoldOver);
+        endConfirmationPoll(now);
         syncAutomation();
         if (declinedEntry != null && !alreadyConfirmed) {
             recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                     declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence), -1, false);
+                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence)
+                    .withScore(declinedEntry.scorePercent), -1, false);
         }
-        DiagnosticLog.log(this, "accessibility", "screen touched; automatic decline stopped"
-                + (alreadyConfirmed ? " after its confirmation was tapped" : ""));
+        long since = touchSinceOwnAction;
+        DiagnosticLog.log(this, "accessibility", "screen touched"
+                + (since >= 0 ? " (" + since + " ms after Offer Filter's last tap)" : "")
+                + "; automatic decline stopped" + (alreadyConfirmed ? " after its confirmation was tapped" : ""));
         status(alreadyConfirmed
                 ? "You touched the screen after the decline was confirmed; nothing more will be tapped."
                 : "You touched the screen, so auto-decline stopped for this offer.");
@@ -856,14 +1271,25 @@ public final class OfferFilterService extends AccessibilityService {
 
     // ---- Reading (scanner thread) ----
 
-    /** @return true when another check should follow shortly */
-    private boolean checkOffer(String trigger, long eventAt) {
+    /**
+     * @param maxNodes how many nodes of the window Dasher can be read in are read at most; below
+     *     {@link #MAX_SCAN_NODES} (a poll for Dasher's question), a window with more is left unread, not judged
+     * @return true when another check should follow shortly
+     */
+    private boolean checkOffer(String trigger, long eventAt, int maxNodes) {
         long started = SystemClock.uptimeMillis();
         long startedNanos = System.nanoTime();
+        boolean hotAtStart = hot(started);
         scanNodes = 0;
         scanWindows = 0;
+        readWindowsNanos = 0;
+        readRootNanos = 0;
+        readTraversalNanos = 0;
+        lastReadEvents = dasherEvents.get();
+        readWindowChanges = windowChanges.get();
         readTrigger = trigger;
         readWaitedMs = Math.max(0, started - eventAt);
+        readCap = maxNodes;
         DasherScene before = scene;
         sceneLabels = null;
         readSkipped = false;
@@ -878,10 +1304,13 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
+            // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
+            if (offerOnScreen || offerEvidence) offerSeenAt = lastScanEndAt;
             syncAutomation();
             syncOverlay();
-            noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt);
+            noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt,
+                    hotAtStart || busy(lastScanEndAt));
         }
     }
 
@@ -897,14 +1326,22 @@ public final class OfferFilterService extends AccessibilityService {
         return DasherScene.of(sceneLabels, ActiveRouteStore.load(this) != null);
     }
 
-    /** One compact line for a slow read, at most once a minute: what the phone really costs, for the next report. */
-    private void noteSlowScan(long tookMs, String trigger, long waitedMs) {
+    /**
+     * One compact line for a slow read, with where its time went (listing the windows, fetching roots, walking the
+     * nodes): what the phone really costs, for the next report. Every one while an offer or confirmation is (or was
+     * just) up or a decline is under way; while nothing is up, once a minute at most.
+     */
+    private void noteSlowScan(long tookMs, String trigger, long waitedMs, boolean offerUp) {
         if (tookMs < SLOW_SCAN_MS) return;
         long now = SystemClock.uptimeMillis();
-        if (now - slowLoggedAt < SLOW_SCAN_LOG_EVERY_MS) return;
-        slowLoggedAt = now;
+        if (!offerUp) {
+            if (now - slowLoggedAt < SLOW_SCAN_LOG_EVERY_MS) return;
+            slowLoggedAt = now;
+        }
         DiagnosticLog.log(this, "scan", "slow read: " + tookMs + " ms, " + scanNodes + " nodes, " + scanWindows
-                + " windows, after " + trigger + " (waited " + Math.max(0, waitedMs) + " ms)");
+                + " windows, after " + trigger + " (waited " + Math.max(0, waitedMs) + " ms); windows "
+                + readWindowsNanos / 1_000_000L + " ms, root " + readRootNanos / 1_000_000L + " ms, traversal "
+                + readTraversalNanos / 1_000_000L + " ms" + (offerUp ? "; offer up" : ""));
     }
 
     /**
@@ -914,11 +1351,24 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void syncAutomation() {
         if (silencer == null) return;
-        boolean declining = !stopped && declineState.hasPendingConfirmation(SystemClock.uptimeMillis());
+        long now = SystemClock.uptimeMillis();
+        boolean declining = !stopped && declineState.hasPendingConfirmation(now);
         OfferSnapshot under = declining ? declinedOffer : null;
         if (decliningOffer != under) decliningOffer = under;
+        // For the main thread, which puts Dasher's events at the front of the scanner's queue while these hold.
+        boolean busy = busy(now);
+        if (busy) offerSeenAt = now;
+        busyPublished = busy;
+        hotUntil = offerSeenAt + HOT_MS;
+        int refusals = watchRefusals;
+        if (refusals != watchRefusalsSeen) {
+            // Android would not add the watch: it is not on, and is asked for again now while declining.
+            watchRefusalsSeen = refusals;
+            touchWatchOn = false;
+        }
         if (declining != touchWatchOn) {
             touchWatchOn = declining;
+            if (declining) watchAskedAt = now;
             // Ahead of whatever the main thread has queued (the history line, the tab): a touch from the decline tap
             // on must be noticed. Each run puts the watch as last asked, so the order of these runs does not matter.
             onMainFirst(syncWatch);
@@ -963,7 +1413,28 @@ public final class OfferFilterService extends AccessibilityService {
             offerDeclineTarget = null;
             return false;
         }
-        Scan scan = read(root);
+        // Waiting for Dasher's question, a read of the window it is not in yet stops at a window change (the question's
+        // own window, perhaps): the read for that change, first in the queue, reads the new window at once. A few in a
+        // row at most, so a stream of window changes cannot keep every read from finishing.
+        BooleanSupplier stop = null;
+        if (awaitingConfirmation(now) && cutReads < MAX_CUT_READS) {
+            long changes = readWindowChanges;
+            stop = () -> windowChanges.get() != changes;
+        }
+        Scan scan = read(root, readCap, stop);
+        if (scan.abandoned) {
+            cutReads++;
+            readSkipped = true;
+            DiagnosticLog.log(this, "scan", "read cut short by a window change while the question is awaited, after "
+                    + scan.visited + " nodes, " + (SystemClock.uptimeMillis() - now) + " ms");
+            return true;
+        }
+        cutReads = 0;
+        if (scan.truncated && readCap < MAX_SCAN_NODES) {
+            // A poll for Dasher's question reads a window only so far: a bigger one is left to the full reads.
+            readSkipped = true;
+            return true;
+        }
         // A screen too big to read might be an offer: the guide stays off it too, and its changes are read at once.
         offerOnScreen = scan.truncated;
         offerEvidence = scan.truncated;
@@ -976,7 +1447,7 @@ public final class OfferFilterService extends AccessibilityService {
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         boolean pending = declineState.hasPendingConfirmation(now);
-        Scan confirmation = confirmationScan(scan, pending, look.windows);
+        Scan confirmation = confirmationScan(scan, pending, look);
         offerOnScreen = confirmation != null || scan.accept != null || scan.decline != null;
         // Anything of an offer, even partly drawn, and Dasher's next changes are read at once: they may complete it.
         offerEvidence = offerOnScreen || scan.acceptLabel || scan.declineLabel || anyFact(offer);
@@ -1026,21 +1497,35 @@ public final class OfferFilterService extends AccessibilityService {
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
         reportIfStuck(confirmation, now);
         if (selected < 0 || !declineState.mayConfirm(now)) return true;
-        if (watchState == WATCH_DOWN) {
+        boolean first = !declineState.confirmationTapped();
+        long found = SystemClock.uptimeMillis();
+        if (first && confirmationFoundAt == NEVER) confirmationFoundAt = found;
+        if (watchState == WATCH_DOWN && found - watchAskedAt < WATCH_HOLD_MS) {
             // The touch watch is not up yet (the main thread is busy): a touch now would go unnoticed and the user's
-            // finger could land after our tap. Tapped the moment the watch is up, or at the next read.
-            confirmationHeld = true;
+            // finger could land after our tap. Tapped the moment the watch is up, but never held longer than
+            // WATCH_HOLD_MS after it was asked for: the touch is still checked right before the tap.
+            heldConfirmation = confirmation;
+            scanner.removeCallbacks(watchHoldOver);
+            scanner.postAtTime(watchHoldOver, watchAskedAt + WATCH_HOLD_MS);
             return true;
         }
+        heldConfirmation = null;
+        scanner.removeCallbacks(watchHoldOver);
         Tap tap = ownTap(confirmation.declineTargets.get(selected), declinedOffer);
         if (tap == Tap.TAKEN_OVER || stopped) return false;
         if (tap == Tap.TAPPED) {
             declineState.confirmationSent(now);
+            if (first && firstTapAt != NEVER) {
+                long tapped = SystemClock.uptimeMillis();
+                DiagnosticLog.log(this, "accessibility", "confirmation found " + (confirmationFoundAt - firstTapAt)
+                        + " ms and tapped " + (tapped - firstTapAt) + " ms after the first Decline tap (read after "
+                        + readTrigger + (watchState == WATCH_UP ? "" : "; touch watch not up") + ")");
+            }
             if (declinedEntry != null) {
                 recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                         declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence),
-                        -1, false);
+                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence)
+                        .withScore(declinedEntry.scorePercent), -1, false);
             }
             status("Decline confirmation requested; waiting for Dasher to close the offer.");
         }
@@ -1132,9 +1617,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (scan.accept == null && scan.decline == null) {
             // With capture on, Dasher's other screens (a shopping list, an item, a delivery) are kept too, so their
             // wording can be learned from a shared report. Nothing is decided from them.
+            // Not while a decline of ours is under way: that read is for its confirmation (and the next one keeps it).
             boolean aftermath = left >= 0 && left <= AFTERMATH_CAPTURE_MS && aftermathLines < AFTERMATH_LINES;
-            if (captureOtherScreen(scan, now, aftermath ? "after an offer left (" + Math.round(left / 1000.0) + " s)"
-                    : "other") && aftermath) {
+            if (!declineState.hasPendingConfirmation(now) && captureOtherScreen(scan, now, aftermath
+                    ? "after an offer left (" + Math.round(left / 1000.0) + " s)" : "other") && aftermath) {
                 aftermathLines++;
             }
             declineState.offerGone();
@@ -1203,10 +1689,14 @@ public final class OfferFilterService extends AccessibilityService {
         offerDeclineTarget = scan.decline;
         offerTargetsAt = now;
         offerTargetsEndedAt = NEVER;
-        diagnostic(isAddOn ? "add-on" : "offer", scan, offer, decision);
+        String phase = isAddOn ? "add-on" : "offer";
         String detail = isAddOn ? addOn.summary() : offer.summary();
         String key = DeclineState.offerKey(offer, scan.text);
+        boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE;
+        // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
+        if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
+            if (declines) diagnostic(phase, scan, offer, decision);
             declinedOfferShowing = false;
             // Its decline was ours, even though the user has it now: a seen Accept tap is still learned from.
             acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
@@ -1236,12 +1726,15 @@ public final class OfferFilterService extends AccessibilityService {
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
         if (!declineState.mayDecline(key, now)) {
+            diagnostic(phase, scan, offer, decision);
             if (key.equals(declinedKey)) reportIfStuck(scan, now);
             return declineState.hasPendingConfirmation(now);
         }
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
         Tap tap = dasherStillReadable() ? ownTap(scan.decline, offer) : Tap.REFUSED;
+        long tappedAt = SystemClock.uptimeMillis();
         if (stopped) return false;
+        diagnostic(phase, scan, offer, decision);
         // After the tap, so nothing delays it; ahead of this offer's line, so the offer before has its step first.
         acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
         applyNotes();
@@ -1264,7 +1757,11 @@ public final class OfferFilterService extends AccessibilityService {
             if (firstTap) {
                 declinedKey = key;
                 declinedAt = now;
+                firstTapAt = tappedAt;
+                confirmationFoundAt = NEVER;
             }
+            // Dasher's question is looked for from now on, every CONFIRM_POLL_MS, instead of re-reading everything.
+            startConfirmationPoll(tappedAt);
             DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail
                     + "; read after " + readTrigger + " (waited " + readWaitedMs + " ms)"
                     + "; sound playing: " + OfferSilencer.playing(this));
@@ -1330,27 +1827,51 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * A confirmation surface in any Dasher window while a decline is pending, else in the active window.
+     * Dasher's question about declining. With no decline of ours pending, only in the window just read. With one
+     * pending: in the window just read when it asks the question; else in Dasher's other windows, the newest (front-most)
+     * first, {@link #MAX_CONFIRM_WINDOWS} at most, each read to {@link #MAX_CONFIRM_NODES} at most (a question is a few
+     * nodes), never the window just read again; else in the window just read when it shows a way back beside Decline.
      *
-     * @param listed the windows this read's look found, moments ago
+     * @param look this read's look at the windows, moments ago
      */
-    private Scan confirmationScan(Scan primary, boolean pending, List<AccessibilityWindowInfo> listed) {
-        if (pending) {
-            for (AccessibilityWindowInfo window : listed) {
-                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || isOwnWindow(window.getId())) {
-                    continue;
-                }
-                AccessibilityNodeInfo root = windowRoot(window, true);
-                if (!isDasher(root)) continue;
-                Scan candidate = read(root);
-                if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text)) return candidate;
+    private Scan confirmationScan(Scan primary, boolean pending, Look look) {
+        boolean surface = DeclineConfirmation.isSurface(primary.text);
+        if (!pending) return surface ? primary : null;
+        if (surface && DeclineConfirmation.hasPrompt(primary.text)) return primary;
+        List<AccessibilityWindowInfo> others = new ArrayList<>();
+        for (AccessibilityWindowInfo window : look.windows) {
+            if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || isOwnWindow(window.getId())) continue;
+            // The window just read.
+            if (window == look.dasherWindow
+                    || (look.dasherWindow == null && look.dasherActive && window.isActive())) {
+                continue;
             }
+            others.add(window);
         }
-        return DeclineConfirmation.isSurface(primary.text) ? primary : null;
+        // Front-most first; Android lists them so already, and the sort keeps that order among equals.
+        Collections.sort(others, (a, b) -> Integer.compare(b.getLayer(), a.getLayer()));
+        int windowsRead = 0;
+        for (AccessibilityWindowInfo window : others) {
+            if (windowsRead >= MAX_CONFIRM_WINDOWS) break;
+            AccessibilityNodeInfo root = look.roots.containsKey(window) ? look.roots.get(window)
+                    : windowRoot(window, true);
+            if (!isDasher(root)) continue;
+            windowsRead++;
+            Scan candidate = read(root, MAX_CONFIRM_NODES, null);
+            if (!candidate.truncated && DeclineConfirmation.isSurface(candidate.text)) return candidate;
+        }
+        return surface ? primary : null;
     }
 
-    private Scan read(AccessibilityNodeInfo root) {
-        Scan scan = Scan.of(root);
+    /**
+     * One bounded read of a window, its time counted for the slow-read line.
+     *
+     * @param stop asked before each node is fetched; when it says so, the read stops, {@link Scan#abandoned}
+     */
+    private Scan read(AccessibilityNodeInfo root, int maxNodes, BooleanSupplier stop) {
+        long started = System.nanoTime();
+        Scan scan = Scan.of(root, maxNodes, stop);
+        readTraversalNanos += System.nanoTime() - started;
         scanNodes += scan.visited;
         return scan;
     }
@@ -1377,7 +1898,11 @@ public final class OfferFilterService extends AccessibilityService {
         if (stopped) return Tap.REFUSED;
         ownTapAt = now;
         ownTapTarget = node;
-        return click(node) ? Tap.TAPPED : Tap.REFUSED;
+        // For the touch watch: a touch from here until OWN_ACTION_ECHO_MS after the tap returns is its echo.
+        ownActionAt = now;
+        boolean tapped = click(node);
+        ownActionDoneAt = SystemClock.uptimeMillis();
+        return tapped ? Tap.TAPPED : Tap.REFUSED;
     }
 
     /** Whether Dasher can still be read, as just before a tap: its window is active, or its half of a split screen. */
@@ -1403,10 +1928,13 @@ public final class OfferFilterService extends AccessibilityService {
         final boolean dasherBeside;
         /** The windows Android listed (empty when it would not say). */
         final List<AccessibilityWindowInfo> windows;
+        /** The roots this look already fetched, by listed window: not asked for again. */
+        final java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots;
 
         Look(boolean activeKnown, boolean dasherActive, AccessibilityNodeInfo dasherRoot,
              AccessibilityWindowInfo dasherWindow, boolean split, boolean dasherBeside,
-             List<AccessibilityWindowInfo> windows) {
+             List<AccessibilityWindowInfo> windows,
+             java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots) {
             this.activeKnown = activeKnown;
             this.dasherActive = dasherActive;
             this.dasherRoot = dasherRoot;
@@ -1414,6 +1942,7 @@ public final class OfferFilterService extends AccessibilityService {
             this.split = split;
             this.dasherBeside = dasherBeside;
             this.windows = windows;
+            this.roots = roots;
         }
     }
 
@@ -1426,23 +1955,31 @@ public final class OfferFilterService extends AccessibilityService {
      *
      * <p>Publishes nothing. {@code onScanner}: called on the scanner thread, so it may count the roots it asks for
      * and remember Offer Filter's own windows; otherwise (the notification path) it changes nothing at all.
+     *
+     * @param stop asked before each step (each a call into Android or Dasher); when it says so, the look stops
+     * @return null when {@code stop} stopped it
      */
-    private Look see(boolean onScanner) {
+    private Look see(boolean onScanner, BooleanSupplier stop) {
         List<AccessibilityWindowInfo> listed;
+        long started = System.nanoTime();
         try {
             listed = windowSource.get();
         } catch (RuntimeException unavailable) {
             listed = null;
         }
+        if (onScanner) readWindowsNanos += System.nanoTime() - started;
         if (listed == null) listed = Collections.emptyList();
+        java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots = new java.util.IdentityHashMap<>();
         boolean split = false;
         AccessibilityWindowInfo activeApp = null;
         for (AccessibilityWindowInfo window : listed) {
+            if (stop != null && stop.getAsBoolean()) return null;
             if (window.getType() == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
             if (activeApp == null && window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION && window.isActive()) {
                 activeApp = window;
             }
         }
+        if (stop != null && stop.getAsBoolean()) return null;
         boolean activeOurs = activeApp != null && isOwnWindow(activeApp.getId());
         AccessibilityNodeInfo activeRoot = activeOurs ? null : activeRoot(onScanner);
         boolean activeKnown = activeOurs || activeRoot != null;
@@ -1450,18 +1987,21 @@ public final class OfferFilterService extends AccessibilityService {
         // The active window may have changed between the list and the root: the root is the listed window's only
         // when their IDs agree.
         boolean activeRootListed = activeApp != null && activeRoot != null && sameWindow(activeRoot, activeApp);
+        if (activeRootListed) roots.put(activeApp, activeRoot);
         if (!split) {
             // Full screen: Dasher is readable only as the active window.
             return new Look(activeKnown, dasherActive, dasherActive ? activeRoot : null,
-                    dasherActive && activeRootListed ? activeApp : null, false, false, listed);
+                    dasherActive && activeRootListed ? activeApp : null, false, false, listed, roots);
         }
         boolean otherAppActive = false;
         AccessibilityWindowInfo dasher = null;
         AccessibilityNodeInfo dasherWindowRoot = null;
         for (AccessibilityWindowInfo window : listed) {
             if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            if (stop != null && stop.getAsBoolean()) return null;
             AccessibilityNodeInfo root = isOwnWindow(window.getId()) ? null
                     : window == activeApp && activeRootListed ? activeRoot : windowRoot(window, onScanner);
+            if (root != null) roots.put(window, root);
             if (!isDasher(root)) {
                 if (window.isActive()) otherAppActive = true;
                 continue;
@@ -1475,7 +2015,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         AccessibilityWindowInfo shown = dasher != null && (dasherActive || otherAppActive) ? dasher : null;
         AccessibilityNodeInfo dasherRoot = dasherActive ? activeRoot : shown == null ? null : dasherWindowRoot;
-        return new Look(activeKnown, dasherActive, dasherRoot, shown, true, dasher != null, listed);
+        return new Look(activeKnown, dasherActive, dasherRoot, shown, true, dasher != null, listed, roots);
     }
 
     /**
@@ -1484,9 +2024,20 @@ public final class OfferFilterService extends AccessibilityService {
      * split), or the whole screen when Android does not say; null when Dasher is not on screen. Scanner thread only.
      */
     private Look look() {
+        return look(null);
+    }
+
+    /**
+     * As {@link #look()}, stopping at its next step when {@code stop} says so.
+     *
+     * @return null when stopped: nothing published
+     */
+    private Look look(BooleanSupplier stop) {
         long now = SystemClock.uptimeMillis();
         lastLookAt = now;
-        Look seen = see(true);
+        Look seen = see(true, stop);
+        if (seen == null) return null;
+        lastLookWindows = windowsSignature(seen.windows);
         scanWindows = Math.max(scanWindows, seen.windows.size());
         if (seen.dasherBeside) dasherBesideAt = now;
         Rect area = null;
@@ -1506,8 +2057,10 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** The active window's root. On the scanner thread, counted, and remembered if it is Offer Filter's own. */
     private AccessibilityNodeInfo activeRoot(boolean onScanner) {
+        long started = System.nanoTime();
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (onScanner) {
+            readRootNanos += System.nanoTime() - started;
             rootFetches++;
             if (root != null) rememberIfOwn(root, root.getWindowId());
         }
@@ -1516,8 +2069,10 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** A listed window's root. On the scanner thread, counted, and remembered if it is Offer Filter's own. */
     private AccessibilityNodeInfo windowRoot(AccessibilityWindowInfo window, boolean onScanner) {
+        long started = System.nanoTime();
         AccessibilityNodeInfo root = window.getRoot();
         if (onScanner) {
+            readRootNanos += System.nanoTime() - started;
             rootFetches++;
             if (root != null) rememberIfOwn(root, window.getId());
         }
@@ -1720,6 +2275,16 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
+    /** A click still to be read around (scanner thread), and how often that was tried. */
+    private static final class LateClick {
+        final Click click;
+        int tries;
+
+        LateClick(Click click) {
+            this.click = click;
+        }
+    }
+
     /** What a look at the windows found, for any thread. */
     private static final class Screen {
         static final Screen UNKNOWN = new Screen(false, false, null, false);
@@ -1806,9 +2371,19 @@ public final class OfferFilterService extends AccessibilityService {
         boolean declineLabel;
         boolean truncated;
         int visited;
+        /** Whether the read stopped early because it was told to (it is then {@link #truncated} too). */
+        boolean abandoned;
+        private int maxNodes = MAX_SCAN_NODES;
+        private BooleanSupplier stop;
 
-        static Scan of(AccessibilityNodeInfo root) {
+        /**
+         * @param maxNodes nodes read at most; a window with more is {@link #truncated}
+         * @param stop asked before each child is fetched (each a call into Dasher); null to read on regardless
+         */
+        static Scan of(AccessibilityNodeInfo root, int maxNodes, BooleanSupplier stop) {
             Scan scan = new Scan();
+            scan.maxNodes = maxNodes;
+            scan.stop = stop;
             scan.visit(root, 0);
             return scan;
         }
@@ -1816,7 +2391,7 @@ public final class OfferFilterService extends AccessibilityService {
         /** @return the node's own label, or its only child's, so a parent can join split metric siblings */
         private String visit(AccessibilityNodeInfo node, int depth) {
             if (node == null) return "";
-            if (depth > MAX_SCAN_DEPTH || visited++ >= MAX_SCAN_NODES) {
+            if (depth > MAX_SCAN_DEPTH || visited++ >= maxNodes) {
                 truncated = true;
                 return "";
             }
@@ -1831,7 +2406,15 @@ public final class OfferFilterService extends AccessibilityService {
             }
             List<String> childLabels = new ArrayList<>();
             int children = node.getChildCount();
-            for (int i = 0; i < children && !truncated; i++) childLabels.add(visit(node.getChild(i), depth + 1));
+            for (int i = 0; i < children && !truncated; i++) {
+                if (stop != null && stop.getAsBoolean()) {
+                    abandoned = true;
+                    truncated = true;
+                    break;
+                }
+                beforeNodeFetch();
+                childLabels.add(visit(node.getChild(i), depth + 1));
+            }
             metricParts.addAll(OfferParser.joinMetricSiblings(childLabels));
             return own.isEmpty() && children == 1 && childLabels.size() == 1 ? childLabels.get(0) : own;
         }

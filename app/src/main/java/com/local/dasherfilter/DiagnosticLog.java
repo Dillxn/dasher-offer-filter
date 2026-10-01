@@ -267,6 +267,7 @@ final class DiagnosticLog {
                 + "; highest accepted cents=" + rules.lastAcceptedCents
                 + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
                 + "; learned from manual declines=" + (rules.declined.isEmpty() ? "none" : rules.declined.summary())
+                + "; score by area=" + rules.scoreByArea
                 + learningTimes(context)
                 + "\n"
                 + "In words: " + rules.describe() + "\n\n"

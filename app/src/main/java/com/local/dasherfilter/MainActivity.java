@@ -186,6 +186,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private TextView stopFeeNotice;
     private EditText maxStops;
     private Switch rising;
+    /** Score by area, mirroring the toggle by the constellation; saved at once, as the toggle is. */
+    private Switch scoreByArea;
     private TextView baselineNote;
     private TextView rulesPreview;
     private Switch areasToggle;
@@ -698,6 +700,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
             followNewest = !recentEntries.isEmpty() && entry == recentEntries.get(0);
+            // By area, the constellation picks out the chosen offer's polygon and score.
+            if (minimums != null) minimums.emphasize(followNewest ? null : entry);
             showSelection(entry);
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
@@ -758,7 +762,31 @@ public final class MainActivity extends Activity implements Updater.Busy {
             @Override public void restore(int[] cents) {
                 setMinimums(cents);
             }
+
+            @Override public void setScoreByArea(boolean on) {
+                setScoreMode(on);
+            }
         });
+    }
+
+    /**
+     * Score by area on or off, from the toggle by the constellation or its mirror in Settings: saved at once, through
+     * the same save as the knobs, and applied to any offer on screen; nothing else changes. @return whether it changed
+     */
+    private boolean setScoreMode(boolean on) {
+        FilterSettings saved = FilterStore.load(this);
+        if (saved.scoreByArea == on) {
+            if (scoreByArea != null && scoreByArea.isChecked() != on) scoreByArea.setChecked(on);
+            return false;
+        }
+        FilterStore.save(this, saved.withScoreByArea(on));
+        DiagnosticLog.log(this, "rules", on ? "score by area on: a standalone offer passes at a 100% area score; "
+                + "max stops stays a hard limit, add-ons stay strict" : "score by area off: every minimum must be met");
+        // Its listener finds the mode already saved.
+        if (scoreByArea != null && scoreByArea.isChecked() != on) scoreByArea.setChecked(on);
+        rulesChanged();
+        updateMeter();
+        return true;
     }
 
     /** The minimums' fields in the constellation's spoke order: pay, per mile, per minute, per stop. */
@@ -875,6 +903,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         rulesPreview.setPadding(0, ui.dp(12), 0, 0);
         body.addView(rulesPreview);
 
+        scoreByArea = ui.toggle(body, MinimumsStarView.SCORE_SAID, saved.scoreByArea);
+        scoreByArea.setOnCheckedChangeListener((view, on) -> setScoreMode(on));
+        body.addView(ui.note("Passes an offer whose shape on the chart covers at least the minimums' area (100%), "
+                + "instead of only one that meets every minimum. Max stops still declines; add-ons are still held to "
+                + "every minimum."));
         rising = ui.toggle(body, "Adaptive minimum", saved.risingOffers);
         LinearLayout baseline = ui.row();
         baselineNote = ui.text("", 13, ui.inkSecondary, false);
@@ -1229,7 +1262,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
                 lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
                 lenientCents(stop, saved.perStopCents), lenientStops(saved.maxStops), rising.isChecked(),
-                saved.lastAcceptedCents, saved.best, saved.declined);
+                saved.lastAcceptedCents, saved.best, saved.declined, saved.scoreByArea);
     }
 
     private static int lenientCents(EditText field, int fallback) {
@@ -1289,6 +1322,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout.LayoutParams cardParams = Ui.matchWidth();
         cardParams.topMargin = ui.dp(12);
         ticket.addView(card, cardParams);
+        // The offer's area score as decided, in either mode; a reason by score already says it.
+        if (entry.scorePercent >= 0 && !entry.reason.startsWith(OfferRule.SCORE_REASON)) {
+            TextView score = ui.text(AreaScore.label(entry.scorePercent), 14, ui.inkSecondary, true);
+            score.setPadding(0, ui.dp(8), 0, 0);
+            ticket.addView(score);
+        }
         TextView reason = ui.text(plainReason(entry), 16, ui.ink, true);
         reason.setPadding(0, ui.dp(10), 0, 0);
         ticket.addView(reason);
@@ -1557,7 +1596,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!stops.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
         FilterSettings saved = FilterStore.load(this);
         return new FilterSettings(enabled, parseCents(flat), parseCents(mile), parseCents(minute), parseCents(stop),
-                Integer.parseInt(stops), rising.isChecked(), saved.lastAcceptedCents, saved.best, saved.declined);
+                Integer.parseInt(stops), rising.isChecked(), saved.lastAcceptedCents, saved.best, saved.declined,
+                saved.scoreByArea);
     }
 
     /** Parses a dollar amount from 0 to 1000 with at most two decimals. Blank means zero (rule disabled). */

@@ -146,7 +146,8 @@ final class OfferParser {
 
     /**
      * The most an offer can pay when its pay is unknown only because one bare "+$X" label sits directly beside its
-     * one unlabeled total "$Y": Y + X. Whether the total already includes the amount, the amount comes on top, or
+     * one unlabeled total "$Y" (only the offer's Decline or Accept control, a countdown or the busy badge may come
+     * between them, as on Dasher's screen: "Very busy, +$1, Decline, $5.75"): Y + X. Whether the total already includes the amount, the amount comes on top, or
      * the offer is an add-on paying the amount, pay is at most that sum, so this bounds pay from above and is never
      * pay. Null unless the screen has exactly that shape on a single order (2 stops, so no "+$" per delivery), with
      * no add-on wording, added travel, stop breakdown, rate, pay label on an amount, or a word that could make the
@@ -185,8 +186,33 @@ final class OfferParser {
                 totalAt = i;
             } while (money.find());
         }
-        if (plus == null || total == null || Math.abs(plusAt - totalAt) != 1) return null;
+        if (plus == null || total == null || !besideEachOther(lines, plusAt, totalAt)) return null;
         return total + plus;
+    }
+
+    /** A countdown as Dasher shows it beside an offer ("0:35"). */
+    private static final Pattern COUNTDOWN = Pattern.compile("\\d{1,2}:[0-5]\\d");
+    /** Dasher's short badge for a busy area, shown at the top of an offer ("Very busy"). */
+    private static final List<String> BUSY_BADGES = java.util.Arrays.asList("busy", "very busy");
+
+    /**
+     * Whether the "+$" amount and the total sit side by side: next to each other, or with only offer chrome between
+     * them (Dasher draws "+$1, Decline, $5.75"). Chrome is the offer's own Decline or Accept control, a countdown, or
+     * the short busy badge; any other label between them (a word, a split digit, "incl. tips") keeps them apart.
+     */
+    private static boolean besideEachOther(List<String> lines, int plusAt, int totalAt) {
+        if (plusAt < 0 || totalAt < 0 || plusAt == totalAt) return false;
+        for (int i = Math.min(plusAt, totalAt) + 1; i < Math.max(plusAt, totalAt); i++) {
+            if (!offerChrome(lines.get(i))) return false;
+        }
+        return true;
+    }
+
+    private static boolean offerChrome(String label) {
+        String value = OfferControls.normalize(label);
+        return OfferControls.isButton(value, "decline") || OfferControls.isButton(value, "accept")
+                || COUNTDOWN.matcher(value).matches()
+                || BUSY_BADGES.contains(value.replaceAll("[.!…]+$", ""));
     }
 
     /** True when the "$" at {@code dollarIndex} is written as "+$…": an amount added to something else. */
