@@ -689,6 +689,8 @@ public final class OfferFilterService extends AccessibilityService {
                 // Until the first-run notice is accepted nothing of Dasher's is read. Only when an update is waiting to
                 // reopen the app is it asked which app is in front (no content read), so it never opens over Dasher.
                 status("Waiting for the notice in the app to be accepted; nothing is read or declined until then.");
+                // The one thing posted meanwhile, once per notice version: the app is paused until it is opened.
+                ConsentReminder.postIfPaused(this, "accessibility connected");
                 if (Updater.relaunchPending(this)) {
                     boolean dasher;
                     try {

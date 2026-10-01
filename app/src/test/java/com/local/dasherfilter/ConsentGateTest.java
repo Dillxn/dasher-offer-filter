@@ -96,7 +96,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                     null);
             idle();
 
-            assertEquals("no card", 0, notifications().size());
+            // No card: only the one reminder that the app is paused (ConsentReminderTest).
+            assertEquals("no card", 1, notifications().size());
+            assertNotNull(notifications().getNotification(ConsentReminder.NOTIFICATION_ID));
             assertTrue("nothing decided, hidden or declined", DecisionLog.recent(app, 10).isEmpty());
             assertFalse(OfferNotificationService.hasActiveOffer());
             assertFalse(OfferNotificationService.declineActionWithin(60_000));

@@ -6,8 +6,9 @@ import android.content.SharedPreferences;
 /**
  * The first-run notice and the user's consent to it. Everyone sees it once, existing installs included, and again
  * only when {@link #VERSION} is raised. Until the current version is accepted, the screen reader reads, decides and
- * taps nothing, the notification path posts, hides and sends nothing, and the homepage shows only the notice. "Not
- * now" closes the app and stores nothing. Nothing here ever turns consent off again.
+ * taps nothing, the notification path posts, hides and sends nothing (but for the one reminder that the app is
+ * paused, {@link ConsentReminder}), and the homepage shows only the notice. "Not now" closes the app and stores
+ * nothing. Nothing here ever turns consent off again.
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
@@ -40,10 +41,14 @@ final class Consent {
         return prefs(context).getInt(ACCEPTED_VERSION, 0) >= VERSION;
     }
 
-    /** The user tapped I understand: kept at once, before anything that waited for it runs. */
+    /**
+     * The user tapped I understand: kept at once, before anything that waited for it runs, and the reminder that the
+     * app is paused ({@link ConsentReminder}) goes.
+     */
     static void accept(Context context) {
         prefs(context).edit().putInt(ACCEPTED_VERSION, VERSION).putLong(ACCEPTED_AT, System.currentTimeMillis())
                 .commit();
+        ConsentReminder.cancel(context);
         DiagnosticLog.log(context, "consent", "notice " + VERSION + " accepted; screen reading and background offers "
                 + "may act");
     }

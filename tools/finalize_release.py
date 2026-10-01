@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """One version per source; verify embedded metadata and publish no private build files."""
-import fnmatch, hashlib, json, os, pathlib, re, shutil, subprocess, xml.etree.ElementTree as ET
+import fnmatch, hashlib, html, json, os, pathlib, re, shutil, subprocess, xml.etree.ElementTree as ET
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# The name the user sees, from its one source in the app (AppName.NAME), as tools/legal_texts.py reads it.
+NAME = re.search(r'NAME = "([^"]+)"', (ROOT / 'app/src/main/java/com/local/dasherfilter/AppName.java').read_text()).group(1)
 def run(*args): return subprocess.run(args, check=True, text=True, capture_output=True).stdout
 
 def main():
@@ -56,7 +58,8 @@ def main():
     verification = {'sourceCommit': head, 'versionName': version, 'versionCode': code, 'junit': totals, 'adapterSuites': adapter_suites, 'androidAdapterRuntime': 'Robolectric Android API 26 and 35 (simulation; not a physical phone)', 'liveTransportProbe': json.loads((ROOT / '.channel-check/transport-proof.json').read_text()), 'deviceInstallVerified': False, 'physicalSoundAndVibrationVerified': False}
     (public / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
     (public / 'signing-receipt.txt').write_text('versionName=' + version + '\nversionCode=' + str(code) + '\nsourceCommit=' + head + '\nsha256=' + feed['sha256'] + '\nsize=' + str(feed['size']) + '\n' + signature)
-    (public / 'index.html').write_text(f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offer Filter {version}</title><body><h1>Offer Filter {version}</h1><p>Quiet background review and visible-screen filtering. Not an official DoorDash app.</p><p><a href="/OfferFilter.apk" download="DashBuddy-{version}.apk">Install Offer Filter {version}</a></p><p>Offer Filter was called Offer Filter before 0.4.29. Install over the existing cloud-signed 0.4.x app; do not uninstall. Android may ask for confirmation.</p><p>Unknown offers get a review card that rings once. This app cannot suppress sound or vibration generated inside Dasher itself.</p><p><a href="/verification.json">Test and transport verification</a> · <a href="/signing-receipt.txt">APK signing receipt</a></p></body></html>''')
+    name = html.escape(NAME)
+    (public / 'index.html').write_text(f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{name} {version}</title><body><h1>{name} {version}</h1><p>Quiet background review and visible-screen filtering. Not an official DoorDash app.</p><p><a href="/OfferFilter.apk" download="OfferFilter-{version}.apk">Install {name} {version}</a></p><p>Install over the existing cloud-signed 0.4.x app; do not uninstall. Android may ask for confirmation.</p><p>Unknown offers get a review card that rings once. This app cannot suppress sound or vibration generated inside Dasher itself.</p><p><a href="/verification.json">Test and transport verification</a> · <a href="/signing-receipt.txt">APK signing receipt</a></p></body></html>''')
     print('JUNIT_VERIFIED ' + json.dumps(totals))
     print('ANDROID_ADAPTERS_VERIFIED ' + json.dumps(verification['adapterSuites']))
     print('RELEASE_VERIFIED ' + json.dumps(feed, sort_keys=True))
