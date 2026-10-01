@@ -1,3 +1,33 @@
+## 0.4.45 — a one-time notice; learning knows Dasher's delivery screens
+
+- **A one-time notice before Offer Filter starts.** It says plainly:
+  - it's not a DoorDash app;
+  - what it reads, and that it only ever taps Decline;
+  - that using it may break DoorDash's terms and risk your account;
+  - that it comes with no warranty;
+  - not to handle your phone while driving;
+  - how screen text is kept.
+
+  **After this update Offer Filter does nothing until you open it and tap I understand.** One notification, "Offer Filter is paused until you open it", tells you so. It sounds once, never again.
+- **Terms, Privacy and License** texts are in the app, under the Settings footer, readable offline. They are drafts for a lawyer to review before any public release.
+- **Learning knows Dasher's real delivery screens** from your report: "Deliver to …", "Leave it at the door", "Verify correct order", "Handed order to customer", "Confirm to complete delivery", "Arriving at …". The dash summary ("This dash so far", "Continue dashing") and the zone screens count as waiting for offers. Turn-by-turn navigation alone counts as neither.
+- **The screens log keeps your pickup screens.** Navigation screens are kept at most once a minute, and never push the last 30 minutes of other screens out of a report.
+- "End your current dash?" counts as the dash ending only after you tap End dash.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - the delivery and waiting wording;
+  - navigation;
+  - the end-dash question.
+- **Simulated Android 8 and 15 tests** cover:
+  - the notice blocking every read, tap and card until accepted;
+  - the reminder posting once and cancelling on accept;
+  - the bundled texts matching the files;
+  - pickup screens surviving 100 navigation updates.
+- **Not verified on a real phone:**
+  - Dasher's pickup-leg wording, which your next report should finally show;
+  - the reminder's sound.
+
 ## 0.4.44 — tap an offer on the chart to see it
 
 - **Tap an offer's dot, or inside its polygon, on the chart to open its ticket.** It's the same ticket a skyline building opens, and both show that offer as chosen.
