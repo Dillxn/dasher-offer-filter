@@ -276,19 +276,25 @@ final class DasherTab extends View {
         return true;
     }
 
+    // The tab's own accessibility actions. Plain constants rather than R ids: build-local.sh compiles without a
+    // generated R class. Custom action ids only need to differ from the standard ones.
+    static final int ACTION_MOVE_UP = 0x7e000001;
+    static final int ACTION_MOVE_DOWN = 0x7e000002;
+    static final int ACTION_OTHER_SIDE = 0x7e000003;
+
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
-        if (canMoveUp) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.tab_move_up, "Move up"));
+        if (canMoveUp) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_UP, "Move up"));
         if (canMoveDown) {
-            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.tab_move_down, "Move down"));
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_DOWN, "Move down"));
         }
-        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.tab_other_side, "Move to other side"));
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(ACTION_OTHER_SIDE, "Move to other side"));
     }
 
     @Override public boolean performAccessibilityAction(int action, Bundle arguments) {
-        if (action == R.id.tab_move_up) return listener.move(Move.UP);
-        if (action == R.id.tab_move_down) return listener.move(Move.DOWN);
-        if (action == R.id.tab_other_side) return listener.move(Move.OTHER_SIDE);
+        if (action == ACTION_MOVE_UP) return listener.move(Move.UP);
+        if (action == ACTION_MOVE_DOWN) return listener.move(Move.DOWN);
+        if (action == ACTION_OTHER_SIDE) return listener.move(Move.OTHER_SIDE);
         return super.performAccessibilityAction(action, arguments);
     }
 

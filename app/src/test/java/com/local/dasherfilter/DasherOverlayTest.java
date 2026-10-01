@@ -402,12 +402,12 @@ public class DasherOverlayTest {
         assertTrue(hasAction(actions, "Move down"));
         assertTrue(hasAction(actions, "Move to other side"));
 
-        assertTrue(tab.performAccessibilityAction(R.id.tab_move_up, null));
+        assertTrue(tab.performAccessibilityAction(DasherTab.ACTION_MOVE_UP, null));
         assertEquals(startY - dp(DasherOverlay.STEP_DP), params(tab).y);
-        assertTrue(tab.performAccessibilityAction(R.id.tab_move_down, null));
-        assertTrue(tab.performAccessibilityAction(R.id.tab_move_down, null));
+        assertTrue(tab.performAccessibilityAction(DasherTab.ACTION_MOVE_DOWN, null));
+        assertTrue(tab.performAccessibilityAction(DasherTab.ACTION_MOVE_DOWN, null));
         assertEquals(startY + dp(DasherOverlay.STEP_DP), params(tab).y);
-        assertTrue(tab.performAccessibilityAction(R.id.tab_other_side, null));
+        assertTrue(tab.performAccessibilityAction(DasherTab.ACTION_OTHER_SIDE, null));
         assertEquals(PORTRAIT.right - params(tab).width, params(tab).x);
         assertTrue(tab.onRight());
         assertEquals(startY + dp(DasherOverlay.STEP_DP), params(tab).y);
@@ -415,7 +415,7 @@ public class DasherOverlayTest {
         assertTrue(FilterStore.load(app).enabled);
 
         // At the top of its band "Move up" goes.
-        while (tab.performAccessibilityAction(R.id.tab_move_up, null)) {
+        while (tab.performAccessibilityAction(DasherTab.ACTION_MOVE_UP, null)) {
             // up to the top
         }
         assertEquals(dp(DasherOverlay.TOP_MARGIN_DP), params(tab).y);
