@@ -7,6 +7,11 @@ import java.util.Locale;
 final class DeclineState {
     static final int MAX_ATTEMPTS = 4;
     static final long RETRY_INTERVAL_MS = 250;
+    /**
+     * Tries at Dasher's question at most: the first and two retries, each {@link #RETRY_INTERVAL_MS} after the last at
+     * the earliest. A try Android refused counts as much as one it took that Dasher did not act on.
+     */
+    static final int MAX_CONFIRMATION_TRIES = 3;
     static final long CONFIRMATION_WINDOW_MS = 10_000;
     /** How long after our confirmation tap a missing dialog is taken to mean it closed, not a passing glitch. */
     static final long CONFIRMATION_SETTLE_MS = 1_000;
@@ -15,8 +20,13 @@ final class DeclineState {
     private long lastTapAt;
     private int attempts;
     private long confirmationUntil;
+    /** The last try Android took, and how many it took. */
     private long lastConfirmationAt = -1;
     private int confirmationAttempts;
+    /** Every try at the question, refused or taken, the last one's time, and whether Android refused it. */
+    private int confirmationTries;
+    private long lastTryAt = -1;
+    private boolean lastTryRefused;
 
     /** The offer's facts plus its stable labels; countdowns and the action buttons are excluded. */
     static String offerKey(OfferSnapshot offer, List<String> labels) {
@@ -42,22 +52,57 @@ final class DeclineState {
         attempts++;
         lastTapAt = now;
         confirmationUntil = now + CONFIRMATION_WINDOW_MS;
-        lastConfirmationAt = -1;
-        confirmationAttempts = 0;
+        clearTries();
     }
 
     boolean hasPendingConfirmation(long now) {
         return now < confirmationUntil;
     }
 
-    boolean mayConfirm(long now) {
-        return hasPendingConfirmation(now) && confirmationAttempts < MAX_ATTEMPTS
-                && (lastConfirmationAt < 0 || now - lastConfirmationAt >= RETRY_INTERVAL_MS);
+    /** Whether the confirmation authority ran out by time (not revoked): a question left untapped is given up. */
+    boolean confirmationLapsed(long now) {
+        return confirmationUntil != 0 && now >= confirmationUntil;
     }
 
+    boolean mayConfirm(long now) {
+        return hasPendingConfirmation(now) && confirmationTries < MAX_CONFIRMATION_TRIES
+                && (lastTryAt < 0 || now - lastTryAt >= RETRY_INTERVAL_MS);
+    }
+
+    /** Android took a try at the question's Decline (a request; Dasher may still not act on it). */
     void confirmationSent(long now) {
         lastConfirmationAt = now;
         confirmationAttempts++;
+        tried(now, false);
+    }
+
+    /** Android refused a try at the question's Decline, or there was nothing it could click. */
+    void confirmationRefused(long now) {
+        tried(now, true);
+    }
+
+    private void tried(long now, boolean refused) {
+        confirmationTries++;
+        lastTryAt = now;
+        lastTryRefused = refused;
+    }
+
+    int confirmationTries() {
+        return confirmationTries;
+    }
+
+    /** When the last try at the question was made, or -1. */
+    long lastTryAt() {
+        return lastTryAt;
+    }
+
+    /**
+     * Every try is used and the question is still there: the last was refused, or was taken at least
+     * {@link #RETRY_INTERVAL_MS} ago and Dasher did not act on it.
+     */
+    boolean confirmationExhausted(long now) {
+        return confirmationTries >= MAX_CONFIRMATION_TRIES
+                && (lastTryRefused || now - lastTryAt >= RETRY_INTERVAL_MS);
     }
 
     /** Whether the declined offer's confirmation has been tapped, so the decline is already fully requested. */
@@ -76,8 +121,7 @@ final class DeclineState {
      */
     void endConfirmation() {
         confirmationUntil = 0;
-        lastConfirmationAt = -1;
-        confirmationAttempts = 0;
+        clearTries();
     }
 
     /** The offer left the screen; an identical next offer is a new offer. Confirmation authority is kept. */
@@ -90,7 +134,14 @@ final class DeclineState {
     void reset() {
         tappedOffer = "";
         confirmationUntil = 0;
+        clearTries();
+    }
+
+    private void clearTries() {
         lastConfirmationAt = -1;
         confirmationAttempts = 0;
+        confirmationTries = 0;
+        lastTryAt = -1;
+        lastTryRefused = false;
     }
 }

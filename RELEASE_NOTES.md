@@ -1,3 +1,30 @@
+## 0.4.43 — going back to an offer hands it to you
+
+- **Going back to an offer is yours.** On 0.4.42, Offer Filter tapped Decline, couldn't tap "Decline offer" on Dasher's question, and when you tapped "View offer details" it declined the same offer again. Now:
+  - The same offer showing again after its question, with no tap on the question's Decline, is handed back to you: nothing more is tapped on it, the sound comes back, and you see "Offer Filter stopped tapping this offer".
+  - Any tap of yours on Dasher during a decline hands it back too: "View offer details", "Go back", "Cancel", the offer card, any button. Only a tap on the very button Offer Filter tapped counts as its own.
+  - Once the question has shown, that offer's first Decline is never tapped again. One exception: Dasher closed a question Offer Filter confirmed, nothing of yours was seen, and the offer still shows 2 seconds later. That is logged as a Dasher glitch and gets one more Decline.
+- **Your touch is never mistaken for Offer Filter's own.** A tap Android refused used to be retried on every read, every 0.1 s. Each retry restarted the 0.15 s window in which a touch counts as an echo of Offer Filter's tap, so any touch could be ignored. Each tap now has its own window, which no later tap or read extends.
+- **Tapping Dasher's question.** A refused tap, or one Dasher doesn't act on, is retried at most twice, 0.3 s apart. Then Offer Filter stops, the log says "confirmation not tapped" and the offer is left to you. The question is also found in a window of its own beside a large offer screen; 0.4.42's quick check gave up after 200 items.
+- **The log shows every try at the question:** where it was found (or why not), whether Android took the tap, and why a try was skipped.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - each tap's own echo window;
+  - which clicks are Offer Filter's own;
+  - the question's tries and the 2-second glitch rule.
+- **Simulated Android 8 and 15 tests**, with Dasher's question as your report shows it, cover:
+  - going back with no touch or click reported;
+  - clicks on "View offer details", "Go back", "Cancel", the card and another button, including during a read;
+  - a touch 180 ms after a refused retry counting as yours;
+  - three tries 300 ms apart, then "confirmation not tapped";
+  - the question found beside a 250-item offer screen.
+
+  Each of these failed on 0.4.42.
+- **Not verified on a real phone:**
+  - why Dasher's "Decline offer" was not tapped on yours (the new log lines will show it);
+  - whether Dasher reports your tap on "View offer details".
+
 ## 0.4.42 — declines are quick again; "+$1" offers decline; score by area
 
 - **Declines are quick again.** Since 0.4.39 every read of Dasher's screen waited in one line, and new background reads (for learning, logging and taps) sat in it ahead of the offer. Reads on your phone often take 1–4 seconds, so Dasher's confirmation question was tapped 2–4 seconds after the first Decline, and once you beat Offer Filter to it.
