@@ -7,6 +7,19 @@ import java.util.Arrays;
 import static org.junit.Assert.*;
 
 public final class OfferParserTest {
+    @Test public void hotspotDirectionsAreNotRouteTravelOrFinalStopEvidence() {
+        // Synthetic exclusion fixture, not a claim that Dasher exposes final-stop geometry.
+        OfferSnapshot offer = OfferParser.parse(Arrays.asList("$15.00", "2 stops (5 mi) • 20 min",
+                "Hotspot 0.5 mi · estimated 3 min"));
+        assertEquals(5.0, offer.miles, 0);
+        assertEquals(Integer.valueOf(20), offer.minutes);
+        assertNull(offer.finalStopHotspotMiles);
+        OfferSnapshot hotspotOnly = OfferParser.parse(Arrays.asList("Hotspot 0.5 mi · estimated 3 min"));
+        assertNull(hotspotOnly.miles);
+        assertNull(hotspotOnly.minutes);
+        assertNull(hotspotOnly.finalStopHotspotMiles);
+    }
+
     @Test public void parsesHourOnlyDurationsWithoutGuessingWaitsOrRates() {
         assertEquals(Integer.valueOf(60), OfferParser.parse(Arrays.asList("$28.00", "4 stops (29 mi) • 1 hr")).minutes);
         assertEquals(Integer.valueOf(120), OfferParser.parse(Arrays.asList("$40.00", "4 stops (35 mi) • 2 hrs")).minutes);

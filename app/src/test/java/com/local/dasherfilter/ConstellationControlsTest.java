@@ -59,7 +59,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             node(star, MinimumsStarView.STOPS_ID).getBoundsInParent(target);
             assertTrue("a full touch target: " + target, target.height() >= ui.dp(48) - 1
                     && target.width() >= ui.dp(48) - 1);
-            for (int axis = 0; axis < 4; axis++) {
+            for (int axis = 0; axis < 5; axis++) {
                 float[] knob = star.knobAt(axis);
                 float dx = Math.max(0, Math.max(badge.left - knob[0], knob[0] - badge.right));
                 float dy = Math.max(0, Math.max(badge.top - knob[1], knob[1] - badge.bottom));
@@ -78,7 +78,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals(3, FilterStore.load(app).maxStops);
             FilterSettings saved = FilterStore.load(app);
             assertTrue("still on", saved.enabled);
-            assertArrayEquals("nothing else changes", new int[] {1000, 150, 0, 0}, saved.minimums());
+            assertArrayEquals("nothing else changes", new int[] {1000, 150, 0, 0, 0}, saved.minimums());
             assertFalse("no page opens", settingsShown(content));
 
             // From 10 a tap turns it off again.
@@ -192,7 +192,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertTrue("in the row of round buttons, between score by area and adopt",
                     score.centerX() < toggle.centerX() && toggle.centerX() < adopt.centerX()
                             && Math.abs(toggle.centerY() - adopt.centerY()) < 1);
-            for (int axis = 0; axis < 4; axis++) {
+            for (int axis = 0; axis < 5; axis++) {
                 float[] knob = star.knobAt(axis);
                 assertTrue("clear of the knobs", Math.hypot(knob[0] - toggle.centerX(), knob[1] - toggle.centerY())
                         >= ui.dp(24) + toggle.width() / 2 - 1);
@@ -204,11 +204,11 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("what it learned is kept", 1420, saved.lastAcceptedCents);
             assertEquals("$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
             assertTrue(saved.enabled);
-            assertArrayEquals(new int[] {700, 150, 30, 100}, saved.minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 100, 0}, saved.minimums());
             assertEquals(3, saved.maxStops);
             assertTrue(star.lastSaid(), star.lastSaid().startsWith("Adaptive minimum off."));
             assertTrue(star.getContentDescription().toString()
-                    .endsWith("Adaptive minimum is off, so the adaptive values are not applied."));
+                    .contains("Adaptive minimum is off, so the adaptive values are not applied."));
             assertNull("nothing to adopt with it off", star.adoptBox());
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] adaptive minimum off"));
 
@@ -248,7 +248,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("reset: the highest accepted pay forgotten", 0, saved.lastAcceptedCents);
             assertTrue("and every best rate", saved.best.isEmpty());
             assertTrue("the switch stays as it was", saved.risingOffers);
-            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 100}, saved.minimums());
+            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 100, 0}, saved.minimums());
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] adaptive minimum reset"));
             assertTrue(FilterStore.learningTimes(app)[2] > 0);
         }

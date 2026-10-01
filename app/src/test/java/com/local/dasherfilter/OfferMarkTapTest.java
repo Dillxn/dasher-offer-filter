@@ -251,8 +251,9 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
             assertEquals("the knobs, the max stops badge, the toggles, then the offers newest first",
-                    Arrays.asList(0, 1, 2, 3, MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID,
-                            MinimumsStarView.SCORE_ID, MinimumsStarView.OFFER_ID, MinimumsStarView.OFFER_ID + 1),
+                    Arrays.asList(AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE, AreaScore.STOP,
+                            MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.SCORE_ID,
+                            MinimumsStarView.OFFER_ID, MinimumsStarView.OFFER_ID + 1),
                     childIds(host));
 
             AccessibilityNodeInfo older = nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER);
@@ -335,7 +336,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     private static float[] clearestMark(MinimumsStarView star, int m) {
         float[] best = null;
         double clearest = -1;
-        for (int axis = 0; axis < 4; axis++) {
+        for (int axis = 0; axis < AreaScore.AXES; axis++) {
             float[] at = star.markAt(m, axis);
             if (at == null) continue;
             double clear = clearance(star, at, m);
@@ -351,7 +352,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     /** How far {@code at} is from the nearest knob, button or mark (offer {@code skip}'s own marks aside). */
     private static double clearance(MinimumsStarView star, float[] at, int skip) {
         double clear = Double.MAX_VALUE;
-        for (int axis = 0; axis < 4; axis++) {
+        for (int axis = 0; axis < AreaScore.AXES; axis++) {
             float[] knob = star.knobAt(axis);
             if (knob != null) clear = Math.min(clear, Math.hypot(knob[0] - at[0], knob[1] - at[1]));
             for (int m = 0; m < 2; m++) {
@@ -359,9 +360,10 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                 if (mark != null) clear = Math.min(clear, Math.hypot(mark[0] - at[0], mark[1] - at[1]));
             }
         }
-        android.graphics.RectF toggle = star.scoreToggleBox();
-        if (toggle != null) {
-            clear = Math.min(clear, Math.hypot(toggle.centerX() - at[0], toggle.centerY() - at[1]) - toggle.width());
+        for (android.graphics.RectF control : new android.graphics.RectF[] {star.scoreToggleBox(),
+                star.adaptiveBox(), star.adoptBox(), star.stopsBox()}) {
+            if (control != null) clear = Math.min(clear,
+                    Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width());
         }
         return clear;
     }

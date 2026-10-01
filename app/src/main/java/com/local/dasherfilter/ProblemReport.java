@@ -148,6 +148,7 @@ final class ProblemReport {
         return new JSONObject().put("enabled", rules.enabled).put("flatCents", rules.flatCents)
                 .put("perMileCents", rules.perMileCents).put("perMinuteCents", rules.perMinuteCents)
                 .put("perStopCents", rules.perStopCents).put("maxStops", rules.maxStops)
+                .put("hotspotProximityHundredths", rules.hotspotProximityHundredths)
                 .put("risingOffers", rules.risingOffers).put("scoreByArea", rules.scoreByArea)
                 .put("lastAcceptedCents", rules.lastAcceptedCents)
                 .put("bestAccepted", new JSONObject()

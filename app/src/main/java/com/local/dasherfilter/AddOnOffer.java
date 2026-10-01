@@ -48,15 +48,16 @@ final class AddOnOffer {
     static AddOnOffer parse(OfferSnapshot route, List<String> labels) {
         OfferSnapshot active = route == null ? OfferSnapshot.UNKNOWN : route;
         if (!OfferEvidence.bounded(labels)) return new AddOnOffer(active, OfferSnapshot.UNKNOWN, OfferSnapshot.UNKNOWN);
+        List<String> travelLabels = OfferParser.routeMetricLabels(labels);
 
         Measure addedPay = read(labels,
                 DELTA + "(?:(?:pay|payout)\\s*)?\\$\\s*" + VALUE,
                 "\\$\\s*" + VALUE + "\\s*(?:additional|extra|more)\\b");
         Measure totalPay = read(labels, "\\b(?:new\\s+)?total(?:\\s+(?:pay|payout))?\\s*[:=]?\\s*\\$\\s*" + VALUE);
-        Measure addedMiles = delta(labels, "(?:mi|miles?)");
-        Measure totalMiles = total(labels, "(?:distance|mileage|miles?)", "(?:mi|miles?)");
-        Measure addedMinutes = delta(labels, "(?:min|minutes?)");
-        Measure totalMinutes = total(labels, "(?:time|duration)", "(?:min|minutes?)");
+        Measure addedMiles = delta(travelLabels, "(?:mi|miles?)");
+        Measure totalMiles = total(travelLabels, "(?:distance|mileage|miles?)", "(?:mi|miles?)");
+        Measure addedMinutes = delta(travelLabels, "(?:min|minutes?)");
+        Measure totalMinutes = total(travelLabels, "(?:time|duration)", "(?:min|minutes?)");
         Measure addedStops = delta(labels, "stops?");
         Measure totalStops = total(labels, "stops?", "stops?");
 
@@ -81,7 +82,7 @@ final class AddOnOffer {
         boolean milesConflict = addedMiles.conflict || totalMiles.conflict;
         Double miles = milesConflict ? null : addedMiles.number();
         Double milesTotal = milesConflict ? null : totalMiles.number();
-        boolean minutesConflict = addedMinutes.conflict || totalMinutes.conflict || anyTimeRange(labels);
+        boolean minutesConflict = addedMinutes.conflict || totalMinutes.conflict || anyTimeRange(travelLabels);
         Integer minutes = minutesConflict ? null : addedMinutes.integer();
         Integer minutesTotal = minutesConflict ? null : totalMinutes.integer();
         boolean stopsConflict = addedStops.conflict || totalStops.conflict;

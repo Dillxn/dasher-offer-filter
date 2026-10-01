@@ -3647,7 +3647,8 @@ public final class OfferFilterService extends AccessibilityService {
         boolean isAddOn = AddOnOffer.isLikely(scan.text);
         if (boundedOffer != null && now < boundedUntil && !newCountdown && !isAddOn
                 && offer.agreesWith(boundedOffer) && (offer.payCents == null || offer.payCents <= boundedOffer.payAtMostCents)) {
-            offer = new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, boundedOffer.payAtMostCents);
+            offer = new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, boundedOffer.payAtMostCents,
+                    offer.finalStopHotspotMiles);
         }
         if (offer.payAtMostCents != null) {
             boundedOffer = offer;
@@ -3730,7 +3731,8 @@ public final class OfferFilterService extends AccessibilityService {
                 peek.countdown(secondsLeft, Peek.now());
                 peekLeavesOffer(decision.result, offer, decision.reason, !settings.enabled);
             }
-            if (decision.result == OfferRule.Result.REVIEW) reportUnreadable(scan, offer, entry);
+            if (decision.result == OfferRule.Result.REVIEW
+                    && !OfferRule.onlyHotspotMissing(offer, addOn, settings)) reportUnreadable(scan, offer, entry);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }

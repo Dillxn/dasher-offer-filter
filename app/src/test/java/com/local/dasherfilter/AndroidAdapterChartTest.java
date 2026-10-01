@@ -86,8 +86,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // What the example offer needs is heard first; the page shows no words for it.
             assertEquals("An offer like 20 min · 5 mi · 2 stops needs $14.21. "
                     + "Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
+                    + "Minimum final-stop hotspot proximity, off. Final-stop distance to nearest hotspot unavailable. "
+                    + "No adaptive minimum on this spoke. "
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
-                    + "Per stop: set $1.00, adaptive $7.10.", star.getContentDescription().toString());
+                    + "Per stop: set $1.00, adaptive $7.10. "
+                    + "The hotspot spoke uses inverse miles: closer is farther out; "
+                    + "its 1 per mile shares the $10 ring radius for display only.",
+                    star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
             // The per-stop spoke holds the set minimum as the example's 2 stops × $1.00, beside the adaptive 2 × $7.10.
             assertEquals(200, star.setAsks(3), 0);
@@ -112,7 +117,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(act(star, MinimumsStarView.ADAPTIVE_ID,
                     android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
             assertTrue(star.getContentDescription().toString()
-                    .endsWith("Adaptive minimum is off, so the adaptive values are not applied."));
+                    .contains("Adaptive minimum is off, so the adaptive values are not applied."));
             assertFalse(FilterStore.load(app).risingOffers);
             // What it learned stays.
             assertEquals(0, FilterStore.load(app).perMileCents);
@@ -225,7 +230,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertFalse("a tap on the constellation is the constellation's: it does not resume",
                     FilterStore.load(app).enabled);
             assertFalse("and opens no page", settingsShown(content));
-            assertArrayEquals("nor sets anything", new int[] {2000, 150, 0, 0}, FilterStore.load(app).minimums());
+            assertArrayEquals("nor sets anything", new int[] {2000, 150, 0, 0, 0}, FilterStore.load(app).minimums());
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);
@@ -234,7 +239,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherTheConstellationRunsPastThePageAndALineCrossesItWithoutShrinkingIt() {
+    public void besideDasherFiveSpokesFitTheHeightAndALineDoesNotShrinkThem() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -256,15 +261,17 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNull("nothing to fix yet", shownTextContaining(content, "Background offers are off"));
             float radius = star.skyRadius();
             int width = sky.getWidth();
-            assertTrue("as large as the page's width allows: " + radius, radius >= ui.dp(180));
             assertTrue("its middle a little right of the page's", star.skyX() > width / 2f);
-            assertTrue("its rings run on past the page's edge", star.skyX() + radius > width);
             android.graphics.RectF counts = new android.graphics.RectF();
             mascot.countsAt(counts);
             counts.offset(mascot.getLeft(), mascot.getTop());
+            // The upright fifth spoke makes height, not width, the limiting dimension in a short window.
+            assertTrue("the full upright spoke fits below the counts",
+                    star.skyY() - radius >= counts.bottom);
+            assertNotNull("the fifth knob stays available", star.knobAt(AreaScore.HOTSPOT));
             List<android.graphics.RectF> icons = new ArrayList<>();
             star.iconsAt(icons);
-            assertEquals("the four icons, the max stops badge and the adaptive minimum's toggle", 6, icons.size());
+            assertEquals("the five icons, the max stops badge and the adaptive minimum's toggle", 7, icons.size());
             for (android.graphics.RectF icon : icons) {
                 assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
                 assertFalse("and clear of the counts: " + icon, android.graphics.RectF.intersects(icon, counts));
@@ -294,7 +301,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             icons.clear();
             star.iconsAt(icons);
             assertEquals("every icon still shows, the lower ones stepped above their spokes' ends (and the badge and "
-                    + "the toggle)", 6, icons.size());
+                    + "the toggle)", 7, icons.size());
             for (android.graphics.RectF icon : icons) {
                 assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
                 assertFalse("and clear of the line: " + icon + " / " + rowBox,
@@ -338,8 +345,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 shown.getLocationInWindow(at);
                 linesTop = Math.min(linesTop, at[1] - skyAt[1]);
             }
-            assertTrue("three lines do not shrink the constellation: " + star.skyRadius(),
-                    star.skyRadius() >= ui.dp(180));
+            assertNotNull("the fifth knob stays available with all three lines", star.knobAt(AreaScore.HOTSPOT));
+            assertTrue("the upright spoke stays inside the short window", star.skyY() - star.skyRadius() >= 0);
             assertTrue("they cross its lower part", star.skyY() + star.skyRadius() > linesTop);
             float mascotY = mascot.getTop() + mascot.mascotY();
             float mascotX = mascot.getLeft() + mascot.mascotX();
@@ -392,7 +399,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("snapped to $0.05 on the chart's scale for 7.2 mi", expected, saved.perMileCents);
             assertTrue("still on", saved.enabled);
             assertEquals("max stops untouched", 3, saved.maxStops);
-            assertArrayEquals("the other minimums untouched", new int[] {1000, expected, 30, 100}, saved.minimums());
+            assertArrayEquals("the other minimums untouched", new int[] {1000, expected, 30, 100, 0}, saved.minimums());
             assertTrue(saved.risingOffers);
             assertFalse("a drag opens no page", settingsShown(content));
 
@@ -464,8 +471,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNotNull("each knob is its own control", nodes);
             android.view.accessibility.AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("four knobs, the max stops badge, the adaptive minimum's toggle, the adopt button and the "
-                    + "score by area toggle", 8, host.getChildCount());
+            assertEquals("five knobs, the max stops badge, the adaptive minimum's toggle, the adopt button and the "
+                    + "score by area toggle", 9, host.getChildCount());
             android.view.accessibility.AccessibilityNodeInfo mile = nodes.createAccessibilityNodeInfo(1);
             assertEquals("Minimum per mile, $1.50; adaptive $2.37, learned", mile.getContentDescription().toString());
             assertEquals(android.widget.SeekBar.class.getName(), mile.getClassName().toString());
@@ -525,7 +532,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(star.backdrop());
             assertNull("nothing learned yet, so no button", star.adoptBox());
             android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertEquals("four knobs, the badge, the two toggles and the offer marked", 8,
+            assertEquals("five knobs, the badge, the two toggles and the offer marked", 9,
                     nodes.createAccessibilityNodeInfo(
                             android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
 
@@ -537,7 +544,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals(MinimumsStarView.ADOPT_SAID,
                     nodes.createAccessibilityNodeInfo(MinimumsStarView.ADOPT_ID).getContentDescription().toString());
             assertTrue("a full touch target", button.width() >= new Ui(app).dp(48) - 1);
-            for (int axis = 0; axis < 4; axis++) {
+            for (int axis = 0; axis < 5; axis++) {
                 float[] knob = star.knobAt(axis);
                 assertTrue("clear of the knobs", Math.hypot(knob[0] - button.centerX(),
                         knob[1] - button.centerY()) >= new Ui(app).dp(24) + button.width() / 2 - 1);
@@ -551,7 +558,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             tap(sky, button.centerX(), button.centerY());
             FilterSettings adopted = FilterStore.load(app);
             assertArrayEquals("pay beats $14.20, the rates match $2.366…/mi, $0.591…/min and $7.10/stop",
-                    new int[] {1421, 237, 60, 710}, adopted.minimums());
+                    new int[] {1421, 237, 60, 710, 0}, adopted.minimums());
             assertTrue("still on", adopted.enabled);
             assertEquals(3, adopted.maxStops);
             assertTrue("the adaptive minimum stays on, keeping what it learned",
@@ -568,7 +575,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // Undo puts the four back exactly.
             button = star.adoptBox();
             tap(sky, button.centerX(), button.centerY());
-            assertArrayEquals(new int[] {700, 150, 30, 100}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 100, 0}, FilterStore.load(app).minimums());
             assertFalse(star.offeringUndo());
             assertTrue(FilterStore.load(app).enabled);
 
@@ -581,7 +588,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
             assertFalse(star.offeringUndo());
             assertNull("set minimums no looser than the learned ones: no button", star.adoptBox());
-            assertEquals("the knobs, the badge, the toggles and the offer", 8, nodes.createAccessibilityNodeInfo(
+            assertEquals("the knobs, the badge, the toggles and the offer", 9, nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
         } finally {
             service.destroy();
@@ -636,7 +643,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             star.dispatchTouchEvent(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_MOVE, x + 60, y - 30, 0));
             star.dispatchTouchEvent(MotionEvent.obtain(now, now + 100, MotionEvent.ACTION_UP, x + 60, y - 30, 0));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertArrayEquals(new int[] {700, 150, 30, 100}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 100, 0}, FilterStore.load(app).minimums());
             tap((ViewGroup) star.getParent(), star.getLeft() + x, star.getTop() + y);
             settleSky(content);
             assertFalse("no page opens", settingsShown(content));
@@ -652,7 +659,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             assertTrue("back in the header", star.beside());
             assertEquals(View.VISIBLE, find(content, AreaMapView.class).getVisibility());
-            assertArrayEquals(new int[] {700, 150, 30, 100}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 100, 0}, FilterStore.load(app).minimums());
         }
     }
 
@@ -660,7 +667,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void aKnobKeepsItsExactValueUntilMovedHalfAStepAlongItsSpoke() {
         // Adopted minimums sit between steps: $14.21, $2.37/mi, $0.60/min, $7.10/stop.
-        int[] adopted = {1421, 237, 60, 710};
+        int[] adopted = {1421, 237, 60, 710, 0};
         FilterStore.save(app, new FilterSettings(true, 1421, 237, 60, 710, 3, true, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -691,7 +698,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             dragThrough(content, new float[][] {pay, alongSpoke(pay, 0, -ui.dp(30), 0),
                     alongSpoke(pay, 0, -31 * perCent, 0)}, null);
             assertEquals(1400, FilterStore.load(app).flatCents);
-            assertArrayEquals("nothing else moved", new int[] {1400, 237, 60, 710}, FilterStore.load(app).minimums());
+            assertArrayEquals("nothing else moved", new int[] {1400, 237, 60, 710, 0}, FilterStore.load(app).minimums());
         }
     }
 
@@ -896,11 +903,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
             FilterSettings adopted = FilterStore.load(app);
             assertArrayEquals("pay from the saved $10 to beat $14.20; the saved $3.00/mi was already above $2.37",
-                    new int[] {1421, 300, 60, 710}, adopted.minimums());
+                    new int[] {1421, 300, 60, 710, 0}, adopted.minimums());
 
             assertTrue(nodes.performAction(MinimumsStarView.ADOPT_ID,
                     android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
-            assertArrayEquals("Undo puts back the saved minimums it replaced", new int[] {1000, 300, 30, 100},
+            assertArrayEquals("Undo puts back the saved minimums it replaced", new int[] {1000, 300, 30, 100, 0},
                     FilterStore.load(app).minimums());
 
             // With the saved adaptive minimum off there is no button: it follows the saved rules.
@@ -914,7 +921,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void aFreshPageHasFourHollowKnobsAndAFirstRuleSetByOneStaysPaused() {
+    public void aFreshPageHasFiveHollowKnobsAndAFirstRuleSetByOneStaysPaused() {
         FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -922,13 +929,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             float[] middle = {star.skyX(), star.skyY()};
-            for (int axis = 0; axis < 4; axis++) {
+            for (int axis = 0; axis < 5; axis++) {
                 float[] knob = star.knobAt(axis);
                 assertNotNull("a hollow knob on every spoke", knob);
                 assertEquals("resting just outside the middle", new Ui(app).dp(MinimumsStarView.KNOB_REST_DP),
                         Math.hypot(knob[0] - middle[0], knob[1] - middle[1]), 1);
             }
-            assertEquals("screen readers find the four knobs, the badge and the adaptive minimum's toggle", 6,
+            assertEquals("screen readers find the five knobs, the badge and the adaptive minimum's toggle", 7,
                     star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(
                             android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
             assertNotNull(shownTextContaining(content, MainActivity.START_HINT));

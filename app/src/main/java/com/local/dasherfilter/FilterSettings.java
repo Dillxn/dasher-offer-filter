@@ -26,6 +26,8 @@ final class FilterSettings {
      * 100%, rather than when it meets every minimum. Max stops stays a hard limit, and add-ons keep the strict rules.
      */
     final boolean scoreByArea;
+    /** Minimum reciprocal final-stop-to-hotspot distance, in hundredths of 1/mile; zero disables it. */
+    final int hotspotProximityHundredths;
 
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops) {
@@ -57,6 +59,14 @@ final class FilterSettings {
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
                    boolean scoreByArea) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
+                lastAcceptedCents, best, declined, scoreByArea, 0);
+    }
+
+    FilterSettings(boolean enabled, int flatCents, int perMileCents,
+                   int perMinuteCents, int perStopCents, int maxStops,
+                   boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
+                   boolean scoreByArea, int hotspotProximityHundredths) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
@@ -68,12 +78,13 @@ final class FilterSettings {
         this.best = best == null ? AcceptedBest.NONE : best;
         this.declined = declined == null ? DeclinedFloor.NONE : declined;
         this.scoreByArea = scoreByArea;
+        this.hotspotProximityHundredths = Math.max(0, hotspotProximityHundredths);
     }
 
     /** True when at least one rule can reject or require review of an offer. */
     boolean hasAnyRule() {
         return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0
-                || maxStops > 0 || risingOffers;
+                || hotspotProximityHundredths > 0 || maxStops > 0 || risingOffers;
     }
 
     /** Rules whose cost scales with an add-on's own miles, minutes, or stops. */
@@ -93,6 +104,8 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perMinuteCents) + " per minute");
         if (perStopCents > 0) rules.add(DecisionLog.money(perStopCents) + " per stop");
+        if (hotspotProximityHundredths > 0) rules.add((scoreByArea ? "hotspot proximity " : "hotspot proximity at least ")
+                + proximityLabel(hotspotProximityHundredths) + " (final stop to nearest hotspot)");
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             rules.add(lastAcceptedCents > 0
@@ -114,6 +127,7 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
         if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perMinuteCents) + "/min");
         if (perStopCents > 0) rules.add(DecisionLog.shortMoney(perStopCents) + "/stop");
+        if (hotspotProximityHundredths > 0) rules.add("hotspot ≥" + proximityLabel(hotspotProximityHundredths));
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
             String adaptive = lastAcceptedCents > 0
@@ -126,19 +140,19 @@ final class FilterSettings {
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths);
     }
 
     /** These rules decided by area score ({@code on}) or by every minimum; nothing else changes. */
     FilterSettings withScoreByArea(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, on);
+                risingOffers, lastAcceptedCents, best, declined, on, hotspotProximityHundredths);
     }
 
     /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
     FilterSettings withMaxStops(int stops) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, Math.max(0, stops),
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths);
     }
 
     /**
@@ -147,18 +161,30 @@ final class FilterSettings {
      */
     FilterSettings withAdaptive(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, on,
-                lastAcceptedCents, best, declined, scoreByArea);
+                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths);
     }
 
-    /** The four set minimums in the constellation's spoke order: pay, per mile, per minute, per stop. */
+    /** The five set minimums: pay, per mile, per minute, per stop, reciprocal hotspot distance. */
     int[] minimums() {
-        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents};
+        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents, hotspotProximityHundredths};
     }
 
-    /** These rules with the four set minimums ({@link #minimums} order) replaced, and nothing else changed. */
+    /** Replace minimums in {@link #minimums} order; an older four-value caller leaves hotspot proximity alone. */
     FilterSettings withMinimums(int[] cents) {
         return new FilterSettings(enabled, cents[0], cents[1], cents[2], cents[3], maxStops, risingOffers,
-                lastAcceptedCents, best, declined, scoreByArea);
+                lastAcceptedCents, best, declined, scoreByArea,
+                cents.length > 4 ? cents[4] : hotspotProximityHundredths);
+    }
+
+    /** This independent fixed minimum is never learned or altered by adopting adaptive minimums. */
+    FilterSettings withHotspotProximity(int hundredths) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hundredths);
+    }
+
+    /** Plain reciprocal-distance units; never formatted as money. */
+    static String proximityLabel(int hundredths) {
+        return BigDecimal.valueOf(hundredths, 2).stripTrailingZeros().toPlainString() + " /mi";
     }
 
     /**
@@ -237,6 +263,6 @@ final class FilterSettings {
      */
     FilterSettings withoutRisingBaseline() {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                false, lastAcceptedCents, best, declined, scoreByArea);
+                false, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths);
     }
 }

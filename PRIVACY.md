@@ -16,7 +16,7 @@ Before you accept the current first-run notice, it reads none of this and sends 
 ## What it keeps on the phone
 
 - Your rules, and what the adaptive minimum learned from offers you accepted or declined.
-- The latest 200 decisions: when, the pay, miles, minutes and stops read, the result, what the app did, and a few lines read from the offer.
+- The latest 200 decisions: when, the pay, miles, minutes and stops read, the result, what the app did, and a few lines read from the offer. The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or addresses. This candidate has no automatic reader for that distance and displays it as unavailable; it does not obtain it from your location or the offer map.
 - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. Other screens are captured only during a dash or within ten minutes of a readable offer, and only when positively recognized as offer, confirmation, idle, delivery or navigation screens. Unrecognized/partial screens retain only a generic text-not-kept note. Each holds about what one report carries and nothing older than 24 hours. Screens recognized as payment, account or earnings pages are discarded; at most one line a minute records that a screen was not kept.
 - The offer map, if it is on and location is allowed: the square of about 2 km you were in when each offer came in, and place names for those squares.
 - While you are dashing: whether a dash is on, and the current route's pay, miles, time and stops.

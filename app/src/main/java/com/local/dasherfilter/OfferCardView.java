@@ -37,7 +37,8 @@ final class OfferCardView extends View {
     void show(DecisionLog.Entry entry) {
         this.entry = entry;
         setContentDescription(pay() + (needed() > 0 ? ", needed " + DecisionLog.money(needed()) : "") + ". "
-                + route());
+                + route() + (hasHotspotDistance() ? ". " + MinimumsStarView.hotspotSaid(entry.facts.finalStopHotspotMiles) : ""));
+        requestLayout();
         invalidate();
     }
 
@@ -48,6 +49,15 @@ final class OfferCardView extends View {
     private float barTop;
     private float routeLabelBaseline;
     private float routeY;
+    private float hotspotBaseline;
+
+    private boolean hasHotspotDistance() {
+        return entry != null && MinimumsStarView.knownHotspotDistance(entry.facts.finalStopHotspotMiles);
+    }
+
+    private String hotspotLabel() {
+        return "Final stop → hotspot  " + MinimumsStarView.distanceText(entry.facts.finalStopHotspotMiles) + " mi";
+    }
 
     /** @param width the view's width: when "Paid" and "needed" do not fit side by side, "needed" gets its own line */
     private void layoutLines(float width) {
@@ -67,11 +77,14 @@ final class OfferCardView extends View {
         barTop = lines + ui.dp(8);
         routeLabelBaseline = barTop + ui.dp(12) + ui.dp(14) - small.ascent;
         routeY = routeLabelBaseline + small.descent + ui.dp(4) + ui.dp(11);
+        hotspotBaseline = routeY + ui.dp(13) + ui.dp(8) - small.ascent;
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         layoutLines(MeasureSpec.getSize(widthSpec));
-        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(Math.round(routeY + ui.dp(13)), heightSpec));
+        float bottom = hasHotspotDistance() ? hotspotBaseline + text.getFontMetrics().descent + ui.dp(2)
+                : routeY + ui.dp(13);
+        setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(Math.round(bottom), heightSpec));
     }
 
     private long needed() {
@@ -170,5 +183,13 @@ final class OfferCardView extends View {
         String full = route(true);
         CharSequence label = Ui.fit(text, text.measureText(full) * 0.8f <= room ? full : route(false), room, 0.8f);
         canvas.drawText(label, 0, label.length(), width / 2, routeLabelBaseline, text);
+        if (hasHotspotDistance()) {
+            text.setTextAlign(Paint.Align.LEFT);
+            float hotspotIcon = ui.dp(16);
+            Glyph.draw(canvas, Glyph.Shape.HOTSPOT, ui.inkSecondary, 0,
+                    hotspotBaseline - hotspotIcon + ui.dp(2), hotspotIcon);
+            CharSequence hotspot = Ui.fit(text, hotspotLabel(), width - hotspotIcon - ui.dp(7), 0.8f);
+            canvas.drawText(hotspot, 0, hotspot.length(), hotspotIcon + ui.dp(7), hotspotBaseline, text);
+        }
     }
 }

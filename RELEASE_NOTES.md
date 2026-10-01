@@ -1,3 +1,12 @@
+## 0.4.51 — fifth-spoke candidate, not released
+
+- Adds the top hotspot-proximity spoke: reciprocal of the distance from the offer’s final stop to its nearest actual Dasher hotspot. Its saved, accessible knob shows reciprocal miles and the equivalent distance limit; it is off by default.
+- Adds strict-rule and independent area-score support, numeric history storage, and known-distance ticket details. Existing monetary learning and four-spoke outcomes are preserved when the new rule is off.
+- Unknown remains unavailable, never zero or an inferred endpoint. **Automatic measurement is not implemented:** current source exposes neither final-stop geometry nor actual hotspot locations. No new location requests, address geocoding or screenshots were added. The control/scoring work must not be advertised as live hotspot filtering.
+- Includes the unreleased privacy, decline and Peek work below. Signing, real-phone validation and the original historical-report cleanup checks remain outstanding.
+
+Validation: 1,310 Java/JUnit and simulated Android 8/15 tests passed across 73 suites, with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned 0.4.51 packaging and native phone/split previews were checked. See [the fifth-spoke validation record](VALIDATION_HOTSPOT_2026-10-01.md). No signed APK, physical-phone check or live hotspot measurement is claimed.
+
 ## 0.4.50 — continuation candidate, not released
 
 Recovered from the October 1 Claude handoff (`dasher-handoff-20261001`) and reconciled against GitHub main `5d76ec631a9f8002f409feab8c5afc64de6997a8`. The recovered files were unfinished drafts. Privacy, decline handling and Peek are being integrated in that order.

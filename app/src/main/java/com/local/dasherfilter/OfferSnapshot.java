@@ -11,6 +11,12 @@ final class OfferSnapshot {
     final Integer minutes;
     final Integer stops;
     /**
+     * Miles from this offer's final stop to its nearest current Dasher hotspot. This is neither route mileage nor
+     * the phone's distance to a learned offer area. Null means no trustworthy observation; zero is a real match.
+     * Hotspots may move while one offer remains up, so this contextual value is excluded from offer identity.
+     */
+    final Double finalStopHotspotMiles;
+    /**
      * Set only while pay is unknown because a total sits beside one bare "+$" amount: their sum, the most the offer
      * can pay under any reading of that amount. Never pay; never learned, stored or compared.
      */
@@ -21,16 +27,29 @@ final class OfferSnapshot {
     }
 
     OfferSnapshot(Integer payCents, Double miles, Integer minutes, Integer stops, Integer payAtMostCents) {
+        this(payCents, miles, minutes, stops, payAtMostCents, null);
+    }
+
+    OfferSnapshot(Integer payCents, Double miles, Integer minutes, Integer stops, Integer payAtMostCents,
+                  Double finalStopHotspotMiles) {
         this.payCents = nonNegative(payCents);
         this.miles = miles != null && Double.isFinite(miles) && miles >= 0 ? miles : null;
         this.minutes = nonNegative(minutes);
         this.stops = nonNegative(stops);
+        this.finalStopHotspotMiles = finalStopHotspotMiles != null && Double.isFinite(finalStopHotspotMiles)
+                && finalStopHotspotMiles >= 0 ? finalStopHotspotMiles : null;
         this.payAtMostCents = this.payCents == null ? nonNegative(payAtMostCents) : null;
     }
 
     /** These facts without the bound on unknown pay: what a path that must never use it sees. */
     OfferSnapshot withoutPayBound() {
-        return payAtMostCents == null ? this : new OfferSnapshot(payCents, miles, minutes, stops);
+        return payAtMostCents == null ? this
+                : new OfferSnapshot(payCents, miles, minutes, stops, null, finalStopHotspotMiles);
+    }
+
+    /** Attach only a verified final-stop-to-hotspot observation; no other offer fact changes. */
+    OfferSnapshot withFinalStopHotspotMiles(Double distance) {
+        return new OfferSnapshot(payCents, miles, minutes, stops, payAtMostCents, distance);
     }
 
     private static Integer nonNegative(Integer value) {
@@ -67,6 +86,8 @@ final class OfferSnapshot {
                 + (payAtMostCents == null ? "" : String.format(Locale.US, " (at most $%.2f)", payAtMostCents / 100.0))
                 + ", miles " + (miles == null ? "?" : miles)
                 + ", minutes " + (minutes == null ? "?" : minutes)
-                + ", stops " + (stops == null ? "?" : stops);
+                + ", stops " + (stops == null ? "?" : stops)
+                + (finalStopHotspotMiles == null ? "" : ", final stop to nearest hotspot "
+                        + finalStopHotspotMiles + " mi");
     }
 }

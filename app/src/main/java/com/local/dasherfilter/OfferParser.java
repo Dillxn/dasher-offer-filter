@@ -15,6 +15,12 @@ final class OfferParser {
     private static final String MILE_VALUE =
             "(?<![\\d.,+\\-])\\b(\\d{1,3}(?:\\.\\d{1,2})?)\\s*(?:mi|miles?)\\b";
     private static final Pattern MILES = Pattern.compile("(?i)" + MILE_VALUE);
+    /** A hotspot distance is not the offer's travel, nor proof of the final stop's distance to it. */
+    private static final Pattern HOTSPOT = Pattern.compile("(?i)\\bhot[ -]?spots?\\b");
+    /** Only travel components can continue a hotspot heading; offer wording or stops end that context. */
+    private static final Pattern TRAVEL_WORD = Pattern.compile("(?i)\\b(?:new|total|trip|distance|mileage|time|duration"
+            + "|estimated|estimate|est|mi|miles?|min|mins|minutes?|hr|hrs|hours?|additional|extra|more|adds?|added)\\b");
+    private static final Pattern TRAVEL_REMAINDER = Pattern.compile("[\\d\\s.,:;=+()•·/|\\-–—]*");
     private static final Pattern TOTAL_MILES = Pattern.compile(
             "(?i)(?:total(?: trip)?(?: distance| mileage)?\\s*[:=]?\\s*)" + MILE_VALUE);
     private static final Pattern MILES_TOTAL = Pattern.compile("(?i)" + MILE_VALUE + "\\s*(?:in\\s+)?total\\b");
@@ -65,12 +71,56 @@ final class OfferParser {
             return OfferSnapshot.UNKNOWN;
         }
         List<String> lines = distinctNormalized(visibleText, new ArrayList<>());
-        List<String> metrics = distinctNormalized(metricParts, new ArrayList<>(lines));
+        List<String> routeLabels = routeMetricLabels(visibleText);
+        List<String> routeLines = distinctNormalized(routeLabels, new ArrayList<>());
+        // A metric may have been joined inside a nested subtree whose local siblings omit the hotspot heading.
+        // The complete label sequence still identifies that context: do not let the joined copy put it back.
+        Set<String> excluded = excludedRouteMetrics(visibleText, routeLabels);
+        List<String> safeParts = routeMetricLabels(metricParts);
+        safeParts.removeIf(excluded::contains);
+        List<String> metrics = distinctNormalized(safeParts, new ArrayList<>(routeLines));
         boolean malformed = OfferEvidence.malformedMoney(lines);
         Integer pay = malformed ? null : parsePay(lines);
         Integer stops = parseStops(metrics);
         Integer payAtMost = malformed || pay != null ? null : payWithPlusAmount(lines, metrics, stops);
-        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(lines), stops, payAtMost);
+        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(routeLines), stops, payAtMost);
+    }
+
+    /**
+     * Route-metric input only; never hotspot acquisition. Blank excluded entries preserve sibling boundaries.
+     * A hotspot label owns immediately following bare travel components until distinct nonmetric wording or
+     * explicit offer evidence (such as a compact stops line) establishes a different context.
+     */
+    static List<String> routeMetricLabels(List<String> labels) {
+        List<String> safe = new ArrayList<>();
+        boolean hotspot = false;
+        for (String raw : labels) {
+            String label = OfferEvidence.normalize(raw);
+            if (HOTSPOT.matcher(label).find()) {
+                hotspot = true;
+                safe.add("");
+                continue;
+            }
+            if (hotspot && TRAVEL_REMAINDER.matcher(TRAVEL_WORD.matcher(label).replaceAll("")).matches()) {
+                safe.add("");
+                continue;
+            }
+            if (!label.isEmpty()) hotspot = false;
+            safe.add(label);
+        }
+        return safe;
+    }
+
+    private static Set<String> excludedRouteMetrics(List<String> labels, List<String> safe) {
+        Set<String> excluded = new HashSet<>();
+        List<String> blocked = new ArrayList<>();
+        for (int i = 0; i < labels.size(); i++) {
+            String label = safe.get(i).isEmpty() ? OfferEvidence.normalize(labels.get(i)) : "";
+            blocked.add(label);
+            if (!label.isEmpty()) excluded.add(label);
+        }
+        excluded.addAll(joinRouteMetricSiblings(blocked));
+        return excluded;
     }
 
     /**
@@ -78,8 +128,12 @@ final class OfferParser {
      * directly beside a bare unit is joined, so unrelated numbers elsewhere on the screen stay separate.
      */
     static List<String> joinMetricSiblings(List<String> siblings) {
+        if (!OfferEvidence.bounded(siblings)) return new ArrayList<>();
+        return joinRouteMetricSiblings(routeMetricLabels(siblings));
+    }
+
+    private static List<String> joinRouteMetricSiblings(List<String> siblings) {
         List<String> combined = new ArrayList<>();
-        if (!OfferEvidence.bounded(siblings)) return combined;
         for (int i = 0; i + 1 < siblings.size(); i++) {
             String left = OfferEvidence.normalize(siblings.get(i));
             String right = OfferEvidence.normalize(siblings.get(i + 1));
@@ -244,6 +298,7 @@ final class OfferParser {
         Set<Double> found = new HashSet<>();
         Set<Double> totals = new HashSet<>();
         for (String line : lines) {
+            if (HOTSPOT.matcher(line).find()) continue;
             if (MILE_RANGE.matcher(line).find()) return null;
             collectDoubles(MILES.matcher(line), found);
             collectDoubles(TOTAL_MILES.matcher(line), totals);
@@ -261,6 +316,7 @@ final class OfferParser {
         Set<Integer> found = new HashSet<>();
         for (String line : lines) {
             String lower = line.toLowerCase(Locale.US);
+            if (HOTSPOT.matcher(line).find()) continue;
             if (lower.contains("wait") || lower.contains("accept by") || lower.contains("remaining")) continue;
             boolean explicitTime = lower.contains("estimated") || lower.contains("est.")
                     || lower.contains("duration") || lower.contains("total time");

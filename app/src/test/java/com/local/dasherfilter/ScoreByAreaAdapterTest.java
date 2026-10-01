@@ -93,7 +93,7 @@ public class ScoreByAreaAdapterTest {
             tap(sky, toggle.centerX(), toggle.centerY());
             FilterSettings saved = FilterStore.load(app);
             assertTrue(saved.scoreByArea);
-            assertArrayEquals(new int[] {1300, 385, 41, 475}, saved.minimums());
+            assertArrayEquals(new int[] {1300, 385, 41, 475, 0}, saved.minimums());
             assertTrue(saved.enabled);
             assertEquals(3, saved.maxStops);
             assertTrue(star.byArea());
@@ -226,7 +226,7 @@ public class ScoreByAreaAdapterTest {
             FilterSettings saved = FilterStore.load(app);
             assertTrue("a higher per-mile minimum: " + saved.perMileCents, saved.perMileCents > 385);
             assertEquals("in $0.05 steps", 0, saved.perMileCents % 5);
-            assertArrayEquals(new int[] {1300, saved.perMileCents, 41, 475}, saved.minimums());
+            assertArrayEquals(new int[] {1300, saved.perMileCents, 41, 475, 0}, saved.minimums());
             assertTrue(saved.scoreByArea);
             settleSky(content);
             assertEquals("settled: every minimum at one radius again", distance(star, star.knobAt(0)),

@@ -271,6 +271,7 @@ final class DecisionLog {
             if (facts.miles != null) json.put("miles", facts.miles);
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
+            if (facts.finalStopHotspotMiles != null) json.put("finalStopHotspotMiles", facts.finalStopHotspotMiles);
             if (scorePercent >= 0) json.put("score", scorePercent);
             if (peeked) json.put("peeked", true);
             if (notification != null) json.put("notification", notification.toJson());
@@ -309,7 +310,9 @@ final class DecisionLog {
                     json.has("pay") ? json.getInt("pay") : null,
                     json.has("miles") ? json.getDouble("miles") : null,
                     json.has("minutes") ? json.getInt("minutes") : null,
-                    json.has("stops") ? json.getInt("stops") : null);
+                    json.has("stops") ? json.getInt("stops") : null, null,
+                    json.has("finalStopHotspotMiles") && !json.isNull("finalStopHotspotMiles")
+                            ? json.optDouble("finalStopHotspotMiles", Double.NaN) : null);
             List<String> evidence = new ArrayList<>();
             JSONArray lines = json.optJSONArray("evidence");
             // Lines a version before masking kept are masked as they are read, and stored so on the next write.
@@ -779,6 +782,8 @@ final class DecisionLog {
         if (facts.miles != null) parts.add(trimZero(facts.miles) + " mi");
         if (facts.minutes != null) parts.add(facts.minutes + " min");
         if (facts.stops != null) parts.add(facts.stops + (facts.stops == 1 ? " stop" : " stops"));
+        if (facts.finalStopHotspotMiles != null) parts.add(trimZero(facts.finalStopHotspotMiles)
+                + " mi from final stop to nearest hotspot");
         return parts.isEmpty() ? "no distance, time or stops read" : String.join(" · ", parts);
     }
 

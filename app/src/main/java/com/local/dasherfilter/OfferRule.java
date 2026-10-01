@@ -69,6 +69,21 @@ final class OfferRule {
     }
 
     /**
+     * Whether an unreadable-offer report would merely repeat the deliberately unavailable hotspot observation.
+     * This does not change the decision or manual reporting. Re-evaluate without only that rule so another
+     * unreadable active fact keeps its report; an unread payout is never attributed solely to hotspot data.
+     */
+    static boolean onlyHotspotMissing(OfferSnapshot offer, AddOnOffer addOn, FilterSettings settings) {
+        if (settings.hotspotProximityHundredths <= 0) return false;
+        OfferSnapshot relevant = addOn == null ? offer : addOn.combined;
+        if (relevant == null || relevant.finalStopHotspotMiles != null || relevant.payCents == null) return false;
+        if (addOn != null && addOn.incremental.payCents == null) return false;
+        FilterSettings withoutHotspot = settings.withHotspotProximity(0);
+        Decision remaining = addOn == null ? evaluate(offer, withoutHotspot) : evaluateAddOn(addOn, withoutHotspot);
+        return remaining.result != Result.REVIEW;
+    }
+
+    /**
      * Score by area: max stops declines above it, as a hard limit; pay not read, or an active minimum's amount not
      * read, is review (no score from what is missing); otherwise 100% or more passes and less declines, with the
      * reason "score 87% (needs 100%)" and, as the pay required, the least pay that would score 100%. A "+$" ceiling on
@@ -82,10 +97,25 @@ final class OfferRule {
             Decision strict = strict(offer, settings);
             return new Decision(strict.result, strict.requiredCents, strict.reason, strict.basis, -1);
         }
-        int percent = offer.payCents == null ? -1 : AreaScore.percent(floors, offer.payCents);
+        int percent = offer.payCents == null && floors.needsPay() ? -1
+                : AreaScore.percent(floors, offer.payCents == null ? 0 : offer.payCents);
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
             return new Decision(Result.DECLINE, 0, offer.stops + " stops exceeds maximum " + settings.maxStops, offer,
                     percent);
+        }
+        // A lone proximity spoke has no payout component: no amount of pay repairs a known distance failure.
+        // The independent score may be known while pay is unread, but unread pay must still leave a pass to review.
+        if (!floors.needsPay()) {
+            if (!floors.readable()) return new Decision(Result.REVIEW, 0,
+                    "final stop to nearest hotspot distance not found", offer);
+            if (!AreaScore.reaches(floors, 0)) {
+                return new Decision(Result.DECLINE, 0, hotspotFailure(offer, settings), offer, percent);
+            }
+            if (offer.payCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer, percent);
+            if (settings.maxStops > 0 && offer.stops == null) {
+                return new Decision(Result.REVIEW, 0, "an enabled value was not found", offer, percent);
+            }
+            return new Decision(Result.KEEP, 0, scoreReason(percent), offer, percent);
         }
         if (offer.payCents == null) {
             if (offer.payAtMostCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer);
@@ -97,7 +127,9 @@ final class OfferRule {
             }
             return new Decision(Result.REVIEW, AreaScore.requiredPay(floors), "pay unclear beside a +$ amount", offer);
         }
-        if (!floors.readable()) return new Decision(Result.REVIEW, 0, "an enabled value was not found", offer);
+        if (!floors.readable()) return new Decision(Result.REVIEW, 0,
+                settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
+                        ? "final stop to nearest hotspot distance not found" : "an enabled value was not found", offer);
         long required = AreaScore.requiredPay(floors);
         if (!AreaScore.reaches(floors, offer.payCents)) {
             return new Decision(Result.DECLINE, required, scoreReason(percent), offer, percent);
@@ -118,12 +150,18 @@ final class OfferRule {
             String reason = offer.stops + " stops exceeds maximum " + settings.maxStops;
             return new Decision(Result.DECLINE, 0, reason, offer);
         }
-        boolean needsPay = settings.flatCents > 0 || settings.hasMarginalRule() || settings.risingOffers;
+        // This spoke is independent of pay. A known failure remains a failure even when pay is unread.
+        if (failsHotspot(offer, settings)) {
+            return new Decision(Result.DECLINE, 0, hotspotFailure(offer, settings), offer);
+        }
+        boolean needsPay = settings.flatCents > 0 || settings.hasMarginalRule() || settings.risingOffers
+                || settings.hotspotProximityHundredths > 0;
         if (needsPay && offer.payCents == null && offer.payAtMostCents == null) {
             return new Decision(Result.REVIEW, 0, "pay not found", offer);
         }
 
-        boolean missing = settings.maxStops > 0 && offer.stops == null;
+        boolean missing = (settings.maxStops > 0 && offer.stops == null)
+                || (settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null);
         // A standalone order is at least a pickup and a drop-off, so fewer stops is a misread ("1 stop"). Every
         // per-stop ask treats it as not found: priced as read, it would ask half as much and let the offer pass.
         Integer stops = offer.stops != null && offer.stops >= AcceptedBest.PLAUSIBLE_STOPS ? offer.stops : null;
@@ -242,7 +280,9 @@ final class OfferRule {
             }
             return new Decision(Result.REVIEW, required, "pay unclear beside a +$ amount", offer);
         }
-        if (missing) return new Decision(Result.REVIEW, required, "an enabled value was not found", offer);
+        if (missing) return new Decision(Result.REVIEW, required,
+                settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
+                        ? "final stop to nearest hotspot distance not found" : "an enabled value was not found", offer);
         return new Decision(Result.KEEP, required, "meets enabled rules", offer);
     }
 
@@ -285,6 +325,20 @@ final class OfferRule {
                     "add-on has missing or ambiguous incremental/route evidence", added);
         }
         return new Decision(Result.KEEP, marginalCost, "combined route and add-on meet enabled rules", added);
+    }
+
+    /** Compare d × minimum(1/d) > 1 exactly, including a real zero-distance match. */
+    private static boolean failsHotspot(OfferSnapshot offer, FilterSettings settings) {
+        return settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles != null
+                && BigDecimal.valueOf(offer.finalStopHotspotMiles)
+                        .multiply(BigDecimal.valueOf(settings.hotspotProximityHundredths))
+                        .compareTo(BigDecimal.valueOf(100)) > 0;
+    }
+
+    private static String hotspotFailure(OfferSnapshot offer, FilterSettings settings) {
+        return "final stop is " + BigDecimal.valueOf(offer.finalStopHotspotMiles).stripTrailingZeros().toPlainString()
+                + " mi from nearest hotspot; proximity below "
+                + FilterSettings.proximityLabel(settings.hotspotProximityHundredths);
     }
 
     /** Cents for {@code miles × rate}, rounded up; saturates rather than overflowing. */

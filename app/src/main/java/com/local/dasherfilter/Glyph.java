@@ -20,7 +20,7 @@ import android.graphics.drawable.Drawable;
  */
 final class Glyph extends Drawable {
     enum Shape {
-        CLOCK, ROAD, PIN, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA
+        CLOCK, ROAD, PIN, HOTSPOT, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA
     }
 
     private final Shape shape;
@@ -99,6 +99,15 @@ final class Glyph extends Drawable {
                 path.close();
                 canvas.drawPath(path, stroke);
                 canvas.drawCircle(12, 10, 2.5f, stroke);
+                break;
+            case HOTSPOT:
+                // A destination point within a hot area's rings, distinct from the per-stop pin.
+                canvas.drawCircle(12, 12, 3, fill);
+                oval.set(6, 6, 18, 18);
+                canvas.drawArc(oval, -55, 290, false, stroke);
+                oval.set(2.5f, 2.5f, 21.5f, 21.5f);
+                canvas.drawArc(oval, -35, 110, false, stroke);
+                canvas.drawArc(oval, 145, 110, false, stroke);
                 break;
             case COIN:
                 canvas.drawCircle(12, 12, 9, stroke);

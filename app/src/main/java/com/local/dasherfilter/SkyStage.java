@@ -128,7 +128,7 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
         if (sky) {
             placeCounts(width, top);
             fixed = Math.round(Math.max(top, counts.bottom));
-            int circle = Math.round(2 * star.backdropHalfHeight(ui.dp(LEAST_RADIUS_DP)) + ui.dp(8));
+            int circle = Math.round(star.backdropAbove(ui.dp(LEAST_RADIUS_DP)) + star.backdropBelow(ui.dp(LEAST_RADIUS_DP)) + ui.dp(8));
             // Below the counts and above the lines, as compose() keeps it.
             int mascot = bottom + Math.round(2 * ui.dp(MASCOT_LEAST_DP) + ui.dp(8));
             least = fixed + Math.max(circle, mascot);
@@ -195,10 +195,11 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
         float room = width / 2f - ui.dp(ICON_EDGE_DP) - star.backdropHalfWidth(tallest);
         skyX = width / 2f + Math.max(ui.dp(OFF_MIDDLE_LEAST_DP), Math.min(ui.dp(OFF_MIDDLE_MOST_DP), room));
         skyRadius = largest(width - skyX - ui.dp(ICON_EDGE_DP), skyX, top, floor, linesTop);
-        float half = star.backdropHalfHeight(skyRadius);
-        float highest = top + half;
+        float above = star.backdropAbove(skyRadius);
+        float below = star.backdropBelow(skyRadius);
+        float highest = top + above;
         // Clear of the lines and with its rim inside the sky, where there is room for that, else as high as it goes.
-        float lowest = Math.min(Math.min(floor, linesTop - ui.dp(ICON_EDGE_DP)) - half, height - skyRadius);
+        float lowest = Math.min(Math.min(floor, linesTop - ui.dp(ICON_EDGE_DP)) - below, height - skyRadius);
         skyY = lowest >= highest ? (highest + lowest) / 2 : highest;
 
         // The mascot on the left, clear of both left spokes (which stand SPREAD above and below level) and inside the
@@ -255,9 +256,10 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
         float high = Math.max(low, getMeasuredWidth());
         while (high - low > 0.5f) {
             float radius = (low + high) / 2;
-            float half = star.backdropHalfHeight(radius);
-            boolean fits = star.backdropHalfWidth(radius) <= side && top + 2 * half <= floor
-                    && !Float.isNaN(mascotReach(cx, top + half, least, top, linesTop));
+            float above = star.backdropAbove(radius);
+            float below = star.backdropBelow(radius);
+            boolean fits = star.backdropHalfWidth(radius) <= side && top + above + below <= floor
+                    && !Float.isNaN(mascotReach(cx, top + above, least, top, linesTop));
             if (fits) low = radius;
             else high = radius;
         }

@@ -842,7 +842,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         minimums.setChanges(new MinimumsStarView.Changes() {
             @Override public void setMinimum(int axis, int cents) {
-                int[] one = {-1, -1, -1, -1};
+                int[] one = new int[AreaScore.AXES];
+                java.util.Arrays.fill(one, -1);
                 one[axis] = cents;
                 setMinimums(one);
             }
@@ -852,8 +853,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 FilterSettings saved = FilterStore.load(MainActivity.this);
                 int[] before = saved.minimums();
                 int[] raised = saved.adoptAdaptive().minimums();
-                int[] only = {-1, -1, -1, -1};
-                int[] undo = {-1, -1, -1, -1};
+                int[] only = new int[AreaScore.AXES];
+                int[] undo = new int[AreaScore.AXES];
+                java.util.Arrays.fill(only, -1);
+                java.util.Arrays.fill(undo, -1);
                 boolean any = false;
                 for (int i = 0; i < before.length; i++) {
                     if (raised[i] == before[i]) continue;
@@ -905,14 +908,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * Minimums set on the constellation (a knob let go or adjusted by a screen reader, the learned ones adopted, or
      * that undone): saved at once through {@link FilterStore} and applied to any offer on screen. Only these minimums
-     * change (-1 leaves one as saved), each held to $0 to {@link FilterSettings#MOST_CENTS}.
+     * change (-1 leaves one as saved). Monetary axes use cents; hotspot proximity uses hundredths per mile.
      *
      * @return whether the rules were saved
      */
     private boolean setMinimums(int[] cents) {
         FilterSettings saved = FilterStore.load(this);
         int[] next = saved.minimums();
-        for (int i = 0; i < next.length; i++) {
+        for (int i = 0; i < next.length && i < cents.length; i++) {
             if (cents[i] >= 0) next[i] = Math.min(FilterSettings.MOST_CENTS, cents[i]);
         }
         if (java.util.Arrays.equals(next, saved.minimums())) return false;
@@ -951,6 +954,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         rulesChanged();
         updateMeter();
         if (pausedForLackOfRules) toast("No rules left, so auto-decline is paused.");
+        else if (saved.hotspotProximityHundredths == 0 && rules.hotspotProximityHundredths > 0) {
+            toast("Hotspot distance is not readable yet. Offers needing it will be left for review."
+                    + (firstRule ? " Auto-decline stays paused." : ""));
+        }
         else if (firstRule) toast("Rule saved. Auto-decline stays paused until you Resume it.");
         return true;
     }

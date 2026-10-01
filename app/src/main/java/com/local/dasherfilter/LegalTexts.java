@@ -138,7 +138,9 @@ final class LegalTexts {
 
             - Your rules, and what the adaptive minimum learned from offers you accepted or declined.
             - The latest 200 decisions: when, the pay, miles, minutes and stops read, the result, what the app did, \
-            and a few lines read from the offer.
+            and a few lines read from the offer. The decision format also supports a numeric final-stop-to-hotspot \
+            distance, without coordinates or addresses. This candidate has no automatic reader for that distance \
+            and displays it as unavailable; it does not obtain it from your location or the offer map.
             - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. \
             Other screens are captured only during a dash or within ten minutes of a readable offer, and only when \
             positively recognized as offer, confirmation, idle, delivery or navigation screens. \
