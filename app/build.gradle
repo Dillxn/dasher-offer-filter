@@ -19,11 +19,17 @@ android {
         unitTests.includeAndroidResources = true
         unitTests.all {
             maxHeapSize = '1536m'
-            // Test classes run in parallel JVMs; Robolectric keeps no state across them.
-            maxParallelForks = 3
+            // Test classes run in parallel JVMs; Robolectric keeps no state across them. Gradle deals the classes out
+            // to the JVMs in turn, by name, and never splits one, so no class should run much longer than the rest.
+            // -Pforks=N sets how many JVMs (e.g. -Pforks=1 when several worktrees build at once).
+            maxParallelForks = (project.findProperty('forks') ?: '3') as int
             // Day to day only Android 15 is simulated; a release, the fixer's gate and Render pass -PallSdks
             // so Android 8 runs too.
-            if (!project.hasProperty('allSdks')) systemProperty 'robolectric.enabledSdks', '35'
+            if (!project.hasProperty('allSdks')) {
+                systemProperty 'robolectric.enabledSdks', '35'
+                // Quick JIT for day-to-day runs (about 15% faster here); releases keep the full JIT.
+                jvmArgs '-XX:TieredStopAtLevel=1'
+            }
         }
     }
 }

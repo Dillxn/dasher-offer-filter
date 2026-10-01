@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One version per source; verify embedded metadata and publish no private build files."""
-import hashlib, json, os, pathlib, re, shutil, subprocess, xml.etree.ElementTree as ET
+import fnmatch, hashlib, json, os, pathlib, re, shutil, subprocess, xml.etree.ElementTree as ET
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 def run(*args): return subprocess.run(args, check=True, text=True, capture_output=True).stdout
 
@@ -21,9 +21,17 @@ def main():
         counts = {key: int(r.get(key, 0)) for key in totals}
         suites[r.get('name', path.name)] = counts
         for key, value in counts.items(): totals[key] += value
-    required = {'com.local.dasherfilter.AndroidAdapterTest': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.ReportOutboxTest': 27, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.GitHubConnectTest': 15, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
-    for name, minimum in required.items():
-        if suites.get(name, {}).get('tests', 0) < minimum: raise ValueError('Missing Android adapter coverage: ' + name)
+    # Each floor counts every suite its name matches as a glob, so a suite split by topic into several classes
+    # (AndroidAdapter*Test) must still reach its floor together.
+    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.ReportOutboxTest': 27, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.GitHubConnectTest': 15, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
+    adapter_suites = {}
+    for pattern, minimum in required.items():
+        counts = dict.fromkeys(totals, 0)
+        for name, suite in suites.items():
+            if fnmatch.fnmatchcase(name, pattern):
+                for key, value in suite.items(): counts[key] += value
+        if counts['tests'] < minimum: raise ValueError(f"Missing Android adapter coverage: {pattern} ran {counts['tests']} of {minimum}")
+        adapter_suites[pattern] = counts
     if totals['tests'] < 812 or totals['failures'] or totals['errors'] or totals['skipped']:
         raise ValueError('Test gate failed: ' + json.dumps(totals))
     apk = ROOT / 'app/build/outputs/apk/debug/app-debug.apk'
@@ -45,7 +53,7 @@ def main():
     signer = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
     if 'certificate SHA-256 digest: ' + signer not in signature: raise ValueError('Built APK signer mismatch')
     feed = json.loads((public / 'latest.json').read_text())
-    verification = {'sourceCommit': head, 'versionName': version, 'versionCode': code, 'junit': totals, 'adapterSuites': {name: suites[name] for name in required}, 'androidAdapterRuntime': 'Robolectric Android API 26 and 35 (simulation; not a physical phone)', 'liveTransportProbe': json.loads((ROOT / '.channel-check/transport-proof.json').read_text()), 'deviceInstallVerified': False, 'physicalSoundAndVibrationVerified': False}
+    verification = {'sourceCommit': head, 'versionName': version, 'versionCode': code, 'junit': totals, 'adapterSuites': adapter_suites, 'androidAdapterRuntime': 'Robolectric Android API 26 and 35 (simulation; not a physical phone)', 'liveTransportProbe': json.loads((ROOT / '.channel-check/transport-proof.json').read_text()), 'deviceInstallVerified': False, 'physicalSoundAndVibrationVerified': False}
     (public / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
     (public / 'signing-receipt.txt').write_text('versionName=' + version + '\nversionCode=' + str(code) + '\nsourceCommit=' + head + '\nsha256=' + feed['sha256'] + '\nsize=' + str(feed['size']) + '\n' + signature)
     (public / 'index.html').write_text(f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offer Filter {version}</title><body><h1>Offer Filter {version}</h1><p>Quiet background review and visible-screen filtering. Not an official DoorDash app.</p><p><a href="/OfferFilter.apk" download="DashBuddy-{version}.apk">Install Offer Filter {version}</a></p><p>Offer Filter was called Offer Filter before 0.4.29. Install over the existing cloud-signed 0.4.x app; do not uninstall. Android may ask for confirmation.</p><p>Unknown offers get a review card that rings once. This app cannot suppress sound or vibration generated inside Dasher itself.</p><p><a href="/verification.json">Test and transport verification</a> · <a href="/signing-receipt.txt">APK signing receipt</a></p></body></html>''')
