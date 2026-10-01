@@ -40,6 +40,9 @@ final class Support {
         }
     }
 
+    /** The note a Venmo tip opens with, naming the app ("Offer%20Filter%20tip"). */
+    static final String TIP_NOTE = percentEncoded(AppName.NAME + " tip");
+
     /** What each service accepts in a name, so a name can never change which address is opened. */
     private static final Pattern HANDLE = Pattern.compile("[A-Za-z0-9_-]{1,30}");
 
@@ -65,8 +68,17 @@ final class Support {
         if (!validHandle(handle)) throw new IllegalArgumentException(method + " has no usable name");
         switch (method) {
             case CASH_APP: return "https://cash.app/$" + handle;
-            case VENMO: return "https://venmo.com/" + handle + "?txn=pay&note=Dash%20Buddy%20tip";
+            case VENMO: return "https://venmo.com/" + handle + "?txn=pay&note=" + TIP_NOTE;
             default: return "https://paypal.me/" + handle;
+        }
+    }
+
+    /** Words as a query value: every character but letters, digits and "-._*" percent-encoded, a space as %20. */
+    private static String percentEncoded(String words) {
+        try {
+            return java.net.URLEncoder.encode(words, "UTF-8").replace("+", "%20");
+        } catch (java.io.UnsupportedEncodingException impossible) {
+            throw new AssertionError(impossible);
         }
     }
 

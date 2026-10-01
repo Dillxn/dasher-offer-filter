@@ -10,7 +10,7 @@ import static org.junit.Assert.assertTrue;
 public final class SupportTest {
     @Test public void eachServiceOpensItsOwnPaymentPageForTheAuthor() {
         assertEquals("https://cash.app/$OfferFilterDev", Support.link(Support.Method.CASH_APP, "OfferFilterDev"));
-        assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Dash%20Buddy%20tip",
+        assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Offer%20Filter%20tip",
                 Support.link(Support.Method.VENMO, "Offer-Filter"));
         assertEquals("https://paypal.me/offer_filter", Support.link(Support.Method.PAYPAL, "offer_filter"));
     }

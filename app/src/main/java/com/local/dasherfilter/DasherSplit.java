@@ -70,7 +70,7 @@ final class DasherSplit {
             return open(activity, dasher);
         }
         if (!OfferFilterService.isConnected()) {
-            return "Turn on screen reading first: Android splits the screen for Offer Filter through it.";
+            return "Turn on screen reading first: Android splits the screen for " + AppName.NAME + " through it.";
         }
         requestedAt = SystemClock.uptimeMillis();
         waitMs = PENDING_MS;
@@ -78,10 +78,12 @@ final class DasherSplit {
         // This phone splits the screen only from recent apps: open them, and wait for the user to do it there.
         waitMs = BY_HAND_MS;
         if (recents.getAsBoolean()) {
-            return "Tap Offer Filter's icon above its card and choose split screen. Dasher then opens in the other half.";
+            return "Tap " + AppName.NAME + "'s icon above its card and choose split screen. Dasher then opens in the "
+                    + "other half.";
         }
         requestedAt = 0;
-        return "This phone did not split the screen. Open recent apps and choose split screen from Offer Filter's icon.";
+        return "This phone did not split the screen. Open recent apps and choose split screen from " + AppName.NAME
+                + "'s icon.";
     }
 
     /** Once the screen is split after a tap, Dasher opens in the other half; a late or unasked split opens nothing. */

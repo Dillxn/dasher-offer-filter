@@ -62,7 +62,7 @@ final class DiagnosticLog {
             + "emails and a customer's own instructions read [name], [address], [phone], [email] and [instructions]; "
             + "stores, offer figures and Dasher's own words stay.";
     /** Every report subject starts with this, so reports are easy to find in a mailbox. */
-    static final String REPORT_SUBJECT = "Offer Filter diagnostics";
+    static final String REPORT_SUBJECT = AppName.NAME + " diagnostics";
     /** One writer thread with a bounded queue; entries beyond the queue are dropped, never blocking callers. */
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
@@ -282,7 +282,7 @@ final class DiagnosticLog {
         SharedPreferences updates = Updater.prefs(context);
         String log = newest(PersonalText.maskLine(read(context)), MAX_REPORT_LOG_CHARS);
         String screens = newest(PersonalText.maskLine(readScreens(context)), MAX_REPORT_SCREENS_CHARS);
-        return REPORT_SUBJECT + " — Offer Filter " + Updater.version(context) + "\n"
+        return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
                 + ". " + MASKED_NOTE + " Review before sharing.\n\n"
                 + "== Readiness\n"

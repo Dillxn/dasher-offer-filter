@@ -96,7 +96,7 @@ final class DecisionLog {
         NOT_ACCEPTED("Not accepted"),
         NOT_LEARNED("Not learned"),
         DECLINE_TAPPED("You tapped Decline on it"),
-        DECLINE_QUESTION("Dasher asked to confirm declining it; Offer Filter did not decline it"),
+        DECLINE_QUESTION("Dasher asked to confirm declining it; " + AppName.NAME + " did not decline it"),
         DECLINE_COUNTED("Counted as your Decline"),
         DECLINE_DROPPED("Not counted as your Decline"),
         DECLINE_TAUGHT("Your Decline raised the adaptive minimum"),

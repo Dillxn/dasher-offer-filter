@@ -268,7 +268,7 @@ final class DashDiagnostics {
             String version = Updater.version(app);
             List<String> parts = parts(intro(version, span, dash.why), DiagnosticLog.fullReport(app), MAX_PART_CHARS);
             count = parts.size();
-            queued = ReportOutbox.submitDiagnostics(app, TITLE_PREFIX + " Offer Filter " + version + " " + span,
+            queued = ReportOutbox.submitDiagnostics(app, TITLE_PREFIX + " " + AppName.NAME + " " + version + " " + span,
                     parts);
         } catch (RuntimeException failure) {
             // On a background thread an escaping exception would take the whole app, screen reader included.
@@ -283,7 +283,8 @@ final class DashDiagnostics {
     }
 
     private static String intro(String version, String span, End why) {
-        return "Filed automatically by Offer Filter " + version + " after a dash (\"Share diagnostics after each "
+        return "Filed automatically by " + AppName.NAME + " " + version
+                + " after a dash (\"Share diagnostics after each "
                 + "dash\" is on).\n"
                 + "Dash: " + span + " (ended: " + why.why + ").\n"
                 + DiagnosticLog.MASKED_NOTE + "\n";

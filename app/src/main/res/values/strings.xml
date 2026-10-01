@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The app's name as Android shows it (launcher, Settings, the accessibility and notification-access lists). It is
+     AppName.NAME's one twin: a rename changes both lines, and AppNameTest fails while they differ. -->
+<!DOCTYPE resources [
+    <!ENTITY app "Offer Filter">
+]>
 <resources>
+    <string name="app_name">&app;</string>
+    <string name="listener_name">&app; background offers</string>
     <string name="service_description">Reads Dasher offer details and declines offers below your saved payout rules.</string>
 </resources>
-

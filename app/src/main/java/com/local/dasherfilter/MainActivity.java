@@ -105,6 +105,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private LinearLayout updatingCover;
     private ScrollView settingsPage;
     private boolean showingSettings;
+    /**
+     * The first-run notice, over everything until it is accepted: the homepage shows only it, and nothing behind it
+     * is refreshed (no place lookups, no readiness checks).
+     */
+    private ScrollView notice;
 
     // Main page: the mascot.
     private TextView stateLine;
@@ -236,19 +241,59 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildSettings((LinearLayout) settingsPage.getChildAt(0), saved);
         buildSheet(root);
         buildUpdatingCover(root);
+        notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
+        root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
         Updater.relaunched(this);
 
         setContentView(root);
-        styleSystemBars();
+        styleSystemBars(this, ui);
         fitToSystemBars(root);
         showSettings(state != null && state.getBoolean(SHOWING_SETTINGS, false));
+        showNotice(!Consent.accepted(this));
         Updater.schedule(this);
         refresh();
     }
 
-    /** In Settings, or reading a ticket or the map: an update waits rather than interrupt. */
+    /** In Settings, reading a ticket or the map, or the notice: an update waits rather than interrupt. */
     @Override public boolean midTask() {
-        return showingSettings || (sheet != null && sheet.getVisibility() == View.VISIBLE);
+        return noticeShown() || showingSettings || (sheet != null && sheet.getVisibility() == View.VISIBLE);
+    }
+
+    private boolean noticeShown() {
+        return notice != null && notice.getVisibility() == View.VISIBLE;
+    }
+
+    /** The notice alone, or the pages as they were; screen readers reach only what is shown. */
+    private void showNotice(boolean shown) {
+        notice.setVisibility(shown ? View.VISIBLE : View.GONE);
+        if (shown) {
+            mainPage.setVisibility(View.GONE);
+            settingsPage.setVisibility(View.GONE);
+            sheet.setVisibility(View.GONE);
+            root.setBackgroundColor(ui.page);
+            if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(ui.page);
+        } else {
+            showSettings(showingSettings);
+        }
+    }
+
+    /**
+     * I understand: kept at once, then what waited for it begins. The screen is read now and Dasher's notifications
+     * are replayed (a replay never rings, declines or hides anything).
+     */
+    private void acceptNotice() {
+        Consent.accept(this);
+        showNotice(false);
+        forgetAnswers();
+        OfferNotificationService.rulesChanged();
+        OfferFilterService.requestCheckFromNotification();
+        refresh();
+    }
+
+    /** One of the bundled texts, on its own page. */
+    private void read(LegalTexts.Doc doc) {
+        open(LegalActivity.intent(this, doc));
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -261,7 +306,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override public void onBackPressed() {
         // While updating, nothing is to be interrupted; the new version opens by itself.
         if (updatingCover.getVisibility() == View.VISIBLE) return;
-        if (sheet.getVisibility() == View.VISIBLE) closeSheet();
+        // Back from the notice is Not now: the app closes, and the notice comes again next time.
+        if (noticeShown()) super.onBackPressed();
+        else if (sheet.getVisibility() == View.VISIBLE) closeSheet();
         else if (showingSettings) showSettings(false);
         else super.onBackPressed();
     }
@@ -502,7 +549,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         updatingCover.setClickable(true);
         updatingCover.setFocusable(true);
         updatingCover.addView(new UpdatingView(this, ui), Ui.matchWidth());
-        TextView title = ui.text("Updating Offer Filter…", 20, ui.ink, true);
+        TextView title = ui.text("Updating " + AppName.NAME + "…", 20, ui.ink, true);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
         title.setPadding(0, ui.dp(12), 0, 0);
         updatingCover.addView(title, Ui.matchWidth());
@@ -510,7 +557,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         note.setGravity(Gravity.CENTER_HORIZONTAL);
         note.setPadding(ui.dp(24), ui.dp(6), ui.dp(24), 0);
         updatingCover.addView(note, Ui.matchWidth());
-        updatingCover.setContentDescription("Updating Offer Filter. It opens again by itself in a moment.");
+        updatingCover.setContentDescription("Updating " + AppName.NAME + ". It opens again by itself in a moment.");
         root.addView(updatingCover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -578,7 +625,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void buildMain(LinearLayout page) {
         int heightDp = getResources().getConfiguration().screenHeightDp;
         compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
-        View header = header("Offer Filter", false);
+        View header = header(AppName.NAME, false);
 
         // The mascot is the button: a tap pauses, resumes, or with no rule yet opens the rules.
         hero = new FilterHeroView(this, ui);
@@ -876,11 +923,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         addReports(body);
         addUpdates(body);
         addSupport(body);
-        TextView footer = ui.text("Offer Filter v" + Updater.version(this) + " · Not a DoorDash app.", 12,
+        TextView footer = ui.text(AppName.NAME + " v" + Updater.version(this) + " · Not a DoorDash app.", 12,
                 ui.inkSecondary, false);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(0, ui.dp(28), 0, 0);
         body.addView(footer, Ui.matchWidth());
+        // The terms, the privacy text and the licence, bundled: they open with no connection.
+        LinearLayout texts = ui.row();
+        texts.setGravity(Gravity.CENTER_HORIZONTAL);
+        for (LegalTexts.Doc doc : LegalTexts.Doc.values()) texts.addView(ui.link(doc.title, () -> read(doc)));
+        body.addView(texts, Ui.matchWidth());
         ground(page, 170);
     }
 
@@ -1103,7 +1155,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         List<Support.Method> methods = Support.methods();
         if (methods.isEmpty()) return;
         ui.heading(body, "Support");
-        body.addView(ui.note("Offer Filter is free. If it makes your dash better, a tip keeps it going."));
+        body.addView(ui.note(AppName.NAME + " is free. If it makes your dash better, a tip keeps it going."));
         for (Support.Method method : methods) {
             ui.listRow(body, "Tip with " + method.label,
                     () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(method)))));
@@ -1113,7 +1165,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // ---- State ----
 
     private void refresh() {
-        if (stateLine == null) return;
+        if (stateLine == null || noticeShown()) return;
         arrangeForSplit();
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
@@ -1160,7 +1212,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (updating) {
                 updatingCover.setAlpha(0f);
                 updatingCover.animate().alpha(1f).setDuration(250);
-                updatingCover.announceForAccessibility("Updating Offer Filter");
+                updatingCover.announceForAccessibility("Updating " + AppName.NAME);
             }
         }
         if (githubStatus != null) refreshGitHub();
@@ -1480,7 +1532,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             areasStatus.setText("Needs location permission. Approximate is enough.");
         } else if (needsAllTheTime) {
             areasStatus.setText(unlocated + (unlocated == 1 ? " offer" : " offers") + " came in without a "
-                    + "location. Android may share it only while Offer Filter is open, so choose Allow all the "
+                    + "location. Android may share it only while " + AppName.NAME + " is open, so choose Allow all the "
                     + "time.");
         } else {
             areasStatus.setText("On · " + AreaMap.totalOffers(cells) + " offers in " + cells.size()
@@ -1727,7 +1779,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         open(Intent.createChooser(new Intent(Intent.ACTION_SEND)
                 .setType("text/plain")
                 .putExtra(Intent.EXTRA_SUBJECT, DiagnosticLog.reportSubject(this))
-                .putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)), "Share Offer Filter report"));
+                .putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)), "Share " + AppName.NAME + " report"));
     }
 
     private void openNotificationAccess() {
@@ -1777,8 +1829,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Page-colored system bars with icons that contrast with the page in light and dark themes. */
     @SuppressWarnings("deprecation")
-    private void styleSystemBars() {
-        Window window = getWindow();
+    static void styleSystemBars(Activity activity, Ui ui) {
+        Window window = activity.getWindow();
         if (Build.VERSION.SDK_INT < 35) {
             window.setStatusBarColor(ui.page);
             window.setNavigationBarColor(ui.page);
@@ -1800,7 +1852,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Android 15 draws apps targeting API 35 edge to edge, so the pages must keep themselves clear of the status bar,
      * navigation bar, cutouts, and keyboard. Earlier versions already lay the window out inside the system bars.
      */
-    private void fitToSystemBars(View content) {
+    static void fitToSystemBars(View content) {
         if (Build.VERSION.SDK_INT < 35) return;
         content.setOnApplyWindowInsetsListener((view, insets) -> {
             Insets bars = insets.getInsets(WindowInsets.Type.systemBars()

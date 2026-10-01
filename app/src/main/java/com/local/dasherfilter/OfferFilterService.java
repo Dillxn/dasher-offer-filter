@@ -685,6 +685,21 @@ public final class OfferFilterService extends AccessibilityService {
         DiagnosticLog.log(this, "accessibility", "connected; never opens Dasher");
         onScanner(() -> {
             if (stopped) return;
+            if (!Consent.accepted(this)) {
+                // Until the first-run notice is accepted nothing of Dasher's is read. Only when an update is waiting to
+                // reopen the app is it asked which app is in front (no content read), so it never opens over Dasher.
+                status("Waiting for the notice in the app to be accepted; nothing is read or declined until then.");
+                if (Updater.relaunchPending(this)) {
+                    boolean dasher;
+                    try {
+                        dasher = see(false, null).dasherRoot != null;
+                    } catch (RuntimeException unreadable) {
+                        dasher = true;
+                    }
+                    if (!dasher) onMain(() -> Updater.relaunchAfterUpdate(this));
+                }
+                return;
+            }
             lookSafely();
             status("Accessibility connected. Only visible offer screens can be fully evaluated.");
             // Offer Filter was on screen when an update began: open it again, never over Dasher.
@@ -703,6 +718,8 @@ public final class OfferFilterService extends AccessibilityService {
      */
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
+        // Until the first-run notice is accepted, nothing is read, decided or tapped.
+        if (!Consent.accepted(this)) return;
         int type = event.getEventType();
         boolean windowsChanged = type == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (!windowsChanged && !isDasherPackage(event.getPackageName())) return;
@@ -1067,11 +1084,12 @@ public final class OfferFilterService extends AccessibilityService {
         boolean near = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS;
         if (tap.own || near) {
             // Described (its labels masked) on the log's own thread.
-            DiagnosticLog.logScreen(this, () -> "tap (" + (tap.own ? "Offer Filter's own" : "not Offer Filter's")
+            DiagnosticLog.logScreen(this, () -> "tap ("
+                    + (tap.own ? AppName.NAME + "'s own" : "not " + AppName.NAME + "'s")
                     + ") " + tap.describe(true));
         } else if (now - bareTapLoggedAt >= BARE_TAP_LOG_MS) {
             bareTapLoggedAt = now;
-            DiagnosticLog.logScreen(this, () -> "tap (not Offer Filter's) " + tap.describe(false));
+            DiagnosticLog.logScreen(this, () -> "tap (not " + AppName.NAME + "'s) " + tap.describe(false));
         }
         if (tap.accept()) {
             OfferSnapshot accepting = acceptedTracker.acceptClicked(now);
@@ -1255,14 +1273,14 @@ public final class OfferFilterService extends AccessibilityService {
         OwnTaps.Tap echo = ownTaps.touchEcho(touchAt);
         if (echo != null) {
             DiagnosticLog.log(this, "accessibility", "touch ignored: own-action echo, " + (touchAt - echo.began)
-                    + " ms after Offer Filter's tap");
+                    + " ms after " + AppName.NAME + "'s tap");
             return;
         }
         OwnTaps.Tap last = ownTaps.last();
         long since = last != null && touchAt >= last.began ? touchAt - last.began : -1;
         touchSinceOwnAction = since;
         DiagnosticLog.log(this, "accessibility", "touch during decline: the user's"
-                + (since >= 0 ? ", " + since + " ms after Offer Filter's last tap" : ""));
+                + (since >= 0 ? ", " + since + " ms after " + AppName.NAME + "'s last tap" : ""));
         userActionWasClick = false;
         userActionWhat = "";
         userActions.incrementAndGet();
@@ -1355,9 +1373,10 @@ public final class OfferFilterService extends AccessibilityService {
                     .withScore(declinedEntry.scorePercent), -1, false);
         }
         long since = touchSinceOwnAction;
-        String after = since >= 0 ? " (" + since + " ms after Offer Filter's last tap)" : "";
+        String after = since >= 0 ? " (" + since + " ms after " + AppName.NAME + "'s last tap)" : "";
         String halted = "; automatic decline stopped" + (alreadyConfirmed ? " after its confirmation was tapped" : "");
-        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Offer Filter stopped tapping this offer";
+        String toast = alreadyConfirmed ? "Decline was already confirmed"
+                : AppName.NAME + " stopped tapping this offer";
         switch (why) {
             case TOUCH:
                 DiagnosticLog.log(this, "accessibility", "screen touched" + after + halted);
@@ -1375,12 +1394,12 @@ public final class OfferFilterService extends AccessibilityService {
                 DiagnosticLog.log(this, "accessibility", "you went back to the offer from Dasher's question ("
                         + detail + ")" + halted);
                 status("You went back to the offer, so auto-decline stopped for it.");
-                toast = "Offer Filter stopped tapping this offer";
+                toast = AppName.NAME + " stopped tapping this offer";
                 break;
             default:
                 DiagnosticLog.log(this, "confirm", "confirmation not tapped: " + detail + "; the offer is left to you");
                 status("Dasher's question could not be confirmed, so this offer is left to you.");
-                toast = "Offer Filter couldn't confirm this decline";
+                toast = AppName.NAME + " couldn't confirm this decline";
                 break;
         }
         String shown = toast;
@@ -1407,6 +1426,8 @@ public final class OfferFilterService extends AccessibilityService {
      * @return true when another check should follow shortly
      */
     private boolean checkOffer(String trigger, long eventAt, int maxNodes) {
+        // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
+        if (!Consent.accepted(this)) return false;
         long started = SystemClock.uptimeMillis();
         long startedNanos = System.nanoTime();
         boolean hotAtStart = hot(started);
