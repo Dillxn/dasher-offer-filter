@@ -7,11 +7,15 @@ import android.content.Context;
  * The app every Robolectric test runs in (src/test/resources/robolectric.properties): the first-run notice already
  * accepted, as on a phone in use, so tests written before the notice behave as they did. ConsentGateTest starts from
  * a phone that has not accepted it ({@link #forget}). Written straight to the prefs, so no test sees a log line for it.
+ * So is the one-time clean-up after the payment-page fix (DiagnosticLog.cleanUpOnce), as done: PrivacyCleanupTest
+ * starts from a phone updated from an older version.
  */
 public class ConsentedTestApp extends Application {
     @Override public void onCreate() {
         super.onCreate();
         accept(this);
+        getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
+                .putBoolean(DiagnosticLog.CLEANED_UP, true).commit();
     }
 
     static void accept(Context context) {

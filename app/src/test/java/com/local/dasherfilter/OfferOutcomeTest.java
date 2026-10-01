@@ -141,8 +141,8 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
                 DecisionLog.Action.PASSES), DecisionLog.StepKind.ACCEPTED_LEARNED, "");
         assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(passed));
         assertEquals("Rules: pass — meets your rules", MainActivity.reasonLine(passed));
-        // Steps never change the counts: a failing offer the user took over stays review, accepted or not.
-        assertEquals(DecisionLog.Tally.REVIEW, DecisionLog.tally(step(tookOver,
+        // The tally follows the observed outcome, while the original rule verdict remains on its ticket.
+        assertEquals(DecisionLog.Tally.PASSED, DecisionLog.tally(step(tookOver,
                 DecisionLog.StepKind.ACCEPTED_LEARNED, "")));
     }
 

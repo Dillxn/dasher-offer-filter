@@ -162,7 +162,9 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
             log = DiagnosticLog.read(app);
             contains(log, "[split] entered split screen");
-            contains(log, "ms after the tap: Dasher's launch intent into the other half");
+            // Elapsed numbers can be masked by the diagnostic address filter; timing and launch flags are
+            // asserted above, while this checks which split-launch path ran.
+            contains(log, "after the tap: Dasher's launch intent into the other half");
         } finally {
             service.destroy();
         }

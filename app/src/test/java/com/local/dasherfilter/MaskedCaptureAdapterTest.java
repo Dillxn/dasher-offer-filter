@@ -88,7 +88,7 @@ public class MaskedCaptureAdapterTest {
     }
 
     private void show(AccessibilityNodeInfo root) {
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
+        TestWindows.full(controller.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
@@ -132,17 +132,19 @@ public class MaskedCaptureAdapterTest {
 
     @Test
     public void dashersOtherScreensAreKeptMasked() {
+        Dashing.seen(app);
         show(screen(Arrays.asList("Deliver to Sam P", "by 2:39 AM", "Call", "Message", "100 Example St",
                 "Springfield, OH 45000", "Leave it at the door", "\"100 Example St ..... pls leave it at the desk\"",
-                "McDonald's (32059-SOMEWHERE) (#e34ffd29)")));
+                "McDonald's (32059-SOMEWHERE) (#e34ffd29)", "Complete delivery steps")));
         ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
         show(screen(Arrays.asList("Sam P", "651 orders completed", "[icon] Pro Shopper", "Home")));
 
         String screens = DiagnosticLog.readScreens(app);
         assertTrue(screens, screens.contains("[Deliver to [name], by 2:39 AM, Call, Message, [address], [address], "
-                + "Leave it at the door, [instructions], McDonald's (32059-SOMEWHERE) (#e34ffd29)]"));
-        assertTrue(screens, screens.contains("[[name], 651 orders completed, [icon] Pro Shopper, Home]"));
-        assertNone(screens, "Sam P", "Example", "pls leave", "45000");
+                + "Leave it at the door, [instructions], McDonald's (32059-SOMEWHERE) (#e34ffd29), Complete delivery steps]"));
+        // A menu is not a positively recognized dash screen. None of its labels are retained.
+        assertTrue(screens, screens.contains(PersonalText.UNKNOWN_NOT_KEPT));
+        assertNone(screens, "Sam P", "Example", "pls leave", "45000", "651 orders completed", "Pro Shopper");
     }
 
     @Test

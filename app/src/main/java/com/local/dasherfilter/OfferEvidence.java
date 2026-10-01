@@ -114,11 +114,21 @@ final class OfferEvidence {
 
     static boolean isIdle(List<String> labels) {
         if (labels == null) return false;
+        boolean thisDash = false;
+        boolean dashControls = false;
+        boolean offerControl = false;
         for (String raw : labels) {
-            String label = normalize(raw).toLowerCase(Locale.US);
-            if (IDLE_LABELS.contains(TRAILING_PUNCTUATION.matcher(label).replaceAll(""))) return true;
+            String label = TRAILING_PUNCTUATION.matcher(normalize(raw).toLowerCase(Locale.US)).replaceAll("");
+            if (IDLE_LABELS.contains(label)) return true;
+            if (label.equals("this dash")) thisDash = true;
+            if (label.equals("dash preferences") || label.equals("safety tools")) dashControls = true;
+            offerControl |= OfferControls.isButton(label, "accept") || OfferControls.isButton(label, "decline");
         }
-        return false;
+        // These captured labels together identify the in-dash waiting screen. "This dash" alone also appears in
+        // its menu, and "Safety tools" on the pre-dash home; neither alone proves an offer finished.
+        return thisDash && dashControls && !offerControl && secondsLeft(labels) < 0
+                && !DeclineConfirmation.hasPrompt(labels) && !isPreDashHome(labels) && !DasherScene.showsRoute(labels)
+                && !DasherScene.showsEndDashQuestion(labels) && !DasherScene.showsNewOffer(labels);
     }
 
     /** A post time is fresh when it is at most {@code maxAge} old and no more than 5 s in the future. */

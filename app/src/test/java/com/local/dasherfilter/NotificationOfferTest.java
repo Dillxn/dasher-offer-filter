@@ -8,6 +8,15 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public final class NotificationOfferTest {
+    @Test public void explicitHeadlineWinsOverWordsInsideMerchantNames() {
+        assertTrue(NotificationOffer.isLikelyOffer(Arrays.asList("New Order: Go to Balance Bowls")));
+        assertTrue(NotificationOffer.isLikelyOffer(Arrays.asList("New Delivery!", "Promotion Pizza")));
+        assertTrue(NotificationOffer.isLikelyOffer(Arrays.asList("New Order", "Deposit Diner")));
+        assertFalse(NotificationOffer.isLikelyOffer(Arrays.asList("New message from customer", "My new order is late")));
+        assertFalse(NotificationOffer.isLikelyOffer(Arrays.asList("New orders promotion", "$5.00")));
+        assertFalse(NotificationOffer.isLikelyOffer(Arrays.asList("Balance", "$100.00")));
+    }
+
     @Test public void recognizesCommonOfferWording() {
         assertTrue(NotificationOffer.isLikelyOffer(Arrays.asList("New Order!", "$8.50", "4.2 mi")));
         assertTrue(NotificationOffer.isLikelyOffer(Arrays.asList("Delivery opportunity", "3 stops")));

@@ -12,7 +12,8 @@ By tapping I understand on the app's first screen, or by using the app, you acce
 
 - It reads the Dasher app's screen and notifications on your phone, through Android's accessibility service and notification access, which you turn on yourself.
 - It compares each offer with the minimums you set. When an offer is below them, it can tap Decline, and then Dasher's confirmation, for you. It never taps Accept.
-- While it declines an offer on screen, it turns media and alarm sound down for a moment and then puts them back. You can turn this off in Settings.
+- Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were using after completion evidence; while navigation is detected, it also returns for passing or unclear offers and leaves a card. Otherwise those offers stay in Dasher. Your touch or app switch ends that automatic return. You can turn Peek off in Settings.
+- While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.
 - It can update itself from its own update feed, and it sends reports only when you turn them on or share one (see the privacy text).
 

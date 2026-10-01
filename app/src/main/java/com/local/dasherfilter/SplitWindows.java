@@ -35,7 +35,7 @@ final class SplitWindows {
         dasher.getBoundsInScreen(half);
         if (half.isEmpty()) return "its bounds are not known";
         Rect other = new Rect();
-        activeOther.getBoundsInScreen(other);
+        if (activeOther != null) activeOther.getBoundsInScreen(other);
         if (Rect.intersects(half, other)) return "the active app's window overlaps it";
         Rect window = new Rect();
         long area = (long) half.width() * half.height();

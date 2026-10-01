@@ -115,13 +115,16 @@ enum DasherScene {
     static boolean showsNavigation(List<String> labels) {
         if (labels == null) return false;
         boolean speed = false;
+        boolean turn = false;
         boolean distance = false;
         for (String raw : labels) {
             if (raw == null) continue;
             String label = OfferEvidence.normalize(raw).toLowerCase(Locale.US);
             if (!speed && SPEED.matcher(label).matches()) speed = true;
             if (!distance && DISTANCE.matcher(label).find()) distance = true;
-            if (speed && distance) return true;
+            if (label.equals("turn left") || label.startsWith("turn left onto ")
+                    || label.equals("turn right") || label.startsWith("turn right onto ")) turn = true;
+            if ((speed || turn) && distance) return true;
         }
         return false;
     }

@@ -240,7 +240,7 @@ public class ReportOutboxTest {
     @Test
     public void namesAndAddressesAreMaskedButFiguresAndOfferWordsStay() throws JSONException {
         List<String> screen = Arrays.asList("Order for Jane D.", "Chick-fil-A", "123 Main St",
-                "$7.90 Guaranteed (incl. tips)", "2 stops (7.2 mi) • 21 min", "Deliver by 7:45 PM", "Accept");
+                "$7.90 Guaranteed (incl. tips)", "2 stops (7.2 mi) • 21 min", "Deliver by 7:45 PM", "Accept", "Decline");
         DecisionLog.Entry entry = new DecisionLog.Entry(1000, DecisionLog.Source.SCREEN, false,
                 new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
                 DecisionLog.Action.DECLINE_TAPPED, true, Arrays.asList("Jane's order $7.90"));
@@ -285,7 +285,7 @@ public class ReportOutboxTest {
         StringBuilder huge = new StringBuilder();
         for (int i = 0; i < 1000; i++) huge.append('x');
         ProblemReport report = ProblemReport.build(ProblemReport.Kind.UNREADABLE_OFFER, "0.4.9", RULES, null,
-                Arrays.asList(huge.toString(), "Decline"), null, null, Collections.<DecisionLog.Entry>emptyList());
+                Arrays.asList(huge.toString(), "Decline", "Accept"), null, null, Collections.<DecisionLog.Entry>emptyList());
 
         String clipped = data(report).getJSONArray("labels").getString(0);
         assertEquals(201, clipped.length());

@@ -29,6 +29,7 @@ import org.robolectric.shadows.ShadowAccessibilityWindowInfo;
 import org.robolectric.shadows.ShadowSystemClock;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * A decline whose question the app never managed to confirm is left to the user ("confirmation not tapped"), and its
@@ -66,6 +67,7 @@ public class ConfirmationLeftToYouTest {
         if (controller != null) controller.destroy();
         OfferFilterService.sawDasherBeside(0);
         OfferFilterService.scanLooperForTests = null;
+        OfferFilterService.nodeFetchForTests = null;
     }
 
     @Test
@@ -86,7 +88,7 @@ public class ConfirmationLeftToYouTest {
         AccessibilityNodeInfo confirm = button("Decline offer");
         List<Long> confirmTaps = taps(confirm, tapsTaken);
         show(service, question(confirm, button("View offer details")));
-        for (int i = 0; i < 40; i++) pass(50);
+        for (int i = 0; i < (tapsTaken ? 130 : 40); i++) pass(50);
 
         assertEquals("the first try and two retries", 3, confirmTaps.size());
         DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
@@ -98,6 +100,186 @@ public class ConfirmationLeftToYouTest {
         assertEquals(0, totals[DecisionLog.Tally.FILTERED.ordinal()]);
         assertEquals(1, totals[DecisionLog.Tally.REVIEW.ordinal()]);
         assertEquals("Rules: decline — below your minimum pay", MainActivity.reasonLine(line));
+    }
+
+    @Test
+    public void aFiveSecondReadStillConfirmsAQuestionTenSecondsAfterTheActualTap() {
+        OfferFilterService service = service();
+        OfferFilterService.nodeFetchForTests = () -> {
+            OfferFilterService.nodeFetchForTests = null;
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        };
+        show(service, offer("$7.90", "0:35"));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(10));
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> at = taps(confirm, true);
+        show(service, question(confirm));
+        assertEquals("late question still belongs to the offer countdown", 1, at.size());
+    }
+
+    @Test
+    public void unreadableLookAndFigurelessAnimationDoNotRevokeTheDecline() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        show(service, null);
+        AccessibilityNodeInfo frame = node(null, false);
+        Shadows.shadowOf(frame).addChild(button("Accept"));
+        Shadows.shadowOf(frame).addChild(button("Decline"));
+        show(service, frame);
+        assertEquals("animation creates no REVIEW line", 1, DecisionLog.recent(app, 10).size());
+        assertEquals(DecisionLog.Action.DECLINE_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(7));
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> at = taps(confirm, true);
+        show(service, question(confirm));
+        assertEquals(1, at.size());
+    }
+
+    @Test
+    public void aTakenTapWaitsForDasherAndAClosingQuestionDoesNotBecomeLeftToYou() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> at = taps(confirm, true);
+        show(service, question(confirm));
+        pass(1_800);
+        assertEquals("wait for the app to close the dialog", 1, at.size());
+        show(service, node("Finding offers", false));
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    @Test
+    public void lateIdleEvidenceCorrectsAJustGivenUpConfirmation() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        show(service, question(button("Decline offer")));
+        pass(6_100);
+        assertEquals(DecisionLog.Action.CONFIRMATION_NOT_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+        show(service, node("Finding offers", false));
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    @Test
+    public void vanishedPlusPayDoesNotTurnTheSameUncertainOfferIntoAKnownFailure() {
+        FilterStore.save(app, new FilterSettings(true, 600, 0, 0, 0, 0));
+        OfferFilterService service = service();
+        AccessibilityNodeInfo first = node(null, false);
+        for (String label : new String[]{"+$1", "$5.75", "2 stops (7.2 mi) • 21 min", "0:35"}) {
+            Shadows.shadowOf(first).addChild(node(label, false));
+        }
+        Shadows.shadowOf(first).addChild(button("Accept"));
+        Shadows.shadowOf(first).addChild(button("Decline"));
+        show(service, first);
+        show(service, offer("$5.75", "0:34"));
+        assertEquals("one offer while its plus label flickers", 1, DecisionLog.recent(app, 10).size());
+        assertEquals(DecisionLog.Action.NEEDS_REVIEW, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    @Test
+    public void foregroundNoticePairsByTimeOrStoreButNeverByContradictingFigures() {
+        OfferSnapshot facts = new OfferSnapshot(790, 7.2, 21, 2);
+        List<String> screen = java.util.Arrays.asList("New Order: Go to Balance Bowls", "$7.90", "7.2 mi", "21 min", "2 stops");
+        assertEquals(false, OfferFilterService.sameForegroundNotice(java.util.Arrays.asList("New Order: Go to Elsewhere"),
+                facts, screen, 5_000));
+        assertTrue(OfferFilterService.sameForegroundNotice(java.util.Arrays.asList("New Delivery!"),
+                facts, screen, 5_000));
+        assertTrue(OfferFilterService.sameForegroundNotice(java.util.Arrays.asList("New Order: Go to Balance Bowls"),
+                facts, screen, 15_000));
+        assertEquals(false, OfferFilterService.sameForegroundNotice(java.util.Arrays.asList("New Order", "$9.50"),
+                facts, screen, 100));
+    }
+
+    @Test
+    public void theOffersOwnNewNotificationKeyDoesNotCancelConfirmation() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        long before = OfferNotificationService.generation();
+        ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            listener.get().onNotificationPosted(notice(), null);
+            assertEquals("own notification is the same offer", before, OfferNotificationService.generation());
+            pass(300);
+            AccessibilityNodeInfo confirm = button("Decline offer");
+            List<Long> at = taps(confirm, true);
+            show(service, question(confirm));
+            assertEquals(1, at.size());
+        } finally { listener.destroy(); }
+    }
+
+    @Test
+    public void aNoticeArrivingInsideTheFirstReadDoesNotCancelItsConfirmation() {
+        OfferFilterService service = service();
+        ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            OfferFilterService.nodeFetchForTests = () -> {
+                OfferFilterService.nodeFetchForTests = null;
+                listener.get().onNotificationPosted(notice(), null);
+            };
+            show(service, offer("$7.90", "0:35"));
+            pass(300);
+            AccessibilityNodeInfo confirm = button("Decline offer");
+            List<Long> at = taps(confirm, true);
+            show(service, question(confirm));
+            assertEquals(1, at.size());
+        } finally { listener.destroy(); }
+    }
+
+    @Test
+    public void checkingForegroundForANotificationNeverFetchesAnAppRoot() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        int roots = service.rootFetches;
+        assertTrue(OfferFilterService.isDasherOnScreenNow());
+        assertEquals(roots, service.rootFetches);
+    }
+
+    @Test
+    public void ownOverlayChangesDoNotInterruptOrQueueADasherRead() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        AccessibilityWindowInfo overlay = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(overlay);
+        shadow.setId(900);
+        shadow.setType(AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY);
+        List<AccessibilityWindowInfo> windows = new java.util.ArrayList<>(service.getWindows());
+        windows.add(overlay);
+        Shadows.shadowOf(service).setWindows(windows);
+        AccessibilityEvent changed = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOWS_CHANGED);
+        changed.setPackageName(app.getPackageName());
+        ((org.robolectric.shadows.ShadowAccessibilityRecord) Shadow.extract(changed)).setWindowId(900);
+        int roots = service.rootFetches;
+        service.onAccessibilityEvent(changed);
+        assertEquals("an own overlay is not a new Dasher screen", roots, service.rootFetches);
+        changed.setPackageName("another.accessibility.service");
+        shadow.setId(901);
+        ((org.robolectric.shadows.ShadowAccessibilityRecord) Shadow.extract(changed)).setWindowId(901);
+        service.onAccessibilityEvent(changed);
+        assertTrue("unknown overlays still cause a fresh check", service.rootFetches > roots);
+    }
+
+    @Test
+    public void navigationDistanceChangesUseQuietCadenceWithoutDelayingRealOfferSigns() {
+        OfferFilterService service = service();
+        AccessibilityNodeInfo nav = node(null, false);
+        Shadows.shadowOf(nav).addChild(node("Turn left", false));
+        Shadows.shadowOf(nav).addChild(node("9 mi", false));
+        show(service, nav);
+        int roots = service.rootFetches;
+        for (int i = 0; i < 20; i++) service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        assertTrue("a burst is coalesced while navigating", service.rootFetches - roots <= 1);
+        show(service, offer("$7.90", "0:35"));
+        assertEquals(DecisionLog.Action.DECLINE_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    private android.service.notification.StatusBarNotification notice() {
+        android.app.Notification payload = new android.app.Notification.Builder(app, "source")
+                .setSmallIcon(android.R.drawable.stat_notify_more).setContentTitle("New Delivery!")
+                .setContentText("New Order: Go to Balance Bowls").build();
+        return new android.service.notification.StatusBarNotification("com.doordash.driverapp", "com.doordash.driverapp",
+                3, "NEW_ORDER", 10001, 0, 0, payload, android.os.Process.myUserHandle(), System.currentTimeMillis());
     }
 
     // ---- Dasher's screens, as DeclineHandBackTest draws them ----

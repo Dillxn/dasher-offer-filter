@@ -238,7 +238,7 @@ public class DashDiagnosticsTest {
             controller = Robolectric.buildService(OfferFilterService.class).create();
         }
         ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
+        TestWindows.full(controller.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);

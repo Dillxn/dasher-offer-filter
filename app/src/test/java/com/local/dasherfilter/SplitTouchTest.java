@@ -312,6 +312,28 @@ public class SplitTouchTest extends AndroidAdapterTestBase {
     }
 
     @Test
+    public void unknownActiveDasherBoundsCannotExcludeAKeyboardOrSystemCover() {
+        OfferFilterService service = start();
+        for (int type : new int[] {AccessibilityWindowInfo.TYPE_INPUT_METHOD,
+                AccessibilityWindowInfo.TYPE_SYSTEM}) {
+            AccessibilityNodeInfo next = offer(type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ? "$6.10" : "$5.10");
+            List<Long> declines = taps(decline);
+            AccessibilityNodeInfo ours = node("com.local.dasherfilter", null, false);
+            AccessibilityNodeInfo covering = node(type == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+                    ? "com.android.inputmethod.latin" : "com.android.systemui", null, false);
+            Shadows.shadowOf(service).setWindows(Arrays.asList(
+                    window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, false, TOP_HALF),
+                    window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                    window(AccessibilityWindowInfo.TYPE_APPLICATION, next, true, new Rect()),
+                    window(type, covering, false, BOTTOM_HALF)));
+            Shadows.shadowOf(service).setRootInActiveWindow(next);
+            changed(service);
+            assertTrue("with unknown bounds, a keyboard or system surface cannot be proved clear of Dasher (type "
+                    + type + ")", declines.isEmpty());
+        }
+    }
+
+    @Test
     public void dashersReportOfTheUsersClickHandsBackAfterATouchOnOfferFiltersHalf() {
         OfferFilterService service = start();
         AccessibilityNodeInfo shown = offer("$7.90");

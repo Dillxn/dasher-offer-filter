@@ -69,8 +69,24 @@ final class DiagnosticLog {
     private static final int REPORT_DECISIONS = 100;
     /** What every report says about the screen text it carries. */
     static final String MASKED_NOTE = "Screen text is masked on the phone: names, street addresses, phone numbers, "
-            + "emails and a customer's own instructions read [name], [address], [phone], [email] and [instructions]; "
-            + "stores, offer figures and Dasher's own words stay.";
+            + "emails, a customer's own instructions, card numbers and codes, and navigation's streets read [name], "
+            + "[address], [phone], [email], [instructions], [card] and [street]; stores, offer figures and Dasher's own "
+            + "words stay. Payment, account and earnings screens are never kept.";
+    /** A screen showing a payment, account or earnings marker leaves only this line, at most once a minute. */
+    static final String NOT_KEPT = PersonalText.NOT_KEPT;
+    static final long NOT_KEPT_EVERY_MS = 60_000L;
+    /** When the last {@link #NOT_KEPT} line was written (the line's own time). Written on the writer thread. */
+    private static volatile long notKeptAt = Long.MIN_VALUE;
+    /**
+     * Set once the one-time clean-up after the payment-page fix has run ({@link #cleanUpOnce}): an older version
+     * kept Dasher's wallet page, card number and all, in the screens log, and a report carried it.
+     */
+    static final String CLEANED_UP = "cleaned_up_payment_screens";
+    static final String CLEANED_UP_LINE = "cleared both diagnostic logs and unsent reports: older text could include "
+            + "payment details";
+    private static volatile boolean cleanedUp;
+    /** Held through the clean-up, ahead of {@link #LOCK} (never the other way round). */
+    private static final Object CLEANUP = new Object();
     /** Every report subject starts with this, so reports are easy to find in a mailbox. */
     static final String REPORT_SUBJECT = AppName.NAME + " diagnostics";
     /** One writer thread with a bounded queue; entries beyond the queue are dropped, never blocking callers. */
@@ -106,14 +122,32 @@ final class DiagnosticLog {
     static void log(Context context, String source, Supplier<String> message) {
         if (!isEnabled(context)) return;
         long at = System.currentTimeMillis();
-        write(context.getApplicationContext(), FILE, () -> line(at, source, message.get()));
+        write(context.getApplicationContext(), FILE, () -> kept(at, source, message.get(), false));
+    }
+
+    /**
+     * What is written of a line: nothing more than {@link #NOT_KEPT} (at most once a minute, else nothing) when it is a
+     * screen's that showed a payment, account or earnings screen ({@link #NOT_KEPT} itself, as the screen reader
+     * hands over such a screen's labels, or, for the screens log, any marker in its raw text), and otherwise the line.
+     * On the writer thread.
+     *
+     * @return the bytes to append, or null for none
+     */
+    private static byte[] kept(long at, String source, String message, boolean screen) {
+        if (NOT_KEPT.equals(message) || ((screen || "screen".equals(source) || "click".equals(source))
+                && PersonalText.accountText(message))) {
+            if (notKeptAt != Long.MIN_VALUE && at >= notKeptAt && at - notKeptAt < NOT_KEPT_EVERY_MS) return null;
+            notKeptAt = at;
+            return line(at, SCREEN_SOURCE, NOT_KEPT);
+        }
+        return line(at, source, message);
     }
 
     /** One stored line: one physical line, masked, then cut to {@link #MAX_MESSAGE_CHARS}. */
     private static byte[] line(long at, String source, String message) {
         String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
         // Masked before it is cut, so a cut can never leave half an address unmasked.
-        safe = PersonalText.maskLine(safe);
+        safe = PersonalText.maskLine(safe, NAVIGATION_SOURCE.equals(source));
         if (safe.length() > MAX_MESSAGE_CHARS) safe = safe.substring(0, MAX_MESSAGE_CHARS) + " [truncated]";
         String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date(at));
         return (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
@@ -215,7 +249,10 @@ final class DiagnosticLog {
         return out.toString();
     }
 
-    /** One of Dasher's other screens, as read: kept in its own log. */
+    /**
+     * One of Dasher's other screens, as read: kept in its own log. A screen showing a payment, account or earnings
+     * marker anywhere in its words is not kept: one {@link #NOT_KEPT} line at most once a minute instead.
+     */
     static void logScreen(Context context, String message) {
         logScreen(context, () -> message);
     }
@@ -224,18 +261,43 @@ final class DiagnosticLog {
     static void logScreen(Context context, Supplier<String> message) {
         if (!isEnabled(context)) return;
         long at = System.currentTimeMillis();
-        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, SCREEN_SOURCE, message.get()));
+        write(context.getApplicationContext(), SCREENS_FILE, () -> kept(at, SCREEN_SOURCE, message.get(), true));
     }
 
     /**
      * One of Dasher's turn-by-turn navigation screens, in the screens log as a "[navigation]" line: when the log is
      * full, navigation lines (and lines older than {@link #SCREENS_PROTECTED_MS}) go first, so navigation never
-     * pushes out another screen of the last 30 minutes ({@link #fitScreens}). Built (and masked) on the writer thread.
+     * pushes out another screen of the last 30 minutes ({@link #fitScreens}). Built (and masked, its streets too) on
+     * the writer thread; never kept with a payment, account or earnings marker, as {@link #logScreen}.
      */
     static void logNavigation(Context context, Supplier<String> message) {
         if (!isEnabled(context)) return;
         long at = System.currentTimeMillis();
-        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, NAVIGATION_SOURCE, message.get()));
+        write(context.getApplicationContext(), SCREENS_FILE, () -> kept(at, NAVIGATION_SOURCE, message.get(), true));
+    }
+
+    /**
+     * The screens log without a line of a payment, account or earnings screen (each one {@link #NOT_KEPT} line, with
+     * its time): what a report carries of it, whatever wrote it.
+     */
+    static String withoutAccountScreens(String log) {
+        if (!PersonalText.accountText(log)) return log;
+        StringBuilder out = new StringBuilder(log.length());
+        int start = 0;
+        while (start < log.length()) {
+            int end = log.indexOf('\n', start);
+            end = end < 0 ? log.length() : end + 1;
+            String line = log.substring(start, end);
+            if (PersonalText.accountText(line)) {
+                int source = line.indexOf(" [");
+                out.append(source < 0 ? "" : line.substring(0, source)).append(" [").append(SCREEN_SOURCE)
+                        .append("] ").append(NOT_KEPT).append('\n');
+            } else {
+                out.append(line);
+            }
+            start = end;
+        }
+        return out.toString();
     }
 
     /**
@@ -304,7 +366,8 @@ final class DiagnosticLog {
                     bytes = line(System.currentTimeMillis(), "log", "a line could not be masked and was dropped: "
                             + unmaskable.getClass().getSimpleName());
                 }
-                append(app, name, bytes);
+                // A screen not kept, and its note already written this minute.
+                if (bytes != null) append(app, name, bytes);
             });
         } catch (RejectedExecutionException queueFull) {
             // Diagnostics are best effort; dropping an entry is preferable to delaying an offer decision.
@@ -321,6 +384,7 @@ final class DiagnosticLog {
     }
 
     private static String read(Context context, String name, String none) {
+        if (!cleanUpOnce(context)) return "Diagnostics paused: privacy cleanup incomplete.";
         flush();
         synchronized (LOCK) {
             File file = new File(context.getFilesDir(), name);
@@ -356,8 +420,9 @@ final class DiagnosticLog {
     static String fullReport(Context context) {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
-        String log = newest(PersonalText.maskLine(read(context)), MAX_REPORT_LOG_CHARS);
-        String screens = newestScreens(PersonalText.maskLine(readScreens(context)), System.currentTimeMillis());
+        String log = newest(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS);
+        String screens = newestScreens(PersonalText.maskLine(withoutAccountScreens(readScreens(context))),
+                System.currentTimeMillis());
         return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"
                 + phone() + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
@@ -455,6 +520,69 @@ final class DiagnosticLog {
                 + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
     }
 
+    /**
+     * Remove all legacy captured text and queued reports once. Unknown partial payment pages cannot be reliably
+     * remasked retrospectively. A failed deletion or durable preference write keeps reads/sends paused for retry.
+     */
+    static boolean cleanUpOnce(Context context) {
+        if (cleanedUp) return true;
+        Context app = context.getApplicationContext();
+        synchronized (CLEANUP) {
+            if (cleanedUp) return true;
+            SharedPreferences prefs = prefs(app);
+            if (prefs.getBoolean(CLEANED_UP, false)) {
+                cleanedUp = true;
+                return true;
+            }
+            boolean found;
+            synchronized (LOCK) {
+                File screens = new File(app.getFilesDir(), SCREENS_FILE);
+                File offers = file(app);
+                found = screens.exists() || offers.exists();
+                if (!deleteLegacy(screens) || !deleteLegacy(offers)) return false;
+            }
+            found |= ReportOutbox.queued(app) > 0;
+            if (!ReportOutbox.discardAllNow(app)) return false;
+            if (!prefs.edit().putBoolean(CLEANED_UP, true).commit()) {
+                // SharedPreferences updates memory even if its disk write failed; don't trust that in-process flag.
+                prefs.edit().remove(CLEANED_UP).apply();
+                return false;
+            }
+            cleanedUp = true;
+            if (found && isEnabled(app)) {
+                synchronized (LOCK) {
+                    try (OutputStream out = new FileOutputStream(file(app), true)) {
+                        out.write(line(System.currentTimeMillis(), "privacy", CLEANED_UP_LINE));
+                    } catch (IOException ignored) {
+                        // Only a generic cleanup receipt; no legacy data remains.
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    private static boolean deleteLegacy(File file) {
+        return !file.exists() || file.delete() || !file.exists();
+    }
+
+    /** {@link #cleanUpOnce} on the writer thread, for a start that may write nothing (the app opening). */
+    static void cleanUpSoon(Context context) {
+        if (cleanedUp) return;
+        Context app = context.getApplicationContext();
+        try {
+            WRITER.execute(() -> cleanUpOnce(app));
+        } catch (RejectedExecutionException queueFull) {
+            // The next line written cleans up first anyway.
+        }
+    }
+
+    /** For tests: as a process start would, forget that the clean-up ran and when a screen was last not kept. */
+    static void forgetCache() {
+        cleanedUp = false;
+        notKeptAt = Long.MIN_VALUE;
+    }
+
     /** Removes both logs and every kept state (Clear history). */
     static void clear(Context context) {
         flush();
@@ -475,6 +603,8 @@ final class DiagnosticLog {
     }
 
     private static void append(Context context, String name, byte[] bytes) {
+        // Before anything new is written, what an older version kept is cleaned up (once; never under LOCK).
+        if (!cleanUpOnce(context)) return;
         synchronized (LOCK) {
             File file = new File(context.getFilesDir(), name);
             boolean screens = SCREENS_FILE.equals(name);

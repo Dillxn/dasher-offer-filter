@@ -232,6 +232,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         FilterStore.forgetRetiredEmail(this);
         // Settings has no Automatic updates switch any more: an "off" kept from an older version is cleared once.
         Updater.retireSwitch(this);
+        // What an older version kept of Dasher's screens (it could hold a payment card page) goes once, off this thread.
+        DiagnosticLog.cleanUpSoon(this);
         // Retires an old extra-stop fee now, so its note is ready for the homepage.
         FilterStore.load(this);
         if (state != null) {
@@ -1007,8 +1009,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
-     * the homepage), the two switches, updates, GitHub, reports and a tip, then the version and the bundled texts. The
-     * rules are all on the homepage's constellation.
+     * the homepage), the three switches, updates, GitHub, reports and a tip, then the version and the bundled texts.
+     * The rules are all on the homepage's constellation.
      */
     private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
@@ -1026,6 +1028,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Switch mute = ui.toggle(switches, "Mute Dasher's ring while declining",
                 FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
+        // Peek (on unless turned off): Dasher is brought up for a moment to read a background offer.
+        Switch peek = ui.toggle(switches, "Peek at background offers", FilterStore.peek(this));
+        peek.setOnCheckedChangeListener((view, on) -> {
+            if (on == FilterStore.peek(this)) return;
+            FilterStore.setPeek(this, on);
+            DiagnosticLog.log(this, "peek", "turned " + (on ? "on" : "off") + " in Settings");
+        });
         areasToggle = ui.toggle(switches, "Offer map", AreaMap.enabled(this));
         areasToggle.setOnCheckedChangeListener((view, on) -> {
             if (on == AreaMap.enabled(this)) return;
@@ -1439,7 +1448,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         reason.setPadding(0, ui.dp(10), 0, 0);
         ticket.addView(reason);
         TextView action = ui.text(entry.action.label
-                + (entry.source == DecisionLog.Source.SCREEN ? " · on screen" : " · from notification")
+                + (entry.source == DecisionLog.Source.SCREEN
+                        ? " · on screen" + (entry.peeked ? " (peeked)" : "") : " · from notification")
                 + (entry.autoDecline ? "" : " · while paused"), 13, ui.inkSecondary, false);
         action.setPadding(0, ui.dp(4), 0, 0);
         ticket.addView(action);

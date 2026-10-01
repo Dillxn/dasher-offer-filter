@@ -47,7 +47,8 @@ public final class DeclineStateTest {
         state.declineSent("second", 5000);
         state.confirmationSent(5000);
         assertFalse(state.mayConfirm(5001));
-        assertTrue(state.mayConfirm(5250));
+        assertFalse(state.mayConfirm(5250));
+        assertTrue(state.mayConfirm(7000));
         assertFalse(state.mayConfirm(15000));
     }
 
@@ -87,7 +88,8 @@ public final class DeclineStateTest {
         assertTrue(state.mayConfirm(1000));
         state.confirmationSent(1000);
         assertFalse(state.mayConfirm(1249));
-        assertTrue(state.mayConfirm(1250));
+        assertFalse(state.mayConfirm(1250));
+        assertTrue(state.mayConfirm(3000));
         state.confirmationSent(1250);
         state.confirmationSent(1500);
         state.confirmationSent(1750);
@@ -95,4 +97,29 @@ public final class DeclineStateTest {
         state.declineSent("different offer", 2000);
         assertTrue(state.mayConfirm(2000));
     }
+    @Test public void confirmationAuthorityUsesCountdownAndDoesNotSlideOnRetries() {
+        DeclineState state = new DeclineState();
+        state.declineSent("same", 6_000, 30_000);
+        assertTrue(state.mayConfirm(16_000));
+        state.declineSent("same", 7_000, 29_000);
+        assertEquals(39_000, state.confirmationUntil());
+        assertFalse(state.mayConfirm(39_000));
+    }
+
+    @Test public void takenConfirmationWaitScalesWithReadDurationButRefusalsRemainPrompt() {
+        DeclineState state = new DeclineState();
+        state.declineSent("offer", 1_000, 45_000);
+        state.readDuration(1_400);
+        state.confirmationSent(1_000);
+        assertFalse(state.mayConfirm(3_799));
+        assertTrue(state.mayConfirm(3_800));
+        state.confirmationRefused(3_800);
+        assertFalse(state.mayConfirm(4_099));
+        assertTrue(state.mayConfirm(4_100));
+        state.readDuration(10_000);
+        state.confirmationSent(4_100);
+        assertFalse(state.confirmationExhausted(7_099));
+        assertTrue(state.confirmationExhausted(7_100));
+    }
+
 }

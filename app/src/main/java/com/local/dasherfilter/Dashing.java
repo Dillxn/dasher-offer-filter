@@ -64,6 +64,15 @@ final class Dashing {
     /** Whether the homepage should show the app watching: a dash is on and something can watch it. */
     static boolean now(Context context) {
         if (!OfferFilterService.isConnected() && !OfferNotificationService.isConnected()) return false;
+        return on(context);
+    }
+
+    /**
+     * Whether a dash is on, as {@link #now} says to anything already watching it (the screen reader itself): what it
+     * saw of a dash in the last half hour, or a route still under way, and no end since. Dasher's other screens are
+     * kept only then, or soon after an offer.
+     */
+    static boolean on(Context context) {
         SharedPreferences prefs = prefs(context);
         long seen = prefs.getLong(SEEN_AT, 0);
         long ended = prefs.getLong(ENDED_AT, 0);

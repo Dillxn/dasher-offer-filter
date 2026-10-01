@@ -49,6 +49,20 @@ final class DeclineEpisode {
     private long backAt = NEVER;
     private boolean glitchUsed;
     private boolean over = true;
+    private long glitchMs = GLITCH_MS;
+    private long backWaitMs = GLITCH_MS;
+    private long tentativeLeftAt = NEVER;
+
+    void readDuration(long durationMs) { glitchMs = Math.max(GLITCH_MS, Math.min(10_000, 2 * durationMs)); }
+    long glitchMs() { return backAt == NEVER ? glitchMs : backWaitMs; }
+
+    /** Animation alone cannot prove the driver went back. */
+    void screenLeft(long at, boolean windowChanged) {
+        if (tentativeLeftAt == NEVER) tentativeLeftAt = at;
+        if (windowChanged || at - tentativeLeftAt >= glitchMs) screenLeft(at);
+    }
+
+    void offerPresent() { tentativeLeftAt = NEVER; }
 
     /**
      * A first Decline was tapped on this offer. The same offer, while its episode lasts, keeps it (after
@@ -63,6 +77,7 @@ final class DeclineEpisode {
         key = offerKey;
         offer = facts;
         questionAt = NEVER;
+        tentativeLeftAt = NEVER;
         leftAt = NEVER;
         confirmed = false;
         backAt = NEVER;
@@ -133,8 +148,8 @@ final class DeclineEpisode {
         if (!active(now) || !left()) return Back.NONE;
         if (questionUp) return Back.HOLD;
         if (!confirmed) return Back.HAND_BACK;
-        if (backAt == NEVER) backAt = now;
-        if (now - backAt < GLITCH_MS) return Back.HOLD;
+        if (backAt == NEVER) { backAt = now; backWaitMs = glitchMs; }
+        if (now - backAt < backWaitMs) return Back.HOLD;
         if (glitchUsed) return Back.GIVE_UP;
         glitchUsed = true;
         return Back.DECLINE_AGAIN;

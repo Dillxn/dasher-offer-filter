@@ -305,13 +305,55 @@ public class DeclineHandBackTest {
 
         // It stays the user's until the takeover ends as before: Dasher's wait for offers.
         pass(30_000);
-        tick(service);
+        // The same instance's clock continues down; a fresh 0:31 would now mean a re-offer.
+        show(service, offer("$7.90", "0:01"));
         assertTrue(again.isEmpty());
         show(service, idle());
         AccessibilityNodeInfo next = offer("$7.90", "0:40");
         List<Long> nextDecline = taps(decline, true);
         show(service, next);
         assertEquals("the next offer, with the same pay, is a new offer", 1, nextDecline.size());
+    }
+
+    @Test
+    public void aFreshCountdownReofferEndsTheEarlierTakeover() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:25"));
+        pass(300);
+        userClicks(service, accept);
+        show(service, offer("$7.90", "0:24"));
+        assertEquals(DecisionLog.Action.USER_TOOK_OVER, lastAction());
+        AccessibilityNodeInfo fresh = offer("$7.90", "0:47");
+        List<Long> at = taps(decline, true);
+        show(service, fresh);
+        assertEquals("same facts with a reset countdown is a new instance", 1, at.size());
+        contains(DiagnosticLog.read(app), "[takeover] ended: new instance (countdown)");
+    }
+
+    @Test
+    public void takeoverFollowedByDeliveryShowsAcceptedWithoutTeaching() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        userClicks(service, button("View offer details"));
+        show(service, node("Complete delivery steps", false));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(entry));
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_LEARNED));
+    }
+
+    @Test
+    public void returningToAnExistingRouteAfterTakeoverDoesNotInventAnAcceptance() {
+        ActiveRouteStore.save(app, new OfferSnapshot(2000, 8.0, 30, 2));
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        userClicks(service, button("View offer details"));
+        show(service, node("Complete delivery steps", false));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entry));
+        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
     }
 
     // ---- 2. A user's click on Dasher during a decline hands it back ----
@@ -488,13 +530,13 @@ public class DeclineHandBackTest {
         AccessibilityNodeInfo confirm = button("Decline offer");
         List<Long> confirmTaps = taps(confirm, true);
         show(service, question(confirm, button("View offer details")));
-        for (int i = 0; i < 40; i++) pass(50);
+        for (int i = 0; i < 130; i++) pass(50);
 
-        // Before, a tap Android took was tried 4 times, 400 ms apart, and nothing said it never closed.
+        // Taken taps wait for Dasher to close its question; refused taps still retry promptly.
         assertEquals("the first try and two retries: " + confirmTaps, 3, confirmTaps.size());
         for (int i = 1; i < confirmTaps.size(); i++) {
             long gap = confirmTaps.get(i) - confirmTaps.get(i - 1);
-            assertTrue("retry " + i + " " + gap + " ms after", gap >= 250 && gap <= 400);
+            assertTrue("retry " + i + " " + gap + " ms after", gap >= 2_000 && gap <= 3_000);
         }
         contains(DiagnosticLog.read(app), "confirmation not tapped");
     }

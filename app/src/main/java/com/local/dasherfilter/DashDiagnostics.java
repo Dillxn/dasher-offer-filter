@@ -171,7 +171,7 @@ final class DashDiagnostics {
             }
             SharedPreferences.Editor edit = prefs.edit().putLong(LAST_OFFER_AT, now);
             if (started <= 0) edit.putLong(STARTED_AT, now);
-            edit.commit();
+            if (!edit.commit()) return;
         }
         if (quiet != null) file(app, quiet);
         scheduleCheck(app, QUIET_MS);
@@ -217,7 +217,7 @@ final class DashDiagnostics {
             SharedPreferences prefs = prefs(app);
             long started = prefs.getLong(STARTED_AT, 0);
             if (started <= 0) return;
-            prefs.edit().remove(STARTED_AT).remove(LAST_OFFER_AT).commit();
+            if (!prefs.edit().remove(STARTED_AT).remove(LAST_OFFER_AT).commit()) return;
             dash = new Dash(started, now, why);
         }
         notedAt = 0;
@@ -245,7 +245,7 @@ final class DashDiagnostics {
             if (started <= 0) return;
             long last = Math.max(started, prefs.getLong(LAST_OFFER_AT, 0));
             if (now - last >= QUIET_MS) {
-                prefs.edit().remove(STARTED_AT).remove(LAST_OFFER_AT).commit();
+                if (!prefs.edit().remove(STARTED_AT).remove(LAST_OFFER_AT).commit()) return;
                 dash = new Dash(started, last, End.QUIET);
             } else {
                 wait = Math.min(QUIET_MS, QUIET_MS - (now - last));
@@ -266,10 +266,13 @@ final class DashDiagnostics {
         int count = 0;
         try {
             String version = Updater.version(app);
-            List<String> parts = parts(intro(version, span, dash.why), DiagnosticLog.fullReport(app), MAX_PART_CHARS);
+            // The dash's own token, in its issue's body and kept with it: a retry finds the issue it filed by it.
+            String token = ReportOutbox.newDashToken();
+            List<String> parts = parts(intro(version, span, dash.why) + ReportOutbox.dashMark(token) + "\n",
+                    DiagnosticLog.fullReport(app), MAX_PART_CHARS);
             count = parts.size();
             queued = ReportOutbox.submitDiagnostics(app, TITLE_PREFIX + " " + AppName.NAME + " " + version + " " + span,
-                    parts);
+                    parts, token);
         } catch (RuntimeException failure) {
             // On a background thread an escaping exception would take the whole app, screen reader included.
             DiagnosticLog.log(app, "diagnostics", "could not build the dash's report: "
@@ -352,22 +355,25 @@ final class DashDiagnostics {
                 + (issue > 0 ? "; last issue #" + issue : "");
     }
 
+    /** The quiet check, {@code delay} from now; never while one runs (it would be stopped), but once it ends. */
     private static void scheduleCheck(Context app, long delay) {
-        JobScheduler jobs = app.getSystemService(JobScheduler.class);
-        if (jobs == null) return;
-        try {
-            jobs.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(app, ReportJobService.class))
-                    .setMinimumLatency(Math.max(60_000L, delay))
-                    .setPersisted(true)
-                    .build());
-        } catch (RuntimeException refused) {
-            // Android limits how many jobs an app may schedule; the app opening checks too.
-        }
+        ReportJobService.scheduleWhenIdle(JOB_ID, () -> {
+            JobScheduler jobs = app.getSystemService(JobScheduler.class);
+            if (jobs == null) return;
+            try {
+                jobs.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(app, ReportJobService.class))
+                        .setMinimumLatency(Math.max(60_000L, delay))
+                        .setPersisted(true)
+                        .build());
+            } catch (RuntimeException refused) {
+                // Android limits how many jobs an app may schedule; the app opening checks too.
+            }
+        });
     }
 
+    /** No quiet check: one that runs ends by itself, finding no dash open. */
     private static void cancelCheck(Context app) {
-        JobScheduler jobs = app.getSystemService(JobScheduler.class);
-        if (jobs != null) jobs.cancel(JOB_ID);
+        ReportJobService.cancelWhenIdle(app, JOB_ID);
     }
 
     /** Waits briefly for queued work; for tests. */

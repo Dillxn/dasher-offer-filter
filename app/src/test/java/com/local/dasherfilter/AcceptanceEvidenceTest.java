@@ -147,7 +147,7 @@ public class AcceptanceEvidenceTest {
     }
 
     private void show(AccessibilityNodeInfo root) {
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
+        TestWindows.full(controller.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
@@ -211,8 +211,10 @@ public class AcceptanceEvidenceTest {
 
         assertEquals(0, FilterStore.load(app).lastAcceptedCents);
         contains(history(), "Not accepted: Dasher went back to the wait for offers 2 s after it left");
-        // What Dasher showed after it is kept for a report, the dasher's own name masked.
-        contains(DiagnosticLog.readScreens(app), "after an offer left (0 s) labels=[[name], 120 orders completed");
+        // Learning still uses the raw transition; an unrecognized menu keeps none of its labels in diagnostics.
+        String screens = DiagnosticLog.readScreens(app);
+        contains(screens, PersonalText.UNKNOWN_NOT_KEPT);
+        assertFalse(screens, screens.contains("Sam T") || screens.contains("120 orders completed"));
     }
 
     @Test
@@ -246,8 +248,11 @@ public class AcceptanceEvidenceTest {
         assertEquals(0, FilterStore.load(app).lastAcceptedCents);
         contains(history(), "Not learned: Dasher's next screen was neither a delivery nor the wait for offers (its "
                 + "words are in the screens log)");
-        contains(DiagnosticLog.readScreens(app),
-                "after an offer left, neither a delivery nor the wait for offers: labels=[Order details, Store A");
+        String screens = DiagnosticLog.readScreens(app);
+        contains(screens, "after an offer left, neither a delivery nor the wait for offers: labels=["
+                + PersonalText.UNKNOWN_NOT_KEPT + "]");
+        assertFalse(screens, screens.contains("Order details") || screens.contains("Store A")
+                || screens.contains("Items 3"));
     }
 
     @Test
@@ -339,11 +344,10 @@ public class AcceptanceEvidenceTest {
         contains(DiagnosticLog.read(app), "Accept tap seen on Pay $25.00");
         String screens = DiagnosticLog.readScreens(app);
         contains(screens, "tap (not Offer Filter's) ");
-        // While the offer is up nothing around the tap is read (each node is a call into Dasher, whose UI thread is
-        // drawing the offer): the tap is named by the offer's own Accept control, which the read found. Before, the
-        // nodes below it were read too ("below=[Accept]").
+        // The offer's own control identifies the tap; diagnostic clicks keep only structure/action categories.
         contains(screens, "target=accept");
-        contains(screens, "above=[] below=[] -> accept");
+        contains(screens, " -> accept");
+        assertFalse(screens, screens.contains("above=") || screens.contains("below="));
         String history = history();
         contains(history, "You tapped Accept: waiting for a delivery screen");
         contains(history, "Accepted; the adaptive minimum learned from it: you tapped Accept, and Dasher showed a "

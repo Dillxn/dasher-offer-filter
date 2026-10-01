@@ -52,6 +52,8 @@ final class DecisionLog {
         NEEDS_REVIEW("No action: needs your review", 0),
         REPLAY("Re-checked after a reconnect or rule change; no action", 0),
         SILENT_CARD("Review card posted without sound", 1),
+        /** Posted silently while Peek opens Dasher to read the offer; it rings once only if the peek does not happen. */
+        PEEK_CARD("Card posted without sound while Peek checks whether it can open Dasher", 1),
         DASHER_SOUNDS("Review card posted without sound: Dasher's own offer alert sounds", 1),
         QUIET_PASS_CARD("Passing card posted without sound", 1),
         CARD_BLOCKED("Card blocked by Android; DoorDash notification kept", 1),
@@ -88,10 +90,11 @@ final class DecisionLog {
 
     /**
      * One step of learning from what the user did with an offer the app left alone (accepted, declined by hand, or
-     * neither, and why), kept on that offer's line. Steps never change the offer's action, its tally or the totals,
+     * neither, and why), kept on that offer's line. Steps never change the offer's action; an observed acceptance updates its tally and totals,
      * and never leave the phone in an automatic report.
      */
     enum StepKind {
+        ACCEPTED_OBSERVED("Accepted; display only"),
         TAP_NOT_RECOGNIZED("A tap on Dasher while this offer showed was neither Accept nor Decline"),
         ACCEPT_TAPPED("You tapped Accept"),
         ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
@@ -158,16 +161,19 @@ final class DecisionLog {
          * -1 when it could not be worked out, for an add-on, or for a line recorded before scores were kept.
          */
         final int scorePercent;
+        /** Read on Dasher's screen because Peek brought Dasher up for it ({@link Peek}); shown as "(peeked)". */
+        final boolean peeked;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false, Collections.<Step>emptyList(), -1);
+                    false, Collections.<Step>emptyList(), -1, false);
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
-                      Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent) {
+                      Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent,
+                      boolean peeked) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -183,6 +189,7 @@ final class DecisionLog {
             this.replay = replay;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
             this.scorePercent = scorePercent < 0 ? -1 : scorePercent;
+            this.peeked = peeked;
         }
 
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
@@ -192,10 +199,17 @@ final class DecisionLog {
                     addOn ? -1 : decision.scorePercent);
         }
 
+        /** This line, read because Peek brought Dasher up for it, or not. */
+        Entry peeked(boolean on) {
+            if (on == peeked) return this;
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, scorePercent, on);
+        }
+
         /** This line with the offer's area score as a whole percent (-1 for none). */
         Entry withScore(int percent) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, percent);
+                    notification, alertTag, replay, steps, percent, peeked);
         }
 
         private boolean sameOffer(Entry other) {
@@ -211,19 +225,19 @@ final class DecisionLog {
 
         private Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false, steps, scorePercent);
+                    notification, alertTag, false, steps, scorePercent, peeked);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent);
+                    notification, alertTag, replay, steps, scorePercent, peeked);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay, steps, scorePercent);
+                    notification, tag, replay, steps, scorePercent, peeked);
         }
 
         /** This line with Dasher's notification of the same offer folded in, without that notification's lines. */
@@ -231,7 +245,7 @@ final class DecisionLog {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
                     n.autoDecline, Collections.emptyList()).withScore(n.scorePercent);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay, steps, scorePercent);
+                    nested, alertTag, replay, steps, scorePercent, peeked);
         }
 
         /** This line with one more learning step; an exact repeat of the last step is not added again. */
@@ -244,7 +258,7 @@ final class DecisionLog {
             next.add(step);
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, next, scorePercent);
+                    notification, alertTag, replay, next, scorePercent, peeked);
         }
 
         JSONObject toJson() throws JSONException {
@@ -258,6 +272,7 @@ final class DecisionLog {
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
             if (scorePercent >= 0) json.put("score", scorePercent);
+            if (peeked) json.put("peeked", true);
             if (notification != null) json.put("notification", notification.toJson());
             if (!steps.isEmpty()) {
                 JSONArray kept = new JSONArray();
@@ -271,7 +286,7 @@ final class DecisionLog {
         }
 
         static Entry fromJson(JSONObject json) throws JSONException {
-            Entry entry = plainFromJson(json);
+            Entry entry = plainFromJson(json).peeked(json.optBoolean("peeked"));
             JSONObject nested = json.optJSONObject("notification");
             // Always without lines of its own and never nested deeper, whatever the file says.
             if (nested != null) entry = entry.withNotification(plainFromJson(nested));
@@ -299,8 +314,9 @@ final class DecisionLog {
             JSONArray lines = json.optJSONArray("evidence");
             // Lines a version before masking kept are masked as they are read, and stored so on the next write.
             for (int i = 0; lines != null && i < lines.length(); i++) {
-                evidence.add(PersonalText.mask(lines.getString(i)));
+                evidence.add(lines.getString(i));
             }
+            evidence = PersonalText.accountScreen(evidence) ? new ArrayList<>() : PersonalText.mask(evidence);
             return new Entry(json.getLong("at"), Source.valueOf(json.getString("source")), json.optBoolean("addOn"),
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
@@ -383,6 +399,7 @@ final class DecisionLog {
                 case ACCEPTED_LEARNED:
                 case ACCEPTED_NOT_LEARNED:
                 case ACCEPTED_ADD_ON:
+                case ACCEPTED_OBSERVED:
                     return true;
                 case ACCEPT_TAPPED:
                     tapped = true;
@@ -405,18 +422,15 @@ final class DecisionLog {
 
     /** A failing offer counts as filtered only when the app did something about it; one left to the user is review. */
     static Tally tally(Entry entry) {
-        if (entry.result == OfferRule.Result.KEEP) return Tally.PASSED;
-        if (entry.result == OfferRule.Result.DECLINE && (entry.action == Action.DECLINE_TAPPED
-                || entry.action == Action.CONFIRMATION_TAPPED || entry.action == Action.NOTIFICATION_DECLINE_SENT
-                || entry.action == Action.NOTIFICATION_HIDDEN)) {
-            return Tally.FILTERED;
-        }
-        return Tally.REVIEW;
+        Outcome outcome = outcome(entry);
+        if (outcome == Outcome.PASSED || outcome == Outcome.ACCEPTED) return Tally.PASSED;
+        return outcome == Outcome.DECLINED ? Tally.FILTERED : Tally.REVIEW;
     }
 
     private static final String TOTALS = "decision_totals";
     /** In {@link #TOTALS}: the stored history was folded once ({@link #foldStoredOnce}). */
     private static final String FOLDED_V1 = "folded_v1";
+    private static final String OUTCOME_TALLIES_V1 = "outcome_tallies_v1";
 
     /**
      * Every offer recorded since the history was last cleared, by {@link Tally}: kept apart from the history, which
@@ -432,11 +446,31 @@ final class DecisionLog {
                 // First use since totals were kept: start from what the history holds.
                 for (Entry entry : all) totals[tally(entry).ordinal()]++;
                 writeTotals(context, totals);
+                prefs.edit().putBoolean(OUTCOME_TALLIES_V1, true).apply();
                 return totals;
             }
             for (Tally tally : Tally.values()) totals[tally.ordinal()] = prefs.getInt(tally.name(), 0);
+            if (!prefs.getBoolean(OUTCOME_TALLIES_V1, false)) {
+                // Only retained evidence can repair old all-time counters; older history is not invented.
+                for (Entry entry : all) {
+                    Tally before = legacyTally(entry), after = tally(entry);
+                    if (before == after) continue;
+                    totals[before.ordinal()] = Math.max(0, totals[before.ordinal()] - 1);
+                    totals[after.ordinal()]++;
+                }
+                writeTotals(context, totals);
+                prefs.edit().putBoolean(OUTCOME_TALLIES_V1, true).apply();
+            }
             return totals;
         }
+    }
+
+    private static Tally legacyTally(Entry entry) {
+        if (entry.result == OfferRule.Result.KEEP) return Tally.PASSED;
+        if (entry.result == OfferRule.Result.DECLINE && (entry.action == Action.DECLINE_TAPPED
+                || entry.action == Action.CONFIRMATION_TAPPED || entry.action == Action.NOTIFICATION_DECLINE_SENT
+                || entry.action == Action.NOTIFICATION_HIDDEN)) return Tally.FILTERED;
+        return Tally.REVIEW;
     }
 
     private static void writeTotals(Context context, int[] totals) {
@@ -499,6 +533,8 @@ final class DecisionLog {
                             ? previous.withAlertTag(entry.alertTag, false) : previous;
                     boolean upgrade = entry.action != previous.action && entry.action.weight >= previous.action.weight;
                     Entry merged = upgrade ? kept.withAction(entry.action, entry.autoDecline) : kept;
+                    boolean peekedNow = entry.peeked && !merged.peeked;
+                    if (peekedNow) merged = merged.peeked(true);
                     List<Integer> since = entry.source == Source.SCREEN
                             ? OfferPairing.notificationsSince(all, i, entry, secondsLeft) : Collections.emptyList();
                     for (int k = since.size() - 1; k >= 0; k--) taken.add(0, all.remove((int) since.get(k)));
@@ -506,7 +542,7 @@ final class DecisionLog {
                     all.set(i, merged);
                     for (Entry notice : taken) uncount(context, tally(notice));
                     if (upgrade) recount(context, tally(previous), tally(merged));
-                    if (upgrade || !taken.isEmpty()) persist(context, all);
+                    if (upgrade || peekedNow || !taken.isEmpty()) persist(context, all);
                     return taken;
                 }
                 int notice = entry.source == Source.SCREEN ? OfferPairing.notificationFor(all, entry, secondsLeft) : -1;
@@ -533,6 +569,23 @@ final class DecisionLog {
         return taken;
     }
 
+    /** Explicit late completion evidence may correct only the app's just-given-up outcome, never a user's takeover. */
+    static void correctConfirmation(Context context, Entry declined) {
+        synchronized (LOCK) {
+            List<Entry> all = loaded(context);
+            for (int i = all.size() - 1; i >= 0; i--) {
+                Entry previous = all.get(i);
+                if (!previous.sameOffer(declined)) continue;
+                if (previous.action != Action.CONFIRMATION_NOT_TAPPED) return;
+                Entry corrected = previous.withAction(Action.CONFIRMATION_TAPPED, previous.autoDecline);
+                recount(context, tally(previous), tally(corrected));
+                all.set(i, corrected);
+                persist(context, all);
+                return;
+            }
+        }
+    }
+
     /**
      * Folds Dasher's notification of an offer the screen read moments before ({@link OfferPairing#screenFor}) into
      * that offer's line. It is not a new offer: nothing is counted, and nothing about areas or declines by hand.
@@ -554,6 +607,22 @@ final class DecisionLog {
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "decision-log", "fold failed: " + error.getClass().getSimpleName());
             return null;
+        }
+    }
+
+    /**
+     * How long ago (ms) a screen offer was read that this notification would fold into ({@link OfferPairing#screenFor}):
+     * the user saw that offer moments ago, so Peek leaves its lagging notification alone. -1 when none.
+     */
+    static long screenReadAgo(Context context, Entry notice) {
+        try {
+            synchronized (LOCK) {
+                List<Entry> all = loaded(context);
+                int screen = OfferPairing.screenFor(all, notice);
+                return screen < 0 ? -1 : Math.max(0, notice.at - all.get(screen).at);
+            }
+        } catch (RuntimeException error) {
+            return -1;
         }
     }
 
@@ -585,8 +654,10 @@ final class DecisionLog {
                     }
                 }
                 if (found < 0) return false;
-                Entry marked = all.get(found).withStep(new Step(kind, now, detail));
-                if (marked == all.get(found)) return true;
+                Entry previous = all.get(found);
+                Entry marked = previous.withStep(new Step(kind, now, detail));
+                if (marked == previous) return true;
+                recount(context, tally(previous), tally(marked));
                 all.set(found, marked);
                 persist(context, all);
                 return true;
@@ -616,6 +687,7 @@ final class DecisionLog {
         synchronized (LOCK) {
             entries = new ArrayList<>();
             writeTotals(context, new int[Tally.values().length]);
+            context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE).edit().putBoolean(OUTCOME_TALLIES_V1, true).apply();
             version++;
             File file = file(context);
             WRITER.execute(() -> {
@@ -634,6 +706,7 @@ final class DecisionLog {
         for (Entry entry : recent) {
             out.append(time.format(new Date(entry.at)))
                     .append(" | ").append(entry.source.name().toLowerCase(Locale.US))
+                    .append(entry.peeked ? " (peeked)" : "")
                     .append(entry.addOn ? " add-on" : "")
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : money(entry.facts.payCents))
@@ -681,7 +754,7 @@ final class DecisionLog {
      */
     static List<String> evidence(List<String> labels) {
         List<String> out = new ArrayList<>();
-        if (labels == null) return out;
+        if (labels == null || PersonalText.accountScreen(labels)) return out;
         for (String label : labels) {
             if (label == null || !EVIDENCE.matcher(label).find()) continue;
             String clean = PersonalText.mask(OfferEvidence.normalize(label));

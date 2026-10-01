@@ -20,8 +20,11 @@ final class OfferParser {
     private static final Pattern MILES_TOTAL = Pattern.compile("(?i)" + MILE_VALUE + "\\s*(?:in\\s+)?total\\b");
     private static final Pattern MILE_RANGE = Pattern.compile(
             "(?i)\\d+(?:\\.\\d+)?\\s*[-–—]\\s*\\d+(?:\\.\\d+)?\\s*(?:mi|miles?)\\b");
+    /** Hours alone are a duration too; the enclosing metric-line guard excludes waits and hourly rates. */
     private static final Pattern MINUTES = Pattern.compile(
-            "(?i)(?<![\\d.,+\\-])\\b(?:(\\d{1,2})\\s*(?:hr|hour)s?\\s*)?(\\d{1,3})\\s*(?:min|minute)s?\\b");
+            "(?i)(?<![\\d.,+\\-])\\b(?:(\\d{1,2})\\s*(?:hr|hour)s?(?:\\s*(\\d{1,3})\\s*(?:min|minute)s?)?"
+                    + "(?!\\s*[+\\-]?(?:\\d|[.,]\\d))"
+                    + "|(\\d{1,3})\\s*(?:min|minute)s?)\\b");
     private static final Pattern STOPS = Pattern.compile("(?i)(?<![\\d.,+\\-])\\b(\\d{1,2})\\s+stops?\\b");
     private static final Pattern STOPS_FIRST = Pattern.compile(
             "(?i)\\b(?:total\\s+)?stops?\\s*[:=]\\s*(\\d{1,2})\\b(?![.,]\\d)");
@@ -266,8 +269,12 @@ final class OfferParser {
             if (OfferEvidence.timeRange(line)) return null;
             Matcher matcher = MINUTES.matcher(line);
             while (matcher.find()) {
-                int hours = matcher.group(1) == null ? 0 : Integer.parseInt(matcher.group(1));
-                found.add(hours * 60 + Integer.parseInt(matcher.group(2)));
+                if (matcher.group(1) == null) {
+                    found.add(Integer.parseInt(matcher.group(3)));
+                } else {
+                    int hours = Integer.parseInt(matcher.group(1));
+                    found.add(hours * 60 + (matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2))));
+                }
             }
         }
         return onlyValue(found);

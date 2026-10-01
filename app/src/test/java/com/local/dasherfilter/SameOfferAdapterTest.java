@@ -134,12 +134,12 @@ public class SameOfferAdapterTest {
         AccessibilityNodeInfo launcher = AccessibilityNodeInfo.obtain(new View(app));
         launcher.setPackageName("com.google.android.apps.nexuslauncher");
         launcher.setVisibleToUser(true);
-        Shadows.shadowOf(filter.get()).setRootInActiveWindow(launcher);
+        TestWindows.full(filter.get(), launcher);
     }
 
     /** Makes {@code root} Dasher's active window and delivers a window-state event, read at once. */
     private void show(AccessibilityNodeInfo root) {
-        Shadows.shadowOf(filter.get()).setRootInActiveWindow(root);
+        TestWindows.full(filter.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         filter.get().onAccessibilityEvent(event);
@@ -271,7 +271,7 @@ public class SameOfferAdapterTest {
         // An offer screen with nothing readable on it: the screen has not read the offer, so the card stays.
         show(partialOffer("Store A"));
         assertEquals(1, notifications().size());
-        assertEquals(2, DecisionLog.recent(app, 10).size());
+        assertEquals("a figureless animation makes no spurious screen REVIEW line", 1, DecisionLog.recent(app, 10).size());
     }
 
     @Test

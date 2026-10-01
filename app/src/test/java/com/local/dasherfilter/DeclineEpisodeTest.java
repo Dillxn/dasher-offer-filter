@@ -130,19 +130,21 @@ public final class DeclineEpisodeTest {
     // ---- DeclineState: tries at the question ----
 
     @Test
-    public void refusedTriesCountTowardTheCapOfThreeEach250MsApart() {
+    public void refusedTriesStayPromptAndTakenTriesWaitForDasher() {
         DeclineState state = new DeclineState();
         state.declineSent("offer", 1_000);
         assertTrue(state.mayConfirm(1_300));
         state.confirmationRefused(1_300);
         assertFalse(state.mayConfirm(1_549));
-        assertTrue(state.mayConfirm(1_550));
+        assertFalse(state.mayConfirm(1_550));
+        assertTrue(state.mayConfirm(1_600));
         state.confirmationRefused(1_600);
         assertFalse(state.confirmationExhausted(1_600));
         state.confirmationSent(1_900);
         assertFalse("no fourth try", state.mayConfirm(2_500));
         assertFalse("Dasher may still be acting on the last", state.confirmationExhausted(2_149));
-        assertTrue(state.confirmationExhausted(2_150));
+        assertFalse(state.confirmationExhausted(3_899));
+        assertTrue(state.confirmationExhausted(3_900));
         assertTrue(state.confirmationTapped());
 
         state.declineSent("next offer", 3_000);
@@ -162,4 +164,15 @@ public final class DeclineEpisodeTest {
         state.reset();
         assertFalse(state.confirmationLapsed(20_000));
     }
+    @org.junit.Test public void aPartialAnimationAloneDoesNotMeanTheUserWentBack() {
+        DeclineEpisode episode = new DeclineEpisode();
+        OfferSnapshot offer = new OfferSnapshot(790, 7.2, 21, 2);
+        episode.declined("offer", offer, 1_000);
+        episode.screenLeft(1_400, false);
+        episode.offerPresent();
+        org.junit.Assert.assertEquals(DeclineEpisode.Back.NONE, episode.offerShowing(1_600, false));
+        episode.screenLeft(1_700, true);
+        org.junit.Assert.assertEquals(DeclineEpisode.Back.HAND_BACK, episode.offerShowing(1_800, false));
+    }
+
 }

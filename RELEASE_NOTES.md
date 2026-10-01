@@ -1,3 +1,14 @@
+## 0.4.50 — continuation candidate, not released
+
+Recovered from the October 1 Claude handoff (`dasher-handoff-20261001`) and reconciled against GitHub main `5d76ec631a9f8002f409feab8c5afc64de6997a8`. The recovered files were unfinished drafts. Privacy, decline handling and Peek are being integrated in that order.
+
+- **Diagnostics privacy:** payment, account and earnings screens are excluded; unrecognized screens keep no text; click diagnostics keep only control shapes. More personal fields are masked. Both legacy diagnostic logs and unsent reports are cleared once, with diagnostics paused if cleanup cannot complete. A new notice must be accepted before reading or reporting resumes.
+- **Report retries:** each queued dash report has a durable receipt. A lost create response is reconciled before any further issue creation; an uncertain result stays pending. Opt-out discards pending work without allowing an in-flight response to recreate it. A lost comment response can still repeat a part within the same issue.
+- **Decline handling:** confirmation can arrive late, successful tap requests give Dasher time to respond, and a matching notification does not cancel the offer's own confirmation. Fresh countdowns and user actions end older authority. Parsing, idle-screen recognition, navigation read cadence, sound restoration and outcome counts are tightened without changing the user's chosen learning floors or area-score rules.
+- **Peek:** a default-on Settings switch permits a brief look at fresh background offers after about 0.7 seconds without a touch or keyboard. Passing or unclear offers return to the previous app while navigating, with a card carrying the observed figures; otherwise Dasher stays open. Declined offers return only after completion evidence. Touches, stale offers and unsupported foreground states stop the automatic return/opening flow. It never accepts an offer.
+
+Validation: 1,253 Java/JUnit and simulated Android 8/15 tests passed, with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned release packaging was checked for package and version. See [the continuation validation record](VALIDATION_2026-10-01.md). No new cloud-signed APK, physical-phone installation or real Dasher audio/haptic verification is claimed. A fresh production-transport check verified the published 0.4.49 feed. Previously sent diagnostics are not removed by this update; historical issue containment is not established.
+
 ## 0.4.49 — the mascot shows only real offers
 
 - **No more drip, and no ticket falling forever.** While no offer comes, the mascot just breathes, blinks and now and then waves.
@@ -833,4 +844,3 @@ Evidence boundaries: every tab was rendered and reviewed in light and dark, at 3
 - **Offer alerts in the status bar show the funnel** instead of a generic system symbol.
 
 Evidence boundaries: the icon was rendered and reviewed under round, squircle and square masks, as a themed icon, and at launcher size. Simulated Android 8 and 15 tests check that the app declares it, that it has the themed layer, and that alerts use the funnel. How your phone's launcher shows it was not seen here.
-

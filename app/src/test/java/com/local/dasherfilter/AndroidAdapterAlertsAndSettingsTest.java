@@ -182,7 +182,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         try {
             controller.get().onNotificationPosted(doorDashOffer("New Order: Go to Chick-fil-A"), null);
             Notification card = notifications().getAllNotifications().get(0);
-            assertEquals("Not classified: pay not found. Tap to open Dasher. No automatic decline or screen takeover.",
+            assertEquals("Dasher's notification shows no pay. Open Dasher and Offer Filter judges it.",
                     card.extras.getCharSequence(Notification.EXTRA_TEXT).toString());
         } finally {
             controller.destroy();

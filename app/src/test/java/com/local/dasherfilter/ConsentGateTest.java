@@ -291,7 +291,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
     }
 
     private static void show(OfferFilterService service, AccessibilityNodeInfo root) {
-        Shadows.shadowOf(service).setRootInActiveWindow(root);
+        TestWindows.full(service, root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         service.onAccessibilityEvent(event);

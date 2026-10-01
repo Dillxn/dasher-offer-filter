@@ -24,13 +24,24 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Classifies DoorDash offer notifications in the background. Never launches an activity: notification evidence and
- * screen evidence are separate authorities. An offer that cannot be judged gets a card that rings once while Dasher
- * is in the background, so it is not missed (silently when Android shows Dasher's own alert for it sounded), and is
- * otherwise left to the user. One offer is one history line: a notification of an offer the screen reads is folded
- * into the screen's line, and its card is cleared then; Dasher's own notification is never touched for that.
+ * Classifies DoorDash offer notifications in the background. Never launches an activity itself: notification evidence
+ * and screen evidence are separate authorities. An offer that cannot be judged gets a card that rings once while
+ * Dasher is in the background, so it is not missed (silently when Android shows Dasher's own alert for it sounded), and
+ * is otherwise left to the user; with Peek on ({@link Peek}), the screen reader is then asked to bring Dasher up for a
+ * moment to read it. One offer is one history line: a notification of an offer the screen reads is folded into the
+ * screen's line, and its card is cleared then; Dasher's own notification is never touched for that.
  */
 public final class OfferNotificationService extends NotificationListenerService {
+    /** Current eligible notification incarnations, published to the scanner without sharing the mutable tracker. */
+    private final java.util.Set<String> livePeekCards = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.concurrent.atomic.AtomicLong CARD_SERIAL = new java.util.concurrent.atomic.AtomicLong();
+
+    static boolean peekCurrent(Peek.Request request) {
+        OfferNotificationService service = active;
+        return service != null && request != null && request.alertTag != null
+                && service.livePeekCards.contains(request.alertTag);
+    }
+
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final int MAX_TRACKED_OFFERS = 16;
     private static final int MAX_NOTIFICATION_LABELS = 32;
@@ -90,11 +101,41 @@ public final class OfferNotificationService extends NotificationListenerService 
         Runnable expiry;
         /** How long after the previous post on this key the latest one came (wall clock), for the log. */
         long gapMs;
+        /** Whether the latest post began this incarnation, and was not a replay: a fresh post, which Peek may read. */
+        boolean freshPost;
+        /** Dasher's own tap intent on its latest post (our card's fallback), and whether Android showed it sounded. */
+        PendingIntent contentIntent;
+        boolean dasherSounded;
+        /** Its card was posted silently while a peek is tried: what the card rings with if the peek does not happen. */
+        QuietCard quietCard;
+        /** A peek went back with this offer passing or unclear: its card carries what was read; updates change nothing. */
+        boolean readCard;
+        boolean readCardLogged;
 
         TrackedOffer(long now, StatusBarNotification source, String merchant) {
             this.state = new OfferAlertState(now, source.getPostTime());
-            this.alertTag = "offer-" + now + "-" + source.getKey();
+            this.alertTag = "offer-" + now + "-" + CARD_SERIAL.incrementAndGet() + "-" + source.getKey();
             this.merchant = merchant;
+        }
+    }
+
+    /** What a card posted quietly for a peek needs to be announced as usual, ringing once, if the peek does not happen. */
+    private static final class QuietCard {
+        final OfferSnapshot facts;
+        final OfferRule.Decision decision;
+        final List<String> labels;
+        final boolean addOn;
+        final boolean enabled;
+        final String signature;
+
+        QuietCard(OfferSnapshot facts, OfferRule.Decision decision, List<String> labels, boolean addOn, boolean enabled,
+                  String signature) {
+            this.facts = facts;
+            this.decision = decision;
+            this.labels = labels;
+            this.addOn = addOn;
+            this.enabled = enabled;
+            this.signature = signature;
         }
     }
 
@@ -113,6 +154,31 @@ public final class OfferNotificationService extends NotificationListenerService 
      */
     static long generation() {
         return generation;
+    }
+
+    private long staleNotices;
+    private long staleLoggedAt;
+    private static volatile long backgroundGeneration;
+    private static volatile Notice lastNotice;
+    private static final class Notice {
+        final List<String> labels;
+        final long at;
+        final long generation;
+        final boolean foreground;
+        Notice(List<String> labels, long generation, boolean foreground) {
+            this.labels = new ArrayList<>(labels);
+            this.at = SystemClock.uptimeMillis();
+            this.generation = generation;
+            this.foreground = foreground;
+        }
+    }
+    static long freshBackgroundGeneration() { return backgroundGeneration; }
+    static long generationForRead(long startedGeneration, OfferSnapshot facts, List<String> labels, long began) {
+        Notice notice = lastNotice;
+        long current = generation();
+        return notice != null && notice.foreground && notice.generation == current && current == startedGeneration + 1
+                && notice.at >= began && OfferFilterService.sameForegroundNotice(notice.labels, facts, labels, 0)
+                ? current : startedGeneration;
     }
 
     private static void nextGeneration() {
@@ -176,6 +242,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             for (TrackedOffer offer : service.tracked.values()) {
                 if (!alertTag.equals(offer.alertTag)) continue;
                 offer.state.markRead(facts);
+                service.livePeekCards.remove(alertTag);
                 OfferAlerts.clear(service, alertTag);
                 DiagnosticLog.log(service, "alert", "card cleared: the screen read this offer");
             }
@@ -262,13 +329,19 @@ public final class OfferNotificationService extends NotificationListenerService 
     private void handle(StatusBarNotification source, RankingMap ranking, boolean replay) {
         if (!isFromOwnUsersDasher(source)) return;
         Notification notification = source.getNotification();
-        if (notification == null || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
+        if (notification == null || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) {
+            invalidatePeekForKey(source.getKey());
+            return;
+        }
         // Until the first-run notice is accepted, nothing is read, posted, hidden or declined; accepting replays what
         // is still shown. The one exception: a fresh post on Dasher's offer channel (its channel alone, never its
         // words) posts the reminder that the app is paused, once per notice version.
         if (!Consent.accepted(this)) {
+            invalidatePeekForKey(source.getKey());
             if (!replay && ConsentReminder.onOfferChannel(this, notification.getChannelId())) {
                 ConsentReminder.postIfPaused(this, "Dasher's notification");
+                // Peek waits for the notice too: said from the channel alone, as the reminder is.
+                if (FilterStore.peek(this)) Peek.skipped(this, "the notice isn't accepted yet");
             }
             return;
         }
@@ -276,16 +349,36 @@ public final class OfferNotificationService extends NotificationListenerService 
         boolean update = !postedKeys.add(source.getKey());
         while (postedKeys.size() > MAX_POSTED_KEYS) postedKeys.remove(postedKeys.iterator().next());
         if (!OfferEvidence.fresh(source.getPostTime(), System.currentTimeMillis(), OfferAlertState.LIFETIME_MS)) {
-            DiagnosticLog.log(this, "notification", "ignored stale/future notification");
+            invalidatePeekForKey(source.getKey());
+            staleNotices++;
+            long now = SystemClock.elapsedRealtime();
+            if (staleNotices == 1 || now - staleLoggedAt >= 60_000) {
+                DiagnosticLog.log(this, "notification", "ignored stale/future notification (" + staleNotices + " since last valid post)");
+                staleLoggedAt = now;
+            }
             return;
         }
+        if (staleNotices > 1) DiagnosticLog.log(this, "notification", "ignored " + staleNotices + " stale/future notifications");
+        staleNotices = 0;
         try {
             List<String> labels = labels(notification);
-            if (!NotificationOffer.isLikelyOffer(labels)) return;
+            if (!NotificationOffer.isLikelyOffer(labels)) {
+                invalidatePeekForKey(source.getKey());
+                return;
+            }
             boolean foreground = OfferFilterService.isDasherOnScreenNow();
-            TrackedOffer offer = track(source, merchant(labels), labels.toString(), foreground, replay);
+            TrackedOffer offer = track(source, merchant(labels), labels.toString(), labels, foreground, replay);
             offer.store = store(labels);
             FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
+            if (offer.readCard && !replay) {
+                livePeekCards.remove(offer.alertTag);
+                // A peek read this offer and went back with it on its card: Dasher's updates of it change nothing.
+                if (!offer.readCardLogged) {
+                    offer.readCardLogged = true;
+                    DiagnosticLog.log(this, "notification", "update of an offer Peek put on its card; no change");
+                }
+                return;
+            }
 
             // A notification's text may be cut short: its pay is never bounded, so nothing is declined or hidden on a
             // bound.
@@ -293,6 +386,11 @@ public final class OfferNotificationService extends NotificationListenerService 
             FilterSettings settings = FilterStore.load(this);
             OfferRule.Decision decision = decide(facts, labels, settings);
             String signature = labels + "|" + decision.summary();
+            // A same-key update with sufficient figures is already judged. It revokes the earlier payless
+            // request while that request is still waiting for quiet. Launched peeks no longer use this token.
+            if (decision.result != OfferRule.Result.REVIEW || !settings.enabled || foreground || replay) {
+                invalidatePeekForKey(source.getKey());
+            }
             if (offer.state.duplicate(signature, decision.result)) {
                 if (!replay && !offer.state.repostLogged) {
                     offer.state.repostLogged = true;
@@ -311,6 +409,7 @@ public final class OfferNotificationService extends NotificationListenerService 
 
             if (offer.state.coveredByScreen(decision.result, decision.basis, foreground, replay,
                     source.getPostTime())) {
+                livePeekCards.remove(offer.alertTag);
                 offer.state.settle(signature, decision.result, offer.state.readOnScreen);
                 OfferAlerts.clear(this, offer.alertTag);
                 DiagnosticLog.log(this, "notification", "update of an offer already read on screen; no card");
@@ -324,6 +423,7 @@ public final class OfferNotificationService extends NotificationListenerService 
                         DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
                         DecisionLog.Action.SEEN_ON_SCREEN, settings.enabled, labels));
                 if (screen != null) {
+                    livePeekCards.remove(offer.alertTag);
                     offer.state.settle(signature, decision.result, screen.facts);
                     OfferAlerts.clear(this, offer.alertTag);
                     DiagnosticLog.log(this, "notification", "same offer the screen read "
@@ -334,10 +434,35 @@ public final class OfferNotificationService extends NotificationListenerService 
                 }
             }
 
+            offer.contentIntent = notification.contentIntent;
+            offer.dasherSounded = dasherSounded;
+            // Peek is decided before the card: the notification cannot judge this offer (it names the store, not the
+            // pay), and when a peek will be tried the card is posted silently (no ring, so no sound given back over
+            // the decline to come); it rings once only if the peek does not happen.
+            Peek.Request peek = null;
+            if (decision.result == OfferRule.Result.REVIEW) {
+                Peek.Request request = new Peek.Request(source.getKey(), source.getPostTime(), offer.store, replay,
+                        offer.freshPost, offer.alertTag);
+                long readAgo = replay || foreground ? -1 : DecisionLog.screenReadAgo(this, DecisionLog.Entry.of(
+                        DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
+                        DecisionLog.Action.CHECK_BELL, settings.enabled, labels));
+                String why = OfferFilterService.peekRefusal(this, request, settings, foreground, readAgo);
+                if (why == null) {
+                    peek = request;
+                } else {
+                    invalidatePeekForKey(source.getKey());
+                    Peek.skipped(this, why);
+                }
+            }
+
             DecisionLog.Action action;
-            if (decision.result != OfferRule.Result.DECLINE) {
-                action = announce(notification, offer, facts, decision, signature, replay, foreground,
-                        dasherSounded);
+            if (peek != null) {
+                offer.quietCard = new QuietCard(facts, decision, labels, addOn, settings.enabled, signature);
+                action = announce(notification.contentIntent, offer, facts, decision, signature, replay, foreground,
+                        dasherSounded, true);
+            } else if (decision.result != OfferRule.Result.DECLINE) {
+                action = announce(notification.contentIntent, offer, facts, decision, signature, replay, foreground,
+                        dasherSounded, false);
             } else if (OfferFilterService.userHasOffer(facts)) {
                 action = leaveToUser(offer, decision, signature);
             } else {
@@ -348,13 +473,27 @@ public final class OfferNotificationService extends NotificationListenerService 
             DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
                     addOn, decision.basis, decision, action, settings.enabled, labels)
                     .withAlertTag(offer.alertTag, replay));
+            if (peek != null) {
+                livePeekCards.add(peek.alertTag);
+                OfferFilterService.peekAt(this, peek);
+            }
         } catch (RuntimeException error) {
+            invalidatePeekForKey(source.getKey());
             DiagnosticLog.log(this, "notification",
                     "payload/handler rejected; original retained: " + error.getClass().getSimpleName());
             // An oversized notification is refused on purpose; only real failures are worth a report.
             if (!(error instanceof OversizedNotification)) {
                 ReportOutbox.fileAutomatic(this, ProblemReport.Kind.NOTIFICATION_ERROR, null, null, error);
             }
+        }
+    }
+
+    /** Main thread: a replacement no longer eligible for Peek revokes the earlier quiet-wait request. */
+    private void invalidatePeekForKey(String key) {
+        TrackedOffer offer = tracked.get(key);
+        if (offer != null) {
+            livePeekCards.remove(offer.alertTag);
+            offer.quietCard = null;
         }
     }
 
@@ -374,7 +513,7 @@ public final class OfferNotificationService extends NotificationListenerService 
      * incarnation expired, the merchant changed, or (never on a replay) the same store's re-post is a new offer
      * ({@link OfferAlertState#newOfferReason}).
      */
-    private TrackedOffer track(StatusBarNotification source, String merchant, String text, boolean foreground,
+    private TrackedOffer track(StatusBarNotification source, String merchant, String text, List<String> labels, boolean foreground,
                                boolean replay) {
         long now = SystemClock.elapsedRealtime();
         // The Handler expiry runs on uptime, which stops in deep sleep; elapsed time is authoritative.
@@ -391,12 +530,13 @@ public final class OfferNotificationService extends NotificationListenerService 
         // The screen saw the last offer end and Dasher is on screen: this post is usually the notification of the
         // offer on screen now, which comes up to ~10 s after the screen read (and perhaps declined) it. A new
         // incarnation, but it must not revoke the confirmation of a decline under way for that offer.
-        boolean sameOfferOnScreen = newOffer != null && foreground;
+        boolean sameOfferOnScreen = foreground && OfferFilterService.sameForegroundOfferNotification(labels);
         if (newOffer != null) {
             DiagnosticLog.log(this, "notification", "the same store re-posted: a new offer (" + newOffer + ")");
             remove(key, offer);
             offer = null;
         }
+        boolean began = offer == null;
         if (offer == null) {
             if (tracked.size() >= MAX_TRACKED_OFFERS) {
                 String oldest = tracked.keySet().iterator().next();
@@ -409,13 +549,18 @@ public final class OfferNotificationService extends NotificationListenerService 
             tracked.put(key, created);
             handler.postDelayed(created.expiry, OfferAlertState.LIFETIME_MS);
             // A next offer: under the silencer's lock, so a decline in progress turns no stream down over it.
-            if (!sameOfferOnScreen) OfferSilencer.nextOffer(this, OfferNotificationService::nextGeneration);
+            if (!sameOfferOnScreen && !replay) {
+                OfferSilencer.nextOffer(this, OfferNotificationService::nextGeneration);
+                if (!foreground) backgroundGeneration = generation();
+            }
+            if (!replay) lastNotice = new Notice(labels, generation(), foreground);
             if (replay) recallRead(key, source.getPostTime(), created.state, now);
             offer = created;
         }
         offer.gapMs = source.getPostTime() - offer.state.postedAt;
         offer.state.postedAt = Math.max(offer.state.postedAt, source.getPostTime());
         offer.state.text = text;
+        offer.freshPost = began && !replay;
         offerOutstanding = true;
         return offer;
     }
@@ -470,35 +615,118 @@ public final class OfferNotificationService extends NotificationListenerService 
      * A passing or unclassified offer: post the matching Offer Filter card, keeping DoorDash's original. A card for
      * an offer that could not be judged does not ring when Dasher's own offer alert sounds: the user hears that.
      *
+     * <p>With a peek about to read it ({@code peeking}), the card is posted silently: no ring, and so no sound given
+     * back over the decline that may follow ({@link OfferSilencer#yieldToPassingAlert}). It rings once only if the peek
+     * does not happen ({@link #peekNotTaken}).
+     *
      * @param dasherSounds whether Android shows Dasher's own alert for this post sounded ({@link #dasherAlertSounded})
      * @return what was done, for the decision log
      */
-    private DecisionLog.Action announce(Notification notification, TrackedOffer offer, OfferSnapshot facts,
+    private DecisionLog.Action announce(PendingIntent contentIntent, TrackedOffer offer, OfferSnapshot facts,
                                         OfferRule.Decision decision, String signature, boolean replay,
-                                        boolean foreground, boolean dasherSounds) {
+                                        boolean foreground, boolean dasherSounds, boolean peeking) {
         boolean review = decision.result == OfferRule.Result.REVIEW;
-        boolean ring = offer.state.shouldRing(decision.result, foreground, replay);
+        boolean ring = !peeking && offer.state.shouldRing(decision.result, foreground, replay);
         boolean dasherRings = ring && review && dasherSounds;
         if (dasherRings) {
             ring = false;
             DiagnosticLog.log(this, "alert", "no ring: Android shows Dasher's own alert for this offer sounded");
         }
-        String detail = review
-                ? "Not classified: " + decision.reason
-                        + ". Tap to open Dasher. No automatic decline or screen takeover."
-                : facts.summary() + "; " + decision.summary();
-        boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, notification.contentIntent, decision.result,
+        String detail = review ? reviewText(facts, decision, peeking) : facts.summary() + "; " + decision.summary();
+        boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, contentIntent, decision.result,
                 detail, ring, offer.store);
-        if (posted) offer.state.delivered(signature, decision.result, ring);
+        // Dasher's own alert sounding for it uses up its one ring, as ours would have.
+        if (posted) offer.state.delivered(signature, decision.result, ring || dasherRings);
         if (review) {
-            FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason
-                    + ".\nDasher has not been opened. Tap the card to inspect.");
+            FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason + ".\n" + (peeking
+                    ? AppName.NAME + " is opening Dasher to read it (Peek)."
+                    : "Open Dasher and " + AppName.NAME + " judges it."));
         }
         if (foreground) OfferFilterService.requestCheckFromNotification();
         if (!posted) return DecisionLog.Action.CARD_BLOCKED;
+        if (peeking) return DecisionLog.Action.PEEK_CARD;
         if (dasherRings) return DecisionLog.Action.DASHER_SOUNDS;
         if (review) return ring ? DecisionLog.Action.CHECK_BELL : DecisionLog.Action.SILENT_CARD;
         return ring ? DecisionLog.Action.BELL : DecisionLog.Action.QUIET_PASS_CARD;
+    }
+
+    /**
+     * What the card of an offer its notification cannot judge says: plainly that the notification shows no pay (or what
+     * else it lacks), and that Offer Filter judges it on Dasher's screen, which it is opening when it peeks.
+     */
+    static String reviewText(OfferSnapshot facts, OfferRule.Decision decision, boolean peeking) {
+        String what = facts.payCents == null && facts.payAtMostCents == null
+                ? "Dasher's notification shows no pay."
+                : "Dasher's notification doesn't show enough to judge it: " + decision.reason + ".";
+        return what + (peeking ? " " + AppName.NAME + " is opening Dasher to read it."
+                : " Open Dasher and " + AppName.NAME + " judges it.");
+    }
+
+    /**
+     * A peek of this incarnation's offer did not happen (refused, the phone not quiet, or Dasher never came up): its
+     * card, posted silently, is announced as usual and rings once as it would have, unless the screen read the offer
+     * meanwhile or the card is gone (the user tapped it). Any thread.
+     */
+    static void peekNotTaken(String alertTag) {
+        OfferNotificationService service = active;
+        if (service == null || alertTag == null) return;
+        onMain(service, () -> service.cardAfterNoPeek(alertTag));
+    }
+
+    private void cardAfterNoPeek(String alertTag) {
+        if (!Consent.accepted(this)) return;
+        TrackedOffer offer = trackedBy(alertTag);
+        if (offer == null || offer.quietCard == null) return;
+        QuietCard card = offer.quietCard;
+        offer.quietCard = null;
+        if (offer.state.readOnScreen != null || !OfferAlerts.showing(this, alertTag)) return;
+        DecisionLog.Action action = announce(offer.contentIntent, offer, card.facts, card.decision, card.signature,
+                false, false, offer.dasherSounded, false);
+        DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION, card.addOn,
+                card.decision.basis, card.decision, action, card.enabled, card.labels).withAlertTag(alertTag, false));
+    }
+
+    /**
+     * A peek read an offer that passes or is unclear while the user navigates, and went back to the map (the user's
+     * decision): the offer's card carries what was read and rings once, as an ordinary card would. Its notification's
+     * later updates change nothing. Any thread; without the listener, the card is posted on its own.
+     */
+    static void peekCard(Context context, OfferSnapshot read, OfferRule.Result result, String text) {
+        if (!Consent.accepted(context)) return;
+        OfferNotificationService service = active;
+        if (service == null) {
+            OfferAlerts.notifyOffer(context, "peek-" + System.currentTimeMillis(), null, result, text, true, "");
+            return;
+        }
+        onMain(service, () -> service.cardOfPeekedOffer(read, result, text));
+    }
+
+    private void cardOfPeekedOffer(OfferSnapshot read, OfferRule.Result result, String text) {
+        if (!Consent.accepted(this)) return;
+        TrackedOffer found = null;
+        for (TrackedOffer offer : tracked.values()) {
+            OfferSnapshot onScreen = offer.state.readOnScreen;
+            if (onScreen != null && (onScreen.fingerprint().equals(read.fingerprint()) || onScreen.agreesWith(read))) {
+                found = offer;
+            }
+        }
+        // A passing card always rings once; an unclear one not when Dasher's own alert for it sounded.
+        boolean ring = result == OfferRule.Result.KEEP || found == null || !found.dasherSounded;
+        String tag = found != null ? found.alertTag : "peek-" + System.currentTimeMillis();
+        boolean posted = OfferAlerts.notifyOffer(this, tag, found == null ? null : found.contentIntent, result, text,
+                ring, found == null ? "" : found.store);
+        if (found != null && posted) {
+            found.readCard = true;
+            found.quietCard = null;
+            found.state.delivered(found.state.signature, result, true);
+        }
+    }
+
+    private TrackedOffer trackedBy(String alertTag) {
+        for (TrackedOffer offer : tracked.values()) {
+            if (alertTag.equals(offer.alertTag)) return offer;
+        }
+        return null;
     }
 
     private void removeExpired(long now) {
@@ -512,6 +740,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     private void remove(String key, TrackedOffer offer) {
         if (offer == null) return;
         tracked.remove(key);
+        livePeekCards.remove(offer.alertTag);
         if (offer.expiry != null) handler.removeCallbacks(offer.expiry);
         OfferAlerts.clear(this, offer.alertTag);
         offerOutstanding = !tracked.isEmpty();
@@ -532,6 +761,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             readBeforeReconnect.remove(readBeforeReconnect.keySet().iterator().next());
         }
         tracked.clear();
+        livePeekCards.clear();
         postedKeys.clear();
         offerOutstanding = false;
     }

@@ -24,7 +24,7 @@ import java.util.Locale;
  * changes. On, the mascot breathes, blinks, now and then waves, and has its sieve; each offer decided while the page
  * is up is played out as it went (a ticket through the spout, bounced off the sieve, or resting on it, with the
  * skyline's badge); paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
- * counts only offers the app acted on (a Decline tap, a decline request, or a hidden notification).
+ * follows the observed decline outcome; a hidden notification counts as review, never filtered.
  *
  * <p>In the page's sky ({@link SkyStage}) the mascot and the counts are placed apart, over the constellation behind
  * them: the stage says where each stands, and only a touch (or a screen reader's finger) on the mascot or the counts is

@@ -41,9 +41,9 @@ final class DasherSplit {
     static java.util.function.BooleanSupplier recents = OfferFilterService::openRecents;
 
     /** When the user last tapped Split (uptime), 0 when nothing is waiting. */
-    private static long requestedAt;
+    private static volatile long requestedAt;
     /** How long that tap waits for the split. */
-    private static long waitMs = PENDING_MS;
+    private static volatile long waitMs = PENDING_MS;
     /** The look {@link #VERIFY_MS} after a request Android took, while it is due. Main thread only. */
     private static Handler verifier;
     private static Runnable verify;
@@ -75,6 +75,13 @@ final class DasherSplit {
      */
     static boolean offered(Activity activity, boolean dasherInstalled) {
         return dasherInstalled && !(activity.isInMultiWindowMode() && OfferFilterService.dasherBeside());
+    }
+
+    /** Whether the user's tap on Split is still waiting for the screen to split (any thread): no peek meanwhile. */
+    static boolean pending() {
+        long at = requestedAt;
+        long age = SystemClock.uptimeMillis() - at;
+        return at != 0 && age >= 0 && age < waitMs;
     }
 
     /** What the button says to screen readers: {@link #SPLIT_LABEL}, or {@link #BESIDE_LABEL} once split. */

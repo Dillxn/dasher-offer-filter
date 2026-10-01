@@ -7,9 +7,21 @@ import java.util.Locale;
 final class DeclineState {
     static final int MAX_ATTEMPTS = 4;
     static final long RETRY_INTERVAL_MS = 250;
+    private long readDurationMs;
+    private long lastTryDelay = 2_000;
+
+    void readDuration(long ms) { readDurationMs = Math.max(0, ms); }
+
+    long retryDelay() {
+        return lastTryDelay;
+    }
+
+    long confirmationUntil() { return confirmationUntil; }
+
+    long lastConfirmationAt() { return lastConfirmationAt; }
     /**
-     * Tries at Dasher's question at most: the first and two retries, each {@link #RETRY_INTERVAL_MS} after the last at
-     * the earliest. A try Android refused counts as much as one it took that Dasher did not act on.
+     * Tries at Dasher's question at most: the first and two retries. Refusals wait 300 ms; a taken request waits
+     * 2–3 seconds for Dasher to close the question, based on that read's duration.
      */
     static final int MAX_CONFIRMATION_TRIES = 3;
     static final long CONFIRMATION_WINDOW_MS = 10_000;
@@ -17,6 +29,7 @@ final class DeclineState {
     static final long CONFIRMATION_SETTLE_MS = 1_000;
 
     private String tappedOffer = "";
+    private String authorityOffer = "";
     private long lastTapAt;
     private int attempts;
     private long confirmationUntil;
@@ -47,11 +60,20 @@ final class DeclineState {
     }
 
     void declineSent(String offerKey, long now) {
-        if (!offerKey.equals(tappedOffer)) attempts = 0;
+        declineSent(offerKey, now, -1);
+    }
+
+    void declineSent(String offerKey, long now, long countdownMs) {
+        boolean fresh = !offerKey.equals(authorityOffer) || confirmationUntil == 0;
+        if (fresh) attempts = 0;
         tappedOffer = offerKey;
         attempts++;
         lastTapAt = now;
-        confirmationUntil = now + CONFIRMATION_WINDOW_MS;
+        if (fresh) {
+            authorityOffer = offerKey;
+            confirmationUntil = now + (countdownMs >= 0
+                    ? Math.min(60_000, countdownMs) + 3_000 : CONFIRMATION_WINDOW_MS);
+        }
         clearTries();
     }
 
@@ -66,7 +88,7 @@ final class DeclineState {
 
     boolean mayConfirm(long now) {
         return hasPendingConfirmation(now) && confirmationTries < MAX_CONFIRMATION_TRIES
-                && (lastTryAt < 0 || now - lastTryAt >= RETRY_INTERVAL_MS);
+                && (lastTryAt < 0 || now - lastTryAt >= retryDelay());
     }
 
     /** Android took a try at the question's Decline (a request; Dasher may still not act on it). */
@@ -85,6 +107,7 @@ final class DeclineState {
         confirmationTries++;
         lastTryAt = now;
         lastTryRefused = refused;
+        lastTryDelay = refused ? 300 : Math.min(3_000, Math.max(2_000, 2 * readDurationMs));
     }
 
     int confirmationTries() {
@@ -98,11 +121,11 @@ final class DeclineState {
 
     /**
      * Every try is used and the question is still there: the last was refused, or was taken at least
-     * {@link #RETRY_INTERVAL_MS} ago and Dasher did not act on it.
+     * the patient closing interval ago and Dasher did not act on it.
      */
     boolean confirmationExhausted(long now) {
         return confirmationTries >= MAX_CONFIRMATION_TRIES
-                && (lastTryRefused || now - lastTryAt >= RETRY_INTERVAL_MS);
+                && (lastTryRefused && confirmationAttempts == 0 || now - lastTryAt >= retryDelay());
     }
 
     /** Whether the declined offer's confirmation has been tapped, so the decline is already fully requested. */
@@ -133,6 +156,7 @@ final class DeclineState {
     /** Revokes all decline and confirmation authority. */
     void reset() {
         tappedOffer = "";
+        authorityOffer = "";
         confirmationUntil = 0;
         clearTries();
     }

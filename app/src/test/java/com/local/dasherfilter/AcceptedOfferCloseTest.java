@@ -17,6 +17,25 @@ import org.junit.Test;
  * names.
  */
 public class AcceptedOfferCloseTest {
+    @Test public void anUnclearScreenBeforeAnyOfferUsesUpTheEarlierWaitingEvidence() {
+        tracker.afterScreen(WAITING, 100);
+        tracker.afterScreen(PICKUP_UNKNOWN, 500);
+        shows(OFFER, 35, 1_000);
+        tracker.afterScreen(DELIVERY, 2_000);
+        AcceptedOfferTracker.Note note = only(DecisionLog.StepKind.NOT_LEARNED);
+        assertNull(note.accepted);
+        assertEquals(AcceptedOfferTracker.WAIT_NOT_SEEN, note.detail);
+    }
+
+    @Test public void aFreshWaitAfterTheUnclearScreenRestoresPositiveEvidence() {
+        tracker.afterScreen(WAITING, 100);
+        tracker.afterScreen(PICKUP_UNKNOWN, 500);
+        tracker.afterScreen(WAITING, 700);
+        shows(OFFER, 35, 1_000);
+        tracker.afterScreen(DELIVERY, 2_000);
+        assertNotNull(only(DecisionLog.StepKind.ACCEPTED_LEARNED).accepted);
+    }
+
     private static final OfferSnapshot OFFER = new OfferSnapshot(1675, 3.9, 30, 3);
     private static final List<String> DELIVERY = Arrays.asList("Deliver by 9:45 PM", "Delivery for Sam",
             "Complete delivery steps");

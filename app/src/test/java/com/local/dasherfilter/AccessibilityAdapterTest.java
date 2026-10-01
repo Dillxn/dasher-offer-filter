@@ -102,7 +102,7 @@ public class AccessibilityAdapterTest {
      * content change while nothing is up may wait for the next quiet read; see ScannerThreadTest).
      */
     private void show(AccessibilityNodeInfo root) {
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
+        TestWindows.full(controller.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
@@ -324,7 +324,7 @@ public class AccessibilityAdapterTest {
         // Dasher leaves the screen: the tab goes with it.
         AccessibilityNodeInfo maps = AccessibilityNodeInfo.obtain(new View(app));
         maps.setPackageName("com.google.android.apps.maps");
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(maps);
+        TestWindows.full(controller.get(), maps);
         controller.get().onAccessibilityEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOWS_CHANGED));
         assertNull(tab());
 
@@ -385,11 +385,12 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void withCaptureOnDashersOtherScreensAreKeptForAReportAndOtherwiseNot() {
+    public void withCaptureOnOnlyRecognizedDashersOtherScreensAreKeptForAReport() {
         AccessibilityNodeInfo list = node("", false);
         Shadows.shadowOf(list).addChild(node("Organic bananas", false));
         Shadows.shadowOf(list).addChild(node("Aisle 12", false));
         Shadows.shadowOf(list).addChild(node("Produce", false));
+        Dashing.seen(app);
         DiagnosticLog.setEnabled(app, false);
         show(list);
         DiagnosticLog.setEnabled(app, true);
@@ -398,14 +399,24 @@ public class AccessibilityAdapterTest {
 
         show(list);
         String report = DiagnosticLog.report(app);
+        assertFalse("an unrecognized screen is not kept even during a dash", report.contains("Organic bananas"));
+        assertFalse(report, report.contains("Aisle 12"));
+
+        // A known pickup surface can retain its masked operational wording while capture is on.
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
+        Shadows.shadowOf(list).addChild(node("Complete pickup steps", false));
+        show(list);
+        report = DiagnosticLog.report(app);
         assertTrue(report, report.contains("Organic bananas") && report.contains("Aisle 12"));
         assertTrue(Shadows.shadowOf(decline == null ? node("", false) : decline).getPerformedActions().isEmpty());
     }
 
     @Test
     public void aTickingClockOnAnOtherScreenIsKeptAtMostOnceAMinute() {
+        Dashing.seen(app);
         for (int minute = 30; minute < 40; minute++) {
             AccessibilityNodeInfo screen = node("", false);
+            Shadows.shadowOf(screen).addChild(node("Complete delivery steps", false));
             Shadows.shadowOf(screen).addChild(node("Deliver by 5:" + minute + " PM", false));
             Shadows.shadowOf(screen).addChild(node("Kroger", false));
             show(screen);
@@ -415,7 +426,16 @@ public class AccessibilityAdapterTest {
         assertEquals(kept, 1, kept.split("Deliver by", -1).length - 1);
         // A minute later, the same screen is kept again; a different one at once.
         ShadowSystemClock.advanceBy(Duration.ofSeconds(OfferFilterService.SAME_SCREEN_MS / 1000));
+        AccessibilityNodeInfo later = node("", false);
+        Shadows.shadowOf(later).addChild(node("Complete delivery steps", false));
+        Shadows.shadowOf(later).addChild(node("Deliver by 5:40 PM", false));
+        Shadows.shadowOf(later).addChild(node("Kroger", false));
+        show(later);
+        kept = DiagnosticLog.readScreens(app);
+        assertEquals(kept, 2, kept.split("Deliver by", -1).length - 1);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         AccessibilityNodeInfo item = node("", false);
+        Shadows.shadowOf(item).addChild(node("Complete pickup steps", false));
         Shadows.shadowOf(item).addChild(node("Organic bananas", false));
         Shadows.shadowOf(item).addChild(node("Aisle 12", false));
         show(item);
@@ -477,10 +497,9 @@ public class AccessibilityAdapterTest {
     public void theTabIsOverDasherOnlyWhenDasherFillsTheScreen() {
         controller.get().onServiceConnected();
         AccessibilityNodeInfo idle = node("Finding offers", false);
-        Rect screen = new Rect(0, 0, 1080, app.getResources().getDisplayMetrics().heightPixels);
-        Shadows.shadowOf(controller.get()).setWindows(java.util.Collections.singletonList(
-                window(AccessibilityWindowInfo.TYPE_APPLICATION, idle, true, screen)));
         show(idle);
+        Rect screen = new Rect();
+        controller.get().getWindows().get(0).getBoundsInScreen(screen);
         DasherTab tab = tab();
         assertNotNull(tab);
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) tab.getLayoutParams();
@@ -882,7 +901,8 @@ public class AccessibilityAdapterTest {
         assertEquals(0, FilterStore.load(app).lastAcceptedCents);
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("Not learned: no delivery screen recognized within 15 s after Accept on Pay $26.00"));
-        assertTrue(log, log.contains("Heading to Kroger"));
+        assertTrue(log, log.contains(PersonalText.UNKNOWN_NOT_KEPT));
+        assertFalse("unknown screen text is excluded from acceptance diagnostics", log.contains("Heading to Kroger"));
 
         // A tap with no readable offer on screen is noted too.
         ShadowSystemClock.advanceBy(Duration.ofSeconds(120));
@@ -972,7 +992,7 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void swallowedConfirmationTapIsRetriedAfterABriefMiss() {
+    public void swallowedConfirmationTapIsRetriedPatientlyAfterABriefMiss() {
         show(offer("$7.90"));
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
@@ -982,6 +1002,10 @@ public class AccessibilityAdapterTest {
         ShadowSystemClock.advanceBy(Duration.ofMillis(300));
         show(node("Loading", false));
         ShadowSystemClock.advanceBy(Duration.ofMillis(300));
+        show(confirmation(confirm));
+        assertEquals("a handled request waits for Dasher to respond before retrying", 1,
+                Shadows.shadowOf(confirm).getPerformedActions().size());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(2_000));
         show(confirmation(confirm));
         assertEquals(2, Shadows.shadowOf(confirm).getPerformedActions().size());
     }

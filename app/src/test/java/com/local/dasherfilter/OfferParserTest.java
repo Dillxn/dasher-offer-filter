@@ -7,6 +7,18 @@ import java.util.Arrays;
 import static org.junit.Assert.*;
 
 public final class OfferParserTest {
+    @Test public void parsesHourOnlyDurationsWithoutGuessingWaitsOrRates() {
+        assertEquals(Integer.valueOf(60), OfferParser.parse(Arrays.asList("$28.00", "4 stops (29 mi) • 1 hr")).minutes);
+        assertEquals(Integer.valueOf(120), OfferParser.parse(Arrays.asList("$40.00", "4 stops (35 mi) • 2 hrs")).minutes);
+        assertEquals(Integer.valueOf(71), OfferParser.parse(Arrays.asList("$28.00", "4 stops (29 mi) • 1 hr 11 min")).minutes);
+        assertEquals(Integer.valueOf(120), OfferParser.parse(Arrays.asList("Estimated duration 2 hours")).minutes);
+        assertNull(OfferParser.parse(Arrays.asList("Zone offer wait 1 hr", "4 stops")).minutes);
+        assertNull(OfferParser.parse(Arrays.asList("$25/hr", "4 stops (8 mi)")).minutes);
+        assertNull(OfferParser.parse(Arrays.asList("4 stops (29 mi) • 1-2 hr")).minutes);
+        assertNull(OfferParser.parse(Arrays.asList("4 stops (29 mi) • 1 hr 11.5 min")).minutes);
+        assertNull(OfferParser.parse(Arrays.asList("Estimated duration 1 hr", "Estimated duration 2 hr")).minutes);
+    }
+
     @Test public void parsesCompactDoorDashOfferMetrics() {
         OfferSnapshot offer = OfferParser.parse(Arrays.asList(
                 "$7.90",
@@ -88,4 +100,3 @@ public final class OfferParserTest {
         assertNull(OfferParser.parse(Arrays.asList("$9.75", "Multiple dropoffs (2 stops)")).stops);
     }
 }
-

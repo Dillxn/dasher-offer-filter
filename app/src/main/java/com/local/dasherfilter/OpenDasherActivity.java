@@ -17,7 +17,8 @@ import android.os.Parcelable;
  * reset), in its own half when it is already in one half of a split screen, or into the other half when this screen
  * opened in one half without Dasher beside it; then it clears that card and is gone. Dasher's own notification
  * intent opened a screen that could not find the offer on some phones, while Dasher's launcher always shows it.
- * It runs only at the user's tap on a card: the app never opens Dasher by itself.
+ * It runs only at the user's tap on a card. The app opens Dasher by itself only for Peek ({@link Peek}), from its screen
+ * reader, the same way: Dasher's own launch intent, nothing cleared or reset.
  */
 public final class OpenDasherActivity extends Activity {
     static final String EXTRA_CARD = "card";
@@ -43,6 +44,8 @@ public final class OpenDasherActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // The user chose to open Dasher: a peek under way never goes back over it.
+        OfferFilterService.cardTapped();
         Intent tap = getIntent();
         // Dasher already in one half of a split screen: its plain launch intent brings its task forward there. Only
         // when this screen is itself in one half and Dasher is not beside it does Dasher open into the other half.

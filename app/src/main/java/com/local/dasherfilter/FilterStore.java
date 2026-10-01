@@ -50,6 +50,8 @@ final class FilterStore {
     /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
     private static final String RETIRED_REPORT_EMAIL = "report_email";
     private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
+    /** Peek at background offers ({@link Peek}); on unless turned off. */
+    private static final String PEEK = "peek_background_offers";
     /** When learning last turned on and off, and when the adaptive minimums were last reset (wall clock). */
     private static final String LEARNING_ON_SINCE = "learning_on_since";
     private static final String LEARNING_OFF_AT = "learning_off_at";
@@ -149,6 +151,27 @@ final class FilterStore {
         if (!settings.enabled || !settings.risingOffers) return DeclineLesson.SWITCHES_OFF;
         DeclinedFloor floor = DeclinedFloor.raisedBy(settings, declinedOffer);
         if (floor == settings.declined) return DeclineLesson.NOTHING_NEW;
+        // Area mode can pass an offer with one weak spoke. Learning on that spoke may still sit below its set
+        // minimum, so do not claim a floor rose when this offer's effective shape did not change. Keep the learned
+        // values exactly as before (including their persistence if the user later changes the set minimum).
+        boolean changed = true;
+        if (settings.scoreByArea) {
+            FilterSettings learned = new FilterSettings(settings.enabled, settings.flatCents, settings.perMileCents,
+                    settings.perMinuteCents, settings.perStopCents, settings.maxStops, settings.risingOffers,
+                    settings.lastAcceptedCents, settings.best, floor, true);
+            AreaScore.Floors before = AreaScore.floors(settings, declinedOffer);
+            AreaScore.Floors after = AreaScore.floors(learned, declinedOffer);
+            changed = false;
+            for (int axis = 0; axis < AreaScore.AXES; axis++) {
+                if (before.active[axis] != after.active[axis]
+                        || (before.cents[axis] == null) != (after.cents[axis] == null)
+                        || (before.cents[axis] != null && after.cents[axis] != null
+                            && before.cents[axis].compareTo(after.cents[axis]) != 0)) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
         prefs(context).edit()
                 .putInt(DECLINED_PAY, floor.payCents)
                 .putInt(DECLINED_MINUTE_PAY, floor.rates.minutePay).putInt(DECLINED_MINUTES, floor.rates.minutes)
@@ -156,7 +179,7 @@ final class FilterStore {
                 .putLong(DECLINED_MILES, Double.doubleToLongBits(floor.rates.miles))
                 .putInt(DECLINED_STOP_PAY, floor.rates.stopPay).putInt(DECLINED_STOPS, floor.rates.stops)
                 .apply();
-        return DeclineLesson.TAUGHT;
+        return changed ? DeclineLesson.TAUGHT : DeclineLesson.NOTHING_NEW;
     }
 
     private static int positive(int value) {
@@ -293,6 +316,18 @@ final class FilterStore {
 
     static void setSilenceWhileDeclining(Context context, boolean on) {
         prefs(context).edit().putBoolean(SILENCE_WHILE_DECLINING, on).apply();
+    }
+
+    /**
+     * Whether Peek may bring Dasher up for a moment to read a background offer its notification cannot judge
+     * ({@link Peek}). On unless turned off (the user's choice), so also on for an install that never stored it.
+     */
+    static boolean peek(Context context) {
+        return prefs(context).getBoolean(PEEK, true);
+    }
+
+    static void setPeek(Context context, boolean on) {
+        prefs(context).edit().putBoolean(PEEK, on).apply();
     }
 
     private static SharedPreferences prefs(Context context) {

@@ -90,7 +90,8 @@ final class ProblemReport {
      */
     static ProblemReport build(Kind kind, String appVersion, FilterSettings rules, DecisionLog.Entry entry,
                                List<String> labels, Throwable error, String note, List<DecisionLog.Entry> recent) {
-        List<String> screen = redact(labels);
+        List<String> screen = PersonalText.recognizedDashScreen(labels) ? redact(labels)
+                : java.util.Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
         String title = TITLE_PREFIX + " " + kind.label + ": " + headline(kind, entry, error);
         StringBuilder summary = new StringBuilder()
                 .append("Filed by " + AppName.NAME + " ").append(appVersion).append(".\n\n")
@@ -160,7 +161,7 @@ final class ProblemReport {
         StackTraceElement[] stack = error.getStackTrace();
         for (int i = 0; i < Math.min(12, stack.length); i++) frames.put(stack[i].toString());
         return new JSONObject().put("type", error.getClass().getName())
-                .put("message", redact(String.valueOf(error.getMessage()))).put("stack", frames);
+                .put("message", redact(String.valueOf(error.getMessage())).replaceAll("\\d", "#")).put("stack", frames);
     }
 
     /**
@@ -171,7 +172,7 @@ final class ProblemReport {
      */
     static List<String> redact(List<String> labels) {
         List<String> out = new ArrayList<>();
-        if (labels == null) return out;
+        if (labels == null || PersonalText.accountScreen(labels)) return out;
         for (String label : PersonalText.mask(labels)) {
             if (label != null) out.add(redact(label));
         }

@@ -49,6 +49,8 @@ public class ScreensLogNavigationTest {
         DecisionLog.forgetCache();
         ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
+        Dashing.seen(app);
+        ActiveRouteStore.save(app, new OfferSnapshot(1500, 8.0, 30, 2));
         // Reads run on the main looper, so each screen is read (and captured) before show() returns.
         OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         controller = Robolectric.buildService(OfferFilterService.class).create();
@@ -74,7 +76,7 @@ public class ScreensLogNavigationTest {
     private void show(String... labels) {
         AccessibilityNodeInfo root = node("");
         for (String label : labels) Shadows.shadowOf(root).addChild(node(label));
-        Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
+        TestWindows.full(controller.get(), root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
@@ -82,7 +84,7 @@ public class ScreensLogNavigationTest {
 
     /** One turn-by-turn update, as Dasher's navigation draws it: its distance, turn, speed and arrival change. */
     private void navigation(int update) {
-        show((update % 9 + 1) * 100 + " ft", TURNS[update % TURNS.length], "Then", "Toward Exit " + update,
+        show((update % 9 + 1) * 100 + " ft", TURNS[update % TURNS.length], "Then", "Toward Exit " + update, "Update " + update,
                 String.valueOf(20 + update % 30), "mph", "• 2:" + (10 + update % 50) + " am", "12 min", "4.2 mi",
                 "Re-center", "Overview", "Mute", "Report", "Exit");
     }
@@ -116,8 +118,8 @@ public class ScreensLogNavigationTest {
         // 150 s of navigation: kept at 0 s, 60 s and 120 s, whatever its words.
         assertEquals(kept, 3, count(kept, "mph"));
         assertEquals(kept, 3, count(kept, " [navigation] "));
-        assertTrue(kept, kept.contains("Toward Exit 0,") && kept.contains("Toward Exit 40,")
-                && kept.contains("Toward Exit 80,"));
+        assertTrue(kept, kept.contains("Update 0,") && kept.contains("Update 40,")
+                && kept.contains("Update 80,"));
         assertTrue(kept, kept.contains("labels=[Pick up by 2:20 AM, Taco Place, Directions]"));
         // A screen of its own is no navigation: "mph" with no distance, or a distance with no "mph".
         ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
@@ -125,7 +127,9 @@ public class ScreensLogNavigationTest {
         ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
         show("Taco Place", "0.4 mi away");
         kept = screens();
-        assertTrue(kept, kept.contains("[Speed limit, mph, Taco Place]") && kept.contains("[Taco Place, 0.4 mi away]"));
+        assertEquals(kept, 3, count(kept, " [navigation] "));
+        assertFalse(kept.contains("[Speed limit, mph, Taco Place]"));
+        assertTrue(kept.contains(PersonalText.UNKNOWN_NOT_KEPT));
     }
 
     // Before: the log kept its newest 12 KB whatever they were, so a hundred minutes of navigation pushed the pickup
@@ -153,8 +157,8 @@ public class ScreensLogNavigationTest {
         assertTrue(kept, count(kept, "mph") >= 20);
         assertEquals(kept, count(kept, "mph"), count(kept, " [navigation] "));
         assertTrue(kept.length() <= 16 * 1024);
-        assertTrue("the newest navigation stays", kept.contains("Toward Exit 99,"));
-        assertFalse("the oldest navigation went first", kept.contains("Toward Exit 0,"));
+        assertTrue("the newest navigation stays", kept.contains("Update 99,"));
+        assertFalse("the oldest navigation went first", kept.contains("Update 0,"));
 
         // The report's own cut keeps them too.
         String report = DiagnosticLog.report(app);
@@ -162,7 +166,7 @@ public class ScreensLogNavigationTest {
         assertTrue(section, section.length() <= 10_000 + 40);
         assertTrue(section, section.contains("[Pick up by 2:20 AM, Taco Place, Directions]")
                 && section.contains("[Complete pickup steps, Taco Place, Order for [name]]"));
-        assertTrue(section, section.contains("Toward Exit 99,"));
+        assertTrue(section, section.contains("Update 99,"));
         assertTrue(section, section.startsWith("== Dasher's other screens (newest)\n[older entries omitted]\n20"));
     }
 

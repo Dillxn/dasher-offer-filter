@@ -55,8 +55,14 @@ final class LegalTexts {
             service and notification access, which you turn on yourself.
             - It compares each offer with the minimums you set. When an offer is below them, it can tap Decline, \
             and then Dasher's confirmation, for you. It never taps Accept.
-            - While it declines an offer on screen, it turns media and alarm sound down for a moment and then puts \
-            them back. You can turn this off in Settings.
+            - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly \
+            open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were \
+            using after completion evidence; while navigation is detected, it also returns for passing or unclear \
+            offers and leaves a card. Otherwise those offers stay in Dasher. Your touch or app switch ends that \
+            automatic return. You can turn Peek off in Settings.
+            - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then \
+            put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. \
+            You can turn this off in Settings.
             - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does \
             not decline an order.
             - It can update itself from its own update feed, and it sends reports only when you turn them on or \
@@ -119,26 +125,45 @@ final class LegalTexts {
             include store names, customer names and addresses.
             - Dasher's notifications, through Android's notification access. Android shows the app every \
             notification; it ignores every app but Dasher.
+            - Peek, on by default after the current notice is accepted, can briefly bring Dasher forward to read a \
+            fresh background offer. To return you afterward, it checks Android's window information and the app \
+            identifier of the app previously in front. It does not read that app's text. It also checks screen \
+            lock, keyboard and window state, call/audio mode, and Android's available microphone/camera-in-use \
+            indicators; it does not record audio or images.
             - Approximate location, only if you allow it, for the offer map. It never asks for precise location.
 
-            Before you accept the first-run notice, it reads none of this.
+            Before you accept the current first-run notice, it reads none of this and sends no reports.
 
             ## What it keeps on the phone
 
             - Your rules, and what the adaptive minimum learned from offers you accepted or declined.
             - The latest 200 decisions: when, the pay, miles, minutes and stops read, the result, what the app did, \
             and a few lines read from the offer.
-            - Two rolling logs of screen text, one for offers and the app's status and one for Dasher's other \
-            screens. Each holds about what one report carries and nothing older than 24 hours.
+            - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. \
+            Other screens are captured only during a dash or within ten minutes of a readable offer, and only when \
+            positively recognized as offer, confirmation, idle, delivery or navigation screens. \
+            Unrecognized/partial screens retain only a generic text-not-kept note. Each holds about what one report \
+            carries and nothing older than 24 hours. Screens recognized as payment, account or earnings pages are \
+            discarded; at most one line a minute records that a screen was not kept.
             - The offer map, if it is on and location is allowed: the square of about 2 km you were in when each \
             offer came in, and place names for those squares.
             - While you are dashing: whether a dash is on, and the current route's pay, miles, time and stops.
             - A GitHub connection, if you set one up, and the state of updates.
+            - During Peek, the previous app's identifier and launcher component stay only in memory. They are \
+            cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 \
+            seconds after returning). They are never saved or sent; Peek logs describe only the kind of previous \
+            app, such as a navigation app or the home screen. Its screen text is never kept.
 
             Screen text is masked before it is kept: customer names, your own name, street addresses, city, state \
-            and ZIP lines, apartment numbers, phone numbers, email addresses and delivery instructions become \
-            [name], [address], [phone], [email] and [instructions]. Store names, offer figures, buttons and \
-            shopping items stay. Offers are judged from what is on screen; only what is kept is masked.
+            and ZIP lines, apartment numbers, phone numbers, email addresses, delivery instructions, card numbers \
+            and their security codes/expiry/PIN, and streets in navigation become [name], [address], [phone], \
+            [email], [instructions], [card] and [street]. Store names, offer figures, buttons and shopping items \
+            stay. Offers are judged from what is on screen; only what is kept is masked. Click diagnostics retain \
+            the control shape and action category, never its text labels.
+
+            This update clears both old diagnostic logs and all unsent reports once. If that cleanup cannot finish, \
+            diagnostic reads, writes and report sending remain paused until it succeeds. It cannot remove reports \
+            already sent to GitHub or another app.
 
             Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
 
@@ -161,7 +186,10 @@ final class LegalTexts {
             this offer is sent as you typed it.
             - Diagnostics after each dash, only if you turn them on (off by default; they need Send problem reports \
             on). After a dash ends, the same masked report that Share report makes is filed to that private \
-            repository, at most once a dash and six times a day.
+            repository, at most one issue per detected dash and six times a day. Each dash has a random receipt \
+            identifier. If GitHub's reply is lost, the app looks for that receipt in the repository before \
+            continuing; it never creates another issue while the first request remains uncertain. Reports may \
+            remain pending after a lost reply.
             - Share report, only when you tap it: the masked report goes to the app you choose, and from there \
             wherever you send it.
             - A report you share and the diagnostics after each dash also name your phone's Android version and \
@@ -178,11 +206,17 @@ final class LegalTexts {
 
             ## What it never collects
 
-            Your DoorDash password or account details, your contacts, photos or messages, your precise location, or \
-            payment details.
+            The app does not request your DoorDash password, contacts, photos, messages, precise location or \
+            payment details. Accessibility can expose unrelated text when Dasher displays it; recognized payment, \
+            account and earnings screens are discarded, and the masking described above is applied before \
+            diagnostic text is saved.
 
             ## Your choices
 
+            - Turn off **Peek at background offers** in Settings to stop automatic temporary opens of Dasher. Peek \
+            requires an unlocked, quiet phone and skips when its checks find typing, a call, microphone/camera use, \
+            split or floating windows, a pinned or unrecognized app, or another conflicting action. Its checks \
+            depend on what Android exposes; they are not a safety guarantee.
             - Clear history (Settings) removes the decisions, both logs and the offer map.
             - Turning Send problem reports off, or disconnecting GitHub, stops reports and discards reports not yet \
             sent.
@@ -195,7 +229,8 @@ final class LegalTexts {
 
             ## Changes
 
-            When this text changes in substance, the app shows its notice again before it reads anything more.
+            When this text changes in substance, the app shows its notice again before it reads anything more or \
+            sends reports.
             """;
 
     private static final String LICENSE_TEXT = """

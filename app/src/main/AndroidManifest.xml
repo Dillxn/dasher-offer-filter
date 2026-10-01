@@ -12,6 +12,16 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <queries>
         <package android:name="com.doordash.driverapp" />
+        <!-- Peek: after a peek at a background offer, the app that was in front is opened again by its launcher entry,
+             and a home screen is known by its home entry. Only that one app's entries are looked up; no permission. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
     </queries>
     <application
         android:allowBackup="false"

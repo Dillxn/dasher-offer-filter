@@ -53,6 +53,8 @@ final class OfferSilencer {
         }
     };
     private boolean silencing;
+    /** Only the alarm stream may go down (a decline during a peek); written and read on the owner's thread. */
+    private volatile boolean alarmOnly;
     /** When a passing offer's alert last asked to be heard; elapsed-realtime clock, 0 for never. */
     private static volatile long passingAlertAt;
 
@@ -74,11 +76,23 @@ final class OfferSilencer {
 
     /** Silences every stream playing now, and any that starts before {@link #stop}. */
     void start() {
+        start(false);
+    }
+
+    /**
+     * As {@link #start()}; with {@code alarmOnly} (a decline during a peek), only the alarm stream, where Dasher rings:
+     * the app the user was in plays on media (a map's spoken directions, say). Once a decline was alarm only, it stays
+     * so until {@link #stop}.
+     */
+    void start(boolean alarmOnly) {
         if (audio == null) return;
         if (!silencing) {
             silencing = true;
+            this.alarmOnly = alarmOnly;
             audio.registerAudioPlaybackCallback(newPlayers, handler);
             handler.postDelayed(timeout, MAX_MS);
+        } else if (alarmOnly) {
+            this.alarmOnly = true;
         }
         silence(audio.getActivePlaybackConfigurations());
     }
@@ -87,6 +101,7 @@ final class OfferSilencer {
     void stop() {
         if (silencing) {
             silencing = false;
+            alarmOnly = false;
             handler.removeCallbacks(timeout);
             if (audio != null) audio.unregisterAudioPlaybackCallback(newPlayers);
         }
@@ -150,6 +165,7 @@ final class OfferSilencer {
             AudioAttributes attributes = config.getAudioAttributes();
             if (spoken(attributes.getUsage())) continue;
             int stream = attributes.getVolumeControlStream();
+            if (alarmOnly && stream != AudioManager.STREAM_ALARM) continue;
             if (handled(stream)) silence(stream);
         }
     }
@@ -172,16 +188,31 @@ final class OfferSilencer {
             String key = key(stream);
             if (prefs.contains(key)) return;
             int volume = audio.getStreamVolume(stream);
-            if (volume <= floor(audio, stream) || audio.isStreamMute(stream)) return;
-            // Saved before anything changes, so a crash between here and stop() is undone at the next start.
-            prefs.edit().putInt(key, volume).commit();
+            int target = floor(audio, stream);
+            if (volume <= target || audio.isStreamMute(stream)) return;
+            // Persist the intended level as well as the original BEFORE changing it. A process death inside
+            // setStreamVolume must not leave a saved original with no matching level to restore from.
+            SharedPreferences.Editor saved = prefs.edit().putInt(key, volume);
+            if (stream == AudioManager.STREAM_ALARM) saved.putInt(setKey(stream), target);
+            if (!saved.commit()) return;
             try {
                 if (stream == AudioManager.STREAM_ALARM) {
-                    audio.setStreamVolume(stream, floor(audio, stream), 0);
-                    // What the phone actually set, so only a level still at our value is put back later.
-                    prefs.edit().putInt(setKey(stream), audio.getStreamVolume(stream)).commit();
+                    audio.setStreamVolume(stream, target, 0);
+                    int actual = audio.getStreamVolume(stream);
+                    if (actual == volume) {
+                        prefs.edit().remove(key).remove(setKey(stream)).commit();
+                        DiagnosticLog.log(context, "sound", "silencer: volume unchanged (alarm)");
+                        return;
+                    }
+                    // Preserve an OEM's actual minimum if it differs from the requested one.
+                    if (actual != target) prefs.edit().putInt(setKey(stream), actual).commit();
                 } else {
                     audio.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0);
+                    if (!audio.isStreamMute(stream)) {
+                        prefs.edit().remove(key).commit();
+                        DiagnosticLog.log(context, "sound", "silencer: volume unchanged (media)");
+                        return;
+                    }
                 }
                 DiagnosticLog.log(context, "sound", "silenced " + streamName(stream) + " while declining");
             } catch (SecurityException refused) {
@@ -211,7 +242,7 @@ final class OfferSilencer {
                 try {
                     if (stream == AudioManager.STREAM_ALARM) {
                         // Left alone if the user has changed it since.
-                        if (audio.getStreamVolume(stream) == prefs.getInt(setKey(stream), -1)) {
+                        if (audio.getStreamVolume(stream) <= prefs.getInt(setKey(stream), -1)) {
                             audio.setStreamVolume(stream, prefs.getInt(key, 0), 0);
                         }
                     } else if (audio.isStreamMute(stream)) {

@@ -571,6 +571,17 @@ final class AcceptedOfferTracker {
         }
     }
 
+    /**
+     * A peek brought Dasher up: an offer read during it counts only what is read during it. The wait for offers read
+     * before (perhaps long before, while Dasher was hidden) is forgotten, and a decline by hand held for an offer before
+     * it has had another screen since, so the peeked offer never counts it.
+     */
+    void peekBegan() {
+        lastClear = null;
+        Watch w = watch;
+        if (w != null && w.declinePending) w.otherSince = true;
+    }
+
     /** Offer Filter requested a decline of this offer (or the user took it over during one): it is not watched. */
     void offerDeclinedByApp(OfferSnapshot line, boolean addOn, long now) {
         // An offer came: the wait read before it is used up.
@@ -661,7 +672,12 @@ final class AcceptedOfferTracker {
         if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) lastClear = shown;
         if (shown != After.EMPTY && shown != After.NEW_OFFER && shown != After.OFFER_FACTS) screenSinceOffer = true;
         Watch w = watch;
-        if (w == null) return;
+        if (w == null) {
+            // A wait read before an unrelated/unclear screen is not proof the user was waiting when the next offer
+            // arrived. With a watched offer the existing settling path makes this decision instead.
+            if (shown == After.UNCLEAR) lastClear = null;
+            return;
+        }
         if (w.leftAt < 0) w.leftAt = now;
         switch (shown) {
             case EMPTY:

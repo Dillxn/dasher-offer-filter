@@ -122,7 +122,8 @@ final class ClickEvidence {
     /**
      * One line for the screens log: "class=Button source=yes target=decline since-own-tap=2500 text=[…] desc=…
      * above=[…] below=[…] -> decline". Without labels, only the shape. The labels are masked ({@link PersonalText})
-     * before the line is cut, and the verdict is never cut off.
+     * before the line is cut, and the verdict is never cut off. A tap on a payment, account or earnings screen keeps
+     * none of its labels ({@link PersonalText#LABELS_NOT_KEPT}).
      */
     String describe(boolean withLabels) {
         String target = sourceIsAccept ? "accept" : sourceIsDecline ? "decline" : "none";
@@ -130,6 +131,10 @@ final class ClickEvidence {
                 + " target=" + target + " since-own-tap=" + (sinceOwnTap < 0 ? "-" : String.valueOf(sinceOwnTap));
         String verdict = " -> " + verdict().name().toLowerCase(java.util.Locale.US);
         if (!withLabels) return shape + verdict;
+        if (PersonalText.accountScreen(eventText) || PersonalText.accountText(description)
+                || PersonalText.accountScreen(above) || PersonalText.accountScreen(below)) {
+            return shape + " labels=" + PersonalText.LABELS_NOT_KEPT + verdict;
+        }
         String labels = " text=" + PersonalText.mask(eventText) + " desc=" + PersonalText.mask(description)
                 + " above=" + PersonalText.mask(above) + " below=" + PersonalText.mask(below);
         if (labels.length() > MAX_DESCRIBED) labels = labels.substring(0, MAX_DESCRIBED) + "…";

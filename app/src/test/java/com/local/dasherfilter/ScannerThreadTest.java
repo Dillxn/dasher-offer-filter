@@ -358,9 +358,9 @@ public class ScannerThreadTest {
         settle(service);
         assertEquals("declined once the read finished", 1, Shadows.shadowOf(decline).getPerformedActions().size());
         // The slow read, and one more for all hundred changes noted meanwhile: never one read per event. Each read asks
-        // for the active window's root once, the first once more right before its tap. (The decline's poll for its
+        // for the active window's root once; the pre-tap check uses metadata without fetching another root. (The decline's poll for its
         // question may list the windows once more meanwhile; that asks Android, not Dasher, and reads nothing.)
-        assertEquals(3, service.rootFetches - roots);
+        assertEquals("pre-tap check uses window metadata, no extra root", 2, service.rootFetches - roots);
         assertEquals(1, DecisionLog.recent(app, 10).size());
     }
 
@@ -571,7 +571,7 @@ public class ScannerThreadTest {
         assertTrue(audio().isStreamMute(AudioManager.STREAM_MUSIC));
 
         // A next offer's notification, on the main thread: the sound comes back at once, before any read.
-        listener.get().onNotificationPosted(doorDashOffer(), null);
+        listener.get().onNotificationPosted(doorDashOffer("New Order!", "$25.00 • 2 stops (4.2 mi) • 18 min"), null);
         assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
         assertFalse(audio().isStreamMute(AudioManager.STREAM_MUSIC));
 
@@ -602,7 +602,7 @@ public class ScannerThreadTest {
             dasherShows(service, offer("$7.90"));
             service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
             waitUntilBlocked(scanner);
-            listener.get().onNotificationPosted(doorDashOffer(), null);
+            listener.get().onNotificationPosted(doorDashOffer("New Order!", "$25.00 • 2 stops (4.2 mi) • 18 min"), null);
         }
         settle(service);
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
@@ -666,6 +666,8 @@ public class ScannerThreadTest {
 
     @Test
     public void aNotificationJustAfterLeavingDasherRingsWithoutWaitingForTheWindowWatch() {
+        // Exercise the immediate card path: default-on Peek intentionally starts with a silent card.
+        FilterStore.setPeek(app, false);
         listener = Robolectric.buildService(OfferNotificationService.class).create();
         listener.get().onListenerConnected();
         OfferFilterService service = service(false);
@@ -993,7 +995,7 @@ public class ScannerThreadTest {
         String log = DiagnosticLog.read(app);
         assertEquals(log, 1, count(log, "[scan] slow read: "));
         assertTrue(log, log.matches("(?s).*\\[scan\\] slow read: \\d+ ms, \\d+ nodes, 1 windows, after change "
-                + "\\(waited \\d+ ms\\); windows \\d{3,} ms, root \\d+ ms, traversal \\d+ ms; offer up\\n.*"));
+                + "\\(waited \\d+ ms\\); windows \\d{3,} ms, root \\d+ ms, traversal \\d+ ms; remote fetches \\d+ \\(≥2 ms\\); offer up\\n.*"));
         // While the offer is up, every slow read is logged: before, once a minute at most, so a report showed one.
         show(service, offer("$25.00"));
         show(service, idle());

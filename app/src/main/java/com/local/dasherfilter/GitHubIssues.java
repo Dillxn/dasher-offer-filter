@@ -11,14 +11,35 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Files issues in the app's private repository, and comments on them: nothing else, and nowhere else (every request
- * goes under {@link #endpoint}, this repository's issues). Plain HTTPS; no Android dependencies beyond org.json.
+ * Files issues in the app's private repository, and comments on them, and lists its open diagnostics issues to find
+ * one already filed: nothing else, and nowhere else (every request goes under {@link #endpoint}, this repository's
+ * issues). Plain HTTPS; no Android dependencies beyond org.json.
  */
 final class GitHubIssues {
     static final String REPOSITORY = "Dillxn/dasher-offer-filter";
     /** Package-private so tests can point it at a local server; production always uses the GitHub API. */
     static String endpoint = "https://api.github.com/repos/" + REPOSITORY + "/issues";
     private static final int MAX_RESPONSE_BYTES = 262_144;
+    /** A page of diagnostics issues can be large: each body holds up to 60,000 characters. */
+    private static final int MAX_LIST_BYTES = 4 * 1024 * 1024;
+    /** How many of the newest open issues one look for an issue already filed reads. */
+    static final int LIST_PAGE = 10;
+
+    /** How a request reaches GitHub; tests put a fake in its place. */
+    interface Transport {
+        /**
+         * Sends one request under {@link #endpoint} and returns GitHub's answer: a POST must be answered 201
+         * (created), a GET 200.
+         *
+         * @param json the request's body, or null for a GET
+         * @throws Rejected    when GitHub answers otherwise
+         * @throws IOException when GitHub could not be reached, or the answer was cut off
+         */
+        String send(String method, String url, String token, String json, int maxBytes) throws IOException;
+    }
+
+    /** Package-private so tests can fake GitHub; production always uses HTTPS. */
+    static Transport transport = GitHubIssues::http;
 
     /** GitHub answered, but not with a created issue. */
     static final class Rejected extends IOException {
@@ -84,27 +105,57 @@ final class GitHubIssues {
         }
     }
 
+    /** Finds a dash receipt, including closed issues and older pages. A bounded incomplete search fails closed. */
+    static int find(String token, String label, String marker) throws IOException {
+        try {
+            for (int page = 1; page <= 100; page++) {
+                // Ignore labels: a user may remove one after creation, and a refused label falls back to no label.
+                String url = endpoint + "?state=all&sort=created&direction=desc&per_page=" + LIST_PAGE + "&page=" + page;
+                org.json.JSONArray issues = new org.json.JSONArray(transport.send("GET", url, token, null,
+                        MAX_LIST_BYTES));
+                for (int i = 0; i < issues.length(); i++) {
+                    JSONObject issue = issues.optJSONObject(i);
+                    if (issue == null || issue.has("pull_request")) continue;
+                    if (issue.optString("body", "").contains(marker)) return issue.getInt("number");
+                }
+                if (issues.length() < LIST_PAGE) return 0;
+            }
+            throw new IOException("Dash receipt search incomplete; no duplicate issue created");
+        } catch (JSONException malformed) {
+            throw new IOException("Unreadable GitHub response", malformed);
+        }
+    }
+
     /** POSTs {@code json} and returns GitHub's answer to a created item (201). */
     private static String post(String url, String token, JSONObject json) throws IOException {
-        byte[] payload = json.toString().getBytes(StandardCharsets.UTF_8);
+        return transport.send("POST", url, token, json.toString(), MAX_RESPONSE_BYTES);
+    }
+
+    /** One request over HTTPS: a POST of {@code json} answered 201, or a GET answered 200. */
+    private static String http(String method, String url, String token, String json, int maxBytes)
+            throws IOException {
+        boolean post = json != null;
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
-            connection.setRequestMethod("POST");
+            connection.setRequestMethod(method);
             connection.setConnectTimeout(15_000);
             connection.setReadTimeout(20_000);
-            connection.setDoOutput(true);
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("Authorization", "Bearer " + token);
             connection.setRequestProperty("Accept", "application/vnd.github+json");
             connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             connection.setRequestProperty("User-Agent", "OfferFilter-Reporter");
-            connection.setFixedLengthStreamingMode(payload.length);
-            try (OutputStream out = connection.getOutputStream()) {
-                out.write(payload);
+            if (post) {
+                byte[] payload = json.getBytes(StandardCharsets.UTF_8);
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                connection.setFixedLengthStreamingMode(payload.length);
+                try (OutputStream out = connection.getOutputStream()) {
+                    out.write(payload);
+                }
             }
             int status = connection.getResponseCode();
-            if (status != 201) {
+            if (status != (post ? 201 : 200)) {
                 String error = errorBody(connection);
                 // GitHub's secondary rate limit can answer 403 with no headers, only a message saying so.
                 boolean rateLimited = connection.getHeaderField("Retry-After") != null
@@ -113,7 +164,7 @@ final class GitHubIssues {
                 throw new Rejected(status, rateLimited, messageOf(error));
             }
             try (InputStream in = connection.getInputStream()) {
-                return readBounded(in);
+                return readBounded(in, maxBytes);
             }
         } finally {
             connection.disconnect();
@@ -122,7 +173,7 @@ final class GitHubIssues {
 
     private static String errorBody(HttpURLConnection connection) {
         try (InputStream in = connection.getErrorStream()) {
-            return in == null ? "" : readBounded(in);
+            return in == null ? "" : readBounded(in, MAX_RESPONSE_BYTES);
         } catch (IOException unreadable) {
             return "";
         }
@@ -140,13 +191,13 @@ final class GitHubIssues {
         return message.length() > 120 ? message.substring(0, 119).trim() + "…" : message;
     }
 
-    private static String readBounded(InputStream in) throws IOException {
+    private static String readBounded(InputStream in, int maxBytes) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int count;
         while ((count = in.read(buffer)) != -1) {
             out.write(buffer, 0, count);
-            if (out.size() > MAX_RESPONSE_BYTES) throw new IOException("GitHub response too large");
+            if (out.size() > maxBytes) throw new IOException("GitHub response too large");
         }
         return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }

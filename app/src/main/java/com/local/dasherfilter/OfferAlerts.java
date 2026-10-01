@@ -23,6 +23,8 @@ final class OfferAlerts {
     /** 0.4.15 and earlier posted review cards silently here; Android cannot raise a channel's importance later. */
     private static final String RETIRED_SILENT_REVIEW_CHANNEL_ID = "unclassified_offers_v1";
     static final int NOTIFICATION_ID = 8241;
+    /** A card times out after this: Dasher's countdown runs 47-60 s, so a later tap would find no offer. */
+    static final long CARD_MS = 60_000;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final int MAX_BODY_CHARS = 500;
 
@@ -118,7 +120,7 @@ final class OfferAlerts {
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setAutoCancel(true)
-                .setTimeoutAfter(OfferAlertState.LIFETIME_MS)
+                .setTimeoutAfter(CARD_MS)
                 .setOnlyAlertOnce(!audible)
                 .setCategory(Notification.CATEGORY_RECOMMENDATION);
         if (!audible) {
@@ -132,9 +134,10 @@ final class OfferAlerts {
             // A decline of an earlier offer may still have the sound turned down; this offer's alert must be heard.
             if (audible) OfferSilencer.yieldToPassingAlert(context);
             context.getSystemService(NotificationManager.class).notify(tag, NOTIFICATION_ID, builder.build());
-            // Where Dasher was and whether the screen was on, so a report can tell why a card rang or did not.
+            // Where Dasher was, whether the screen was on, and what was playing (Dasher rings on the alarm stream, usage
+            // 4; streams and usages only, never an app), so a report can tell whether our card rang over Dasher.
             DiagnosticLog.log(context, "alert", "posted " + result + " audibleRequested=" + audible + " "
-                    + OfferFilterService.windowsNow(context));
+                    + OfferFilterService.windowsNow(context) + " playing=" + OfferSilencer.playing(context));
             return true;
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "alert", "post failed; original retained: " + error.getClass().getSimpleName());
@@ -157,6 +160,20 @@ final class OfferAlerts {
         PendingIntent dashers = doorDashIntent != null && DASHER_PACKAGE.equals(doorDashIntent.getCreatorPackage())
                 ? doorDashIntent : null;
         return OpenDasherActivity.forCard(context, tag, dashers);
+    }
+
+    /** Whether the card with this tag is still posted (not cleared, timed out, or tapped away). */
+    static boolean showing(Context context, String tag) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager == null) return false;
+        try {
+            for (StatusBarNotification posted : manager.getActiveNotifications()) {
+                if (posted.getId() == NOTIFICATION_ID && tag.equals(posted.getTag())) return true;
+            }
+        } catch (RuntimeException unknown) {
+            return true;
+        }
+        return false;
     }
 
     static void clear(Context context, String tag) {
