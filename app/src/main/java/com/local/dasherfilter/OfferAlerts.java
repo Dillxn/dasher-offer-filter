@@ -132,7 +132,9 @@ final class OfferAlerts {
             // A decline of an earlier offer may still have the sound turned down; this offer's alert must be heard.
             if (audible) OfferSilencer.yieldToPassingAlert(context);
             context.getSystemService(NotificationManager.class).notify(tag, NOTIFICATION_ID, builder.build());
-            DiagnosticLog.log(context, "alert", "posted " + result + " audibleRequested=" + audible);
+            // Where Dasher was and whether the screen was on, so a report can tell why a card rang or did not.
+            DiagnosticLog.log(context, "alert", "posted " + result + " audibleRequested=" + audible + " "
+                    + OfferFilterService.windowsNow(context));
             return true;
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "alert", "post failed; original retained: " + error.getClass().getSimpleName());

@@ -94,7 +94,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
-    /** The header's Split with Dasher button, shown while Dasher is installed and the screen is not split. */
+    /** The header's Split with Dasher button (Put Dasher beside once split), while Dasher is not beside already. */
     private View splitButton;
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
@@ -331,14 +331,35 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ReportOutbox.retryRefused(this);
         // A dash that went quiet while Android held its check back is filed now (off the main thread).
         DashDiagnostics.checkSoon(this);
+        DasherSplit.windowMode(this);
         DasherSplit.resumed(this);
+        // Whether Dasher is beside now, not at Dasher's next event: the page is laid out for it at once.
+        OfferFilterService.lookSoon(windowsLooked);
     }
 
     @Override public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration configuration) {
         super.onMultiWindowModeChanged(inMultiWindow, configuration);
         followSplit(inMultiWindow);
+        DasherSplit.windowMode(this);
         DasherSplit.resumed(this);
+        OfferFilterService.lookSoon(windowsLooked);
         refresh();
+    }
+
+    /** The screen reader looked at the windows for this page: laid out for what it saw (Dasher beside or not). */
+    private final Runnable windowsLooked = () -> {
+        if (resumed) refresh();
+    };
+
+    /**
+     * A finger landing on this page is not on Dasher: in split screen, a touch here during an automatic decline does
+     * not hand the offer back (the user's decision). Only its time is passed on, before anything else sees it.
+     */
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+            OfferFilterService.ownScreenTouched(event.getEventTime());
+        }
+        return super.dispatchTouchEvent(event);
     }
 
     /**
@@ -390,15 +411,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** Offer Filter above, Dasher below, at the user's tap. */
+    /** Offer Filter above, Dasher below, at the user's tap; already split, Dasher into the other half. */
     private void splitWithDasher() {
-        String said = DasherSplit.start(this);
+        String said = DasherSplit.start(this, this::toast);
         if (said != null) toast(said);
     }
 
     @Override protected void onPause() {
         resumed = false;
         handler.removeCallbacks(refresh);
+        DasherSplit.paused(this);
         Tilt.stop();
         Updater.background(this);
         super.onPause();
@@ -482,7 +504,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!back) {
             mainHeader = header;
             mainTitle = name;
-            splitButton = iconButton(Glyph.Shape.SPLIT, "Split screen with Dasher", this::splitWithDasher);
+            splitButton = iconButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
             header.addView(splitButton, splitParams);
@@ -1194,6 +1216,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
+            String label = DasherSplit.label(this);
+            if (!label.equals(String.valueOf(splitButton.getContentDescription()))) {
+                splitButton.setContentDescription(label);
+            }
         }
 
         screenReading.update(OfferFilterService.isConnected());
