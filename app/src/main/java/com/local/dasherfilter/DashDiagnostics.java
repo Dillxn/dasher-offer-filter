@@ -18,12 +18,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Diagnostics after each dash, the user's own opt-in ("Share diagnostics after each dash" in Settings, Reports), so a
+ * Diagnostics after each dash, the user's own opt-in ("Share diagnostics after each dash" in Settings), so a
  * report reaches the repository without being shared by hand. Once a dash ends, the report Share report builds, its
  * screen text masked on the phone ({@link PersonalText}), is filed as one issue in the app's private repository,
  * titled "[diagnostics] Offer Filter &lt;version&gt; 2026-09-30 18:02–21:47" with the label "diagnostics", in parts of at most
  * 60,000 characters (the issue, then comments). It goes only through the user's GitHub connection, to this
- * repository's issues, and only while GitHub is connected and "Send reports through my GitHub connection" is on:
+ * repository's issues, and only while GitHub is connected and "Send problem reports" (through it) is on:
  * turning either off (or reports, or disconnecting) turns this off and discards anything unsent. The fixer acts only
  * on "[offer-report]" issues, never on these.
  *
@@ -94,7 +94,7 @@ final class DashDiagnostics {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** Whether the switch may be on: GitHub connected and "Send reports through my GitHub connection" on. */
+    /** Whether the switch may be on: GitHub connected and "Send problem reports" on. */
     static boolean allowed(Context context) {
         return ReportOutbox.throughGitHub(context);
     }
@@ -124,7 +124,7 @@ final class DashDiagnostics {
     }
 
     /**
-     * Off, with nothing left to send: the switch, "Send reports through my GitHub connection", reports or the GitHub
+     * Off, with nothing left to send: the switch, "Send problem reports" (reports through the connection) or the GitHub
      * connection went off. Any dash under way is forgotten and unsent diagnostics are discarded.
      */
     static void stop(Context context) {
@@ -333,16 +333,14 @@ final class DashDiagnostics {
                 + (sameDay ? new SimpleDateFormat("HH:mm", Locale.US) : full).format(new Date(end));
     }
 
-    /** What the switch does and where it stands, for Settings under it. */
+    /** Where the switch stands, in a few words for Settings under it: "On · last #12 · dash under way". */
     static String status(Context context) {
-        String what = "After a dash ends, the report Share report builds (names, addresses, phone numbers and "
-                + "instructions masked) goes to your repository's issues through your GitHub connection.";
-        if (!allowed(context)) return "Needs Send reports through my GitHub connection. " + what;
-        if (!on(context)) return "Off. " + what;
+        if (!allowed(context)) return "Needs Send problem reports";
+        if (!on(context)) return "Off";
         int issue = ReportOutbox.lastDiagnostics(context);
         String last = prefs(context).getString(LAST_DASH, "");
         return "On" + (issue > 0 ? " · last #" + issue : last.isEmpty() ? "" : " · last dash " + last + " queued")
-                + (prefs(context).getLong(STARTED_AT, 0) > 0 ? " · dash under way" : "") + ". " + what;
+                + (prefs(context).getLong(STARTED_AT, 0) > 0 ? " · dash under way" : "");
     }
 
     /** For the shared report: whether it is on, and the last dash filed. */

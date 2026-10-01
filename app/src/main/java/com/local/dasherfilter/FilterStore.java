@@ -20,7 +20,7 @@ final class FilterStore {
      * which offers are declined.
      */
     private static final String RETIRED_EXTRA_STOP_FEE = "stop";
-    /** What Settings says once, beside Per stop, when a set extra-stop fee was retired. */
+    /** What the homepage says once when a set extra-stop fee was retired. */
     private static final String STOP_FEE_NOTICE = "stop_fee_notice";
     private static final String MAX_STOPS = "max_stops";
     private static final String RISING_OFFERS = "rising_offers";
@@ -41,6 +41,11 @@ final class FilterStore {
     private static final String DECLINED_STOP_PAY = "declined_stop_pay";
     private static final String DECLINED_STOPS = "declined_stops";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
+    /**
+     * Whether Dasher's offer channel alerts (sound or vibration at default importance or above), as Android's ranking
+     * of its last offer notification said; absent until one was seen with its channel.
+     */
+    private static final String DOORDASH_CHANNEL_ALERTS = "doordash_channel_alerts";
     private static final String LAST_STATUS = "last_status";
     /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
     private static final String RETIRED_REPORT_EMAIL = "report_email";
@@ -67,8 +72,8 @@ final class FilterStore {
     /**
      * Removes an extra-stop fee saved by an older version, once. Per stop is left off (0) rather than taking the
      * fee's value, which meant something else. A fee that was set is noted in the diagnostic log and the status, and
-     * Settings says so once beside Per stop; if it was the only rule, auto-decline is paused in the same edit, so the
-     * page never shows an active filter that filters nothing. A fee of 0 was never a rule and goes silently.
+     * the homepage says so once; if it was the only rule, auto-decline is paused in the same edit, so the page never
+     * shows an active filter that filters nothing. A fee of 0 was never a rule and goes silently.
      */
     private static void retireExtraStopFee(Context context, SharedPreferences prefs) {
         if (!prefs.contains(RETIRED_EXTRA_STOP_FEE)) return;
@@ -96,7 +101,7 @@ final class FilterStore {
     }
 
     /**
-     * The note about a retired extra-stop fee, once: it is forgotten as it is taken, so Settings shows it the first
+     * The note about a retired extra-stop fee, once: it is forgotten as it is taken, so the homepage shows it the first
      * time it opens after the update and never again. Null when there is none.
      */
     static String takeStopFeeNotice(Context context) {
@@ -238,6 +243,28 @@ final class FilterStore {
 
     static String doorDashOfferChannel(Context context) {
         return prefs(context).getString(DOORDASH_OFFER_CHANNEL, "");
+    }
+
+    /**
+     * Notes whether Dasher's offer channel, as Android ranked its last offer notification, alerts: importance default
+     * or above with a sound or vibration. A channel Android does not say (null) changes nothing.
+     */
+    static void recordDoorDashChannel(Context context, android.app.NotificationChannel channel) {
+        if (channel == null) return;
+        boolean alerts = channel.getImportance() >= android.app.NotificationManager.IMPORTANCE_DEFAULT
+                && (channel.getSound() != null || channel.shouldVibrate());
+        SharedPreferences prefs = prefs(context);
+        if (!prefs.contains(DOORDASH_CHANNEL_ALERTS) || prefs.getBoolean(DOORDASH_CHANNEL_ALERTS, false) != alerts) {
+            prefs.edit().putBoolean(DOORDASH_CHANNEL_ALERTS, alerts).apply();
+        }
+    }
+
+    /**
+     * Whether Dasher's offer channel was last seen alerting, so Settings asks for it to be set to Silent; false until
+     * an offer notification showed its channel.
+     */
+    static boolean doorDashChannelAlerts(Context context) {
+        return prefs(context).getBoolean(DOORDASH_CHANNEL_ALERTS, false);
     }
 
     static void setLastStatus(Context context, String status) {

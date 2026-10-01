@@ -10,16 +10,13 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Insets;
-import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.text.Editable;
 import android.text.InputType;
-import android.text.TextWatcher;
 import android.text.format.DateFormat;
 import android.text.format.DateUtils;
 import android.view.Gravity;
@@ -37,8 +34,6 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -48,13 +43,15 @@ import java.util.regex.Pattern;
 
 /**
  * The app's two pages, kept quiet. The main page is one picture: a sky where the minimums, as a very large
- * constellation with recent offers marked (tap an offer for its ticket, elsewhere for the rules), spread behind the
- * mascot in its ring and the dash's three counts (the mascot is the one button: a tap pauses or resumes), with a line
- * only when something needs the user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the
- * ground below it on a whole screen, a map of where offers pay best. Settings holds everything set once: the rules,
- * sound and Android shortcuts, the offer map, reports and updates. Pause and Resume take effect at once; Save keeps
- * the on/paused state. The drawings move gently and shift with the phone's tilt while the app fills the screen, unless
- * Android's animations are off; in split screen they move calmly and the tilt sensor rests.
+ * constellation with recent offers marked (tap an offer for its ticket), spread behind the mascot in its ring and the
+ * dash's three counts (the mascot is the one button: a tap pauses or resumes), with a line only when something needs
+ * the user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the ground below it on a whole
+ * screen, a map of where offers pay best. Every rule lives on the constellation and saves at once: the knobs (the four
+ * minimums, hollow until set), the max stops badge by the per-stop spoke, and the round buttons (score by area, the
+ * adaptive minimum on or off with Reset on a long press, and adopting what it learned). Settings holds only what exists
+ * nowhere else: setup still needing a fix, two switches, updates, GitHub, reports and a tip, each one row. Pause and
+ * Resume take effect at once. The drawings move gently and shift with the phone's tilt while the app fills the screen,
+ * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
@@ -64,9 +61,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** A split-screen window shorter than this gets the compact homepage; any window at all under the second. */
     static final int COMPACT_SPLIT_HEIGHT_DP = 600;
     static final int COMPACT_HEIGHT_DP = 400;
-    private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000");
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
     private static final String SHOWING_SETTINGS = "settings";
+    private static final String FEE_NOTICE = "fee_notice";
+    private static final String SKY_CHOSEN = "sky_chosen";
+    /** With no rule saved, the line under the mascot: the fewest words that say how to begin. */
+    static final String START_HINT = "Drag a knob to start";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
@@ -121,6 +121,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness offerAlerts;
     private LinearLayout routeRow;
     private TextView routeNote;
+    /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
+    private String feeNotice;
+    private boolean feeNoticeAsked;
+    private LinearLayout feeRow;
+    private TextView feeText;
 
     // Main page: offers.
     private DecisionChartView chart;
@@ -166,6 +171,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * (the pointer over Dasher points to the best area); the constellation and the skyline take its room.
      */
     private boolean besideDasher;
+    /**
+     * In a short window beside another app, the user tapped the header's constellation: it spreads across the sky with
+     * its knobs (the map making room) until its circle is tapped again.
+     */
+    private boolean skyChosen;
+    /** No map on the page now: beside Dasher, or a short window whose sky the constellation was chosen into. */
+    private boolean noMap;
+    private boolean arranged;
     /** How tall the constellation stands in the header of a short window. */
     static final int HEADER_STAR_DP = 72;
     /**
@@ -181,37 +194,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private double[] areaHere;
     private boolean pickedArea;
 
-    // Settings page.
-    private EditText flat;
-    private EditText mile;
-    private EditText minute;
-    private EditText stop;
-    /** "0 turns a rule off.", beside Per stop, and in its place once: the note that an extra-stop fee was retired. */
-    private TextView zeroHint;
-    private TextView stopFeeNotice;
-    private EditText maxStops;
-    private Switch rising;
-    /** Score by area, mirroring the toggle by the constellation; saved at once, as the toggle is. */
-    private Switch scoreByArea;
-    private TextView baselineNote;
-    private TextView rulesPreview;
+    // Settings page: only what is set nowhere else, one row each.
+    /** Setup that needs a fix and has no row on the homepage; each hidden while all is well. */
+    private Readiness doorDashAlerts;
+    private Readiness installs;
+    private Readiness location;
+    private Readiness locationAllTheTime;
     private Switch areasToggle;
-    private TextView areasStatus;
-    private Button areasFix;
-    private Button areasForget;
-    private EditText reportToken;
+    private Button updatesRow;
+    private Button githubRow;
     private Switch reportViaGitHub;
+    private TextView reportStatus;
     private Switch diagnosticsAfterDash;
     private TextView diagnosticsStatus;
-    private TextView reportStatus;
-    private Button sendTest;
-    private Button stopReports;
-    private TextView updateStatus;
-    private Button allowInstalls;
-    private TextView githubStatus;
-    private TextView githubCode;
-    private Button githubConnect;
-    private Button githubDisconnect;
     private GitHubConnect.State shownGitHub;
     private boolean askingGitHub;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
@@ -230,7 +225,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ui = new Ui(this);
         OfferAlerts.ensureChannel(this);
         FilterStore.forgetRetiredEmail(this);
-        FilterSettings saved = FilterStore.load(this);
+        // Settings has no Automatic updates switch any more: an "off" kept from an older version is cleared once.
+        Updater.retireSwitch(this);
+        // Retires an old extra-stop fee now, so its note is ready for the homepage.
+        FilterStore.load(this);
+        if (state != null) {
+            feeNotice = state.getString(FEE_NOTICE);
+            feeNoticeAsked = state.getBoolean(FEE_NOTICE + "_asked", false);
+            skyChosen = state.getBoolean(SKY_CHOSEN, false);
+        }
 
         root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
@@ -238,7 +241,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         mainPage = addPage(root, scene);
         settingsPage = addPage(root, ui.column());
         buildMain((LinearLayout) mainPage.getChildAt(0));
-        buildSettings((LinearLayout) settingsPage.getChildAt(0), saved);
+        buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
         buildUpdatingCover(root);
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
@@ -299,6 +302,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putBoolean(SHOWING_SETTINGS, showingSettings);
+        // Taken once from the store: a recreated page (a resize, day and night) keeps showing it until it is tapped.
+        if (feeNotice != null) state.putString(FEE_NOTICE, feeNotice);
+        state.putBoolean(FEE_NOTICE + "_asked", feeNoticeAsked);
+        state.putBoolean(SKY_CHOSEN, skyChosen);
     }
 
     /** Back from Settings returns to the main page; back from the main page leaves. */
@@ -463,27 +470,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(settings ? ui.page : ScenePage.skyTop(ui));
         View focused = getCurrentFocus();
         if (focused != null && !focused.isShown()) focused.clearFocus();
-        showStopFeeNotice(settings);
         if (changed) {
             shown.setAlpha(0f);
             shown.animate().alpha(1f).setDuration(160);
-        }
-    }
-
-    /**
-     * The first time Settings opens after an update retired an extra-stop fee, the note saying so stands beside Per
-     * stop until Settings is left; it is not shown again.
-     */
-    private void showStopFeeNotice(boolean settings) {
-        if (stopFeeNotice == null) return;
-        String notice = settings ? FilterStore.takeStopFeeNotice(this) : null;
-        if (notice != null) {
-            stopFeeNotice.setText(notice);
-            stopFeeNotice.setVisibility(View.VISIBLE);
-            zeroHint.setVisibility(View.GONE);
-        } else if (!settings) {
-            stopFeeNotice.setVisibility(View.GONE);
-            zeroHint.setVisibility(View.VISIBLE);
         }
     }
 
@@ -649,7 +638,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
         View header = header(AppName.NAME, false);
 
-        // The mascot is the button: a tap pauses, resumes, or with no rule yet opens the rules.
+        // The mascot is the button: a tap pauses, resumes, or with no rule yet points to the knobs.
         hero = new FilterHeroView(this, ui);
         hero.setOnClickListener(tapped -> toggleAutoDecline());
         // Words only when something needs the user: paused, or no rules yet. On, the picture says it all.
@@ -671,6 +660,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        addFeeNotice(problems);
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
         routeNote = ui.text("", 13, ui.inkSecondary, false);
@@ -713,7 +703,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             body.setPadding(body.getPaddingLeft(), 0, body.getPaddingRight(), ui.dp(4));
             mainHeader.setPadding(mainHeader.getPaddingLeft(), ui.dp(4), mainHeader.getPaddingRight(), 0);
         }
-        besideDasher = !besideDasherNow();
         arrangeForSplit();
         // The skyline's street (12 dp above the chart's bottom) is the horizon.
         scene.setHorizon(chart, ui.dp(11), noOffers);
@@ -729,26 +718,44 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * Beside Dasher, no map of our own (Dasher's is right there): the sky takes nearly all the room, the
      * constellation spread across it, over a skyline. In any other short window the map stays, the skyline keeps a
-     * fixed height above it, and the constellation moves into the header, its icons beside the circle. A whole screen
-     * shows everything, the sky above the map. (The road is set once, when the page is built.)
+     * fixed height above it, and the constellation moves into the header, its icons beside the circle; a tap on it
+     * there spreads it across the sky with its knobs, as beside Dasher (the map making room), and a tap on its circle
+     * puts it back. A whole screen shows everything, the sky above the map. (The road is set once, when the page is
+     * built.)
      */
     private void arrangeForSplit() {
         boolean beside = besideDasherNow();
-        if (beside == besideDasher) return;
+        boolean mapless = beside || (compact && skyChosen);
+        if (arranged && beside == besideDasher && mapless == noMap) return;
+        arranged = true;
         besideDasher = beside;
-        areaMap.setVisibility(beside ? View.GONE : View.VISIBLE);
-        if (beside || shownArea == null) areaLine.setVisibility(View.GONE);
+        noMap = mapless;
+        areaMap.setVisibility(mapless ? View.GONE : View.VISIBLE);
+        if (mapless || shownArea == null) areaLine.setVisibility(View.GONE);
         else areaLine.setVisibility(View.VISIBLE);
-        boolean inHeader = compact && !beside;
+        boolean inHeader = compact && !mapless;
         placeConstellation(inHeader);
+        // In a short window the constellation's tap moves it between the header and the sky; elsewhere it has none.
+        boolean movable = compact && !beside;
+        minimums.setOnClickListener(movable ? tapped -> chooseSky(!skyChosen) : null);
+        minimums.setClickable(movable);
+        minimums.setClickLabel(!movable ? null : inHeader ? "set the minimums" : "show the map");
         // Beside another app the map needs the room, so the skyline stands at a fixed height rather than a share.
         chartParams.height = inHeader ? ui.dp(CHART_SHORT_DP) : 0;
         chartParams.weight = inHeader ? 0 : 0.7f;
         chart.setLayoutParams(chartParams);
         // The sky's share against the ground's (the skyline, and the map where there is one).
-        skyParams.weight = beside ? SKY_BESIDE_DASHER : inHeader ? SKY_WITH_MAP_SHORT : SKY_WHOLE;
-        groundParams.weight = beside ? 0.7f : inHeader ? 3.2f : 1.7f;
+        skyParams.weight = mapless ? SKY_BESIDE_DASHER : inHeader ? SKY_WITH_MAP_SHORT : SKY_WHOLE;
+        groundParams.weight = mapless ? 0.7f : inHeader ? 3.2f : 1.7f;
         sky.requestLayout();
+    }
+
+    /** In a short window, the constellation spread across the sky with its knobs ({@code on}), or in the header. */
+    private void chooseSky(boolean on) {
+        if (!compact || besideDasher || skyChosen == on) return;
+        skyChosen = on;
+        arrangeForSplit();
+        if (on) minimums.beckon();
     }
 
     /** The constellation in the header's left (drawn with its icons beside the circle), or spread across the sky. */
@@ -809,13 +816,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The minimums' constellation; a tap opens them. The sky or the header holds it, as the window allows. In the sky
-     * its knobs set the minimums, and its button makes the learned ones the set ones (or undoes that), each saved as
-     * Settings saves them; a tap on a marked offer opens its ticket, as its building in the skyline does.
+     * The minimums' constellation, where every rule is set. The sky or the header holds it, as the window allows. In
+     * the sky its knobs set the minimums, its badge the max stops, and its round buttons score by area, the adaptive
+     * minimum (Reset on a long press) and adopting what that learned (or undoing it), each saved at once through
+     * {@link FilterStore}; a tap on a marked offer opens its ticket, as its building in the skyline does.
      */
     private void addMinimums() {
         minimums = new MinimumsStarView(this, ui);
-        minimums.setOnClickListener(tapped -> showSettings(true));
         minimums.setOfferTaps(this::openOffer);
         minimums.setChanges(new MinimumsStarView.Changes() {
             @Override public void setMinimum(int axis, int cents) {
@@ -825,8 +832,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
 
             @Override public int[] adoptLearned() {
-                // From the saved rules, never from what is typed but unsaved in Settings: only the minimums the
-                // adoption raises are written and saved, and Undo puts back exactly the saved ones it replaced.
+                // Only the minimums the adoption raises are saved, and Undo puts back exactly the ones it replaced.
                 FilterSettings saved = FilterStore.load(MainActivity.this);
                 int[] before = saved.minimums();
                 int[] raised = saved.adoptAdaptive().minimums();
@@ -850,69 +856,107 @@ public final class MainActivity extends Activity implements Updater.Busy {
             @Override public void setScoreByArea(boolean on) {
                 setScoreMode(on);
             }
+
+            @Override public void setMaxStops(int stops) {
+                setStops(stops);
+            }
+
+            @Override public void setAdaptive(boolean on) {
+                setAdaptiveMinimum(on);
+            }
+
+            @Override public void resetLearned() {
+                confirmResetLearned();
+            }
         });
     }
 
     /**
-     * Score by area on or off, from the toggle by the constellation or its mirror in Settings: saved at once, through
-     * the same save as the knobs, and applied to any offer on screen; nothing else changes. @return whether it changed
+     * Score by area on or off, from the toggle by the constellation: saved at once, through the same save as the
+     * knobs, and applied to any offer on screen; nothing else changes. @return whether it changed
      */
     private boolean setScoreMode(boolean on) {
         FilterSettings saved = FilterStore.load(this);
-        if (saved.scoreByArea == on) {
-            if (scoreByArea != null && scoreByArea.isChecked() != on) scoreByArea.setChecked(on);
-            return false;
-        }
+        if (saved.scoreByArea == on) return false;
         FilterStore.save(this, saved.withScoreByArea(on));
         DiagnosticLog.log(this, "rules", on ? "score by area on: a standalone offer passes at a 100% area score; "
                 + "max stops stays a hard limit, add-ons stay strict" : "score by area off: every minimum must be met");
-        // Its listener finds the mode already saved.
-        if (scoreByArea != null && scoreByArea.isChecked() != on) scoreByArea.setChecked(on);
         rulesChanged();
         updateMeter();
         return true;
     }
 
-    /** The minimums' fields in the constellation's spoke order: pay, per mile, per minute, per stop. */
-    private EditText[] minimumFields() {
-        return new EditText[] {flat, mile, minute, stop};
-    }
-
     /**
-     * Minimums set on the constellation (a knob let go, the learned ones adopted, or that undone), as if typed into
-     * their fields and saved with Save rules: each field shows its new value, the same checks apply, and the rules are
-     * saved and applied to any offer on screen at once. Only these minimums change (-1 leaves one as saved); max stops,
-     * the adaptive minimum and the on or paused state stay as saved, except that no rule left pauses, as Save rules
-     * does; a first rule saved while paused says auto-decline stays paused, as Save rules does (nothing here ever
-     * turns auto-decline on). Nothing is saved when nothing changed. @return whether the rules were saved
+     * Minimums set on the constellation (a knob let go or adjusted by a screen reader, the learned ones adopted, or
+     * that undone): saved at once through {@link FilterStore} and applied to any offer on screen. Only these minimums
+     * change (-1 leaves one as saved), each held to $0 to {@link FilterSettings#MOST_CENTS}.
+     *
+     * @return whether the rules were saved
      */
     private boolean setMinimums(int[] cents) {
         FilterSettings saved = FilterStore.load(this);
-        EditText[] fields = minimumFields();
         int[] next = saved.minimums();
-        for (int i = 0; i < fields.length; i++) {
-            if (cents[i] < 0) continue;
-            String typed = money(cents[i]);
-            if (!typed.contentEquals(fields[i].getText())) fields[i].setText(typed);
-            try {
-                next[i] = parseCents(fields[i]);
-            } catch (IllegalArgumentException error) {
-                toast(error.getMessage());
-                return false;
-            }
+        for (int i = 0; i < next.length; i++) {
+            if (cents[i] >= 0) next[i] = Math.min(FilterSettings.MOST_CENTS, cents[i]);
         }
         if (java.util.Arrays.equals(next, saved.minimums())) return false;
-        FilterSettings rules = saved.withMinimums(next);
+        return saveRules(saved, saved.withMinimums(next));
+    }
+
+    /** Max stops set on the constellation's badge (0: no limit), saved at once. @return whether it changed */
+    private boolean setStops(int stops) {
+        FilterSettings saved = FilterStore.load(this);
+        int next = Math.max(0, Math.min(99, stops));
+        if (next == saved.maxStops) return false;
+        return saveRules(saved, saved.withMaxStops(next));
+    }
+
+    /**
+     * The adaptive minimum on or off, from its toggle by the constellation: saved at once; what it learned is kept
+     * either way (only Reset forgets it). @return whether it changed
+     */
+    private boolean setAdaptiveMinimum(boolean on) {
+        FilterSettings saved = FilterStore.load(this);
+        if (saved.risingOffers == on) return false;
+        DiagnosticLog.log(this, "rules", on ? "adaptive minimum on" : "adaptive minimum off; what it learned is kept");
+        return saveRules(saved, saved.withAdaptive(on));
+    }
+
+    /**
+     * Saves rules changed on the constellation and applies them to any offer on screen. The on or paused state stays as
+     * saved, except that no rule left pauses; a first rule saved while paused says auto-decline stays paused (nothing
+     * here ever turns auto-decline on).
+     */
+    private boolean saveRules(FilterSettings saved, FilterSettings rules) {
         boolean pausedForLackOfRules = rules.enabled && !rules.hasAnyRule();
         if (pausedForLackOfRules) rules = rules.withEnabled(false);
         boolean firstRule = !saved.hasAnyRule() && rules.hasAnyRule() && !rules.enabled;
         FilterStore.save(this, rules);
         rulesChanged();
-        // The fields may already have shown these values, so the constellation is told of the save itself.
         updateMeter();
         if (pausedForLackOfRules) toast("No rules left, so auto-decline is paused.");
         else if (firstRule) toast("Rule saved. Auto-decline stays paused until you Resume it.");
         return true;
+    }
+
+    /**
+     * A long press on the adaptive minimum's toggle (or a screen reader's Reset): asks first, then forgets the highest
+     * accepted pay, every best rate and what declines taught. The set minimums and the switch stay as they are.
+     */
+    private void confirmResetLearned() {
+        new AlertDialog.Builder(this)
+                .setTitle("Reset learned minimums?")
+                .setMessage("Forgets the highest pay you accepted, the best rates and what your own declines taught. "
+                        + "Your set minimums stay.")
+                .setPositiveButton("Reset", (dialog, which) -> {
+                    FilterStore.resetAccepted(this);
+                    DiagnosticLog.log(this, "rules", "adaptive minimum reset: what it learned was forgotten");
+                    rulesChanged();
+                    updateMeter();
+                    toast("Learned minimums reset.");
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     /**
@@ -947,15 +991,62 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Settings page ----
 
-    private void buildSettings(LinearLayout page, FilterSettings saved) {
+    /**
+     * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
+     * the homepage), the two switches, updates, GitHub, reports and a tip, then the version and the bundled texts. The
+     * rules are all on the homepage's constellation.
+     */
+    private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
         LinearLayout body = body(page);
-        addRules(body, saved);
-        addSoundAndSetup(body);
-        addOfferMap(body);
-        addReports(body);
-        addUpdates(body);
-        addSupport(body);
+        LinearLayout setup = ui.column();
+        body.addView(setup, Ui.matchWidth());
+        doorDashAlerts = new Readiness(setup, "DoorDash's offer alerts aren't Silent", this::openDoorDashChannel);
+        installs = new Readiness(setup, "Updates can't install", () -> open(new Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
+        location = new Readiness(setup, "The offer map needs location", this::askForLocation);
+        locationAllTheTime = new Readiness(setup, "The offer map needs location all the time", this::askForLocation);
+
+        LinearLayout switches = ui.column();
+        body.addView(switches, Ui.matchWidth());
+        Switch mute = ui.toggle(switches, "Mute Dasher's ring while declining",
+                FilterStore.silenceWhileDeclining(this));
+        mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
+        areasToggle = ui.toggle(switches, "Offer map", AreaMap.enabled(this));
+        areasToggle.setOnCheckedChangeListener((view, on) -> {
+            if (on == AreaMap.enabled(this)) return;
+            AreaMap.setEnabled(this, on);
+            if (on && !AreaMap.hasPermission(this)) askForLocation();
+            refresh();
+        });
+
+        LinearLayout connections = group(body);
+        // Checks are always automatic; a tap checks now.
+        updatesRow = ui.listRow(connections, "Updates", () -> Updater.check(this, true, null));
+        if (GitHubConnect.configured()) githubRow = ui.listRow(connections, "Connect GitHub", this::tapGitHub);
+
+        LinearLayout reports = group(body);
+        ui.listRow(reports, "Share report", this::shareReport);
+        // Problem reports go only through the GitHub connection: shown once it is connected, off until turned on.
+        reportViaGitHub = ui.toggle(reports, "Send problem reports", ReportOutbox.useGitHubChosen(this));
+        reportViaGitHub.setOnCheckedChangeListener((view, on) -> {
+            if (on == ReportOutbox.useGitHubChosen(this)) return;
+            ReportOutbox.useGitHub(this, on);
+            refresh();
+        });
+        reportStatus = detail(reports);
+        // A further opt-in: only with reports on; turning them off turns it off.
+        diagnosticsAfterDash = ui.toggle(reports, "Share diagnostics after each dash", DashDiagnostics.on(this));
+        diagnosticsAfterDash.setOnCheckedChangeListener((view, on) -> {
+            if (on == DashDiagnostics.on(this)) return;
+            if (DashDiagnostics.set(this, on) != on) toast("Turn on Send problem reports first.");
+            refresh();
+        });
+        diagnosticsStatus = detail(reports);
+        ui.listRow(reports, "Clear history", this::confirmClearHistory);
+
+        if (!Support.methods().isEmpty()) ui.listRow(group(body), "Tip", this::chooseTip);
+
         TextView footer = ui.text(AppName.NAME + " v" + Updater.version(this) + " · Not a DoorDash app.", 12,
                 ui.inkSecondary, false);
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -969,200 +1060,58 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ground(page, 170);
     }
 
-    private void addRules(LinearLayout body, FilterSettings saved) {
-        ui.heading(body, "Minimums");
-        LinearLayout first = fieldRow(body);
-        flat = ui.tagField(cell(first), "Minimum pay ($)", money(saved.flatCents), true, Glyph.Shape.COIN);
-        maxStops = ui.tagField(cell(first), "Max stops (1 order = 2)", Integer.toString(saved.maxStops), false,
-                Glyph.Shape.STOPS);
-        LinearLayout second = fieldRow(body);
-        mile = ui.tagField(cell(second), "Per mile ($)", money(saved.perMileCents), true, Glyph.Shape.ROAD);
-        minute = ui.tagField(cell(second), "Per minute ($)", money(saved.perMinuteCents), true, Glyph.Shape.CLOCK);
-        LinearLayout third = fieldRow(body);
-        stop = ui.tagField(cell(third), "Per stop ($)", money(saved.perStopCents), true, Glyph.Shape.PIN);
-        LinearLayout hint = cell(third);
-        zeroHint = ui.text("0 turns a rule off.", 12, ui.inkSecondary, false);
-        zeroHint.setPadding(ui.dp(6), ui.dp(14), 0, 0);
-        hint.addView(zeroHint);
-        stopFeeNotice = ui.text("", 12, ui.ink, true);
-        stopFeeNotice.setPadding(ui.dp(6), ui.dp(4), 0, 0);
-        stopFeeNotice.setVisibility(View.GONE);
-        hint.addView(stopFeeNotice);
-        rulesPreview = ui.text("", 14, ui.ink, true);
-        rulesPreview.setPadding(0, ui.dp(12), 0, 0);
-        body.addView(rulesPreview);
+    /** A group of rows, set a little apart from the one above. */
+    private LinearLayout group(LinearLayout body) {
+        LinearLayout group = ui.column();
+        LinearLayout.LayoutParams params = Ui.matchWidth();
+        params.topMargin = ui.dp(18);
+        body.addView(group, params);
+        return group;
+    }
 
-        scoreByArea = ui.toggle(body, MinimumsStarView.SCORE_SAID, saved.scoreByArea);
-        scoreByArea.setOnCheckedChangeListener((view, on) -> setScoreMode(on));
-        body.addView(ui.note("Passes an offer whose shape on the chart covers at least the minimums' area (100%), "
-                + "instead of only one that meets every minimum. Max stops still declines; add-ons are still held to "
-                + "every minimum."));
-        rising = ui.toggle(body, "Adaptive minimum", saved.risingOffers);
-        LinearLayout baseline = ui.row();
-        baselineNote = ui.text("", 13, ui.inkSecondary, false);
-        baselineNote.setCompoundDrawablesRelative(new Glyph(Glyph.Shape.TREND, ui.accent, ui.dp(18)), null, null,
-                null);
-        baselineNote.setCompoundDrawablePadding(ui.dp(8));
-        baseline.addView(baselineNote, Ui.weighted());
-        baseline.addView(ui.button("Reset", false, () -> {
-            FilterStore.resetAccepted(this);
-            refresh();
-            updateMeter();
-        }));
-        body.addView(baseline);
-        ui.addButton(body, "Save rules", true, this::save);
+    /** A few words under a switch saying where it stands. */
+    private TextView detail(LinearLayout parent) {
+        TextView detail = ui.text("", 13, ui.inkSecondary, false);
+        detail.setPadding(ui.dp(4), 0, ui.dp(56), ui.dp(4));
+        parent.addView(detail, Ui.matchWidth());
+        return detail;
+    }
 
-        TextWatcher preview = new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {}
-            @Override public void afterTextChanged(Editable text) {
-                updateMeter();
-            }
-        };
-        for (EditText field : new EditText[] {flat, maxStops, mile, minute, stop}) {
-            field.addTextChangedListener(preview);
+    /**
+     * GitHub's row: connects (GitHub sends a code, which is copied and GitHub opened), then while waiting opens GitHub
+     * again or stops, and once connected asks before disconnecting.
+     */
+    private void tapGitHub() {
+        GitHubConnect.State state = GitHubConnect.state(this);
+        if (state == GitHubConnect.State.CONNECTED) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Disconnect GitHub?")
+                    .setMessage("Updates then come only from the update server. Problem reports and diagnostics stop, "
+                            + "and any not yet sent are discarded.")
+                    .setPositiveButton("Disconnect", (dialog, which) -> {
+                        GitHubConnect.disconnect(this);
+                        refresh();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        } else if (state == GitHubConnect.State.WAITING) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Connect GitHub")
+                    .setMessage("Enter " + GitHubConnect.userCode(this) + " on GitHub.")
+                    .setPositiveButton("Open GitHub", (dialog, which) -> openGitHub())
+                    .setNeutralButton("Stop", (dialog, which) -> {
+                        GitHubConnect.disconnect(this);
+                        refresh();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        } else if (!askingGitHub) {
+            connectGitHub();
         }
-        rising.setOnCheckedChangeListener((view, on) -> updateMeter());
     }
 
-    /** Two tags side by side, or one above the other when a large font would crowd them. */
-    private LinearLayout fieldRow(LinearLayout body) {
-        LinearLayout row = ui.largeText() ? ui.column() : ui.row();
-        row.setGravity(Gravity.TOP);
-        body.addView(row, Ui.matchWidth());
-        return row;
-    }
-
-    /** A half-width column inside {@code row}, or a full-width one when the row is stacked. */
-    private LinearLayout cell(LinearLayout row) {
-        LinearLayout cell = ui.column();
-        if (row.getOrientation() == LinearLayout.VERTICAL) {
-            row.addView(cell, Ui.matchWidth());
-            return cell;
-        }
-        // Full height, so tags side by side match even when one label wraps.
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
-        params.setMarginEnd(row.getChildCount() == 0 ? ui.dp(6) : 0);
-        params.setMarginStart(row.getChildCount() == 0 ? 0 : ui.dp(6));
-        row.addView(cell, params);
-        return cell;
-    }
-
-    private void addSoundAndSetup(LinearLayout body) {
-        ui.heading(body, "Sound & setup");
-        Switch mute = ui.toggle(body, "Mute Dasher's ring while declining", FilterStore.silenceWhileDeclining(this));
-        mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
-        ui.listRow(body, "Accessibility", () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        ui.listRow(body, "Notification access", this::openNotificationAccess);
-        ui.listRow(body, "Alert settings", this::configureOfferAlerts);
-        ui.listRow(body, "DoorDash channel", this::openDoorDashChannel);
-    }
-
-    private void addOfferMap(LinearLayout body) {
-        ui.heading(body, "Offer map");
-        areasToggle = ui.toggle(body, "Remember where offers come in", AreaMap.enabled(this));
-        areasToggle.setOnCheckedChangeListener((view, on) -> {
-            if (on == AreaMap.enabled(this)) return;
-            AreaMap.setEnabled(this, on);
-            if (on && !AreaMap.hasPermission(this)) askForLocation();
-            refresh();
-        });
-        body.addView(ui.note("Shows where offers pay best per mile on the main page. Uses approximate location "
-                + "when each offer appears, in squares of about 2 km, and stays on this phone."));
-        areasStatus = ui.text("", 13, ui.inkSecondary, false);
-        areasStatus.setPadding(0, ui.dp(8), 0, 0);
-        body.addView(areasStatus);
-        areasFix = ui.addButton(body, "Allow location", true, this::askForLocation);
-        areasForget = ui.addButton(body, "Forget areas", false, this::confirmForgetAreas);
-    }
-
-    private void addReports(LinearLayout body) {
-        ui.heading(body, "Reports");
-        ui.listRow(body, "Share report", this::shareReport);
-        ui.listRow(body, "Clear history", this::confirmClearHistory);
-        TextView kept = ui.text("The most recent screen text (never older than a day) stays on this phone for reports, "
-                + "with names, addresses, phone numbers and delivery instructions masked. It leaves only in a report "
-                + "you share, or after each dash if you turn that on below.", 13, ui.inkSecondary, false);
-        kept.setPadding(0, ui.dp(6), 0, 0);
-        body.addView(kept);
-
-        // Once GitHub is connected for updates, reports can go through the same connection: no token to paste.
-        reportViaGitHub = ui.toggle(body, "Send reports through my GitHub connection",
-                ReportOutbox.useGitHubChosen(this));
-        reportViaGitHub.setOnCheckedChangeListener((view, on) -> {
-            if (on == ReportOutbox.useGitHubChosen(this)) return;
-            ReportOutbox.useGitHub(this, on);
-            refresh();
-        });
-        // A further opt-in: only with the connection and reports through it on; either going off turns it off.
-        diagnosticsAfterDash = ui.toggle(body, "Share diagnostics after each dash", DashDiagnostics.on(this));
-        diagnosticsAfterDash.setOnCheckedChangeListener((view, on) -> {
-            if (on == DashDiagnostics.on(this)) return;
-            if (DashDiagnostics.set(this, on) != on) toast("Turn on Send reports through my GitHub connection first.");
-            refresh();
-        });
-        diagnosticsStatus = ui.text("", 13, ui.inkSecondary, false);
-        body.addView(diagnosticsStatus);
-        TextView caption = ui.text("Automatic reports (GitHub token)", 13, ui.inkSecondary, false);
-        caption.setPadding(0, ui.dp(14), 0, ui.dp(4));
-        body.addView(caption);
-        reportToken = new EditText(this);
-        reportToken.setId(View.generateViewId());
-        caption.setLabelFor(reportToken.getId());
-        reportToken.setSingleLine(true);
-        reportToken.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        // Password input switches to monospace; keep the field in the page's font like the others.
-        reportToken.setTypeface(Typeface.DEFAULT);
-        ui.styleField(reportToken);
-        body.addView(reportToken, Ui.matchWidth());
-        reportStatus = ui.text("", 13, ui.inkSecondary, false);
-        reportStatus.setPadding(0, ui.dp(4), 0, 0);
-        body.addView(reportStatus);
-        sendTest = ui.button("Send test", false, this::sendTestReport);
-        ui.buttonPair(body, ui.button("Save token", false, this::saveReportToken), sendTest);
-        stopReports = ui.addButton(body, "Turn off reports", false, this::confirmStopReports);
-    }
-
-    private void addUpdates(LinearLayout body) {
-        ui.heading(body, "Updates");
-        Switch updates = ui.toggle(body, "Automatic updates", Updater.enabled(this));
-        updates.setOnCheckedChangeListener((view, on) -> {
-            Updater.setEnabled(this, on);
-            if (on) Updater.check(this, UpdateCadence.Trigger.TURNED_ON, null);
-        });
-        updateStatus = ui.text("", 13, ui.inkSecondary, false);
-        body.addView(updateStatus);
-        ui.listRow(body, "Check for update", () -> Updater.check(this, true, null));
-        allowInstalls = ui.listRow(body, "Allow installs", () -> open(new Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
-        if (GitHubConnect.configured()) addGitHub(body);
-    }
-
-    /** Signing in to GitHub so updates also come from the app's private repository. */
-    private void addGitHub(LinearLayout body) {
-        githubStatus = ui.text("", 13, ui.inkSecondary, false);
-        githubStatus.setPadding(0, ui.dp(14), 0, 0);
-        body.addView(githubStatus);
-        githubCode = ui.text("", 30, ui.ink, true);
-        githubCode.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        githubCode.setLetterSpacing(0.08f);
-        githubCode.setTextIsSelectable(true);
-        githubCode.setGravity(Gravity.CENTER_HORIZONTAL);
-        githubCode.setPadding(0, ui.dp(8), 0, 0);
-        body.addView(githubCode, Ui.matchWidth());
-        githubConnect = ui.addButton(body, "Connect GitHub", false, this::connectGitHub);
-        githubDisconnect = ui.listRow(body, "Disconnect GitHub", () -> {
-            GitHubConnect.disconnect(this);
-            refresh();
-        });
-    }
-
-    /** First tap asks GitHub for a code and opens GitHub with it copied; later taps open GitHub again. */
+    /** Asks GitHub for a code, then opens GitHub with it copied. */
     private void connectGitHub() {
-        if (GitHubConnect.userCode(this) != null) {
-            openGitHub();
-            return;
-        }
         askingGitHub = true;
         refresh();
         GitHubConnect.connect(this, () -> {
@@ -1183,16 +1132,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         open(new Intent(Intent.ACTION_VIEW, Uri.parse(GitHubConnect.VERIFICATION_URL)));
     }
 
-    /** One-tap tips, shown once the author's names are filled in. */
-    private void addSupport(LinearLayout body) {
+    /** The configured ways to tip, to choose from; each opens only at the user's tap. */
+    private void chooseTip() {
         List<Support.Method> methods = Support.methods();
         if (methods.isEmpty()) return;
-        ui.heading(body, "Support");
-        body.addView(ui.note(AppName.NAME + " is free. If it makes your dash better, a tip keeps it going."));
-        for (Support.Method method : methods) {
-            ui.listRow(body, "Tip with " + method.label,
-                    () -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(method)))));
-        }
+        String[] labels = new String[methods.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = methods.get(i).label;
+        new AlertDialog.Builder(this)
+                .setTitle("Tip with")
+                .setItems(labels, (dialog, which) ->
+                        open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(methods.get(which))))))
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     // ---- State ----
@@ -1210,7 +1161,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             stateLine.setText("Paused");
             hero.setAction("Resume auto-decline");
         } else {
-            stateLine.setText("Tap to set up rules");
+            stateLine.setText(START_HINT);
             hero.setAction("Set up rules");
         }
         stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
@@ -1225,24 +1176,23 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading.update(OfferFilterService.isConnected());
         backgroundOffers.update(OfferNotificationService.isConnected());
         offerAlerts.update(alertsAllowed.get());
+        refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("On a route: " + route.summary());
 
         refreshHistory();
         refreshLive();
-        // An accepted order (or a declined one that taught) changes the adaptive minimums without a new offer in
-        // the history, so the star follows what was learned as well.
-        String learned = saved.lastAcceptedCents + "|" + saved.best.summary() + "|" + saved.declined.summary();
-        if (!learned.equals(shownLearned)) {
-            shownLearned = learned;
+        // Rules saved elsewhere, and an accepted order (or a declined one that taught) changing the adaptive minimums
+        // without a new offer in the history: the star follows them as well.
+        String rules = saved.describe();
+        if (!rules.equals(shownLearned)) {
+            shownLearned = rules;
             updateMeter();
         }
         refreshAreas();
         refreshHero(saved.enabled ? FilterHeroView.State.ON
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
-        baselineNote.setText(adaptiveNote(saved));
-        updateStatus.setText(Updater.status(this));
         boolean updating = Updater.installing(this);
         if (updating != (updatingCover.getVisibility() == View.VISIBLE)) {
             updatingCover.setVisibility(updating ? View.VISIBLE : View.GONE);
@@ -1252,44 +1202,95 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 updatingCover.announceForAccessibility("Updating " + AppName.NAME);
             }
         }
-        if (githubStatus != null) refreshGitHub();
-        allowInstalls.setVisibility(installsAllowed.get() ? View.GONE : View.VISIBLE);
+        refreshSettings();
+    }
+
+    /** Settings' rows: what needs a fix, where updates stand, GitHub, and the reports' switches. */
+    private void refreshSettings() {
+        doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
+        installs.update(installsAllowed.get());
+        ui.setRow(updatesRow, "Updates", Updater.status(this));
+        if (githubRow != null) refreshGitHub();
         boolean reporting = ReportOutbox.enabled(this);
         boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;
         reportViaGitHub.setVisibility(connected ? View.VISIBLE : View.GONE);
         if (reportViaGitHub.isChecked() != ReportOutbox.useGitHubChosen(this)) {
             reportViaGitHub.setChecked(ReportOutbox.useGitHubChosen(this));
         }
+        reportStatus.setVisibility(connected && reporting ? View.VISIBLE : View.GONE);
+        if (reporting) reportStatus.setText(ReportOutbox.status(this));
         diagnosticsAfterDash.setVisibility(connected ? View.VISIBLE : View.GONE);
-        diagnosticsStatus.setVisibility(connected ? View.VISIBLE : View.GONE);
         diagnosticsAfterDash.setEnabled(DashDiagnostics.allowed(this));
         if (diagnosticsAfterDash.isChecked() != DashDiagnostics.on(this)) {
             diagnosticsAfterDash.setChecked(DashDiagnostics.on(this));
         }
-        diagnosticsStatus.setText(DashDiagnostics.status(this));
-        reportStatus.setText(ReportOutbox.status(this));
-        reportToken.setHint(reporting ? "Token saved · paste to replace" : "github_pat_…");
+        // Off says itself on the switch; only what it waits for, or where it stands while on.
+        String diagnostics = DashDiagnostics.status(this);
+        diagnosticsStatus.setVisibility(connected && !diagnostics.equals("Off") ? View.VISIBLE : View.GONE);
+        diagnosticsStatus.setText(diagnostics);
         if (reportSelected != null) reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
-        sendTest.setVisibility(reporting ? View.VISIBLE : View.INVISIBLE);
-        stopReports.setVisibility(reporting ? View.VISIBLE : View.GONE);
     }
 
+    /** GitHub's one row: what tapping it does, and where the connection stands. */
     private void refreshGitHub() {
         GitHubConnect.State state = GitHubConnect.state(this);
         String code = GitHubConnect.userCode(this);
-        githubStatus.setText(askingGitHub ? "Asking GitHub for a code…" : GitHubConnect.status(this));
-        githubCode.setText(code == null ? "" : code);
-        githubCode.setVisibility(code == null ? View.GONE : View.VISIBLE);
-        githubConnect.setText(state == GitHubConnect.State.WAITING ? "Copy code and open GitHub" : "Connect GitHub");
-        githubConnect.setEnabled(!askingGitHub);
-        githubConnect.setVisibility(state == GitHubConnect.State.CONNECTED ? View.GONE : View.VISIBLE);
-        githubDisconnect.setText(state == GitHubConnect.State.WAITING ? "Cancel" : "Disconnect GitHub");
-        githubDisconnect.setVisibility(state == GitHubConnect.State.OFF ? View.GONE : View.VISIBLE);
+        if (askingGitHub) {
+            ui.setRow(githubRow, "Connect GitHub", "Asking GitHub for a code…");
+        } else if (state == GitHubConnect.State.WAITING && code != null) {
+            ui.setRow(githubRow, "Connect GitHub", "Enter " + code + " on GitHub");
+        } else if (state == GitHubConnect.State.CONNECTED) {
+            String login = GitHubConnect.login(this);
+            ui.setRow(githubRow, "GitHub", "Connected" + (login.isEmpty() ? "" : " as " + login));
+        } else {
+            ui.setRow(githubRow, "Connect GitHub", GitHubConnect.note(this));
+        }
+        githubRow.setEnabled(!askingGitHub);
         // Just connected: look for an update from the repository right away rather than at the next check.
         if (state == GitHubConnect.State.CONNECTED && shownGitHub == GitHubConnect.State.WAITING) {
             Updater.check(this, true, null);
         }
         shownGitHub = state;
+    }
+
+    /**
+     * The homepage's one-time note that an older version's extra-stop fee was retired: taken from the store the first
+     * time the homepage shows (never behind the first-run notice), kept through a recreation, gone once tapped.
+     */
+    private void addFeeNotice(LinearLayout parent) {
+        feeRow = ui.row();
+        feeRow.setBackground(ui.pressable(16));
+        feeRow.setPadding(ui.dp(4), ui.dp(6), ui.dp(4), ui.dp(6));
+        feeRow.setMinimumHeight(ui.dp(48));
+        feeRow.setClickable(true);
+        feeRow.setFocusable(true);
+        feeRow.setOnClickListener(tapped -> {
+            feeNotice = null;
+            refreshFeeNotice();
+        });
+        View sign = new View(this);
+        sign.setBackground(new Glyph(Glyph.Shape.PIN, ui.accent, ui.dp(20)));
+        sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        feeRow.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
+        feeText = ui.text("", 14, ui.ink, false);
+        feeText.setPadding(ui.dp(10), 0, ui.dp(8), 0);
+        feeRow.addView(feeText, Ui.weighted());
+        feeRow.addView(ui.text("OK", 15, ui.accent, true));
+        feeRow.setVisibility(View.GONE);
+        parent.addView(feeRow, Ui.matchWidth());
+    }
+
+    private void refreshFeeNotice() {
+        if (!feeNoticeAsked) {
+            feeNoticeAsked = true;
+            feeNotice = FilterStore.takeStopFeeNotice(this);
+        }
+        boolean shown = feeNotice != null;
+        if (shown && !feeNotice.contentEquals(feeText.getText())) {
+            feeText.setText(feeNotice);
+            feeRow.setContentDescription(feeNotice + " OK.");
+        }
+        if (shown != (feeRow.getVisibility() == View.VISIBLE)) feeRow.setVisibility(shown ? View.VISIBLE : View.GONE);
     }
 
     /** While dashing, the searchlights sweep the sky; screen readers hear it from the mascot. */
@@ -1343,51 +1344,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         hero.set(state, counts, totals, label);
     }
 
-    /** "Highest accepted $14.20 · best $0.59/min, $2.37/mi · beat declined $25.00", or what it waits for. */
-    private static String adaptiveNote(FilterSettings saved) {
-        if (saved.lastAcceptedCents <= 0 && saved.best.isEmpty() && saved.declined.isEmpty()) {
-            return "Rises with the offers you accept, and ones you decline by hand, and stays until you reset it. None yet.";
-        }
-        List<String> parts = new java.util.ArrayList<>();
-        if (saved.lastAcceptedCents > 0) parts.add("Highest accepted " + DecisionLog.money(saved.lastAcceptedCents));
-        if (!saved.best.isEmpty()) parts.add("best " + saved.best.summary());
-        if (!saved.declined.isEmpty()) parts.add("beat declined " + saved.declined.summary());
-        return String.join(" · ", parts);
-    }
-
-    /**
-     * Redraws the minimums from the rules as typed (unsaved), with the latest fully read offer; whether the learned
-     * minimums can be adopted follows the saved rules, which adopting changes.
-     */
+    /** Redraws the minimums from the saved rules, with the latest fully read offer as the example. */
     private void updateMeter() {
-        if (minimums == null || rising == null) return;
-        FilterSettings typed = typedRules();
-        OfferSnapshot example = exampleOffer();
-        minimums.show(typed, FilterStore.load(this), example, recentEntries);
-        rulesPreview.setText(MinimumsStarView.needs(typed, example));
-    }
-
-    /** The rules as typed in Settings (saved or not), with what the adaptive minimums learned: what the star shows. */
-    private FilterSettings typedRules() {
-        FilterSettings saved = FilterStore.load(this);
-        return new FilterSettings(saved.enabled, lenientCents(flat, saved.flatCents),
-                lenientCents(mile, saved.perMileCents), lenientCents(minute, saved.perMinuteCents),
-                lenientCents(stop, saved.perStopCents), lenientStops(saved.maxStops), rising.isChecked(),
-                saved.lastAcceptedCents, saved.best, saved.declined, saved.scoreByArea);
-    }
-
-    private static int lenientCents(EditText field, int fallback) {
-        try {
-            return parseCents(field);
-        } catch (IllegalArgumentException invalid) {
-            return fallback;
-        }
-    }
-
-    private int lenientStops(int fallback) {
-        String raw = maxStops.getText().toString().trim();
-        if (raw.isEmpty()) return 0;
-        return raw.matches("[0-9]{1,2}") ? Integer.parseInt(raw) : fallback;
+        if (minimums == null) return;
+        minimums.show(FilterStore.load(this), exampleOffer(), recentEntries);
     }
 
     /**
@@ -1544,21 +1504,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    private void confirmForgetAreas() {
-        new AlertDialog.Builder(this)
-                .setTitle("Forget offer areas?")
-                .setMessage("This removes every area from this phone. It does not change your rules.")
-                .setPositiveButton("Forget", (dialog, which) -> {
-                    AreaMap.forget(this);
-                    pickedArea = false;
-                    areaMap.select(null);
-                    refresh();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    /** The status line and Fix button in Settings, then the treasure map when anything it shows changed. */
+    /**
+     * Settings' offer map switch and its fixes (location, or "all the time" once offers came in without one, since
+     * Android may share it only while the app is open), then the treasure map when anything it shows changed.
+     */
     private void refreshAreas() {
         boolean on = AreaMap.enabled(this);
         if (areasToggle.isChecked() != on) areasToggle.setChecked(on);
@@ -1566,22 +1515,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int unlocated = AreaMap.unlocated(this);
         boolean permitted = locationAllowed.get();
         boolean needsAllTheTime = permitted && unlocated > 0 && !locationAlways.get();
-        if (!on) {
-            areasStatus.setText("Off. Nothing about where you are is kept.");
-        } else if (!permitted) {
-            areasStatus.setText("Needs location permission. Approximate is enough.");
-        } else if (needsAllTheTime) {
-            areasStatus.setText(unlocated + (unlocated == 1 ? " offer" : " offers") + " came in without a "
-                    + "location. Android may share it only while " + AppName.NAME + " is open, so choose Allow all the "
-                    + "time.");
-        } else {
-            areasStatus.setText("On · " + AreaMap.totalOffers(cells) + " offers in " + cells.size()
-                    + (cells.size() == 1 ? " area" : " areas")
-                    + (unlocated > 0 ? " · " + unlocated + " without a location" : ""));
-        }
-        areasFix.setVisibility(on && (!permitted || needsAllTheTime) ? View.VISIBLE : View.GONE);
-        areasFix.setText(permitted ? "Allow all the time" : "Allow location");
-        areasForget.setVisibility(cells.isEmpty() && unlocated == 0 ? View.GONE : View.VISIBLE);
+        location.update(!on || permitted);
+        locationAllTheTime.update(!on || !needsAllTheTime);
         if (!on) {
             areaMap.setEmptyMessage("Tap to map where offers pay best");
         } else if (!permitted) {
@@ -1590,8 +1525,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             areaMap.setEmptyMessage("Offers will pin here");
         }
         List<AreaMap.Cell> shownCells = on ? cells : java.util.Collections.<AreaMap.Cell>emptyList();
-        // Beside Dasher the map is hidden: only the signpost's place name uses where the phone is.
-        double[] here = on && permitted ? this.here.get(besideDasher ? ASK_EVERY_MS : HERE_EVERY_MS) : null;
+        // With the map hidden (beside Dasher, say) only the signpost's place name uses where the phone is.
+        double[] here = on && permitted ? this.here.get(noMap ? ASK_EVERY_MS : HERE_EVERY_MS) : null;
         String shown = on + "/" + AreaMap.version() + "/" + Places.version() + "/" + (here == null ? "-"
                 : Math.round(here[0] * 2000) + "," + Math.round(here[1] * 2000));
         if (shown.equals(shownAreas)) return;
@@ -1636,7 +1571,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 + (where.isEmpty() ? "" : " · " + where) + " · " + rate;
         areaLine.setContentDescription(spoken + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
                 + when(cell.lastAt) + ". Opens it in Maps.");
-        areaLine.setVisibility(besideDasher ? View.GONE : View.VISIBLE);
+        areaLine.setVisibility(noMap ? View.GONE : View.VISIBLE);
     }
 
     private void openArea() {
@@ -1649,12 +1584,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Actions ----
 
-    /** Pause, Resume, or with no saved rule, off to the rules to add one. */
+    /** Pause, Resume, or with no saved rule, a pointer to the knobs. */
     private void toggleAutoDecline() {
         FilterSettings saved = FilterStore.load(this);
         if (saved.enabled) pause();
         else if (saved.hasAnyRule()) resume();
-        else showSettings(true);
+        else showStart();
+    }
+
+    /**
+     * With no rule yet: the constellation's hollow knobs beckon (in a short window it first leaves the header for the
+     * sky, where they are), and screen readers hear how to begin.
+     */
+    private void showStart() {
+        if (compact && !besideDasher && !skyChosen) chooseSky(true);
+        else minimums.beckon();
+        hero.announceForAccessibility(START_HINT + ". Each knob sets a minimum.");
     }
 
     /** Persists auto-decline off immediately, keeping every saved rule. */
@@ -1664,36 +1609,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         toast("Paused. Nothing will be declined.");
     }
 
-    /** Saves the rules as typed and turns auto-decline on. */
+    /** Turns auto-decline on with the saved rules. */
     private void resume() {
-        try {
-            FilterSettings next = readRules(true);
-            if (!next.hasAnyRule()) {
-                toast("Add a rule first.");
-                showSettings(true);
-                return;
-            }
-            FilterStore.save(this, next);
-            rulesChanged();
-            toast("Auto-decline is on.");
-        } catch (IllegalArgumentException error) {
-            toast(error.getMessage());
+        FilterSettings saved = FilterStore.load(this);
+        if (!saved.hasAnyRule()) {
+            showStart();
+            return;
         }
-    }
-
-    private void save() {
-        try {
-            FilterSettings next = readRules(FilterStore.load(this).enabled);
-            boolean pausedForLackOfRules = next.enabled && !next.hasAnyRule();
-            if (pausedForLackOfRules) next = next.withEnabled(false);
-            FilterStore.save(this, next);
-            rulesChanged();
-            toast(pausedForLackOfRules ? "No rules left, so auto-decline is paused."
-                    : next.enabled || !next.hasAnyRule() ? "Rules saved."
-                    : "Rules saved. Auto-decline stays paused until you Resume it.");
-        } catch (IllegalArgumentException error) {
-            toast(error.getMessage());
-        }
+        FilterStore.save(this, saved.withEnabled(true));
+        rulesChanged();
+        toast("Auto-decline is on.");
     }
 
     private void rulesChanged() {
@@ -1702,40 +1627,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refresh();
     }
 
-    /** The rules as typed with the given on/paused state. @throws IllegalArgumentException with a user message */
-    private FilterSettings readRules(boolean enabled) {
-        String stops = maxStops.getText().toString().trim();
-        if (stops.isEmpty()) stops = "0";
-        if (!stops.matches("[0-9]{1,2}")) throw new IllegalArgumentException("Maximum stops must be 0 through 99.");
-        FilterSettings saved = FilterStore.load(this);
-        return new FilterSettings(enabled, parseCents(flat), parseCents(mile), parseCents(minute), parseCents(stop),
-                Integer.parseInt(stops), rising.isChecked(), saved.lastAcceptedCents, saved.best, saved.declined,
-                saved.scoreByArea);
-    }
-
-    /** Parses a dollar amount from 0 to 1000 with at most two decimals. Blank means zero (rule disabled). */
-    private static int parseCents(EditText field) {
-        try {
-            String raw = field.getText().toString().trim();
-            if (raw.isEmpty()) return 0;
-            BigDecimal amount = new BigDecimal(raw);
-            if (amount.signum() < 0 || amount.compareTo(MAX_AMOUNT) > 0 || amount.scale() > 2) {
-                throw new NumberFormatException();
-            }
-            return amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
-        } catch (ArithmeticException | NumberFormatException error) {
-            throw new IllegalArgumentException("Amounts must be 0–1000 with at most two decimals.");
-        }
-    }
-
-    private static String money(int cents) {
-        return String.format(Locale.US, "%.2f", cents / 100.0);
-    }
-
     /** Asks what went wrong (optional) and files the offer, with what was read, for the fixer. */
     private void reportOffer(DecisionLog.Entry entry) {
         if (!ReportOutbox.enabled(this)) {
-            toast("Add a GitHub token in Settings first.");
+            toast("Turn on Send problem reports in Settings first.");
             return;
         }
         EditText note = new EditText(this);
@@ -1760,52 +1655,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .show();
     }
 
-    private void saveReportToken() {
-        String token = reportToken.getText().toString().trim();
-        if (token.isEmpty()) {
-            toast("Paste a GitHub token first.");
-            return;
-        }
-        if (!token.matches("[A-Za-z0-9_]{20,255}")) {
-            toast("That doesn't look like a GitHub token.");
-            return;
-        }
-        ReportOutbox.setToken(this, token);
-        reportToken.setText("");
-        toast("Automatic reports are on.");
-        refresh();
-    }
-
-    private void confirmStopReports() {
-        new AlertDialog.Builder(this)
-                .setTitle("Turn off automatic reports?")
-                .setMessage("Removes the token from this phone and discards reports not yet sent. Reports through "
-                        + "your GitHub connection and diagnostics after each dash turn off too.")
-                .setPositiveButton("Turn off", (dialog, which) -> {
-                    ReportOutbox.setToken(this, "");
-                    refresh();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void sendTestReport() {
-        if (!ReportOutbox.enabled(this)) {
-            toast("Paste a GitHub token first.");
-            return;
-        }
-        toast(ReportOutbox.fileTest(this) ? "Test report queued." : "Daily report limit reached.");
-        refresh();
-    }
-
+    /** One confirm for everything the history holds on the phone: decisions, captured text and offer areas. */
     private void confirmClearHistory() {
         new AlertDialog.Builder(this)
-                .setTitle("Clear offer history?")
-                .setMessage("This removes the recorded decisions and the captured screen text from this phone. It "
-                        + "does not change your rules.")
+                .setTitle("Clear history?")
+                .setMessage("Removes the offer decisions, the captured screen text and the offer areas from this "
+                        + "phone. Your rules stay.")
                 .setPositiveButton("Clear", (dialog, which) -> {
                     DecisionLog.clear(this);
                     DiagnosticLog.clear(this);
+                    AreaMap.forget(this);
+                    pickedArea = false;
+                    areaMap.select(null);
                     followNewest = true;
                     ticketOpen = false;
                     refresh();

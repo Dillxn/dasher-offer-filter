@@ -28,7 +28,6 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.shadows.ShadowNotificationManager;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -288,6 +287,31 @@ abstract class AndroidAdapterTestBase {
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 
+    /**
+     * Signed in to GitHub (the shipped app's own client ID), as after Connect GitHub, and "Send problem reports" turned
+     * on: the only way reports go now.
+     */
+    void reportsOn() {
+        app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_test").commit();
+        ReportOutbox.useGitHub(app, true);
+    }
+
+    /** Settings is the page shown (its Share report row is on screen). */
+    static boolean settingsShown(View content) {
+        return shownButton(content, "Share report") != null;
+    }
+
+    /** The constellation's accessibility node {@code id} (a knob, a button, the badge), or null when not there. */
+    static android.view.accessibility.AccessibilityNodeInfo node(MinimumsStarView star, int id) {
+        return star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(id);
+    }
+
+    /** A screen reader's action on the constellation's node {@code id}. */
+    static boolean act(MinimumsStarView star, int id, int action) {
+        return star.getAccessibilityNodeProvider().performAction(id, action, null);
+    }
+
     /** Dasher installed on the simulated phone, with its launcher activity. */
     void dasherInstalled() {
         android.content.ComponentName dasher =
@@ -365,13 +389,6 @@ abstract class AndroidAdapterTestBase {
             }
         }
         return null;
-    }
-
-    /** The field a visible label names via {@code labelFor}. */
-    static EditText fieldLabeled(View root, String label) {
-        TextView caption = findText(root, label);
-        assertNotNull(label, caption);
-        return root.findViewById(caption.getLabelFor());
     }
 
     static TextView findText(View view, String text) {

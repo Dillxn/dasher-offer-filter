@@ -11,8 +11,6 @@ import android.service.notification.StatusBarNotification;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.Switch;
 import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -317,7 +315,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertEquals(3, loaded.maxStops);
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("[rules] the old extra-stop fee of $2.00 was retired"));
-        // The user is told too: in the status, and once in Settings. Other rules remain, so the filter stays on.
+        // The user is told too: in the status, and once on the homepage. Other rules remain, so the filter stays on.
         String notice = "Your $2.00 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it.";
         assertTrue(FilterStore.lastStatus(app), FilterStore.lastStatus(app).endsWith("\n" + notice));
         assertEquals(notice, FilterStore.takeStopFeeNotice(app));
@@ -379,33 +377,36 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void theRetiredFeeNoticeShowsOnceBesidePerStop() {
+    public void theRetiredFeeNoticeShowsOnceOnTheHomepage() {
         android.content.SharedPreferences prefs = app.getSharedPreferences("offer_filter", Context.MODE_PRIVATE);
         prefs.edit().putBoolean("enabled", true).putInt("flat", 700).putInt("stop", 200).commit();
         String notice = "Your $2.00 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it.";
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull("not on the main page", shownTextContaining(content, "extra-stop fee"));
-
-            iconButton(content, "Settings").performClick();
-            settle();
             TextView shown = shownTextContaining(content, notice);
-            assertNotNull("the first time Settings opens, beside Per stop", shown);
-            EditText perStop = fieldLabeled(content, "Per stop ($)");
-            assertEquals("0.00", perStop.getText().toString());
-            assertTrue("in the row of the Per stop field",
-                    isDescendant((View) perStop.getParent().getParent().getParent(), shown));
-            assertNull("in place of the hint", shownTextContaining(content, "0 turns a rule off."));
+            assertNotNull("on the homepage, the first time it opens after the update", shown);
+            assertEquals("per stop starts off", 0, FilterStore.load(app).perStopCents);
+            assertNull("taken from the store as it is shown", FilterStore.takeStopFeeNotice(app));
 
-            iconButton(content, "Back").performClick();
             iconButton(content, "Settings").performClick();
             settle();
-            assertNull("once only", shownTextContaining(content, "extra-stop fee"));
-            assertNotNull(shownTextContaining(content, "0 turns a rule off."));
+            assertNull("never in Settings", shownTextContaining(content, "extra-stop fee"));
+            iconButton(content, "Back").performClick();
+            settle();
+            assertNotNull("still there until it is tapped", shownTextContaining(content, notice));
 
+            // A recreated page (a resize, day and night) keeps it until it is tapped.
             activity.recreate();
             content = activity.get().findViewById(android.R.id.content);
-            assertNull("nor after the page is rebuilt", shownTextContaining(content, "extra-stop fee"));
+            shown = shownTextContaining(content, notice);
+            assertNotNull(shown);
+            ((View) shown.getParent()).performClick();
+            settle();
+            assertNull("tapped, it goes", shownTextContaining(content, "extra-stop fee"));
+        }
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            assertNull("once only", shownTextContaining(activity.get().findViewById(android.R.id.content),
+                    "extra-stop fee"));
         }
     }
 
@@ -430,17 +431,20 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void withoutAnyRuleTheMascotLeadsToTheRules() {
+    public void withoutAnyRuleTheMascotPointsToTheHollowKnobs() {
         FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Set up rules", mascot.action());
-            assertNotNull(shownTextContaining(content, "Tap to set up rules"));
+            assertNotNull(shownTextContaining(content, MainActivity.START_HINT));
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertFalse(star.beckoned());
             mascot.performClick();
             settle();
             assertFalse(FilterStore.load(app).enabled);
-            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertTrue("the hollow knobs beckon", star.beckoned());
+            assertFalse("no page opens", settingsShown(content));
         }
     }
 
@@ -449,25 +453,22 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            // One page for the filter, the offers, the minimums and the areas; what is set once is in Settings.
+            // One page for the filter, the offers, the minimums and the areas; what is set nowhere else is in Settings.
             assertTrue(find(content, FilterHeroView.class).isShown());
             assertTrue(find(content, DecisionChartView.class).isShown());
             assertTrue(find(content, MinimumsStarView.class).isShown());
-            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
-            assertNull(shownButton(content, "Share report"));
+            assertFalse(settingsShown(content));
 
             iconButton(content, "Settings").performClick();
             settle();
-            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
-            assertNotNull(shownButton(content, "Share report"));
+            assertTrue(settingsShown(content));
             assertFalse(find(content, FilterHeroView.class).isShown());
 
             // The page shown survives the activity being recreated (rotation, dark mode switch).
             activity.recreate();
             content = activity.get().findViewById(android.R.id.content);
-            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertTrue(settingsShown(content));
             assertNull("capture is automatic: no switch", findTextView(content, "Capture full screen text"));
-            assertNotNull(findTextView(content, "stays on this phone for reports"));
 
             activity.get().onBackPressed();
             assertTrue(find(content, FilterHeroView.class).isShown());
@@ -479,16 +480,19 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
+    @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void savingRulesKeepsAutoDeclinePaused() {
         FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            fieldLabeled(content, "Minimum pay ($)").setText("25");
-            findButton(content, "Save rules").performClick();
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            // The pay knob one step up ($0.50), as a screen reader sets it: saved at once.
+            assertTrue(act(star, 0, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
 
             FilterSettings saved = FilterStore.load(app);
             assertFalse(saved.enabled);
-            assertEquals(2500, saved.flatCents);
+            assertEquals(2050, saved.flatCents);
         }
     }
 
@@ -512,6 +516,10 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+            AreaMap.setEnabled(app, true);
+            noteOfferAt(37.79, -122.40, 1200, 4.0);
+            assertEquals(1, AreaMap.totalOffers(AreaMap.cells(app)));
             findButton(content, "Clear history").performClick();
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
@@ -521,6 +529,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertTrue(DecisionLog.recent(app, 10).isEmpty());
             assertFalse("the captured screen text goes too", DiagnosticLog.read(app).contains("Customer's order"));
+            assertTrue("and the offer areas (Forget areas folded in)", AreaMap.cells(app).isEmpty());
+            assertEquals(0, AreaMap.unlocated(app));
             assertNotNull(shownTextContaining(content, "No offers yet"));
         }
     }
@@ -539,19 +549,30 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void theRulesPreviewFollowsTheRulesAsTheyAreTyped() {
+    @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
+    public void whatTheExampleNeedsFollowsTheRulesAsTheyAreSet() {
         FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops.
-            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops needs $7.00."));
-            fieldLabeled(content, "Per mile ($)").setText("1.50");
-            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops needs $10.80."));
-            fieldLabeled(content, "Max stops (1 order = 2)").setText("1");
-            assertNotNull(findText(content, "An offer like 21 min · 7.2 mi · 2 stops is declined: at most 1 stop."));
-            // Unsaved: nothing changed in the saved rules.
-            assertEquals(0, FilterStore.load(app).perMileCents);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops; screen readers hear it first.
+            assertTrue(star.getContentDescription().toString()
+                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $7.00."));
+            // $1.50 a mile on its knob, as a screen reader sets it.
+            android.os.Bundle dollars = new android.os.Bundle();
+            dollars.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 1.5f);
+            assertTrue(star.getAccessibilityNodeProvider().performAction(1, android.R.id.accessibilityActionSetProgress,
+                    dollars));
+            assertEquals(150, FilterStore.load(app).perMileCents);
+            assertTrue(star.getContentDescription().toString()
+                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $10.80."));
+            // At most 1 stop, saved by an older version (the badge steps from 2).
+            FilterStore.save(app, FilterStore.load(app).withMaxStops(1));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertTrue(star.getContentDescription().toString()
+                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops is declined: at most 1 stop."));
         }
     }
 
@@ -600,7 +621,9 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     public void notificationAccessShortcutNamesThisListenerAsAString() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            findButton(activity.get().findViewById(android.R.id.content), "Notification access").performClick();
+            // The homepage's own row for it (Settings no longer repeats it).
+            shownIcon(activity.get().findViewById(android.R.id.content), "Background offers are off. Fix.")
+                    .performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             if (Build.VERSION.SDK_INT >= 30) {
                 assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,

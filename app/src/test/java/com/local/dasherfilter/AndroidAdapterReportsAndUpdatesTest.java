@@ -132,25 +132,30 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void reportingNeedsATokenAndThenSendsTheOfferWithTheUsersNote() throws Exception {
+    public void reportingNeedsSendProblemReportsAndThenSendsTheOfferWithTheUsersNote() throws Exception {
         DecisionLog.record(app, declinedEntry());
+        // Signed in to GitHub, as after Connect GitHub: reports are still off until the user turns them on.
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit().putString("access_token", "ghu_test").commit();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             openTicket(content);
-            assertNull("no report button without a token", shownButton(content, "Report this offer"));
-            assertNotNull(findTextContaining(content, "Off. Paste a GitHub token"));
+            assertNull("no report button until reports are on", shownButton(content, "Report this offer"));
+            activity.get().onBackPressed();
 
-            EditText token = fieldLabeled(content, "Automatic reports (GitHub token)");
-            token.setText("not a token");
-            findButton(content, "Save token").performClick();
+            iconButton(content, "Settings").performClick();
+            settle();
+            android.widget.Switch reports = (android.widget.Switch) findButton(content, "Send problem reports");
+            assertTrue("shown once GitHub is connected", reports.isShown());
+            assertFalse("off by default", reports.isChecked());
             assertFalse(ReportOutbox.enabled(app));
-
-            token.setText(" github_pat_11ABCDEFG0123456789_abcdefghijklmnop ");
-            findButton(content, "Save token").performClick();
+            reports.setChecked(true);
+            settle();
             assertTrue(ReportOutbox.enabled(app));
-            assertEquals("", token.getText().toString());
-            assertNotNull(findTextContaining(content, "On · no reports sent yet"));
+            assertNotNull(shownTextContaining(content, "On · no reports sent yet"));
+            iconButton(content, "Back").performClick();
+            settle();
 
+            openTicket(content);
             shownButton(content, "Report this offer").performClick();
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
@@ -171,51 +176,61 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void gitHubConnectShowsOnlyInABuildWithAnAppAndWalksThroughTheCode() {
+    public void gitHubIsOneRowThatConnectsWithACodeAndAsksBeforeDisconnecting() {
         String shipped = GitHubConnect.clientId;
         try {
             GitHubConnect.clientId = "";
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-                assertNull(findButton(activity.get().findViewById(android.R.id.content), "Connect GitHub"));
+                assertNull(findTextContaining(activity.get().findViewById(android.R.id.content), "GitHub"));
             }
 
             GitHubConnect.clientId = "Iv1.test";
             GitHubConnect.disconnect(app);
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 View content = activity.get().findViewById(android.R.id.content);
-                assertEquals(View.VISIBLE, findButton(content, "Connect GitHub").getVisibility());
-                assertEquals(View.GONE, findButton(content, "Disconnect GitHub").getVisibility());
-                assertNotNull(findText(content, "Not connected. Connect GitHub to get updates from your repository."));
+                android.widget.Button row = (android.widget.Button) findButton(content, "Connect GitHub");
+                assertNotNull("one row, saying what a tap does", row);
+                assertNull("nothing else about GitHub", findButton(content, "Disconnect GitHub"));
+                assertNull(findTextContaining(content, "Not connected"));
 
-                // GitHub sent a code: it is shown large, and the button copies it and opens GitHub's code page.
+                // GitHub sent a code: the row shows it, and a tap opens GitHub with it copied, or stops.
                 app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
                         .putString("device_code", "device").putString("user_code", "WDJB-MJHT")
                         .putLong("code_expires_at", System.currentTimeMillis() + 600_000L).commit();
                 Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-                TextView code = findText(content, "WDJB-MJHT");
-                assertEquals(View.VISIBLE, code.getVisibility());
-                findButton(content, "Copy code and open GitHub").performClick();
+                assertTrue(row.getText().toString(), row.getText().toString().contains("Enter WDJB-MJHT on GitHub"));
+                row.performClick();
+                android.app.AlertDialog dialog = (android.app.AlertDialog)
+                        org.robolectric.shadows.ShadowDialog.getLatestDialog();
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+                Shadows.shadowOf(Looper.getMainLooper()).idle();
                 android.content.ClipboardManager clipboard = app.getSystemService(android.content.ClipboardManager.class);
                 assertEquals("WDJB-MJHT", clipboard.getPrimaryClip().getItemAt(0).getText().toString());
                 Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
                 assertEquals(Intent.ACTION_VIEW, opened.getAction());
                 assertEquals("https://github.com/login/device", opened.getDataString());
 
-                // Cancelling forgets the code.
-                findButton(content, "Cancel").performClick();
+                // Stopping forgets the code.
+                row.performClick();
+                dialog = (android.app.AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+                dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).performClick();
+                Shadows.shadowOf(Looper.getMainLooper()).idle();
                 assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
-                assertEquals(View.GONE, code.getVisibility());
-                assertEquals(View.VISIBLE, findButton(content, "Connect GitHub").getVisibility());
+                assertEquals("Connect GitHub", row.getText().toString());
 
-                // Connected: says as whom, and offers only to disconnect.
+                // Connected: says as whom; a tap asks before disconnecting.
                 app.getSharedPreferences("github", Context.MODE_PRIVATE).edit()
                         .putString("access_token", "ghu_test").putString("login", "Dillxn").commit();
                 Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-                assertNotNull(findText(content, "Connected to GitHub as Dillxn. Updates also come from your repository."));
-                assertEquals(View.GONE, findButton(content, "Connect GitHub").getVisibility());
-                findButton(content, "Disconnect GitHub").performClick();
+                assertEquals("GitHub\nConnected as Dillxn", row.getText().toString());
+                row.performClick();
+                dialog = (android.app.AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+                assertEquals("asks first", GitHubConnect.State.CONNECTED, GitHubConnect.state(app));
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+                Shadows.shadowOf(Looper.getMainLooper()).idle();
                 assertEquals(GitHubConnect.State.OFF, GitHubConnect.state(app));
                 assertNull(app.getSharedPreferences("github", Context.MODE_PRIVATE).getString("access_token", null));
+                assertEquals("Connect GitHub", row.getText().toString());
             }
         } finally {
             GitHubConnect.clientId = shipped;
@@ -224,7 +239,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void tipsShowOnlyWithTheAuthorsNamesAndOpenTheirService() {
+    public void tipsShowOnlyWithTheAuthorsNamesAndOpenTheirServiceFromOneRow() {
         String cashApp = Support.cashApp;
         String venmo = Support.venmo;
         String payPal = Support.payPal;
@@ -233,22 +248,29 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             Support.venmo = "";
             Support.payPal = "";
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-                View content = activity.get().findViewById(android.R.id.content);
-                assertNull(findText(content, "SUPPORT"));
-                assertNull(findButton(content, "Tip with Cash App"));
+                assertNull(findButton(activity.get().findViewById(android.R.id.content), "Tip"));
             }
 
             Support.cashApp = "OfferFilterDev";
             Support.venmo = "Offer-Filter";
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 View content = activity.get().findViewById(android.R.id.content);
-                assertNotNull(findText(content, "SUPPORT"));
-                assertNull("a service without a name is not offered", findButton(content, "Tip with PayPal"));
-                findButton(content, "Tip with Cash App").performClick();
+                View tip = findButton(content, "Tip");
+                assertNotNull("one row", tip);
+                assertNull(findButton(content, "Tip with Cash App"));
+                tip.performClick();
+                org.robolectric.shadows.ShadowAlertDialog chooser = Shadows.shadowOf(
+                        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog());
+                List<String> offered = new ArrayList<>();
+                for (CharSequence item : chooser.getItems()) offered.add(item.toString());
+                assertEquals("a service without a name is not offered", Arrays.asList("Cash App", "Venmo"), offered);
+                assertNull("nothing opens before a choice", Shadows.shadowOf(app).getNextStartedActivity());
+                chooser.clickOnItem(0);
                 Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
                 assertEquals(Intent.ACTION_VIEW, opened.getAction());
                 assertEquals("https://cash.app/$OfferFilterDev", opened.getDataString());
-                findButton(content, "Tip with Venmo").performClick();
+                tip.performClick();
+                Shadows.shadowOf(org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1);
                 assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Offer%20Filter%20tip",
                         Shadows.shadowOf(app).getNextStartedActivity().getDataString());
             }
@@ -260,20 +282,23 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void turningReportsOffAsksFirst() {
-        ReportOutbox.setToken(app, "github_pat_existing");
+    public void turningProblemReportsOffStopsThemAndDiscardsWhatWaits() {
+        reportsOn();
+        assertTrue(ReportOutbox.fileByUser(app, declinedEntry(), "wrong"));
+        ReportOutbox.flush();
+        assertEquals(1, ReportOutbox.queued(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            findButton(content, "Save token").performClick();
-            assertTrue("an empty field changes nothing", ReportOutbox.enabled(app));
-            findButton(content, "Turn off reports").performClick();
-            android.app.AlertDialog dialog = (android.app.AlertDialog)
-                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
-            assertTrue(ReportOutbox.enabled(app));
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            iconButton(content, "Settings").performClick();
+            settle();
+            android.widget.Switch reports = (android.widget.Switch) findButton(content, "Send problem reports");
+            assertTrue(reports.isChecked());
+            reports.setChecked(false);
+            settle();
+            ReportOutbox.flush();
             assertFalse(ReportOutbox.enabled(app));
-            assertEquals(View.GONE, findButton(content, "Turn off reports").getVisibility());
+            assertEquals("what was waiting is discarded", 0, ReportOutbox.queued(app));
+            assertFalse(reports.isChecked());
         }
     }
 

@@ -305,6 +305,8 @@ public final class OfferNotificationService extends NotificationListenerService 
             Ranking rank = ranking(ranking, source.getKey());
             boolean dasherSounded = dasherAlertSounded(rank, source, update);
             logChannel(rank == null ? null : rank.getChannel(), notification, dasherSounded);
+            // Settings asks for Dasher's offer channel to be set to Silent while it is seen to alert.
+            FilterStore.recordDoorDashChannel(this, rank == null ? null : rank.getChannel());
             boolean addOn = AddOnOffer.isLikely(labels);
 
             if (offer.state.coveredByScreen(decision.result, decision.basis, foreground, replay,

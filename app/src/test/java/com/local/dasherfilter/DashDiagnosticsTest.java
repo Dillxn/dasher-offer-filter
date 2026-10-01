@@ -291,7 +291,7 @@ public class DashDiagnosticsTest {
             idle();
             View content = activity.get().findViewById(android.R.id.content);
             android.widget.Switch diagnostics = toggle(content, "Share diagnostics after each dash");
-            android.widget.Switch viaGitHub = toggle(content, "Send reports through my GitHub connection");
+            android.widget.Switch viaGitHub = toggle(content, "Send problem reports");
             assertEquals(View.VISIBLE, diagnostics.getVisibility());
             assertFalse("not until reports go through the connection", diagnostics.isEnabled());
             assertFalse(diagnostics.isChecked());
@@ -321,7 +321,7 @@ public class DashDiagnosticsTest {
         connectedToGitHub();
         assertFalse("connected, but reports through it are off", DashDiagnostics.set(app, true));
         assertFalse(DashDiagnostics.on(app));
-        assertTrue(DashDiagnostics.status(app).startsWith("Needs Send reports through my GitHub connection"));
+        assertEquals("Needs Send problem reports", DashDiagnostics.status(app));
 
         ReportOutbox.useGitHub(app, true);
         assertFalse("turning reports through the connection on never turns diagnostics on", DashDiagnostics.on(app));
@@ -333,10 +333,11 @@ public class DashDiagnosticsTest {
     @Test
     public void turningReportsThroughTheConnectionOffTurnsItOffAndDiscardsWhatWaits() {
         diagnosticsOn();
-        ReportOutbox.setToken(app, "github_pat_pasted");
         dashUntilItEnds();
         assertEquals(1, queuedDiagnostics());
-        ReportOutbox.fileTest(app);
+        assertTrue(ReportOutbox.fileByUser(app, new DecisionLog.Entry(1000, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, java.util.Collections.<String>emptyList()), "wrong"));
         ReportOutbox.flush();
 
         ReportOutbox.useGitHub(app, false);
@@ -344,7 +345,7 @@ public class DashDiagnosticsTest {
 
         assertFalse(DashDiagnostics.on(app));
         assertEquals("unsent diagnostics are discarded", 0, queuedDiagnostics());
-        assertEquals("a problem report with its own token stays", 1, ReportOutbox.queued(app));
+        assertEquals("and the problem report waiting with them", 0, ReportOutbox.queued(app));
         ReportOutbox.useGitHub(app, true);
         assertFalse("turning reports through the connection on again leaves diagnostics off", DashDiagnostics.on(app));
     }
@@ -366,7 +367,7 @@ public class DashDiagnosticsTest {
         DashDiagnostics.forgetCache();
         dashUntilItEnds();
         assertEquals(1, queuedDiagnostics());
-        ReportOutbox.setToken(app, "");
+        ReportOutbox.useGitHub(app, false);
         assertFalse("turning reports off turns it off", DashDiagnostics.on(app));
         assertEquals(0, queuedDiagnostics());
     }

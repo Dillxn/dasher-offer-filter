@@ -14,11 +14,11 @@ final class UpdateCadence {
     static final long AUTOMATIC_SPACING_MS = 300_000L;
 
     enum Trigger {
-        /** The user tapped Check for update (or just connected GitHub). */
+        /** The user tapped Updates in Settings (or just connected GitHub). */
         MANUAL,
         /** Offer Filter's screen opened fresh. */
         OPENED,
-        /** Automatic updates were turned on. */
+        /** Automatic updates were turned on (by the switch Settings had before checks were always automatic). */
         TURNED_ON,
         /** The one-shot retry job after a failure or a deferred install. */
         RETRY,
