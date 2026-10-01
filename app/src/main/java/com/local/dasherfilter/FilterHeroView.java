@@ -4,9 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
@@ -61,6 +63,12 @@ final class FilterHeroView extends View {
     private final DashPathEffect pausedDash;
     private final DashPathEffect dotted;
     private final Enso ring = new Enso();
+    /** The body's and the rim's shading, kept while their colour (and the body's place) stay the same. */
+    private Shader bodyShade;
+    private int bodyShadeColor;
+    private float bodyShadeX;
+    private Shader rimShade;
+    private int rimShadeColor;
     /** When the ring began drawing itself (uptime), for the current state. */
     private long ringFrom;
     /** What a tap does, as screen readers announce it: "Pause auto-decline", for example. */
@@ -461,54 +469,83 @@ final class FilterHeroView extends View {
         canvas.restore();
     }
 
-    /** The mascot: rim (a sieve while on), body narrowing to the spout, arms, face; a drop falls while on. */
+    /**
+     * The mascot: a glazed funnel, lit from the upper left with a shine down its left side, whose rim shows its inside
+     * (a sieve while on), narrowing to a collar and a rounded spout, with mittened arms and a face, over a soft
+     * shadow. While on, a drop falls from the spout and ripples where it lands, and now and then an arm waves.
+     */
     private void drawMascot(Canvas canvas, float cx) {
         int color = stateColor();
-        float breathe = state == State.OFF ? 0 : Motion.wave(4.5f, 0);
+        boolean off = state == State.OFF;
+        float breathe = off ? 0 : Motion.wave(4.5f, 0);
         // Pressed, the mascot squishes down a little, like a button.
         float squish = isPressed() ? 0.93f : 1f;
-        canvas.save();
-        canvas.scale((1 + 0.012f * breathe) * squish, (1 + 0.012f * breathe) * squish, cx, ui.dp(150));
         float rimY = ui.dp(72);
         float half = ui.dp(62);
         float neckY = ui.dp(146);
         float neck = ui.dp(11);
         float spoutY = ui.dp(164);
+        float groundY = ui.dp(177);
 
+        // Its shadow, a little narrower as it breathes in.
+        float shadow = ui.dp(24) * squish * (1 - 0.04f * breathe);
+        rect.set(cx - shadow, groundY - ui.dp(3.5f), cx + shadow, groundY + ui.dp(3.5f));
+        fill.setShader(null);
+        fill.setColor(ui.dark ? 0x59000000 : withAlpha(ui.ink, 0x14));
+        canvas.drawOval(rect, fill);
+
+        canvas.save();
+        canvas.scale((1 + 0.012f * breathe) * squish, (1 + 0.012f * breathe) * squish, cx, ui.dp(150));
         float armY = ui.dp(104);
         float side = half - (half - neck) * (armY - rimY) / (neckY - rimY);
-        line.setPathEffect(null);
-        line.setColor(color);
-        line.setStrokeWidth(ui.dp(3));
-        path.reset();
-        path.moveTo(cx - side, armY);
-        path.quadTo(cx - side - ui.dp(13), armY + ui.dp(5), cx - side - ui.dp(16), armY + ui.dp(21));
-        path.moveTo(cx + side, armY);
-        path.quadTo(cx + side + ui.dp(13), armY + ui.dp(5), cx + side + ui.dp(16), armY + ui.dp(21));
-        canvas.drawPath(path, line);
+        int glint = blend(color, 0xFFFFFFFF, 0.55f);
+        float wave = waveAngle();
+        drawArm(canvas, cx - side, armY, -1, 0, color, glint);
+        if (wave == 0) drawArm(canvas, cx + side, armY, 1, 0, color, glint);
 
+        float round = ui.dp(3.5f);
         path.reset();
         path.moveTo(cx - half, rimY);
         path.lineTo(cx - neck, neckY);
-        path.lineTo(cx - neck, spoutY);
-        path.lineTo(cx + neck, spoutY);
+        path.lineTo(cx - neck, spoutY - round);
+        path.quadTo(cx - neck, spoutY, cx - neck + round, spoutY);
+        path.lineTo(cx + neck - round, spoutY);
+        path.quadTo(cx + neck, spoutY, cx + neck, spoutY - round);
         path.lineTo(cx + neck, neckY);
         path.lineTo(cx + half, rimY);
         path.close();
-        fill.setColor(ui.surface);
+        fill.setShader(bodyGlaze(cx, half, color, off));
         canvas.drawPath(path, fill);
-        fill.setColor(withAlpha(color, state == State.OFF ? 0x16 : 0x2A));
-        canvas.drawPath(path, fill);
+        fill.setShader(null);
+        // The shine: a long stroke down the left side, a gap, a dot.
+        int shine = withAlpha(0xFFFFFFFF, ui.dark ? (off ? 0x1C : 0x30) : (off ? 0x99 : 0xC8));
+        line.setPathEffect(null);
+        line.setColor(shine);
+        line.setStrokeWidth(ui.dp(3.5f));
+        canvas.drawLine(shineX(cx, half, neck, 0.13f), lerp(rimY, neckY, 0.13f),
+                shineX(cx, half, neck, 0.40f), lerp(rimY, neckY, 0.40f), line);
+        fill.setColor(shine);
+        canvas.drawCircle(shineX(cx, half, neck, 0.51f), lerp(rimY, neckY, 0.51f), ui.dp(1.9f), fill);
+        line.setColor(color);
         line.setStrokeWidth(ui.dp(2.5f));
         line.setPathEffect(state == State.PAUSED ? pausedDash : null);
         canvas.drawPath(path, line);
-        rect.set(cx - half, rimY - ui.dp(12), cx + half, rimY + ui.dp(12));
-        fill.setColor(ui.surface);
-        canvas.drawOval(rect, fill);
-        fill.setColor(withAlpha(color, state == State.OFF ? 0x20 : 0x48));
-        canvas.drawOval(rect, fill);
-        canvas.drawOval(rect, line);
         line.setPathEffect(null);
+
+        // The collar where the body meets the spout.
+        rect.set(cx - neck - ui.dp(2.5f), neckY - ui.dp(1.5f), cx + neck + ui.dp(2.5f), neckY + ui.dp(4.5f));
+        fill.setColor(blend(ui.surface, color, off ? 0.2f : 0.38f));
+        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
+        line.setStrokeWidth(ui.dp(2));
+        canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), line);
+        // A waving arm is in front of the body.
+        if (wave != 0) drawArm(canvas, cx + side, armY, 1, wave, color, glint);
+
+        // The rim, its inside darker toward the near wall.
+        rect.set(cx - half, rimY - ui.dp(12), cx + half, rimY + ui.dp(12));
+        fill.setShader(rimDepth(rimY, color, off));
+        canvas.drawOval(rect, fill);
+        fill.setShader(null);
         if (state == State.ON) {
             fill.setColor(withAlpha(color, 0xA0));
             for (int row = -1; row <= 1; row++) {
@@ -521,16 +558,39 @@ final class FilterHeroView extends View {
                 }
             }
         }
+        line.setStrokeWidth(ui.dp(2.5f));
+        line.setPathEffect(state == State.PAUSED ? pausedDash : null);
+        canvas.drawOval(rect, line);
+        line.setPathEffect(null);
+        // A glint on the far lip.
+        line.setColor(shine);
+        line.setStrokeWidth(ui.dp(2));
+        rect.inset(ui.dp(5), ui.dp(3.5f));
+        canvas.drawArc(rect, 208, 34, false, line);
+
         // A blink every few seconds while awake.
         boolean blink = state == State.ON && Motion.on() && Motion.loop(5.3f, 0) > 0.965f;
-        Mascot.face(canvas, blink ? Mascot.Mood.BLINK : mood(), cx, ui.dp(110), ui.dp(40),
-                state == State.OFF ? ui.inkMuted : ui.ink);
+        Mascot.Mood face = wave != 0 ? Mascot.Mood.CHEER : blink ? Mascot.Mood.BLINK : mood();
+        Mascot.face(canvas, face, cx, ui.dp(110), ui.dp(40), off ? ui.inkMuted : ui.ink);
         canvas.restore();
 
         if (state == State.ON) {
-            float t = Motion.on() ? Motion.loop(1.8f, 0) : 0.4f;
-            fill.setColor(withAlpha(color, (int) (0xC0 * (1 - t))));
-            canvas.drawCircle(cx, spoutY + ui.dp(4) + ui.dp(16) * t * t, ui.dp(3), fill);
+            // A drop falls from the spout to the ground, then ripples there.
+            float t = Motion.on() ? Motion.loop(1.8f, 0) : 0.3f;
+            float fall = 0.62f;
+            if (t < fall) {
+                float p = t / fall;
+                float top = spoutY + ui.dp(4);
+                fill.setColor(withAlpha(color, (int) (0xD0 * (1 - 0.35f * p))));
+                drop(canvas, cx, top + (groundY - ui.dp(2) - top) * p * p, ui.dp(3));
+            } else {
+                float p = (t - fall) / (1 - fall);
+                float r = ui.dp(3) + ui.dp(12) * p;
+                line.setColor(withAlpha(color, (int) (0x99 * (1 - p))));
+                line.setStrokeWidth(ui.dp(1.5f));
+                rect.set(cx - r, groundY - r * 0.28f, cx + r, groundY + r * 0.28f);
+                canvas.drawOval(rect, line);
+            }
         } else if (state == State.PAUSED) {
             float t = Motion.on() ? Motion.loop(3.2f, 0) : 0.3f;
             text.setFakeBoldText(true);
@@ -538,6 +598,94 @@ final class FilterHeroView extends View {
             text.setTextSize(ui.dp(12) + ui.dp(6) * t);
             canvas.drawText("z", cx + ui.dp(36) + ui.dp(10) * t, ui.dp(92) - ui.dp(28) * t, text);
         }
+    }
+
+    /**
+     * One arm from the shoulder at ({@code x}, {@code y}), out to {@code dir}'s side, turned {@code lift} degrees, a
+     * round mitt with a {@code glint} at its end.
+     */
+    private void drawArm(Canvas canvas, float x, float y, int dir, float lift, int color, int glint) {
+        canvas.save();
+        if (lift != 0) canvas.rotate(lift, x, y);
+        line.setPathEffect(null);
+        line.setColor(color);
+        line.setStrokeWidth(ui.dp(3));
+        path.reset();
+        path.moveTo(x, y);
+        path.quadTo(x + dir * ui.dp(13), y + ui.dp(5), x + dir * ui.dp(16), y + ui.dp(18));
+        canvas.drawPath(path, line);
+        float handX = x + dir * ui.dp(16.5f);
+        float handY = y + ui.dp(21.5f);
+        fill.setColor(color);
+        canvas.drawCircle(handX, handY, ui.dp(4.2f), fill);
+        fill.setColor(glint);
+        canvas.drawCircle(handX - ui.dp(1.3f), handY - ui.dp(1.3f), ui.dp(1.3f), fill);
+        canvas.restore();
+    }
+
+    /**
+     * Now and then while on, the right arm lifts and waves for about a second and a half (the face beaming): its turn
+     * in degrees, 0 at rest and always with animations off.
+     */
+    private float waveAngle() {
+        if (state != State.ON || !Motion.on()) return 0;
+        float t = Motion.loop(11f, 0.6f);
+        float span = 0.13f;
+        if (t > span) return 0;
+        float p = t / span;
+        float up = (float) Math.sin(p * Math.PI);
+        return -up * (75 + 15 * (float) Math.sin(p * Math.PI * 6));
+    }
+
+    /** A drop of radius {@code r} with its round end at ({@code x}, {@code y}) and its point up. */
+    private void drop(Canvas canvas, float x, float y, float r) {
+        path.reset();
+        path.moveTo(x, y - r * 2.3f);
+        path.quadTo(x + r * 1.05f, y - r * 0.9f, x + r, y);
+        rect.set(x - r, y - r, x + r, y + r);
+        path.arcTo(rect, 0, 180);
+        path.quadTo(x - r * 1.05f, y - r * 0.9f, x, y - r * 2.3f);
+        path.close();
+        canvas.drawPath(path, fill);
+    }
+
+    /** Where the shine runs, a share {@code at} of the way down the body's left side, a little inside it. */
+    private float shineX(float cx, float half, float neck, float at) {
+        return cx - lerp(half, neck, at) + ui.dp(9) * (1 - 0.35f * at);
+    }
+
+    /** The body's glaze: lighter on the left, deeper on the right; made again only when its colour or place change. */
+    private Shader bodyGlaze(float cx, float half, int color, boolean off) {
+        if (bodyShade == null || bodyShadeColor != color || bodyShadeX != cx) {
+            bodyShade = new LinearGradient(cx - half, 0, cx + half, 0, blend(ui.surface, color, off ? 0.05f : 0.09f),
+                    blend(ui.surface, color, off ? 0.14f : 0.30f), Shader.TileMode.CLAMP);
+            bodyShadeColor = color;
+            bodyShadeX = cx;
+        }
+        return bodyShade;
+    }
+
+    /** The rim's inside: the far wall lighter, the near wall darker. */
+    private Shader rimDepth(float rimY, int color, boolean off) {
+        if (rimShade == null || rimShadeColor != color) {
+            rimShade = new LinearGradient(0, rimY - ui.dp(12), 0, rimY + ui.dp(12),
+                    blend(ui.surface, color, off ? 0.08f : 0.16f), blend(ui.surface, color, off ? 0.2f : 0.42f),
+                    Shader.TileMode.CLAMP);
+            rimShadeColor = color;
+        }
+        return rimShade;
+    }
+
+    private static float lerp(float from, float to, float at) {
+        return from + (to - from) * at;
+    }
+
+    /** {@code from} moved a share {@code at} of the way to {@code to}, opaque. */
+    private static int blend(int from, int to, float at) {
+        int r = Math.round(lerp((from >> 16) & 0xFF, (to >> 16) & 0xFF, at));
+        int g = Math.round(lerp((from >> 8) & 0xFF, (to >> 8) & 0xFF, at));
+        int b = Math.round(lerp(from & 0xFF, to & 0xFF, at));
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     /**

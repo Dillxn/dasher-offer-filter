@@ -1,3 +1,20 @@
+## 0.4.47 — the mascot, with a little more love
+
+- **The funnel looks glazed:** soft shading lit from the upper left, a shine down its side, a glint on the rim, and a darker inside under the sieve.
+- **Little touches:**
+  - round mitts on its arms;
+  - a collar and a rounded spout;
+  - a soft shadow underneath;
+  - rosier, softer cheeks, and a second sparkle in each eye.
+- **While it's on:**
+  - the drip falls to the ground and ripples;
+  - every 11 seconds or so it waves at you, beaming.
+- Paused, it still sleeps. Off, it stays grey and still. With Android's animations turned off, nothing moves.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** (the whole suite) still pass. The drawing itself was checked in renders, light and dark, at large and phone size.
+- **Not verified on a real phone:** how smooth the wave and the ripple look.
+
 ## 0.4.46 — Settings in one place; split screen done well; tickets say what happened
 
 - **Every rule now lives on the chart.** Settings has no minimums fields and no Save button.

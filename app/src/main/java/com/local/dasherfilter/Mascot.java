@@ -2,20 +2,27 @@ package com.local.dasherfilter;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
+import android.graphics.Shader;
 
 /**
  * The app's mascot: the filter funnel with a face. Its mood follows the filter: cheerful while on, asleep while
  * paused, blank while off. Decoration only; the words next to it say what the state is.
  */
 final class Mascot {
-    enum Mood { HAPPY, BLINK, SLEEPY, IDLE }
+    /** CHEER is the beaming face of a wave: eyes squeezed shut in a smile and the mouth open. */
+    enum Mood { HAPPY, BLINK, CHEER, SLEEPY, IDLE }
 
     static final int CHEEK = 0x66F28B8B;
+    private static final int TONGUE = 0xFFF07A7A;
     /** Reused every frame (drawing happens on the main thread only). */
     private static final Paint STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF OVAL = new RectF();
+    /** The cheeks' blush, soft at its edge, for the last radius drawn (centred on 0, 0; moved by the canvas). */
+    private static Shader blush;
+    private static float blushRadius;
 
     private Mascot() {}
 
@@ -37,9 +44,20 @@ final class Mascot {
         float eyeY = y - 3 * u;
         float eyeX = 6.5f * u;
         if (mood != Mood.IDLE) {
-            fill.setColor(CHEEK);
-            canvas.drawCircle(x - 11 * u, y + 3 * u, 3 * u, fill);
-            canvas.drawCircle(x + 11 * u, y + 3 * u, 3 * u, fill);
+            float radius = 3.8f * u;
+            if (blush == null || blushRadius != radius) {
+                blush = new RadialGradient(0, 0, radius, new int[] {CHEEK, CHEEK, CHEEK & 0x00FFFFFF},
+                        new float[] {0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
+                blushRadius = radius;
+            }
+            fill.setShader(blush);
+            for (int side = -1; side <= 1; side += 2) {
+                canvas.save();
+                canvas.translate(x + side * 11 * u, y + 3 * u);
+                canvas.drawCircle(0, 0, radius, fill);
+                canvas.restore();
+            }
+            fill.setShader(null);
         }
         fill.setColor(ink);
         switch (mood) {
@@ -49,6 +67,7 @@ final class Mascot {
                     canvas.drawCircle(x + side * eyeX, eyeY, 2.6f * u, fill);
                     fill.setColor(0xFFFFFFFF);
                     canvas.drawCircle(x + side * eyeX - 0.9f * u, eyeY - 1f * u, 0.9f * u, fill);
+                    canvas.drawCircle(x + side * eyeX + 1.05f * u, eyeY + 1.1f * u, 0.45f * u, fill);
                 }
                 oval.set(x - 4.5f * u, y - 1 * u, x + 4.5f * u, y + 6 * u);
                 canvas.drawArc(oval, 20, 140, false, stroke);
@@ -59,6 +78,18 @@ final class Mascot {
                 }
                 oval.set(x - 4.5f * u, y - 1 * u, x + 4.5f * u, y + 6 * u);
                 canvas.drawArc(oval, 20, 140, false, stroke);
+                break;
+            case CHEER:
+                for (int side = -1; side <= 1; side += 2) {
+                    oval.set(x + side * eyeX - 3 * u, eyeY - 1.5f * u, x + side * eyeX + 3 * u, eyeY + 3.5f * u);
+                    canvas.drawArc(oval, 200, 140, false, stroke);
+                }
+                fill.setColor(ink);
+                oval.set(x - 4.5f * u, y - 0.5f * u, x + 4.5f * u, y + 6.5f * u);
+                canvas.drawArc(oval, 0, 180, true, fill);
+                fill.setColor(TONGUE);
+                oval.set(x - 2.4f * u, y + 2.6f * u, x + 2.4f * u, y + 5.9f * u);
+                canvas.drawArc(oval, 0, 180, true, fill);
                 break;
             case SLEEPY:
                 for (int side = -1; side <= 1; side += 2) {
