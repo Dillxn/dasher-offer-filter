@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The filter tab's own accessibility actions over Dasher. -->
+    <item name="tab_move_up" type="id"/>
+    <item name="tab_move_down" type="id"/>
+    <item name="tab_other_side" type="id"/>
+</resources>

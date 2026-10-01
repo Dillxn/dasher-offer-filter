@@ -1,3 +1,22 @@
+## 0.4.40 — the tab and pointer over Dasher get out of the way
+
+- **The pointer** (distance and pay per mile to the best area) shows only while Dasher is waiting for offers. During a delivery, shopping, an offer, or any screen it doesn't recognise, it stays hidden.
+- **The tab** is smaller and mostly tucked past the screen edge.
+  - Drag it up or down either edge, or across to the other side. It stays where you put it, separately in portrait and landscape. A drag never counts as a tap.
+  - During a delivery, and on unrecognised screens while dashing, it shrinks to a thin bar. Tap the bar to bring the tab out for 6 seconds.
+  - Over an offer or its confirmation it is a thin bar that takes no touches, so every tap goes to Dasher.
+  - Screen readers get "Move up", "Move down" and "Move to other side".
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - the pointer shown only on Dasher's waiting screens;
+  - dragging and remembering the tab;
+  - the thin bar during a delivery and over an offer;
+  - screen-reader moves.
+- **Not verified on a real phone:**
+  - whether a drag starting at the very edge is mistaken for Back;
+  - how the thin bar sits against Dasher's real offer card.
+
 ## 0.4.39 — Offer Filter stays responsive beside Dasher
 
 - **No more freezing in split screen.** Reading Dasher's screen used to run on the same thread that draws Offer Filter, once for every change on Dasher's screen. Its map and countdown change many times a second, and on a slow phone a read takes up to half a second, so Offer Filter's half froze. Reading now runs on its own thread: Offer Filter's screen never waits for it.

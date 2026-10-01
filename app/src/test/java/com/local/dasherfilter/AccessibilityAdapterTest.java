@@ -293,7 +293,7 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void theFilterTabSitsFixedOverDasherAndPausesOrResumes() {
+    public void theFilterTabSitsOverDasherAndPausesOrResumes() {
         controller.get().onServiceConnected();
         show(offer("$25.00"));
         DasherTab tab = tab();
@@ -305,7 +305,13 @@ public class AccessibilityAdapterTest {
         assertEquals(android.view.Gravity.TOP | android.view.Gravity.START, params.gravity);
         assertTrue("never takes the keyboard or Dasher's focus",
                 (params.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0);
+        // Over an offer only a slim peek shows, and a tap on it is only a touch.
+        assertEquals(DasherTab.Look.PEEK, tab.look());
+        tab.performClick();
+        assertTrue(FilterStore.load(app).enabled);
 
+        show(node("Finding offers", false));
+        assertEquals(DasherTab.Look.REST, tab.look());
         tab.performClick();
         assertFalse(FilterStore.load(app).enabled);
         assertTrue("pausing keeps the rules", FilterStore.load(app).hasAnyRule());

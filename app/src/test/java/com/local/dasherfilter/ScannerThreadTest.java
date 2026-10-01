@@ -607,12 +607,23 @@ public class ScannerThreadTest {
         assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
     }
 
+    /**
+     * Until the scanner waits for the sound's lock inside the silencer. Blocked anywhere else (a moment on Robolectric's
+     * message queue as the event wakes it, say) is not there yet: the read has not even begun.
+     */
     private static void waitUntilBlocked(Thread thread) throws InterruptedException {
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (thread.getState() != Thread.State.BLOCKED) {
+        while (thread.getState() != Thread.State.BLOCKED || !inSilencer(thread)) {
             assertTrue("the scanner reaches the sound's lock", System.nanoTime() < until);
             Thread.sleep(1);
         }
+    }
+
+    private static boolean inSilencer(Thread thread) {
+        for (StackTraceElement frame : thread.getStackTrace()) {
+            if (OfferSilencer.class.getName().equals(frame.getClassName())) return true;
+        }
+        return false;
     }
 
     @Test

@@ -177,13 +177,22 @@ public final class OfferFilterService extends AccessibilityService {
     private long declinedAt;
     /** Whether the latest read showed the declined offer or its own confirmation, so its ring may be turned down. */
     private boolean declinedOfferShowing;
-    /** Whether the latest read showed an offer or a confirmation, which the best-area guide must not cover. */
+    /** Whether the latest read showed an offer or a confirmation. */
     private boolean offerOnScreen;
     /**
      * Whether the latest read showed any sign of an offer: pay, a distance, time or stops, Accept or Decline even
      * without a button, a confirmation, or a screen too big to read. Its next changes are then read at once.
      */
     private boolean offerEvidence;
+    /**
+     * What the last read made of Dasher's screen, for the tab and guide over it: the guide shows only while it is
+     * {@link DasherScene#WAITING}, the tab tucks away during an offer or a delivery.
+     */
+    private DasherScene scene = DasherScene.UNKNOWN;
+    /** This read's labels once it has read a screen without finding it too big, else null. */
+    private List<String> sceneLabels;
+    /** Whether this read was skipped: Android did not give the active window. */
+    private boolean readSkipped;
     /** The last state the overlay was given, and when (uptime). */
     private OverlayState overlayGiven;
     private long overlayGivenAt;
@@ -608,13 +617,13 @@ public final class OfferFilterService extends AccessibilityService {
     private void syncOverlay() {
         Screen seen = screen;
         Rect area = active == this ? seen.area : null;
-        OverlayState next = new OverlayState(area, area != null && seen.split, offerOnScreen);
+        OverlayState next = new OverlayState(area, area != null && seen.split, scene);
         long now = SystemClock.uptimeMillis();
         if (next.equals(overlayGiven) && now - overlayGivenAt < OVERLAY_CHECK_MS) return;
         overlayGiven = next;
         overlayGivenAt = now;
         onMain(() -> {
-            if (!stopped && overlay != null) overlay.sync(next.area, next.split, next.offerShowing);
+            if (!stopped && overlay != null) overlay.sync(next.area, next.split, next.scene);
         });
     }
 
@@ -714,6 +723,9 @@ public final class OfferFilterService extends AccessibilityService {
         scanWindows = 0;
         readTrigger = trigger;
         readWaitedMs = Math.max(0, started - eventAt);
+        DasherScene before = scene;
+        sceneLabels = null;
+        readSkipped = false;
         try {
             return checkReadableOffer();
         } catch (RuntimeException error) {
@@ -725,10 +737,23 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
+            scene = sceneOfRead(before);
             syncAutomation();
             syncOverlay();
             noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt);
         }
+    }
+
+    /**
+     * What this read made of the screen. Any sign of an offer is an offer. A skipped read knows nothing new: an offer
+     * seen before still counts as up, anything else becomes unknown. After the read was handled, so an idle screen has
+     * already cleared the route it ends.
+     */
+    private DasherScene sceneOfRead(DasherScene before) {
+        if (offerOnScreen || offerEvidence) return DasherScene.OFFER;
+        if (readSkipped) return before == DasherScene.OFFER ? DasherScene.OFFER : DasherScene.UNKNOWN;
+        if (sceneLabels == null) return DasherScene.UNKNOWN;
+        return DasherScene.of(sceneLabels, ActiveRouteStore.load(this) != null);
     }
 
     /** One compact line for a slow read, at most once a minute: what the phone really costs, for the next report. */
@@ -783,7 +808,10 @@ public final class OfferFilterService extends AccessibilityService {
         offerOnScreen = false;
         offerEvidence = false;
         Look look = look();
-        if (!look.activeKnown) return settings.enabled;
+        if (!look.activeKnown) {
+            readSkipped = true;
+            return settings.enabled;
+        }
         AccessibilityNodeInfo root = look.dasherRoot;
         if (root == null) {
             declineState.reset();
@@ -799,6 +827,7 @@ public final class OfferFilterService extends AccessibilityService {
             status("Offer screen exceeded safe read limits; no automatic action.");
             return false;
         }
+        sceneLabels = scan.text;
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         boolean pending = declineState.hasPendingConfirmation(now);
@@ -1445,23 +1474,23 @@ public final class OfferFilterService extends AccessibilityService {
     private static final class OverlayState {
         final Rect area;
         final boolean split;
-        final boolean offerShowing;
+        final DasherScene scene;
 
-        OverlayState(Rect area, boolean split, boolean offerShowing) {
+        OverlayState(Rect area, boolean split, DasherScene scene) {
             this.area = area == null ? null : new Rect(area);
             this.split = split;
-            this.offerShowing = offerShowing;
+            this.scene = scene;
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof OverlayState)) return false;
             OverlayState that = (OverlayState) other;
-            return split == that.split && offerShowing == that.offerShowing
+            return split == that.split && scene == that.scene
                     && (area == null ? that.area == null : area.equals(that.area));
         }
 
         @Override public int hashCode() {
-            return (split ? 1 : 0) + (offerShowing ? 2 : 0) + (area == null ? 0 : area.hashCode());
+            return (split ? 1 : 0) + scene.ordinal() * 2 + (area == null ? 0 : area.hashCode());
         }
     }
 
