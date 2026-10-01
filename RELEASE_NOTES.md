@@ -1,3 +1,30 @@
+## 0.4.38 — one offer, one line; the alert card opens Dasher; Offer Filter again
+
+- **The name is Offer Filter again** (it showed as Dash Buddy from 0.4.29). It updates over the installed app as always.
+- **One offer counts once.** Dasher's offer notification carries no pay, so it used to add its own "?" line beside the screen's decision. Now it folds into the offer the screen reads next to it, and the counts, history and status show only the screen's decision. Stored history is folded once on update; the all-time totals lose the duplicates still in the history.
+- **The alert card keeps in step with Dasher.**
+  - It clears as soon as the screen reads its offer, even after it rang.
+  - It no longer appears for an offer the screen just read.
+  - A second offer from the same store gets its own card.
+- **Tapping the card opens Dasher** the way its app icon does, bringing up the offer already showing, or opens it beside Offer Filter in split screen. It used to reuse DoorDash's own notification link, which could open the wrong screen.
+- **No double ring.** When Dasher's own offer alert already makes a sound, the card arrives silently instead of ringing too.
+- **"+$" offers** (a "+$1" beside the pay, seen on a 2-stop offer): declined when even the pay plus that amount misses your minimums, using your set minimums only. Otherwise left for you, never passed on their own.
+
+Evidence boundaries:
+- **Java tests** cover:
+  - which notification folds into which offer;
+  - the one-time fold of stored history;
+  - the "+$" ceiling.
+- **Simulated Android 8 and 15 tests** cover:
+  - a card cleared after the screen reads its offer, including after it rang;
+  - no card for an offer just read;
+  - same-store re-posts;
+  - the silent card when Dasher's channel sounds;
+  - the card tap opening Dasher, full screen and beside.
+- **Not verified on a real phone:**
+  - DoorDash's real notification timing;
+  - where Android puts Dasher after the card tap in split screen.
+
 ## 0.4.37 — drag your minimums; a bigger sky; per stop is a minimum
 
 - **Knobs on the constellation.** Each minimum you set is a knob on its spoke. Drag it along the spoke to change it:

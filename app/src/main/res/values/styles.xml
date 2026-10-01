@@ -6,4 +6,10 @@
         <item name="android:colorAccent">#256ABF</item>
         <item name="android:colorControlActivated">#256ABF</item>
     </style>
+    <!-- A card's tap passes through this screen to Dasher: it never shows and never animates. -->
+    <style name="CardTap" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>

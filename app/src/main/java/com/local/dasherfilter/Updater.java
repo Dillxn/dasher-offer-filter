@@ -467,7 +467,7 @@ final class Updater {
         PackageInstaller.SessionParams params =
                 new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
         params.setAppPackageName(context.getPackageName());
-        params.setAppLabel("Dash Buddy");
+        params.setAppLabel("Offer Filter");
         params.setSize(file.length());
         if (Build.VERSION.SDK_INT >= 31) {
             params.setRequireUserAction(manual
@@ -537,7 +537,7 @@ final class Updater {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UPDATE_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Dash Buddy update ready")
+                .setContentTitle("Offer Filter update ready")
                 .setContentText("Tap to confirm installation.")
                 .setContentIntent(action)
                 .setAutoCancel(true)

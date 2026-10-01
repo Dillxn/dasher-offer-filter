@@ -17,7 +17,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Dash Buddy"
+        android:label="Offer Filter"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
         <activity
@@ -28,6 +28,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Only a tap on one of our offer cards starts this: it opens Dasher and is gone. -->
+        <activity
+            android:name=".OpenDasherActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/CardTap" />
         <service
             android:name=".UpdateJobService"
             android:exported="true"
@@ -45,7 +53,7 @@
         <service
             android:name=".OfferNotificationService"
             android:exported="true"
-            android:label="Dash Buddy background offers"
+            android:label="Offer Filter background offers"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -54,7 +62,7 @@
         <service
             android:name=".OfferFilterService"
             android:exported="true"
-            android:label="Dash Buddy"
+            android:label="Offer Filter"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

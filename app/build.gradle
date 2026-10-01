@@ -8,8 +8,8 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 26
         targetSdk 35
-        versionCode 43
-        versionName '0.4.37'
+        versionCode 44
+        versionName '0.4.38'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -17,7 +17,14 @@ android {
     }
     testOptions {
         unitTests.includeAndroidResources = true
-        unitTests.all { maxHeapSize = '1024m' }
+        unitTests.all {
+            maxHeapSize = '1536m'
+            // Test classes run in parallel JVMs; Robolectric keeps no state across them.
+            maxParallelForks = 3
+            // Day to day only Android 15 is simulated; a release, the fixer's gate and Render pass -PallSdks
+            // so Android 8 runs too.
+            if (!project.hasProperty('allSdks')) systemProperty 'robolectric.enabledSdks', '35'
+        }
     }
 }
 dependencies {

@@ -222,7 +222,7 @@ final class DasherOverlay {
             try {
                 service.startActivity(new Intent(service, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             } catch (RuntimeException refused) {
-                Toast.makeText(service, "Open Dash Buddy to add a rule.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(service, "Open Offer Filter to add a rule.", Toast.LENGTH_SHORT).show();
             }
             return;
         }

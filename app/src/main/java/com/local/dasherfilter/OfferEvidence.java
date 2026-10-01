@@ -20,6 +20,7 @@ final class OfferEvidence {
     private static final Pattern TIME_RANGE = Pattern.compile(
             "(?i)\\d+(?:\\.\\d+)?\\s*[-–—]\\s*\\d+(?:\\.\\d+)?\\s*(?:min|minutes?|hr|hours?)\\b");
     private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[.!…]+$");
+    private static final Pattern COUNTDOWN = Pattern.compile("(\\d):([0-5]\\d)");
 
     /** Screens that prove no offer or delivery is in progress. */
     private static final List<String> IDLE_LABELS = Arrays.asList(
@@ -66,6 +67,21 @@ final class OfferEvidence {
 
     static boolean timeRange(String line) {
         return TIME_RANGE.matcher(normalize(line)).find();
+    }
+
+    /**
+     * Seconds left on the offer's countdown ("0:35" is 35), from the first label that is only a countdown of at most
+     * a minute; -1 when none shows. A clock time such as "9:45 PM" is not a countdown.
+     */
+    static int secondsLeft(List<String> labels) {
+        if (labels == null) return -1;
+        for (String label : labels) {
+            Matcher countdown = COUNTDOWN.matcher(normalize(label));
+            if (!countdown.matches()) continue;
+            int seconds = Integer.parseInt(countdown.group(1)) * 60 + Integer.parseInt(countdown.group(2));
+            if (seconds <= 60) return seconds;
+        }
+        return -1;
     }
 
     /** Screens that show the dash is over or on a break, not just between offers. */

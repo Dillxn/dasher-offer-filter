@@ -30,6 +30,15 @@ requests, or comment on GitHub.
   If a fix needs one of those, the outcome is `needs-human`.
 - Never change the user's rules, thresholds or defaults. Never turn an unknown into KEEP or DECLINE. A review is
   fixed by reading the facts correctly, never by guessing them or by making the app decline more readily.
+- Two behaviours are the user's own decisions (see `AGENTS.md`); never widen, loosen or undo them:
+  - A "+$X" beside one total "$Y" on a single order: pay stays unknown, but by the user's own rule for this
+    narrow shape (approved in chat) the offer is declined when the offer as a whole, Y + X, misses the set rules
+    (never the adaptive floors), and is otherwise REVIEW, never KEEP. This is the user's choice, not a claim that
+    every reading fails (an add-on reading might pass the add-on rules). Reports of such REVIEWs (reason "pay
+    unclear beside a +$ amount") are `explained`. Never extend the bound to other shapes, add-ons or notifications.
+  - When Android shows that Dasher's own post of an offer sounded, the "Offers to check" card is posted without
+    ringing (action "Review card posted without sound: Dasher's own offer alert sounds"). That is intended, not a
+    bug. A loud channel alone never counts; when Android does not show it sounded, the card rings once.
 - Per stop changed meaning in 0.4.37: up to 0.4.36 a report's `rules` JSON `extraStopCents` was a fee added for each
   stop after two; from 0.4.37 `perStopCents` is a minimum (stops × rate). Decisions recorded before the update were
   computed with the fee, so never map one onto the other.
@@ -84,7 +93,7 @@ cases too: similar inputs that must stay REVIEW or keep their current result.
 ## 4. Check
 
 ```
-./gradlew --no-daemon testDebugUnitTest lintDebug
+./gradlew --no-daemon testDebugUnitTest lintDebug -PallSdks
 ```
 
 Everything must pass. Never delete, skip, `@Ignore` or weaken a test. If you cannot get it green after a few

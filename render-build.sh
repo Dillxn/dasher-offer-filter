@@ -40,7 +40,7 @@ PY
 fi
 # This calls the exact HTTP implementation used by the app, not a different downloader.
 python3 tools/verify_channel.py
-./gradlew --no-daemon testDebugUnitTest
+./gradlew --no-daemon testDebugUnitTest -PallSdks
 umask 077
 mkdir -p .signing
 printf '%s' "$OFFER_FILTER_KEYSTORE_B64" | base64 --decode > .signing/OfferFilter-signing.p12

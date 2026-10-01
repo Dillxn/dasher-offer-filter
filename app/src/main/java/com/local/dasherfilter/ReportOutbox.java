@@ -307,7 +307,7 @@ final class ReportOutbox {
                                     + "and adding it is not enough by itself: on github.com, open Settings → "
                                     + "Applications → Installed GitHub Apps, tap Configure next to your GitHub App, and "
                                     + "accept its new permissions (GitHub also emails a request to review them). "
-                                    + "Reports are kept and sent again each time you open Dash Buddy."
+                                    + "Reports are kept and sent again each time you open Offer Filter."
                             : "GitHub rejected the token (" + said
                                     + "). Paste a new one; reports are kept until then.").apply();
                     // Permissions approved from now on reach the next attempt's token.

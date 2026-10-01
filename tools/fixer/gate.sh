@@ -68,7 +68,7 @@ trap restore EXIT
 rm -rf "$results"
 filters=()
 for class in $classes; do filters+=(--tests "$class"); done
-./gradlew --no-daemon -q testDebugUnitTest "${filters[@]}" > "${RUNNER_TEMP:-/tmp}/gate-old-code.log" 2>&1 || true
+./gradlew --no-daemon -q testDebugUnitTest -PallSdks "${filters[@]}" > "${RUNNER_TEMP:-/tmp}/gate-old-code.log" 2>&1 || true
 # Needs a JUnit result per changed class: a test that does not even compile on the old code proves nothing.
 python3 - "$results" $classes <<'PY'
 import glob, sys, xml.etree.ElementTree as ET
@@ -92,7 +92,7 @@ git reset -q
 [[ -z "$(git status --porcelain)" ]] || fail "could not restore the fixed code"
 
 step "full unit and adapter tests, and lint"
-./gradlew --no-daemon testDebugUnitTest lintDebug
+./gradlew --no-daemon testDebugUnitTest lintDebug -PallSdks
 python3 - <<'PY'
 import glob, sys, xml.etree.ElementTree as ET
 totals = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}

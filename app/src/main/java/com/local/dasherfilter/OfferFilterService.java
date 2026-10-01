@@ -348,16 +348,16 @@ public final class OfferFilterService extends AccessibilityService {
         handler.removeCallbacks(recheck);
         syncAutomation();
         if (declinedEntry != null && !alreadyConfirmed) {
-            DecisionLog.record(this, new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
+            recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                     declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence));
+                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence), -1);
         }
         DiagnosticLog.log(this, "accessibility", "screen touched; automatic decline stopped"
                 + (alreadyConfirmed ? " after its confirmation was tapped" : ""));
         status(alreadyConfirmed
                 ? "You touched the screen after the decline was confirmed; nothing more will be tapped."
                 : "You touched the screen, so auto-decline stopped for this offer.");
-        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Dash Buddy stopped tapping this offer";
+        String toast = alreadyConfirmed ? "Decline was already confirmed" : "Offer Filter stopped tapping this offer";
         Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
     }
 
@@ -437,9 +437,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (selected >= 0 && declineState.mayConfirm(now) && ownClick(confirmation.declineTargets.get(selected))) {
             declineState.confirmationSent(now);
             if (declinedEntry != null) {
-                DecisionLog.record(this, new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
+                recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                         declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence));
+                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence),
+                        -1);
             }
             status("Decline confirmation requested; waiting for Dasher to close the offer.");
         }
@@ -466,6 +467,11 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
     private boolean handleOtherScreen(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
+        if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)
+                || OfferEvidence.isDashOver(scan.text)) {
+            // No offer is up: a re-post of a notification for an offer read before is a new offer.
+            OfferNotificationService.screenOfferEnded();
+        }
         OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
         if (missed != null) {
             DiagnosticLog.log(this, "accept", "Not learned: no delivery screen recognized within 15 s after Accept on "
@@ -627,8 +633,20 @@ public final class OfferFilterService extends AccessibilityService {
         labels.addAll(scan.metricParts);
         DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, addOn, decision.basis, decision,
                 action, settings.enabled, labels);
-        DecisionLog.record(this, entry);
+        recordRead(entry, OfferEvidence.secondsLeft(scan.text));
         return entry;
+    }
+
+    /**
+     * Records a screen reading. Dasher's notifications of the same offer are folded into its line, and our card for
+     * each is cleared, whether or not it rang (never Dasher's own notification): the screen has the offer now.
+     */
+    private void recordRead(DecisionLog.Entry entry, int secondsLeft) {
+        for (DecisionLog.Entry notice : DecisionLog.record(this, entry, secondsLeft)) {
+            if (notice.alertTag == null) continue;
+            OfferAlerts.clear(this, notice.alertTag);
+            OfferNotificationService.readOnScreen(notice.alertTag, entry.facts);
+        }
     }
 
     /** A confirmation surface in any Dasher window while a decline is pending, else in the active window. */

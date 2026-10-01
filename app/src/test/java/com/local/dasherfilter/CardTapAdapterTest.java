@@ -1,0 +1,220 @@
+package com.local.dasherfilter;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.Application;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Looper;
+import android.service.notification.StatusBarNotification;
+import java.time.Duration;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.android.controller.ServiceController;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowNotificationManager;
+import org.robolectric.shadows.ShadowPendingIntent;
+import org.robolectric.shadows.ShadowSystemClock;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * A tap on one of our offer cards opens Dasher as its launcher icon does: a screen of ours that never shows starts
+ * Dasher's own launch intent (in its own half when it is already beside us in split screen, into the other half
+ * when only the tap screen is in one), clears that card and is gone. Dasher's own notification
+ * intent opened a screen that could not find the offer on a real phone. Simulated Android only.
+ */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = {26, 35})
+@LooperMode(LooperMode.Mode.PAUSED)
+public class CardTapAdapterTest {
+    /** Named as text, so these tests compile (and fail) on code from before the tap screen existed. */
+    private static final String TAP_SCREEN = "com.local.dasherfilter.OpenDasherActivity";
+    private static final ComponentName DASHER_HOME =
+            new ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home");
+    private static final int CLEARS_OR_RESETS = Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_CLEAR_TASK
+            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+
+    private Application app;
+    private ServiceController<OfferNotificationService> listener;
+
+    @Before
+    public void setup() {
+        app = RuntimeEnvironment.getApplication();
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
+        Updater.setEnabled(app, false);
+        OfferAlerts.ensureChannel(app);
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        DecisionLog.forgetCache();
+        listener = Robolectric.buildService(OfferNotificationService.class).create();
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+    }
+
+    @After
+    public void stop() {
+        listener.destroy();
+        OfferFilterService.sawDasherBeside(0);
+    }
+
+    /** Dasher installed on the simulated phone, with its launcher activity. */
+    private void dasherInstalled() {
+        org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
+        packages.addActivityIfNotPresent(DASHER_HOME);
+        IntentFilter launcher = new IntentFilter(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        packages.addIntentFilterForActivity(DASHER_HOME, launcher);
+    }
+
+    /** Dasher's own tap intent on its offer notification, as Dasher made it. */
+    private PendingIntent dashersOwnIntent() {
+        PendingIntent own = PendingIntent.getActivity(app, 7, new Intent().setComponent(
+                new ComponentName("com.doordash.driverapp", "com.doordash.driverapp.OfferNotificationActivity")),
+                PendingIntent.FLAG_IMMUTABLE);
+        Shadows.shadowOf(own).setCreatorPackage("com.doordash.driverapp");
+        return own;
+    }
+
+    /** Dasher's offer notification arrives with Dasher in the background: our card for it. */
+    private Notification cardFor(String store, PendingIntent dashersOwn) {
+        Notification payload = new Notification.Builder(app, "source")
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle("New Delivery!")
+                .setContentText("New Order: Go to " + store)
+                .setContentIntent(dashersOwn)
+                .build();
+        listener.get().onNotificationPosted(new StatusBarNotification("com.doordash.driverapp",
+                "com.doordash.driverapp", 3, "NEW_ORDER", 10001, 0, 0, payload, android.os.Process.myUserHandle(),
+                System.currentTimeMillis()), null);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(1, notifications().size());
+        return notifications().getAllNotifications().get(0);
+    }
+
+    private ShadowNotificationManager notifications() {
+        return Shadows.shadowOf(app.getSystemService(NotificationManager.class));
+    }
+
+    /** What the card's tap starts: our tap screen, as an immutable activity intent (never a service or broadcast). */
+    private Intent tapScreenOf(Notification card) {
+        assertNotNull("the card can be tapped", card.contentIntent);
+        ShadowPendingIntent tap = Shadows.shadowOf(card.contentIntent);
+        assertTrue("an activity, which Android lets a notification tap start", tap.isActivityIntent());
+        assertTrue(tap.isImmutable());
+        Intent screen = tap.getSavedIntent();
+        assertEquals("the tap goes to our tap screen, not Dasher's own notification intent", TAP_SCREEN,
+                screen.getComponent() == null ? null : screen.getComponent().getClassName());
+        return screen;
+    }
+
+    /** The user taps: the tap screen is built from the card's intent and runs. */
+    private ActivityController<? extends Activity> tap(Intent screen, boolean splitScreen) throws Exception {
+        ActivityController<? extends Activity> controller = Robolectric.buildActivity(
+                Class.forName(TAP_SCREEN).asSubclass(Activity.class), screen);
+        Shadows.shadowOf(controller.get()).setInMultiWindowMode(splitScreen);
+        return controller.setup();
+    }
+
+    @Test
+    public void tappingACardOpensDasherAsItsLauncherIconDoesAndClearsTheCard() throws Exception {
+        dasherInstalled();
+        Notification card = cardFor("Store A", dashersOwnIntent());
+        Intent screen = tapScreenOf(card);
+
+        ActivityController<? extends Activity> tapped = tap(screen, false);
+        Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+        assertNotNull("the tap opens Dasher", opened);
+        assertEquals(DASHER_HOME, opened.getComponent());
+        assertEquals(Intent.ACTION_MAIN, opened.getAction());
+        assertTrue(opened.hasCategory(Intent.CATEGORY_LAUNCHER));
+        assertEquals("Dasher's own task comes forward as it is: nothing cleared, reset or reordered",
+                Intent.FLAG_ACTIVITY_NEW_TASK, opened.getFlags());
+        assertEquals("the card is cleared", 0, notifications().size());
+        assertTrue("the tap screen is gone at once", tapped.get().isFinishing());
+        assertNull("nothing else is opened", Shadows.shadowOf(app).getNextStartedActivity());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[alert] card tapped → opened Dasher (full)"));
+        tapped.destroy();
+    }
+
+    @Test
+    public void inSplitScreenWithoutDasherTheTapOpensDasherInTheOtherHalf() throws Exception {
+        dasherInstalled();
+        ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", dashersOwnIntent())), true);
+        Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+        assertNotNull(opened);
+        assertEquals(DASHER_HOME, opened.getComponent());
+        assertEquals("Dasher's launch intent into the other half, as the Split button opens it",
+                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, opened.getFlags());
+        assertEquals(0, notifications().size());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[alert] card tapped → opened Dasher (in the other half)"));
+        tapped.destroy();
+    }
+
+    @Test
+    public void withDasherAlreadyBesideTheTapBringsDasherForwardInItsOwnHalf() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> screenReading = Robolectric.buildService(OfferFilterService.class).create();
+        try {
+            screenReading.get().onServiceConnected();
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+            // The tap screen opened in one half of the split, beside Dasher: before, it sent Dasher "adjacent" to
+            // itself, which could move Dasher's task rather than bring it forward where it is.
+            for (boolean tapScreenInAHalf : new boolean[] {true, false}) {
+                ActivityController<? extends Activity> tapped =
+                        tap(tapScreenOf(cardFor(tapScreenInAHalf ? "Store A" : "Store B", null)), tapScreenInAHalf);
+                Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+                assertNotNull(opened);
+                assertEquals(DASHER_HOME, opened.getComponent());
+                assertEquals("Dasher's plain launch intent: its task comes forward in its own half",
+                        Intent.FLAG_ACTIVITY_NEW_TASK, opened.getFlags());
+                assertEquals(0, opened.getFlags() & CLEARS_OR_RESETS);
+                assertEquals(0, notifications().size());
+                String log = DiagnosticLog.read(app);
+                assertTrue(log, log.contains("[alert] card tapped → opened Dasher (in its own half)"));
+                tapped.destroy();
+            }
+        } finally {
+            screenReading.destroy();
+        }
+    }
+
+    @Test
+    public void whenDasherCannotBeOpenedAtTheTapDashersOwnIntentIsSent() throws Exception {
+        dasherInstalled();
+        Intent screen = tapScreenOf(cardFor("Store A", dashersOwnIntent()));
+        // Dasher's launcher entry is gone by the time of the tap.
+        Shadows.shadowOf(app.getPackageManager()).clearIntentFilterForActivity(DASHER_HOME);
+
+        ActivityController<? extends Activity> tapped = tap(screen, false);
+        assertTrue("the tap screen is gone at once", tapped.get().isFinishing());
+        assertEquals(0, notifications().size());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[alert] card tapped → opened Dasher (its own notification's screen)"));
+        tapped.destroy();
+    }
+
+    @Test
+    public void withoutDashersLaunchIntentTheCardKeepsDashersOwnTap() {
+        PendingIntent own = dashersOwnIntent();
+        Notification card = cardFor("Store A", own);
+        assertSame("nothing of ours can open Dasher, so Dasher's own intent stays", own, card.contentIntent);
+    }
+}

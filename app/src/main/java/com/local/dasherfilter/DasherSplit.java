@@ -32,9 +32,19 @@ final class DasherSplit {
 
     /** Dasher's own launch intent, set to open beside this app in split screen; null when Dasher is not installed. */
     static Intent dasher(Context context) {
+        Intent launch = launcher(context);
+        if (launch == null) return null;
+        return launch.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+    }
+
+    /**
+     * Dasher's own launch intent as its launcher icon starts it: its task comes to the front showing whatever it
+     * was showing, such as an offer. Nothing in it is cleared or reset. Null when Dasher is not installed.
+     */
+    static Intent launcher(Context context) {
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(DASHER_PACKAGE);
         if (launch == null) return null;
-        return launch.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT | Intent.FLAG_ACTIVITY_NEW_TASK);
+        return launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
     /** Whether the Split button shows: Dasher is installed and the screen is not split already. */
@@ -56,7 +66,7 @@ final class DasherSplit {
             return open(activity, dasher);
         }
         if (!OfferFilterService.isConnected()) {
-            return "Turn on screen reading first: Android splits the screen for Dash Buddy through it.";
+            return "Turn on screen reading first: Android splits the screen for Offer Filter through it.";
         }
         requestedAt = SystemClock.uptimeMillis();
         waitMs = PENDING_MS;
@@ -64,10 +74,10 @@ final class DasherSplit {
         // This phone splits the screen only from recent apps: open them, and wait for the user to do it there.
         waitMs = BY_HAND_MS;
         if (recents.getAsBoolean()) {
-            return "Tap Dash Buddy's icon above its card and choose split screen. Dasher then opens in the other half.";
+            return "Tap Offer Filter's icon above its card and choose split screen. Dasher then opens in the other half.";
         }
         requestedAt = 0;
-        return "This phone did not split the screen. Open recent apps and choose split screen from Dash Buddy's icon.";
+        return "This phone did not split the screen. Open recent apps and choose split screen from Offer Filter's icon.";
     }
 
     /** Once the screen is split after a tap, Dasher opens in the other half; a late or unasked split opens nothing. */

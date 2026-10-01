@@ -50,7 +50,7 @@ final class DiagnosticLog {
     private static final int MAX_REPORT_CHARS = 60_000;
     private static final int REPORT_DECISIONS = 100;
     /** Every report subject starts with this, so reports are easy to find in a mailbox. */
-    static final String REPORT_SUBJECT = "Dash Buddy diagnostics";
+    static final String REPORT_SUBJECT = "Offer Filter diagnostics";
     /** One writer thread with a bounded queue; entries beyond the queue are dropped, never blocking callers. */
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
@@ -135,7 +135,7 @@ final class DiagnosticLog {
         SharedPreferences updates = Updater.prefs(context);
         String log = newest(read(context), MAX_REPORT_LOG_CHARS);
         String screens = newest(readScreens(context), MAX_REPORT_SCREENS_CHARS);
-        return REPORT_SUBJECT + " — Dash Buddy " + Updater.version(context) + "\n"
+        return REPORT_SUBJECT + " — Offer Filter " + Updater.version(context) + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
                 + ". Raw labels may include personal/location text; review before sharing.\n\n"
                 + "== Readiness\n"
@@ -181,7 +181,7 @@ final class DiagnosticLog {
         return "[older entries omitted]\n" + (line >= 0 ? tail.substring(line + 1) : tail);
     }
 
-    /** "Dash Buddy diagnostics 0.4.7 2026-09-29 21:45". */
+    /** "Offer Filter diagnostics 0.4.7 2026-09-29 21:45". */
     static String reportSubject(Context context) {
         return REPORT_SUBJECT + " " + Updater.version(context) + " "
                 + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());

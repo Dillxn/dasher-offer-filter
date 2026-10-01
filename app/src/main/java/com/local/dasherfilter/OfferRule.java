@@ -6,7 +6,9 @@ import java.util.Locale;
 
 /**
  * Applies saved rules to offer facts. A known failure declines even when other values are missing; otherwise a
- * missing value that an enabled rule needs yields REVIEW, never KEEP or DECLINE.
+ * missing value that an enabled rule needs yields REVIEW, never KEEP or DECLINE. A known ceiling on unknown pay (a
+ * "+$" amount beside a total) declines an offer that misses the set rules even at that ceiling (the user's own rule
+ * for that shape), and never passes one.
  */
 final class OfferRule {
     enum Result { DECLINE, KEEP, REVIEW }
@@ -46,7 +48,9 @@ final class OfferRule {
             return new Decision(Result.DECLINE, 0, reason, offer);
         }
         boolean needsPay = settings.flatCents > 0 || settings.hasMarginalRule() || settings.risingOffers;
-        if (needsPay && offer.payCents == null) return new Decision(Result.REVIEW, 0, "pay not found", offer);
+        if (needsPay && offer.payCents == null && offer.payAtMostCents == null) {
+            return new Decision(Result.REVIEW, 0, "pay not found", offer);
+        }
 
         boolean missing = settings.maxStops > 0 && offer.stops == null;
         // A standalone order is at least a pickup and a drop-off, so fewer stops is a misread ("1 stop"). Every
@@ -87,6 +91,9 @@ final class OfferRule {
                 }
             }
         }
+        // What the set rules alone ask, before the adaptive floors: all that a bound on unknown pay is judged by.
+        long setRequired = required;
+        String setReason = reason;
         if (settings.risingOffers && settings.lastAcceptedCents > 0 && settings.lastAcceptedCents + 1L > required) {
             required = settings.lastAcceptedCents + 1L;
             reason = String.format(Locale.US, "must beat highest accepted payout $%.2f",
@@ -153,6 +160,16 @@ final class OfferRule {
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
         if (offer.payCents != null && offer.payCents < required) {
             return new Decision(Result.DECLINE, required, reason, offer);
+        }
+        if (needsPay && offer.payCents == null) {
+            // Only the most it can pay is known. The user's own rule for this one shape (approved in chat): decline
+            // when the offer as a whole, Y + X, misses the set rules, though an add-on reading might have passed the
+            // add-on rules. The adaptive floors never judge an add-on, so they cannot count; anything else is unknown.
+            if (offer.payAtMostCents < setRequired) {
+                return new Decision(Result.DECLINE, setRequired, "pay at most "
+                        + DecisionLog.money(offer.payAtMostCents) + " with its +$ amount; " + setReason, offer);
+            }
+            return new Decision(Result.REVIEW, required, "pay unclear beside a +$ amount", offer);
         }
         if (missing) return new Decision(Result.REVIEW, required, "an enabled value was not found", offer);
         return new Decision(Result.KEEP, required, "meets enabled rules", offer);

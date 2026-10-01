@@ -6,7 +6,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.os.Build;
@@ -118,7 +117,7 @@ final class OfferAlerts {
             // A group child with summary-only alerting never alerts, even on a high-importance channel.
             builder.setGroup("quiet-" + tag).setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY);
         }
-        PendingIntent open = openDasherIntent(context, doorDashIntent);
+        PendingIntent open = openDasherIntent(context, tag, doorDashIntent);
         if (open != null) builder.setContentIntent(open);
 
         try {
@@ -133,14 +132,15 @@ final class OfferAlerts {
         }
     }
 
-    /** DoorDash's own content intent when DoorDash created it; otherwise Dasher's launcher activity. */
-    private static PendingIntent openDasherIntent(Context context, PendingIntent doorDashIntent) {
-        if (doorDashIntent != null && DASHER_PACKAGE.equals(doorDashIntent.getCreatorPackage())) return doorDashIntent;
-        Intent launch = context.getPackageManager().getLaunchIntentForPackage(DASHER_PACKAGE);
-        if (launch == null) return null;
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-        return PendingIntent.getActivity(context, NOTIFICATION_ID, launch,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    /**
+     * The card's tap: {@link OpenDasherActivity}, which opens Dasher as its launcher icon does (in its own half when
+     * it is already in split screen, into the other half when only ours is) and clears the card. DoorDash's own content intent only when Dasher has no launch intent, and only when
+     * DoorDash created it.
+     */
+    private static PendingIntent openDasherIntent(Context context, String tag, PendingIntent doorDashIntent) {
+        PendingIntent dashers = doorDashIntent != null && DASHER_PACKAGE.equals(doorDashIntent.getCreatorPackage())
+                ? doorDashIntent : null;
+        return OpenDasherActivity.forCard(context, tag, dashers);
     }
 
     static void clear(Context context, String tag) {

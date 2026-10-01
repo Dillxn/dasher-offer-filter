@@ -27,7 +27,8 @@ import org.json.JSONObject;
  * Always-on, on-device history of offer decisions, so a surprising decline can be explained afterwards. It keeps
  * the parsed numbers, the rule outcome and the action taken, plus only the screen lines that carried a number or
  * a pay label: no names or addresses. Bounded to {@link #MAX_ENTRIES}; leaves the phone only in a report the user
- * chooses to send.
+ * chooses to send. One offer is one line: Dasher's notification of an offer the screen read is folded into the
+ * screen's line ({@link OfferPairing}), and two notification incarnations are never one line.
  */
 final class DecisionLog {
     static final int MAX_ENTRIES = 200;
@@ -47,9 +48,11 @@ final class DecisionLog {
     enum Action {
         PAUSED("No action: auto-decline paused", 0),
         PASSES("No action: passes your rules", 0),
+        SEEN_ON_SCREEN("No card: the screen had already read this offer", 0),
         NEEDS_REVIEW("No action: needs your review", 0),
         REPLAY("Re-checked after a reconnect or rule change; no action", 0),
         SILENT_CARD("Review card posted without sound", 1),
+        DASHER_SOUNDS("Review card posted without sound: Dasher's own offer alert sounds", 1),
         QUIET_PASS_CARD("Passing card posted without sound", 1),
         CARD_BLOCKED("Card blocked by Android; DoorDash notification kept", 1),
         BELL("Passing alert rang", 2),
@@ -89,9 +92,22 @@ final class DecisionLog {
         final Action action;
         final boolean autoDecline;
         final List<String> evidence;
+        /** Dasher's notification of this same offer, folded in; kept without screen lines. Null when none. */
+        final Entry notification;
+        /** Memory only: the card tag of the notification incarnation this line is for. */
+        final String alertTag;
+        /** Memory only: recorded on a replay, which re-evaluates a post already recorded and is never a new offer. */
+        final boolean replay;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
+            this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
+                    false);
+        }
+
+        private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
+                      OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
+                      Entry notification, String alertTag, boolean replay) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -102,6 +118,9 @@ final class DecisionLog {
             this.action = action;
             this.autoDecline = autoDecline;
             this.evidence = Collections.unmodifiableList(new ArrayList<>(evidence));
+            this.notification = notification;
+            this.alertTag = alertTag;
+            this.replay = replay;
         }
 
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
@@ -113,11 +132,31 @@ final class DecisionLog {
         private boolean sameOffer(Entry other) {
             return source == other.source && addOn == other.addOn && result == other.result
                     && requiredCents == other.requiredCents && facts.fingerprint().equals(other.facts.fingerprint())
-                    && Math.abs(at - other.at) <= MERGE_WINDOW_MS;
+                    && Math.abs(at - other.at) <= MERGE_WINDOW_MS && sameIncarnation(other);
+        }
+
+        /** Two notification incarnations are two offers; a replay re-evaluates one already recorded. */
+        private boolean sameIncarnation(Entry other) {
+            return alertTag == null || other.alertTag == null || other.replay || alertTag.equals(other.alertTag);
         }
 
         private Entry withAction(Action next, boolean autoDecline) {
-            return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence);
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
+                    notification, alertTag, false);
+        }
+
+        /** This line for the notification incarnation whose card has {@code tag}. */
+        Entry withAlertTag(String tag, boolean replay) {
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, tag, replay);
+        }
+
+        /** This line with Dasher's notification of the same offer folded in, without that notification's lines. */
+        Entry withNotification(Entry n) {
+            Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
+                    n.autoDecline, Collections.emptyList());
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    nested, alertTag, replay);
         }
 
         JSONObject toJson() throws JSONException {
@@ -130,10 +169,18 @@ final class DecisionLog {
             if (facts.miles != null) json.put("miles", facts.miles);
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
+            if (notification != null) json.put("notification", notification.toJson());
             return json;
         }
 
         static Entry fromJson(JSONObject json) throws JSONException {
+            Entry entry = plainFromJson(json);
+            JSONObject nested = json.optJSONObject("notification");
+            // Always without lines of its own and never nested deeper, whatever the file says.
+            return nested == null ? entry : entry.withNotification(plainFromJson(nested));
+        }
+
+        private static Entry plainFromJson(JSONObject json) throws JSONException {
             OfferSnapshot facts = new OfferSnapshot(
                     json.has("pay") ? json.getInt("pay") : null,
                     json.has("miles") ? json.getDouble("miles") : null,
@@ -164,6 +211,8 @@ final class DecisionLog {
     }
 
     private static final String TOTALS = "decision_totals";
+    /** In {@link #TOTALS}: the stored history was folded once ({@link #foldStoredOnce}). */
+    private static final String FOLDED_V1 = "folded_v1";
 
     /**
      * Every offer recorded since the history was last cleared, by {@link Tally}: kept apart from the history, which
@@ -171,11 +220,13 @@ final class DecisionLog {
      */
     static int[] totals(Context context) {
         synchronized (LOCK) {
+            // Loaded first, so the one-time fold of older history has corrected the totals before they are read.
+            List<Entry> all = loaded(context);
             android.content.SharedPreferences prefs = context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE);
             int[] totals = new int[Tally.values().length];
             if (!prefs.contains(Tally.PASSED.name())) {
                 // First use since totals were kept: start from what the history holds.
-                for (Entry entry : loaded(context)) totals[tally(entry).ordinal()]++;
+                for (Entry entry : all) totals[tally(entry).ordinal()]++;
                 writeTotals(context, totals);
                 return totals;
             }
@@ -200,6 +251,13 @@ final class DecisionLog {
         writeTotals(context, totals);
     }
 
+    /** Takes back one count from {@code from}: a line found to be another reading of an offer already counted. */
+    private static void uncount(Context context, Tally from) {
+        int[] totals = totals(context);
+        totals[from.ordinal()] = Math.max(0, totals[from.ordinal()] - 1);
+        writeTotals(context, totals);
+    }
+
     private static final Object LOCK = new Object();
     private static final ExecutorService WRITER = Executors.newSingleThreadExecutor();
     /** Oldest first; null until first loaded from disk. Guarded by {@link #LOCK}. */
@@ -208,6 +266,21 @@ final class DecisionLog {
 
     /** Adds an entry, or upgrades the action on the same offer's latest entry. Never throws. */
     static void record(Context context, Entry entry) {
+        record(context, entry, -1);
+    }
+
+    /**
+     * As {@link #record(Context, Entry)}; a screen offer also takes Dasher's notification of it, and the offer then
+     * counts once, with the screen's decision. A new screen line takes the notification read before it
+     * ({@link OfferPairing#notificationFor}); a new reading of an offer already on a line takes the notifications
+     * recorded since that line ({@link OfferPairing#notificationsSince}): the line keeps the first of them, and the
+     * rest are the same offer again and leave the history and the counts.
+     *
+     * @param secondsLeft the screen's countdown, -1 when none shows
+     * @return the notifications this reading took (with their in-memory card tags), oldest first; empty when none
+     */
+    static List<Entry> record(Context context, Entry entry, int secondsLeft) {
+        List<Entry> taken = new ArrayList<>();
         try {
             synchronized (LOCK) {
                 List<Entry> all = loaded(context);
@@ -217,15 +290,32 @@ final class DecisionLog {
                     Entry previous = all.get(i);
                     if (previous.source != entry.source) continue;
                     if (!previous.sameOffer(entry)) break;
-                    if (entry.action == previous.action || entry.action.weight < previous.action.weight) return;
-                    Entry upgraded = previous.withAction(entry.action, entry.autoDecline);
-                    all.set(i, upgraded);
-                    recount(context, tally(previous), tally(upgraded));
-                    persist(context, all);
-                    return;
+                    // A replay after a reconnect hands its new card tag to the line it re-evaluates.
+                    Entry kept = entry.alertTag != null && !entry.alertTag.equals(previous.alertTag)
+                            ? previous.withAlertTag(entry.alertTag, false) : previous;
+                    boolean upgrade = entry.action != previous.action && entry.action.weight >= previous.action.weight;
+                    Entry merged = upgrade ? kept.withAction(entry.action, entry.autoDecline) : kept;
+                    List<Integer> since = entry.source == Source.SCREEN
+                            ? OfferPairing.notificationsSince(all, i, entry, secondsLeft) : Collections.emptyList();
+                    for (int k = since.size() - 1; k >= 0; k--) taken.add(0, all.remove((int) since.get(k)));
+                    if (!taken.isEmpty() && merged.notification == null) merged = merged.withNotification(taken.get(0));
+                    all.set(i, merged);
+                    for (Entry notice : taken) uncount(context, tally(notice));
+                    if (upgrade) recount(context, tally(previous), tally(merged));
+                    if (upgrade || !taken.isEmpty()) persist(context, all);
+                    return taken;
                 }
-                all.add(entry);
-                recount(context, null, tally(entry));
+                int notice = entry.source == Source.SCREEN ? OfferPairing.notificationFor(all, entry, secondsLeft) : -1;
+                if (notice >= 0) {
+                    Entry folded = all.remove(notice);
+                    taken.add(folded);
+                    Entry added = entry.withNotification(folded);
+                    all.add(added);
+                    recount(context, tally(folded), tally(added));
+                } else {
+                    all.add(entry);
+                    recount(context, null, tally(entry));
+                }
                 while (all.size() > MAX_ENTRIES) all.remove(0);
                 persist(context, all);
             }
@@ -235,6 +325,31 @@ final class DecisionLog {
             ManualDeclines.offerSeen(context, entry.facts, System.currentTimeMillis());
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "decision-log", "record failed: " + error.getClass().getSimpleName());
+        }
+        return taken;
+    }
+
+    /**
+     * Folds Dasher's notification of an offer the screen read moments before ({@link OfferPairing#screenFor}) into
+     * that offer's line. It is not a new offer: nothing is counted, and nothing about areas or declines by hand.
+     *
+     * @return the screen offer's line with the notification folded in, or null when there is none to fold into
+     */
+    static Entry foldIntoScreen(Context context, Entry notice) {
+        try {
+            synchronized (LOCK) {
+                List<Entry> all = loaded(context);
+                totals(context);
+                int screen = OfferPairing.screenFor(all, notice);
+                if (screen < 0) return null;
+                Entry folded = all.get(screen).withNotification(notice);
+                all.set(screen, folded);
+                persist(context, all);
+                return folded;
+            }
+        } catch (RuntimeException error) {
+            DiagnosticLog.log(context, "decision-log", "fold failed: " + error.getClass().getSimpleName());
+            return null;
         }
     }
 
@@ -288,8 +403,25 @@ final class DecisionLog {
                 List<String> read = entry.evidence.subList(0, Math.min(REPORT_EVIDENCE_LINES, entry.evidence.size()));
                 out.append("    read: ").append(read).append('\n');
             }
+            Entry n = entry.notification;
+            if (n != null) {
+                out.append("    notification ").append(noticeWhen(entry))
+                        .append(" | ").append(n.result)
+                        .append(" | pay ").append(n.facts.payCents == null ? "?" : money(n.facts.payCents))
+                        .append(" | ").append(n.reason)
+                        .append(" | ").append(n.action.label)
+                        .append('\n');
+            }
         }
         return out.toString();
+    }
+
+    /** When Dasher's folded notification came, against the screen's reading: "14 s earlier" or "1 s later". */
+    static String noticeWhen(Entry entry) {
+        if (entry.notification == null) return "";
+        long ms = entry.at - entry.notification.at;
+        long seconds = Math.round(Math.abs(ms) / 1000.0);
+        return seconds + " s " + (ms >= 0 ? "earlier" : "later");
     }
 
     /** The labels worth keeping: those carrying a figure or a pay/add-on label. */
@@ -344,8 +476,40 @@ final class DecisionLog {
     }
 
     private static List<Entry> loaded(Context context) {
-        if (entries == null) entries = load(file(context));
+        if (entries == null) {
+            entries = load(file(context));
+            foldStoredOnce(context, entries);
+        }
         return entries;
+    }
+
+    /**
+     * Once, on the first load after notifications began to be folded: folds the stored history the same way
+     * ({@link OfferPairing#foldHistory}), and takes each folded notification out of the all-time totals. Double counts
+     * older than the kept history cannot be found and stay. Under {@link #LOCK}; never reads totals through
+     * {@link #totals}, which loads.
+     */
+    private static void foldStoredOnce(Context context, List<Entry> all) {
+        try {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE);
+            if (prefs.getBoolean(FOLDED_V1, false)) return;
+            List<Entry> folded = OfferPairing.foldHistory(all);
+            if (!folded.isEmpty()) {
+                if (prefs.contains(Tally.PASSED.name())) {
+                    int[] totals = new int[Tally.values().length];
+                    for (Tally tally : Tally.values()) totals[tally.ordinal()] = prefs.getInt(tally.name(), 0);
+                    for (Entry notice : folded) {
+                        int i = tally(notice).ordinal();
+                        totals[i] = Math.max(0, totals[i] - 1);
+                    }
+                    writeTotals(context, totals);
+                }
+                persist(context, all);
+            }
+            prefs.edit().putBoolean(FOLDED_V1, true).apply();
+        } catch (RuntimeException error) {
+            DiagnosticLog.log(context, "decision-log", "history fold failed: " + error.getClass().getSimpleName());
+        }
     }
 
     private static List<Entry> load(File file) {

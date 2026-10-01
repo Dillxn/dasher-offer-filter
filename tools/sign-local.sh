@@ -21,7 +21,9 @@ actual_fp="$(keytool -list -v -keystore "$secrets/signing.p12" -storepass:env OF
     -alias offerfilter-cloud | awk -F'SHA256: ' '/SHA256: / {v=$2; gsub(":", "", v); print tolower(v); exit}')"
 [[ "$actual_fp" == "$KEY_FINGERPRINT" ]] || { echo 'Not the cloud signing key; refusing to sign.' >&2; exit 1; }
 
-./gradlew --no-daemon -q testDebugUnitTest
+# Both simulated Android versions (8 and 15); a warm daemon and the build cache make a rerun of already-tested
+# code nearly instant.
+./gradlew -q testDebugUnitTest -PallSdks
 
 export OFFER_FILTER_KEYSTORE="$secrets/signing.p12"
 export OFFER_FILTER_KEY_ALIAS='offerfilter-cloud'

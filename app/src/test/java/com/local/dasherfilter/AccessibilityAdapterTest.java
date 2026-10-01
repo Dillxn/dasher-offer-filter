@@ -226,7 +226,7 @@ public class AccessibilityAdapterTest {
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
         assertTrue(Shadows.shadowOf(confirm).getPerformedActions().isEmpty());
-        assertEquals("Dash Buddy stopped tapping this offer", ShadowToast.getTextOfLatestToast());
+        assertEquals("Offer Filter stopped tapping this offer", ShadowToast.getTextOfLatestToast());
         assertEquals(DecisionLog.Action.USER_TOOK_OVER, DecisionLog.recent(app, 1).get(0).action);
     }
 
@@ -303,7 +303,7 @@ public class AccessibilityAdapterTest {
         assertFalse(FilterStore.load(app).enabled);
         assertTrue("pausing keeps the rules", FilterStore.load(app).hasAnyRule());
         assertEquals(FilterHeroView.State.PAUSED, tab.state());
-        assertEquals("Dash Buddy: paused. Tap to resume.", tab.getContentDescription().toString());
+        assertEquals("Offer Filter: paused. Tap to resume.", tab.getContentDescription().toString());
         tab.performClick();
         assertTrue(FilterStore.load(app).enabled);
         assertEquals("the same tab stays; it is never added twice", 1, windows().size());
@@ -1041,5 +1041,34 @@ public class AccessibilityAdapterTest {
         Shadows.shadowOf(shared).addChild(node("Decline", false));
         show(root);
         assertTrue(Shadows.shadowOf(shared).getPerformedActions().isEmpty());
+    }
+
+    @Test
+    public void anOfferWhoseTotalAndPlusAmountTogetherStillFailIsDeclinedAtOnce() {
+        // The report's rules and its "+$1 · $7.35" screen: pay is $7.35, $8.35 or $1, all below $10.
+        FilterStore.save(app, new FilterSettings(true, 1000, 100, 0, 0, 3, true, 0));
+        show(partialOffer("+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min",
+                "Guaranteed earnings for completing the offer."));
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+        assertTrue(Shadows.shadowOf(accept).getPerformedActions().isEmpty());
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(OfferRule.Result.DECLINE, entry.result);
+        assertEquals(DecisionLog.Action.DECLINE_TAPPED, entry.action);
+        assertNull("pay is still unknown", entry.facts.payCents);
+    }
+
+    @Test
+    public void anOfferWithAPlusAmountThatMayPassIsLeftToTheDasher() {
+        FilterStore.save(app, new FilterSettings(true, 1000, 100, 0, 0, 3, true, 0));
+        show(partialOffer("+$1", "$10.60", "incl. tips", "2 stops (5.3 mi) • 30 min"));
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(OfferRule.Result.REVIEW, entry.result);
+        assertEquals("pay unclear beside a +$ amount", entry.reason);
+
+        // Accepting it teaches the adaptive minimum nothing: its pay was never read.
+        userTaps("Accept");
+        show(node("Arrived at store", false));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
     }
 }

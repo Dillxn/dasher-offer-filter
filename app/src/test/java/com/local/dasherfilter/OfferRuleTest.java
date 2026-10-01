@@ -687,4 +687,144 @@ public final class OfferRuleTest {
         assertEquals("must beat highest accepted payout $14.20", decision.reason);
         assertTrue(rules.describe().contains("more than highest accepted $14.20"));
     }
+
+    // ---- A "+$X" amount beside a total "$Y" (seen while on a delivery, so possibly an add-on) ----
+
+    /** The report's rules: $10 minimum, $1.00 a mile, at most 3 stops, the adaptive minimum on with nothing learned. */
+    private static final FilterSettings REPORT_RULES = new FilterSettings(true, 1000, 100, 0, 0, 3, true, 0);
+
+    /** A whole offer screen as Dasher shows it, with a "+$" amount right before its total. */
+    private static OfferSnapshot plusOffer(String plus, String total, String route) {
+        return parse("Decline", plus, total, "incl. tips", route, "Store A", "Customer dropoff",
+                "Guaranteed earnings for completing the offer.", "Accept", "0:47");
+    }
+
+    @Test
+    public void aPlusAmountBesideATotalDeclinesWhenEvenTheirSumFailsTheSetRules() {
+        // Reported: +$1 beside $7.35, 7.1 mi. Pay is $7.35, $8.35 or (as an add-on) $1: all below $10.
+        OfferSnapshot offer = plusOffer("+$1", "$7.35", "2 stops (7.1 mi) • 23 min");
+        assertNull("pay itself stays unknown", offer.payCents);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, REPORT_RULES);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals(1000, decision.requiredCents);
+        assertEquals("pay at most $8.35 with its +$ amount; flat minimum", decision.reason);
+    }
+
+    @Test
+    public void aPlusAmountBesideATotalThatMayPassIsReviewedNeverKept() {
+        // Reported: +$1 beside $10.10 (7.5 mi) and beside $10.60 (5.3 mi). The sum passes, so the offer might.
+        for (OfferSnapshot offer : new OfferSnapshot[] {
+                plusOffer("+$1", "$10.10", "2 stops (7.5 mi) • 23 min"),
+                plusOffer("+$1", "$10.60", "2 stops (5.3 mi) • 30 min")}) {
+            OfferRule.Decision decision = OfferRule.evaluate(offer, REPORT_RULES);
+            assertEquals(OfferRule.Result.REVIEW, decision.result);
+            assertEquals("pay unclear beside a +$ amount", decision.reason);
+            assertEquals(1000, decision.requiredCents);
+        }
+    }
+
+    @Test
+    public void aPlusAmountDeclinesOnlyBelowTheExactSum() {
+        OfferRule.Decision short1Cent = OfferRule.evaluate(
+                plusOffer("+$1", "$8.99", "2 stops (5.0 mi) • 20 min"), REPORT_RULES);
+        assertEquals(OfferRule.Result.DECLINE, short1Cent.result);
+        assertEquals("pay at most $9.99 with its +$ amount; flat minimum", short1Cent.reason);
+        OfferRule.Decision exact = OfferRule.evaluate(plusOffer("+$1", "$9.00", "2 stops (5.0 mi) • 20 min"),
+                REPORT_RULES);
+        assertEquals(OfferRule.Result.REVIEW, exact.result);
+        assertEquals("pay unclear beside a +$ amount", exact.reason);
+    }
+
+    @Test
+    public void aPlusAmountDeclinesWhenEvenTheSumMissesARate() {
+        OfferRule.Decision decision = OfferRule.evaluate(
+                plusOffer("+$1", "$10.10", "2 stops (12.0 mi) • 30 min"), REPORT_RULES);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals(1200, decision.requiredCents);
+        assertEquals("pay at most $11.10 with its +$ amount; dollars per mile", decision.reason);
+
+        FilterSettings perStop = new FilterSettings(true, 0, 0, 0, 600, 3);
+        OfferRule.Decision stops = OfferRule.evaluate(plusOffer("+$1", "$10.00", "2 stops (5.0 mi) • 20 min"),
+                perStop);
+        assertEquals(OfferRule.Result.DECLINE, stops.result);
+        assertEquals("pay at most $11.00 with its +$ amount; dollars per stop", stops.reason);
+    }
+
+    @Test
+    public void anAdaptiveOnlyShortfallStaysReview() {
+        // The adaptive minimum never judges an add-on, so as an add-on this offer would not fail it.
+        OfferSnapshot offer = plusOffer("+$1", "$7.35", "2 stops (7.1 mi) • 23 min");
+        FilterSettings beatHighest = new FilterSettings(true, 500, 0, 0, 0, 3, true, 1500);
+        OfferRule.Decision payout = OfferRule.evaluate(offer, beatHighest);
+        assertEquals(OfferRule.Result.REVIEW, payout.result);
+        assertEquals("pay unclear beside a +$ amount", payout.reason);
+        assertEquals(1501, payout.requiredCents);
+
+        FilterSettings bestRate = new FilterSettings(true, 500, 0, 0, 0, 3, true, 0,
+                new AcceptedBest(0, 0, 3000, 10.0, 0, 0));
+        OfferRule.Decision rate = OfferRule.evaluate(offer, bestRate);
+        assertEquals("$3.00/mi learned asks $21.30, but it is adaptive", OfferRule.Result.REVIEW, rate.result);
+        assertEquals("pay unclear beside a +$ amount", rate.reason);
+
+        FilterSettings declinedByHand = new FilterSettings(true, 500, 0, 0, 0, 3, true, 0, AcceptedBest.NONE,
+                new DeclinedFloor(1200, AcceptedBest.NONE));
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(offer, declinedByHand).result);
+    }
+
+    @Test
+    public void plusAmountShapesOutsideTheNarrowCaseStayPayNotFound() {
+        // Each keeps a sum ($6.00) below the $10 minimum, so a missing guard would show as a decline.
+        String route = "2 stops (7.1 mi) • 23 min";
+        String[][] cases = {
+                {"+$1", "$5.00", "incl. tips", route, "+$2"},                        // two amounts added
+                {"+$2.00 Peak Pay", "$5.00", "incl. tips", route},                   // a worded bonus
+                {"$5.00 +$1", "incl. tips", route},                                  // on the total's own line
+                {"+$1", "$5.00", "incl. tips", route, "$6.00"},                      // a second total
+                {"+$1", "$5.00", "incl. tips", route, "$0.50/mi"},                   // a rate
+                {"+$1", "$5.00", "incl. tips", route, "per order"},                  // qualifiers
+                {"+$1", "$5.00", "incl. tips", route, "each delivery"},
+                {"+$1", "$5.00", "incl. tips", route, "/order"},
+                {"+$1", "$5.00", "incl. tips", route, "Up to"},
+                {"+$1", "$5.00", "incl. tips", route, "2x"},
+                {"+$1", "incl. tips", "$5.00", route},                               // not side by side
+                {"+$1", "5", "$5.00", route},                                        // a split digit between
+                {"+$1", "$5.00", "incl. tips", "3 stops (7.1 mi) • 23 min"},         // stacked: "+$" per delivery?
+                {"+$1", "$5.00", "incl. tips", route, "Multiple dropoffs (2 stops)"},
+                {"+$1", "$5.00", "incl. tips", "7.1 mi • 23 min"},                   // stops not read
+                {"+$1", "$5.00", "incl. tips", "+2 stops (3.8 mi) • +12 min"},       // added travel
+                {"Add to route", "+$1", "$5.00", "incl. tips", route},               // an add-on
+                {"+$1", "$5.00 Guaranteed", "$6.00 Guaranteed", route},              // conflicting labeled pay
+                {"+$1", "$5.001", "incl. tips", route},                              // malformed money
+                {"+$1", "incl. tips", route},                                        // no total
+        };
+        for (String[] labels : cases) {
+            OfferRule.Decision decision = OfferRule.evaluate(parse(labels), REPORT_RULES);
+            assertEquals(Arrays.toString(labels), OfferRule.Result.REVIEW, decision.result);
+            assertEquals(Arrays.toString(labels), "pay not found", decision.reason);
+        }
+    }
+
+    @Test
+    public void aPlusAmountMattersOnlyToPayRules() {
+        FilterSettings stopsOnly = new FilterSettings(true, 0, 0, 0, 0, 3);
+        assertEquals(OfferRule.Result.KEEP,
+                OfferRule.evaluate(plusOffer("+$1", "$5.00", "2 stops (7.1 mi) • 23 min"), stopsOnly).result);
+        OfferRule.Decision tooMany = OfferRule.evaluate(plusOffer("+$1", "$5.00", "4 stops (7.1 mi) • 23 min"),
+                stopsOnly);
+        assertEquals(OfferRule.Result.DECLINE, tooMany.result);
+        assertEquals("4 stops exceeds maximum 3", tooMany.reason);
+    }
+
+    @Test
+    public void theReportedAddOnWithOnlyIncrementsStaysReview() {
+        java.util.List<String> labels = Arrays.asList("+$5.50", "+2 stops (3.8 mi) • +12 min",
+                "Multiple dropoffs (2 stops)", "Guaranteed earnings for completing the offer. Contains restricted items,"
+                        + " check the recipient's ID.", "Accept", "Decline");
+        assertFalse(AddOnOffer.isLikely(labels));
+        OfferSnapshot offer = OfferParser.parse(labels);
+        assertNull(offer.payCents);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, REPORT_RULES);
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+        assertEquals("pay not found", decision.reason);
+    }
 }

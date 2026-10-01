@@ -276,6 +276,33 @@ public class AndroidAdapterTest {
     }
 
     @Test
+    public void aBackgroundOfferWithAPlusAmountBesideATotalIsNeverHiddenOrDeclined() {
+        // A notification's text may be cut short: the "+$" bound that can decline a screen offer is never used here.
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        ServiceController<OfferNotificationService> controller =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            Notification payload = new Notification.Builder(app, "source")
+                    .setSmallIcon(android.R.drawable.stat_notify_more)
+                    .setContentTitle("New Delivery!")
+                    .setStyle(new Notification.InboxStyle()
+                            .addLine("+$1").addLine("$7.35").addLine("2 stops (7.1 mi) • 23 min"))
+                    .build();
+            controller.get().onNotificationPosted(new StatusBarNotification("com.doordash.driverapp",
+                    "com.doordash.driverapp", 3, "NEW_ORDER", 10001, 0, 0, payload,
+                    android.os.Process.myUserHandle(), System.currentTimeMillis()), null);
+            assertEquals(1, notifications().size());
+            assertEquals(OfferAlerts.REVIEW_CHANNEL_ID, notifications().getAllNotifications().get(0).getChannelId());
+            DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+            assertEquals(OfferRule.Result.REVIEW, entry.result);
+            assertEquals("pay not found", entry.reason);
+            assertEquals("CHECK_BELL", entry.action.name());
+        } finally {
+            controller.destroy();
+        }
+    }
+
+    @Test
     public void freshOfferOnAReusedKeyIsAnnouncedEvenWhenTheExpiryCallbackIsLate() {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
@@ -636,7 +663,7 @@ public class AndroidAdapterTest {
             assertEquals(Intent.ACTION_CHOOSER, chooser.getAction());
             Intent sent = chooser.getParcelableExtra(Intent.EXTRA_INTENT);
             assertEquals(Intent.ACTION_SEND, sent.getAction());
-            assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Dash Buddy diagnostics"));
+            assertTrue(sent.getStringExtra(Intent.EXTRA_SUBJECT).startsWith("Offer Filter diagnostics"));
             String body = sent.getStringExtra(Intent.EXTRA_TEXT);
             assertTrue(body.contains("== Decision history"));
             assertTrue(body.contains("DECLINE | pay $7.90 | needed $10.80"));
@@ -1218,7 +1245,7 @@ public class AndroidAdapterTest {
             assertNotNull("in the header, with the sun and Settings",
                     iconDescribed((View) star.getParent(), "Settings"));
             assertTrue("drawn with its icons beside the circle", star.beside());
-            View title = iconDescribed(content, "Dash Buddy");
+            View title = iconDescribed(content, "Offer Filter");
             assertTrue("the page's name keeps room, so screen readers reach it", title != null && title.getWidth() > 0);
             star.performClick();
             assertTrue("a tap still opens the minimums", fieldLabeled(content, "Minimum pay ($)").isShown());
@@ -2498,7 +2525,7 @@ public class AndroidAdapterTest {
             shownIcon(content, "Split screen with Dasher").performClick();
             assertEquals("asked to split, then opened recent apps", Arrays.asList("split", "recents"), asked);
             assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()
-                    .startsWith("Tap Dash Buddy's icon above its card and choose split screen."));
+                    .startsWith("Tap Offer Filter's icon above its card and choose split screen."));
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
             // The user splits it from recent apps half a minute later: Dasher still opens in the other half.
@@ -2582,12 +2609,12 @@ public class AndroidAdapterTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull(shownTextContaining(content, "Updating Dash Buddy"));
+            assertNull(shownTextContaining(content, "Updating Offer Filter"));
 
             Updater.prefs(app).edit().putInt("session", 5).commit();
             Updater.installStarted(app, true);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            TextView title = shownTextContaining(content, "Updating Dash Buddy");
+            TextView title = shownTextContaining(content, "Updating Offer Filter");
             assertNotNull(title);
             View cover = (View) title.getParent();
             assertTrue("it takes every touch", cover.dispatchTouchEvent(
@@ -2598,7 +2625,7 @@ public class AndroidAdapterTest {
 
             Updater.installationFailed(app, 1, "test");
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertNull("a failed install gives the screen back", shownTextContaining(content, "Updating Dash Buddy"));
+            assertNull("a failed install gives the screen back", shownTextContaining(content, "Updating Offer Filter"));
         }
     }
 

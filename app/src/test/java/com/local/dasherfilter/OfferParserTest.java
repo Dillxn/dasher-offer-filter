@@ -74,6 +74,16 @@ public final class OfferParserTest {
         assertEquals(Integer.valueOf(4), offer.stops);
     }
 
+    @Test public void aPlusAmountBesideATotalBoundsPayButIsNeverPay() {
+        OfferSnapshot offer = OfferParser.parse(Arrays.asList(
+                "+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min"));
+        assertNull(offer.payCents);
+        assertEquals("Pay ? (at most $8.35), miles 7.1, minutes 23, stops 2", offer.summary());
+        // A worded bonus beside a labeled total gets no bound.
+        assertTrue(OfferParser.parse(Arrays.asList("$9.90", "Guaranteed (incl. tips)", "+$2.00 Peak Pay",
+                "2 stops (7.2 mi) • 21 min")).summary().startsWith("Pay ?, "));
+    }
+
     @Test public void stopBreakdownAloneIsNotTheTotal() {
         assertNull(OfferParser.parse(Arrays.asList("$9.75", "Multiple dropoffs (2 stops)")).stops);
     }

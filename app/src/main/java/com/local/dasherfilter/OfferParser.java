@@ -38,6 +38,14 @@ final class OfferParser {
             "(?i)(?:mi\\.?|miles?|stops?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
     /** "+$2.00": an amount added to something else, never a total on its own. */
     private static final Pattern INCREMENT = Pattern.compile("\\+\\s*\\$");
+    /** A label that is nothing but a "+$" amount, such as "+$1". */
+    private static final Pattern BARE_PLUS_AMOUNT = Pattern.compile("\\+\\s*\\$\\s*(\\d{1,4}(?:[.,]\\d{1,2})?)");
+    /** "+2 stops", "+12 min": travel added to a route already under way. */
+    private static final Pattern ADDED_TRAVEL = Pattern.compile(
+            "(?i)\\+\\s*\\d{1,3}(?:[.,]\\d{1,2})?\\s*(?:mi|miles?|mins?|minutes?|hrs?|hours?|stops?)\\b");
+    /** Words that would make a "+$" amount count more than once ("per order", "each", "2x", "up to"). */
+    private static final Pattern QUALIFIER = Pattern.compile("(?i)\\b(?:per|each|every|apiece|up\\s+to)\\b"
+            + "|/\\s*(?:order|delivery|deliveries|stop|drop[ -]?off|pick[ -]?up)s?\\b|×|\\b\\d+\\s*x\\b|\\bx\\s*\\d");
     private static final Pattern TOTAL_LABEL = Pattern.compile("(?i)total(?: distance| mileage)?[:=]?");
     private static final String TRAILING_SEPARATOR = "[:=]$";
 
@@ -55,8 +63,11 @@ final class OfferParser {
         }
         List<String> lines = distinctNormalized(visibleText, new ArrayList<>());
         List<String> metrics = distinctNormalized(metricParts, new ArrayList<>(lines));
-        Integer pay = OfferEvidence.malformedMoney(lines) ? null : parsePay(lines);
-        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(lines), parseStops(metrics));
+        boolean malformed = OfferEvidence.malformedMoney(lines);
+        Integer pay = malformed ? null : parsePay(lines);
+        Integer stops = parseStops(metrics);
+        Integer payAtMost = malformed || pay != null ? null : payWithPlusAmount(lines, metrics, stops);
+        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(lines), stops, payAtMost);
     }
 
     /**
@@ -99,7 +110,7 @@ final class OfferParser {
     /**
      * A single amount on a "Guaranteed"/"Total pay" line (or the line right after a bare label) wins. Otherwise
      * the screen must show exactly one amount and no "+$" increment. Rate figures ("/hr", "per mile", ...) and
-     * increments are never pay.
+     * increments are never pay; {@link #payWithPlusAmount} only bounds pay from above.
      */
     private static Integer parsePay(List<String> lines) {
         Set<Integer> labeled = new HashSet<>();
@@ -128,8 +139,54 @@ final class OfferParser {
             }
         }
         if (!labeled.isEmpty()) return onlyValue(labeled);
-        // Whether an unlabeled amount already includes a "+$" bonus is unknown, so neither is taken as pay.
+        // Whether an unlabeled amount already includes a "+$" bonus is unknown, so neither is taken as pay (the two
+        // only bound it from above: payWithPlusAmount).
         return sawIncrement ? null : onlyValue(all);
+    }
+
+    /**
+     * The most an offer can pay when its pay is unknown only because one bare "+$X" label sits directly beside its
+     * one unlabeled total "$Y": Y + X. Whether the total already includes the amount, the amount comes on top, or
+     * the offer is an add-on paying the amount, pay is at most that sum, so this bounds pay from above and is never
+     * pay. Null unless the screen has exactly that shape on a single order (2 stops, so no "+$" per delivery), with
+     * no add-on wording, added travel, stop breakdown, rate, pay label on an amount, or a word that could make the
+     * amount count more than once.
+     */
+    private static Integer payWithPlusAmount(List<String> lines, List<String> metrics, Integer stops) {
+        if (stops == null || stops != 2 || AddOnOffer.isLikely(lines)) return null;
+        for (String line : metrics) {
+            if (ADDED_TRAVEL.matcher(line).find() || QUALIFIER.matcher(line).find()
+                    || STOP_BREAKDOWN.matcher(line).find()) {
+                return null;
+            }
+        }
+        Integer plus = null;
+        Integer total = null;
+        int plusAt = -1;
+        int totalAt = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            Matcher money = MONEY.matcher(line);
+            if (!money.find()) continue;
+            String lower = line.toLowerCase(Locale.US);
+            if (isRate(lower) || lower.contains("guaranteed") || lower.contains("total pay")) return null;
+            Matcher bare = BARE_PLUS_AMOUNT.matcher(line);
+            if (bare.matches()) {
+                if (plus != null) return null;
+                plus = cents(bare.group(1));
+                plusAt = i;
+                continue;
+            }
+            do {
+                if (isIncrement(line, money.start())) return null;
+                int amount = cents(money.group(1));
+                if (total != null && total != amount) return null;
+                total = amount;
+                totalAt = i;
+            } while (money.find());
+        }
+        if (plus == null || total == null || Math.abs(plusAt - totalAt) != 1) return null;
+        return total + plus;
     }
 
     /** True when the "$" at {@code dollarIndex} is written as "+$…": an amount added to something else. */

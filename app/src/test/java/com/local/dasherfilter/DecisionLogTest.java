@@ -163,4 +163,208 @@ public class DecisionLogTest {
         DecisionLog.clear(app);
         assertArrayEquals(new int[] {0, 0, 0}, DecisionLog.totals(app));
     }
+
+    /** Dasher's offer notification as the app records it: no pay shown, so left to review. */
+    private static DecisionLog.Entry notice(long at, DecisionLog.Action action) {
+        return new DecisionLog.Entry(at, DecisionLog.Source.NOTIFICATION, false, OfferSnapshot.UNKNOWN, 0,
+                OfferRule.Result.REVIEW, "pay not found", action, true, Collections.emptyList());
+    }
+
+    /** A screen offer of {@code pay} needing $10.00, declined at once unless it passes. */
+    private static DecisionLog.Entry onScreen(long at, int pay) {
+        boolean passes = pay >= 1000;
+        return new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false, new OfferSnapshot(pay, 4.0, 21, 2), 1000,
+                passes ? OfferRule.Result.KEEP : OfferRule.Result.DECLINE,
+                passes ? "meets enabled rules" : "flat minimum",
+                passes ? DecisionLog.Action.PASSES : DecisionLog.Action.DECLINE_TAPPED, true,
+                Arrays.asList("$" + pay / 100 + "." + String.format(java.util.Locale.US, "%02d", pay % 100),
+                        "2 stops (4.0 mi) • 21 min"));
+    }
+
+    @Test
+    public void notificationThenTheScreensReadingOfTheSameOfferIsOneOffer() throws Exception {
+        DecisionLog.record(app, notice(10_000, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, onScreen(24_000, 900));
+
+        List<DecisionLog.Entry> recent = DecisionLog.recent(app, 10);
+        assertEquals("one offer, one line", 1, recent.size());
+        assertEquals(DecisionLog.Source.SCREEN, recent.get(0).source);
+        assertEquals(OfferRule.Result.DECLINE, recent.get(0).result);
+        assertArrayEquals("counted once, with the screen's decision", new int[] {0, 1, 0}, DecisionLog.totals(app));
+        String report = DecisionLog.report(app, 10);
+        assertTrue(report, report.contains("    notification 14 s earlier | REVIEW | pay ? | pay not found"
+                + " | Rang once: open Dasher to check it\n"));
+        assertFalse(report, report.contains("| notification | REVIEW |"));
+
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        recent = DecisionLog.recent(app, 10);
+        assertEquals(1, recent.size());
+        assertTrue("the notification is kept with the offer", recent.get(0).toJson().has("notification"));
+        assertArrayEquals(new int[] {0, 1, 0}, DecisionLog.totals(app));
+    }
+
+    @Test
+    public void aSecondReadingOfAnOfferTakesTheNotificationsRecordedSinceItsLine() throws Exception {
+        // Read on screen, then (Dasher left) its notification, and a different offer's; then read again.
+        DecisionLog.record(app, onScreen(0, 1200));
+        DecisionLog.record(app, notice(5_000, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, new DecisionLog.Entry(9_000, DecisionLog.Source.NOTIFICATION, false,
+                new OfferSnapshot(1500, null, null, null), 1000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.BELL, true, Collections.emptyList()));
+        assertArrayEquals(new int[] {2, 0, 1}, DecisionLog.totals(app));
+        DecisionLog.record(app, onScreen(12_000, 1200));
+
+        List<DecisionLog.Entry> recent = DecisionLog.recent(app, 10);
+        assertEquals("the same offer is one line; different pay is another offer", 2, recent.size());
+        assertEquals(1500, (int) recent.get(0).facts.payCents);
+        DecisionLog.Entry offer = recent.get(1);
+        assertEquals(DecisionLog.Source.SCREEN, offer.source);
+        assertEquals(5_000, offer.toJson().getJSONObject("notification").getLong("at"));
+        assertArrayEquals("counted once, with the screen's decision", new int[] {2, 0, 0}, DecisionLog.totals(app));
+        assertTrue(DecisionLog.report(app, 10).contains("    notification 5 s later | REVIEW | pay ? | pay not found"
+                + " | Rang once: open Dasher to check it\n"));
+    }
+
+    @Test
+    public void aFoldedNotificationKeepsNoScreenLinesOfItsOwn() throws Exception {
+        DecisionLog.record(app, new DecisionLog.Entry(1_000, DecisionLog.Source.NOTIFICATION, false,
+                OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.CHECK_BELL, true,
+                Collections.singletonList("$5.00 guaranteed Store A")));
+        DecisionLog.record(app, onScreen(6_000, 900));
+        DecisionLog.flush();
+
+        String file = new String(java.nio.file.Files.readAllBytes(
+                new java.io.File(app.getFilesDir(), "decision-log.json").toPath()), "UTF-8");
+        assertFalse(file, file.contains("Store A"));
+        assertEquals(0, DecisionLog.recent(app, 1).get(0).toJson().getJSONObject("notification")
+                .getJSONArray("evidence").length());
+
+        // Whatever a stored file says, a folded notification comes back without lines and is never nested deeper.
+        org.json.JSONObject inner = notice(2_000, DecisionLog.Action.SILENT_CARD).toJson()
+                .put("evidence", new org.json.JSONArray(Collections.singletonList("Store B")));
+        org.json.JSONObject stored = onScreen(3_000, 900).toJson()
+                .put("notification", notice(2_500, DecisionLog.Action.CHECK_BELL).toJson()
+                        .put("evidence", new org.json.JSONArray(Collections.singletonList("Store C")))
+                        .put("notification", inner));
+        try (java.io.FileWriter out = new java.io.FileWriter(new java.io.File(app.getFilesDir(),
+                "decision-log.json"))) {
+            out.write(new org.json.JSONArray().put(stored).toString());
+        }
+        DecisionLog.forgetCache();
+        org.json.JSONObject nested = DecisionLog.recent(app, 1).get(0).toJson().getJSONObject("notification");
+        assertEquals(0, nested.getJSONArray("evidence").length());
+        assertFalse(nested.has("notification"));
+    }
+
+    @Test
+    public void eachScreenOfferTakesOnlyItsAdjacentNotification() {
+        DecisionLog.record(app, notice(0, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, notice(200_000, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, onScreen(210_000, 900));
+        DecisionLog.record(app, notice(400_000, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, onScreen(409_000, 800));
+
+        List<DecisionLog.Entry> recent = DecisionLog.recent(app, 10);
+        assertEquals(3, recent.size());
+        assertEquals(409_000, recent.get(0).at);
+        assertTrue(DecisionLog.report(app, 10).contains("    notification 9 s earlier |"));
+        assertEquals(210_000, recent.get(1).at);
+        assertTrue(DecisionLog.report(app, 10).contains("    notification 10 s earlier |"));
+        assertEquals("an offer never opened stays a review of its own", DecisionLog.Source.NOTIFICATION,
+                recent.get(2).source);
+        assertArrayEquals(new int[] {0, 2, 1}, DecisionLog.totals(app));
+    }
+
+    @Test
+    public void aScreenFrameWithNothingReadIsNeitherFoldedNorInTheWay() throws Exception {
+        DecisionLog.record(app, notice(0, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, new DecisionLog.Entry(3_000, DecisionLog.Source.SCREEN, false, OfferSnapshot.UNKNOWN,
+                0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.NEEDS_REVIEW, true,
+                Collections.emptyList()));
+        DecisionLog.record(app, onScreen(5_000, 900));
+
+        List<DecisionLog.Entry> recent = DecisionLog.recent(app, 10);
+        assertEquals(2, recent.size());
+        assertEquals(OfferRule.Result.DECLINE, recent.get(0).result);
+        assertTrue(recent.get(0).toJson().toString().contains("notification"));
+        assertEquals(3_000, recent.get(1).at);
+        assertArrayEquals(new int[] {0, 1, 1}, DecisionLog.totals(app));
+    }
+
+    @Test
+    public void historyRecordedBeforeTheFoldIsFoldedOnceWithItsTotals() throws Exception {
+        org.json.JSONArray stored = new org.json.JSONArray()
+                .put(notice(1_000_000, DecisionLog.Action.CHECK_BELL).toJson())
+                .put(new DecisionLog.Entry(1_014_000, DecisionLog.Source.SCREEN, false,
+                        new OfferSnapshot(900, 4.0, 21, 2), 1000, OfferRule.Result.DECLINE, "flat minimum",
+                        DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.emptyList()).toJson())
+                .put(onScreen(2_000_000, 700).toJson())
+                // Posted without sound: Dasher was on screen, and the screen had read the offer a moment before.
+                .put(notice(2_001_000, DecisionLog.Action.SILENT_CARD).toJson())
+                .put(notice(3_000_000, DecisionLog.Action.CHECK_BELL).toJson())
+                .put(onScreen(4_000_000, 1500).toJson())
+                .put(notice(4_005_000, DecisionLog.Action.SILENT_CARD).toJson())
+                .put(notice(5_000_000, DecisionLog.Action.CHECK_BELL).toJson())
+                // 90 s after the notification before it: a different offer.
+                .put(onScreen(5_090_000, 600).toJson());
+        try (java.io.FileWriter out = new java.io.FileWriter(new java.io.File(app.getFilesDir(),
+                "decision-log.json"))) {
+            out.write(stored.toString());
+        }
+        app.getSharedPreferences("decision_totals", android.content.Context.MODE_PRIVATE).edit()
+                .putInt("PASSED", 1).putInt("FILTERED", 3).putInt("REVIEW", 5).commit();
+        DecisionLog.forgetCache();
+
+        assertArrayEquals(new int[] {1, 3, 2}, DecisionLog.totals(app));
+        assertEquals(6, DecisionLog.recent(app, 20).size());
+
+        // Once only.
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        assertArrayEquals(new int[] {1, 3, 2}, DecisionLog.totals(app));
+        assertEquals(6, DecisionLog.recent(app, 20).size());
+    }
+
+    @Test
+    public void farApartKnownFailuresAddOnsAndContradictionsStaySeparate() {
+        // Each pair is ten minutes from the next.
+        DecisionLog.record(app, notice(0, DecisionLog.Action.CHECK_BELL));
+        DecisionLog.record(app, onScreen(40_000, 900));
+        assertEquals("beyond the 30 s an offer without a countdown allows", 2, DecisionLog.recent(app, 20).size());
+
+        DecisionLog.record(app, new DecisionLog.Entry(600_000, DecisionLog.Source.NOTIFICATION, false,
+                new OfferSnapshot(700, null, null, null), 1000, OfferRule.Result.DECLINE, "flat minimum",
+                DecisionLog.Action.NOTIFICATION_DECLINE_SENT, true, Collections.emptyList()));
+        DecisionLog.record(app, onScreen(605_000, 800));
+        assertEquals("a known failure the notification acted on is never folded", 4,
+                DecisionLog.recent(app, 20).size());
+
+        DecisionLog.record(app, new DecisionLog.Entry(1_200_000, DecisionLog.Source.NOTIFICATION, true,
+                OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.CHECK_BELL, true,
+                Collections.emptyList()));
+        DecisionLog.record(app, onScreen(1_205_000, 850));
+        assertEquals("an add-on's notification never folds into a standalone offer", 6,
+                DecisionLog.recent(app, 20).size());
+
+        DecisionLog.record(app, new DecisionLog.Entry(1_800_000, DecisionLog.Source.NOTIFICATION, false,
+                new OfferSnapshot(1500, null, null, null), 1000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.BELL, true, Collections.emptyList()));
+        DecisionLog.record(app, onScreen(1_805_000, 900));
+        assertEquals("different pay is a different offer", 8, DecisionLog.recent(app, 20).size());
+    }
+
+    @Test
+    public void aNotificationIsNeverFoldedPastAnotherScreenOffer() {
+        DecisionLog.record(app, new DecisionLog.Entry(0, DecisionLog.Source.NOTIFICATION, true,
+                OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.CHECK_BELL, true,
+                Collections.emptyList()));
+        // A standalone offer cannot take an add-on's notification, and the add-on after it is past that offer.
+        DecisionLog.record(app, onScreen(10_000, 900));
+        DecisionLog.record(app, new DecisionLog.Entry(20_000, DecisionLog.Source.SCREEN, true,
+                new OfferSnapshot(300, 2.0, 8, 2), 0, OfferRule.Result.REVIEW,
+                "add-on has missing or ambiguous incremental/route evidence", DecisionLog.Action.NEEDS_REVIEW, true,
+                Collections.emptyList()));
+        assertEquals(3, DecisionLog.recent(app, 20).size());
+    }
 }
