@@ -430,6 +430,14 @@ final class ReportOutbox {
      * @return the issue's number
      */
     private static int sendDiagnostics(String token, File file, JSONObject item) throws IOException, JSONException {
+        // A report may have waited offline across an upgrade. Re-mask every unsent part with today's rules,
+        // including comments on an issue already filed, and keep the sanitized copy even if the network fails.
+        item.put("body", PersonalText.maskLine(item.getString("body")));
+        org.json.JSONArray comments = item.optJSONArray("comments");
+        for (int i = 0; comments != null && i < comments.length(); i++) {
+            comments.put(i, PersonalText.maskLine(comments.getString(i)));
+        }
+        rewrite(file, item);
         int issue = item.optInt("issue", 0);
         if (issue <= 0) {
             java.util.List<String> labels = new java.util.ArrayList<>();
@@ -447,7 +455,6 @@ final class ReportOutbox {
             item.put("issue", issue);
             rewrite(file, item);
         }
-        org.json.JSONArray comments = item.optJSONArray("comments");
         while (comments != null && comments.length() > 0) {
             if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("stopped");
             GitHubIssues.comment(token, issue, comments.getString(0));

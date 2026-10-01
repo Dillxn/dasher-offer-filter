@@ -146,6 +146,46 @@ public class MaskedCaptureAdapterTest {
     }
 
     @Test
+    public void separateCustomerAndOrderVerificationLabelsAreMaskedAtCapture() {
+        show(screen(Arrays.asList("Delivery for", "Avery Q.", "Fictional Market", "Call")));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        show(screen(Arrays.asList("Confirm you have the correct order before drop-off.",
+                "Mix-ups frequently occur at drop-off when there are multiple orders in a Dash.", "Morgan R.",
+                "Fictional Market", "1 items", "Confirm")));
+
+        String screens = DiagnosticLog.readScreens(app);
+        assertTrue(screens, screens.contains("[Delivery for, [name], Fictional Market, Call]"));
+        assertTrue(screens, screens.contains("multiple orders in a Dash., [name], Fictional Market, 1 items, Confirm]"));
+        assertNone(screens, "Avery", "Morgan");
+    }
+
+    @Test
+    public void bothRetainedLogsAreMaskedBeforeManualOrAutomaticSharing() throws IOException {
+        String now = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US).format(new Date());
+        DiagnosticLog.read(app); // Flush pending startup writes before seeding the old files.
+        for (String file : Arrays.asList("offer-filter-diagnostics.log", "dasher-screens.log")) {
+            try (OutputStream out = new FileOutputStream(new File(app.getFilesDir(), file))) {
+                out.write((now + " [screen] other labels=[Delivery for, Avery Q., Fictional Market, $9.10] "
+                        + "metricParts=[]\n" + now + " [screen] other labels=[Confirm you have the correct order "
+                        + "before drop-off., Mix-ups frequently occur at drop-off when there are multiple orders "
+                        + "in a Dash., Morgan R., Fictional Market, 1 items, Confirm] win=split/top/ours/50\n")
+                        .getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(910, 3.0, 15, 2), 2000, OfferRule.Result.DECLINE, "below the minimum",
+                DecisionLog.Action.DECLINE_TAPPED, true, Arrays.asList("Delivery for", "Taylor S.")));
+
+        for (String report : Arrays.asList(DiagnosticLog.report(app), DiagnosticLog.fullReport(app))) {
+            assertTrue(report, report.contains("Delivery for, [name], Fictional Market, $9.10"));
+            assertTrue(report, report.contains("multiple orders in a Dash., [name], Fictional Market, 1 items, Confirm"));
+            assertTrue(report, report.contains("read: [Delivery for, [name]]"));
+            assertTrue(report, report.contains("metricParts=[]") && report.contains("win=split/top/ours/50"));
+            assertNone(report, "Avery", "Morgan", "Taylor");
+        }
+    }
+
+    @Test
     public void theDecisionHistoryKeepsItsReadLinesMasked() {
         assertEquals(Arrays.asList("Deliver to [name] · $7.90", "$7.90", "[name]'s order · 2.1 mi"),
                 DecisionLog.evidence(Arrays.asList("Deliver to Sam P · $7.90", "$7.90", "Tiaunna's order · 2.1 mi",

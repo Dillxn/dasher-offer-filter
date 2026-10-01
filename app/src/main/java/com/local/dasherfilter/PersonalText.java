@@ -96,8 +96,25 @@ final class PersonalText {
     private static final Pattern CUSTOMER_NAME = Pattern.compile(
             "\\b(" + CUSTOMER_HEADING + ")( +)(" + NAME_WORDS + ")");
     /** A heading that is a label of its own, with the name as the next label. */
-    private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(
-            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|customer|customer name) *:?");
+    private static final String CUSTOMER_HEADING_WORDS =
+            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|customer|customer name)";
+    private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(CUSTOMER_HEADING_WORDS + " *:?");
+    /** The customer's name on the order check follows this heading and, when shown, its explanation. */
+    private static final String ORDER_CHECK = "(?i:confirm you have the correct order before drop-off)\\.?";
+    private static final String ORDER_CHECK_EXPLANATION = "(?i:mix-ups frequently occur at drop-off when there are "
+            + "multiple orders in a dash)\\.?";
+    private static final Pattern ORDER_CHECK_LABEL = Pattern.compile(ORDER_CHECK);
+    private static final Pattern ORDER_CHECK_EXPLANATION_LABEL = Pattern.compile(ORDER_CHECK_EXPLANATION);
+    /** Same-label-list context for retained logs: never cross a bracket or a physical line break. */
+    private static final String ITEM_START = "(?:^|\\[|, )[ \\t]*";
+    private static final String ITEM_SEPARATOR = "[ \\t]*, [ \\t]*";
+    private static final String ITEM_END = "(?=[ \\t]*(?:, |\\]|$))";
+    private static final Pattern CUSTOMER_NAME_ITEM = Pattern.compile(
+            "(" + ITEM_START + CUSTOMER_HEADING_WORDS + "(?:[ \\t]*:)?" + ITEM_SEPARATOR + ")(" + NAME_WORDS + ")"
+                    + ITEM_END, Pattern.MULTILINE);
+    private static final Pattern ORDER_CHECK_NAME_ITEM = Pattern.compile(
+            "(" + ITEM_START + ORDER_CHECK + ITEM_SEPARATOR + "(?:" + ORDER_CHECK_EXPLANATION + ITEM_SEPARATOR
+                    + ")?)(" + NAME_WORDS + ")" + ITEM_END, Pattern.MULTILINE);
     /** "Tiaunna's order is ready". */
     private static final Pattern POSSESSIVE = Pattern.compile(
             "\\b(\\p{Lu}[\\p{L}-]*)(['’]s)( +(?i:order|orders|delivery|food|items?|groceries|package|drop[- ]?off))\\b");
@@ -134,10 +151,21 @@ final class PersonalText {
             String next = i + 1 < labels.size() ? labels.get(i + 1) : null;
             String before = i > 0 ? labels.get(i - 1) : null;
             boolean named = (next != null && COMPLETED.matcher(next.trim()).find())
-                    || (before != null && CUSTOMER_HEADING_LABEL.matcher(before.trim()).matches());
+                    || (before != null && CUSTOMER_HEADING_LABEL.matcher(before.trim()).matches())
+                    || followsOrderCheck(labels, i);
             out.add(named && isName(label.trim()) ? NAME : mask(label));
         }
         return out;
+    }
+
+    private static boolean followsOrderCheck(List<String> labels, int at) {
+        if (at == 0) return false;
+        String before = labels.get(at - 1);
+        if (before == null) return false;
+        if (ORDER_CHECK_LABEL.matcher(before.trim()).matches()) return true;
+        if (at < 2 || !ORDER_CHECK_EXPLANATION_LABEL.matcher(before.trim()).matches()) return false;
+        String heading = labels.get(at - 2);
+        return heading != null && ORDER_CHECK_LABEL.matcher(heading.trim()).matches();
     }
 
     /**
@@ -163,6 +191,10 @@ final class PersonalText {
         out = CITY_STATE_ZIP.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = STREET.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = UNIT.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(ADDRESS));
+        if (!wholeLabel) {
+            out = names(CUSTOMER_NAME_ITEM, out, 2, "$1");
+            out = names(ORDER_CHECK_NAME_ITEM, out, 2, "$1");
+        }
         out = names(CUSTOMER_NAME, out, 3, "$1$2");
         out = names(GREETING, out, 2, "$1");
         out = possessives(out);
