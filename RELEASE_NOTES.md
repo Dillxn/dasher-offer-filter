@@ -1,3 +1,16 @@
+## 0.4.50 — Customer names in retained diagnostics (unreleased)
+
+- Mask a customer's name when "Delivery for" (or another customer heading) and the name were stored as separate list items.
+- Mask the separate name on the "Confirm you have the correct order before drop-off" screen, including when its explanatory sentence sits between the heading and the name. Keep the store, item count, buttons and diagnostic figures.
+- Apply the same rules to new screen capture and to older log lines when a report is built.
+- Re-mask diagnostics waiting in the outbox before sending, including pending comments on an issue already filed. Keep the sanitized copy if a send needs to retry.
+- This does not remove text from reports already shared, or scrub older on-device log files in place; retained logs are masked when exported and expire under the existing retention policy.
+
+Verification before release:
+- Invented-data plain Java regressions cover the two layouts, existing masking controls, idempotence, list/line boundaries, store/figure preservation and long labels.
+- Android adapter regressions were added for fresh capture, both retained log files, shared reports, and legacy queued diagnostics through label fallback and interrupted retries; their required Gradle run is pending an Android SDK-equipped environment.
+- A signed APK, live update-channel verification and real-handset behavior still need the existing release checks. This draft does not publish an app update.
+
 ## 0.4.49 — the mascot shows only real offers
 
 - **No more drip, and no ticket falling forever.** While no offer comes, the mascot just breathes, blinks and now and then waves.
