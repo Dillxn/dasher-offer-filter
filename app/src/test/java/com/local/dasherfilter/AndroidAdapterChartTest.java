@@ -394,9 +394,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("its hollow knob rests just outside the middle", ui.dp(20),
                     Math.hypot(resting[0] - middle[0], resting[1] - middle[1]), 1);
 
-            // A tap on the circle away from the knobs, and a tap on a knob, still open the minimums.
+            // A tap on the circle away from the knobs and the offer's shape, and a tap on a knob, still open the
+            // minimums.
             ViewGroup sky = (ViewGroup) star.getParent();
-            tap(sky, middle[0] + star.skyRadius() * 0.3f, middle[1]);
+            tap(sky, middle[0] + star.skyRadius() * 0.85f, middle[1]);
             assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
             iconButton(content, "Back").performClick();
             settleSky(content);
@@ -512,8 +513,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(star.backdrop());
             assertNull("nothing learned yet, so no button", star.adoptBox());
             android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertEquals("four knobs and the score by area toggle", 5, nodes.createAccessibilityNodeInfo(
-                    android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
+            assertEquals("four knobs, the score by area toggle and the offer marked", 6,
+                    nodes.createAccessibilityNodeInfo(
+                            android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
 
             // An accepted offer teaches the adaptive minimums a best rate: now they ask more than the set ones.
             FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
@@ -572,7 +574,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
             assertFalse(star.offeringUndo());
             assertNull("set minimums no looser than the learned ones: no button", star.adoptBox());
-            assertEquals(5, nodes.createAccessibilityNodeInfo(
+            assertEquals("the knobs, the toggle and the offer", 6, nodes.createAccessibilityNodeInfo(
                     android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
         } finally {
             service.destroy();

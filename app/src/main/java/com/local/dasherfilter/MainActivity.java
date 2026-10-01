@@ -48,13 +48,13 @@ import java.util.regex.Pattern;
 
 /**
  * The app's two pages, kept quiet. The main page is one picture: a sky where the minimums, as a very large
- * constellation with recent offers marked (tap for the rules), spread behind the mascot in its ring and the dash's
- * three counts (the mascot is the one button: a tap pauses or resumes), with a line only when something needs the
- * user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the ground below it on a whole
- * screen, a map of where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts,
- * the offer map, reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The
- * drawings move gently and shift with the phone's tilt while the app fills the screen, unless Android's animations
- * are off; in split screen they move calmly and the tilt sensor rests.
+ * constellation with recent offers marked (tap an offer for its ticket, elsewhere for the rules), spread behind the
+ * mascot in its ring and the dash's three counts (the mascot is the one button: a tap pauses or resumes), with a line
+ * only when something needs the user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the
+ * ground below it on a whole screen, a map of where offers pay best. Settings holds everything set once: the rules,
+ * sound and Android shortcuts, the offer map, reports and updates. Pause and Resume take effect at once; Save keeps
+ * the on/paused state. The drawings move gently and shift with the phone's tilt while the app fills the screen, unless
+ * Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
@@ -725,18 +725,29 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void setTicketOpen(boolean open) {
         ticketOpen = open;
         if (chart.selectedEntry() != null) showSelection(chart.selectedEntry());
+        else if (minimums != null) minimums.showTicket(null);
         if (open) openSheet(ticket);
         else if (sheet != null && ticket.getVisibility() != View.VISIBLE) sheet.setVisibility(View.GONE);
     }
 
     /**
+     * An offer picked on the constellation (its mark or its shape) opens exactly as a tap on its building does: chosen
+     * in the skyline (and so on the constellation), its ticket unfolded.
+     */
+    private void openOffer(DecisionLog.Entry entry) {
+        if (!chart.choose(entry)) return;
+        setTicketOpen(true);
+    }
+
+    /**
      * The minimums' constellation; a tap opens them. The sky or the header holds it, as the window allows. In the sky
      * its knobs set the minimums, and its button makes the learned ones the set ones (or undoes that), each saved as
-     * Settings saves them.
+     * Settings saves them; a tap on a marked offer opens its ticket, as its building in the skyline does.
      */
     private void addMinimums() {
         minimums = new MinimumsStarView(this, ui);
         minimums.setOnClickListener(tapped -> showSettings(true));
+        minimums.setOfferTaps(this::openOffer);
         minimums.setChanges(new MinimumsStarView.Changes() {
             @Override public void setMinimum(int axis, int cents) {
                 int[] one = {-1, -1, -1, -1};
@@ -1224,6 +1235,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
             if (sheet != null) sheet.setVisibility(View.GONE);
+            if (minimums != null) minimums.showTicket(null);
         }
         if (!empty) {
             DecisionLog.Entry selected = chart.selectedEntry();
@@ -1321,6 +1333,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * lines read.
      */
     private void showSelection(DecisionLog.Entry entry) {
+        // The constellation picks out the offer whose ticket is open.
+        if (minimums != null) minimums.showTicket(ticketOpen ? entry : null);
         ticket.removeAllViews();
         ticket.setVisibility(ticketOpen ? View.VISIBLE : View.GONE);
         if (!ticketOpen) {

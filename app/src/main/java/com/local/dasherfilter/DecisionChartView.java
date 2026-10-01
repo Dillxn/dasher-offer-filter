@@ -21,8 +21,9 @@ import java.util.Map;
  * ? review). Passed offers have their windows lit. A building that ends below its rope is a decline by the rules as
  * written, so a surprising decline shows either a misread pay or a rule to adjust. An offer whose pay was not read
  * is a signpost at street level. Tapping a building selects it (a spotlight picks it out) and reports it to the
- * listener. There is no axis: the line under the chart gives the chosen offer's pay and what it needed. Buildings
- * rise as offers arrive and a few stars twinkle overhead; with Android's animations off they rest.
+ * listener; an offer picked on the constellation is selected the same way ({@link #choose}). There is no axis: the
+ * line under the chart gives the chosen offer's pay and what it needed. Buildings rise as offers arrive and a few
+ * stars twinkle overhead; with Android's animations off they rest.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -294,6 +295,20 @@ final class DecisionChartView extends View {
         selected = index;
         invalidate();
         if (listener != null) listener.selected(entries.get(index));
+    }
+
+    /**
+     * Selects {@code entry}'s building as a tap on it does (an offer picked on the constellation, say); false, with
+     * nothing changed, when it is not in the skyline.
+     */
+    boolean choose(DecisionLog.Entry entry) {
+        int index = entries.indexOf(entry);
+        for (int i = 0; i < entries.size() && index < 0 && entry != null; i++) {
+            if (entries.get(i).at == entry.at) index = i;
+        }
+        if (index < 0) return false;
+        select(index);
+        return true;
     }
 
     private static String describe(List<DecisionLog.Entry> entries) {
