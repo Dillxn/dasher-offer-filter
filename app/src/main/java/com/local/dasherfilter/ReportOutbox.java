@@ -527,6 +527,13 @@ final class ReportOutbox {
     private static int sendDiagnostics(Context context, String token, File file, JSONObject item)
             throws IOException, JSONException {
         requireReportConsent(context, true);
+        // Keep the current receipt/consent and one-time purge policy. Re-mask anything still queued before POST.
+        item.put("body", PersonalText.maskLine(item.getString("body")));
+        org.json.JSONArray pending = item.optJSONArray("comments");
+        for (int i = 0; pending != null && i < pending.length(); i++) {
+            pending.put(i, PersonalText.maskLine(pending.getString(i)));
+        }
+        rewrite(file, item);
         int issue = item.optInt(KEY_ISSUE, 0);
         if (issue <= 0) {
             java.util.List<String> labels = new java.util.ArrayList<>();

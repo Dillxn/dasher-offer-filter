@@ -1,3 +1,12 @@
+## 0.4.52 — customer-name masking compatibility (unreleased)
+
+- Preserve the continuation candidate's payment/account/unknown-screen discard policy, one-time legacy cleanup, current-notice requirement and durable report receipts.
+- Mask separate customer headings in serialized diagnostics and the separate name after the observed drop-off order-verification prompt. Also mask a separate name after "Scan customer name".
+- Re-mask each queued diagnostic body and pending comment before sending and persist that sanitized content before any network request, without reviving discarded reports.
+- Invented-data regressions cover recognized capture, retained export, unknown-screen discard, pending issue/comment retries and label fallback on Android APIs 26 and 35.
+
+This is a compatibility proposal on the unreleased 0.4.51 source candidate, not a released app. The complete Android Gradle tests/lint, existing-key signed APK, live-channel and real-handset gates must be rerun on the integrated source. This does not remove reports already sent to GitHub.
+
 ## 0.4.51 — fifth-spoke candidate, not released
 
 - Adds the top hotspot-proximity spoke: reciprocal of the distance from the offer’s final stop to its nearest actual Dasher hotspot. Its saved, accessible knob shows reciprocal miles and the equivalent distance limit; it is off by default.
