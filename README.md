@@ -178,7 +178,7 @@ Opening such an issue starts `.github/workflows/offer-report-fixer.yml` (only `[
    - the full suite and lint passing;
    - an APK that packages.
 3. **Ship** (the only job that can write, and it runs no code from the fix):
-   - pushes exactly the gated commit to `main`, where Render builds, signs and publishes as usual;
+   - pushes exactly the gated commit to `main` (while Render serves the GitHub build, a session then signs and publishes it with `tools/sign-local.sh` and `tools/publish-repo-feed.py`);
    - waits for the live feed and runs `tools/verify_channel.py`;
    - comments on the issue and closes it (shipped, or explained). Anything else stays open, labeled `fixer:needs-human`, with the reason.
 
@@ -188,7 +188,7 @@ Screen text is captured automatically: what the screen reader and the notificati
 
 ## Build and release
 
-The private source repository feeds the existing Render static build. `render-build.sh` installs the SDK/JDK as needed, verifies the current public channel using the production Java downloader, runs the JUnit and Robolectric suite, builds/signs the APK with the existing Render-held key, checks embedded package/version, and publishes only APK, feed, receipt and install-page assets.
+Render serves the GitHub build: `render-build.sh` runs `tools/mirror_repo_feed.py`, which publishes `release/` (signed with the cloud key by `tools/sign-local.sh` and checked by `tools/publish-repo-feed.py`) as `public/` after checking its size and SHA-256 against `release/latest.json`, that its signing block names the cloud certificate, and that it is not older than what Render serves. It builds and signs nothing, so it takes seconds of build time. The old source build is `tools/render-build-full.sh`: it installs the SDK/JDK as needed, verifies the current public channel using the production Java downloader, runs the tests, signs with the cloud key and writes `public/` through `tools/finalize_release.py`.
 
 Update checks are always automatic: Settings has no switch for them (an "off" an older version kept is turned back on, once, and logged). They are spaced: opening the app, the retry job and a tap on **Updates** in Settings check at once (after the one-minute cooldown that follows a check, or the backoff after a failure); coming back to the app, a resize or day-and-night recreation, a service reconnecting and the periodic job wait five minutes after the last attempt. While you are dashing, an update an automatic check found waits ("Update ready: installs after your dash", looked at again every five minutes): installing closes Offer Filter, and with it its half of a split screen beside Dasher. A tap on **Updates** still installs it mid-dash, except while Dasher is on screen.
 
