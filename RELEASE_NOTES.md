@@ -1,4 +1,4 @@
-## 0.4.43 — going back to an offer hands it to you
+## 0.4.43 — going back to an offer hands it to you; diagnostics after each dash
 
 - **Going back to an offer is yours.** On 0.4.42, Offer Filter tapped Decline, couldn't tap "Decline offer" on Dasher's question, and when you tapped "View offer details" it declined the same offer again. Now:
   - The same offer showing again after its question, with no tap on the question's Decline, is handed back to you: nothing more is tapped on it, the sound comes back, and you see "Offer Filter stopped tapping this offer".
@@ -6,6 +6,9 @@
   - Once the question has shown, that offer's first Decline is never tapped again. One exception: Dasher closed a question Offer Filter confirmed, nothing of yours was seen, and the offer still shows 2 seconds later. That is logged as a Dasher glitch and gets one more Decline.
 - **Your touch is never mistaken for Offer Filter's own.** A tap Android refused used to be retried on every read, every 0.1 s. Each retry restarted the 0.15 s window in which a touch counts as an echo of Offer Filter's tap, so any touch could be ignored. Each tap now has its own window, which no later tap or read extends.
 - **Tapping Dasher's question.** A refused tap, or one Dasher doesn't act on, is retried at most twice, 0.3 s apart. Then Offer Filter stops, the log says "confirmation not tapped" and the offer is left to you. The question is also found in a window of its own beside a large offer screen; 0.4.42's quick check gave up after 200 items.
+- **Diagnostics after each dash (optional, off by default).** Turn on **Share diagnostics after each dash** under Reports in Settings. It's shown while GitHub is connected and works while reports go through it. After each dash, the same report Share report builds is filed to your private repository's issues, so you don't have to email it.
+- **Customer details are masked before anything is stored.** Names, addresses, phone numbers, emails and drop-off notes in captured screen text become [name], [address], [phone] and [instructions], both on the phone and in every report. Stores, pay, miles, minutes, buttons and shopping items stay readable. Offers are still judged from the real screen text.
+- **The automatic report fixer is off until it is repaired.** It had been failing and emailing you "Run failed".
 - **The log shows every try at the question:** where it was found (or why not), whether Android took the tap, and why a try was skipped.
 
 Evidence boundaries:
