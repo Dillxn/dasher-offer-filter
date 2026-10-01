@@ -1,4 +1,4 @@
-## 0.4.49 — Customer names in retained diagnostics (unreleased)
+## 0.4.50 — Customer names in retained diagnostics (unreleased)
 
 - Mask a customer's name when "Delivery for" (or another customer heading) and the name were stored as separate list items.
 - Mask the separate name on the "Confirm you have the correct order before drop-off" screen, including when its explanatory sentence sits between the heading and the name. Keep the store, item count, buttons and diagnostic figures.
@@ -10,6 +10,25 @@ Verification before release:
 - Invented-data plain Java regressions cover the two layouts, existing masking controls, idempotence, list/line boundaries, store/figure preservation and long labels.
 - Android adapter regressions were added for fresh capture, both retained log files, shared reports, and legacy queued diagnostics through label fallback and interrupted retries; their required Gradle run is pending an Android SDK-equipped environment.
 - A signed APK, live update-channel verification and real-handset behavior still need the existing release checks. This draft does not publish an app update.
+
+## 0.4.49 — the mascot shows only real offers
+
+- **No more drip, and no ticket falling forever.** While no offer comes, the mascot just breathes, blinks and now and then waves.
+- **Each offer decided while the page is open plays out a moment later, as it went.** Its ticket drops in under a little parachute and then:
+  - **passed:** it slips through the sieve and out of the spout, with ✓;
+  - **declined:** it bounces off the sieve, with ✕;
+  - **review:** it rests on the sieve, with ?;
+  - **left to you:** it rests on the sieve, with a person.
+- It waits until the offer's line settles (a confirmed decline, a takeover), so it shows what really happened. Offers from before the page opened, and any while paused, play nothing. With animations turned off, nothing moves.
+- The skyline's flags and the mascot now draw the same badges.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests:**
+  - a new offer plays as what became of it, e.g. taken over after its first Decline plays as left to you;
+  - old offers, offers already there and paused offers play nothing;
+  - the whole suite passes.
+- **Renders:** each outcome as a filmstrip, light and dark.
+- **Not verified on a real phone.**
 
 ## 0.4.48 — tap off an offer to go back to the newest
 

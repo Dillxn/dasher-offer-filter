@@ -47,7 +47,6 @@ final class DecisionChartView extends View {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint symbol = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final Path path = new Path();
     private List<DecisionLog.Entry> entries = Collections.emptyList();
@@ -63,10 +62,6 @@ final class DecisionChartView extends View {
         label.setTextSize(ui.sp(11));
         label.setColor(ui.inkMuted);
         label.setTextAlign(Paint.Align.CENTER);
-        symbol.setTextAlign(Paint.Align.CENTER);
-        symbol.setFakeBoldText(true);
-        // The symbol belongs to its circle, so it follows the font setting only as far as the circle allows.
-        symbol.setTextSize(Math.min(ui.sp(10), ui.dp(11)));
         line.setStyle(Paint.Style.STROKE);
         setClickable(true);
         setFocusable(true);
@@ -216,61 +211,9 @@ final class DecisionChartView extends View {
         canvas.drawLine(center, bottom, center, bottom - ui.dp(12), line);
     }
 
-    /**
-     * The flag's badge, kept whole inside the view however tall its building: the outcome's color, with ✓, ✕ or ?, a
-     * shopping bag for an accepted offer and a person for one left to the user.
-     */
+    /** The flag's badge ({@link OutcomeBadge}), kept whole inside the view however tall its building. */
     private void drawBadge(Canvas canvas, float x, float y, DecisionLog.Outcome outcome) {
-        y = Math.max(y, ui.dp(10));
-        int color = Ui.outcomeColor(outcome);
-        float radius = ui.dp(7);
-        fill.setColor(ui.surface);
-        canvas.drawCircle(x, y, radius + ui.dp(2), fill);
-        fill.setColor(color);
-        canvas.drawCircle(x, y, radius, fill);
-        int ink = Ui.onStatus(color);
-        switch (outcome) {
-            case ACCEPTED:
-                drawBag(canvas, x, y, ink);
-                break;
-            case YOURS:
-                drawPerson(canvas, x, y, ink);
-                break;
-            default:
-                symbol.setColor(ink);
-                canvas.drawText(outcome == DecisionLog.Outcome.PASSED ? "✓"
-                        : outcome == DecisionLog.Outcome.DECLINED ? "✕" : "?", x, y + symbol.getTextSize() / 3f, symbol);
-                break;
-        }
-    }
-
-    /**
-     * A shopping bag (the order picked up): the offer was accepted. Its body widens to the bottom and its handle is a
-     * wide, shallow loop, so it never reads as a padlock.
-     */
-    private void drawBag(Canvas canvas, float x, float y, int ink) {
-        fill.setColor(ink);
-        path.reset();
-        path.moveTo(x - ui.dp(3), y - ui.dp(1.4f));
-        path.lineTo(x + ui.dp(3), y - ui.dp(1.4f));
-        path.lineTo(x + ui.dp(3.9f), y + ui.dp(4.4f));
-        path.lineTo(x - ui.dp(3.9f), y + ui.dp(4.4f));
-        path.close();
-        canvas.drawPath(path, fill);
-        line.setColor(ink);
-        line.setStrokeWidth(Math.max(1, ui.dp(1.1f)));
-        line.setStrokeCap(Paint.Cap.ROUND);
-        // The handle: a loop wider than it is tall, its ends inside the bag's top.
-        rect.set(x - ui.dp(2.1f), y - ui.dp(3.9f), x + ui.dp(2.1f), y + ui.dp(0.6f));
-        canvas.drawArc(rect, 180, 180, false, line);
-    }
-
-    /** A person, head and shoulders: the offer was left to the user. */
-    private void drawPerson(Canvas canvas, float x, float y, int ink) {
-        fill.setColor(ink);
-        canvas.drawCircle(x, y - ui.dp(2.2f), ui.dp(2), fill);
-        rect.set(x - ui.dp(3.9f), y + ui.dp(0.9f), x + ui.dp(3.9f), y + ui.dp(8.1f));
-        canvas.drawArc(rect, 180, 180, true, fill);
+        OutcomeBadge.draw(canvas, ui, x, Math.max(y, ui.dp(10)), outcome, 255);
     }
 
     /**

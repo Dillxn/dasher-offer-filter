@@ -21,8 +21,9 @@ import java.util.Locale;
  * passed, filtered and left to review. It is also the screen's one button: a tap pauses or resumes auto-decline (or,
  * with no rule yet, points to the knobs), and it squishes a little while pressed. The ring says the state: nearly closed
  * while on, two-thirds and amber while paused, a faint dotted circle while off; it draws itself when the state
- * changes. On, the mascot breathes, blinks, has its sieve, and an offer ticket drifts down into it while a drop
- * falls from its spout; paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
+ * changes. On, the mascot breathes, blinks, now and then waves, and has its sieve; each offer decided while the page
+ * is up is played out as it went (a ticket through the spout, bounced off the sieve, or resting on it, with the
+ * skyline's badge); paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
  * counts only offers the app acted on (a Decline tap, a decline request, or a hidden notification).
  *
  * <p>In the page's sky ({@link SkyStage}) the mascot and the counts are placed apart, over the constellation behind
@@ -63,6 +64,11 @@ final class FilterHeroView extends View {
     private final DashPathEffect pausedDash;
     private final DashPathEffect dotted;
     private final Enso ring = new Enso();
+    /** How long an offer just decided takes to play out. */
+    static final long OFFER_MS = 2600;
+    /** The offer being played out, and since when (uptime); null for none. */
+    private DecisionLog.Outcome offer;
+    private long offerFrom;
     /** The body's and the rim's shading, kept while their colour (and the body's place) stay the same. */
     private Shader bodyShade;
     private int bodyShadeColor;
@@ -309,17 +315,14 @@ final class FilterHeroView extends View {
         canvas.scale(scale, scale);
         float cx = designWidth / 2;
         float spacing = countsAt(countsDrawn);
-        // Tilting the phone slides the ring and its stars (far) against the ticket (near).
+        // Tilting the phone slides the ring and its stars (far) against an offer's ticket (near).
         slide(canvas, -4);
         drawRing(canvas, cx);
         drawTwinkles(canvas, cx, false, 0, artTop, scale);
         canvas.restore();
-        if (state == State.ON) {
-            slide(canvas, 8);
-            drawDriftingTicket(canvas, cx);
-            canvas.restore();
-        }
+        drawOfferPlayed(canvas, cx, true);
         drawMascot(canvas, cx);
+        drawOfferPlayed(canvas, cx, false);
         canvas.restore();
         drawCounts(canvas, countsDrawn.centerX(), spacing, countsDrawn.top);
         if (state != State.OFF) Motion.next(this);
@@ -361,12 +364,9 @@ final class FilterHeroView extends View {
         drawRing(canvas, 0);
         drawTwinkles(canvas, 0, true, mascotX, mascotY - ui.dp(RING_MIDDLE_DP) * scale, scale);
         canvas.restore();
-        if (state == State.ON) {
-            slide(canvas, 8);
-            drawDriftingTicket(canvas, 0);
-            canvas.restore();
-        }
+        drawOfferPlayed(canvas, 0, true);
         drawMascot(canvas, 0);
+        drawOfferPlayed(canvas, 0, false);
         canvas.restore();
         drawCounts(canvas, countsBox.centerX(), countsSpacing, countsBox.top);
     }
@@ -440,23 +440,113 @@ final class FilterHeroView extends View {
         canvas.drawPath(path, fill);
     }
 
-    /** One offer ticket on a small parachute, drifting down into the funnel's mouth, again and again. */
-    private void drawDriftingTicket(Canvas canvas, float cx) {
-        float t = Motion.on() ? Motion.loop(7f, 0) : 0.55f;
-        float y = ui.dp(38) + ui.dp(30) * t;
-        float x = cx + ui.dp(10) * Motion.wave(7f, 0.25f);
-        int alpha = (int) (255 * Math.min(1f, Math.min(t * 5f, (1f - t) * 5f)));
+    /**
+     * Plays out an offer just decided, as it went: its ticket drops in under a small parachute and passes out of the
+     * spout (passed), bounces off the sieve (declined), or rests on it (left for review, or to the user), with the
+     * skyline's badge for it. Only while on and with animations on; otherwise nothing moves.
+     */
+    void showOffer(DecisionLog.Outcome outcome) {
+        if (outcome == null || state != State.ON || !Motion.on()) return;
+        offer = outcome;
+        offerFrom = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    /** The offer being played out now, or null (for tests). */
+    DecisionLog.Outcome playing() {
+        return offerProgress() < 0 ? null : offer;
+    }
+
+    /** How far through its playing the offer is (0–1), or -1 for none. */
+    private float offerProgress() {
+        if (offer == null || state != State.ON) return -1;
+        long since = SystemClock.uptimeMillis() - offerFrom;
+        return since < 0 || since >= OFFER_MS ? -1 : since / (float) OFFER_MS;
+    }
+
+    /**
+     * The offer being played out: the parts the funnel hides ({@code behind}: a ticket going through), or those in
+     * front of it (a ticket on the sieve, the badge). Its last part fades.
+     */
+    private void drawOfferPlayed(Canvas canvas, float cx, boolean behind) {
+        float t = offerProgress();
+        if (t < 0) return;
+        slide(canvas, 8);
+        float rimY = ui.dp(72);
+        float onSieve = rimY - ui.dp(9);
+        float land = 0.32f;
+        boolean through = offer == DecisionLog.Outcome.PASSED || offer == DecisionLog.Outcome.ACCEPTED;
+        int fade = (int) (255 * Math.min(1f, (1f - t) / 0.18f));
+        if (t < land) {
+            // Down under its parachute onto the sieve.
+            if (!behind) {
+                float p = easeOut(t / land);
+                float sway = (1 - p) * Motion.wave(3.5f, 0);
+                drawTicket(canvas, cx + ui.dp(6) * sway, lerp(ui.dp(16), onSieve, p), 255, 1 - p, 1f, 5 * sway);
+            }
+        } else {
+            float p = (t - land) / (1 - land);
+            if (through) {
+                // Through the sieve (hidden by the funnel), out of the spout to the ground beneath it, and the badge.
+                float sink = p / 0.16f;
+                if (behind && sink < 1) {
+                    drawTicket(canvas, cx, lerp(onSieve, rimY + ui.dp(24), sink * sink), 255, 0, 1f, 0);
+                }
+                float out = (p - 0.2f) / 0.35f;
+                if (out >= 0) {
+                    float y = lerp(ui.dp(154), ui.dp(170), easeOut(Math.min(1f, out)));
+                    if (behind) drawTicket(canvas, cx, y, fade, 0, 0.75f, 0);
+                    else drawBadgePopping(canvas, cx + ui.dp(24), y - ui.dp(4), p - 0.45f, fade);
+                }
+            } else if (offer == DecisionLog.Outcome.DECLINED) {
+                // Caught: it bounces off the sieve and away, the badge where it landed.
+                if (!behind) {
+                    float b = Math.min(1f, p / 0.7f);
+                    float y = onSieve - ui.dp(44) * (float) Math.sin(b * Math.PI * 0.8f) + ui.dp(24) * b * b;
+                    drawTicket(canvas, cx + ui.dp(58) * b, y, (int) (255 * (1 - b)), 0, 1f - 0.3f * b, 55 * b);
+                    drawBadgePopping(canvas, cx, rimY - ui.dp(28), p, fade);
+                }
+            } else if (!behind) {
+                // Left on the sieve for the dasher.
+                drawTicket(canvas, cx, onSieve, fade, 0, 1f, 0);
+                drawBadgePopping(canvas, cx + ui.dp(19), onSieve - ui.dp(11), p - 0.05f, fade);
+            }
+        }
+        canvas.restore();
+    }
+
+    /** The offer's badge, {@code since} (a share of the rest of the play) after it appears: it pops, then settles. */
+    private void drawBadgePopping(Canvas canvas, float x, float y, float since, int alpha) {
+        if (since < 0) return;
+        float grow = Math.min(1f, since / 0.12f);
+        float scale = grow < 1 ? grow * 1.15f : 1.15f - 0.15f * Math.min(1f, (since - 0.12f) / 0.1f);
         canvas.save();
-        canvas.rotate(4 * Motion.wave(3.5f, 0), x, y);
+        canvas.scale(scale, scale, x, y);
+        OutcomeBadge.draw(canvas, ui, x, y, offer, alpha);
+        canvas.restore();
+    }
+
+    /**
+     * An offer ticket at ({@code x}, {@code y}): a little card with "$", under a parachute shown at {@code chute}
+     * (0–1), at {@code alpha}, scaled and turned by {@code turn} degrees about its middle.
+     */
+    private void drawTicket(Canvas canvas, float x, float y, int alpha, float chute, float scale, float turn) {
+        if (alpha <= 0) return;
+        canvas.save();
+        canvas.rotate(turn, x, y);
+        canvas.scale(scale, scale, x, y);
         line.setPathEffect(null);
-        line.setColor(withAlpha(ui.baseline, alpha));
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        float dome = y - ui.dp(22);
-        canvas.drawLine(x - ui.dp(12), dome, x - ui.dp(10), y - ui.dp(8), line);
-        canvas.drawLine(x + ui.dp(12), dome, x + ui.dp(10), y - ui.dp(8), line);
-        rect.set(x - ui.dp(13), dome - ui.dp(13), x + ui.dp(13), dome + ui.dp(13));
-        fill.setColor(withAlpha(ui.dark ? 0xFF3D5A85 : 0xFFA9C8F2, alpha));
-        canvas.drawArc(rect, 180, 180, true, fill);
+        if (chute > 0) {
+            int shown = (int) (alpha * chute);
+            line.setColor(withAlpha(ui.baseline, shown));
+            float dome = y - ui.dp(22);
+            canvas.drawLine(x - ui.dp(12), dome, x - ui.dp(10), y - ui.dp(8), line);
+            canvas.drawLine(x + ui.dp(12), dome, x + ui.dp(10), y - ui.dp(8), line);
+            rect.set(x - ui.dp(13), dome - ui.dp(13), x + ui.dp(13), dome + ui.dp(13));
+            fill.setColor(withAlpha(ui.dark ? 0xFF3D5A85 : 0xFFA9C8F2, shown));
+            canvas.drawArc(rect, 180, 180, true, fill);
+        }
         rect.set(x - ui.dp(15), y - ui.dp(8), x + ui.dp(15), y + ui.dp(8));
         fill.setColor(withAlpha(ui.surface, alpha));
         canvas.drawRoundRect(rect, ui.dp(3), ui.dp(3), fill);
@@ -465,14 +555,18 @@ final class FilterHeroView extends View {
         text.setFakeBoldText(true);
         text.setTextSize(ui.dp(9));
         text.setColor(withAlpha(ui.inkSecondary, alpha));
-        canvas.drawText("$", x - ui.dp(3), y + ui.dp(3), text);
+        canvas.drawText("$", x, y + ui.dp(3), text);
         canvas.restore();
+    }
+
+    private static float easeOut(float t) {
+        return 1 - (1 - t) * (1 - t);
     }
 
     /**
      * The mascot: a glazed funnel, lit from the upper left with a shine down its left side, whose rim shows its inside
      * (a sieve while on), narrowing to a collar and a rounded spout, with mittened arms and a face, over a soft
-     * shadow. While on, a drop falls from the spout and ripples where it lands, and now and then an arm waves.
+     * shadow. While on, now and then an arm waves.
      */
     private void drawMascot(Canvas canvas, float cx) {
         int color = stateColor();
@@ -574,24 +668,7 @@ final class FilterHeroView extends View {
         Mascot.face(canvas, face, cx, ui.dp(110), ui.dp(40), off ? ui.inkMuted : ui.ink);
         canvas.restore();
 
-        if (state == State.ON) {
-            // A drop falls from the spout to the ground, then ripples there.
-            float t = Motion.on() ? Motion.loop(1.8f, 0) : 0.3f;
-            float fall = 0.62f;
-            if (t < fall) {
-                float p = t / fall;
-                float top = spoutY + ui.dp(4);
-                fill.setColor(withAlpha(color, (int) (0xD0 * (1 - 0.35f * p))));
-                drop(canvas, cx, top + (groundY - ui.dp(2) - top) * p * p, ui.dp(3));
-            } else {
-                float p = (t - fall) / (1 - fall);
-                float r = ui.dp(3) + ui.dp(12) * p;
-                line.setColor(withAlpha(color, (int) (0x99 * (1 - p))));
-                line.setStrokeWidth(ui.dp(1.5f));
-                rect.set(cx - r, groundY - r * 0.28f, cx + r, groundY + r * 0.28f);
-                canvas.drawOval(rect, line);
-            }
-        } else if (state == State.PAUSED) {
+        if (state == State.PAUSED) {
             float t = Motion.on() ? Motion.loop(3.2f, 0) : 0.3f;
             text.setFakeBoldText(true);
             text.setColor(withAlpha(ui.inkSecondary, (int) (255 * (1 - t))));
@@ -635,18 +712,6 @@ final class FilterHeroView extends View {
         float p = t / span;
         float up = (float) Math.sin(p * Math.PI);
         return -up * (75 + 15 * (float) Math.sin(p * Math.PI * 6));
-    }
-
-    /** A drop of radius {@code r} with its round end at ({@code x}, {@code y}) and its point up. */
-    private void drop(Canvas canvas, float x, float y, float r) {
-        path.reset();
-        path.moveTo(x, y - r * 2.3f);
-        path.quadTo(x + r * 1.05f, y - r * 0.9f, x + r, y);
-        rect.set(x - r, y - r, x + r, y + r);
-        path.arcTo(rect, 0, 180);
-        path.quadTo(x - r * 1.05f, y - r * 0.9f, x, y - r * 2.3f);
-        path.close();
-        canvas.drawPath(path, fill);
     }
 
     /** Where the shine runs, a share {@code at} of the way down the body's left side, a little inside it. */
