@@ -612,7 +612,7 @@ final class Updater {
         PackageInstaller.SessionParams params =
                 new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
         params.setAppPackageName(context.getPackageName());
-        params.setAppLabel("Offer Filter");
+        params.setAppLabel(AppName.NAME);
         params.setSize(file.length());
         if (Build.VERSION.SDK_INT >= 31) {
             params.setRequireUserAction(manual
@@ -682,7 +682,7 @@ final class Updater {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UPDATE_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Offer Filter update ready")
+                .setContentTitle(AppName.NAME + " update ready")
                 .setContentText("Tap to confirm installation.")
                 .setContentIntent(action)
                 .setAutoCancel(true)
@@ -719,12 +719,7 @@ final class Updater {
      * asked Android to open it.
      */
     static boolean relaunchAfterUpdate(Context context) {
-        SharedPreferences prefs = prefs(context);
-        long at = prefs.getLong(RELAUNCH_AT, 0);
-        long age = System.currentTimeMillis() - at;
-        if (at <= 0 || age < 0 || age > INSTALL_WINDOW_MS) return false;
-        // Only once the new version is the one running.
-        if (versionCode(context) <= prefs.getLong(RELAUNCH_FROM, Long.MAX_VALUE)) return false;
+        if (!relaunchPending(context)) return false;
         try {
             context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
@@ -733,6 +728,19 @@ final class Updater {
             DiagnosticLog.log(context, "update", "reopen after update refused: " + refused.getClass().getSimpleName());
             return false;
         }
+    }
+
+    /**
+     * Whether an update installed while Offer Filter was on screen, moments ago, and this is the new version running:
+     * its screen is to be opened again.
+     */
+    static boolean relaunchPending(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long at = prefs.getLong(RELAUNCH_AT, 0);
+        long age = System.currentTimeMillis() - at;
+        if (at <= 0 || age < 0 || age > INSTALL_WINDOW_MS) return false;
+        // Only once the new version is the one running.
+        return versionCode(context) > prefs.getLong(RELAUNCH_FROM, Long.MAX_VALUE);
     }
 
     /** Offer Filter's screen is open again: nothing more to reopen. */

@@ -43,6 +43,8 @@ final class Ui {
     final int gridline;
     final int baseline;
     final int accent;
+    /** Link text: the accent, lightened at night so small text still reads on the dark page. */
+    final int link;
     /** The second data series (adaptive minimums), apart from the status colors. */
     final int learned;
     final int onAccent;
@@ -62,6 +64,7 @@ final class Ui {
         gridline = dark ? 0xFF2C2C2A : 0xFFE1E0D9;
         baseline = dark ? 0xFF383835 : 0xFFC3C2B7;
         accent = 0xFF256ABF;
+        link = dark ? 0xFF8AB4F0 : 0xFF1D5499;
         learned = dark ? 0xFFB08CF0 : 0xFF7A4CC8;
         onAccent = 0xFFFFFFFF;
         fieldFill = dark ? 0xFF262625 : 0xFFF1F0EC;
@@ -222,6 +225,25 @@ final class Ui {
         button.setBackground(pressable(12));
         button.setOnClickListener(clicked -> action.run());
         parent.addView(button, matchWidth());
+        return button;
+    }
+
+    /** A few words of link text that open something, still a 48 dp touch target; screen readers hear a button. */
+    Button link(String label, Runnable action) {
+        Button button = new Button(context);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTypeface(MEDIUM);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        button.setTextColor(link);
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setStateListAnimator(null);
+        button.setBackground(pressable(24));
+        button.setOnClickListener(clicked -> action.run());
         return button;
     }
 

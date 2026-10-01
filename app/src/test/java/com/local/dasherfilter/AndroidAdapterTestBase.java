@@ -49,6 +49,8 @@ abstract class AndroidAdapterTestBase {
     @Before
     public void setup() {
         app = RuntimeEnvironment.getApplication();
+        // The first-run notice accepted, as on a phone in use (ConsentedTestApp does so for every test already).
+        ConsentedTestApp.accept(app);
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);

@@ -261,6 +261,9 @@ public final class OfferNotificationService extends NotificationListenerService 
      */
     private void handle(StatusBarNotification source, RankingMap ranking, boolean replay) {
         if (!isFromOwnUsersDasher(source)) return;
+        // Until the first-run notice is accepted, nothing is read, posted, hidden or declined; accepting replays what
+        // is still shown.
+        if (!Consent.accepted(this)) return;
         Notification notification = source.getNotification();
         if (notification == null || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         // To Android, a post on a key it still shows is an update.

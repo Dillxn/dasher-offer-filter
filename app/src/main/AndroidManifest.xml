@@ -17,7 +17,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Offer Filter"
+        android:label="@string/app_name"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
         <activity
@@ -28,6 +28,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The terms, the privacy text and the licence, bundled: from the first-run notice and Settings' footer. -->
+        <activity
+            android:name=".LegalActivity"
+            android:exported="false" />
         <!-- Only a tap on one of our offer cards starts this: it opens Dasher and is gone. -->
         <activity
             android:name=".OpenDasherActivity"
@@ -53,7 +57,7 @@
         <service
             android:name=".OfferNotificationService"
             android:exported="true"
-            android:label="Offer Filter background offers"
+            android:label="@string/listener_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -62,7 +66,7 @@
         <service
             android:name=".OfferFilterService"
             android:exported="true"
-            android:label="Offer Filter"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

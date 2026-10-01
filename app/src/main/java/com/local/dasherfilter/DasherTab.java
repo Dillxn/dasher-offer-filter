@@ -147,8 +147,8 @@ final class DasherTab extends View {
     }
 
     private void describe() {
-        String now = state == FilterHeroView.State.ON ? "Offer Filter: auto-decline on."
-                : state == FilterHeroView.State.PAUSED ? "Offer Filter: paused." : "Offer Filter: no rules yet.";
+        String now = state == FilterHeroView.State.ON ? AppName.NAME + ": auto-decline on."
+                : state == FilterHeroView.State.PAUSED ? AppName.NAME + ": paused." : AppName.NAME + ": no rules yet.";
         String tap = state == FilterHeroView.State.ON ? " Tap to pause."
                 : state == FilterHeroView.State.PAUSED ? " Tap to resume." : " Tap to set them up.";
         setContentDescription(look != Look.PEEK ? now + tap : tapToShow ? now + " Tucked away. Tap to show it." : now);

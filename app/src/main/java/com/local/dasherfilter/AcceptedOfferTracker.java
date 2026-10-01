@@ -777,7 +777,7 @@ final class AcceptedOfferTracker {
                 drop = "Dasher showed neither the wait for offers nor another offer within " + AFTER_MS / 1000 + " s";
                 break;
             default:
-                drop = "Offer Filter requested a decline of it";
+                drop = AppName.NAME + " requested a decline of it";
                 break;
         }
         if (drop != null) {
@@ -862,7 +862,7 @@ final class AcceptedOfferTracker {
             case ANOTHER_OFFER:
                 return "another offer came first";
             default:
-                return "Offer Filter requested a decline of it";
+                return AppName.NAME + " requested a decline of it";
         }
     }
 

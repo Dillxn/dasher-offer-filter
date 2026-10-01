@@ -249,7 +249,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
                 assertEquals(Intent.ACTION_VIEW, opened.getAction());
                 assertEquals("https://cash.app/$OfferFilterDev", opened.getDataString());
                 findButton(content, "Tip with Venmo").performClick();
-                assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Dash%20Buddy%20tip",
+                assertEquals("https://venmo.com/Offer-Filter?txn=pay&note=Offer%20Filter%20tip",
                         Shadows.shadowOf(app).getNextStartedActivity().getDataString());
             }
         } finally {
