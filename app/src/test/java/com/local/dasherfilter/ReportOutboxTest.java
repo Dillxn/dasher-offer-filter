@@ -245,18 +245,22 @@ public class ReportOutboxTest {
                 null, null, Collections.singletonList(entry));
 
         JSONArray labels = data(report).getJSONArray("labels");
-        assertEquals("Order for Xxxx X.", labels.getString(0));
+        // Names and addresses go as the phone keeps them (PersonalText), then every other word to its shape.
+        assertEquals("Order for [name]", labels.getString(0));
         assertEquals("single-letter words like \"A\" are vocabulary", "Xxxxx-xxx-A", labels.getString(1));
-        assertEquals("123 Xxxx Xx", labels.getString(2));
+        assertEquals("[address]", labels.getString(2));
         assertEquals("$7.90 Guaranteed (incl. tips)", labels.getString(3));
         assertEquals("2 stops (7.2 mi) • 21 min", labels.getString(4));
         assertEquals("Deliver by 7:45 XX", labels.getString(5));
         assertEquals("Accept", labels.getString(6));
-        assertEquals("Xxxx'x order $7.90", data(report).getJSONObject("entry").getJSONArray("evidence").getString(0));
-        assertEquals("Xxxx'x order $7.90",
+        assertEquals("[name]'s order $7.90",
+                data(report).getJSONObject("entry").getJSONArray("evidence").getString(0));
+        assertEquals("[name]'s order $7.90",
                 data(report).getJSONArray("recent").getJSONObject(0).getJSONArray("evidence").getString(0));
         assertFalse(report.body.contains("Jane"));
         assertFalse(report.body.contains("Main"));
+        assertEquals(Collections.singletonList("Order for [name] at Xxxxx-xxx-A $7.90"),
+                ProblemReport.redact(Collections.singletonList("Order for Jane D. at Chick-fil-A $7.90")));
     }
 
     @Test

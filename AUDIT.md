@@ -132,3 +132,14 @@ Scope: a new outbound data path, an automated release path, and two changes to t
   - Saving rules never touches them; Reset clears them. Corrupt stored values read as none.
   - *(Review: the first draft let a $7.50, 0.6 mi trip set $12.50/mi, so a normal $15, 5 mi offer "needed" $62.50. It also learned while off, and set a per-stop best from partial misreads. All were reproduced by tests and fixed.)*
 - **Drawn views.** The drawn views reuse OfferRule for totals: the meter evaluates the example offer with a very large pay to read the requirement. Layouts come from font metrics, with fitting, stacking and wrapping at large font scales, and were checked at 1.3× and 2×. The hero's middle pile counts only offers the app acted on. They redraw only when what they show changes. Each has a content description for screen readers, and no meaning rests on color alone.
+
+## Follow-up — masking at capture and diagnostics after each dash
+
+Scope: screen text is now masked as it is kept, and a new opt-in sends the whole shared report after each dash.
+
+- **Masking at capture.** `PersonalText` masks every label before it reaches either log, the decision history's read lines or any report: customer and dasher names in their contexts, street addresses, city/state/ZIP lines, Apt/Suite values, phone numbers, emails and a customer's own instructions. Decisions still read the raw labels; tests show an offer declined from its raw labels while the logs hold only the masked text. Lines kept before masking (up to a day) and older history lines are masked again as they are read. Every pattern starts only at a word's start, so masking stays linear on long labels (a quadratic email pattern was caught by an existing 40 × 3,900-character log test and fixed).
+- **Consent.** Diagnostics after each dash need GitHub connected, reports through that connection on, and the switch on; any of them going off turns it off and discards what waits. They use the connection's token only, go only to this repository's issues (an issue, then comments), at most one per dash and six a day, and never start the fixer (it reads `[offer-report]` titles only, and is now opt-in through `OFFER_FIXER_ENABLED == 'true'`).
+- **Residual risk.**
+  - Masking is by pattern, not understanding: a name or address in a shape the patterns do not know (a lowercase name, a street with no street type, a foreign address) passes unmasked into a diagnostics issue. The issues stay in the owner's private repository, and are read by Claude only when the owner asks.
+  - An "End dash" dialog the user cancels still ends the dash for diagnostics: that dash is filed early, and its rest counts as the next dash. Dasher's real wording for that screen is unconfirmed.
+  - A crash between GitHub creating the issue and the phone saving its number would file that dash twice on the retry.

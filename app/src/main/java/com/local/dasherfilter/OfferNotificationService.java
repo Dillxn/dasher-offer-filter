@@ -333,6 +333,7 @@ public final class OfferNotificationService extends NotificationListenerService 
                 action = filter(source, notification, offer, decision, signature, replay);
             }
             Dashing.seen(this);
+            DashDiagnostics.offerSeen(this);
             DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
                     addOn, decision.basis, decision, action, settings.enabled, labels)
                     .withAlertTag(offer.alertTag, replay));

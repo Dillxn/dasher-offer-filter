@@ -26,8 +26,8 @@ import org.json.JSONObject;
 /**
  * Always-on, on-device history of offer decisions, so a surprising decline can be explained afterwards. It keeps
  * the parsed numbers, the rule outcome and the action taken, plus only the screen lines that carried a number or
- * a pay label: no names or addresses. Bounded to {@link #MAX_ENTRIES}; leaves the phone only in a report the user
- * chooses to send. One offer is one line: Dasher's notification of an offer the screen read is folded into the
+ * a pay label, masked ({@link PersonalText}): no names or addresses. Bounded to {@link #MAX_ENTRIES}; leaves the phone
+ * only in a report the user chooses to send, or in diagnostics after a dash the user turned on. One offer is one line: Dasher's notification of an offer the screen read is folded into the
  * screen's line ({@link OfferPairing}), and two notification incarnations are never one line.
  */
 final class DecisionLog {
@@ -292,7 +292,10 @@ final class DecisionLog {
                     json.has("stops") ? json.getInt("stops") : null);
             List<String> evidence = new ArrayList<>();
             JSONArray lines = json.optJSONArray("evidence");
-            for (int i = 0; lines != null && i < lines.length(); i++) evidence.add(lines.getString(i));
+            // Lines a version before masking kept are masked as they are read, and stored so on the next write.
+            for (int i = 0; lines != null && i < lines.length(); i++) {
+                evidence.add(PersonalText.mask(lines.getString(i)));
+            }
             return new Entry(json.getLong("at"), Source.valueOf(json.getString("source")), json.optBoolean("addOn"),
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
@@ -546,7 +549,7 @@ final class DecisionLog {
                     .append('\n');
             if (!entry.evidence.isEmpty()) {
                 List<String> read = entry.evidence.subList(0, Math.min(REPORT_EVIDENCE_LINES, entry.evidence.size()));
-                out.append("    read: ").append(read).append('\n');
+                out.append("    read: ").append(PersonalText.mask(read)).append('\n');
             }
             Entry n = entry.notification;
             if (n != null) {
@@ -575,13 +578,16 @@ final class DecisionLog {
         return seconds + " s " + (ms >= 0 ? "earlier" : "later");
     }
 
-    /** The labels worth keeping: those carrying a figure or a pay/add-on label. */
+    /**
+     * The labels worth keeping: those carrying a figure or a pay/add-on label, masked ({@link PersonalText}) before
+     * they are cut, so no name or address is kept. The decision itself was made from the raw labels.
+     */
     static List<String> evidence(List<String> labels) {
         List<String> out = new ArrayList<>();
         if (labels == null) return out;
         for (String label : labels) {
             if (label == null || !EVIDENCE.matcher(label).find()) continue;
-            String clean = OfferEvidence.normalize(label);
+            String clean = PersonalText.mask(OfferEvidence.normalize(label));
             out.add(clean.length() > MAX_EVIDENCE_CHARS ? clean.substring(0, MAX_EVIDENCE_CHARS) + "…" : clean);
             if (out.size() == MAX_EVIDENCE_LINES) break;
         }

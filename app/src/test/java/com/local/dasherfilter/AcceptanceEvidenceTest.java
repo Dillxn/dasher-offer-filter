@@ -211,8 +211,8 @@ public class AcceptanceEvidenceTest {
 
         assertEquals(0, FilterStore.load(app).lastAcceptedCents);
         contains(history(), "Not accepted: Dasher went back to the wait for offers 2 s after it left");
-        // What Dasher showed after it is kept for a report.
-        contains(DiagnosticLog.readScreens(app), "after an offer left (0 s) labels=[Sam T");
+        // What Dasher showed after it is kept for a report, the dasher's own name masked.
+        contains(DiagnosticLog.readScreens(app), "after an offer left (0 s) labels=[[name], 120 orders completed");
     }
 
     @Test

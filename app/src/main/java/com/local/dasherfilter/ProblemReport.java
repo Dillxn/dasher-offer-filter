@@ -43,7 +43,9 @@ final class ProblemReport {
             "you", "this", "that", "it", "is", "are", "be", "not", "no", "yes", "back", "go", "cancel",
             "confirm", "keep", "never", "mind", "sure", "want", "do", "lower", "acceptance", "rate", "completion",
             "new", "shop", "now", "at", "from", "per", "avg", "average", "store", "restaurant",
-            "dash", "finding", "arrive", "arrived", "on", "while", "until", "more", "less", "than"));
+            "dash", "finding", "arrive", "arrived", "on", "while", "until", "more", "less", "than",
+            // PersonalText's placeholders ("[name]'s order"), which name what was masked and hide nothing.
+            "name", "address", "phone", "email", "instructions", "s"));
 
     enum Kind {
         /** A visible offer with Accept and Decline that the app could not classify. */
@@ -162,14 +164,15 @@ final class ProblemReport {
     }
 
     /**
-     * Each screen line with every word that is not offer vocabulary masked, keeping its shape: "Order for Jane D.
-     * $7.90" becomes "Order for Xxxx X. $7.90". Offer figures stay, so a misread can still be reproduced; runs of
-     * four or more digits (ZIP codes, house and phone numbers) become "#".
+     * Each screen line masked twice: first names, addresses, phone numbers, emails and a customer's own words, as
+     * the phone keeps them ({@link PersonalText}: "Order for Jane D. $7.90" becomes "Order for [name] $7.90"), then
+     * every word that is not offer vocabulary, keeping its shape ("Chick-fil-A" becomes "Xxxxx-xxx-A"). Offer figures
+     * stay, so a misread can still be reproduced; runs of four or more digits become "#".
      */
     static List<String> redact(List<String> labels) {
         List<String> out = new ArrayList<>();
         if (labels == null) return out;
-        for (String label : labels) {
+        for (String label : PersonalText.mask(labels)) {
             if (label != null) out.add(redact(label));
         }
         return out;

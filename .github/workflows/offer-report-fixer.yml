@@ -4,7 +4,8 @@ name: Offer report fixer
 # Each report goes through offer-report-fix-one.yml, which splits the work by what each part may touch:
 # Claude diagnoses with a read-only token, the gate runs the proposed fix with read-only access, and only the
 # ship job, which runs no code from the fix, can push to main and close the issue.
-# Turn off by setting the repository variable OFFER_FIXER_ENABLED to false.
+# Opt-in: it runs only while the repository variable OFFER_FIXER_ENABLED is true. Only titles starting with
+# "[offer-report]" are reports; "[diagnostics]" issues the phone files after a dash never start a fix.
 
 on:
   issues:
@@ -23,7 +24,9 @@ jobs:
   waiting:
     # Runs for every opened issue, so a run for an unrelated issue that replaces a queued run still finds the
     # waiting reports. The listing decides what counts as a report.
-    if: vars.OFFER_FIXER_ENABLED != 'false'
+    # Opt-in until its Android SDK setup is repaired (runs failed there and emailed the owner each time): set the
+    # repository variable OFFER_FIXER_ENABLED to true to run it; unset or anything else skips every run.
+    if: vars.OFFER_FIXER_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

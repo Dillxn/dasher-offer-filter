@@ -10,7 +10,10 @@ import java.nio.charset.StandardCharsets;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Files one issue in the app's private repository. Plain HTTPS; no Android dependencies beyond org.json. */
+/**
+ * Files issues in the app's private repository, and comments on them: nothing else, and nowhere else (every request
+ * goes under {@link #endpoint}, this repository's issues). Plain HTTPS; no Android dependencies beyond org.json.
+ */
 final class GitHubIssues {
     static final String REPOSITORY = "Dillxn/dasher-offer-filter";
     /** Package-private so tests can point it at a local server; production always uses the GitHub API. */
@@ -49,14 +52,42 @@ final class GitHubIssues {
      * @throws IOException when GitHub could not be reached
      */
     static int create(String token, String title, String body) throws IOException {
-        byte[] payload;
+        return create(token, title, body, null);
+    }
+
+    /**
+     * @param labels the issue's labels, or null for none (GitHub drops labels the token may not set)
+     * @return the new issue's number
+     */
+    static int create(String token, String title, String body, java.util.List<String> labels) throws IOException {
         try {
-            payload = new JSONObject().put("title", title).put("body", body).toString()
-                    .getBytes(StandardCharsets.UTF_8);
+            JSONObject issue = new JSONObject().put("title", title).put("body", body);
+            if (labels != null && !labels.isEmpty()) issue.put("labels", new org.json.JSONArray(labels));
+            return new JSONObject(post(endpoint, token, issue)).getInt("number");
+        } catch (JSONException malformed) {
+            throw new IOException("Unreadable GitHub response", malformed);
+        }
+    }
+
+    /**
+     * Adds a comment to one of this repository's issues.
+     *
+     * @throws Rejected    when GitHub refuses
+     * @throws IOException when GitHub could not be reached
+     */
+    static void comment(String token, int issue, String body) throws IOException {
+        if (issue <= 0) throw new IOException("No issue to comment on");
+        try {
+            post(endpoint + "/" + issue + "/comments", token, new JSONObject().put("body", body));
         } catch (JSONException impossible) {
             throw new IOException(impossible);
         }
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+    }
+
+    /** POSTs {@code json} and returns GitHub's answer to a created item (201). */
+    private static String post(String url, String token, JSONObject json) throws IOException {
+        byte[] payload = json.toString().getBytes(StandardCharsets.UTF_8);
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15_000);
@@ -82,9 +113,7 @@ final class GitHubIssues {
                 throw new Rejected(status, rateLimited, messageOf(error));
             }
             try (InputStream in = connection.getInputStream()) {
-                return new JSONObject(readBounded(in)).getInt("number");
-            } catch (JSONException malformed) {
-                throw new IOException("Unreadable GitHub response", malformed);
+                return readBounded(in);
             }
         } finally {
             connection.disconnect();
