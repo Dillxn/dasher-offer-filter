@@ -117,7 +117,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
             // Turned off in Settings, the ground stays, and says a tap turns it back on.
             iconButton(content, "Settings").performClick();
-            ((Switch) findButton(content, "Remember where offers come in")).setChecked(false);
+            ((Switch) findButton(content, "Offer map")).setChecked(false);
             iconButton(content, "Back").performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertTrue(map.isShown());
@@ -318,10 +318,16 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue("drawn with its icons beside the circle", star.beside());
             View title = iconDescribed(content, "Offer Filter");
             assertTrue("the page's name keeps room, so screen readers reach it", title != null && title.getWidth() > 0);
+            assertTrue("a tap on it is a button there", star.isClickable());
             star.performClick();
-            assertTrue("a tap still opens the minimums", fieldLabeled(content, "Minimum pay ($)").isShown());
-            iconButton(content, "Back").performClick();
+            settle();
+            assertFalse("a tap spreads it across the sky, where its knobs are", star.beside());
+            assertFalse("and opens no page", settingsShown(content));
             assertTrue("the skyline stays", findChart(content).isShown());
+            star.performClick();
+            settle();
+            assertTrue("a tap on its circle puts it back in the header", star.beside());
+            assertTrue(find(content, AreaMapView.class).isShown());
         }
     }
 

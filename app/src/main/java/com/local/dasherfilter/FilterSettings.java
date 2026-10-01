@@ -135,6 +135,21 @@ final class FilterSettings {
                 risingOffers, lastAcceptedCents, best, declined, on);
     }
 
+    /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
+    FilterSettings withMaxStops(int stops) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, Math.max(0, stops),
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea);
+    }
+
+    /**
+     * These rules with the adaptive minimum on or off; what it learned is kept either way (only Reset forgets it), and
+     * nothing else changes.
+     */
+    FilterSettings withAdaptive(boolean on) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, on,
+                lastAcceptedCents, best, declined, scoreByArea);
+    }
+
     /** The four set minimums in the constellation's spoke order: pay, per mile, per minute, per stop. */
     int[] minimums() {
         return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents};
@@ -156,7 +171,7 @@ final class FilterSettings {
      *
      * <p>A set minimum is never lowered, a measure with nothing learned is left as it is, and nothing else changes:
      * the on or paused state, max stops, the adaptive minimum and everything it learned stay as they are (it goes on
-     * rising, until Reset). Each is held to the most Settings accepts, {@link #MOST_CENTS}.
+     * rising, until Reset). Each is held to the most a knob can be set to, {@link #MOST_CENTS}.
      */
     FilterSettings adoptAdaptive() {
         long pay = 0;
@@ -181,7 +196,7 @@ final class FilterSettings {
                 raised(perMinuteCents, minute), raised(perStopCents, stop)});
     }
 
-    /** The most any minimum can be set to, as Settings accepts: $1,000 (in cents; a rate's cents per unit). */
+    /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */
     static final int MOST_CENTS = 100_000;
 
     /** A set minimum raised to {@code asks} (0 when nothing was learned), held to {@link #MOST_CENTS}; never lower. */

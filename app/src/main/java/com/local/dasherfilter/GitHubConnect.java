@@ -98,7 +98,17 @@ final class GitHubConnect {
         return state(context) == State.WAITING ? prefs(context).getString(USER_CODE, null) : null;
     }
 
-    /** One line for Settings. */
+    /** The account the connection signed in as, for Settings' GitHub row; "" while not connected or not known. */
+    static String login(Context context) {
+        return state(context) == State.CONNECTED ? prefs(context).getString(LOGIN, "") : "";
+    }
+
+    /** Why the last try or connection ended, for Settings' GitHub row while not connected; "" for nothing to say. */
+    static String note(Context context) {
+        return state(context) == State.OFF ? prefs(context).getString(NOTE, "") : "";
+    }
+
+    /** One line saying where the connection stands. */
     static String status(Context context) {
         SharedPreferences prefs = prefs(context);
         switch (state(context)) {

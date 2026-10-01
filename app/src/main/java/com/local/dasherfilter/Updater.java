@@ -64,6 +64,8 @@ final class Updater {
     private static final String UPDATE_CHANNEL_ID = "updates";
 
     private static final String ENABLED = "enabled";
+    /** Set once the retired Automatic updates switch's "off" was cleared (or checks were set since). */
+    private static final String SWITCH_RETIRED = "switch_retired";
     private static final String STATUS = "status";
     private static final String ATTEMPT_AT = "attempt_at";
     private static final String CHECKED_AT = "checked_at";
@@ -117,8 +119,25 @@ final class Updater {
         return prefs(context).getBoolean(ENABLED, true);
     }
 
+    /** Checks on or off. Settings has no switch for this (checks are always automatic); tests turn them off. */
     static void setEnabled(Context context, boolean value) {
-        prefs(context).edit().putBoolean(ENABLED, value).apply();
+        prefs(context).edit().putBoolean(ENABLED, value).putBoolean(SWITCH_RETIRED, true).apply();
+        schedule(context);
+    }
+
+    /**
+     * Automatic updates are always on since Settings lost its switch for them: an "off" an older version kept is
+     * cleared, once, and noted in the log; the periodic check is scheduled again. Nothing about how an update is
+     * verified changes.
+     */
+    static void retireSwitch(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.getBoolean(SWITCH_RETIRED, false)) return;
+        boolean wasOff = !prefs.getBoolean(ENABLED, true);
+        prefs.edit().putBoolean(ENABLED, true).putBoolean(SWITCH_RETIRED, true).apply();
+        if (!wasOff) return;
+        DiagnosticLog.log(context, "update", "automatic updates were turned off in an older version; Settings has no "
+                + "such switch now, so they are on again");
         schedule(context);
     }
 
@@ -559,6 +578,33 @@ final class Updater {
         return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
     }
 
+    /** What an automatic install says while a dash is on: it waits for the dash to end. */
+    static final String AFTER_DASH = "Update ready: installs after your dash";
+    /** How often an update held for a dash is tried again. */
+    static final long DASH_RETRY_MS = 5 * 60_000L;
+
+    /**
+     * Why a verified update does not install now (it is retried), or null when it may. An automatic one waits while a
+     * dash is on ({@link Dashing#now}): installing closes Offer Filter, and with it its half of a split screen beside
+     * Dasher and anything it was watching, so it waits for the dash to end. It also waits while an offer or delivery
+     * is up, or while the user is in the middle of something on Offer Filter's screen an update would lose (typing
+     * rules). The user's own check still installs mid-dash; only Dasher on screen holds it back.
+     */
+    static String heldBack(Context context, boolean manual) {
+        if (!manual && Dashing.now(context)) return AFTER_DASH;
+        boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
+        if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
+            return "Update verified; installation deferred while an offer/delivery is active.";
+        }
+        // With Offer Filter open, the update installs too (the screen shows it and reopens after), except while the
+        // user is in the middle of something an update would lose, such as typing rules.
+        Activity open = foreground.get();
+        if (!manual && open instanceof Busy && ((Busy) open).midTask()) {
+            return "Update ready; it installs when you leave Settings.";
+        }
+        return null;
+    }
+
     private static void install(Context context, File file, Release checked, UpdateCadence.Trigger trigger)
             throws Exception {
         boolean manual = trigger.manual();
@@ -575,19 +621,11 @@ final class Updater {
                     + "installs.", checked);
             return;
         }
-        boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
-        if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
-            settle(context, trigger, "Update verified; installation deferred while an offer/delivery is active.",
-                    checked);
-            retry(context, MIN_RETRY_DELAY_MS, manual);
-            return;
-        }
-        // With Offer Filter open, the update installs too (the screen shows it and reopens after), except while the
-        // user is in the middle of something an update would lose, such as typing rules.
-        Activity open = foreground.get();
-        if (!manual && open instanceof Busy && ((Busy) open).midTask()) {
-            settle(context, trigger, "Update ready; it installs when you leave Settings.", checked);
-            retry(context, MIN_RETRY_DELAY_MS, manual);
+        String wait = heldBack(context, manual);
+        if (wait != null) {
+            settle(context, trigger, wait, checked);
+            // A dash lasts hours: looked at again every few minutes, not every minute.
+            retry(context, AFTER_DASH.equals(wait) ? DASH_RETRY_MS : MIN_RETRY_DELAY_MS, manual);
             return;
         }
         if (Thread.currentThread().isInterrupted()) return;

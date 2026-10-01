@@ -359,6 +359,7 @@ final class DiagnosticLog {
         String log = newest(PersonalText.maskLine(read(context)), MAX_REPORT_LOG_CHARS);
         String screens = newestScreens(PersonalText.maskLine(readScreens(context)), System.currentTimeMillis());
         return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"
+                + phone() + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
                 + ". " + MASKED_NOTE + " Review before sharing.\n\n"
                 + "== Readiness\n"
@@ -403,6 +404,16 @@ final class DiagnosticLog {
                 + log + "\n\n"
                 + "== Dasher's other screens (newest)\n"
                 + screens;
+    }
+
+    /**
+     * "Android 15 (API 35), Google": which Android and whose phone, since split screen and its windows differ by both.
+     * In the shared report and the diagnostics after a dash only, never in an automatic problem report.
+     */
+    static String phone() {
+        String maker = android.os.Build.MANUFACTURER == null ? "" : android.os.Build.MANUFACTURER.trim();
+        return "Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + "), "
+                + (maker.isEmpty() ? "unknown maker" : maker);
     }
 
     /**

@@ -10,20 +10,18 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
-import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 
 /**
  * Framework-only styling for the app's screen: one palette per light/dark theme and the few components it is built
- * from, kept quiet: soft pill buttons, rounded fields, small captions for headings, and switches with a face. Status
+ * from, kept quiet: soft pill buttons, list rows, small captions for headings, and switches with a face. Status
  * colors are fixed across themes and always travel with a symbol and a word, never color alone.
  */
 final class Ui {
@@ -50,7 +48,6 @@ final class Ui {
     /** The second data series (adaptive minimums), apart from the status colors. */
     final int learned;
     final int onAccent;
-    final int fieldFill;
     final int selectionWash;
 
     Ui(Context context) {
@@ -69,13 +66,7 @@ final class Ui {
         link = dark ? 0xFF8AB4F0 : 0xFF1D5499;
         learned = dark ? 0xFFB08CF0 : 0xFF7A4CC8;
         onAccent = 0xFFFFFFFF;
-        fieldFill = dark ? 0xFF262625 : 0xFFF1F0EC;
         selectionWash = dark ? 0xFF262625 : 0xFFF1F0EC;
-    }
-
-    /** True when the user's font setting is large enough that side-by-side text would crowd. */
-    boolean largeText() {
-        return context.getResources().getConfiguration().fontScale >= 1.3f;
     }
 
     int dp(float value) {
@@ -245,6 +236,28 @@ final class Ui {
         return button;
     }
 
+    /**
+     * A list row's words: {@code title}, and under it {@code detail} (none when empty), smaller and in secondary ink.
+     * Unchanged words are not set again, so a row refreshed every second costs nothing.
+     */
+    void setRow(Button row, String title, String detail) {
+        CharSequence text = title;
+        boolean two = detail != null && !detail.isEmpty();
+        if (two) {
+            android.text.SpannableStringBuilder both = new android.text.SpannableStringBuilder(title).append('\n');
+            int start = both.length();
+            both.append(detail);
+            both.setSpan(new android.text.style.RelativeSizeSpan(13f / 16f), start, both.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            both.setSpan(new android.text.style.ForegroundColorSpan(inkSecondary), start, both.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text = both;
+        }
+        if (android.text.TextUtils.equals(text, row.getText())) return;
+        row.setText(text);
+        row.setPadding(row.getPaddingLeft(), two ? dp(6) : 0, row.getPaddingRight(), two ? dp(6) : 0);
+    }
+
     /** A few words of link text that open something, still a 48 dp touch target; screen readers hear a button. */
     Button link(String label, Runnable action) {
         Button button = new Button(context);
@@ -273,14 +286,6 @@ final class Ui {
         return button;
     }
 
-    void styleField(EditText field) {
-        field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        field.setTextColor(ink);
-        field.setHintTextColor(inkMuted);
-        field.setBackground(rounded(fieldFill, border, 10));
-        field.setPadding(dp(12), dp(10), dp(12), dp(10));
-    }
-
     /** A switch whose knob is the mascot's face: awake when on, asleep when off. */
     Switch toggle(LinearLayout parent, String label, boolean value) {
         Switch view = new Switch(context);
@@ -297,6 +302,8 @@ final class Ui {
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         view.setChecked(value);
         view.setMinHeight(dp(48));
+        // Its words line up with the list rows' (which keep a little room inside their press highlight).
+        view.setPaddingRelative(dp(4), 0, 0, 0);
         LinearLayout.LayoutParams params = matchWidth();
         params.topMargin = dp(6);
         parent.addView(view, params);
@@ -315,39 +322,6 @@ final class Ui {
         params.bottomMargin = dp(10);
         parent.addView(view, params);
         return view;
-    }
-
-    /**
-     * A rule field on a soft rounded card: a small icon and label on top, the amount large beneath. The label is
-     * linked to the field for screen readers.
-     */
-    EditText tagField(LinearLayout parent, String label, String value, boolean decimal, Glyph.Shape icon) {
-        LinearLayout tag = column();
-        tag.setBackground(rounded(dark ? 0x0FFFFFFF : 0x0A0B0B0B, 0, 16));
-        tag.setPadding(dp(14), dp(10), dp(14), dp(8));
-        TextView caption = text(label, 12, inkSecondary, false);
-        caption.setCompoundDrawablesRelative(new Glyph(icon, inkSecondary, dp(15)), null, null, null);
-        caption.setCompoundDrawablePadding(dp(6));
-        EditText field = new EditText(context);
-        field.setId(View.generateViewId());
-        caption.setLabelFor(field.getId());
-        field.setSingleLine(true);
-        field.setInputType(InputType.TYPE_CLASS_NUMBER | (decimal ? InputType.TYPE_NUMBER_FLAG_DECIMAL : 0));
-        field.setText(value);
-        field.setSelectAllOnFocus(true);
-        field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        field.setTypeface(MEDIUM);
-        field.setTextColor(ink);
-        field.setHintTextColor(inkMuted);
-        field.setBackground(null);
-        field.setPadding(0, dp(2), 0, dp(2));
-        tag.addView(caption);
-        tag.addView(field, matchWidth());
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        params.topMargin = dp(8);
-        parent.addView(tag, params);
-        return field;
     }
 
     static LinearLayout.LayoutParams matchWidth() {

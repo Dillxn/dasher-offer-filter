@@ -48,6 +48,8 @@ final class DasherOverlay implements DasherTab.Listener {
     static final int STEP_DP = 64;
     /** Between the tab and the guide beside it. */
     private static final int GUIDE_GAP_DP = 6;
+    /** In split screen, the guide's top is this far below the top of Dasher's half (below the status bar). */
+    static final int GUIDE_BELOW_TOP_DP = 72;
 
     /** The guide is worked out again at most this often (it reads the areas and the last known position). */
     static final long GUIDE_EVERY_MS = 10_000;
@@ -324,9 +326,11 @@ final class DasherOverlay implements DasherTab.Listener {
         int x;
         int y;
         if (split) {
-            // Centred near the top of Dasher's half, under its own top buttons.
+            // Centred near the top of Dasher's half, under its own top buttons. With Dasher's half at the top of the
+            // screen, its window starts under the status bar, and so do its top buttons.
             x = area.left + Math.max(0, (area.width() - width) / 2);
-            y = area.top + ui.dp(72);
+            int statusBar = statusBarHeight(service);
+            y = area.top + (area.top < statusBar ? statusBar : 0) + ui.dp(GUIDE_BELOW_TOP_DP);
         } else {
             // Beside the tab, on the side away from its edge.
             int beside = ui.dp(DasherTab.shownDp(tab.look()) + GUIDE_GAP_DP);
@@ -334,6 +338,24 @@ final class DasherOverlay implements DasherTab.Listener {
             y = tabTop() + (ui.dp(DasherTab.HEIGHT_DP) - ui.dp(DasherGuide.HEIGHT_DP)) / 2;
         }
         place(guide, x, y, WindowManager.LayoutParams.WRAP_CONTENT);
+    }
+
+    /**
+     * The status bar's height (Android's own dimension, looked up by name since this build has no generated R
+     * class), or 24 dp when Android does not say. The overlay's windows are placed in screen coordinates and have no
+     * insets of their own to ask, so the dimension is what there is.
+     */
+    @SuppressWarnings({"DiscouragedApi", "InternalInsetResource"})
+    static int statusBarHeight(Context context) {
+        android.content.res.Resources resources = context.getResources();
+        int id = resources.getIdentifier("status_bar_height", "dimen", "android");
+        int height = 0;
+        try {
+            if (id != 0) height = resources.getDimensionPixelSize(id);
+        } catch (RuntimeException missing) {
+            height = 0;
+        }
+        return height > 0 ? height : Math.round(24 * resources.getDisplayMetrics().density);
     }
 
     /** Made once: the overlay follows the phone's theme as it was when the service started. */

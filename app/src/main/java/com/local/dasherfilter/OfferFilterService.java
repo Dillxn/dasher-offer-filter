@@ -1,11 +1,17 @@
 package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
+import android.app.KeyguardManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -53,9 +59,14 @@ import java.util.function.Supplier;
  * <p>The user's decline. From the first Decline tap, the offer is handed back the moment the user acts on it: a touch
  * that is not the echo of one of the app's own taps ({@link OwnTaps}), a click Dasher reports on any node the app did
  * not tap, or the offer showing again after its screen gave way to its question with no tap of the question's Decline
- * taken ({@link DeclineEpisode}). Dasher's question is tried {@link DeclineState#MAX_CONFIRMATION_TRIES} times at most,
- * {@link #CONFIRM_RETRY_MS} apart, and then left to the user; an offer whose screen gave way is never declined again,
- * except once after Dasher closed the question the app confirmed and kept showing the offer.
+ * taken ({@link DeclineEpisode}). In split screen with the bounds of Dasher's half known, a touch counts only on
+ * Dasher's half (the user's decision): one Offer Filter's own screen reports too was on its own half, and while that is
+ * being judged nothing is tapped on the offer. Dasher's question is tried {@link DeclineState#MAX_CONFIRMATION_TRIES}
+ * times at most, {@link #CONFIRM_RETRY_MS} apart, and then left to the user; an offer whose screen gave way is never
+ * declined again, except once after Dasher closed the question the app confirmed and kept showing the offer.
+ *
+ * <p>Split screen. Dasher's half is read only while it is really in view beside the app the user is in
+ * ({@link SplitWindows#covered}), and every screen line carries where Dasher was ({@link SplitWindows#field}).
  */
 public final class OfferFilterService extends AccessibilityService {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -106,6 +117,18 @@ public final class OfferFilterService extends AccessibilityService {
      * report the app's own action to the touch watch as a touch outside it. Each tap has a window of its own.
      */
     static final long OWN_ACTION_ECHO_MS = OwnTaps.TOUCH_ECHO_MS;
+    /**
+     * In split screen, a touch the watch reports is in Offer Filter's own half when Offer Filter's screen had a finger
+     * land at the same time: both reports of one touch carry its time, so they are this far apart at most.
+     */
+    static final long SAME_TOUCH_MS = 50;
+    /**
+     * In split screen, how long a touch the watch reports waits for Offer Filter's screen to report it too (Android
+     * tells both on the main thread, in either order). Meanwhile no tap of the app's goes to the offer being declined;
+     * a touch Offer Filter's screen never reported is then the user's, on Dasher's half (or another app's: Android
+     * does not say where a touch outside the watch landed in another app's window).
+     */
+    static final long OWN_HALF_WAIT_MS = 100;
     /**
      * A try at Dasher's question that Android refused, or that Dasher did not act on, is tried again this long after
      * (the retries are 250-400 ms apart), by a read of its own when no other read comes first.
@@ -189,10 +212,21 @@ public final class OfferFilterService extends AccessibilityService {
     private volatile long userActionsTaken;
     /** When the first Decline tap of the decline under way was made (uptime): a click before it is not on it. */
     private volatile long declineBeganAt = Long.MAX_VALUE;
-    /** When Dasher was last seen in one half of a split screen (uptime), 0 for never. */
+    /**
+     * When Dasher was last seen in one half of a split screen, on the screen-on clock ({@link #screenOnTime}: time
+     * with the screen off does not count), 0 for never.
+     */
     private static volatile long dasherBesideAt;
-    /** How long that sighting holds: a moment under the shade or in recent apps does not count as gone. */
+    /**
+     * How long that sighting holds while the screen is on: a moment under the shade or in recent apps does not count
+     * as gone, and neither does any time with the screen off (unlocking finds Offer Filter beside Dasher still).
+     */
     static final long BESIDE_MS = 20_000;
+    /** When the screen went off (uptime), 0 while it is on; and how long it was off before that, all told. */
+    private static volatile long screenOffSince;
+    private static volatile long screenOffTotal;
+    /** When Offer Filter's own screen last had a finger land (its event time, uptime): it was not on Dasher's half. */
+    private static volatile long ownScreenTouchAt = NEVER;
 
     // ---- Handed over: set on the main thread, taken on the scanner thread ----
 
@@ -252,9 +286,34 @@ public final class OfferFilterService extends AccessibilityService {
 
     private TouchWatch touchWatch;
     private DasherOverlay overlay;
+    /**
+     * Touches in split screen not judged yet: each its time and when (uptime) it is judged the user's unless Offer
+     * Filter's own screen reported it first.
+     */
+    private final java.util.ArrayDeque<long[]> heldTouches = new java.util.ArrayDeque<>();
+    /** How many there are (written on the main thread): while any, no tap of the app's goes to the declined offer. */
+    private volatile int touchesHeld;
+    private final Runnable judgeTouches = this::judgeHeldTouches;
+    /** The screen turning off and on: a sighting of Dasher beside does not age while it is off. */
+    private final BroadcastReceiver screenState = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            screenTurned(!Intent.ACTION_SCREEN_OFF.equals(intent.getAction()), SystemClock.uptimeMillis());
+        }
+    };
+    private boolean screenStateWatched;
+
+    /**
+     * Dasher's own windows, by ID, as reads found them (written on the scanner thread, any thread may read): the log's
+     * window field names Dasher's window from Android's list alone, without asking Dasher.
+     */
+    private final Set<Integer> dasherWindowIds = ConcurrentHashMap.newKeySet();
 
     // ---- Scanner thread only ----
 
+    /** The last look's window field ({@link SplitWindows#field}), for the screen lines. */
+    private String readWin = "win=unknown";
+    /** Why Dasher's half beside the active app was last left unread (logged once per change), "" for none. */
+    private String coverNoted = "";
     private final DeclineState declineState = new DeclineState();
     /** The decline under way, as far as Dasher's question goes: never a second first Decline once it was seen. */
     private final DeclineEpisode episode = new DeclineEpisode();
@@ -565,17 +624,99 @@ public final class OfferFilterService extends AccessibilityService {
         long taken = service.userActionsTaken;
         OfferSnapshot declining = service.decliningOffer;
         // Touched or tapped a moment ago, and the scanner has not handed the offer back yet: it is the user's already.
-        if (service.userActions.get() != taken && declining != null && !facts.contradicts(declining)) return true;
+        // So is a touch in split screen still being judged (Offer Filter's half, or Dasher's).
+        boolean acted = service.userActions.get() != taken || service.touchesHeld > 0;
+        if (acted && declining != null && !facts.contradicts(declining)) return true;
         return service.takeover.covers(facts, SystemClock.uptimeMillis());
     }
 
     /**
-     * Whether Dasher is in the other half of a split screen, as last seen within {@link #BESIDE_MS}: the homepage
-     * then shows no map of its own.
+     * Whether Dasher is in the other half of a split screen, as last seen within {@link #BESIDE_MS} of screen-on time:
+     * the homepage then shows no map of its own, and no "Put Dasher beside" button.
      */
     static boolean dasherBeside() {
         long at = dasherBesideAt;
-        return active != null && at != 0 && SystemClock.uptimeMillis() - at < BESIDE_MS;
+        return active != null && at != 0 && screenOnTime(SystemClock.uptimeMillis()) - at < BESIDE_MS;
+    }
+
+    /** Uptime less the time the screen was off: what a sighting of Dasher beside ages by. */
+    static long screenOnTime(long uptime) {
+        long offSince = screenOffSince;
+        long off = screenOffTotal + (offSince != 0 && uptime > offSince ? uptime - offSince : 0);
+        return Math.max(1, uptime - off);
+    }
+
+    /** On the main thread, as Android says the screen turned on or off. */
+    static void screenTurned(boolean on, long uptime) {
+        long offSince = screenOffSince;
+        if (on && offSince != 0) {
+            screenOffTotal += Math.max(0, uptime - offSince);
+            screenOffSince = 0;
+        } else if (!on && offSince == 0) {
+            screenOffSince = Math.max(1, uptime);
+        }
+    }
+
+    /**
+     * On the main thread, as a finger lands on Offer Filter's own screen ({@link MainActivity}): in split screen, that
+     * touch was not on Dasher's half, so it hands no offer back. The touch watch may report the same touch before or
+     * after this.
+     *
+     * @param at the touch's own time (uptime), as Android stamped it
+     */
+    static void ownScreenTouched(long at) {
+        ownScreenTouchAt = at;
+        OfferFilterService service = active;
+        if (service != null) service.ownTouchArrived(at);
+    }
+
+    /**
+     * Offer Filter's screen came back, or went into or out of split screen: the windows are looked at now, not at
+     * Dasher's next event (switching apps sends none of Dasher's), so a sighting of Dasher beside is current; then
+     * {@code then} runs on the main thread. Not while an offer or confirmation is up or a decline is under way, or a
+     * read is queued: reads look then anyway. Nothing before the first-run notice is accepted.
+     */
+    static void lookSoon(Runnable then) {
+        OfferFilterService service = active;
+        if (service == null || service.stopped) return;
+        service.scanner.post(() -> {
+            if (!service.stopped && Consent.accepted(service) && service.queued.get() == QUEUED_NONE
+                    && !service.busy(SystemClock.uptimeMillis())) {
+                service.lookAndPlace(true);
+                service.watchWindows();
+            }
+            if (then != null) service.onMain(then);
+        });
+    }
+
+    /**
+     * Where Dasher is, for an alert's log line: the window field ({@link SplitWindows#field}) from Android's list of
+     * windows now (Dasher's and Offer Filter's windows known by their IDs from earlier reads; nothing is asked of any
+     * app), and whether the screen is on and locked: "win=hidden/-/system/0 screen=off locked=yes".
+     */
+    static String windowsNow(Context context) {
+        String win = "win=unknown";
+        OfferFilterService service = active;
+        if (service != null) {
+            try {
+                List<AccessibilityWindowInfo> listed = service.windowSource.get();
+                if (listed == null) listed = Collections.emptyList();
+                win = SplitWindows.field(listed, service::knownOwner, service.display());
+            } catch (RuntimeException unavailable) {
+                win = "win=unknown";
+            }
+        }
+        String on = "?";
+        String locked = "?";
+        try {
+            PowerManager power = context.getSystemService(PowerManager.class);
+            if (power != null) on = power.isInteractive() ? "on" : "off";
+            KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+            if (keyguard != null) locked = keyguard.isKeyguardLocked() ? "yes" : "no";
+        } catch (RuntimeException unavailable) {
+            // Said as unknown.
+        }
+        return win + " screen=" + on + " locked=" + locked;
     }
 
     /**
@@ -681,6 +822,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     @Override protected void onServiceConnected() {
         active = this;
+        watchScreenState();
         Updater.schedule(this);
         DiagnosticLog.log(this, "accessibility", "connected; never opens Dasher");
         onScanner(() -> {
@@ -790,7 +932,14 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** For tests: Dasher was just seen in the other half of a split screen, or (0) never. */
     static void sawDasherBeside(long uptime) {
-        dasherBesideAt = uptime;
+        dasherBesideAt = uptime == 0 ? 0 : screenOnTime(uptime);
+    }
+
+    /** For tests: the screen on, and no time off counted. */
+    static void forgetScreenState() {
+        screenOffSince = 0;
+        screenOffTotal = 0;
+        ownScreenTouchAt = NEVER;
     }
 
     /** For tests: the filter tab over Dasher. */
@@ -803,13 +952,48 @@ public final class OfferFilterService extends AccessibilityService {
         return scanner.getLooper();
     }
 
+    /**
+     * On the main thread: whether the screen is on now, and its turning off and on from here, so a sighting of Dasher
+     * beside does not age while the screen is off.
+     */
+    private void watchScreenState() {
+        if (screenStateWatched) return;
+        long now = SystemClock.uptimeMillis();
+        try {
+            PowerManager power = getSystemService(PowerManager.class);
+            screenTurned(power == null || power.isInteractive(), now);
+        } catch (RuntimeException unknown) {
+            screenTurned(true, now);
+        }
+        IntentFilter turns = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        turns.addAction(Intent.ACTION_SCREEN_ON);
+        try {
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenState, turns, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(screenState, turns);
+            screenStateWatched = true;
+        } catch (RuntimeException refused) {
+            DiagnosticLog.log(this, "split", "screen on/off not watched: " + refused.getClass().getSimpleName());
+        }
+    }
+
     /** On the main thread: everything of ours leaves the screen, the sound comes back, and the scanner ends. */
     private void stop() {
         boolean first = !stopped;
         stopped = true;
         if (active == this) active = null;
+        if (screenStateWatched) {
+            screenStateWatched = false;
+            try {
+                unregisterReceiver(screenState);
+            } catch (RuntimeException alreadyGone) {
+                // Gone with the service.
+            }
+        }
         if (overlay != null) overlay.hide();
         if (touchWatch != null) touchWatch.stop();
+        main.removeCallbacks(judgeTouches);
+        heldTouches.clear();
+        touchesHeld = 0;
         watchState = WATCH_DOWN;
         // Put back at once, whatever the scanner is doing; it puts back again as it finishes, and turns nothing down
         // again (the silencer checks the stop under its lock).
@@ -1272,6 +1456,13 @@ public final class OfferFilterService extends AccessibilityService {
      * (Android can report the app's own action as a touch outside the watch): it is logged and changes nothing. Each
      * tap has a window of its own, and a later tap never stretches an earlier one's.
      *
+     * <p>In split screen with the bounds of Dasher's half known (the user's decision), only a touch on Dasher's half
+     * hands the offer back: one that Offer Filter's own screen reported at the same time was on Offer Filter's half, and
+     * changes nothing. The watch and Offer Filter's screen are told of a touch in either order, so a touch Offer
+     * Filter's screen has not reported yet is held: no tap of the app's goes to the declined offer until it is judged,
+     * at that report (Offer Filter's half) or {@link #OWN_HALF_WAIT_MS} after it landed (the user's). With Dasher full
+     * screen, or the bounds of its half unknown, every touch is the user's, as before.
+     *
      * @param touchAt when the touch landed (uptime), as Android stamped it
      */
     private void touchedDuringDecline(long touchAt) {
@@ -1281,15 +1472,101 @@ public final class OfferFilterService extends AccessibilityService {
                     + " ms after " + AppName.NAME + "'s tap");
             return;
         }
+        Screen seen = screen;
+        if (seen.split && seen.bounded) {
+            if (sameTouch(ownScreenTouchAt, touchAt)) {
+                touchOnOwnHalf(touchAt);
+                return;
+            }
+            long due = SystemClock.uptimeMillis() + OWN_HALF_WAIT_MS;
+            heldTouches.addLast(new long[] {touchAt, due});
+            touchesHeld = heldTouches.size();
+            if (heldTouches.size() == 1) main.postAtTime(judgeTouches, due);
+            return;
+        }
+        usersTouch(touchAt, "");
+    }
+
+    /** The touch is the user's: the scanner hands the offer back before any further tap (main thread). */
+    private void usersTouch(long touchAt, String where) {
         OwnTaps.Tap last = ownTaps.last();
         long since = last != null && touchAt >= last.began ? touchAt - last.began : -1;
         touchSinceOwnAction = since;
-        DiagnosticLog.log(this, "accessibility", "touch during decline: the user's"
+        DiagnosticLog.log(this, "accessibility", "touch during decline: the user's" + where
                 + (since >= 0 ? ", " + since + " ms after " + AppName.NAME + "'s last tap" : ""));
         userActionWasClick = false;
         userActionWhat = "";
         userActions.incrementAndGet();
         scanner.postAtFrontOfQueue(this::takeOverIfTouched);
+    }
+
+    /** Whether two reports of a touch (the watch's and Offer Filter's screen's) are of the same touch. */
+    private static boolean sameTouch(long a, long b) {
+        return a != NEVER && b != NEVER && Math.abs(a - b) <= SAME_TOUCH_MS;
+    }
+
+    /** A touch in split screen on Offer Filter's own half: not on Dasher, so the decline goes on (main thread). */
+    private void touchOnOwnHalf(long touchAt) {
+        OwnTaps.Tap last = ownTaps.last();
+        long since = last != null && touchAt >= last.began ? touchAt - last.began : -1;
+        DiagnosticLog.log(this, "accessibility", "touch on " + AppName.NAME + "'s half of the split screen, not "
+                + "Dasher's: the decline goes on" + (since >= 0 ? " (" + since + " ms after " + AppName.NAME
+                + "'s last tap)" : ""));
+    }
+
+    /** Offer Filter's own screen had a finger land: a touch held for it was on Offer Filter's half (main thread). */
+    private void ownTouchArrived(long at) {
+        boolean released = false;
+        java.util.Iterator<long[]> held = heldTouches.iterator();
+        while (held.hasNext()) {
+            long[] touch = held.next();
+            if (!sameTouch(touch[0], at)) continue;
+            held.remove();
+            touchOnOwnHalf(touch[0]);
+            released = true;
+        }
+        if (!released) return;
+        touchesHeld = heldTouches.size();
+        main.removeCallbacks(judgeTouches);
+        if (!heldTouches.isEmpty()) main.postAtTime(judgeTouches, heldTouches.peekFirst()[1]);
+        if (!stopped) scanner.postAtFrontOfQueue(this::touchesJudged);
+    }
+
+    /**
+     * {@link #OWN_HALF_WAIT_MS} after a touch in split screen that Offer Filter's screen never reported: the user's, on
+     * Dasher's half (main thread). Counted before it stops being held, so no tap of the app's slips in between.
+     */
+    private void judgeHeldTouches() {
+        long now = SystemClock.uptimeMillis();
+        boolean released = false;
+        while (!heldTouches.isEmpty() && heldTouches.peekFirst()[1] <= now) {
+            long[] touch = heldTouches.pollFirst();
+            if (sameTouch(ownScreenTouchAt, touch[0])) {
+                touchOnOwnHalf(touch[0]);
+                released = true;
+            } else {
+                usersTouch(touch[0], " (split screen, not on " + AppName.NAME + "'s half)");
+            }
+        }
+        touchesHeld = heldTouches.size();
+        if (!heldTouches.isEmpty()) main.postAtTime(judgeTouches, heldTouches.peekFirst()[1]);
+        if (released && !stopped) scanner.postAtFrontOfQueue(this::touchesJudged);
+    }
+
+    /**
+     * Scanner thread: a touch that held back the app's taps was on Offer Filter's half. A confirmation held for it is
+     * tapped now, its authority checked again; otherwise the declined offer is read again.
+     */
+    private void touchesJudged() {
+        if (stopped || touchesHeld > 0) return;
+        if (heldConfirmation != null) {
+            tapHeldConfirmation("touch judged on " + AppName.NAME + "'s half");
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (!declineUnderWay(now)) return;
+        if (checkOffer("touch judged", now, MAX_SCAN_NODES)) scheduleRecheck();
+        watchWindows();
     }
 
     /**
@@ -1750,6 +2027,13 @@ public final class OfferFilterService extends AccessibilityService {
         heldConfirmation = null;
         scanner.removeCallbacks(watchHoldOver);
         Tap tap = ownTap(confirmation.declineTargets.get(selected), declinedOffer);
+        if (tap == Tap.HELD) {
+            // A touch in split screen is being judged: tapped once it is found to be on Offer Filter's half (the
+            // offer is handed back if it was on Dasher's), its authority checked again then.
+            noteLook("question " + found + "; held while a touch in split screen is judged");
+            heldConfirmation = confirmation;
+            return true;
+        }
         if (tap == Tap.TAKEN_OVER) confirmLog("confirmation skipped: the offer is the user's");
         if (tap == Tap.TAKEN_OVER || stopped) return false;
         long tappedAt = SystemClock.uptimeMillis();
@@ -2093,6 +2377,11 @@ public final class OfferFilterService extends AccessibilityService {
         long tappedAt = SystemClock.uptimeMillis();
         if (stopped) return false;
         diagnostic(phase, scan, offer, decision);
+        if (tap == Tap.HELD) {
+            // The declined offer again while a touch in split screen is judged: read again once it is.
+            DiagnosticLog.log(this, "accessibility", "Decline held while a touch in split screen is judged: " + detail);
+            return true;
+        }
         // After the tap, so nothing delays it; ahead of this offer's line, so the offer before has its step first.
         acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
         applyNotes();
@@ -2268,18 +2557,25 @@ public final class OfferFilterService extends AccessibilityService {
                 || offer.stops != null;
     }
 
-    /** What happened to one of the app's own taps. */
-    private enum Tap { TAPPED, REFUSED, TAKEN_OVER }
+    /**
+     * What happened to one of the app's own taps. {@link #HELD}: not made yet, because a touch in split screen is
+     * still being judged (Offer Filter's half, or Dasher's); it is tried again once it is.
+     */
+    private enum Tap { TAPPED, REFUSED, TAKEN_OVER, HELD }
 
     /**
      * The app's own tap, unless the user touched the screen since this offer's decline began: then the offer is
      * theirs, and nothing is tapped. Checked right before the tap, so a touch in the middle of a read counts too.
-     * Its click event, arriving just after, is not mistaken for the user's.
+     * Its click event, arriving just after, is not mistaken for the user's. While a touch in split screen is being
+     * judged, nothing is tapped on the offer being declined.
      */
     private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer) {
+        // Before the touches are taken: a touch judged the user's is counted before it stops being held.
+        boolean held = touchesHeld > 0;
         takeOverIfTouched();
         long now = SystemClock.uptimeMillis();
         if (isTakenOver(offer, now)) return Tap.TAKEN_OVER;
+        if (held && declineUnderWay(now) && !offer.contradicts(declinedOffer)) return Tap.HELD;
         // The service stopped (Accessibility turned off, an update) while this read was under way: nothing is tapped.
         if (stopped) return Tap.REFUSED;
         String refusal = clickRefusal(node);
@@ -2328,11 +2624,16 @@ public final class OfferFilterService extends AccessibilityService {
         final List<AccessibilityWindowInfo> windows;
         /** The roots this look already fetched, by listed window: not asked for again. */
         final java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots;
+        /** The active application window, as listed; null when none is. */
+        final AccessibilityWindowInfo activeApp;
+        /** Why Dasher's half beside the active app is not really in view ({@link SplitWindows#covered}), or null. */
+        final String covered;
 
         Look(boolean activeKnown, boolean dasherActive, AccessibilityNodeInfo dasherRoot,
              AccessibilityWindowInfo dasherWindow, boolean split, boolean dasherBeside,
              List<AccessibilityWindowInfo> windows,
-             java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots) {
+             java.util.Map<AccessibilityWindowInfo, AccessibilityNodeInfo> roots, AccessibilityWindowInfo activeApp,
+             String covered) {
             this.activeKnown = activeKnown;
             this.dasherActive = dasherActive;
             this.dasherRoot = dasherRoot;
@@ -2341,6 +2642,8 @@ public final class OfferFilterService extends AccessibilityService {
             this.dasherBeside = dasherBeside;
             this.windows = windows;
             this.roots = roots;
+            this.activeApp = activeApp;
+            this.covered = covered;
         }
     }
 
@@ -2389,9 +2692,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (!split) {
             // Full screen: Dasher is readable only as the active window.
             return new Look(activeKnown, dasherActive, dasherActive ? activeRoot : null,
-                    dasherActive && activeRootListed ? activeApp : null, false, false, listed, roots);
+                    dasherActive && activeRootListed ? activeApp : null, false, false, listed, roots, activeApp,
+                    null);
         }
-        boolean otherAppActive = false;
+        AccessibilityWindowInfo otherActive = null;
         AccessibilityWindowInfo dasher = null;
         AccessibilityNodeInfo dasherWindowRoot = null;
         for (AccessibilityWindowInfo window : listed) {
@@ -2401,7 +2705,7 @@ public final class OfferFilterService extends AccessibilityService {
                     : window == activeApp && activeRootListed ? activeRoot : windowRoot(window, onScanner);
             if (root != null) roots.put(window, root);
             if (!isDasher(root)) {
-                if (window.isActive()) otherAppActive = true;
+                if (window.isActive() && otherActive == null) otherActive = window;
                 continue;
             }
             // The active Dasher window first, else the one in front.
@@ -2411,9 +2715,16 @@ public final class OfferFilterService extends AccessibilityService {
                 dasherWindowRoot = root;
             }
         }
-        AccessibilityWindowInfo shown = dasher != null && (dasherActive || otherAppActive) ? dasher : null;
+        // Beside the app the user is in, Dasher's half is read only while it is really in view: that app's window is
+        // the other half (not recent apps, a pop-up or a window over Dasher's), and no keyboard or system surface
+        // covers it.
+        String covered = dasher != null && !dasherActive && otherActive != null
+                ? SplitWindows.covered(listed, dasher, otherActive) : null;
+        AccessibilityWindowInfo shown = dasher != null && (dasherActive || (otherActive != null && covered == null))
+                ? dasher : null;
         AccessibilityNodeInfo dasherRoot = dasherActive ? activeRoot : shown == null ? null : dasherWindowRoot;
-        return new Look(activeKnown, dasherActive, dasherRoot, shown, true, dasher != null, listed, roots);
+        return new Look(activeKnown, dasherActive, dasherRoot, shown, true, dasher != null, listed, roots, activeApp,
+                covered);
     }
 
     /**
@@ -2437,20 +2748,71 @@ public final class OfferFilterService extends AccessibilityService {
         if (seen == null) return null;
         lastLookWindows = windowsSignature(seen.windows);
         scanWindows = Math.max(scanWindows, seen.windows.size());
-        if (seen.dasherBeside) dasherBesideAt = now;
+        if (seen.dasherBeside) dasherBesideAt = screenOnTime(now);
+        for (java.util.Map.Entry<AccessibilityWindowInfo, AccessibilityNodeInfo> listed : seen.roots.entrySet()) {
+            if (isDasher(listed.getValue())) rememberDasher(listed.getKey().getId());
+        }
         Rect area = null;
         if (seen.dasherWindow != null) {
             Rect bounds = new Rect();
             seen.dasherWindow.getBoundsInScreen(bounds);
             if (!bounds.isEmpty()) area = bounds;
         }
-        if (area == null && seen.dasherActive) {
-            android.util.DisplayMetrics display = getResources().getDisplayMetrics();
-            area = new Rect(0, 0, display.widthPixels, display.heightPixels);
-        }
-        Screen next = new Screen(true, seen.dasherRoot != null, area, seen.split);
+        // The bounds of Dasher's own window: in split screen, only then is a touch known to be on its half or not.
+        boolean bounded = area != null;
+        if (area == null && seen.dasherActive) area = display();
+        Screen next = new Screen(true, seen.dasherRoot != null, area, seen.split, bounded);
         if (!next.equals(screen)) screen = next;
+        readWin = SplitWindows.field(seen.windows, window -> ownerOf(window, seen), display());
+        noteCover(seen.covered == null ? "" : seen.covered);
         return seen;
+    }
+
+    /**
+     * Once per change: why Dasher's half beside the active app is left unread (the keyboard, a system surface or
+     * another window over it), and when it is in view again.
+     */
+    private void noteCover(String cover) {
+        if (cover.equals(coverNoted)) return;
+        String was = coverNoted;
+        coverNoted = cover;
+        String win = readWin;
+        if (!cover.isEmpty()) {
+            DiagnosticLog.log(this, "split", "Dasher's half not read: " + cover + " (" + win + ")");
+        } else if (!was.isEmpty()) {
+            DiagnosticLog.log(this, "split", "Dasher's half in view again (" + win + ")");
+        }
+    }
+
+    /** The display, as this service's resources give it (widened to the windows by {@link SplitWindows#field}). */
+    private Rect display() {
+        android.util.DisplayMetrics display = getResources().getDisplayMetrics();
+        return new Rect(0, 0, display.widthPixels, display.heightPixels);
+    }
+
+    /** One of Dasher's windows, by ID, for the log's window field: a bounded set, as for Offer Filter's own. */
+    private void rememberDasher(int windowId) {
+        if (!realWindowId(windowId) || dasherWindowIds.contains(windowId)) return;
+        if (dasherWindowIds.size() >= MAX_OWN_WINDOWS) dasherWindowIds.clear();
+        dasherWindowIds.add(windowId);
+    }
+
+    /** Whose a listed application window is, from this look's roots, else from the windows known by ID. */
+    private SplitWindows.Owner ownerOf(AccessibilityWindowInfo window, Look seen) {
+        if (window == seen.activeApp && seen.dasherActive) return SplitWindows.Owner.DASHER;
+        AccessibilityNodeInfo root = seen.roots.get(window);
+        if (root == null) return knownOwner(window);
+        if (isDasher(root)) return SplitWindows.Owner.DASHER;
+        return getPackageName().contentEquals(nonNull(root.getPackageName())) ? SplitWindows.Owner.OURS
+                : SplitWindows.Owner.OTHER;
+    }
+
+    /** Whose a listed application window is, by its ID alone (any thread): Dasher's, Offer Filter's, or another's. */
+    private SplitWindows.Owner knownOwner(AccessibilityWindowInfo window) {
+        int id = window.getId();
+        if (isOwnWindow(id)) return SplitWindows.Owner.OURS;
+        if (realWindowId(id) && dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
+        return SplitWindows.Owner.OTHER;
     }
 
     /** The active window's root. On the scanner thread, counted, and remembered if it is Offer Filter's own. */
@@ -2564,7 +2926,9 @@ public final class OfferFilterService extends AccessibilityService {
         if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return false;
         lastOtherScreen = words;
         lastOtherScreenAt = now;
-        DiagnosticLog.logScreen(this, labelsLine(kind, scan));
+        Supplier<String> line = labelsLine(kind, scan);
+        String win = readWin;
+        DiagnosticLog.logScreen(this, () -> line.get() + " " + win);
         return true;
     }
 
@@ -2641,11 +3005,14 @@ public final class OfferFilterService extends AccessibilityService {
 
     private void diagnostic(String phase, Scan scan, OfferSnapshot offer, OfferRule.Decision decision) {
         if (!DiagnosticLog.isEnabled(this)) return;
+        // Where Dasher was (its half, which window is active, how much of the screen it has): a change, such as the
+        // user touching Dasher's half, writes a new line.
         String signature = phase
                 + "|" + (offer == null ? "" : offer.fingerprint())
                 + "|" + (decision == null ? "" : decision.summary())
                 + "|" + (scan.accept != null)
-                + "|" + (scan.decline != null);
+                + "|" + (scan.decline != null)
+                + " " + readWin;
         if (signature.equals(lastDiagnosticSignature)) return;
         lastDiagnosticSignature = signature;
         DiagnosticLog.log(this, "screen", labelsLine(signature, scan));
@@ -2746,9 +3113,9 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** What a look at the windows found, for any thread. */
     private static final class Screen {
-        static final Screen UNKNOWN = new Screen(false, false, null, false);
+        static final Screen UNKNOWN = new Screen(false, false, null, false, false);
         /** A look that failed: as Dasher not on screen. */
-        static final Screen NOT_SHOWN = new Screen(true, false, null, false);
+        static final Screen NOT_SHOWN = new Screen(true, false, null, false, false);
         /** Whether the service has looked at all since it connected. */
         final boolean known;
         /** Whether Dasher can be read: its window is active, or its half of a split screen while ours is active. */
@@ -2757,19 +3124,22 @@ public final class OfferFilterService extends AccessibilityService {
         final Rect area;
         /** Whether Android's split-screen divider is listed. */
         final boolean split;
+        /** Whether {@link #area} is the bounds of Dasher's own window (not the whole display, for want of them). */
+        final boolean bounded;
 
-        Screen(boolean known, boolean dasherReadable, Rect area, boolean split) {
+        Screen(boolean known, boolean dasherReadable, Rect area, boolean split, boolean bounded) {
             this.known = known;
             this.dasherReadable = dasherReadable;
             this.area = area == null ? null : new Rect(area);
             this.split = split;
+            this.bounded = bounded && area != null;
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof Screen)) return false;
             Screen that = (Screen) other;
             return known == that.known && dasherReadable == that.dasherReadable && split == that.split
-                    && (area == null ? that.area == null : area.equals(that.area));
+                    && bounded == that.bounded && (area == null ? that.area == null : area.equals(that.area));
         }
 
         @Override public int hashCode() {
