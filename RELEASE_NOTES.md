@@ -1,3 +1,55 @@
+## 0.4.46 — Settings in one place; split screen done well; tickets say what happened
+
+- **Every rule now lives on the chart.** Settings has no minimums fields and no Save button.
+  - Drag a knob to set a minimum. With no rules yet, all four knobs are hollow and the line under the mascot says "Drag a knob to start".
+  - Max stops is the "≤3" badge by the per-stop icon. Tap it to step through off, 2 … 10, or drag across it.
+  - The sparkle button turns the adaptive minimum on or off and keeps what it learned. Long-press it to reset.
+- **Settings is one row per item:**
+  - fix rows, only while setup needs one;
+  - mute while declining, and the offer map;
+  - updates (tap to check now) and GitHub;
+  - share report, problem reports and diagnostics;
+  - clear history (it also clears the offer areas now), tip, and the legal links.
+- **Gone:**
+  - the pasted report token: reports go only through your GitHub connection;
+  - the automatic-updates switch: checks are always automatic;
+  - the explanation paragraphs.
+- **Split screen:**
+  - If Android doesn't actually split after you tap the split button, recent apps open, with directions for your phone.
+  - Split without Dasher beside you? The button reads "Put Dasher beside".
+  - In split screen, only a touch on Dasher's half hands an offer back. Touching Offer Filter's half no longer stops a decline.
+  - Dasher's half isn't read while the keyboard, a pop-up or recent apps covers it.
+  - The best-area pill sits below the status bar when Dasher is on top.
+- **An update found mid-dash waits until your dash ends** ("Update ready: installs after your dash"), because installing closes Offer Filter's half of the split. Tapping Updates still installs it right away.
+- **Tickets say what actually happened.** The stamp and the skyline flag now show:
+  - **DECLINED** only when Offer Filter's decline went through;
+  - **ACCEPTED** (a green bag) when you accepted it;
+  - **YOURS** (a grey person) when it was left to you: you took it over, auto-decline was paused, the decline didn't finish, or the notification was only hidden.
+
+  The building keeps the rules' colour. When the stamp and the rules differ, the ticket says so ("Rules: decline — too many stops (4, max 3)"). Your $26.30 offer would now read YOURS.
+- **When Dasher's "are you sure" can't be confirmed,** the history now says "Dasher's question not confirmed; left to you" and counts it as review, not declined.
+- **Score by area shows your adaptive minimums again.** The set minimums are the solid shape through the knobs, and what it learned is the dashed shape with sparkles. With adaptive on and nothing learned yet, a faint dashed outline shows it's on.
+- **The notice shows once more**, because the privacy text changed: no report token, no updates switch, and shared reports and diagnostics now name your Android version and phone maker. Offer Filter waits until you tap I understand again.
+
+Evidence boundaries:
+- **No new plain Java tests** this time; everything below runs on simulated Android.
+- **Simulated Android 8 and 15 tests** cover:
+  - the outcome behind each stamp (accepted, yours, declined);
+  - "confirmation not tapped" leaving the offer to you;
+  - the knobs, badge, sparkle and reset;
+  - Settings having no rule fields;
+  - the token and updates-switch retirement on upgrade;
+  - the split check and its fallback;
+  - touches by half;
+  - covered-half reads;
+  - the update waiting for the dash to end;
+  - the stamp, the Rules line and the skyline flags;
+  - the learned dashed shape in score by area, and the nothing-learned outline.
+- **Not verified on a real phone:**
+  - Android's split action on your phone, and the recent-apps fallback;
+  - which half a real touch lands on;
+  - the notice showing again after the update.
+
 ## 0.4.45 — a one-time notice; learning knows Dasher's delivery screens
 
 - **A one-time notice before Offer Filter starts.** It says plainly:
