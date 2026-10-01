@@ -191,7 +191,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void unreadableOfferIsReportedOnceAndNeverDeclined() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         AccessibilityNodeInfo root = offer("Guaranteed pay");
         show(root);
         show(root);
@@ -203,7 +203,7 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void nothingIsReportedWithoutAToken() {
+    public void nothingIsReportedUntilReportsAreOn() {
         show(offer("Guaranteed pay"));
         show(offer("$7.90"));
         ReportOutbox.flush();
@@ -213,7 +213,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void readableOffersFileNoReport() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         show(offer("$7.90"));
         show(offer("$25.00"));
         ReportOutbox.flush();
@@ -719,11 +719,18 @@ public class AccessibilityAdapterTest {
         assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
     }
 
+    /** Signed in to GitHub, as after Connect GitHub, and "Send problem reports" on: the only way reports go. */
+    private void reportsOn() {
+        app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE).edit()
+                .putString("access_token", "ghu_test").commit();
+        ReportOutbox.useGitHub(app, true);
+    }
+
     // ---- A decline that does not finish ----
 
     @Test
     public void aDeclinedOfferStillShowingAfterFiveSecondsIsReportedOnce() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         AccessibilityNodeInfo stuck = offer("$7.90");
         for (int i = 0; i < DeclineState.MAX_ATTEMPTS; i++) {
             show(stuck);

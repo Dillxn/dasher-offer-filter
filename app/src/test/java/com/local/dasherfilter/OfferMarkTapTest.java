@@ -69,7 +69,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
             assertEquals("its shape and marks stand out while the ticket is open", OLDER, star.openedOffer());
             assertEquals(-1, star.pressedOffer());
-            assertFalse("the minimums stay closed", fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse("no page opens", settingsShown(content));
 
             // Closed, the skyline keeps it chosen and the constellation lets it go.
             activity.get().onBackPressed();
@@ -107,7 +107,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertEquals("the newest shape is on top", Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
             assertNotNull(shownTextContaining(content, "Read: $24.00"));
             assertEquals(NEWEST, star.openedOffer());
-            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(settingsShown(content));
         }
     }
 
@@ -133,7 +133,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void aTapOnEmptySkyStillOpensTheMinimums() {
+    public void aTapOnEmptySkyOpensNothing() {
         seed(RULES);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -147,7 +147,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertTrue(clearance(star, empty, -1) > new Ui(app).dp(30));
 
             tapThrough(content, star, empty);
-            assertTrue("the minimums open, as before", fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse("no page opens: the minimums are all here", settingsShown(content));
             assertNull("no ticket", shownTextContaining(content, "Read: $"));
             assertEquals(-1, star.openedOffer());
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
@@ -177,7 +177,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNull("no ticket", shownTextContaining(content, "Read: $"));
             assertEquals(-1, star.openedOffer());
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
-            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(settingsShown(content));
 
             // A drag that sets out from an offer's mark (on no knob) is not a tap either.
             settleSky(content);
@@ -190,14 +190,15 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             touch(content, star, MotionEvent.ACTION_UP, across);
             assertNull(shownTextContaining(content, "Read: $"));
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
-            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(settingsShown(content));
 
-            // A tap on the knob, though the mark is within reach, still opens the minimums.
+            // A tap on the knob, though the mark is within reach, is the knob's: it opens nothing.
             settleSky(content);
             float[] now = star.knobAt(1);
             tapThrough(content, star, now);
-            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(settingsShown(content));
             assertNull(shownTextContaining(content, "Read: $"));
+            assertEquals(-1, star.openedOffer());
         }
     }
 
@@ -212,9 +213,10 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("the knobs, the toggle, then the offers newest first",
-                    Arrays.asList(0, 1, 2, 3, MinimumsStarView.SCORE_ID, MinimumsStarView.OFFER_ID,
-                            MinimumsStarView.OFFER_ID + 1), childIds(host));
+            assertEquals("the knobs, the max stops badge, the toggles, then the offers newest first",
+                    Arrays.asList(0, 1, 2, 3, MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID,
+                            MinimumsStarView.SCORE_ID, MinimumsStarView.OFFER_ID, MinimumsStarView.OFFER_ID + 1),
+                    childIds(host));
 
             AccessibilityNodeInfo older = nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER);
             String said = older.getContentDescription().toString();
@@ -242,13 +244,13 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertEquals(OLDER, star.openedOffer());
             assertTrue("its node says it is the one open",
                     nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER).isSelected());
-            assertFalse(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(settingsShown(content));
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void inAShortSplitWithAnotherAppTheHeaderChartStillOnlyOpensTheMinimums() {
+    public void inAShortSplitWithAnotherAppTheHeaderChartOnlyMovesIntoTheSky() {
         seed(RULES);
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
@@ -261,12 +263,15 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertTrue("up in the header", star.beside());
             assertNull("no offers for screen readers there", star.getAccessibilityNodeProvider());
             assertNull(star.markAt(OLDER, 0));
-            // Its middle lies inside both offers' shapes; a tap there opens the minimums, as before.
+            // Its middle lies inside both offers' shapes; a tap there opens no offer: it spreads the chart across
+            // the sky, where its knobs are.
             tap((ViewGroup) star.getParent(), star.getLeft() + star.getWidth() / 2f,
                     star.getTop() + star.getHeight() / 2f);
-            assertTrue(fieldLabeled(content, "Minimum pay ($)").isShown());
+            assertFalse(star.beside());
+            assertFalse(settingsShown(content));
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
             assertEquals(-1, star.openedOffer());
+            assertNull(shownTextContaining(content, "Read: $"));
         }
     }
 

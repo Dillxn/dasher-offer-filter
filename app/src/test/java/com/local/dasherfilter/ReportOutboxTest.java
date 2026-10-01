@@ -38,6 +38,7 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = 35)
 public class ReportOutboxTest {
     private static final String PRODUCTION_ENDPOINT = GitHubIssues.endpoint;
+    private static final String SHIPPED_CLIENT_ID = GitHubConnect.clientId;
     private static final FilterSettings RULES = new FilterSettings(true, 1200, 150, 60, 0, 4);
 
     private Application app;
@@ -57,6 +58,8 @@ public class ReportOutboxTest {
 
     @After
     public void stop() {
+        GitHubConnect.disconnect(app);
+        GitHubConnect.clientId = SHIPPED_CLIENT_ID;
         GitHubIssues.endpoint = PRODUCTION_ENDPOINT;
         ReportOutbox.clock = System::currentTimeMillis;
         if (server != null) {
@@ -292,19 +295,28 @@ public class ReportOutboxTest {
     // ---- When reports are filed ----
 
     @Test
-    public void nothingIsFiledOrQueuedWithoutAToken() {
+    public void nothingIsFiledOrQueuedUntilReportsAreOn() {
         ReportOutbox.fileAutomatic(app, ProblemReport.Kind.SCAN_ERROR, null, null, new IllegalStateException());
         assertFalse(ReportOutbox.fileByUser(app, unreadable("Pay"), "note"));
-        assertFalse(ReportOutbox.fileTest(app));
+        // Connected to GitHub, but Send problem reports still off.
+        connectedToGitHub();
+        ReportOutbox.fileAutomatic(app, ProblemReport.Kind.SCAN_ERROR, null, null, new IllegalStateException());
+        assertFalse(ReportOutbox.fileByUser(app, unreadable("Pay"), "note"));
         ReportOutbox.flush();
 
         assertEquals(0, ReportOutbox.queued(app));
         assertTrue(ReportOutbox.status(app).startsWith("Off"));
     }
 
+    /** Connected to GitHub and "Send problem reports" on: the only way reports go. */
+    private void reportsOn() {
+        connectedToGitHub();
+        ReportOutbox.useGitHub(app, true);
+    }
+
     @Test
     public void theSameAutomaticProblemIsFiledOnceEvenAcrossARestart() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         ReportOutbox.fileAutomatic(app, ProblemReport.Kind.UNREADABLE_OFFER, unreadable("Pay $7.90"),
                 Arrays.asList("Pay $7.90", "Decline"), null);
         ReportOutbox.fileAutomatic(app, ProblemReport.Kind.UNREADABLE_OFFER, unreadable("Pay $8.40"),
@@ -319,7 +331,7 @@ public class ReportOutboxTest {
 
     @Test
     public void reportsTheUserAsksForAreNeverDeduplicated() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         assertTrue(ReportOutbox.fileByUser(app, unreadable("Pay"), "wrong"));
         assertTrue(ReportOutbox.fileByUser(app, unreadable("Pay"), "still wrong"));
         ReportOutbox.flush();
@@ -329,7 +341,7 @@ public class ReportOutboxTest {
 
     @Test
     public void automaticReportsStopAtTheDailyCap() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         for (int i = 0; i < 15; i++) {
             StringBuilder layout = new StringBuilder("layout");
             for (int j = 0; j < i; j++) layout.append(" x");
@@ -347,7 +359,7 @@ public class ReportOutboxTest {
     public void reportsOfOneProblemInTheSameMillisecondAreAllKept() {
         // A coarse clock (as on some build machines, and some phones) gives consecutive reports the same time.
         ReportOutbox.clock = () -> 1_790_000_000_000L;
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         ProblemReport report = report("Pay $7.90");
         for (int i = 0; i < 5; i++) assertTrue(ReportOutbox.submit(app, report, true));
         ReportOutbox.flush();
@@ -357,7 +369,7 @@ public class ReportOutboxTest {
 
     @Test
     public void queuedReportsWaitForAnyNetwork() {
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(1);
 
         JobInfo job = app.getSystemService(JobScheduler.class).getPendingJob(ReportOutbox.JOB_ID);
@@ -370,7 +382,7 @@ public class ReportOutboxTest {
     @Test
     public void queuedReportsAreFiledAsIssuesAndRemembered() throws IOException, JSONException {
         fakeGitHub(201, "{\"number\": 42}");
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(2);
 
         assertFalse(ReportOutbox.drain(app));
@@ -379,31 +391,34 @@ public class ReportOutboxTest {
         assertEquals(2, received.size());
         assertTrue(received.get(0).getString("title").startsWith(ProblemReport.TITLE_PREFIX));
         assertTrue(received.get(0).getString("body").contains("```json"));
-        assertEquals("Bearer github_pat_test", authorizations.get(0));
+        assertEquals("Bearer ghu_connection", authorizations.get(0));
         assertEquals("2022-11-28", apiVersions.get(0));
         assertTrue(ReportOutbox.status(app).contains("#42"));
     }
 
     @Test
-    public void aRejectedTokenKeepsReportsUntilANewTokenArrives() throws IOException {
+    public void aRefusedConnectionKeepsReportsUntilGitHubTakesThem() throws IOException {
         fakeGitHub(401, "{\"message\": \"Bad credentials\"}");
-        ReportOutbox.setToken(app, "github_pat_expired");
+        reportsOn();
         queue(2);
 
         assertFalse(ReportOutbox.drain(app));
 
         assertEquals(1, received.size());
         assertEquals(2, ReportOutbox.queued(app));
-        assertTrue(ReportOutbox.status(app).contains("rejected the token"));
+        assertTrue(ReportOutbox.status(app), ReportOutbox.status(app).contains("GitHub refused the report (401"));
 
-        ReportOutbox.setToken(app, "github_pat_fresh");
+        server.close();
+        fakeGitHub(201, "{\"number\": 3}");
+        assertFalse(ReportOutbox.drain(app));
+        assertEquals(0, ReportOutbox.queued(app));
         assertTrue(ReportOutbox.status(app).startsWith("On"));
     }
 
     @Test
     public void aReportGitHubRefusesIsDroppedRatherThanRetriedForever() throws IOException {
         fakeGitHub(422, "{\"message\": \"Validation Failed\"}");
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(2);
 
         assertFalse(ReportOutbox.drain(app));
@@ -416,13 +431,13 @@ public class ReportOutboxTest {
     public void anOutageOrRateLimitKeepsEveryReportForARetry() throws IOException {
         for (int status : new int[] {503, 429, 500}) {
             fakeGitHub(status, "{\"message\": \"try later\"}");
-            ReportOutbox.setToken(app, "github_pat_test");
+            reportsOn();
             queue(2);
 
             assertTrue(ReportOutbox.drain(app));
             assertEquals(status + " keeps the queue", 2, ReportOutbox.queued(app));
             assertTrue(ReportOutbox.status(app).startsWith("On"));
-            ReportOutbox.setToken(app, "");
+            ReportOutbox.useGitHub(app, false);
             ReportOutbox.flush();
             stop();
             server = null;
@@ -432,7 +447,7 @@ public class ReportOutboxTest {
     @Test
     public void aRateLimitSaidOnlyInTheMessageIsRetriedNotBlamedOnTheToken() throws IOException {
         fakeGitHub(403, "{\"message\": \"You have exceeded a secondary rate limit.\"}");
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(1);
 
         assertTrue(ReportOutbox.drain(app));
@@ -447,7 +462,7 @@ public class ReportOutboxTest {
             closedPort = socket.getLocalPort();
         }
         GitHubIssues.endpoint = "http://127.0.0.1:" + closedPort + "/issues";
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(2);
 
         assertTrue(ReportOutbox.drain(app));
@@ -457,9 +472,9 @@ public class ReportOutboxTest {
     @Test
     public void turningReportsOffDiscardsWhatWasWaiting() throws IOException {
         fakeGitHub(201, "{\"number\": 7}");
-        ReportOutbox.setToken(app, "github_pat_test");
+        reportsOn();
         queue(1);
-        ReportOutbox.setToken(app, "");
+        ReportOutbox.useGitHub(app, false);
         ReportOutbox.flush();
 
         assertFalse(ReportOutbox.drain(app));
@@ -482,7 +497,7 @@ public class ReportOutboxTest {
             fakeGitHub(201, "{\"number\": 9}");
             connectedToGitHub();
             assertFalse("connecting GitHub never turns reports on", ReportOutbox.enabled(app));
-            assertTrue(ReportOutbox.status(app).contains("GitHub connection"));
+            assertEquals("Off", ReportOutbox.status(app));
 
             ReportOutbox.useGitHub(app, true);
             assertTrue(ReportOutbox.enabled(app));

@@ -26,8 +26,11 @@ import org.json.JSONObject;
 
 /**
  * Automatic problem reports, filed as issues in the app's private repository so the fixer workflow can act on them.
- * Off until the user enters a report token: that opt-in is the explicit consent for reports to leave the phone.
- * Reports queue on disk and a network-constrained job sends them, so no signal or a restart loses nothing.
+ * They go only through the user's GitHub connection, and are off until the user turns on "Send problem reports" (shown
+ * once GitHub is connected): that opt-in is the explicit consent for reports to leave the phone. Turning it off, or
+ * disconnecting GitHub, stops them and discards any still waiting. Reports queue on disk and a network-constrained job
+ * sends them, so no signal or a restart loses nothing. Older versions also took a pasted report token: one still stored
+ * is removed the first time the outbox is used, with the problem reports that were waiting to go with it.
  *
  * <p>The same queue carries diagnostics after a dash ({@link DashDiagnostics}, a further opt-in): an issue and its
  * comments, sent only through the GitHub connection and only while the user has them on; turning them off, or
@@ -46,8 +49,9 @@ final class ReportOutbox {
     /** One dash files one issue; this many a day at most, whatever goes wrong. */
     private static final int MAX_DIAGNOSTICS_PER_DAY = 6;
 
-    private static final String TOKEN = "token";
-    /** The user chose to send reports through their GitHub connection (the one updates use). */
+    /** Where older versions kept a pasted report token; removed on sight (see {@link #retireToken}). */
+    private static final String RETIRED_TOKEN = "token";
+    /** The user chose to send reports through their GitHub connection (the one updates use): "Send problem reports". */
     private static final String VIA_GITHUB = "via_github";
     private static final String DAY = "day";
     private static final String AUTOMATIC_TODAY = "automatic_today";
@@ -68,9 +72,9 @@ final class ReportOutbox {
     static java.util.function.LongSupplier clock = System::currentTimeMillis;
     private static final java.util.concurrent.atomic.AtomicLong sequence = new java.util.concurrent.atomic.AtomicLong();
 
-    /** Reports are on with a pasted token, or through the GitHub connection once the user turned that on. */
+    /** Reports are on: through the GitHub connection, once the user turned "Send problem reports" on. */
     static boolean enabled(Context context) {
-        return !prefs(context).getString(TOKEN, "").isEmpty() || throughGitHub(context);
+        return throughGitHub(context);
     }
 
     /** Whether reports go through the GitHub connection now: chosen, and still connected. */
@@ -84,8 +88,8 @@ final class ReportOutbox {
     }
 
     /**
-     * Sends reports through the GitHub connection, or stops. Stopping, with no token pasted, discards any report
-     * still waiting to send, as removing a token does. Connecting GitHub alone never turns reports on.
+     * Sends reports through the GitHub connection, or stops. Stopping discards any report still waiting to send.
+     * Connecting GitHub alone never turns reports on.
      */
     static void useGitHub(Context context, boolean on) {
         prefs(context).edit().putBoolean(VIA_GITHUB, on).remove(LAST_ERROR).apply();
@@ -119,21 +123,31 @@ final class ReportOutbox {
     }
 
     /**
-     * Saves the token, clearing any earlier rejection. A blank token turns reports off and discards any report still
-     * waiting to send.
+     * A report token pasted in an older version: removed, with any refusal it earned and every problem report waiting
+     * to send (each would have gone with that token; the user's opt-in was the token). Reports now go only through the
+     * GitHub connection, once "Send problem reports" is on, which this leaves as it was; diagnostics after a dash only
+     * ever went through the connection and stay. Runs once, the first time the outbox is used after the update.
      */
-    static void setToken(Context context, String token) {
-        String clean = token == null ? "" : token.trim();
-        prefs(context).edit().putString(TOKEN, clean).remove(LAST_ERROR).apply();
-        Context app = context.getApplicationContext();
-        if (!clean.isEmpty()) {
-            schedule(app);
-            return;
+    private static void retireToken(Context context, SharedPreferences prefs) {
+        boolean pasted;
+        synchronized (ReportOutbox.class) {
+            if (!prefs.contains(RETIRED_TOKEN)) return;
+            Object stored = prefs.getAll().get(RETIRED_TOKEN);
+            pasted = stored instanceof String && !((String) stored).trim().isEmpty();
+            SharedPreferences.Editor edit = prefs.edit().remove(RETIRED_TOKEN);
+            if (pasted) edit.remove(LAST_ERROR);
+            edit.commit();
         }
-        // Turning reports off turns off the GitHub connection's use for them too, and diagnostics after a dash.
-        prefs(context).edit().putBoolean(VIA_GITHUB, false).apply();
-        DashDiagnostics.stop(app);
-        discard(app);
+        if (!pasted) return;
+        Context app = context.getApplicationContext();
+        DISK.execute(() -> {
+            for (File file : files(app)) {
+                //noinspection ResultOfMethodCallIgnored
+                if (!isDiagnostics(file)) file.delete();
+            }
+        });
+        DiagnosticLog.log(app, "report", "the report token was removed; problem reports waiting to go with it were "
+                + "discarded; reports go only through the GitHub connection, once Send problem reports is on");
     }
 
     /** Unsent diagnostics after a dash are deleted; problem reports stay. */
@@ -153,7 +167,7 @@ final class ReportOutbox {
 
     /**
      * The GitHub connection's token, for diagnostics after a dash only while they are on (refreshed if due;
-     * blocking); "" when they are off. Never a pasted token.
+     * blocking); "" when they are off.
      */
     private static String connectionToken(Context context) throws IOException {
         if (!DashDiagnostics.on(context)) return "";
@@ -161,31 +175,22 @@ final class ReportOutbox {
         return connection == null ? "" : connection;
     }
 
-    static String token(Context context) {
-        return prefs(context).getString(TOKEN, "");
-    }
-
     /**
-     * The token a report is sent with: the pasted one, else the GitHub connection's (refreshed if due; blocking).
+     * The token a problem report is sent with: the GitHub connection's while reports go through it (refreshed if due;
+     * blocking), else "".
      *
      * @throws IOException when GitHub could not be reached to refresh the connection
      */
     private static String sendingToken(Context context) throws IOException {
-        String pasted = token(context);
-        if (!pasted.isEmpty()) return pasted;
         if (!throughGitHub(context)) return "";
         String connection = GitHubConnect.token(context);
         return connection == null ? "" : connection;
     }
 
-    /** "On · last report #12, 7:31 PM", "Token rejected…", or "Off". */
+    /** "On · last report #12 · 2 waiting to send", what GitHub refused and what to change, or "Off". */
     static String status(Context context) {
         SharedPreferences prefs = prefs(context);
-        if (!enabled(context)) {
-            return GitHubConnect.configured() && GitHubConnect.state(context) == GitHubConnect.State.CONNECTED
-                    ? "Off. Turn on to send reports through your GitHub connection."
-                    : "Off. Paste a GitHub token to turn on.";
-        }
+        if (!enabled(context)) return "Off";
         String error = prefs.getString(LAST_ERROR, "");
         if (!error.isEmpty()) return error;
         int issue = prefs.getInt(LAST_ISSUE, 0);
@@ -230,14 +235,6 @@ final class ReportOutbox {
         if (!enabled(context)) return false;
         return submit(context, ProblemReport.build(ProblemReport.Kind.USER_REPORT, version(context),
                 FilterStore.load(context), entry, entry.evidence, null, note, DecisionLog.recent(context, 20)), true);
-    }
-
-    /** Files a report that only checks the path from phone to fixer. */
-    static boolean fileTest(Context context) {
-        if (!enabled(context)) return false;
-        return submit(context, ProblemReport.build(ProblemReport.Kind.TEST, version(context),
-                FilterStore.load(context), null, null, null, "Checking that reports arrive.",
-                java.util.Collections.<DecisionLog.Entry>emptyList()), true);
     }
 
     /**
@@ -383,7 +380,6 @@ final class ReportOutbox {
                 file.delete();
                 continue;
             }
-            boolean connection = diagnostics || token(context).isEmpty();
             try {
                 JSONObject item = new JSONObject(read(file));
                 if (diagnostics) {
@@ -401,16 +397,14 @@ final class ReportOutbox {
             } catch (GitHubIssues.Rejected rejected) {
                 if (rejected.tokenProblem()) {
                     String said = rejected.code + (rejected.message.isEmpty() ? "" : ": " + rejected.message);
-                    prefs(context).edit().putString(LAST_ERROR, connection
-                            ? "GitHub refused the report (" + said + "). The GitHub App needs Issues: Read and write, "
-                                    + "and adding it is not enough by itself: on github.com, open Settings → "
-                                    + "Applications → Installed GitHub Apps, tap Configure next to your GitHub App, and "
-                                    + "accept its new permissions (GitHub also emails a request to review them). "
-                                    + "Reports are kept and sent again each time you open " + AppName.NAME + "."
-                            : "GitHub rejected the token (" + said
-                                    + "). Paste a new one; reports are kept until then.").apply();
+                    prefs(context).edit().putString(LAST_ERROR, "GitHub refused the report (" + said + "). The "
+                            + "GitHub App needs Issues: Read and write, and adding it is not enough by itself: on "
+                            + "github.com, open Settings → Applications → Installed GitHub Apps, tap Configure next to "
+                            + "your GitHub App, and accept its new permissions (GitHub also emails a request to review "
+                            + "them). Reports are kept and sent again each time you open " + AppName.NAME + ".")
+                            .apply();
                     // Permissions approved from now on reach the next attempt's token.
-                    if (connection) GitHubConnect.renewSoon(context);
+                    GitHubConnect.renewSoon(context);
                     return false;
                 }
                 // An outage or a rate limit passes: keep everything and let Android retry later.
@@ -559,7 +553,10 @@ final class ReportOutbox {
     }
 
     private static SharedPreferences prefs(Context context) {
-        return context.getSharedPreferences("reports", Context.MODE_PRIVATE);
+        SharedPreferences prefs = context.getSharedPreferences("reports", Context.MODE_PRIVATE);
+        // A token from an older version goes the first time the outbox is used (a lookup in memory after that).
+        if (prefs.contains(RETIRED_TOKEN)) retireToken(context, prefs);
+        return prefs;
     }
 
     private ReportOutbox() {}

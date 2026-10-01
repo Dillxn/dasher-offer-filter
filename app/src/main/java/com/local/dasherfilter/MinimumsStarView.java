@@ -40,8 +40,8 @@ import java.util.List;
  * it. Every spoke is a floor of the same kind: the set per-stop minimum asks the example's stops × its rate, as the
  * adaptive one does. The shapes glide to new values and the adaptive sparkles breathe; with Android's animations off
  * they rest. By day the stars are drawn in ink on the morning sky, by night they shine. Each spoke is marked by its
- * icon from Settings, with no words or key on the page; screen readers hear the whole of it, and what the example
- * offer needs.
+ * icon (a coin, a road, a clock, a pin), with no words or key on the page; screen readers hear the whole of it, and
+ * what the example offer needs.
  *
  * <p>The spokes stand {@link #SPREAD} degrees above and below level, to the left and to the right, so a wide sky (or a
  * short header) holds a wide chart. On a whole screen or beside Dasher it is the page's sky itself: the page's
@@ -49,22 +49,24 @@ import java.util.List;
  * behind the header, the rings' dollars along the level line on the right, and the chart faded wherever the stage says
  * words or the mascot sit on it (the mascot's disc cut out of it altogether). Its points and icons only ever lie along
  * the spokes, which the stage keeps inside the page and clear of the counts and the buttons. Only a touch on the
- * circle or an icon opens the minimums; the empty sky around it takes none.
+ * circle, an icon or the badge is the constellation's; the empty sky around it takes none.
  *
  * <p>As the sky, the set minimums are knobs: each spoke's round star, ringed so it reads as something to take hold
- * of (or, with no set minimum on that spoke while another has one, a small hollow knob resting just outside the
- * middle), grows under a finger and can be dragged along its spoke, in steps, with a light tick at each; a small
- * readout beside it says the value while it moves, and letting go saves it as Settings would. A knob keeps its exact
- * value until the finger has moved it half a step along its spoke, so a wobble never snaps it to a step; it is taken
- * only by a finger moving along its spoke, so a scroll of the page or a slide across it is left to the page. Dragged
- * into the middle, the rule is off (a knob resting near the middle must be pushed a clear way further in). The ring
- * scale holds still while a knob moves (it may be pushed a little past the outer ring) and settles to fit when it is
- * let go. With no set minimum at all there are no knobs: a tap sets the rules up. The adaptive minimums are learned, so
- * they cannot be dragged; but while any of them asks more than its saved set minimum, one round button beside the
- * chart (a dashed purple shape passing into a solid blue one) makes them the set minimums, and for a few seconds after
- * undoes that (longer where Android's accessibility timeout asks, and for as long as a screen reader is on it).
- * Screen readers reach each knob as an adjustable control and the button as a button. In a header the chart takes a
- * tap only.
+ * of (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle: with no rule at all,
+ * four of them, so the first rule is a drag), grows under a finger and can be dragged along its spoke, in steps, with a
+ * light tick at each; a small readout beside it says the value while it moves, and letting go saves it at once. A knob
+ * keeps its exact value until the finger has moved it half a step along its spoke, so a wobble never snaps it to a
+ * step; it is taken only by a finger moving along its spoke, so a scroll of the page or a slide across it is left to
+ * the page. Dragged into the middle, the rule is off (a knob resting near the middle must be pushed a clear way further
+ * in). The ring scale holds still while a knob moves (it may be pushed a little past the outer ring) and settles to fit
+ * when it is let go. The adaptive minimums are learned, so they cannot be dragged; but while any of them asks more than
+ * its saved set minimum, one round button beside the chart (a dashed purple shape passing into a solid blue one) makes
+ * them the set minimums, and for a few seconds after undoes that (longer where Android's accessibility timeout asks,
+ * and for as long as a screen reader is on it). Beside it a round button with a sparkle turns the adaptive minimum on
+ * (lit) and off; held, it asks to reset what was learned. By the per-stop spoke's icon a small badge says the max stops
+ * ("≤3"; hollow, "≤∞", while there is none): a tap steps it off, 2, 3 … 10, a drag across it steps it either way.
+ * Screen readers reach each knob and the badge as adjustable controls, the buttons as a button and switches (the
+ * sparkle's Reset among its actions). In a header the chart takes a tap only.
  *
  * <p>Each recent offer's points are also joined into a polygon of its own, faint (about a twentieth of its color, in a
  * faint outline), in the spokes' order, leaving out a spoke it did not say. A second round button beside the adopt
@@ -84,7 +86,8 @@ import java.util.List;
  * topmost polygon under the finger: the one standing out, else the newest). The page opens it exactly as a tap on its
  * building in the skyline does, so both show it chosen; while its ticket is open its polygon and marks stand out, in
  * either mode, and a finger going down on an offer picks it out lightly first. The knobs and the buttons keep their
- * touches first; only a tap on the circle that is on no offer opens the minimums, as before. The marked offers are
+ * touches first; a tap on the circle that is on no offer is the chart's own (in a short window it moves the chart
+ * between the header and the sky; elsewhere it does nothing). The marked offers are
  * those on the skyline. Screen readers reach each marked offer after the knobs and the buttons, newest first ("Offer
  * $9.75, 3.3 mi, 18 min, 2 stops, declined"), and a double-tap opens its ticket. In a header the chart takes a tap
  * only, as before.
@@ -92,7 +95,7 @@ import java.util.List;
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
     private static final String[] NAMES = {"Pay", "Per mile", "Per minute", "Per stop"};
-    /** Each spoke is marked with the same icon as its field in Settings; the names are for screen readers. */
+    /** Each spoke is marked with an icon; the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
             Glyph.Shape.PIN};
     private static final int ICON_DP = 18;
@@ -253,6 +256,15 @@ final class MinimumsStarView extends View {
 
         /** Turns score by area on or off, saving it at once. */
         default void setScoreByArea(boolean on) {}
+
+        /** Sets the max stops (0: no limit), saving it at once. */
+        default void setMaxStops(int stops) {}
+
+        /** Turns the adaptive minimum on or off, saving it at once; what it learned is kept. */
+        default void setAdaptive(boolean on) {}
+
+        /** Asks the user (a confirm) whether to forget what the adaptive minimum learned, and does it if so. */
+        default void resetLearned() {}
     }
 
     /** What the page does when a marked offer is tapped (or a screen reader opens it). */
@@ -267,8 +279,11 @@ final class MinimumsStarView extends View {
     private static final String[] KNOBS = {"Minimum pay", "Minimum per mile", "Minimum per minute", "Minimum per stop"};
     /** A knob takes a touch this far from its middle (a 48 dp target); where two could, the nearer one does. */
     private static final int KNOB_REACH_DP = 24;
-    /** A spoke with no set minimum rests its hollow knob this far out; dragged back inside it, a rule is off. */
-    private static final int KNOB_REST_DP = 20;
+    /**
+     * A spoke with no set minimum rests its hollow knob this far out (far enough that four hollow knobs, on a fresh
+     * page, stand apart); dragged back inside it, a rule is off.
+     */
+    static final int KNOB_REST_DP = 32;
     /** A knob set so low it rests inside that place turns off only when pushed this much further in. */
     private static final int OFF_PUSH_DP = 12;
     /** A finger moving within this many degrees of a knob's spoke (either way) drags it; any other way is the page's. */
@@ -285,14 +300,31 @@ final class MinimumsStarView extends View {
     private static final int ADOPT_REACH_DP = 24;
     static final long UNDO_MS = 8000;
     static final String ADOPT_SAID = "Make the learned minimums your set minimums";
-    /** The screen reader's ids for the knobs (0 to 3, by spoke), the adopt button and the score by area toggle. */
+    /**
+     * The screen reader's ids for the knobs (0 to 3, by spoke), then the adopt button, the score by area toggle, the
+     * adaptive minimum's toggle and the max stops badge.
+     */
     static final int ADOPT_ID = NAMES.length;
     static final int SCORE_ID = NAMES.length + 1;
+    static final int ADAPTIVE_ID = NAMES.length + 2;
+    static final int STOPS_ID = NAMES.length + 3;
     /** Each marked offer's id: this plus its place among them, newest first. */
-    static final int OFFER_ID = NAMES.length + 2;
+    static final int OFFER_ID = NAMES.length + 4;
     static final String SCORE_SAID = "Score by area";
-    /** The toggle stands to the left of the adopt button's place, their middles this far apart. */
+    static final String ADAPTIVE_SAID = "Adaptive minimum";
+    static final String RESET_SAID = "Reset learned minimums";
+    static final String STOPS_SAID = "Max stops";
+    /** Screen readers' own actions on the adaptive minimum's toggle (ids clear of Android's). */
+    static final int TOGGLE_ACTION = 0x4F460001;
+    static final int RESET_ACTION = 0x4F460002;
+    /** The round buttons stand in a row (score by area, the adaptive minimum, adopt), their middles this far apart. */
     private static final int BUTTONS_APART_DP = 60;
+    /** The badge's steps after off: 2 stops (one order) to this many. */
+    static final int MOST_STOPS = 10;
+    /** A finger moving across the badge steps it once every this many dp. */
+    private static final int STOPS_STEP_DP = 18;
+    /** The hollow knobs beckon this long, in two swells. */
+    private static final long BECKON_MS = 1600;
     private static final int NO_NODE = Integer.MIN_VALUE;
 
     private Changes changes;
@@ -335,11 +367,11 @@ final class MinimumsStarView extends View {
     private final RectF pillBox = new RectF();
     /** Some adaptive minimum asks more than its saved set one (and the saved adaptive minimum is on). */
     private boolean adoptable;
-    /** The four set minimums as saved (the knobs show them as typed in Settings, saved or not). */
+    /** The four set minimums as saved. */
     private final int[] savedRates = new int[NAMES.length];
     /** The four set minimums before the learned ones were adopted, while Undo is offered; else null. */
     private int[] undoValues;
-    /** The four set minimums the adoption made: any other change to them (a knob, Settings) ends Undo. */
+    /** The four set minimums the adoption made: any other change to them (a knob, say) ends Undo. */
     private final int[] adoptedRates = new int[NAMES.length];
     private final Runnable undoEnds = () -> {
         undoValues = null;
@@ -367,6 +399,32 @@ final class MinimumsStarView extends View {
     private boolean layoutMoved = true;
     private final Glyph adoptGlyph;
     private final Glyph undoGlyph;
+    /** The adaptive minimum's toggle: where it stands, whether it found a place, a finger on it, and held long. */
+    private final RectF adaptiveBox = new RectF();
+    private boolean adaptivePlaced;
+    private boolean adaptivePressed;
+    private boolean adaptiveHeld;
+    private final Runnable holdAdaptive = () -> {
+        if (!adaptivePressed) return;
+        adaptivePressed = false;
+        adaptiveHeld = true;
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        invalidate();
+        if (changes != null) changes.resetLearned();
+    };
+    /** The max stops badge: the saved limit (0 for none), where it stands, a finger on it, dragging it, and to what. */
+    private int maxStops;
+    private final RectF stopsBox = new RectF();
+    private final TextPaint badgeText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private boolean stopsPressed;
+    private boolean stopsDragging;
+    private int stopsValue;
+    /** The badge stood where it does while the buttons were placed (clear of it). */
+    private boolean stopsForButtons;
+    /** When the hollow knobs last beckoned (uptime); 0 for never. */
+    private long beckonedAt;
+    /** What a screen reader's double-tap on the chart does, while it is a button (in a short window); null for none. */
+    private String clickLabel;
     private final Nodes nodes = new Nodes();
     private int focusedNode = NO_NODE;
     /** The offer a screen reader's focus is on (by when it was recorded), so it goes when that offer moves or goes. */
@@ -424,6 +482,9 @@ final class MinimumsStarView extends View {
         scoreText.setTextSize(Math.min(ui.sp(12), ui.dp(15)));
         scoreText.setTextAlign(Paint.Align.CENTER);
         undoGlyph = new Glyph(Glyph.Shape.UNDO, ui.ink, ui.dp(24));
+        badgeText.setTypeface(levelText.getTypeface());
+        badgeText.setTextSize(Math.min(ui.sp(14), ui.dp(18)));
+        badgeText.setTextAlign(Paint.Align.CENTER);
         slop = ViewConfiguration.get(context).getScaledTouchSlop();
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
@@ -458,7 +519,7 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * @param rules the rules as shown: as typed in Settings, saved or not
+     * @param rules the rules as shown
      * @param saved the rules as saved, which the adopt button works from (and the knobs save into)
      * @param example the offer whose miles, minutes and stops turn each minimum into pay; all three must be known
      *     (the screen uses the latest fully read offer, or a typical one)
@@ -491,6 +552,7 @@ final class MinimumsStarView extends View {
                 declined.rates.hasPerStop() ? "more than " + declined.rates.perStop() : null);
         adaptiveOn = rules.risingOffers;
         byArea = rules.scoreByArea;
+        maxStops = Math.max(0, rules.maxStops);
         shownRules = rules;
         int[] rates = rules.minimums();
         for (int i = 0; i < NAMES.length; i++) setRates[i] = Math.max(0, rates[i]);
@@ -867,6 +929,8 @@ final class MinimumsStarView extends View {
         }
         if (adoptShown()) out.add(new RectF(adoptBox));
         if (scoreToggleShown()) out.add(new RectF(scoreBox));
+        if (adaptiveShown()) out.add(new RectF(adaptiveBox));
+        if (stopsShown()) out.add(new RectF(stopsBox));
     }
 
     /** As the sky, where the rings' dollars stand now, halo and all, in this view's pixels. */
@@ -1009,7 +1073,7 @@ final class MinimumsStarView extends View {
 
     /** A glide to new values (after a drag, say) draws every frame; the rest is steady motion. */
     private void nextFrame() {
-        if (Motion.settle(glideStart, GLIDE_MS) < 1) Motion.settling(this);
+        if (Motion.settle(glideStart, GLIDE_MS) < 1 || beckoning()) Motion.settling(this);
         else Motion.next(this);
     }
 
@@ -1050,7 +1114,9 @@ final class MinimumsStarView extends View {
         // Over everything, never faded: the buttons, and the knob under the finger (with what it is set to, once it
         // moves).
         if (scoreToggleShown()) drawScoreToggle(canvas);
+        if (adaptiveShown()) drawAdaptive(canvas);
         if (adoptShown()) drawAdopt(canvas);
+        if (stopsShown()) drawStops(canvas);
         if (dragging) {
             drawHeld(canvas, point(cx, cy, radius, held, heldFraction()), dragValue, true);
         } else if (pressing()) {
@@ -1641,10 +1707,11 @@ final class MinimumsStarView extends View {
             }
         }
         if (knobsOn() && buttonsPlaced && (RectF.intersects(scoreBox, labelBox)
+                || (adaptivePlaced && RectF.intersects(adaptiveBox, labelBox))
                 || (adoptPlaced && (adoptable || undoValues != null) && RectF.intersects(adoptBox, labelBox)))) {
             return false;
         }
-        return true;
+        return !(stopsShown() && RectF.intersects(stopsBox, labelBox));
     }
 
     private void drawShape(Canvas canvas, float cx, float cy, float radius, double[] values, float[] from, float[] to,
@@ -1735,13 +1802,29 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Spoke {@code axis} has a knob: its set minimum's, or a hollow one while another spoke has a set minimum. With no
-     * set minimum at all there are none, and a tap on the chart (or the line under the mascot) sets the rules up.
+     * Spoke {@code axis} has a knob: its set minimum's, or a hollow one resting just outside the middle. With no rule
+     * at all the four hollow knobs are how the first one is set, by a drag.
      */
     private boolean knobShown(int axis) {
-        if (setRates[axis] > 0) return true;
-        for (int rate : setRates) if (rate > 0) return true;
-        return false;
+        return axis >= 0 && axis < NAMES.length;
+    }
+
+    /** The hollow knobs swell out twice, as a pointer to where a first rule is set (and screen readers hear why). */
+    void beckon() {
+        beckonedAt = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    /** The hollow knobs are swelling, with Android's animations on. */
+    private boolean beckoning() {
+        long since = SystemClock.uptimeMillis() - beckonedAt;
+        return beckonedAt > 0 && Motion.on() && since >= 0 && since < BECKON_MS;
+    }
+
+    /** Whether the knobs beckoned and are swelling now (for tests: true until it is over, animations on or off). */
+    boolean beckoned() {
+        long since = SystemClock.uptimeMillis() - beckonedAt;
+        return beckonedAt > 0 && since >= 0 && since < BECKON_MS;
     }
 
     /** A finger rests on a knob that has not moved yet: it is drawn large, as it will be while dragged. */
@@ -1811,7 +1894,7 @@ final class MinimumsStarView extends View {
     /**
      * The rate the held knob {@code distance} out along spoke {@code axis} sets: its pay on the shared scale, as the
      * example offer's rate, to the nearest step; 0 (off) inside the resting place (or, for a knob that set out inside
-     * it, a clear way further in); at most what Settings accepts.
+     * it, a clear way further in); at most {@link FilterSettings#MOST_CENTS}.
      */
     private int rateAt(int axis, float distance) {
         float out = Math.min(distance, pushLimit(axis));
@@ -1876,18 +1959,24 @@ final class MinimumsStarView extends View {
             }
         }
         float button = ui.dp(ADOPT_REACH_DP);
-        if (adoptShown()) {
-            float dx = x - adoptBox.centerX();
-            float dy = y - adoptBox.centerY();
+        boolean[] shown = {adoptShown(), scoreToggleShown(), adaptiveShown()};
+        RectF[] boxes = {adoptBox, scoreBox, adaptiveBox};
+        int[] ids = {ADOPT_ID, SCORE_ID, ADAPTIVE_ID};
+        for (int b = 0; b < boxes.length; b++) {
+            if (!shown[b]) continue;
+            float dx = x - boxes[b].centerX();
+            float dy = y - boxes[b].centerY();
             if (dx * dx + dy * dy <= Math.min(nearest, button * button)) {
                 nearest = dx * dx + dy * dy;
-                found = ADOPT_ID;
+                found = ids[b];
             }
         }
-        if (scoreToggleShown()) {
-            float dx = x - scoreBox.centerX();
-            float dy = y - scoreBox.centerY();
-            if (dx * dx + dy * dy <= Math.min(nearest, button * button)) found = SCORE_ID;
+        if (stopsShown()) {
+            // A 48 dp target at least around the badge; a finger on the badge itself is on it however near a knob.
+            float around = Math.max(0, ui.dp(ADOPT_DP) - stopsBox.height()) / 2;
+            float dx = Math.max(0, Math.max(stopsBox.left - x, x - stopsBox.right));
+            float dy = Math.max(0, Math.max(stopsBox.top - y, y - stopsBox.bottom));
+            if (dx <= around && dy <= around && dx * dx + dy * dy <= nearest) found = STOPS_ID;
         }
         return found;
     }
@@ -1990,7 +2079,9 @@ final class MinimumsStarView extends View {
      * As the sky, a finger on a knob grows it; moving along the knob's spoke drags it (the page around does not scroll
      * meanwhile), while moving any other way leaves the touch to the page (a scroll) and sets nothing; a tap on the
      * button adopts the learned minimums or undoes that; a tap on a marked offer (on no knob or button) opens its
-     * ticket; any other tap on the circle, a knob's included, opens the minimums. In a header, the chart is one button.
+     * ticket; a tap on the adaptive minimum's toggle turns it on or off and holding it asks to reset what it learned; a
+     * tap on the max stops badge steps it and a drag across it steps it either way; any other tap on the circle, a
+     * knob's included, is the chart's own click. In a header, the chart is one button.
      */
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (!knobsOn() && !offersOn() && !touching) return super.onTouchEvent(event);
@@ -2007,7 +2098,13 @@ final class MinimumsStarView extends View {
                 int on = target(x, y);
                 adoptPressed = on == ADOPT_ID;
                 scorePressed = on == SCORE_ID;
-                if (on != NO_NODE && !adoptPressed && !scorePressed) {
+                adaptivePressed = on == ADAPTIVE_ID;
+                adaptiveHeld = false;
+                stopsPressed = on == STOPS_ID;
+                stopsDragging = false;
+                // Held, the adaptive minimum's toggle asks to reset what it learned.
+                if (adaptivePressed) postDelayed(holdAdaptive, ViewConfiguration.getLongPressTimeout());
+                if (on >= 0 && on < NAMES.length) {
                     held = on;
                     grabDistance = knobFraction(on, Motion.settle(glideStart, GLIDE_MS)) * skyRadius;
                     grabOffset = grabDistance - along(on, x, y);
@@ -2023,6 +2120,15 @@ final class MinimumsStarView extends View {
             case MotionEvent.ACTION_MOVE:
                 if (tapping && Math.hypot(x - downX, y - downY) > slop) {
                     tapping = false;
+                    if (stopsPressed && Math.abs(x - downX) >= Math.abs(y - downY)) {
+                        // Across the badge: a drag that steps it, the page holding still meanwhile.
+                        stopsDragging = true;
+                        stopsValue = maxStops;
+                        keepTouch(true);
+                    } else if (stopsPressed) {
+                        stopsPressed = false;
+                        invalidate();
+                    }
                     if (held >= 0 && alongSpoke(held, x - downX, y - downY)) {
                         takeKnob();
                     } else if (held >= 0) {
@@ -2044,11 +2150,21 @@ final class MinimumsStarView extends View {
                     scorePressed = false;
                     invalidate();
                 }
+                if (adaptivePressed && target(x, y) != ADAPTIVE_ID) {
+                    adaptivePressed = false;
+                    removeCallbacks(holdAdaptive);
+                    invalidate();
+                }
                 if (dragging) moveKnob(along(held, x, y) + grabOffset);
+                if (stopsDragging) moveStops(x - downX);
                 return true;
             case MotionEvent.ACTION_UP: {
                 boolean button = adoptPressed;
                 boolean toggle = scorePressed;
+                boolean adaptive = adaptivePressed && !adaptiveHeld;
+                // A hold that asked to reset is done: the finger lifting is no tap.
+                boolean asked = adaptiveHeld;
+                boolean stops = stopsPressed && tapping;
                 boolean tap = tapping;
                 long tappedAt = tap ? pressedAt : -1;
                 endTouch(true);
@@ -2058,6 +2174,12 @@ final class MinimumsStarView extends View {
                 } else if (toggle) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     pressScore();
+                } else if (adaptive) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    pressAdaptive();
+                } else if (stops) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    setStops(nextStops(maxStops));
                 } else if (tappedAt >= 0) {
                     // An offer that went meanwhile opens nothing.
                     int offer = markTimes.indexOf(tappedAt);
@@ -2065,7 +2187,7 @@ final class MinimumsStarView extends View {
                         playSoundEffect(SoundEffectConstants.CLICK);
                         openOffer(offer);
                     }
-                } else if (tap) {
+                } else if (tap && !asked) {
                     performClick();
                 }
                 return true;
@@ -2083,10 +2205,19 @@ final class MinimumsStarView extends View {
         boolean pressed = pressing();
         touching = false;
         tapping = false;
-        if (adoptPressed || scorePressed || pressed || pressedAt >= 0) {
+        removeCallbacks(holdAdaptive);
+        if (adoptPressed || scorePressed || adaptivePressed || stopsPressed || pressed || pressedAt >= 0) {
             adoptPressed = false;
             scorePressed = false;
+            adaptivePressed = false;
+            stopsPressed = false;
             pressedAt = -1;
+            invalidate();
+        }
+        if (stopsDragging) {
+            stopsDragging = false;
+            keepTouch(false);
+            if (lifted) setStops(stopsValue);
             invalidate();
         }
         if (dragging) letGo(lifted);
@@ -2215,6 +2346,14 @@ final class MinimumsStarView extends View {
                 line.setColor((color & 0x00FFFFFF) | 0xC0000000);
                 line.setStrokeWidth(ui.dp(1.8f));
                 canvas.drawCircle(at[0], at[1], ui.dp(5) * detail, line);
+                if (beckoning()) {
+                    // Two swells, each a ring growing out of the knob's own and fading.
+                    long half = BECKON_MS / 2;
+                    float swell = ((SystemClock.uptimeMillis() - beckonedAt) % half) / (float) half;
+                    line.setColor((color & 0x00FFFFFF) | ((int) (0xD0 * (1 - swell)) << 24));
+                    line.setStrokeWidth(ui.dp(2));
+                    canvas.drawCircle(at[0], at[1], ui.dp(10.5f) * detail * (1 + 1.3f * swell), line);
+                }
                 continue;
             }
             float dot = ui.dp(4.6f) * detail;
@@ -2319,6 +2458,218 @@ final class MinimumsStarView extends View {
         return false;
     }
 
+    /** The adaptive minimum's toggle: shown as the sky, always (the adaptive minimum is a rule of its own). */
+    boolean adaptiveShown() {
+        return knobsOn() && placeButtons() && adaptivePlaced;
+    }
+
+    /** The max stops badge: shown as the sky while the per-stop spoke's icon is. */
+    boolean stopsShown() {
+        return knobsOn() && placeStops();
+    }
+
+    /** Where the adaptive minimum's toggle stands, in this view's pixels (for tests); null when it is not shown. */
+    RectF adaptiveBox() {
+        return adaptiveShown() ? new RectF(adaptiveBox) : null;
+    }
+
+    /** Where the max stops badge stands, in this view's pixels (for tests); null when it is not shown. */
+    RectF stopsBox() {
+        return stopsShown() ? new RectF(stopsBox) : null;
+    }
+
+    /** What the max stops badge says now: "≤3", or "≤∞" with no limit (for tests too). */
+    String stopsWords() {
+        return stopsWords(stopsDragging ? stopsValue : maxStops);
+    }
+
+    private static String stopsWords(int stops) {
+        return stops > 0 ? "≤" + stops : "≤∞";
+    }
+
+    /** What a tap on the badge sets: the next of off, 2, 3 … {@link #MOST_STOPS}, then off again. */
+    static int nextStops(int stops) {
+        return stops >= MOST_STOPS ? 0 : stops < 2 ? 2 : stops + 1;
+    }
+
+    /** One step up (to at most {@link #MOST_STOPS}) or down (to off) from {@code stops}; the same where it ends. */
+    static int stepStops(int stops, boolean up) {
+        if (up) return stops >= MOST_STOPS ? stops : stops < 2 ? 2 : stops + 1;
+        return stops <= 0 ? 0 : stops <= 2 ? 0 : Math.min(MOST_STOPS, stops - 1);
+    }
+
+    /** The badge's place among off, 2 … {@link #MOST_STOPS} (0 to 9), and the stops at a place. */
+    private static int stopsIndex(int stops) {
+        return stops < 2 ? 0 : Math.min(MOST_STOPS, stops) - 1;
+    }
+
+    private static int stopsAt(int index) {
+        return index <= 0 ? 0 : index + 1;
+    }
+
+    /**
+     * Where the max stops badge stands, into its box: beside the per-stop spoke's icon, towards the middle (else
+     * outwards, below or above it), inside the page and clear of the words, the mascot, the other icons, the rings'
+     * dollars and the knobs' reach; failing all of those, towards the middle all the same. While a finger drags it, it
+     * stays where it was. False while that icon is hidden (a line of words over both its places).
+     */
+    private boolean placeStops() {
+        if (!backdrop()) return false;
+        String words = stopsWords();
+        float height = Math.max(ui.dp(26), Ui.lineHeight(badgeText) + ui.dp(8));
+        float width = Math.max(height + ui.dp(6), badgeText.measureText(words) + ui.dp(18));
+        if (stopsDragging && stopsBox.width() > 0) {
+            stopsBox.right = stopsBox.left + width;
+            return true;
+        }
+        if (!skyIcon(3, skyX, skyY, skyRadius, iconBox)) return false;
+        float iconLeft = iconBox.left;
+        float iconRight = iconBox.right;
+        float iconTop = iconBox.top;
+        float iconBottom = iconBox.bottom;
+        float middle = iconBox.centerY();
+        float gap = ui.dp(8);
+        // The per-stop spoke points down and to the left: towards the middle is to the right.
+        float[][] places = {
+                {iconRight + gap, middle - height / 2},
+                {iconLeft - gap - width, middle - height / 2},
+                {(iconLeft + iconRight) / 2 - width / 2, iconBottom + gap},
+                {(iconLeft + iconRight) / 2 - width / 2, iconTop - gap - height}};
+        for (float[] place : places) {
+            stopsBox.set(place[0], place[1], place[0] + width, place[1] + height);
+            if (badgeFits()) return true;
+        }
+        stopsBox.set(places[0][0], places[0][1], places[0][0] + width, places[0][1] + height);
+        return true;
+    }
+
+    private boolean badgeFits() {
+        float margin = ui.dp(4);
+        if (stopsBox.left < margin || stopsBox.top < margin || stopsBox.right > getWidth() - margin
+                || stopsBox.bottom > getHeight() - margin) {
+            return false;
+        }
+        if (underWords(stopsBox) || onMascot(stopsBox)) return false;
+        RectF icon = new RectF();
+        for (int i = 0; i < ICONS.length; i++) {
+            if (skyIcon(i, skyX, skyY, skyRadius, icon) && RectF.intersects(icon, stopsBox)) return false;
+        }
+        for (RectF label : levelBoxes) if (RectF.intersects(label, stopsBox)) return false;
+        float clear = ui.dp(KNOB_REACH_DP);
+        float glide = Motion.settle(glideStart, GLIDE_MS);
+        for (int i = 0; i < NAMES.length; i++) {
+            float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, glide));
+            float dx = Math.max(0, Math.max(stopsBox.left - at[0], at[0] - stopsBox.right));
+            float dy = Math.max(0, Math.max(stopsBox.top - at[1], at[1] - stopsBox.bottom));
+            if (dx * dx + dy * dy < clear * clear) return false;
+        }
+        return true;
+    }
+
+    /**
+     * The max stops badge: filled in the set minimums' color with the limit ("≤3"); with none, hollow, "≤∞". A finger
+     * on it grows it a little.
+     */
+    private void drawStops(Canvas canvas) {
+        int value = stopsDragging ? stopsValue : maxStops;
+        int color = setColor();
+        RectF box = new RectF(stopsBox);
+        if (stopsPressed || stopsDragging) box.inset(-ui.dp(3), -ui.dp(3));
+        float corner = box.height() / 2;
+        if (value > 0) {
+            fill.setColor(color);
+            canvas.drawRoundRect(box, corner, corner, fill);
+            badgeText.setColor(ui.dark ? 0xFF0D1428 : 0xFFFFFFFF);
+        } else {
+            // The sky's own color under it, so the hollow badge reads over the rings and marks.
+            fill.setColor(ui.dark ? 0xC00D1428 : 0xC0E7EEF2);
+            canvas.drawRoundRect(box, corner, corner, fill);
+            line.setPathEffect(null);
+            line.setColor((color & 0x00FFFFFF) | 0xB0000000);
+            line.setStrokeWidth(ui.dp(1.5f));
+            float inset = line.getStrokeWidth() / 2;
+            box.inset(inset, inset);
+            canvas.drawRoundRect(box, corner - inset, corner - inset, line);
+            badgeText.setColor((color & 0x00FFFFFF) | 0xD0000000);
+        }
+        Paint.FontMetrics metrics = badgeText.getFontMetrics();
+        canvas.drawText(stopsWords(value), box.centerX(), box.centerY() - (metrics.ascent + metrics.descent) / 2,
+                badgeText);
+    }
+
+    /** A finger {@code dx} across the badge from where it went down: a step for every few dp, a tick at each. */
+    private void moveStops(float dx) {
+        int steps = Math.round(dx / ui.dp(STOPS_STEP_DP));
+        int value = steps == 0 ? maxStops
+                : stopsAt(Math.max(0, Math.min(MOST_STOPS - 1, stopsIndex(maxStops) + steps)));
+        if (value != stopsValue) {
+            stopsValue = value;
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        }
+        invalidate();
+    }
+
+    /** Max stops set on the badge (a tap, a drag or a screen reader), saved at once, and said. */
+    private boolean setStops(int stops) {
+        if (stops == maxStops || changes == null) {
+            invalidate();
+            return false;
+        }
+        changes.setMaxStops(stops);
+        say(stopsSaid(stops));
+        dropGoneFocus();
+        invalidate();
+        nodesChanged();
+        return true;
+    }
+
+    /** "Max stops, 3" or "Max stops, off". */
+    private static String stopsSaid(int stops) {
+        return STOPS_SAID + ", " + (stops > 0 ? Integer.toString(stops) : "off");
+    }
+
+    /**
+     * The adaptive minimum's toggle, a round button like the others with a sparkle: on, the sparkle is filled in the
+     * adaptive minimums' color and the button ringed in it; off, an outline.
+     */
+    private void drawAdaptive(Canvas canvas) {
+        float x = adaptiveBox.centerX();
+        float y = adaptiveBox.centerY();
+        float radius = adaptiveBox.width() / 2;
+        fill.setColor(adaptivePressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
+        canvas.drawCircle(x, y, radius, fill);
+        int learned = ui.dark ? NIGHT_LEARNED : ui.learned;
+        line.setPathEffect(null);
+        if (adaptiveOn) {
+            line.setColor(learned);
+            line.setStrokeWidth(ui.dp(2));
+        } else {
+            line.setColor(ui.dark ? 0x40FFFFFF : 0x330B0B0B);
+            line.setStrokeWidth(Math.max(1, ui.dp(1)));
+        }
+        canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
+        if (adaptiveOn) {
+            fill.setColor(learned);
+            drawSparkle(canvas, x, y, ui.dp(10), fill);
+        } else {
+            line.setColor(ui.inkSecondary);
+            line.setStrokeWidth(ui.dp(1.6f));
+            drawSparkle(canvas, x, y, ui.dp(10), line);
+        }
+    }
+
+    /** The toggle: the adaptive minimum on or off, saved at once (what it learned is kept), and said. */
+    private void pressAdaptive() {
+        if (changes == null) return;
+        boolean on = !adaptiveOn;
+        changes.setAdaptive(on);
+        say(on ? ADAPTIVE_SAID + " on. It rises with offers you accept, and ones you decline by hand."
+                : ADAPTIVE_SAID + " off. What it learned is kept.");
+        dropGoneFocus();
+        invalidate();
+        nodesChanged();
+    }
+
     /** Undo is offered (for tests). */
     boolean offeringUndo() {
         return undoValues != null;
@@ -2350,13 +2701,14 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Where the buttons stand: side by side, the toggle on the left and the adopt button's place on the right (kept
-     * free even while that button is not shown, so the toggle never moves when it comes or goes), straight below the
-     * circle's middle, just outside where the shapes cross there (else above it), clear of the knobs, the icons, the
-     * rings' dollars, the words and the mascot, and within the spokes' height, which the stage keeps inside the page
-     * and below the counts. Where no such row fits, each finds a place of its own. Worked out from where the shapes are
-     * heading, so they do not drift while they glide, and not at all while a knob is held; while Undo is offered they
-     * stay where they were tapped, unless the circle itself moves.
+     * Where the round buttons stand: in a row, left to right the score by area toggle, the adaptive minimum's toggle
+     * (straight below the circle's middle) and the adopt button's place (kept free even while that button is not shown,
+     * so the others never move when it comes or goes), just outside where the shapes cross there (else above the
+     * middle), clear of the knobs, the icons, the max stops badge, the rings' dollars, the words and the mascot, and
+     * within the spokes' height, which the stage keeps inside the page and below the counts. Where no such row fits,
+     * each finds a place of its own. Worked out from where the shapes are heading, so they do not drift while they
+     * glide, and not at all while a knob is held; while Undo is offered they stay where they were tapped, unless the
+     * circle itself moves.
      */
     private boolean placeButtons() {
         if (dragging || (!adoptStale && !layoutMoved)) return buttonsPlaced;
@@ -2364,46 +2716,54 @@ final class MinimumsStarView extends View {
         adoptStale = false;
         layoutMoved = false;
         float half = ui.dp(ADOPT_DP) / 2f;
-        float apart = ui.dp(BUTTONS_APART_DP) / 2f;
+        float apart = ui.dp(BUTTONS_APART_DP);
         float band = backdropHalfHeight(skyRadius) - half;
         placeLevelLabels(skyX, skyY, skyRadius, 1);
-        togglePlaced = false;
-        adoptPlaced = false;
-        for (int pass = 0; pass < 2 && !togglePlaced; pass++) {
-            for (int side = 1; side >= -1 && !togglePlaced; side -= 2) {
+        stopsForButtons = placeStops();
+        RectF[] row = {scoreBox, adaptiveBox, adoptBox};
+        boolean placed = false;
+        for (int pass = 0; pass < 2 && !placed; pass++) {
+            for (int side = 1; side >= -1 && !placed; side -= 2) {
                 float from = half + ui.dp(KNOB_REST_DP);
                 // First just outside the shapes; failing that, over them.
                 if (pass == 0) {
                     from = Math.max(from, shapesReach(side, new float[] {skyX - apart - half, skyX - apart,
-                            skyX, skyX + apart, skyX + apart + half}) + ui.dp(10) + half);
+                            skyX - apart / 2, skyX, skyX + apart / 2, skyX + apart, skyX + apart + half})
+                            + ui.dp(10) + half);
                 }
                 for (float d = from; d <= band; d += ui.dp(2)) {
                     float y = skyY + side * d;
-                    scoreBox.set(skyX - apart - half, y - half, skyX - apart + half, y + half);
-                    adoptBox.set(skyX + apart - half, y - half, skyX + apart + half, y + half);
-                    if (buttonFits(scoreBox, null) && buttonFits(adoptBox, scoreBox)) {
-                        togglePlaced = adoptPlaced = true;
+                    for (int b = 0; b < row.length; b++) {
+                        float x = skyX + (b - 1) * apart;
+                        row[b].set(x - half, y - half, x + half, y + half);
+                    }
+                    if (buttonFits(scoreBox) && buttonFits(adaptiveBox, scoreBox)
+                            && buttonFits(adoptBox, adaptiveBox)) {
+                        placed = true;
                         break;
                     }
                 }
             }
         }
-        if (!togglePlaced) {
-            togglePlaced = placeAlone(scoreBox, null, half, band);
-            adoptPlaced = placeAlone(adoptBox, togglePlaced ? scoreBox : null, half, band);
+        togglePlaced = adaptivePlaced = adoptPlaced = placed;
+        if (!placed) {
+            togglePlaced = placeAlone(scoreBox, half, band);
+            adaptivePlaced = placeAlone(adaptiveBox, half, band, togglePlaced ? scoreBox : null);
+            adoptPlaced = placeAlone(adoptBox, half, band, togglePlaced ? scoreBox : null,
+                    adaptivePlaced ? adaptiveBox : null);
         }
-        return buttonsPlaced = togglePlaced || adoptPlaced;
+        return buttonsPlaced = togglePlaced || adaptivePlaced || adoptPlaced;
     }
 
-    /** One button in a place of its own, below the middle (else above it), clear of {@code other}. */
-    private boolean placeAlone(RectF box, RectF other, float half, float band) {
+    /** One button in a place of its own, below the middle (else above it), clear of {@code others}. */
+    private boolean placeAlone(RectF box, float half, float band, RectF... others) {
         for (int pass = 0; pass < 2; pass++) {
             for (int side = 1; side >= -1; side -= 2) {
                 float from = half + ui.dp(KNOB_REST_DP);
                 if (pass == 0) from = Math.max(from, shapesReach(side, new float[] {skyX}) + ui.dp(10) + half);
                 for (float d = from; d <= band; d += ui.dp(2)) {
                     box.set(skyX - half, skyY + side * d - half, skyX + half, skyY + side * d + half);
-                    if (buttonFits(box, other)) return true;
+                    if (buttonFits(box, others)) return true;
                 }
             }
         }
@@ -2443,8 +2803,11 @@ final class MinimumsStarView extends View {
         return reach;
     }
 
-    /** Whether a button at {@code box} fits: in the page, clear of words, the mascot, labels, icons, knobs, other. */
-    private boolean buttonFits(RectF box, RectF other) {
+    /**
+     * Whether a button at {@code box} fits: in the page, clear of words, the mascot, labels, icons, the max stops
+     * badge, knobs and {@code others}.
+     */
+    private boolean buttonFits(RectF box, RectF... others) {
         float margin = ui.dp(4);
         if (box.left < margin || box.top < margin || box.right > getWidth() - margin
                 || box.bottom > getHeight() - margin) {
@@ -2453,7 +2816,8 @@ final class MinimumsStarView extends View {
         RectF around = new RectF(box);
         around.inset(-ui.dp(4), -ui.dp(4));
         if (underWords(around) || onMascot(box)) return false;
-        if (other != null && RectF.intersects(other, around)) return false;
+        for (RectF other : others) if (other != null && RectF.intersects(other, around)) return false;
+        if (stopsForButtons && RectF.intersects(stopsBox, around)) return false;
         for (RectF label : levelBoxes) if (RectF.intersects(label, around)) return false;
         float clear = ui.dp(KNOB_REACH_DP) + box.width() / 2;
         for (int i = 0; i < NAMES.length; i++) {
@@ -2622,11 +2986,25 @@ final class MinimumsStarView extends View {
 
     @Override protected void onDetachedFromWindow() {
         removeCallbacks(undoEnds);
+        removeCallbacks(holdAdaptive);
         undoValues = null;
         super.onDetachedFromWindow();
     }
 
     // ---- Screen readers: each knob an adjustable control, the button a button. ----
+
+    /** What a screen reader's double-tap on the chart does while it is a button (a short window); null for none. */
+    void setClickLabel(String label) {
+        clickLabel = label;
+    }
+
+    @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        if (clickLabel != null && isClickable()) {
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                    clickLabel));
+        }
+    }
 
     @SuppressWarnings("deprecation")
     private void say(String words) {
@@ -2693,8 +3071,9 @@ final class MinimumsStarView extends View {
         AccessibilityEvent event = newEvent(type);
         event.setPackageName(getContext().getPackageName());
         event.setClassName(node == ADOPT_ID || node >= OFFER_ID ? Button.class.getName()
-                : node == SCORE_ID ? Switch.class.getName() : SeekBar.class.getName());
+                : node == SCORE_ID || node == ADAPTIVE_ID ? Switch.class.getName() : SeekBar.class.getName());
         if (node == SCORE_ID) event.setChecked(byArea);
+        if (node == ADAPTIVE_ID) event.setChecked(adaptiveOn);
         // An offer that went meanwhile (a focus being let go) has nothing left to say.
         if (node < OFFER_ID || node - OFFER_ID < marks.size()) event.setContentDescription(nodeSaid(node));
         event.setSource(this, node);
@@ -2705,6 +3084,8 @@ final class MinimumsStarView extends View {
     private String nodeSaid(int node) {
         if (node >= OFFER_ID) return offerSaid(node - OFFER_ID);
         if (node == SCORE_ID) return SCORE_SAID;
+        if (node == ADAPTIVE_ID) return ADAPTIVE_SAID;
+        if (node == STOPS_ID) return stopsSaid(maxStops);
         return node == ADOPT_ID ? (undoValues != null ? "Undo" : ADOPT_SAID) : knobSaid(node);
     }
 
@@ -2746,8 +3127,14 @@ final class MinimumsStarView extends View {
                     Math.min(getWidth(), Math.round(box.right)), Math.min(getHeight(), Math.round(box.bottom)));
             return;
         }
-        if (node == ADOPT_ID || node == SCORE_ID) {
-            RectF box = node == ADOPT_ID ? adoptBox : scoreBox;
+        if (node == STOPS_ID) {
+            float grow = Math.max(0, ui.dp(ADOPT_DP) - stopsBox.height()) / 2;
+            out.set(Math.round(stopsBox.left - grow), Math.round(stopsBox.top - grow),
+                    Math.round(stopsBox.right + grow), Math.round(stopsBox.bottom + grow));
+            return;
+        }
+        if (node == ADOPT_ID || node == SCORE_ID || node == ADAPTIVE_ID) {
+            RectF box = node == ADOPT_ID ? adoptBox : node == SCORE_ID ? scoreBox : adaptiveBox;
             float reach = ui.dp(ADOPT_REACH_DP);
             out.set(Math.round(box.centerX() - reach), Math.round(box.centerY() - reach),
                     Math.round(box.centerX() + reach), Math.round(box.centerY() + reach));
@@ -2759,11 +3146,13 @@ final class MinimumsStarView extends View {
                 Math.round(at[1]) + reach);
     }
 
-    /** A knob (0 to 3), the button, the toggle or a marked offer that is there now. */
+    /** A knob (0 to 3), a button, a toggle, the badge or a marked offer that is there now. */
     private boolean shownNode(int id) {
         if (id >= OFFER_ID) return offersOn() && outer > 0 && id - OFFER_ID < marks.size();
-        if (id < 0 || id > SCORE_ID || !knobsOn()) return false;
+        if (id < 0 || id > STOPS_ID || !knobsOn()) return false;
         if (id == SCORE_ID) return scoreToggleShown();
+        if (id == ADAPTIVE_ID) return adaptiveShown();
+        if (id == STOPS_ID) return stopsShown();
         return id == ADOPT_ID ? adoptShown() : knobShown(id);
     }
 
@@ -2773,8 +3162,8 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The knobs (ids 0 to 3, by spoke), the adopt button, the score by area toggle and then the marked offers, newest
-     * first ({@link #OFFER_ID} on), for screen readers.
+     * The knobs (ids 0 to 3, by spoke), the max stops badge, the adaptive minimum's toggle, the adopt button, the score
+     * by area toggle and then the marked offers, newest first ({@link #OFFER_ID} on), for screen readers.
      */
     private final class Nodes extends AccessibilityNodeProvider {
         @SuppressWarnings("deprecation")
@@ -2785,6 +3174,8 @@ final class MinimumsStarView extends View {
                         : AccessibilityNodeInfo.obtain(host);
                 onInitializeAccessibilityNodeInfo(info);
                 for (int axis = 0; axis < NAMES.length; axis++) if (shownNode(axis)) info.addChild(host, axis);
+                if (stopsShown()) info.addChild(host, STOPS_ID);
+                if (adaptiveShown()) info.addChild(host, ADAPTIVE_ID);
                 if (adoptShown()) info.addChild(host, ADOPT_ID);
                 if (scoreToggleShown()) info.addChild(host, SCORE_ID);
                 for (int m = 0; m < marks.size(); m++) if (shownNode(OFFER_ID + m)) info.addChild(host, OFFER_ID + m);
@@ -2829,11 +3220,45 @@ final class MinimumsStarView extends View {
                 return info;
             }
             if (id == SCORE_ID) {
-                // "Score by area, switch, on": a switch, as Settings' own.
+                // "Score by area, switch, on".
                 info.setClassName(Switch.class.getName());
                 info.setCheckable(true);
                 info.setChecked(byArea);
                 if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(byArea ? "On" : "Off");
+                info.setClickable(true);
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+                return info;
+            }
+            if (id == ADAPTIVE_ID) {
+                // "Adaptive minimum, switch, on", with Reset among its actions (a long press, by touch).
+                String toggle = adaptiveOn ? "Turn adaptive minimum off" : "Turn adaptive minimum on";
+                info.setClassName(Switch.class.getName());
+                info.setCheckable(true);
+                info.setChecked(adaptiveOn);
+                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(adaptiveOn ? "On" : "Off");
+                info.setClickable(true);
+                info.setLongClickable(true);
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                        toggle));
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(TOGGLE_ACTION, toggle));
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(RESET_ACTION, RESET_SAID));
+                return info;
+            }
+            if (id == STOPS_ID) {
+                // "Max stops, 3, at most 3 stops": adjustable, one step per swipe; a double-tap steps on as a tap does.
+                info.setClassName(SeekBar.class.getName());
+                info.setRangeInfo(Build.VERSION.SDK_INT >= 30
+                        ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
+                                MOST_STOPS, Math.min(maxStops, MOST_STOPS))
+                        : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
+                                MOST_STOPS, Math.min(maxStops, MOST_STOPS)));
+                if (Build.VERSION.SDK_INT >= 30) {
+                    info.setStateDescription(maxStops > 0 ? "at most " + maxStops + " stops" : "no limit");
+                }
+                if (maxStops < MOST_STOPS) {
+                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
+                }
+                if (maxStops > 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
                 info.setClickable(true);
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
                 return info;
@@ -2884,12 +3309,28 @@ final class MinimumsStarView extends View {
                         pressScore();
                         return true;
                     }
+                    if (id == ADAPTIVE_ID) {
+                        pressAdaptive();
+                        return true;
+                    }
+                    if (id == STOPS_ID) return setStops(nextStops(maxStops));
                     if (id != ADOPT_ID || !adoptShown()) return false;
                     pressAdopt();
                     return true;
                 case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
-                case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD:
-                    return id < NAMES.length && step(id, action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
+                    boolean up = action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD;
+                    if (id == STOPS_ID) return setStops(stepStops(maxStops, up));
+                    return id < NAMES.length && step(id, up);
+                }
+                case TOGGLE_ACTION:
+                    if (id != ADAPTIVE_ID) return false;
+                    pressAdaptive();
+                    return true;
+                case RESET_ACTION:
+                    if (id != ADAPTIVE_ID || changes == null) return false;
+                    changes.resetLearned();
+                    return true;
                 default:
                     if (action == android.R.id.accessibilityActionSetProgress && id < NAMES.length
                             && arguments != null) {

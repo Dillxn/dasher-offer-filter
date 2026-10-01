@@ -64,6 +64,8 @@ final class Updater {
     private static final String UPDATE_CHANNEL_ID = "updates";
 
     private static final String ENABLED = "enabled";
+    /** Set once the retired Automatic updates switch's "off" was cleared (or checks were set since). */
+    private static final String SWITCH_RETIRED = "switch_retired";
     private static final String STATUS = "status";
     private static final String ATTEMPT_AT = "attempt_at";
     private static final String CHECKED_AT = "checked_at";
@@ -117,8 +119,25 @@ final class Updater {
         return prefs(context).getBoolean(ENABLED, true);
     }
 
+    /** Checks on or off. Settings has no switch for this (checks are always automatic); tests turn them off. */
     static void setEnabled(Context context, boolean value) {
-        prefs(context).edit().putBoolean(ENABLED, value).apply();
+        prefs(context).edit().putBoolean(ENABLED, value).putBoolean(SWITCH_RETIRED, true).apply();
+        schedule(context);
+    }
+
+    /**
+     * Automatic updates are always on since Settings lost its switch for them: an "off" an older version kept is
+     * cleared, once, and noted in the log; the periodic check is scheduled again. Nothing about how an update is
+     * verified changes.
+     */
+    static void retireSwitch(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.getBoolean(SWITCH_RETIRED, false)) return;
+        boolean wasOff = !prefs.getBoolean(ENABLED, true);
+        prefs.edit().putBoolean(ENABLED, true).putBoolean(SWITCH_RETIRED, true).apply();
+        if (!wasOff) return;
+        DiagnosticLog.log(context, "update", "automatic updates were turned off in an older version; Settings has no "
+                + "such switch now, so they are on again");
         schedule(context);
     }
 

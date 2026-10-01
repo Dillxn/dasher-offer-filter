@@ -17,7 +17,7 @@ import java.util.Locale;
 /**
  * The mascot, a funnel standing upright in a brush-drawn ring, with the last 24 hours in three quiet counts below:
  * passed, filtered and left to review. It is also the screen's one button: a tap pauses or resumes auto-decline (or,
- * with no rule yet, opens the rules), and it squishes a little while pressed. The ring says the state: nearly closed
+ * with no rule yet, points to the knobs), and it squishes a little while pressed. The ring says the state: nearly closed
  * while on, two-thirds and amber while paused, a faint dotted circle while off; it draws itself when the state
  * changes. On, the mascot breathes, blinks, has its sieve, and an offer ticket drifts down into it while a drop
  * falls from its spout; paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"

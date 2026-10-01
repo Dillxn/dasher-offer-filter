@@ -35,7 +35,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Score by area through the real page: the toggle by the constellation (and its mirror in Settings), the chart in
+ * Score by area through the real page: the toggle by the constellation (its only home), the chart in
  * normalized space, a knob held on a still scale, and the score on the ticket, in the history and in reports. The
  * rules are the user's: $13 pay, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops.
  */
@@ -99,21 +99,16 @@ public class ScoreByAreaAdapterTest {
             assertTrue(star.byArea());
             assertTrue(nodes.createAccessibilityNodeInfo(MinimumsStarView.SCORE_ID).isChecked());
             assertTrue(star.lastSaid(), star.lastSaid().startsWith("Score by area on."));
-            assertFalse("a tap on it opens nothing", fieldLabeled(content, "Minimum pay ($)").isShown());
-            Switch mirror = (Switch) findButton(content, "Score by area");
-            assertTrue("Settings mirrors it", mirror.isChecked());
+            assertNull("a tap on it opens nothing", shownTextContaining(content, "Share report"));
+            assertNull("Settings has no mirror of it", findButton(content, "Score by area"));
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] score by area on"));
 
-            // A screen reader turns it off again.
+            // A screen reader turns it off again, and on.
             assertTrue(nodes.performAction(MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK, null));
             assertFalse(FilterStore.load(app).scoreByArea);
-            assertFalse(mirror.isChecked());
             assertFalse(star.byArea());
             assertTrue(star.lastSaid(), star.lastSaid().startsWith("Score by area off."));
-
-            // Settings' switch turns it on, as the toggle does.
-            mirror.setChecked(true);
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertTrue(nodes.performAction(MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK, null));
             assertTrue(FilterStore.load(app).scoreByArea);
             assertTrue(star.byArea());
         }
@@ -405,27 +400,6 @@ public class ScoreByAreaAdapterTest {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {
                 View found = findButton(group.getChildAt(i), text);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    /** The field a visible label names via {@code labelFor}. */
-    private static TextView fieldLabeled(View root, String label) {
-        TextView caption = shownOrNot(root, label);
-        assertNotNull(label, caption);
-        return root.findViewById(caption.getLabelFor());
-    }
-
-    private static TextView shownOrNot(View view, String text) {
-        if (view instanceof TextView && !(view instanceof Button) && text.contentEquals(((TextView) view).getText())) {
-            return (TextView) view;
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                TextView found = shownOrNot(group.getChildAt(i), text);
                 if (found != null) return found;
             }
         }
