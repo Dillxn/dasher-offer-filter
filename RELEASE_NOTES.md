@@ -1,3 +1,23 @@
+## 0.4.44 — tap an offer on the chart to see it
+
+- **Tap an offer's dot, or inside its polygon, on the chart to open its ticket.** It's the same ticket a skyline building opens, and both show that offer as chosen.
+  - When dots overlap, the nearest wins. Inside overlapping polygons, the chosen or newest offer wins.
+  - Knobs and the chart's buttons keep their taps, and a drag never opens anything.
+  - A tap on empty sky works as before.
+- **While a ticket is open,** its offer's shape and dots stand out on the chart. A light highlight shows under your finger as you press.
+- **Screen readers** reach each plotted offer after the chart's controls ("Offer $9.75, 3.3 mi, 18 min, 2 stops, declined"), and a double tap shows its details.
+- The chart now marks only the offers shown on the skyline.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** cover:
+  - a dot tap opening its ticket;
+  - the newest of two overlapping shapes;
+  - score mode;
+  - knob drags opening nothing;
+  - empty sky;
+  - screen-reader clicks.
+- **Not verified on a real phone:** how easy dots are to hit on a busy chart.
+
 ## 0.4.43 — going back to an offer hands it to you; diagnostics after each dash
 
 - **Going back to an offer is yours.** On 0.4.42, Offer Filter tapped Decline, couldn't tap "Decline offer" on Dasher's question, and when you tapped "View offer details" it declined the same offer again. Now:
