@@ -1015,11 +1015,12 @@ public final class OfferFilterService extends AccessibilityService {
         if (tap == null) return false;
         boolean near = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS;
         if (tap.own || near) {
-            DiagnosticLog.logScreen(this, "tap (" + (tap.own ? "Offer Filter's own" : "not Offer Filter's") + ") "
-                    + tap.describe(true));
+            // Described (its labels masked) on the log's own thread.
+            DiagnosticLog.logScreen(this, () -> "tap (" + (tap.own ? "Offer Filter's own" : "not Offer Filter's")
+                    + ") " + tap.describe(true));
         } else if (now - bareTapLoggedAt >= BARE_TAP_LOG_MS) {
             bareTapLoggedAt = now;
-            DiagnosticLog.logScreen(this, "tap (not Offer Filter's) " + tap.describe(false));
+            DiagnosticLog.logScreen(this, () -> "tap (not Offer Filter's) " + tap.describe(false));
         }
         if (tap.accept()) {
             OfferSnapshot accepting = acceptedTracker.acceptClicked(now);
@@ -1470,7 +1471,10 @@ public final class OfferFilterService extends AccessibilityService {
             status("Ambiguous shared button target; no action.");
             return false;
         }
-        return handleOffer(scan, offer, settings, now, generation);
+        boolean handled = handleOffer(scan, offer, settings, now, generation);
+        // After the offer was handled (and any decline tapped): a dash's diagnostics count its offers.
+        DashDiagnostics.offerSeen(this);
+        return handled;
     }
 
     /** Second step of a decline this service requested. Pausing or a newer offer revokes the authority. */
@@ -1566,8 +1570,9 @@ public final class OfferFilterService extends AccessibilityService {
         boolean facts = anyFact(offer);
         OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
         if (missed != null) {
-            DiagnosticLog.log(this, "accept", "Not learned: no delivery screen recognized within 15 s after Accept on "
-                    + missed.summary() + "; screen now: " + scan.text);
+            List<String> shown = new ArrayList<>(scan.text);
+            DiagnosticLog.log(this, "accept", () -> "Not learned: no delivery screen recognized within 15 s after "
+                    + "Accept on " + missed.summary() + "; screen now: " + PersonalText.mask(shown));
         }
         AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, facts, now);
         if (accepted != null) {
@@ -1589,6 +1594,8 @@ public final class OfferFilterService extends AccessibilityService {
             acceptedTracker.afterScreen(scan.text, facts, now);
         }
         applyNotes();
+        // Diagnostics after a dash (the user's opt-in) are filed when Dasher shows it ended; a cheap check when off.
+        DashDiagnostics.screen(this, scan.text);
         if (OfferEvidence.isDashOver(scan.text)) {
             onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
@@ -2148,7 +2155,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (since < 1000 || (words == lastOtherScreen && since < SAME_SCREEN_MS)) return false;
         lastOtherScreen = words;
         lastOtherScreenAt = now;
-        DiagnosticLog.logScreen(this, kind + " labels=" + scan.text + " metricParts=" + scan.metricParts);
+        DiagnosticLog.logScreen(this, labelsLine(kind, scan));
         return true;
     }
 
@@ -2166,8 +2173,9 @@ public final class OfferFilterService extends AccessibilityService {
             step(note.line, note.kind, note.detail);
             DiagnosticLog.log(this, "learn", note.line.summary() + ": " + note);
             if (note.screen != null) {
-                DiagnosticLog.logScreen(this, "after an offer left, neither a delivery nor the wait for offers: labels="
-                        + note.screen);
+                List<String> screen = new ArrayList<>(note.screen);
+                DiagnosticLog.logScreen(this, () -> "after an offer left, neither a delivery nor the wait for offers: "
+                        + "labels=" + PersonalText.mask(screen));
             }
             if (note.declined != null) {
                 OfferSnapshot declined = note.declined;
@@ -2224,7 +2232,17 @@ public final class OfferFilterService extends AccessibilityService {
                 + "|" + (scan.decline != null);
         if (signature.equals(lastDiagnosticSignature)) return;
         lastDiagnosticSignature = signature;
-        DiagnosticLog.log(this, "screen", signature + " labels=" + scan.text + " metricParts=" + scan.metricParts);
+        DiagnosticLog.log(this, "screen", labelsLine(signature, scan));
+    }
+
+    /**
+     * "{@code head} labels=[…] metricParts=[…]" for a log, built and masked ({@link PersonalText}) on the log's own
+     * thread from copies taken here, so the screen reader never waits for it. Decisions use the raw labels.
+     */
+    private static Supplier<String> labelsLine(String head, Scan scan) {
+        List<String> text = new ArrayList<>(scan.text);
+        List<String> parts = new ArrayList<>(scan.metricParts);
+        return () -> head + " labels=" + PersonalText.mask(text) + " metricParts=" + PersonalText.mask(parts);
     }
 
     /** The last status, shown on the main page: set on the main thread, in order with the notification path's. */

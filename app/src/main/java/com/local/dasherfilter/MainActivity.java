@@ -196,6 +196,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Button areasForget;
     private EditText reportToken;
     private Switch reportViaGitHub;
+    private Switch diagnosticsAfterDash;
+    private TextView diagnosticsStatus;
     private TextView reportStatus;
     private Button sendTest;
     private Button stopReports;
@@ -280,6 +282,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.check(this, freshScreen ? UpdateCadence.Trigger.OPENED : UpdateCadence.Trigger.RESUMED, null);
         freshScreen = false;
         ReportOutbox.retryRefused(this);
+        // A dash that went quiet while Android held its check back is filed now (off the main thread).
+        DashDiagnostics.checkSoon(this);
         DasherSplit.resumed(this);
     }
 
@@ -991,8 +995,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ui.heading(body, "Reports");
         ui.listRow(body, "Share report", this::shareReport);
         ui.listRow(body, "Clear history", this::confirmClearHistory);
-        TextView kept = ui.text("The most recent screen text (never older than a day) stays on this phone for reports. "
-                + "It leaves only in a report you share.", 13, ui.inkSecondary, false);
+        TextView kept = ui.text("The most recent screen text (never older than a day) stays on this phone for reports, "
+                + "with names, addresses, phone numbers and delivery instructions masked. It leaves only in a report "
+                + "you share, or after each dash if you turn that on below.", 13, ui.inkSecondary, false);
         kept.setPadding(0, ui.dp(6), 0, 0);
         body.addView(kept);
 
@@ -1004,6 +1009,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
             ReportOutbox.useGitHub(this, on);
             refresh();
         });
+        // A further opt-in: only with the connection and reports through it on; either going off turns it off.
+        diagnosticsAfterDash = ui.toggle(body, "Share diagnostics after each dash", DashDiagnostics.on(this));
+        diagnosticsAfterDash.setOnCheckedChangeListener((view, on) -> {
+            if (on == DashDiagnostics.on(this)) return;
+            if (DashDiagnostics.set(this, on) != on) toast("Turn on Send reports through my GitHub connection first.");
+            refresh();
+        });
+        diagnosticsStatus = ui.text("", 13, ui.inkSecondary, false);
+        body.addView(diagnosticsStatus);
         TextView caption = ui.text("Automatic reports (GitHub token)", 13, ui.inkSecondary, false);
         caption.setPadding(0, ui.dp(14), 0, ui.dp(4));
         body.addView(caption);
@@ -1157,6 +1171,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (reportViaGitHub.isChecked() != ReportOutbox.useGitHubChosen(this)) {
             reportViaGitHub.setChecked(ReportOutbox.useGitHubChosen(this));
         }
+        diagnosticsAfterDash.setVisibility(connected ? View.VISIBLE : View.GONE);
+        diagnosticsStatus.setVisibility(connected ? View.VISIBLE : View.GONE);
+        diagnosticsAfterDash.setEnabled(DashDiagnostics.allowed(this));
+        if (diagnosticsAfterDash.isChecked() != DashDiagnostics.on(this)) {
+            diagnosticsAfterDash.setChecked(DashDiagnostics.on(this));
+        }
+        diagnosticsStatus.setText(DashDiagnostics.status(this));
         reportStatus.setText(ReportOutbox.status(this));
         reportToken.setHint(reporting ? "Token saved · paste to replace" : "github_pat_…");
         if (reportSelected != null) reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
@@ -1666,7 +1687,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void confirmStopReports() {
         new AlertDialog.Builder(this)
                 .setTitle("Turn off automatic reports?")
-                .setMessage("Removes the token from this phone and discards reports not yet sent.")
+                .setMessage("Removes the token from this phone and discards reports not yet sent. Reports through "
+                        + "your GitHub connection and diagnostics after each dash turn off too.")
                 .setPositiveButton("Turn off", (dialog, which) -> {
                     ReportOutbox.setToken(this, "");
                     refresh();

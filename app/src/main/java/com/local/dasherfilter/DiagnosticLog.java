@@ -19,13 +19,16 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * Local diagnostics, captured automatically: what the screen reader and the notification path saw and did, in two
  * small rolling logs on this phone, never older than a day. One holds offers, decisions and status; the other holds
  * Dasher's other screens (a shopping list, an item), so a few minutes of shopping can never push the offers out.
- * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares.
- * Bounded I/O never blocks screen-decision callbacks.
+ * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares or, with
+ * "Share diagnostics after each dash" on, in the one {@link DashDiagnostics} files after a dash. Every line is masked
+ * ({@link PersonalText}) before it is written: names, addresses, phone numbers, emails and a customer's own words never
+ * reach either log. Masking and bounded I/O run on the writer thread, so neither blocks screen-decision callbacks.
  *
  * <p>Some lines are states, not events (what an automatic update check found, DoorDash's alert-channel settings):
  * {@link #logOnChange} writes one only when it differs from the copy kept, or that copy is a day old, and the latest
@@ -54,6 +57,10 @@ final class DiagnosticLog {
     private static final int MAX_REPORT_SCREENS_CHARS = 10_000;
     private static final int MAX_REPORT_CHARS = 60_000;
     private static final int REPORT_DECISIONS = 100;
+    /** What every report says about the screen text it carries. */
+    static final String MASKED_NOTE = "Screen text is masked on the phone: names, street addresses, phone numbers, "
+            + "emails and a customer's own instructions read [name], [address], [phone], [email] and [instructions]; "
+            + "stores, offer figures and Dasher's own words stay.";
     /** Every report subject starts with this, so reports are easy to find in a mailbox. */
     static final String REPORT_SUBJECT = "Offer Filter diagnostics";
     /** One writer thread with a bounded queue; entries beyond the queue are dropped, never blocking callers. */
@@ -79,13 +86,27 @@ final class DiagnosticLog {
     }
 
     static void log(Context context, String source, String message) {
+        log(context, source, () -> message);
+    }
+
+    /**
+     * A line built on the writer thread, so a caller on the screen reader's thread never waits for the labels it
+     * holds to be written out and masked: hand over copies of anything that may change.
+     */
+    static void log(Context context, String source, Supplier<String> message) {
         if (!isEnabled(context)) return;
-        Context app = context.getApplicationContext();
+        long at = System.currentTimeMillis();
+        write(context.getApplicationContext(), FILE, () -> line(at, source, message.get()));
+    }
+
+    /** One stored line: one physical line, masked, then cut to {@link #MAX_MESSAGE_CHARS}. */
+    private static byte[] line(long at, String source, String message) {
         String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
+        // Masked before it is cut, so a cut can never leave half an address unmasked.
+        safe = PersonalText.maskLine(safe);
         if (safe.length() > MAX_MESSAGE_CHARS) safe = safe.substring(0, MAX_MESSAGE_CHARS) + " [truncated]";
-        String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date());
-        byte[] line = (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
-        write(app, FILE, line);
+        String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date(at));
+        return (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
     /**
@@ -186,17 +207,29 @@ final class DiagnosticLog {
 
     /** One of Dasher's other screens, as read: kept in its own log. */
     static void logScreen(Context context, String message) {
-        if (!isEnabled(context)) return;
-        Context app = context.getApplicationContext();
-        String safe = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
-        if (safe.length() > MAX_MESSAGE_CHARS) safe = safe.substring(0, MAX_MESSAGE_CHARS) + " [truncated]";
-        String timestamp = new SimpleDateFormat(TIME_PATTERN, Locale.US).format(new Date());
-        write(app, SCREENS_FILE, (timestamp + " [screen] " + safe + "\n").getBytes(StandardCharsets.UTF_8));
+        logScreen(context, () -> message);
     }
 
-    private static void write(Context app, String name, byte[] line) {
+    /** As {@link #logScreen(Context, String)}, built (and masked) on the writer thread. */
+    static void logScreen(Context context, Supplier<String> message) {
+        if (!isEnabled(context)) return;
+        long at = System.currentTimeMillis();
+        write(context.getApplicationContext(), SCREENS_FILE, () -> line(at, "screen", message.get()));
+    }
+
+    private static void write(Context app, String name, Supplier<byte[]> line) {
         try {
-            WRITER.execute(() -> append(app, name, line));
+            WRITER.execute(() -> {
+                byte[] bytes;
+                try {
+                    bytes = line.get();
+                } catch (RuntimeException | StackOverflowError unmaskable) {
+                    // Never written unmasked, and never a crash: an escaping error here would take the screen reader.
+                    bytes = line(System.currentTimeMillis(), "log", "a line could not be masked and was dropped: "
+                            + unmaskable.getClass().getSimpleName());
+                }
+                append(app, name, bytes);
+            });
         } catch (RejectedExecutionException queueFull) {
             // Diagnostics are best effort; dropping an entry is preferable to delaying an offer decision.
         }
@@ -230,8 +263,9 @@ final class DiagnosticLog {
     }
 
     /**
-     * A shareable report: readiness, every saved rule, updater state and the decision history are always included;
-     * raw screen text only when capture was on. Nothing is sent unless the user shares it.
+     * A shareable report: readiness, every saved rule, updater state, the decision history and the captured screen
+     * text, all masked ({@link PersonalText}). Nothing is sent unless the user shares it, or (with "Share diagnostics
+     * after each dash" on) {@link DashDiagnostics} files it after a dash, whole and in parts.
      */
     static String report(Context context) {
         String report = fullReport(context);
@@ -239,22 +273,27 @@ final class DiagnosticLog {
                 : report.substring(0, MAX_REPORT_CHARS) + "\n[report truncated]";
     }
 
-    private static String fullReport(Context context) {
+    /**
+     * The whole report, never cut. The logs are masked again as they are read, so lines that a version before masking
+     * wrote (kept up to a day) leave masked too; masked text masks to itself.
+     */
+    static String fullReport(Context context) {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
-        String log = newest(read(context), MAX_REPORT_LOG_CHARS);
-        String screens = newest(readScreens(context), MAX_REPORT_SCREENS_CHARS);
+        String log = newest(PersonalText.maskLine(read(context)), MAX_REPORT_LOG_CHARS);
+        String screens = newest(PersonalText.maskLine(readScreens(context)), MAX_REPORT_SCREENS_CHARS);
         return REPORT_SUBJECT + " — Offer Filter " + Updater.version(context) + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
-                + ". Raw labels may include personal/location text; review before sharing.\n\n"
+                + ". " + MASKED_NOTE + " Review before sharing.\n\n"
                 + "== Readiness\n"
                 + "Accessibility connected: " + OfferFilterService.isConnected() + "\n"
                 + "Notification access granted: " + OfferNotificationService.hasAccess(context) + "\n"
                 + "Notification listener connected: " + OfferNotificationService.isConnected() + "\n"
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
-                + "Screen text capture: " + (isEnabled(context) ? "automatic" : "off")
+                + "Screen text capture: " + (isEnabled(context) ? "automatic, masked" : "off")
                 + " (kept on this phone: about what one report carries, never older than 24 hours)\n"
-                + "Last status: " + FilterStore.lastStatus(context).replace('\n', ' ') + "\n"
+                + "Diagnostics after each dash: " + DashDiagnostics.reportLine(context) + "\n"
+                + "Last status: " + PersonalText.maskLine(FilterStore.lastStatus(context).replace('\n', ' ')) + "\n"
                 + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"
                 + "Auto-decline saved: " + rules.enabled
