@@ -16,9 +16,11 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Recent offers as a little skyline, oldest left: each offer is a building as tall as the pay read, the ink rope
- * across it is the pay the rules required, and the flag on its roof says what happened (✓ passed, ✕ declined,
- * ? review). Passed offers have their windows lit. A building that ends below its rope is a decline by the rules as
+ * Recent offers as a little skyline, oldest left: each offer is a building as tall as the pay read, in the color of
+ * what the rules said, the ink rope across it is the pay the rules required, and the flag on its roof says what
+ * became of it ({@link DecisionLog#outcome}): ✓ passed, ✕ declined (the app's decline went through), ? review, a
+ * shopping bag accepted, and a person left to you (taken over, paused, refused, its confirmation not tapped, or only
+ * its notification hidden), in a neutral grey. Passed offers have their windows lit. A building that ends below its rope is a decline by the rules as
  * written, so a surprising decline shows either a misread pay or a rule to adjust. An offer whose pay was not read
  * is a signpost at street level. Tapping a building selects it (a spotlight picks it out) and reports it to the
  * listener; an offer picked on the constellation is selected the same way ({@link #choose}). There is no axis: the
@@ -160,7 +162,7 @@ final class DecisionChartView extends View {
             line.setColor(ui.baseline);
             line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
             canvas.drawLine(center, roof, center, roof - ui.dp(5), line);
-            drawBadge(canvas, center, roof - ui.dp(12), entry.result);
+            drawBadge(canvas, center, roof - ui.dp(12), DecisionLog.outcome(entry));
         }
         // The street.
         fill.setColor(ui.gridline);
@@ -214,17 +216,79 @@ final class DecisionChartView extends View {
         canvas.drawLine(center, bottom, center, bottom - ui.dp(12), line);
     }
 
-    /** The flag's badge, kept whole inside the view however tall its building. */
-    private void drawBadge(Canvas canvas, float x, float y, OfferRule.Result result) {
+    /**
+     * The flag's badge, kept whole inside the view however tall its building: the outcome's color, with ✓, ✕ or ?, a
+     * shopping bag for an accepted offer and a person for one left to the user.
+     */
+    private void drawBadge(Canvas canvas, float x, float y, DecisionLog.Outcome outcome) {
         y = Math.max(y, ui.dp(10));
-        int color = Ui.resultColor(result);
+        int color = Ui.outcomeColor(outcome);
         float radius = ui.dp(7);
         fill.setColor(ui.surface);
         canvas.drawCircle(x, y, radius + ui.dp(2), fill);
         fill.setColor(color);
         canvas.drawCircle(x, y, radius, fill);
-        symbol.setColor(Ui.onStatus(color));
-        canvas.drawText(Ui.resultSymbol(result), x, y + symbol.getTextSize() / 3f, symbol);
+        int ink = Ui.onStatus(color);
+        switch (outcome) {
+            case ACCEPTED:
+                drawBag(canvas, x, y, ink);
+                break;
+            case YOURS:
+                drawPerson(canvas, x, y, ink);
+                break;
+            default:
+                symbol.setColor(ink);
+                canvas.drawText(outcome == DecisionLog.Outcome.PASSED ? "✓"
+                        : outcome == DecisionLog.Outcome.DECLINED ? "✕" : "?", x, y + symbol.getTextSize() / 3f, symbol);
+                break;
+        }
+    }
+
+    /**
+     * A shopping bag (the order picked up): the offer was accepted. Its body widens to the bottom and its handle is a
+     * wide, shallow loop, so it never reads as a padlock.
+     */
+    private void drawBag(Canvas canvas, float x, float y, int ink) {
+        fill.setColor(ink);
+        path.reset();
+        path.moveTo(x - ui.dp(3), y - ui.dp(1.4f));
+        path.lineTo(x + ui.dp(3), y - ui.dp(1.4f));
+        path.lineTo(x + ui.dp(3.9f), y + ui.dp(4.4f));
+        path.lineTo(x - ui.dp(3.9f), y + ui.dp(4.4f));
+        path.close();
+        canvas.drawPath(path, fill);
+        line.setColor(ink);
+        line.setStrokeWidth(Math.max(1, ui.dp(1.1f)));
+        line.setStrokeCap(Paint.Cap.ROUND);
+        // The handle: a loop wider than it is tall, its ends inside the bag's top.
+        rect.set(x - ui.dp(2.1f), y - ui.dp(3.9f), x + ui.dp(2.1f), y + ui.dp(0.6f));
+        canvas.drawArc(rect, 180, 180, false, line);
+    }
+
+    /** A person, head and shoulders: the offer was left to the user. */
+    private void drawPerson(Canvas canvas, float x, float y, int ink) {
+        fill.setColor(ink);
+        canvas.drawCircle(x, y - ui.dp(2.2f), ui.dp(2), fill);
+        rect.set(x - ui.dp(3.9f), y + ui.dp(0.9f), x + ui.dp(3.9f), y + ui.dp(8.1f));
+        canvas.drawArc(rect, 180, 180, true, fill);
+    }
+
+    /**
+     * Where the flag of the offer at {@code index} (oldest first, as drawn) stands once its building has risen, in this
+     * view's pixels; null where there is none (for tests).
+     */
+    float[] flagAt(int index) {
+        if (index < 0 || index >= entries.size() || getWidth() <= 0) return null;
+        float left = ui.dp(SIDE_DP);
+        float right = getWidth() - ui.dp(SIDE_DP);
+        float top = ui.dp(26);
+        float bottom = getHeight() - ui.dp(12);
+        float slot = (right - left) / SLOTS;
+        DecisionLog.Entry entry = entries.get(index);
+        float center = left + slot * (SLOTS - entries.size() + index + 0.5f);
+        float roof = entry.facts.payCents != null ? y(entry.facts.payCents, scaleMax(), top, bottom)
+                : bottom - ui.dp(14);
+        return new float[] {center, Math.max(roof - ui.dp(12), ui.dp(10))};
     }
 
     /**
@@ -311,16 +375,18 @@ final class DecisionChartView extends View {
         return true;
     }
 
+    /**
+     * "Chart of the last 5 offers: 1 passed, 1 accepted, 1 declined, 1 left to you, 1 need review.": as the flags say,
+     * what became of each offer; accepted and left to you only when there are any.
+     */
     private static String describe(List<DecisionLog.Entry> entries) {
-        int passed = 0;
-        int declined = 0;
-        int review = 0;
-        for (DecisionLog.Entry entry : entries) {
-            if (entry.result == OfferRule.Result.KEEP) passed++;
-            else if (entry.result == OfferRule.Result.DECLINE) declined++;
-            else review++;
-        }
-        return String.format(Locale.US, "Chart of the last %d offers: %d passed, %d declined, %d need review.",
-                entries.size(), passed, declined, review);
+        int[] counts = new int[DecisionLog.Outcome.values().length];
+        for (DecisionLog.Entry entry : entries) counts[DecisionLog.outcome(entry).ordinal()]++;
+        int accepted = counts[DecisionLog.Outcome.ACCEPTED.ordinal()];
+        int yours = counts[DecisionLog.Outcome.YOURS.ordinal()];
+        return String.format(Locale.US, "Chart of the last %d offers: %d passed, %s%d declined, %s%d need review.",
+                entries.size(), counts[DecisionLog.Outcome.PASSED.ordinal()],
+                accepted > 0 ? accepted + " accepted, " : "", counts[DecisionLog.Outcome.DECLINED.ordinal()],
+                yours > 0 ? yours + " left to you, " : "", counts[DecisionLog.Outcome.REVIEW.ordinal()]);
     }
 }

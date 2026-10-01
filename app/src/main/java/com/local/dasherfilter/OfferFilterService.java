@@ -1353,7 +1353,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The offer is the user's from now on: nothing more is tapped on it (a takeover, which ends as any does), the touch
-     * watch goes down and the sound comes back. The history says the user took over, unless the app gave up.
+     * watch goes down and the sound comes back. The history says the user took over (unless the decline was confirmed
+     * before they acted), or, when the app gave up, that Dasher's question was not confirmed and the offer is theirs.
      *
      * @param detail what happened, for the log
      */
@@ -1371,10 +1372,14 @@ public final class OfferFilterService extends AccessibilityService {
         scanner.removeCallbacks(episodeCheck);
         endConfirmationPoll(now);
         syncAutomation();
-        if (why != HandBack.NOT_TAPPED && declinedEntry != null && !alreadyConfirmed) {
+        // The user's own, unless the decline was confirmed before they acted. Given up, the decline did not go through
+        // (Dasher still asks, or still shows the offer), whether or not its confirmation was tapped: left to the user.
+        boolean givenUp = why == HandBack.NOT_TAPPED;
+        if (declinedEntry != null && (givenUp || !alreadyConfirmed)) {
             recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                     declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                    declinedEntry.reason, DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence)
+                    declinedEntry.reason, givenUp ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED
+                            : DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence)
                     .withScore(declinedEntry.scorePercent), -1, false);
         }
         long since = touchSinceOwnAction;

@@ -71,7 +71,10 @@ import java.util.List;
  * button's place (an offer's shape around the minimums' smaller one) turns score by area on and off ({@link
  * AreaScore}); screen readers reach it as a switch. By area the chart is drawn in normalized space: every active
  * minimum (the set one, or the adaptive one where that asks more and is on) stands at the same radius, 100%, so the
- * minimums' area is a filled polygon in the middle; the rings stand 50% apart, labeled at 100% and the outer ring; an
+ * minimums' area is a filled polygon in the middle; over it, as strictly, the set minimums are the solid shape through
+ * the knobs and the adaptive ones the dashed shape with sparkles, each at its share of its spoke's floor (R × set ÷
+ * floor, R × learned ÷ floor), with no dashed shape where nothing is learned (and, while the adaptive minimum is on,
+ * a faint dashed outline just outside the set shape instead, in either mode); the rings stand 50% apart, labeled at 100% and the outer ring; an
  * offer's points stand at its ratio on each spoke ({@code pay ÷ the floor that spoke puts on that offer}), so its
  * polygon's area against the minimums' is its score squared, exactly, within the outer ring. The newest offer's polygon
  * (or the one chosen on the skyline) stands out, with its score beside it ("121%"). The knobs still set the minimums,
@@ -746,6 +749,7 @@ final class MinimumsStarView extends View {
                     + (learnedText[i] == null ? "no adaptive minimum yet" : "adaptive " + learnedText[i]));
         }
         String described = "Minimums, set and adaptive now. " + String.join(". ", spokes) + "."
+                + (anyLearned() ? "" : " Adaptive minimum: nothing learned yet.")
                 + (adaptiveOn ? "" : " Adaptive minimum is off, so the adaptive values are not applied.")
                 + (byArea ? " " + SCORE_SAID + " is on: an offer passes when its shape covers at least the minimums' "
                         + "area" + (shownRules.maxStops > 0 ? ", and declines above " + shownRules.maxStops
@@ -1346,15 +1350,20 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The minimums: strictly, the set shape (solid, filled) and the adaptive one (dashed); by area, the minimums'
-     * area, a filled polygon over the active spokes where every minimum stands at 100% (while a knob is held, its
-     * spoke where the knob asks), with the set minimums' stars and the adaptive sparkles on their spokes.
+     * The minimums: strictly, the set shape (solid, filled) and the adaptive one (dashed). By area, the minimums' area
+     * first, a filled polygon over the active spokes where every minimum stands at 100% (each spoke's floor being the
+     * higher of the set and the adaptive minimum, while that is on; while a knob is held, its spoke where the knob
+     * asks), in a fainter outline; then over it, as strictly, the set shape (solid, with its stars, under the knobs)
+     * at its share of that floor, and the adaptive one (dashed, with its sparkles) at its own. Where nothing is learned
+     * there is no adaptive shape; while the adaptive minimum is on, a faint dashed outline just outside the set shape
+     * says it is on and has learned nothing yet.
      */
     private void drawMinimums(Canvas canvas, float cx, float cy, float radius, float glide) {
         if (!byArea) {
             drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), true, false, true);
             drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), adaptiveOn, true,
                     true);
+            drawNothingLearned(canvas, cx, cy, radius, glide);
             return;
         }
         List<float[]> area = minimumPolygon(cx, cy, radius, glide);
@@ -1368,13 +1377,46 @@ final class MinimumsStarView extends View {
             int color = setColor();
             fill.setColor((color & 0x00FFFFFF) | 0x38000000);
             canvas.drawPath(path, fill);
+            // Fainter than the shapes drawn over it, so the adaptive shape's dashes read where it is the edge.
             line.setPathEffect(null);
-            line.setColor(color);
-            line.setStrokeWidth(ui.dp(2) * Math.max(1, detail));
+            line.setColor((color & 0x00FFFFFF) | 0x80000000);
+            line.setStrokeWidth(ui.dp(1.2f) * Math.max(1, detail));
             canvas.drawPath(path, line);
         }
-        drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false, false, false);
-        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), false, true, false);
+        drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false, false, true);
+        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide, learnedColor(), false, true, true);
+        drawNothingLearned(canvas, cx, cy, radius, glide);
+    }
+
+    /** Whether the adaptive minimum has learned anything, on any spoke. */
+    private boolean anyLearned() {
+        for (double cents : learnedCents) if (!Double.isNaN(cents)) return true;
+        return false;
+    }
+
+    /**
+     * The adaptive minimum is on but has learned nothing: a faint dashed outline in its color, just outside the set
+     * shape (where the learned shape would first show), so it reads as on and waiting rather than missing.
+     */
+    private void drawNothingLearned(Canvas canvas, float cx, float cy, float radius, float glide) {
+        if (!adaptiveOn || anyLearned() || radius <= 0) return;
+        boolean any = false;
+        for (double value : drawnSet) any |= !Double.isNaN(value);
+        if (!any) return;
+        float out = ui.dp(4) * detail / radius;
+        path.reset();
+        for (int i = 0; i < NAMES.length; i++) {
+            float shown = Double.isNaN(drawnSet[i]) ? 0 : drawnFrom[i] + (drawnTo[i] - drawnFrom[i]) * glide;
+            float[] at = point(cx, cy, radius, i, shown + out);
+            if (i == 0) path.moveTo(at[0], at[1]);
+            else path.lineTo(at[0], at[1]);
+        }
+        path.close();
+        line.setColor((learnedColor() & 0x00FFFFFF) | 0x73000000);
+        line.setStrokeWidth(ui.dp(1.2f) * Math.max(1, detail));
+        line.setPathEffect(dash);
+        canvas.drawPath(path, line);
+        line.setPathEffect(null);
     }
 
     /**
@@ -2412,7 +2454,7 @@ final class MinimumsStarView extends View {
 
     /**
      * How far below ({@code side} 1) or above (-1) the middle the shapes' edges cross the upright lines at {@code xs},
-     * as they are heading: strictly the set and adaptive shapes, by area the minimums' polygon.
+     * as they are heading: the set and adaptive shapes, and by area the minimums' polygon too.
      */
     private float shapesReach(int side, float[] xs) {
         List<List<float[]>> shapes = new ArrayList<>();
@@ -2422,19 +2464,19 @@ final class MinimumsStarView extends View {
                 if (!Double.isNaN(areaMin[i])) area.add(point(skyX, skyY, skyRadius, i, areaTo[i]));
             }
             shapes.add(area);
-        } else {
-            double[][] values = {set, learned};
-            float[][] to = {setTo, learnedTo};
-            for (int shape = 0; shape < 2; shape++) {
-                boolean any = false;
-                for (double value : values[shape]) any |= !Double.isNaN(value);
-                if (!any) continue;
-                List<float[]> points = new ArrayList<>();
-                for (int i = 0; i < NAMES.length; i++) {
-                    points.add(point(skyX, skyY, skyRadius, i, Double.isNaN(values[shape][i]) ? 0 : to[shape][i]));
-                }
-                shapes.add(points);
+        }
+        // By area the set shape lies within the minimums' area; the adaptive one may not (while it is off).
+        double[][] values = {set, learned};
+        float[][] to = {setTo, learnedTo};
+        for (int shape = 0; shape < 2; shape++) {
+            boolean any = false;
+            for (double value : values[shape]) any |= !Double.isNaN(value);
+            if (!any) continue;
+            List<float[]> points = new ArrayList<>();
+            for (int i = 0; i < NAMES.length; i++) {
+                points.add(point(skyX, skyY, skyRadius, i, Double.isNaN(values[shape][i]) ? 0 : to[shape][i]));
             }
+            shapes.add(points);
         }
         float reach = 0;
         for (List<float[]> shape : shapes) {
@@ -2708,7 +2750,10 @@ final class MinimumsStarView extends View {
         return node == ADOPT_ID ? (undoValues != null ? "Undo" : ADOPT_SAID) : knobSaid(node);
     }
 
-    /** "Offer $9.75, 3.3 mi, 18 min, 2 stops, declined, scores 49% by area": what is known of it, and its outcome. */
+    /**
+     * "Offer $9.75, 3.3 mi, 18 min, 2 stops, declined, scores 49% by area": what is known of it, and its outcome; where
+     * that is not what the rules said, the rules' verdict too ("left to you, rules said decline").
+     */
     private String offerSaid(int m) {
         OfferSnapshot offer = markFacts.get(m);
         List<String> parts = new ArrayList<>();
@@ -2717,8 +2762,15 @@ final class MinimumsStarView extends View {
         if (offer.minutes != null) parts.add(offer.minutes + " min");
         if (offer.stops != null) parts.add(offer.stops + (offer.stops == 1 ? " stop" : " stops"));
         OfferRule.Result result = markResults.get(m);
-        parts.add(result == OfferRule.Result.KEEP ? "passed"
-                : result == OfferRule.Result.DECLINE ? "declined" : "left for review");
+        DecisionLog.Outcome outcome = DecisionLog.outcome(markEntries.get(m));
+        if (outcome.isVerdict(result)) {
+            parts.add(result == OfferRule.Result.KEEP ? "passed"
+                    : result == OfferRule.Result.DECLINE ? "declined" : "left for review");
+        } else {
+            parts.add(outcome.said.toLowerCase(java.util.Locale.US));
+            parts.add("rules said " + (result == OfferRule.Result.KEEP ? "pass"
+                    : result == OfferRule.Result.DECLINE ? "decline" : "review"));
+        }
         if (markScores.get(m) >= 0) parts.add("scores " + markScores.get(m) + "% by area");
         return String.join(", ", parts);
     }

@@ -94,27 +94,28 @@ final class Decor {
     }
 
     /**
-     * A rubber stamp for an offer's outcome, "PASSED", "DECLINED" or "REVIEW", pressed on at a slight angle in the
-     * outcome's ink; it thumps down when its ticket opens. The word is also its accessibility text.
+     * A rubber stamp for what became of an offer ({@link DecisionLog#outcome}): "PASSED", "DECLINED" (only when the
+     * app's decline went through), "REVIEW", "ACCEPTED" in green, or "YOURS" in a neutral ink for an offer left to the
+     * user, pressed on at a slight angle; it thumps down when its ticket opens. Screen readers hear the outcome.
      */
     @SuppressLint("ViewConstructor")
     static final class Stamp extends View {
         private final Ui ui;
-        private final OfferRule.Result result;
+        private final DecisionLog.Outcome outcome;
         private final Paint ink = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF rect = new RectF();
         private final DashPathEffect worn;
         private long pressedAt;
 
-        Stamp(Context context, Ui ui, OfferRule.Result result) {
+        Stamp(Context context, Ui ui, DecisionLog.Outcome outcome) {
             super(context);
             this.ui = ui;
-            this.result = result;
+            this.outcome = outcome;
             ink.setFakeBoldText(true);
             ink.setTextAlign(Paint.Align.CENTER);
             ink.setLetterSpacing(0.12f);
             worn = new DashPathEffect(new float[] {ui.dp(22), ui.dp(2), ui.dp(9), ui.dp(3)}, 0);
-            setContentDescription(Ui.resultLabel(result));
+            setContentDescription(outcome.said);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         }
 
@@ -123,14 +124,24 @@ final class Decor {
             pressedAt = android.os.SystemClock.uptimeMillis();
         }
 
-        private String word() {
-            return Ui.resultLabel(result).toUpperCase(java.util.Locale.US);
+        /** The word pressed on. */
+        String word() {
+            return outcome.word;
         }
 
-        private int color() {
-            if (result == OfferRule.Result.KEEP) return ui.dark ? 0xFF53C953 : 0xFF0E8A0E;
-            if (result == OfferRule.Result.DECLINE) return ui.dark ? 0xFFFF6B6B : 0xFFC62828;
-            return ui.dark ? 0xFFF5B83D : 0xFFA86A00;
+        /** The ink: green for passed and accepted, red for declined, amber for review, the page's grey for yours. */
+        int color() {
+            switch (outcome) {
+                case PASSED:
+                case ACCEPTED:
+                    return ui.dark ? 0xFF53C953 : 0xFF0E8A0E;
+                case DECLINED:
+                    return ui.dark ? 0xFFFF6B6B : 0xFFC62828;
+                case YOURS:
+                    return ui.inkSecondary;
+                default:
+                    return ui.dark ? 0xFFF5B83D : 0xFFA86A00;
+            }
         }
 
         private float size() {

@@ -62,7 +62,12 @@ final class DecisionLog {
         NOTIFICATION_HIDDEN("Notification hidden; order NOT declined", 3),
         NOTIFICATION_DECLINE_SENT("Decline requested from the notification", 3),
         CONFIRMATION_TAPPED("Decline and its confirmation tapped", 4),
-        USER_TOOK_OVER("You touched the screen and took over; nothing more tapped", 5);
+        USER_TOOK_OVER("You touched the screen and took over; nothing more tapped", 5),
+        /**
+         * Dasher's question was never confirmed (Android refused every try, Dasher did not act on them, or it closed
+         * a confirmed question and still showed the offer), so the app gave up and left the offer to the user.
+         */
+        CONFIRMATION_NOT_TAPPED("Dasher's question not confirmed; left to you", 5);
 
         final String label;
         final int weight;
@@ -305,6 +310,98 @@ final class DecisionLog {
 
     /** How the main page counts an offer: passed, filtered (a failing offer the app acted on), or left to review. */
     enum Tally { PASSED, FILTERED, REVIEW }
+
+    /**
+     * What became of an offer, as its ticket's stamp and its flag on the skyline say it: the outcome, not the rules'
+     * verdict alone (the ticket keeps that as a line of its own).
+     */
+    enum Outcome {
+        /** The rules let it through. */
+        PASSED("PASSED", "Passed"),
+        /** The app's decline went through as far as it can tell: Decline tapped, its confirmation tapped, or requested. */
+        DECLINED("DECLINED", "Declined"),
+        /** Left for the user's review: the rules could not judge it. */
+        REVIEW("REVIEW", "Review"),
+        /**
+         * Left to the user: auto-decline paused, the user took over, Android refused the decline, Dasher's question
+         * was not confirmed, or a known failure the app did not decline (a hidden notification declines nothing).
+         */
+        YOURS("YOURS", "Left to you"),
+        /** Later counted or seen as accepted: a learning step "Accepted…", or a seen Accept tap then a delivery. */
+        ACCEPTED("ACCEPTED", "Accepted");
+
+        /** The stamp's word. */
+        final String word;
+        /** What screen readers hear. */
+        final String said;
+
+        Outcome(String word, String said) {
+            this.word = word;
+            this.said = said;
+        }
+
+        /** Whether this outcome says what the rules said (so the ticket need not say the rules' verdict again). */
+        boolean isVerdict(OfferRule.Result result) {
+            return this == PASSED ? result == OfferRule.Result.KEEP : this == DECLINED
+                    ? result == OfferRule.Result.DECLINE : this == REVIEW && result == OfferRule.Result.REVIEW;
+        }
+    }
+
+    /**
+     * The offer's outcome. Accepted wins over everything (the user's acceptance came last). Otherwise an offer left to
+     * the user (paused, taken over, refused, its confirmation not tapped) is theirs whatever the rules said; a known
+     * failure is declined only when the app's decline went through as far as it can tell (Decline tapped, its
+     * confirmation tapped, or requested from the notification), and is the user's otherwise; the rest is as the rules
+     * said.
+     */
+    static Outcome outcome(Entry entry) {
+        if (accepted(entry)) return Outcome.ACCEPTED;
+        if (!entry.autoDecline || entry.action == Action.PAUSED || entry.action == Action.USER_TOOK_OVER
+                || entry.action == Action.DECLINE_REFUSED || entry.action == Action.CONFIRMATION_NOT_TAPPED) {
+            return Outcome.YOURS;
+        }
+        switch (entry.result) {
+            case KEEP:
+                return Outcome.PASSED;
+            case DECLINE:
+                return entry.action == Action.DECLINE_TAPPED || entry.action == Action.CONFIRMATION_TAPPED
+                        || entry.action == Action.NOTIFICATION_DECLINE_SENT ? Outcome.DECLINED : Outcome.YOURS;
+            default:
+                return Outcome.REVIEW;
+        }
+    }
+
+    /**
+     * Whether a learning step counted the offer as accepted ("Accepted…"), or saw the user's Accept tap on it followed
+     * by a delivery screen (one that taught nothing, because a delivery was already under way, say), with no sign of
+     * a Decline between the two.
+     */
+    static boolean accepted(Entry entry) {
+        boolean tapped = false;
+        for (Step step : entry.steps) {
+            switch (step.kind) {
+                case ACCEPTED_LEARNED:
+                case ACCEPTED_NOT_LEARNED:
+                case ACCEPTED_ADD_ON:
+                    return true;
+                case ACCEPT_TAPPED:
+                    tapped = true;
+                    break;
+                case DECLINE_TAPPED:
+                case DECLINE_QUESTION:
+                case DECLINE_COUNTED:
+                case NOT_ACCEPTED:
+                    tapped = false;
+                    break;
+                case NOT_LEARNED:
+                    if (tapped && AcceptedOfferTracker.deliveryScreenFollowed(step.detail)) return true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return false;
+    }
 
     /** A failing offer counts as filtered only when the app did something about it; one left to the user is review. */
     static Tally tally(Entry entry) {

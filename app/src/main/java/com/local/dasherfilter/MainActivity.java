@@ -1381,8 +1381,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * The chosen offer (a tapped building in the skyline), unfolded as a ticket: its outcome stamped on the stub with
-     * the time, then the drawn offer (pay against needed, the route), the reason, what the app did, and the exact
-     * lines read.
+     * the time ({@link DecisionLog#outcome}: what became of it, not only what the rules said), then the drawn offer (pay
+     * against needed, the route), the rules' reason (with their verdict where the stamp says otherwise), what the app
+     * did, and the exact lines read.
      */
     private void showSelection(DecisionLog.Entry entry) {
         // The constellation picks out the offer whose ticket is open.
@@ -1394,7 +1395,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         LinearLayout stub = ui.row();
-        stub.addView(new Decor.Stamp(this, ui, entry.result));
+        stub.addView(new Decor.Stamp(this, ui, DecisionLog.outcome(entry)));
         TextView time = ui.text(when(entry.at) + (entry.addOn ? " · add-on" : ""), 13, ui.inkSecondary, false);
         time.setGravity(Gravity.END);
         stub.addView(time, Ui.weighted());
@@ -1415,7 +1416,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             score.setPadding(0, ui.dp(8), 0, 0);
             ticket.addView(score);
         }
-        TextView reason = ui.text(plainReason(entry), 16, ui.ink, true);
+        TextView reason = ui.text(reasonLine(entry), 16, ui.ink, true);
         reason.setPadding(0, ui.dp(10), 0, 0);
         ticket.addView(reason);
         TextView action = ui.text(entry.action.label
@@ -1439,6 +1440,25 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         reportSelected = ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
         reportSelected.setVisibility(ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * The ticket's reason line: the rules' reason in everyday words; where the stamp says something other than the
+     * rules did (an offer left to you, or accepted), their verdict first, so it stays in view: "Rules: decline — too
+     * many stops (4, max 3)".
+     */
+    static String reasonLine(DecisionLog.Entry entry) {
+        String plain = plainReason(entry);
+        if (DecisionLog.outcome(entry).isVerdict(entry.result)) return plain;
+        String verdict = entry.result == OfferRule.Result.KEEP ? "pass"
+                : entry.result == OfferRule.Result.DECLINE ? "decline" : "review";
+        return "Rules: " + verdict + (plain.isEmpty() ? "" : " — " + lowerFirst(plain));
+    }
+
+    /** "Too many stops" as "too many stops"; a word in capitals ("ETA") stays as it is. */
+    private static String lowerFirst(String text) {
+        if (text.length() > 1 && Character.isUpperCase(text.charAt(1))) return text;
+        return text.isEmpty() ? text : Character.toLowerCase(text.charAt(0)) + text.substring(1);
     }
 
     static String plainReason(DecisionLog.Entry entry) {

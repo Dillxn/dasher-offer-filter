@@ -30,6 +30,8 @@ final class Ui {
     static final int GOOD = 0xFF0CA30C;
     static final int WARNING = 0xFFFAB219;
     static final int CRITICAL = 0xFFD03B3B;
+    /** An offer left to the user: neither good nor bad. White symbols on it keep a 4:1 contrast. */
+    static final int NEUTRAL = 0xFF7D7A74;
     static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
     final Context context;
@@ -114,6 +116,21 @@ final class Ui {
 
     static String resultLabel(OfferRule.Result result) {
         return result == OfferRule.Result.KEEP ? "Passed" : result == OfferRule.Result.DECLINE ? "Declined" : "Review";
+    }
+
+    /** An offer's outcome on its flag: accepted and passed are good, declined critical, review a warning, yours neutral. */
+    static int outcomeColor(DecisionLog.Outcome outcome) {
+        switch (outcome) {
+            case PASSED:
+            case ACCEPTED:
+                return GOOD;
+            case DECLINED:
+                return CRITICAL;
+            case YOURS:
+                return NEUTRAL;
+            default:
+                return WARNING;
+        }
     }
 
     /** Symbol ink that stays legible on the status fill (the pale warning fill takes dark ink). */

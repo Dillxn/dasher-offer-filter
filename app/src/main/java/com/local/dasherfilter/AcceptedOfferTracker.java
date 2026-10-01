@@ -75,6 +75,15 @@ final class AcceptedOfferTracker {
             "a delivery was already under way when it came, so the delivery screen after it proves nothing";
     /** What a held decline of an offer the rules let through does next. */
     static final String TEACHES_NEXT = "it teaches once the next offer comes";
+    /** Why a delivery screen after an offer teaches nothing, beside {@link #DELIVERY_UNDER_WAY} and its countdown. */
+    static final String BEGAN_TO_DECLINE = "you began to decline it, so the delivery screen after it is no Accept";
+    static final String DECLINED_THROUGH_NOTIFICATION =
+            "a decline was requested through Dasher's notification, so the delivery screen after it is no Accept";
+    static final String PAY_NOT_READ = "its pay was not read";
+    static final String ADD_ON_NEEDS_TAP = "an add-on counts as accepted only with a seen Accept tap";
+    static final String NO_COUNTDOWN = "no countdown was read, so it may have run out";
+    /** How the reason begins when the offer's countdown, as last read, may have run out as it went. */
+    static final String MAY_HAVE_RUN_OUT = "it may have run out: ";
     private static final List<String> PROGRESS_LABELS = Arrays.asList(
             "arrived at store", "arrived at pickup", "arrived at customer", "arrived at drop-off",
             "confirm pickup", "confirm pick up", "complete pickup", "complete delivery", "slide to confirm pickup");
@@ -890,21 +899,29 @@ final class AcceptedOfferTracker {
 
     /** Why a delivery screen after this offer does not show it was accepted; null when it does. */
     private static String notAcceptedBecause(Watch w) {
-        if (w.declineBegun()) {
-            return "you began to decline it, so the delivery screen after it is no Accept";
-        }
-        if (w.declinedElsewhere) {
-            return "a decline was requested through Dasher's notification, so the delivery screen after it is no "
-                    + "Accept";
-        }
+        if (w.declineBegun()) return BEGAN_TO_DECLINE;
+        if (w.declinedElsewhere) return DECLINED_THROUGH_NOTIFICATION;
         // Pay is what an acceptance teaches, and a route is kept only with it: none was read, so nothing is.
-        if (w.learn == null || w.learn.payCents == null) return "its pay was not read";
-        if (w.addOn) return w.acceptTapped ? null : "an add-on counts as accepted only with a seen Accept tap";
+        if (w.learn == null || w.learn.payCents == null) return PAY_NOT_READ;
+        if (w.addOn) return w.acceptTapped ? null : ADD_ON_NEEDS_TAP;
         if (w.acceptTapped) return notLearnedWithTap(w.deliveryBefore, w.secondsLeft, w.countdownAt, w.leftAt);
         if (w.deliveryBefore) return DELIVERY_UNDER_WAY;
         if (!w.waitingBefore) return WAIT_NOT_SEEN;
-        if (w.secondsLeft < 0) return "no countdown was read, so it may have run out";
+        if (w.secondsLeft < 0) return NO_COUNTDOWN;
         return ranOut(w.secondsLeft, w.countdownAt, w.leftAt);
+    }
+
+    /**
+     * Whether a "Not learned" reason is one given when Dasher showed a delivery screen after the offer (it taught
+     * nothing, but the screen came): every reason {@link #notAcceptedBecause} and the Accept tap's own path give, never
+     * those of a watch that ended any other way. With a seen Accept tap before it, the offer was seen accepted.
+     */
+    static boolean deliveryScreenFollowed(String reason) {
+        if (reason == null) return false;
+        return reason.equals(DELIVERY_UNDER_WAY) || reason.startsWith(MAY_HAVE_RUN_OUT)
+                || reason.equals(BEGAN_TO_DECLINE) || reason.equals(DECLINED_THROUGH_NOTIFICATION)
+                || reason.equals(PAY_NOT_READ) || reason.equals(ADD_ON_NEEDS_TAP) || reason.equals(WAIT_NOT_SEEN)
+                || reason.equals(NO_COUNTDOWN);
     }
 
     /**
@@ -919,7 +936,7 @@ final class AcceptedOfferTracker {
     /** "it may have run out: …" when its countdown had {@link #TIME_LEFT_MS} or less left as it went; else null. */
     private static String ranOut(int secondsLeft, long countdownAt, long goneAt) {
         if (timeLeftWhenGone(secondsLeft, countdownAt, goneAt) > TIME_LEFT_MS) return null;
-        return "it may have run out: its countdown showed " + clock(secondsLeft * 1000L) + ", "
+        return MAY_HAVE_RUN_OUT + "its countdown showed " + clock(secondsLeft * 1000L) + ", "
                 + seconds(goneAt - countdownAt) + " s before a read found it gone";
     }
 
