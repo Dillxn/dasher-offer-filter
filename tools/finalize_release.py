@@ -34,7 +34,7 @@ def main():
                 for key, value in suite.items(): counts[key] += value
         if counts['tests'] < minimum: raise ValueError(f"Missing Android adapter coverage: {pattern} ran {counts['tests']} of {minimum}")
         adapter_suites[pattern] = counts
-    if totals['tests'] < 1040 or totals['failures'] or totals['errors'] or totals['skipped']:
+    if totals['tests'] < 1042 or totals['failures'] or totals['errors'] or totals['skipped']:
         raise ValueError('Test gate failed: ' + json.dumps(totals))
     apk = ROOT / 'app/build/outputs/apk/debug/app-debug.apk'
     sdk = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'

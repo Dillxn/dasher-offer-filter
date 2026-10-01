@@ -28,8 +28,8 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tapping an offer on the constellation through the real page: a tap on one of its marks, or inside its polygon,
  * opens its ticket exactly as a tap on its building in the skyline does (both show it chosen, and its shape stands out
- * while the ticket is open); the knobs and the buttons keep their touches, a drag opens nothing, and a tap on empty sky
- * still opens the minimums. Screen readers reach each marked offer and open it. The rules: $5 pay, $3.00 a mile,
+ * while the ticket is open); the knobs and the buttons keep their touches, a drag opens nothing, a tap on empty sky
+ * opens nothing, and with an older offer chosen it chooses the newest again. Screen readers reach each marked offer and open it. The rules: $5 pay, $3.00 a mile,
  * $0.20 a minute, $1.00 a stop, at most 3 stops; the newest offer ($24.00 for 6 mi, 25 min, 2 stops) passes and is the
  * chart's example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
  */
@@ -151,6 +151,43 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNull("no ticket", shownTextContaining(content, "Read: $"));
             assertEquals(-1, star.openedOffer());
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
+        }
+    }
+
+    @Test
+    public void withAnOlderOfferChosenATapOffEveryOfferChoosesTheNewestAgain() {
+        seed(RULES.withScoreByArea(true));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            DecisionChartView chart = findChart(content);
+            // The older offer opened from its mark, then its ticket closed: it stays chosen.
+            tapThrough(content, star, clearestMark(star, OLDER));
+            activity.get().onBackPressed();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
+            assertTrue(String.valueOf(star.getContentDescription()),
+                    String.valueOf(star.getContentDescription()).contains("The chosen offer scores"));
+
+            // A tap inside the circle off every offer, knob and button: the newest is chosen again, no ticket.
+            float[] empty = {star.skyX() + star.skyRadius() * 0.86f, star.skyY()};
+            for (int m = 0; m < 2; m++) assertFalse("outside shape " + m, inside(star.offerShape(m), empty));
+            assertTrue(clearance(star, empty, -1) > new Ui(app).dp(30));
+            tapThrough(content, star, empty);
+            assertEquals("the newest again, as a tap on its building", Integer.valueOf(2400),
+                    chart.selectedEntry().facts.payCents);
+            assertTrue(String.valueOf(star.getContentDescription()),
+                    String.valueOf(star.getContentDescription()).contains("The newest offer scores"));
+            assertNull("no ticket opens", shownTextContaining(content, "Read: $"));
+            assertEquals(-1, star.openedOffer());
+            assertFalse(settingsShown(content));
+
+            // Once the newest is chosen, another such tap changes nothing.
+            tapThrough(content, star, empty);
+            assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
+            assertNull(shownTextContaining(content, "Read: $"));
+            assertFalse(settingsShown(content));
         }
     }
 

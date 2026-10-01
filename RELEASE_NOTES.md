@@ -1,3 +1,12 @@
+## 0.4.48 — tap off an offer to go back to the newest
+
+- **With an older offer chosen** (from its dot, its polygon or its building), a tap anywhere on the constellation away from every offer, knob and button chooses the newest offer again: its polygon and score stand out, and the skyline's spotlight moves back. No ticket opens.
+- Once the newest is chosen, such a tap does what it did before.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests:** choose an older offer, close its ticket, tap empty sky, and the newest is chosen again without a ticket. This fails on 0.4.47. The whole suite passes.
+- **Not verified on a real phone.**
+
 ## 0.4.47 — the mascot, with a little more love
 
 - **The funnel looks glazed:** soft shading lit from the upper left, a shine down its side, a glint on the rim, and a darker inside under the sieve.

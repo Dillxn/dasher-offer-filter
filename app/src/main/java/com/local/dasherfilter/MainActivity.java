@@ -819,11 +819,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * The minimums' constellation, where every rule is set. The sky or the header holds it, as the window allows. In
      * the sky its knobs set the minimums, its badge the max stops, and its round buttons score by area, the adaptive
      * minimum (Reset on a long press) and adopting what that learned (or undoing it), each saved at once through
-     * {@link FilterStore}; a tap on a marked offer opens its ticket, as its building in the skyline does.
+     * {@link FilterStore}; a tap on a marked offer opens its ticket, as its building in the skyline does, and a tap
+     * off every offer while an older one is chosen chooses the newest again.
      */
     private void addMinimums() {
         minimums = new MinimumsStarView(this, ui);
-        minimums.setOfferTaps(this::openOffer);
+        minimums.setOfferTaps(new MinimumsStarView.OfferTaps() {
+            @Override public void open(DecisionLog.Entry entry) {
+                openOffer(entry);
+            }
+
+            @Override public void chooseNewest() {
+                if (!recentEntries.isEmpty()) chart.choose(recentEntries.get(0));
+            }
+        });
         minimums.setChanges(new MinimumsStarView.Changes() {
             @Override public void setMinimum(int axis, int cents) {
                 int[] one = {-1, -1, -1, -1};

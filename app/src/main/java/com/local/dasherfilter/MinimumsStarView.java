@@ -274,6 +274,9 @@ final class MinimumsStarView extends View {
     interface OfferTaps {
         /** Opens {@code entry}'s ticket, as a tap on its building in the skyline does. */
         void open(DecisionLog.Entry entry);
+
+        /** Chooses the newest offer again, as a tap on its building does (without opening its ticket). */
+        default void chooseNewest() {}
     }
 
     /** A knob moves in these steps of its spoke's own unit: $0.50 of pay, $0.05 a mile, $0.01 a minute, $0.25 a stop. */
@@ -2123,7 +2126,8 @@ final class MinimumsStarView extends View {
      * button adopts the learned minimums or undoes that; a tap on a marked offer (on no knob or button) opens its
      * ticket; a tap on the adaptive minimum's toggle turns it on or off and holding it asks to reset what it learned; a
      * tap on the max stops badge steps it and a drag across it steps it either way; any other tap on the circle, a
-     * knob's included, is the chart's own click. In a header, the chart is one button.
+     * knob's included, goes back to the newest offer while an older one is chosen, else is the chart's own click. In
+     * a header, the chart is one button.
      */
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (!knobsOn() && !offersOn() && !touching) return super.onTouchEvent(event);
@@ -2229,6 +2233,10 @@ final class MinimumsStarView extends View {
                         playSoundEffect(SoundEffectConstants.CLICK);
                         openOffer(offer);
                     }
+                } else if (tap && !asked && emphasizedAt >= 0 && offerTaps != null && offersOn()) {
+                    // A tap off every offer while an older one is chosen goes back to the newest.
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    offerTaps.chooseNewest();
                 } else if (tap && !asked) {
                     performClick();
                 }
