@@ -1,3 +1,22 @@
+## 0.4.49 — the mascot shows only real offers
+
+- **No more drip, and no ticket falling forever.** While no offer comes, the mascot just breathes, blinks and now and then waves.
+- **Each offer decided while the page is open plays out a moment later, as it went.** Its ticket drops in under a little parachute and then:
+  - **passed:** it slips through the sieve and out of the spout, with ✓;
+  - **declined:** it bounces off the sieve, with ✕;
+  - **review:** it rests on the sieve, with ?;
+  - **left to you:** it rests on the sieve, with a person.
+- It waits until the offer's line settles (a confirmed decline, a takeover), so it shows what really happened. Offers from before the page opened, and any while paused, play nothing. With animations turned off, nothing moves.
+- The skyline's flags and the mascot now draw the same badges.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests:**
+  - a new offer plays as what became of it, e.g. taken over after its first Decline plays as left to you;
+  - old offers, offers already there and paused offers play nothing;
+  - the whole suite passes.
+- **Renders:** each outcome as a filmstrip, light and dark.
+- **Not verified on a real phone.**
+
 ## 0.4.48 — tap off an offer to go back to the newest
 
 - **With an older offer chosen** (from its dot, its polygon or its building), a tap anywhere on the constellation away from every offer, knob and button chooses the newest offer again: its polygon and score stand out, and the skyline's spotlight moves back. No ticket opens.

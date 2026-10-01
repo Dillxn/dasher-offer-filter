@@ -134,6 +134,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Button reportSelected;
     private TextView noOffers;
     private long shownHistoryVersion = -1;
+    /** The newest offer the page has seen (when it was recorded), so the mascot plays out each new one once. */
+    private long seenOfferAt = -1;
+    /** A new offer plays out only when decided this recently, a moment after it was recorded (its line settled). */
+    private static final long OFFER_FRESH_MS = 20_000;
+    private static final long OFFER_SETTLE_MS = 1200;
     /** What the adaptive minimums had learned when the star was last drawn. */
     private String shownLearned = "";
     private List<DecisionLog.Entry> recentEntries = Collections.emptyList();
@@ -1315,6 +1320,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         shownHistoryVersion = version;
         List<DecisionLog.Entry> recent = DecisionLog.recent(this, DecisionLog.MAX_ENTRIES);
         recentEntries = recent;
+        noteNewOffer(recent);
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
         noOffers.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -1334,6 +1340,24 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         updateMeter();
+    }
+
+    /**
+     * A new offer at the top of the history, decided moments ago, is played out by the mascot a little later, once its
+     * line has settled (its confirmation tapped, say, or taken over), as what became of it by then. Offers already in
+     * the history when the page opened, and older ones, are not.
+     */
+    private void noteNewOffer(List<DecisionLog.Entry> recent) {
+        long newest = recent.isEmpty() ? 0 : recent.get(0).at;
+        boolean opening = seenOfferAt < 0;
+        if (!opening && newest <= seenOfferAt) return;
+        seenOfferAt = newest;
+        if (opening || System.currentTimeMillis() - newest > OFFER_FRESH_MS) return;
+        handler.postDelayed(() -> {
+            if (isFinishing()) return;
+            List<DecisionLog.Entry> now = DecisionLog.recent(this, 1);
+            if (!now.isEmpty() && now.get(0).at == newest) hero.showOffer(DecisionLog.outcome(now.get(0)));
+        }, OFFER_SETTLE_MS);
     }
 
     /** The filter picture with this dash's counts and all-time totals; redrawn only when something it shows changed. */
