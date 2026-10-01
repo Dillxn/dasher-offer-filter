@@ -62,6 +62,7 @@ public class CardTapAdapterTest {
         OfferAlerts.ensureChannel(app);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
+        OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         listener = Robolectric.buildService(OfferNotificationService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
     }
@@ -70,6 +71,7 @@ public class CardTapAdapterTest {
     public void stop() {
         listener.destroy();
         OfferFilterService.sawDasherBeside(0);
+        OfferFilterService.scanLooperForTests = null;
     }
 
     /** Dasher installed on the simulated phone, with its launcher activity. */

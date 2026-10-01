@@ -47,9 +47,13 @@ final class DasherSplit {
         return launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
-    /** Whether the Split button shows: Dasher is installed and the screen is not split already. */
-    static boolean offered(Activity activity) {
-        return !activity.isInMultiWindowMode() && dasher(activity) != null;
+    /**
+     * Whether the Split button shows: Dasher is installed and the screen is not split already.
+     *
+     * @param dasherInstalled whether {@link #dasher} found Dasher, as the page last asked Android
+     */
+    static boolean offered(Activity activity, boolean dasherInstalled) {
+        return !activity.isInMultiWindowMode() && dasherInstalled;
     }
 
     /**

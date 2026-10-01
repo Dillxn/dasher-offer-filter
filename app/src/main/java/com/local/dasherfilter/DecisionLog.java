@@ -145,6 +145,12 @@ final class DecisionLog {
                     notification, alertTag, false);
         }
 
+        /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
+        Entry withTime(long time) {
+            return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay);
+        }
+
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,

@@ -125,9 +125,10 @@ final class DecisionChartView extends View {
         float slot = (right - left) / SLOTS;
         float barWidth = Math.min(ui.dp(26), slot - ui.dp(3));
         int firstSlot = SLOTS - entries.size();
+        // The spotlight moving to the building just tapped draws every frame; the rest is steady motion.
+        float spotlight = Motion.settle(selectedAt, 300);
         if (selected >= 0 && selected < entries.size()) {
-            drawSpotlight(canvas, left + slot * (firstSlot + selected + 0.5f), barWidth, bottom,
-                    Motion.settle(selectedAt, 300));
+            drawSpotlight(canvas, left + slot * (firstSlot + selected + 0.5f), barWidth, bottom, spotlight);
         }
         boolean rising = false;
         for (int i = 0; i < entries.size(); i++) {
@@ -164,7 +165,8 @@ final class DecisionChartView extends View {
         fill.setColor(ui.gridline);
         rect.set(left, bottom, right, bottom + ui.dp(3));
         canvas.drawRoundRect(rect, ui.dp(1.5f), ui.dp(1.5f), fill);
-        Motion.next(this);
+        if (spotlight < 1) Motion.settling(this);
+        else Motion.next(this);
     }
 
     /** A soft beam from the top of the chart down onto the selected building. */

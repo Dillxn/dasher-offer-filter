@@ -56,6 +56,9 @@ public class AccessibilityAdapterTest {
         DecisionLog.forgetCache();
         ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
+        // Reads run on the main looper here, so each event is read before show() returns; ScannerThreadTest runs
+        // the service's own thread.
+        OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         controller = Robolectric.buildService(OfferFilterService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
     }
@@ -64,6 +67,7 @@ public class AccessibilityAdapterTest {
     public void stop() {
         controller.destroy();
         OfferFilterService.sawDasherBeside(0);
+        OfferFilterService.scanLooperForTests = null;
     }
 
     /** A visible, enabled DoorDash node; clickable nodes expose ACTION_CLICK and report clicks as handled. */
@@ -93,10 +97,13 @@ public class AccessibilityAdapterTest {
         return root;
     }
 
-    /** Makes {@code root} the active window and delivers a DoorDash content-changed event. */
+    /**
+     * Makes {@code root} the active window and delivers a DoorDash window-state event, which is read at once (a
+     * content change while nothing is up may wait for the next quiet read; see ScannerThreadTest).
+     */
     private void show(AccessibilityNodeInfo root) {
         Shadows.shadowOf(controller.get()).setRootInActiveWindow(root);
-        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
     }
@@ -351,7 +358,7 @@ public class AccessibilityAdapterTest {
                 window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, dasher, false, BOTTOM_HALF)));
         Shadows.shadowOf(controller.get()).setRootInActiveWindow(ours);
-        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
     }
@@ -440,7 +447,7 @@ public class AccessibilityAdapterTest {
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, new Rect(0, 0, 1080, 2040)),
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, offer("$7.90"), false, new Rect(0, 0, 1080, 2040))));
         Shadows.shadowOf(controller.get()).setRootInActiveWindow(maps);
-        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         controller.get().onAccessibilityEvent(event);
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());

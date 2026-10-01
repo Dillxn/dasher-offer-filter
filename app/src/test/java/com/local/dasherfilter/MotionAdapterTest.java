@@ -5,6 +5,7 @@ import android.app.Application;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorManager;
+import android.view.View;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,6 +18,7 @@ import org.robolectric.shadows.ShadowSensor;
 import org.robolectric.shadows.ShadowSensorManager;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** The drawings' tilt parallax and motion clock, through Android's sensor and animator adapters. */
@@ -105,6 +107,63 @@ public class MotionAdapterTest {
             mascot.layout(0, 0, 1080, mascot.getMeasuredHeight());
             mascot.draw(new android.graphics.Canvas(android.graphics.Bitmap.createBitmap(1080,
                     mascot.getMeasuredHeight(), android.graphics.Bitmap.Config.ARGB_8888)));
+        }
+    }
+
+    @Test
+    public void besideAnotherAppTheSkyIsCalmAndTheTiltSensorRests() {
+        ShadowSensorManager sensors = sensors();
+        sensors.addSensor(ShadowSensor.newInstance(Sensor.TYPE_GAME_ROTATION_VECTOR));
+        org.robolectric.android.controller.ActivityController<MainActivity> built =
+                org.robolectric.Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (org.robolectric.android.controller.ActivityController<MainActivity> activity = built.setup()) {
+            // In split screen the page is on screen for a whole dash: no sensor, and steady motion at ~10 frames a second.
+            assertEquals("no tilt sensor in split screen", 0, sensors.getListeners().size());
+            assertTrue("calm: " + Motion.frameDelay(), Motion.frameDelay() >= 100);
+
+            // A whole screen again: the tilt and every frame come back.
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(false);
+            activity.get().onMultiWindowModeChanged(false, activity.get().getResources().getConfiguration());
+            assertEquals(1, sensors.getListeners().size());
+            assertEquals(0, Motion.frameDelay());
+
+            // Split again: the sensor stops at once, and stays off through a pause and resume.
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
+            assertEquals(0, sensors.getListeners().size());
+            activity.pause().resume();
+            assertEquals(0, sensors.getListeners().size());
+            assertTrue(Motion.frameDelay() >= 100);
+        } finally {
+            Motion.setCalm(false);
+        }
+    }
+
+    @Test
+    public void calmMotionAsksForItsNextFrameLaterButAPressStillGetsEveryFrame() {
+        View view = new View(app);
+        android.app.Activity host = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        host.setContentView(view);
+        try {
+            Motion.setCalm(true);
+            org.robolectric.shadows.ShadowView shadow = Shadows.shadowOf(view);
+            shadow.clearWasInvalidated();
+            Motion.next(view);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(java.time.Duration.ofMillis(Motion.CALM_FRAME_MS - 20));
+            assertFalse("steady motion waits", shadow.wasInvalidated());
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(java.time.Duration.ofMillis(40));
+            assertTrue(shadow.wasInvalidated());
+
+            shadow.clearWasInvalidated();
+            Motion.settling(view);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(java.time.Duration.ofMillis(20));
+            assertTrue("a movement the user caused draws the next frame", shadow.wasInvalidated());
+        } finally {
+            Motion.setCalm(false);
         }
     }
 

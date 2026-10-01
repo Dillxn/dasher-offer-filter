@@ -2,8 +2,6 @@ package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
 import android.graphics.PixelFormat;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -13,15 +11,19 @@ import android.view.WindowManager;
  * Notices when the user touches the screen while an automatic decline is in progress, so they can take over. It is
  * a one-pixel, invisible accessibility overlay that asks Android for a note of touches outside it: the touch itself
  * still goes to Dasher untouched. Our own taps are accessibility actions, not touches, so they never trigger it.
+ * It is a view, so it is started, stopped and told of touches on the main thread only.
  */
 final class TouchWatch {
     interface Listener {
+        /**
+         * On the main thread, the moment the touch is delivered, so an automatic tap already under way on another
+         * thread can still be stopped. Must not remove this watch itself: the touch is still being delivered to it.
+         */
         void touched();
     }
 
     private final AccessibilityService service;
     private final Listener listener;
-    private final Handler handler = new Handler(Looper.getMainLooper());
     private View view;
 
     TouchWatch(AccessibilityService service, Listener listener) {
@@ -46,10 +48,7 @@ final class TouchWatch {
         View watcher = new View(service);
         watcher.setOnTouchListener((touched, event) -> {
             int action = event.getActionMasked();
-            // Handled after this event, since the listener removes this very window.
-            if (action == MotionEvent.ACTION_OUTSIDE || action == MotionEvent.ACTION_DOWN) {
-                handler.post(listener::touched);
-            }
+            if (action == MotionEvent.ACTION_OUTSIDE || action == MotionEvent.ACTION_DOWN) listener.touched();
             return false;
         });
         try {

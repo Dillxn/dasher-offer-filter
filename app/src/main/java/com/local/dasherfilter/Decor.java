@@ -164,7 +164,7 @@ final class Decor {
             Paint.FontMetrics metrics = ink.getFontMetrics();
             canvas.drawText(word(), getWidth() / 2f, getHeight() / 2f - (metrics.ascent + metrics.descent) / 2, ink);
             canvas.restore();
-            if (press < 1) Motion.next(this);
+            if (press < 1) Motion.settling(this);
         }
     }
 

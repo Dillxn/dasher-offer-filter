@@ -1,3 +1,25 @@
+## 0.4.39 — Offer Filter stays responsive beside Dasher
+
+- **No more freezing in split screen.** Reading Dasher's screen used to run on the same thread that draws Offer Filter, once for every change on Dasher's screen. Its map and countdown change many times a second, and on a slow phone a read takes up to half a second, so Offer Filter's half froze. Reading now runs on its own thread: Offer Filter's screen never waits for it.
+- **Fewer reads while nothing is happening.** The first change after a quiet moment is read at once; the rest of a burst of map updates is read together, at most 150 ms later. Anything that looks like an offer is read at once, and a decline is still tapped on the first read that sees the offer.
+- **Calmer in split screen.** No tilt sensor, and slower animation, beside another app.
+- **Safer timing around declines.**
+  - An offer arriving just after you leave Dasher rings at once; it no longer waits for the next window check.
+  - Your touch is watched before the confirmation is tapped.
+  - Nothing is tapped after the service stops.
+  - Sound turned down is put back at once when a next offer arrives.
+- **Reports show the real timings:** a slow read is logged (at most once a minute), and each decline says what triggered the read and how long it waited.
+
+Evidence boundaries:
+- **Simulated Android 8 and 15 tests** run the real reading thread and cover:
+  - a decline and its confirmation;
+  - a slow read not holding up the screen (0 ms per event, against about 200 ms before);
+  - a touch during a read;
+  - stopping mid-read;
+  - sound restored when the next offer arrives;
+  - the 150 ms burst rule.
+- **Not verified on a real phone:** how responsive the split screen feels, and real read timings. Your next report will show them.
+
 ## 0.4.38 — one offer, one line; the alert card opens Dasher; Offer Filter again
 
 - **The name is Offer Filter again** (it showed as Dash Buddy from 0.4.29). It updates over the installed app as always.

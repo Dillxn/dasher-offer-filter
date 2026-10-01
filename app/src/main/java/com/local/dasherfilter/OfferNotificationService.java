@@ -109,6 +109,10 @@ public final class OfferNotificationService extends NotificationListenerService 
         return generation;
     }
 
+    private static void nextGeneration() {
+        generation++;
+    }
+
     static boolean hasAccess(Context context) {
         ComponentName component = new ComponentName(context, OfferNotificationService.class);
         if (Build.VERSION.SDK_INT >= 27) {
@@ -237,7 +241,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         try {
             List<String> labels = labels(notification);
             if (!NotificationOffer.isLikelyOffer(labels)) return;
-            boolean foreground = OfferFilterService.isDasherForeground();
+            boolean foreground = OfferFilterService.isDasherOnScreenNow();
             TrackedOffer offer = track(source, merchant(labels), labels.toString(), foreground, replay);
             FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
 
@@ -359,7 +363,8 @@ public final class OfferNotificationService extends NotificationListenerService 
             };
             tracked.put(key, created);
             handler.postDelayed(created.expiry, OfferAlertState.LIFETIME_MS);
-            if (!sameOfferOnScreen) generation++;
+            // A next offer: under the silencer's lock, so a decline in progress turns no stream down over it.
+            if (!sameOfferOnScreen) OfferSilencer.nextOffer(this, OfferNotificationService::nextGeneration);
             if (replay) recallRead(key, source.getPostTime(), created.state, now);
             offer = created;
         }

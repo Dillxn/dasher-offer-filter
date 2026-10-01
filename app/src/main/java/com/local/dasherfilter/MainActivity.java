@@ -53,7 +53,8 @@ import java.util.regex.Pattern;
  * user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the ground below it on a whole
  * screen, a map of where offers pay best. Settings holds everything set once: the rules, sound and Android shortcuts,
  * the offer map, reports and updates. Pause and Resume take effect at once; Save keeps the on/paused state. The
- * drawings move gently and shift with the phone's tilt while the app is open, unless Android's animations are off.
+ * drawings move gently and shift with the phone's tilt while the app fills the screen, unless Android's animations
+ * are off; in split screen they move calmly and the tilt sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
@@ -74,6 +75,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
             handler.postDelayed(this, 1000);
         }
     };
+    /**
+     * Android's answers that change only when the user changes something, asked at most this often by the
+     * once-a-second refresh (each is a call into Android), and again at once when the page resumes or a permission
+     * answer comes back.
+     */
+    static final long ASK_EVERY_MS = 30_000;
+    /** Where the phone is, for the map's dot, asked at most this often while the map shows. */
+    static final long HERE_EVERY_MS = 5_000;
+    private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.dasher(this) != null);
+    private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
+    private final Asked<Boolean> installsAllowed = new Asked<>(() -> getPackageManager().canRequestPackageInstalls());
+    private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
+    private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
+    private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
+    /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
+    private boolean resumed;
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
@@ -244,11 +261,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
         // Sound left turned down by a decline the screen reader could not finish is put back here too.
         if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
         if (GitHubConnect.configured()) GitHubConnect.resume(this);
-        Tilt.start(this);
+        // Back from Android's settings, perhaps: ask again.
+        forgetAnswers();
+        followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
         Updater.check(this, false, null);
@@ -258,8 +278,58 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration configuration) {
         super.onMultiWindowModeChanged(inMultiWindow, configuration);
+        followSplit(inMultiWindow);
         DasherSplit.resumed(this);
         refresh();
+    }
+
+    /**
+     * Beside another app the page stays on screen for a whole dash: no tilt sensor then, and the drawings' steady
+     * motion is calm (about ten frames a second). A whole screen has both back.
+     */
+    private void followSplit(boolean inMultiWindow) {
+        Motion.setCalm(inMultiWindow);
+        if (inMultiWindow || !resumed) Tilt.stop();
+        else Tilt.start(this);
+    }
+
+    private void forgetAnswers() {
+        dasherInstalled.forget();
+        alertsAllowed.forget();
+        installsAllowed.forget();
+        locationAllowed.forget();
+        locationAlways.forget();
+        here.forget();
+    }
+
+    /** One of Android's answers, kept for a while (see {@link #ASK_EVERY_MS}). Main thread only. */
+    static final class Asked<T> {
+        private final java.util.function.Supplier<T> ask;
+        private T answer;
+        private long askedAt;
+        private boolean known;
+
+        Asked(java.util.function.Supplier<T> ask) {
+            this.ask = ask;
+        }
+
+        T get(long keepMs) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (!known || now - askedAt >= keepMs || now < askedAt) {
+                answer = ask.get();
+                askedAt = now;
+                known = true;
+            }
+            return answer;
+        }
+
+        T get() {
+            return get(ASK_EVERY_MS);
+        }
+
+        void forget() {
+            known = false;
+        }
     }
 
     /** Offer Filter above, Dasher below, at the user's tap. */
@@ -269,6 +339,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     @Override protected void onPause() {
+        resumed = false;
         handler.removeCallbacks(refresh);
         Tilt.stop();
         Updater.background(this);
@@ -277,6 +348,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        forgetAnswers();
         refresh();
         boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
@@ -1005,11 +1077,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
             hero.setAction("Set up rules");
         }
         stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
-        if (splitButton != null) splitButton.setVisibility(DasherSplit.offered(this) ? View.VISIBLE : View.GONE);
+        if (splitButton != null) {
+            splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
+        }
 
         screenReading.update(OfferFilterService.isConnected());
         backgroundOffers.update(OfferNotificationService.isConnected());
-        offerAlerts.update(OfferAlerts.canNotify(this));
+        offerAlerts.update(alertsAllowed.get());
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("On a route: " + route.summary());
@@ -1038,7 +1112,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         if (githubStatus != null) refreshGitHub();
-        allowInstalls.setVisibility(getPackageManager().canRequestPackageInstalls() ? View.GONE : View.VISIBLE);
+        allowInstalls.setVisibility(installsAllowed.get() ? View.GONE : View.VISIBLE);
         boolean reporting = ReportOutbox.enabled(this);
         boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;
         reportViaGitHub.setVisibility(connected ? View.VISIBLE : View.GONE);
@@ -1333,8 +1407,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (areasToggle.isChecked() != on) areasToggle.setChecked(on);
         List<AreaMap.Cell> cells = AreaMap.cells(this);
         int unlocated = AreaMap.unlocated(this);
-        boolean permitted = AreaMap.hasPermission(this);
-        boolean needsAllTheTime = permitted && unlocated > 0 && !AreaMap.hasBackgroundPermission(this);
+        boolean permitted = locationAllowed.get();
+        boolean needsAllTheTime = permitted && unlocated > 0 && !locationAlways.get();
         if (!on) {
             areasStatus.setText("Off. Nothing about where you are is kept.");
         } else if (!permitted) {
@@ -1359,7 +1433,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             areaMap.setEmptyMessage("Offers will pin here");
         }
         List<AreaMap.Cell> shownCells = on ? cells : java.util.Collections.<AreaMap.Cell>emptyList();
-        double[] here = on && permitted ? AreaMap.here(this) : null;
+        // Beside Dasher the map is hidden: only the signpost's place name uses where the phone is.
+        double[] here = on && permitted ? this.here.get(besideDasher ? ASK_EVERY_MS : HERE_EVERY_MS) : null;
         String shown = on + "/" + AreaMap.version() + "/" + Places.version() + "/" + (here == null ? "-"
                 : Math.round(here[0] * 2000) + "," + Math.round(here[1] * 2000));
         if (shown.equals(shownAreas)) return;

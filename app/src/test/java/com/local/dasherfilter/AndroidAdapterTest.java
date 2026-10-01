@@ -29,6 +29,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.time.Duration;
 import java.util.List;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -75,6 +76,12 @@ public class AndroidAdapterTest {
         AreaMap.forgetCache();
         ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
+        OfferFilterService.scanLooperForTests = Looper.getMainLooper();
+    }
+
+    @After
+    public void tearDown() {
+        OfferFilterService.scanLooperForTests = null;
     }
 
     @Test
@@ -2538,6 +2545,30 @@ public class AndroidAdapterTest {
         } finally {
             service.destroy();
             DasherSplit.forget();
+        }
+    }
+
+    @Test
+    public void theOnceASecondRefreshAsksAndroidOnlyEveryHalfMinute() {
+        dasherInstalled();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull(shownIcon(content, "Split screen with Dasher"));
+
+            // Dasher goes from the phone while the page is open. Before, each second's refresh asked Android again
+            // (with whether alerts and installs are allowed, and the location permissions), on the main thread.
+            Shadows.shadowOf(app.getPackageManager()).removeActivity(
+                    new android.content.ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home"));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5));
+            assertNotNull("not asked again yet", shownIcon(content, "Split screen with Dasher"));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(MainActivity.ASK_EVERY_MS));
+            assertNull("asked again after half a minute", shownIcon(content, "Split screen with Dasher"));
+
+            // Back from Android's settings, the page asks at once.
+            dasherInstalled();
+            activity.pause().resume();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNotNull(shownIcon(content, "Split screen with Dasher"));
         }
     }
 

@@ -729,7 +729,7 @@ final class MinimumsStarView extends View {
     @Override protected void onDraw(Canvas canvas) {
         if (backdrop()) {
             drawSky(canvas);
-            Motion.next(this);
+            nextFrame();
             return;
         }
         float width = getWidth();
@@ -754,7 +754,13 @@ final class MinimumsStarView extends View {
             if (beside) drawIconBeside(canvas, i, cx, cy, radius);
             else drawIcon(canvas, i, cx, cy, window, width, ui.dp(ICON_DP));
         }
-        Motion.next(this);
+        nextFrame();
+    }
+
+    /** A glide to new values (after a drag, say) draws every frame; the rest is steady motion. */
+    private void nextFrame() {
+        if (Motion.settle(glideStart, GLIDE_MS) < 1) Motion.settling(this);
+        else Motion.next(this);
     }
 
     /**

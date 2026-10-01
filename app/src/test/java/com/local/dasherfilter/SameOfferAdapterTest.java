@@ -68,6 +68,7 @@ public class SameOfferAdapterTest {
         AreaMap.forgetCache();
         ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
+        OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         filter = Robolectric.buildService(OfferFilterService.class).create();
         listener = Robolectric.buildService(OfferNotificationService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
@@ -78,6 +79,7 @@ public class SameOfferAdapterTest {
         listener.destroy();
         filter.destroy();
         OfferFilterService.sawDasherBeside(0);
+        OfferFilterService.scanLooperForTests = null;
     }
 
     // ---- Screens (as in AccessibilityAdapterTest) ----
@@ -123,7 +125,11 @@ public class SameOfferAdapterTest {
         return root;
     }
 
-    /** Dasher leaves the screen: the launcher is the active window. */
+    /**
+     * Dasher leaves the screen: the launcher is the active window. Dasher sends no event for that, and no time
+     * passes: the screen reader has not looked since, but the notification path checks the windows itself whenever
+     * the last look still says Dasher is on screen.
+     */
     private void dasherLeaves() {
         AccessibilityNodeInfo launcher = AccessibilityNodeInfo.obtain(new View(app));
         launcher.setPackageName("com.google.android.apps.nexuslauncher");
@@ -131,10 +137,10 @@ public class SameOfferAdapterTest {
         Shadows.shadowOf(filter.get()).setRootInActiveWindow(launcher);
     }
 
-    /** Makes {@code root} Dasher's active window and delivers a content-changed event. */
+    /** Makes {@code root} Dasher's active window and delivers a window-state event, read at once. */
     private void show(AccessibilityNodeInfo root) {
         Shadows.shadowOf(filter.get()).setRootInActiveWindow(root);
-        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName("com.doordash.driverapp");
         filter.get().onAccessibilityEvent(event);
         Shadows.shadowOf(Looper.getMainLooper()).idle();
