@@ -140,9 +140,18 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            String star = find(content, MinimumsStarView.class).getContentDescription().toString();
-            assertTrue(star, star.contains("Pay: set $7.00, adaptive more than $9.00."));
-            assertTrue(star, star.endsWith("Marked: your last 2 offers, 1 passed, 1 declined, 0 to review."));
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            String description = star.getContentDescription().toString();
+            assertTrue(description, description.contains("Pay: set $7.00, adaptive more than $9.00."));
+            assertTrue(description, description.endsWith("The constellation shows the latest or selected offer. "
+                    + "Choose an older offer on the skyline."));
+            DecisionChartView chart = findChart(content);
+            assertTrue(chart.getContentDescription().toString().startsWith(
+                    "Chart of the last 2 offers: 1 passed, 1 declined, 0 need review."));
+            assertEquals(Integer.valueOf(2500), chart.selectedEntry().facts.payCents);
+            chart.select(0);
+            assertEquals("history stays selectable", Integer.valueOf(790), chart.selectedEntry().facts.payCents);
+            assertEquals("selection preserves the learned payout floor", 901, star.learnedAsks(0), 0);
         }
     }
 

@@ -1,4 +1,12 @@
-## 0.4.52 — fitness, minimums buffer and stalled-decline candidate, not released
+## 0.4.53 — a quieter scene
+
+- The constellation displays one offer at a time: the latest, or the one selected from the skyline. Hidden history no longer adds overlapping polygons or invisible touch targets. The five axis meanings, saved and learned minimums, and whole-shape buffer remain.
+- Skyline buildings use quieter landscape colors and small roof symbols; the selected offer keeps a full outcome badge. Fitness trees and both threshold lines remain visible.
+- The atlas has one short heading and a nearby You label. Its full key stays in the info popup, and the selected-area line keeps the offered rate and eligible sample count.
+
+Validation: 1,431 Java/JUnit and simulated Android 8/15 tests passed across 80 suites, with 0 failures, errors or skips. Lint completed with 0 errors and 32 warnings; native day, night and compact previews were inspected. See [the UI validation record](VALIDATION_CALM_2026-10-02.md).
+
+## 0.4.52 — fitness skyline, minimums buffer and reliability
 
 - Adds a score tree beside each offer building: buildings remain payout, trees show recorded score fitness, and unknown scores stay visibly unknown.
 - Adds separate labeled references for the current score cutoff and overall payout minimum, including the existing learned payout floor when enabled. Historical required-pay marks, outcome flags and tapping an offer remain.
@@ -8,7 +16,7 @@
 - Prevents automatic screen timeout during active, visible filtering with a short renewable screen-on lease. Manual lock, screen-off, hidden Dasher, pause and service shutdown stop it; the app never unlocks or wakes the phone.
 - Spaces first-step Decline retries out to give a delayed confirmation time to appear and rechecks without needing another Dasher event. Retries retain the original offer deadline and stop for user takeover or a fresh offer. Changing the buffer stops remaining taps under the old cutoff. It does not press Back to escape an unrecognized hung screen.
 
-Validation: 1,421 Java/JUnit and simulated Android 8/15 tests passed across 80 suites with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned 0.4.52 packaging and native phone/night/compact previews were checked. A fresh production-transport check verified the existing live 0.4.49 feed. See [the candidate validation record](VALIDATION_2026-10-02.md). Includes the earlier unreleased privacy, decline, Peek and fifth-spoke source work; no signed upgrade or automatic hotspot measurement is claimed.
+Validation: 1,421 Java/JUnit and simulated Android 8/15 tests passed across 80 suites with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned 0.4.52 packaging and native phone/night/compact previews were checked. A fresh production-transport check verified the existing live 0.4.49 feed. See [the candidate validation record](VALIDATION_2026-10-02.md). Includes the earlier privacy, decline, Peek and fifth-spoke source work. Published through GitHub and Render on October 2 UTC with the original signer; a fresh production-updater download verified the live 0.4.52 APK. Automatic hotspot measurement and physical-phone validation remain outstanding.
 
 ## 0.4.51 — fifth-spoke candidate, not released
 

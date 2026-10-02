@@ -35,6 +35,16 @@ final class OutcomeBadge {
         FILL.setColor(withAlpha(color, alpha));
         canvas.drawCircle(x, y, radius, FILL);
         int ink = withAlpha(Ui.onStatus(color), alpha);
+        drawSymbol(canvas, ui, x, y, outcome, ink);
+    }
+
+    /** A quiet roof mark for history; the selected offer retains the full coloured badge. */
+    static void drawQuiet(Canvas canvas, Ui ui, float x, float y, DecisionLog.Outcome outcome) {
+        drawSymbol(canvas, ui, x, y, outcome, ui.inkSecondary);
+    }
+
+    private static void drawSymbol(Canvas canvas, Ui ui, float x, float y,
+            DecisionLog.Outcome outcome, int ink) {
         switch (outcome) {
             case ACCEPTED:
                 drawBag(canvas, ui, x, y, ink);

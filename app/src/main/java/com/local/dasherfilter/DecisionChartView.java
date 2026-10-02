@@ -6,9 +6,12 @@ import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -210,7 +213,7 @@ final class DecisionChartView extends View {
             line.setColor(ui.baseline);
             line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
             canvas.drawLine(center, roof, center, roof - ui.dp(5), line);
-            drawBadge(canvas, center, roof - ui.dp(12), DecisionLog.outcome(entry));
+            drawBadge(canvas, center, roof - ui.dp(12), DecisionLog.outcome(entry), i == selected);
         }
         drawThresholdLabels(canvas, left, right);
         if (spotlight < 1) Motion.settling(this);
@@ -255,13 +258,11 @@ final class DecisionChartView extends View {
         if (payoutMinimumCents > 0) {
             line.setColor(payoutColor());
             canvas.drawLine(left, payoutThresholdY(), right, payoutThresholdY(), line);
-            canvas.drawLine(left, payoutThresholdY(), left, plotBottom() + ui.dp(2), line);
         }
         line.setColor(treeColor());
         line.setPathEffect(scoreDash);
         canvas.drawLine(left, scoreThresholdY(), right, scoreThresholdY(), line);
         line.setPathEffect(null);
-        canvas.drawLine(right, scoreThresholdY(), right, plotBottom() + ui.dp(2), line);
     }
 
     private void drawThresholdLabels(Canvas canvas, float left, float right) {
@@ -298,7 +299,7 @@ final class DecisionChartView extends View {
         path.lineTo(center + barWidth / 2f + ui.dp(8), bottom);
         path.lineTo(center - barWidth / 2f - ui.dp(8), bottom);
         path.close();
-        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0x24 * shown) << 24));
+        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0x12 * shown) << 24));
         canvas.drawPath(path, fill);
         fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0xFF * shown) << 24));
         rect.set(center - barWidth / 2f, getHeight() - ui.dp(1.5f), center + barWidth / 2f, getHeight());
@@ -307,7 +308,10 @@ final class DecisionChartView extends View {
 
     /** A building with a rounded roofline and a grid of windows, lit when the offer passed. */
     private void drawBuilding(Canvas canvas, float l, float t, float r, float b, OfferRule.Result result) {
-        int color = Ui.resultColor(result);
+        // Buildings belong to the landscape. The selected outcome badge carries the strong status colour.
+        int color = result == OfferRule.Result.KEEP ? (ui.dark ? 0xFF557B63 : 0xFF78927D)
+                : result == OfferRule.Result.DECLINE ? (ui.dark ? 0xFF87645E : 0xFFAA8C81)
+                : (ui.dark ? 0xFF998454 : 0xFFBDAC85);
         float radius = Math.min(ui.dp(4), Math.min((r - l) / 2f, (b - t) / 2f));
         path.reset();
         rect.set(l, t, r, b);
@@ -315,8 +319,8 @@ final class DecisionChartView extends View {
         fill.setColor(color);
         canvas.drawPath(path, fill);
         float window = Math.max(ui.dp(2), Math.min(ui.dp(4), (r - l) / 6f));
-        int lit = result == OfferRule.Result.KEEP ? 0xFFFFE9A3 : result == OfferRule.Result.REVIEW ? 0x99FFFFFF
-                : 0x40000000;
+        int lit = result == OfferRule.Result.KEEP ? 0xCCFFE9A3 : result == OfferRule.Result.REVIEW ? 0x70FFFFFF
+                : 0x28000000;
         fill.setColor(lit);
         float gap = window * 1.2f;
         for (float y = t + ui.dp(6); y + window <= b - ui.dp(4); y += window + gap) {
@@ -335,8 +339,9 @@ final class DecisionChartView extends View {
     }
 
     /** The flag's badge ({@link OutcomeBadge}), kept whole inside the view however tall its building. */
-    private void drawBadge(Canvas canvas, float x, float y, DecisionLog.Outcome outcome) {
-        OutcomeBadge.draw(canvas, ui, x, Math.max(y, ui.dp(10)), outcome, 255);
+    private void drawBadge(Canvas canvas, float x, float y, DecisionLog.Outcome outcome, boolean selected) {
+        if (selected) OutcomeBadge.draw(canvas, ui, x, Math.max(y, ui.dp(10)), outcome, 255);
+        else OutcomeBadge.drawQuiet(canvas, ui, x, Math.max(y, ui.dp(10)), outcome);
     }
 
     /**
@@ -472,9 +477,58 @@ final class DecisionChartView extends View {
         return super.performClick();
     }
 
+    /** The skyline is also the history browser for screen readers, without drawing more controls. */
+    @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        if (entries.isEmpty()) return;
+        int current = selected >= 0 ? selected : entries.size() - 1;
+        info.setClassName("android.widget.SeekBar");
+        info.setScrollable(entries.size() > 1);
+        info.setRangeInfo(AccessibilityNodeInfo.RangeInfo.obtain(
+                AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0, entries.size() - 1, current));
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+                AccessibilityNodeInfo.ACTION_CLICK, "Show offer details"));
+        if (current > 0) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, "Previous offer"));
+        if (current + 1 < entries.size()) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, "Next offer"));
+        if (entries.size() > 1) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
+    }
+
+    @Override public boolean performAccessibilityAction(int action, Bundle args) {
+        if (action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                || action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                || action == android.R.id.accessibilityActionSetProgress) {
+            if (entries.isEmpty()) return false;
+            int current = selected >= 0 ? selected : entries.size() - 1;
+            int next;
+            if (action == android.R.id.accessibilityActionSetProgress) {
+                if (args == null || !args.containsKey(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE)) return false;
+                float value = args.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE);
+                if (!Float.isFinite(value) || value < 0 || value > entries.size() - 1) return false;
+                next = Math.round(value);
+            } else next = current + (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD ? 1 : -1);
+            if (next < 0 || next >= entries.size()) return false;
+            select(next);
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_SELECTED);
+            return true;
+        }
+        return super.performAccessibilityAction(action, args);
+    }
+
+    @Override public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_SELECTED && selectedEntry() != null) {
+            event.setContentDescription(selectedDescription());
+            event.setItemCount(entries.size());
+            event.setCurrentItemIndex(selected);
+        }
+    }
+
     void select(int index) {
         if (index != selected) selectedAt = SystemClock.uptimeMillis();
         selected = index;
+        setContentDescription(describe(entries));
         invalidate();
         if (listener != null) listener.selected(entries.get(index));
     }
@@ -512,7 +566,7 @@ final class DecisionChartView extends View {
             if (entry.scorePercent < 0) unknown++;
             if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
-        return summary + " Building height is payout in dollars; tree height is the recorded score in percent,"
+        return summary + selectedDescription() + " Building height is payout in dollars; tree height is the recorded score in percent,"
                 + " on separate scales. Dashed score line: " + minimumScalePercent + "%" + (scoreByArea ? " minimum for area scoring."
                 : " advisory reference only; strict mode checks each rule.")
                 + (payoutMinimumCents > 0 ? " Solid payout line: " + DecisionLog.money(payoutMinimumCents)
@@ -522,5 +576,17 @@ final class DecisionChartView extends View {
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: open markers, no trees." : "")
                 + (clipped > 0 ? " " + clipped + " trees exceed " + SCORE_DISPLAY_CAP
                 + "% and end in an overflow chevron; tap for the recorded score." : "");
+    }
+
+    private String selectedDescription() {
+        DecisionLog.Entry entry = selectedEntry();
+        if (entry == null) return "";
+        DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
+        String state = outcome == DecisionLog.Outcome.YOURS ? "left to you"
+                : outcome.name().toLowerCase(Locale.US);
+        return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
+                + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
+                + ", " + DecisionLog.facts(entry.facts) + ", " + state
+                + (entry.scorePercent >= 0 ? ", " + entry.scorePercent + "% fitness." : ", fitness unknown.");
     }
 }
