@@ -31,6 +31,7 @@ final class DeclineErrorRecovery {
 
     boolean pending() { return errorAt >= 0 || returnUntil >= 0; }
     boolean returning() { return returnUntil >= 0; }
+    boolean hasBackAttempt() { return backs > 0; }
     boolean expired(long now) {
         return returnUntil >= 0 ? now >= returnUntil : errorAt >= 0 && now - errorAt > ERROR_FRESH_MS;
     }

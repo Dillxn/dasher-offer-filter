@@ -1,3 +1,11 @@
+## 0.4.56 — decline recovery timing and identity guards
+
+- Keeps Back recovery tied to the original complete offer and continuing countdown, including later retries. Changed labels or missing facts cannot reset the deadline or retry budget.
+- Retains recognized failure evidence while a slow screen read is in progress, and checks error freshness and screen changes immediately before Back. An explicit failure stays unconfirmed on later rereads.
+- Returns to normal confirmation handling once the owned question appears, while retaining failure evidence for that confirmation request.
+
+Validation: 1,669 tests across 92 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. All 207 frozen inputs were unchanged. Evidence is recorded in [the recovery hardening record](VALIDATION_DECLINE_RECOVERY_0.4.56.md). The reported physical Samsung/Dasher failure remains unverified on a handset.
+
 ## 0.4.55 — recovery from a failed decline
 
 - Recognizes Dasher's error toast during an automatic first-step decline. If Dasher then leaves a stable, recognized empty/map-only screen with Dasher alone in the foreground, the app can press Back and reread the same offer before retrying.
