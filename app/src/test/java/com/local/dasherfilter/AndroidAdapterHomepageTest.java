@@ -144,12 +144,13 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             AreaMapView map = find(content, AreaMapView.class);
             assertTrue("on the page, no sheet or switch", map.isShown());
-            assertEquals("Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
-                    + "2, Around you, $2.00/mi over 3 offers.", map.getContentDescription().toString());
-            TextView best = shownTextContaining(content, "3.6 mi NE · $3.00/mi  ›");
+            assertTrue(map.getContentDescription().toString().startsWith(
+                    "Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
+                    + "2, Around you, $2.00/mi over 3 offers."));
+            TextView best = shownTextContaining(content, "3.6 mi NE · $3.00/mi · 3 offers  ›");
             assertNotNull("the best area is shown until another is picked", best);
             assertTrue(areaLineSaid(content), areaLineSaid(content)
-                    .startsWith("#1 · 3.6 mi NE of you · $3.00/mi. Average"));
+                    .startsWith("#1 · 3.6 mi NE of you · $3.00/mi · 3 offers. Average"));
             assertTrue(areaLineSaid(content).endsWith("Opens it in Maps."));
             best.performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();

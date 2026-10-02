@@ -6,9 +6,11 @@ import java.util.Locale;
 /** Prevents repeated taps on one offer without delaying a different offer. */
 final class DeclineState {
     static final int MAX_ATTEMPTS = 4;
-    static final long RETRY_INTERVAL_MS = 250;
+    /** A taken first-step request gets time to open the question before another tap is sent. */
+    static final long RETRY_INTERVAL_MS = 2_000;
     private long readDurationMs;
     private long lastTryDelay = 2_000;
+    private long firstRetryDelay = RETRY_INTERVAL_MS;
 
     void readDuration(long ms) { readDurationMs = Math.max(0, ms); }
 
@@ -19,6 +21,14 @@ final class DeclineState {
     long confirmationUntil() { return confirmationUntil; }
 
     long lastConfirmationAt() { return lastConfirmationAt; }
+
+    /** The next first-step retry, or -1 after the request cap or confirmation authority has ended. */
+    long nextDeclineAt() {
+        return attempts < MAX_ATTEMPTS && confirmationUntil != 0 && !confirmationTapped()
+                ? Math.min(confirmationUntil, lastTapAt + firstRetryDelay) : -1;
+    }
+
+    int declineAttempts() { return attempts; }
     /**
      * Tries at Dasher's question at most: the first and two retries. Refusals wait 300 ms; a taken request waits
      * 2–3 seconds for Dasher to close the question, based on that read's duration.
@@ -56,7 +66,8 @@ final class DeclineState {
 
     /** A new offer may be declined at once; the same offer is retried at most {@link #MAX_ATTEMPTS} times. */
     boolean mayDecline(String offerKey, long now) {
-        return !offerKey.equals(tappedOffer) || (attempts < MAX_ATTEMPTS && now - lastTapAt >= RETRY_INTERVAL_MS);
+        return !offerKey.equals(tappedOffer) || (hasPendingConfirmation(now) && !confirmationTapped()
+                && attempts < MAX_ATTEMPTS && now - lastTapAt >= firstRetryDelay);
     }
 
     void declineSent(String offerKey, long now) {
@@ -69,6 +80,7 @@ final class DeclineState {
         tappedOffer = offerKey;
         attempts++;
         lastTapAt = now;
+        firstRetryDelay = Math.min(3_000, Math.max(RETRY_INTERVAL_MS, 2 * readDurationMs));
         if (fresh) {
             authorityOffer = offerKey;
             confirmationUntil = now + (countdownMs >= 0

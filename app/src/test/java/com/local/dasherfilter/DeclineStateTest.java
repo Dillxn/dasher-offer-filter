@@ -56,15 +56,15 @@ public final class DeclineStateTest {
     public void retriesAStillVisibleOfferWithoutBlockingADifferentOffer() {
         DeclineState state = new DeclineState();
         state.declineSent("stuck offer", 1000);
-        assertFalse(state.mayDecline("stuck offer", 1249));
-        assertTrue(state.mayDecline("stuck offer", 1250));
-        state.declineSent("stuck offer", 1250);
-        state.declineSent("stuck offer", 1500);
-        state.declineSent("stuck offer", 1750);
-        assertFalse(state.mayDecline("stuck offer", 2000));
-        assertTrue(state.mayDecline("different offer", 1750));
-        state.declineSent("different offer", 1750);
-        assertTrue(state.mayDecline("different offer", 2000));
+        assertFalse(state.mayDecline("stuck offer", 2999));
+        assertTrue(state.mayDecline("stuck offer", 3000));
+        state.declineSent("stuck offer", 3000);
+        state.declineSent("stuck offer", 5000);
+        state.declineSent("stuck offer", 7000);
+        assertFalse(state.mayDecline("stuck offer", 9000));
+        assertTrue(state.mayDecline("different offer", 7000));
+        state.declineSent("different offer", 7000);
+        assertTrue(state.mayDecline("different offer", 9000));
         state.reset();
         assertTrue(state.mayDecline("different offer", 1751));
     }
@@ -122,4 +122,28 @@ public final class DeclineStateTest {
         assertTrue(state.confirmationExhausted(7_100));
     }
 
+    @Test public void firstStepRetryUsesReadLatencyWithoutMovingTheOriginalDeadline() {
+        DeclineState state = new DeclineState();
+        state.readDuration(1_400);
+        state.declineSent("offer", 1_000, 30_000);
+        assertEquals(3_800, state.nextDeclineAt());
+        assertFalse(state.mayDecline("offer", 3_799));
+        assertTrue(state.mayDecline("offer", 3_800));
+        state.readDuration(9_000);
+        state.declineSent("offer", 3_800, 29_000);
+        assertEquals(6_800, state.nextDeclineAt());
+        assertEquals(34_000, state.confirmationUntil());
+        assertFalse("expired authority cannot restart by retry", state.mayDecline("offer", 34_000));
+    }
+
+    @Test public void confirmationAndAuthorityEndCancelFirstStepRetries() {
+        DeclineState state = new DeclineState();
+        state.declineSent("offer", 1_000, 30_000);
+        state.confirmationSent(1_200);
+        assertEquals(-1, state.nextDeclineAt());
+        assertFalse(state.mayDecline("offer", 5_000));
+        state.endConfirmation();
+        assertEquals(-1, state.nextDeclineAt());
+        assertFalse(state.mayDecline("offer", 6_000));
+    }
 }

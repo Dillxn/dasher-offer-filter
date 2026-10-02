@@ -16,6 +16,8 @@ final class FilterStore {
     private static final String PER_STOP = "per_stop";
     /** Fixed minimum reciprocal distance from the final stop to the nearest current Dasher hotspot. */
     private static final String HOTSPOT_PROXIMITY = "hotspot_proximity_hundredths";
+    /** Common scale; absent on older installs means exactly the original rules. */
+    private static final String MINIMUM_SCALE = "minimum_scale_percent";
     /**
      * Where older versions kept the extra-stop fee, added on top of the other minimums for each stop after two. Per
      * stop is now a minimum of its own, so the old fee is retired, never read as one: that would silently change
@@ -70,7 +72,8 @@ final class FilterStore {
                 prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(PER_STOP, 0), prefs.getInt(MAX_STOPS, 0),
                 prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs),
-                prefs.getBoolean(SCORE_BY_AREA, false), prefs.getInt(HOTSPOT_PROXIMITY, 0));
+                prefs.getBoolean(SCORE_BY_AREA, false), prefs.getInt(HOTSPOT_PROXIMITY, 0),
+                prefs.getInt(MINIMUM_SCALE, 100));
     }
 
     /**
@@ -160,7 +163,8 @@ final class FilterStore {
         if (settings.scoreByArea) {
             FilterSettings learned = new FilterSettings(settings.enabled, settings.flatCents, settings.perMileCents,
                     settings.perMinuteCents, settings.perStopCents, settings.maxStops, settings.risingOffers,
-                    settings.lastAcceptedCents, settings.best, floor, true, settings.hotspotProximityHundredths);
+                    settings.lastAcceptedCents, settings.best, floor, true, settings.hotspotProximityHundredths,
+                    settings.minimumScalePercent);
             AreaScore.Floors before = AreaScore.floors(settings, declinedOffer);
             AreaScore.Floors after = AreaScore.floors(learned, declinedOffer);
             changed = false;
@@ -206,6 +210,7 @@ final class FilterStore {
                 .putInt(PER_MINUTE, settings.perMinuteCents)
                 .putInt(PER_STOP, settings.perStopCents)
                 .putInt(HOTSPOT_PROXIMITY, settings.hotspotProximityHundredths)
+                .putInt(MINIMUM_SCALE, settings.minimumScalePercent)
                 .putInt(MAX_STOPS, settings.maxStops)
                 .putBoolean(RISING_OFFERS, settings.risingOffers)
                 .putBoolean(SCORE_BY_AREA, settings.scoreByArea)

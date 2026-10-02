@@ -1,3 +1,15 @@
+## 0.4.52 — fitness, minimums buffer and stalled-decline candidate, not released
+
+- Adds a score tree beside each offer building: buildings remain payout, trees show recorded score fitness, and unknown scores stay visibly unknown.
+- Adds separate labeled references for the current score cutoff and overall payout minimum, including the existing learned payout floor when enabled. Historical required-pay marks, outcome flags and tapping an offer remain.
+- Keeps payout and percent scales independent. Strict rules still judge each active minimum, and area mode still permits compensation between spokes.
+- Labels the five axes in plain language and explains the atlas's historical offer-arrival cells, pay-per-mile colors, sample counts and ranks. These areas are not delivery endpoints or measured Dasher hotspots.
+- Adds one overall minimums scale, default 100%. Set 97% to allow exact 97% baseline fitness in area mode; strict mode applies 97% to each active floor. Saved and learned minima remain intact, and max stops and unread-data handling stay unchanged.
+- Prevents automatic screen timeout during active, visible filtering with a short renewable screen-on lease. Manual lock, screen-off, hidden Dasher, pause and service shutdown stop it; the app never unlocks or wakes the phone.
+- Spaces first-step Decline retries out to give a delayed confirmation time to appear and rechecks without needing another Dasher event. Retries retain the original offer deadline and stop for user takeover or a fresh offer. Changing the buffer stops remaining taps under the old cutoff. It does not press Back to escape an unrecognized hung screen.
+
+Validation: 1,421 Java/JUnit and simulated Android 8/15 tests passed across 80 suites with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned 0.4.52 packaging and native phone/night/compact previews were checked. A fresh production-transport check verified the existing live 0.4.49 feed. See [the candidate validation record](VALIDATION_2026-10-02.md). Includes the earlier unreleased privacy, decline, Peek and fifth-spoke source work; no signed upgrade or automatic hotspot measurement is claimed.
+
 ## 0.4.51 — fifth-spoke candidate, not released
 
 - Adds the top hotspot-proximity spoke: reciprocal of the distance from the offer’s final stop to its nearest actual Dasher hotspot. Its saved, accessible knob shows reciprocal miles and the equivalent distance limit; it is off by default.

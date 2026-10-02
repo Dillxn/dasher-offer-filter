@@ -209,12 +209,19 @@ final class AreaScore {
      * denominator. Sum pair products by multiplying through their positive denominators, with no decimal division.
      */
     static boolean reaches(Floors floors, long payCents) {
+        return reaches(floors, payCents, 100);
+    }
+
+    /** Whether raw fitness reaches the selected percent, with no rounding at the decision boundary. */
+    static boolean reaches(Floors floors, long payCents, int minimumScalePercent) {
         if (!floors.anyActive() || !floors.readable() || payCents < 0) return false;
         int[] axes = floors.activeAxes();
         BigDecimal pay = BigDecimal.valueOf(payCents);
         if (axes.length == 1) {
-            return axes[0] == HOTSPOT ? BigDecimal.ONE.compareTo(floors.hotspotDenominator) >= 0
-                    : pay.compareTo(floors.cents[axes[0]]) >= 0;
+            BigDecimal scale = BigDecimal.valueOf(minimumScalePercent);
+            return axes[0] == HOTSPOT
+                    ? BigDecimal.valueOf(100).compareTo(floors.hotspotDenominator.multiply(scale)) >= 0
+                    : pay.multiply(BigDecimal.valueOf(100)).compareTo(floors.cents[axes[0]].multiply(scale)) >= 0;
         }
         List<int[]> pairs = pairs(axes);
         if (payCents == 0) return false; // Every pair contains at least one zero-length monetary radius.
@@ -237,7 +244,8 @@ final class AreaScore {
             for (int q = 0; q < pairs.size(); q++) if (q != p) others = others.multiply(denominators[q]);
             sum = sum.add(others);
         }
-        return sum.compareTo(all.multiply(BigDecimal.valueOf(pairs.size()))) >= 0;
+        return sum.multiply(BigDecimal.valueOf(10_000)).compareTo(all.multiply(BigDecimal.valueOf(pairs.size()))
+                .multiply(BigDecimal.valueOf((long) minimumScalePercent * minimumScalePercent))) >= 0;
     }
 
     /**
@@ -247,26 +255,32 @@ final class AreaScore {
      * monotone search, not 1 / score(1 cent). A proximity-only rule either already passes at zero or no pay can fix it.
      */
     static long requiredPay(Floors floors) {
+        return requiredPay(floors, 100);
+    }
+
+    /** Least whole-cent pay meeting the selected fitness cutoff; the baselines themselves remain unscaled. */
+    static long requiredPay(Floors floors, int minimumScalePercent) {
         if (!floors.anyActive() || !floors.readable()) return 0;
         if (floors.active[HOTSPOT]) {
-            if (reaches(floors, 0)) return 0;
-            if (!reaches(floors, OUT_OF_REACH)) return Long.MAX_VALUE;
+            if (reaches(floors, 0, minimumScalePercent)) return 0;
+            if (!reaches(floors, OUT_OF_REACH, minimumScalePercent)) return Long.MAX_VALUE;
             long low = 0, high = OUT_OF_REACH;
             while (high - low > 1) {
                 long middle = low + (high - low) / 2;
-                if (reaches(floors, middle)) high = middle;
+                if (reaches(floors, middle, minimumScalePercent)) high = middle;
                 else low = middle;
             }
             return high;
         }
-        // Preserve the original monetary-only result and fast path exactly.
+        // Monetary-only fitness stays linear in pay. Preserve the original 100% estimate, then check exact cents;
+        // never scale an already-rounded required pay, which could add a cent at the new cutoff.
         double atOneCent = score(floors, 1);
         if (!(atOneCent > 0)) return Long.MAX_VALUE;
-        double estimate = Math.ceil(1 / atOneCent);
+        double estimate = Math.ceil((minimumScalePercent / 100.0) / atOneCent);
         if (estimate > OUT_OF_REACH) return Long.MAX_VALUE;
         long pay = (long) estimate;
-        for (int i = 0; i < 8 && pay > 0 && reaches(floors, pay - 1); i++) pay--;
-        for (int i = 0; i < 8 && !reaches(floors, pay); i++) pay++;
+        for (int i = 0; i < 8 && pay > 0 && reaches(floors, pay - 1, minimumScalePercent); i++) pay--;
+        for (int i = 0; i < 8 && !reaches(floors, pay, minimumScalePercent); i++) pay++;
         return pay;
     }
 
@@ -275,18 +289,27 @@ final class AreaScore {
      * short of 100% nor under 100 when it reaches it; -1 when it cannot be worked out.
      */
     static int percent(Floors floors, long payCents) {
+        return percent(floors, payCents, 100);
+    }
+
+    /** Raw baseline fitness, rounded without ever displaying a failing value as reaching the selected cutoff. */
+    static int percent(Floors floors, long payCents, int minimumScalePercent) {
         double score = score(floors, payCents);
         if (Double.isNaN(score)) return -1;
         long rounded = Math.round(Math.min(score * 100, Integer.MAX_VALUE));
         int shown = (int) Math.min(Integer.MAX_VALUE, rounded);
-        return reaches(floors, payCents) ? Math.max(100, shown) : Math.min(99, shown);
+        // Preserve the original 100% baseline boundary as well as the selected cutoff: a 99.9% offer is still 99.
+        shown = reaches(floors, payCents) ? Math.max(100, shown) : Math.min(99, shown);
+        if (minimumScalePercent == 100) return shown;
+        return reaches(floors, payCents, minimumScalePercent)
+                ? Math.max(minimumScalePercent, shown) : Math.min(minimumScalePercent - 1, shown);
     }
 
     /** The score of {@code offer} under {@code rules} as a whole percent ({@link #percent}); -1 when not computable. */
     static int percent(FilterSettings rules, OfferSnapshot offer) {
         Floors floors = floors(rules, offer);
         if (offer.payCents == null && floors.needsPay()) return -1;
-        return percent(floors, offer.payCents == null ? 0 : offer.payCents);
+        return percent(floors, offer.payCents == null ? 0 : offer.payCents, rules.minimumScalePercent);
     }
 
     /** "Score 121%". */

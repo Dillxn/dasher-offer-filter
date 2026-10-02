@@ -91,7 +91,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
                     + "Per stop: set $1.00, adaptive $7.10. "
                     + "The hotspot spoke uses inverse miles: closer is farther out; "
-                    + "its 1 per mile shares the $10 ring radius for display only.",
+                    + "its 1 per mile shares the $10 ring radius for display only. "
+                    + "Farther out means higher payout or pay rates, or a final stop nearer the hotspot. "
+                    + "Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers. "
+                    + "Drag the percentage sideways to scale all minimums without changing those saved values.",
                     star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
             // The per-stop spoke holds the set minimum as the example's 2 stops × $1.00, beside the adaptive 2 × $7.10.
@@ -968,6 +971,6 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY));
         chart.layout(0, 0, 1000, 400);
         chart.draw(new Canvas(Bitmap.createBitmap(1000, 400, Bitmap.Config.ARGB_8888)));
-        assertEquals("Chart of the last 3 offers: 0 passed, 2 declined, 1 need review.", chart.getContentDescription());
+        assertTrue(chart.getContentDescription().toString().startsWith("Chart of the last 3 offers: 0 passed, 2 declined, 1 need review."));
     }
 }
