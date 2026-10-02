@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * on "[offer-report]" issues, never on these.
  *
  * <p>A dash runs from the first offer (on screen or in a notification) after the last one filed, to its end:
- * Dasher showing the dash ended (its summary, or Dasher's home), Dasher's "End dash" screen, or 30 minutes with no
+ * Dasher showing the dash ended (its summary, or Dasher's home), or 30 minutes with no
  * offer after the last one. One issue per dash at most. Nothing about it decides anything about offers.
  */
 final class DashDiagnostics {
@@ -52,9 +52,6 @@ final class DashDiagnostics {
     /** Dasher showing the dash is over: its end, its summary, or Dasher's home with its Dash button. */
     private static final Set<String> ENDED = new HashSet<>(Arrays.asList(
             "dash ended", "your dash has ended", "dash summary", "dash now", "start dashing"));
-    /** Dasher's own "End dash" screen. */
-    private static final Set<String> END_DASH = new HashSet<>(Arrays.asList(
-            "end dash", "end your dash", "end this dash"));
 
     /** Why a dash counts as over. */
     enum End {
@@ -192,22 +189,16 @@ final class DashDiagnostics {
 
     /**
      * Whether a screen ends a dash, and how: Dasher's dash ended, its summary or its "Dash now" home
-     * ({@link End#DASH_OVER}, as {@link Dashing} counts them, less a pause), or its "End dash" screen when nothing of
-     * the dash (the wait for offers, a delivery, an offer) is on it ({@link End#END_DASH}). A paused dash is not over;
-     * 30 quiet minutes end it. Null for any other screen.
+     * ({@link End#DASH_OVER}, as {@link Dashing} counts them). A pause, end-dash menu or confirmation question is
+     * not evidence of completion. The existing quiet fallback is separate. Null for any other screen.
      */
     static End endOf(List<String> labels) {
         if (labels == null || labels.isEmpty()) return null;
-        boolean endDash = false;
         for (String raw : labels) {
             String label = OfferEvidence.normalize(raw).toLowerCase(Locale.US).replaceAll("[.!?…]+$", "");
             if (ENDED.contains(label)) return End.DASH_OVER;
-            if (END_DASH.contains(label) || label.startsWith("are you sure you want to end your dash")) endDash = true;
         }
-        // Dasher's home with its "Dash" button alone is left out, as the homepage's count of dashes leaves it out.
-        boolean dashing = DasherScene.showsRoute(labels) || DasherScene.showsWaiting(labels)
-                || DasherScene.showsNewOffer(labels) || AcceptedOfferTracker.showsOfferFacts(labels);
-        return endDash && !dashing ? End.END_DASH : null;
+        return null;
     }
 
     private static void ended(Context app, long now, End why) {
@@ -263,26 +254,27 @@ final class DashDiagnostics {
     private static void file(Context app, Dash dash) {
         String span = span(dash.start, dash.end);
         boolean queued = false;
-        int count = 0;
         try {
             String version = Updater.version(app);
             // The dash's own token, in its issue's body and kept with it: a retry finds the issue it filed by it.
             String token = ReportOutbox.newDashToken();
             List<String> parts = parts(intro(version, span, dash.why) + ReportOutbox.dashMark(token) + "\n",
-                    DiagnosticLog.fullReport(app), MAX_PART_CHARS);
-            count = parts.size();
+                    DiagnosticLog.fullReport(app), MAX_PART_CHARS - 128);
             queued = ReportOutbox.submitDiagnostics(app, TITLE_PREFIX + " " + AppName.NAME + " " + version + " " + span,
-                    parts, token);
+                    parts, token, saved -> {
+                        if (saved) prefs(app).edit().putString(LAST_DASH, span).apply();
+                        DiagnosticLog.log(app, "diagnostics", "dash " + span + " ended (" + dash.why.why + "): "
+                                + (saved ? parts.size() + (parts.size() == 1 ? " part" : " parts") + " queued to send"
+                                        : "not queued (queue full, storage unavailable or sharing stopped)"));
+                    });
         } catch (RuntimeException failure) {
             // On a background thread an escaping exception would take the whole app, screen reader included.
             DiagnosticLog.log(app, "diagnostics", "could not build the dash's report: "
                     + failure.getClass().getSimpleName());
             return;
         }
-        if (queued) prefs(app).edit().putString(LAST_DASH, span).apply();
-        DiagnosticLog.log(app, "diagnostics", "dash " + span + " ended (" + dash.why.why + "): "
-                + (queued ? count + (count == 1 ? " part" : " parts") + " queued to send"
-                        : "not queued (diagnostics are off, the queue is full or today's 6 were sent)"));
+        if (!queued) DiagnosticLog.log(app, "diagnostics", "dash " + span + " ended (" + dash.why.why + "): "
+                + "not queued (diagnostics are off or today's 6 were queued)");
     }
 
     private static String intro(String version, String span, End why) {

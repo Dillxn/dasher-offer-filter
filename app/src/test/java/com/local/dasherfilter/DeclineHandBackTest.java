@@ -328,6 +328,12 @@ public class DeclineHandBackTest {
         show(service, fresh);
         assertEquals("same facts with a reset countdown is a new instance", 1, at.size());
         contains(DiagnosticLog.read(app), "[takeover] ended: new instance (countdown)");
+        List<DecisionLog.Entry> history = DecisionLog.recent(app, 10);
+        assertEquals("same facts from two offer instances remain separate", 2, history.size());
+        assertEquals(DecisionLog.Action.DECLINE_TAPPED, history.get(0).action);
+        assertEquals(DecisionLog.Action.USER_TOOK_OVER, history.get(1).action);
+        show(service, offer("$7.90", "0:46"));
+        assertEquals("ordinary countdown progress never splits the history", 2, DecisionLog.recent(app, 10).size());
     }
 
     @Test

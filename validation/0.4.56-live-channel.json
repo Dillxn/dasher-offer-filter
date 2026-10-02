@@ -1,0 +1,40 @@
+{
+  "result": "PASS",
+  "packageName": "com.local.dasherfilter",
+  "versionCode": 62,
+  "versionName": "0.4.56",
+  "sha256": "d4148cb7eb895fdae1a93ed295a4eae90f8610ba7107c7fa65131079c94d8219",
+  "bytes": 402515,
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "transport": "production UpdateTransport.java",
+  "sourceCommit": "97a4918d92adb1406cba17370e769556cdda8669",
+  "verifiedAtUtc": "2026-10-02T19:42:06.896589+00:00",
+  "receiptCapturedUtc": "2026-10-02T19:42:16.604915+00:00",
+  "releaseCommit": "f9c9694f97ca179f42f28bb8b22d20f075097ebc",
+  "renderDeployId": "dep-db00hlu7bikc73fneq9g",
+  "renderLiveAtUtc": "2026-10-02T19:41:45.423414+00:00",
+  "renderFeed": "https://dash-offer-filter-build.onrender.com/latest.json",
+  "deployMetadataSource": "Parent-supplied observed Render deployment details",
+  "transportProofSha256": "f0ce862ad2bf8243de5af865b03191cc951ee2a95f9e60d66b5cc8cebac5b3bc",
+  "publicFeedSha256": "1602beaf416193f3a13afcf107e2bbe59cfe72b07dd1a1e6420687df75d7e5e7",
+  "repositoryFeedSha256": "923a7cc57142f0fc654da8c4bc66dea531bb19e1a65686f40df9e9c03fb57bd5",
+  "gate": {
+    "sourceCommit": "97a4918d92adb1406cba17370e769556cdda8669",
+    "gateResult": "PASS",
+    "suiteCount": 92,
+    "tests": {
+      "tests": 1669,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lintErrors": 0,
+    "lintWarnings": 34,
+    "inputCount": 207,
+    "aggregateSha256": "1191477412724ce8dfc5bf520033954fcbe6f2260bb52ef2df23eb72b24fcccd",
+    "testReceiptSha256": "90455601ccfe24cdbf4dedea4c989159f1728d519678304cdd4fea52f5584dd9",
+    "inputManifestSha256": "6c4e275c298f5507cf91beddf38657b7d22f6900801e9a87a9109b12d58230b1"
+  },
+  "deviceInstallVerified": false,
+  "evidenceBoundary": "Published metadata, production-downloaded APK bytes, package/version and signing identity; no handset installation or real DoorDash behavior verified."
+}

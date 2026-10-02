@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Draft of 1 October 2026. Not legal advice; have a lawyer review before public release.
+Draft of 2 October 2026. Not legal advice; have a lawyer review before public release.
 
 ## What Offer Filter is
 
@@ -12,6 +12,7 @@ By tapping I understand on the app's first screen, or by using the app, you acce
 
 - It reads the Dasher app's screen and notifications on your phone, through Android's accessibility service and notification access, which you turn on yourself.
 - It compares each offer with the minimums you set. When an offer is below them, it can tap Decline, and then Dasher's confirmation, for you. It never taps Accept.
+- If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, it can press Back and retry the same offer, at most twice within the original attempt's time limit. It checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher stops this recovery; an unknown loading screen alone never permits it.
 - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were using after completion evidence; while navigation is detected, it also returns for passing or unclear offers and leaves a card. Otherwise those offers stay in Dasher. Your touch or app switch ends that automatic return. You can turn Peek off in Settings.
 - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.

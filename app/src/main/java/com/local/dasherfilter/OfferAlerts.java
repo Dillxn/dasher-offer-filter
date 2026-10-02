@@ -55,9 +55,13 @@ final class OfferAlerts {
         manager.deleteNotificationChannel(RETIRED_SILENT_REVIEW_CHANNEL_ID);
     }
 
-    /** Whether the passing-offer channel can actually post. */
+    /** Readiness covers both offer channels and a notice channel the user has already blocked. */
     static boolean canNotify(Context context) {
-        return canNotify(context, CHANNEL_ID);
+        if (!canNotify(context, CHANNEL_ID) || !canNotify(context, REVIEW_CHANNEL_ID)) return false;
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        NotificationChannel reminder = manager.getNotificationChannel(ConsentReminder.CHANNEL_ID);
+        // This channel is created only when a notice waits. Its absence before then is not a missing permission.
+        return reminder == null || reminder.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
 
     private static boolean canNotify(Context context, String channelId) {

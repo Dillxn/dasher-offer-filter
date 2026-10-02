@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import android.app.Application;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
@@ -38,6 +39,7 @@ public class OfferSilencerRecoveryTest {
         audio = app.getSystemService(AudioManager.class);
         FaultAudioManager.crashAfterSet = false;
         FaultAudioManager.ignoreSet = false;
+        FaultAudioManager.refuseSet = false;
         prefs().edit().clear().commit();
         OfferSilencer.forgetCache();
         Updater.setEnabled(app, false);
@@ -50,6 +52,7 @@ public class OfferSilencerRecoveryTest {
     @After public void teardown() {
         FaultAudioManager.crashAfterSet = false;
         FaultAudioManager.ignoreSet = false;
+        FaultAudioManager.refuseSet = false;
         silencer.stop();
     }
 
@@ -106,6 +109,43 @@ public class OfferSilencerRecoveryTest {
         assertTrue(prefs().getAll().isEmpty());
     }
 
+    @Test public void deniedRestoreKeepsTheReceiptUntilAndroidAllowsIt() {
+        saveInterruptedAlarm();
+        FaultAudioManager.refuseSet = true;
+        OfferSilencer.restore(app);
+        assertEquals(1, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertEquals(5, prefs().getInt("stream_" + AudioManager.STREAM_ALARM, -1));
+        FaultAudioManager.refuseSet = false;
+        OfferSilencer.restore(app);
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertTrue(prefs().getAll().isEmpty());
+    }
+
+    @Test public void ignoredRestoreKeepsTheReceiptUntilTheVolumeActuallyReturns() {
+        saveInterruptedAlarm();
+        FaultAudioManager.ignoreSet = true;
+        OfferSilencer.restore(app);
+        assertEquals(1, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertEquals(5, prefs().getInt("stream_" + AudioManager.STREAM_ALARM, -1));
+        FaultAudioManager.ignoreSet = false;
+        OfferSilencer.restore(app);
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertTrue(prefs().getAll().isEmpty());
+    }
+
+    @Test public void unavailableAudioManagerDoesNotForgetTheInterruptedVolume() {
+        saveInterruptedAlarm();
+        OfferSilencer.restore(new ContextWrapper(app) {
+            @Override public Object getSystemService(String name) {
+                return Context.AUDIO_SERVICE.equals(name) ? null : super.getSystemService(name);
+            }
+        });
+        assertEquals(5, prefs().getInt("stream_" + AudioManager.STREAM_ALARM, -1));
+        OfferSilencer.restore(app);
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertTrue(prefs().getAll().isEmpty());
+    }
+
     private void saveInterruptedAlarm() {
         audio.setStreamVolume(AudioManager.STREAM_ALARM, 1, 0);
         prefs().edit().putInt("stream_" + AudioManager.STREAM_ALARM, 5)
@@ -120,8 +160,10 @@ public class OfferSilencerRecoveryTest {
     public static class FaultAudioManager extends ShadowAudioManager {
         static boolean crashAfterSet;
         static boolean ignoreSet;
+        static boolean refuseSet;
 
         @Implementation @Override public void setStreamVolume(int stream, int index, int flags) {
+            if (refuseSet && stream == AudioManager.STREAM_ALARM) throw new SecurityException("volume denied");
             if (ignoreSet && stream == AudioManager.STREAM_ALARM) return;
             super.setStreamVolume(stream, index, flags);
             if (crashAfterSet && stream == AudioManager.STREAM_ALARM) throw new SimulatedProcessDeath();

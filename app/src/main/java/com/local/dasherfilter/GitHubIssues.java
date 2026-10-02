@@ -126,6 +126,26 @@ final class GitHubIssues {
         }
     }
 
+    /** Finds one opaque part marker across an issue's comments; an incomplete search fails closed. */
+    static boolean findComment(String token, int issue, String marker) throws IOException {
+        if (issue <= 0) throw new IOException("No issue to inspect");
+        try {
+            for (int page = 1; page <= 100; page++) {
+                String url = endpoint + "/" + issue + "/comments?per_page=" + LIST_PAGE + "&page=" + page;
+                org.json.JSONArray comments = new org.json.JSONArray(transport.send("GET", url, token, null,
+                        MAX_LIST_BYTES));
+                for (int i = 0; i < comments.length(); i++) {
+                    JSONObject comment = comments.optJSONObject(i);
+                    if (comment != null && comment.optString("body", "").contains(marker)) return true;
+                }
+                if (comments.length() < LIST_PAGE) return false;
+            }
+            throw new IOException("Comment receipt search incomplete; no duplicate comment created");
+        } catch (JSONException malformed) {
+            throw new IOException("Unreadable GitHub response", malformed);
+        }
+    }
+
     /** POSTs {@code json} and returns GitHub's answer to a created item (201). */
     private static String post(String url, String token, JSONObject json) throws IOException {
         return transport.send("POST", url, token, json.toString(), MAX_RESPONSE_BYTES);

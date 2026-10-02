@@ -959,7 +959,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("the per-mile minimum is saved: " + saved.perMileCents, saved.perMileCents > 0);
             assertEquals("only it", 0, saved.flatCents);
             assertFalse("auto-decline stays paused", saved.enabled);
-            assertEquals("Rule saved. Auto-decline stays paused until you Resume it.",
+            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.",
                     org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
         }
     }

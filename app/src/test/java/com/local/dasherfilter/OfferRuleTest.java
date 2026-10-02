@@ -506,6 +506,10 @@ public final class OfferRuleTest {
         OfferRule.Decision withoutRoute = OfferRule.evaluateAddOn(noRoute, perStop);
         assertEquals(OfferRule.Result.DECLINE, withoutRoute.result);
         assertEquals(400L, withoutRoute.requiredCents);
+        AddOnOffer readableAddedPay = AddOnOffer.parse(null, Arrays.asList("Add to route", "+$5.50", "+2 stops"));
+        OfferRule.Decision routeUnknown = OfferRule.evaluateAddOn(readableAddedPay, perStop);
+        assertEquals(OfferRule.Result.REVIEW, routeUnknown.result);
+        assertEquals("add-on has missing or ambiguous incremental/route evidence", routeUnknown.reason);
     }
 
     @Test

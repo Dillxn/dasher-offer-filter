@@ -11,6 +11,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -97,5 +100,94 @@ public class PlacesTest {
         Places.forget(app);
         assertFalse(Places.enabled(app));
         assertFalse(app.getSharedPreferences("places", 0).contains("name:" + Places.key(41.9, -87.68)));
+    }
+
+    @Test public void cacheEvictsAnUnusedNameAndKeepsARecentlyReadName() throws Exception {
+        android.content.SharedPreferences prefs = app.getSharedPreferences("places", 0);
+        android.content.SharedPreferences.Editor seed = prefs.edit();
+        for (int i = 0; i < Places.MAX_NAMES; i++) {
+            seed.putString("name:" + Places.key(40 + i * Places.ROUNDING, -87), "Area " + i);
+        }
+        seed.commit();
+        assertEquals("Area 0", Places.name(app, 40, -87));
+        ShadowGeocoder.setIsPresent(true);
+        AtomicInteger asks = new AtomicInteger();
+        Places.lookup = (context, latitude, longitude) -> {
+            asks.incrementAndGet();
+            return Collections.singletonList(address("New area", null, null));
+        };
+        long before = Places.version();
+        Places.name(app, 42, -87);
+        awaitChange(before);
+        assertEquals(Places.MAX_NAMES, countNames());
+        assertTrue("the recently read oldest name stays", prefs.contains("name:" + Places.key(40, -87)));
+        assertFalse("the least recently used name goes", prefs.contains("name:" + Places.key(40.005, -87)));
+        assertEquals("New area", Places.name(app, 42, -87));
+        assertEquals(1, asks.get());
+    }
+
+    @Test public void anOldUnboundedCacheIsTrimmedWhenFirstRead() {
+        android.content.SharedPreferences.Editor seed = app.getSharedPreferences("places", 0).edit();
+        for (int i = 0; i < Places.MAX_NAMES + 20; i++) {
+            seed.putString("name:" + Places.key(40 + i * Places.ROUNDING, -87), "Area " + i);
+        }
+        seed.commit();
+        ShadowGeocoder.setIsPresent(false);
+        Places.name(app, 40, -87);
+        assertEquals(Places.MAX_NAMES, countNames());
+        Places.forget(app);
+        assertEquals(0, countNames());
+        assertFalse(app.getSharedPreferences("places", 0).contains("recent_names"));
+    }
+
+    @Test public void clearingWhileLookupRunsCannotRestoreOldNamesOrCancelANewRequest() throws Exception {
+        ShadowGeocoder.setIsPresent(true);
+        CountDownLatch firstEntered = new CountDownLatch(1), secondEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1), releaseSecond = new CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        Places.lookup = (context, latitude, longitude) -> {
+            int call = calls.incrementAndGet();
+            (call == 1 ? firstEntered : secondEntered).countDown();
+            await(call == 1 ? releaseFirst : releaseSecond);
+            return Collections.singletonList(address(call == 1 ? "Old area" : "Fresh area", null, null));
+        };
+        try {
+            Places.name(app, 40, -87);
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            Places.forget(app);
+            long cleared = Places.version();
+            Places.name(app, 40, -87);
+            releaseFirst.countDown();
+            assertTrue("a new request survives the stale result", secondEntered.await(5, TimeUnit.SECONDS));
+            assertEquals("the old result has completed, but restored nothing", 0, countNames());
+            assertEquals(cleared, Places.version());
+            releaseSecond.countDown();
+            awaitChange(cleared);
+            assertEquals("Fresh area", Places.name(app, 40, -87));
+            assertEquals(1, countNames());
+        } finally {
+            releaseFirst.countDown();
+            releaseSecond.countDown();
+        }
+    }
+
+    private long countNames() {
+        return app.getSharedPreferences("places", 0).getAll().keySet().stream()
+                .filter(key -> key.startsWith("name:")).count();
+    }
+
+    private void awaitChange(long before) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (Places.version() == before && System.nanoTime() < deadline) Thread.sleep(5);
+        assertTrue("lookup finishes", Places.version() != before);
+    }
+
+    private static void await(CountDownLatch latch) throws java.io.IOException {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) throw new java.io.IOException("test lookup timeout");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new java.io.IOException(interrupted);
+        }
     }
 }

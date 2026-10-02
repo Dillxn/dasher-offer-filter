@@ -438,32 +438,25 @@ public class DashDiagnosticsTest {
     }
 
     @Test
-    public void offlineItWaitsAndARetryNeverFilesTheDashTwice() throws IOException, JSONException {
+    public void rateLimitedPartsWaitAndARetryNeverFilesTheDashTwice() throws IOException, JSONException {
         diagnosticsOn();
         aLongDash();
         dashUntilItEnds();
         assertEquals(1, queuedDiagnostics());
 
-        // The issue goes through, its comments do not (GitHub is down): kept for the outbox's retry with backoff.
+        // An explicit rate-limit refusal proves the comment was not created; it may be retried.
         on("/issues", 201, "{\"number\": 7}");
-        on("/issues/7/comments", 503, "{\"message\": \"try later\"}");
+        on("/issues/7/comments", 429, "{\"message\": \"try later\"}");
         assertTrue("asks Android to retry", ReportOutbox.drain(app));
         assertEquals(1, queuedDiagnostics());
         JobScheduler jobs = app.getSystemService(JobScheduler.class);
         assertTrue(jobs.getPendingJob(ReportOutbox.JOB_ID) != null);
 
-        // No connection at all.
-        String reachable = GitHubIssues.endpoint;
-        int closedPort;
-        try (ServerSocket socket = new ServerSocket(0)) {
-            closedPort = socket.getLocalPort();
-        }
-        GitHubIssues.endpoint = "http://127.0.0.1:" + closedPort + "/issues";
-        assertTrue(ReportOutbox.drain(app));
+        // While Android has stopped the job, no outgoing part is attempted or marked ambiguous.
+        assertTrue(ReportOutbox.drain(app, () -> true));
         assertEquals(1, queuedDiagnostics());
 
         // Back online: only the comments still owed are sent, on the issue already filed.
-        GitHubIssues.endpoint = reachable;
         for (int i = 0; i < 5; i++) on("/issues/7/comments", 201, "{\"id\": " + i + "}");
         assertFalse(ReportOutbox.drain(app));
         assertEquals(0, queuedDiagnostics());
@@ -503,7 +496,7 @@ public class DashDiagnosticsTest {
         java.io.File file = queuedNameFixture(0);
         on("/issues", 422, "{\"message\": \"Validation Failed\"}");
         on("/issues", 201, "{\"number\": 7}");
-        on("/issues/7/comments", 503, "{\"message\": \"try later\"}");
+        on("/issues/7/comments", 429, "{\"message\": \"try later\"}");
 
         assertTrue(ReportOutbox.drain(app));
         assertEquals(1, queuedDiagnostics());
@@ -542,6 +535,86 @@ public class DashDiagnosticsTest {
         assertFalse(body, body.contains("Morgan"));
         assertTrue(body, body.contains("[name], Fictional Market, 1 items, Confirm]"));
         assertEquals(0, queuedDiagnostics());
+    }
+
+    @Test
+    public void queuedMaskingPreservesAmbiguousCommentReceiptWithoutReposting() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        java.io.File file = queuedNameFixture(19);
+        GitHubIssues.Transport original = GitHubIssues.transport;
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<String> sent = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            GitHubIssues.transport = (method, url, token, json, max) -> {
+                if (method.equals("GET")) {
+                    if (lookups.incrementAndGet() == 1) return "[]";
+                    try { return new org.json.JSONArray().put(new JSONObject().put("body", sent.get())).toString(); }
+                    catch (JSONException error) { throw new IOException(error); }
+                }
+                assertTrue("only the existing issue's comment is posted", url.endsWith("/issues/19/comments"));
+                posts.incrementAndGet();
+                try { sent.set(new JSONObject(json).getString("body")); }
+                catch (JSONException error) { throw new IOException(error); }
+                String kept = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                assertFalse("sanitized before transport", kept.contains("Avery") || kept.contains("Morgan"));
+                throw new IOException("synthetic comment was created but its response was lost");
+            };
+            assertTrue(ReportOutbox.drain(app));
+            assertFalse(sent.get().contains("Morgan"));
+            assertTrue(sent.get().contains("<!-- offer-filter-part:invented-dash-receipt:0 -->"));
+            JSONObject receipt = new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    StandardCharsets.UTF_8));
+            assertTrue(receipt.getBoolean("comment_posted"));
+            assertEquals("invented-dash-receipt", receipt.getString("token"));
+            assertTrue("missing receipt stays pending", ReportOutbox.drain(app));
+            assertEquals(1, posts.get());
+            assertFalse("found receipt completes without another POST", ReportOutbox.drain(app));
+            assertEquals(1, posts.get());
+            assertEquals(2, lookups.get());
+            assertEquals(0, queuedDiagnostics());
+        } finally {
+            GitHubIssues.transport = original;
+        }
+    }
+
+    @Test
+    public void queuedMaskingPreservesJobStopAndResumeReceipt() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        java.io.File file = queuedNameFixture(0);
+        GitHubIssues.Transport original = GitHubIssues.transport;
+        java.util.concurrent.atomic.AtomicBoolean stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicInteger issues = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger comments = new java.util.concurrent.atomic.AtomicInteger();
+        try {
+            GitHubIssues.transport = (method, url, token, json, max) -> {
+                String kept = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                assertFalse("sanitized before every outgoing part", kept.contains("Avery") || kept.contains("Morgan"));
+                if (url.endsWith("/comments")) {
+                    comments.incrementAndGet();
+                    return "{\"id\":1}";
+                }
+                issues.incrementAndGet();
+                stopped.set(true);
+                return "{\"number\":77}";
+            };
+            assertTrue(ReportOutbox.drain(app, stopped::get));
+            assertEquals(1, issues.get());
+            assertEquals(0, comments.get());
+            JSONObject receipt = new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    StandardCharsets.UTF_8));
+            assertEquals(77, receipt.getInt("issue"));
+            assertEquals("invented-dash-receipt", receipt.getString("token"));
+            stopped.set(false);
+            assertFalse(ReportOutbox.drain(app, stopped::get));
+            assertEquals("resume keeps the existing issue", 1, issues.get());
+            assertEquals(1, comments.get());
+            assertEquals(0, queuedDiagnostics());
+        } finally {
+            GitHubIssues.transport = original;
+        }
     }
 
     @Test
@@ -604,8 +677,9 @@ public class DashDiagnosticsTest {
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash ended", "$84.20")));
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash summary", "4 offers")));
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash now", "Schedule")));
-        assertEquals(DashDiagnostics.End.END_DASH, DashDiagnostics.endOf(Arrays.asList("End dash?",
+        assertNull("a proposal to end can still be cancelled", DashDiagnostics.endOf(Arrays.asList("End dash?",
                 "Are you sure you want to end your dash?", "End dash", "Cancel")));
+        assertNull("a menu action alone is not completion", DashDiagnostics.endOf(Arrays.asList("End dash")));
         assertNull("the dash's own screen", DashDiagnostics.endOf(Arrays.asList("Finding offers", "End dash")));
         assertNull("a pause", DashDiagnostics.endOf(Arrays.asList("Dash paused", "Resume dash", "End dash")));
         assertNull("a delivery", DashDiagnostics.endOf(Arrays.asList("Deliver by 9:45 PM", "Complete delivery steps",

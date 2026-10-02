@@ -166,7 +166,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             FilterSettings saved = FilterStore.load(app);
             assertEquals(2, saved.maxStops);
             assertFalse(saved.enabled);
-            assertEquals("Rule saved. Auto-decline stays paused until you Resume it.",
+            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.",
                     org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
             assertNull("the start hint goes once there is a rule", shownTextContaining(content,
                     MainActivity.START_HINT));

@@ -84,12 +84,22 @@ final class OfferEvidence {
         return -1;
     }
 
-    /** Screens that show the dash is over or on a break, not just between offers. */
+    /** A pause is still part of the current dash, especially while an update is waiting. */
+    static boolean isPaused(List<String> labels) {
+        if (labels == null) return false;
+        for (String raw : labels) {
+            String label = TRAILING_PUNCTUATION.matcher(normalize(raw).toLowerCase(Locale.US)).replaceAll("");
+            if (label.equals("dash paused") || label.equals("resume dash")) return true;
+        }
+        return false;
+    }
+
+    /** Screens that positively show the dash is over, not a temporary pause. */
     private static final List<String> DASH_OVER_LABELS = Arrays.asList(
-            "dash now", "start dashing", "dash paused", "resume dash", "dash ended", "your dash has ended",
+            "dash now", "start dashing", "dash ended", "your dash has ended",
             "dash summary");
 
-    /** True when Dasher shows the dash ended or paused. */
+    /** True when Dasher shows the dash ended. */
     static boolean isDashOver(List<String> labels) {
         if (labels == null) return false;
         for (String raw : labels) {

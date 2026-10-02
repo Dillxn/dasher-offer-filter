@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 
 /**
  * Whether the user is dashing, as far as the app has seen: an offer, Dasher's "finding offers" screen or a delivery
- * screen within the last half hour, or a route still under way, and no "dash ended" or "dash paused" screen since.
+ * screen within the last half hour, or a route still under way, and no positive dash-end screen since.
  * It drives the homepage's live monitoring and its per-dash counts; nothing about offers is decided from it. A dash
  * starts at the first such sight after the last one ended (or went quiet for half an hour).
  */
@@ -16,6 +16,8 @@ final class Dashing {
     private static final String SEEN_AT = "seen_at";
     private static final String ENDED_AT = "ended_at";
     private static final String STARTED_AT = "started_at";
+    private static final String PAUSED = "paused";
+    private static final String OPEN = "open";
 
     private static volatile long lastWrite;
 
@@ -28,9 +30,10 @@ final class Dashing {
         long now = System.currentTimeMillis();
         SharedPreferences prefs = prefs(context);
         boolean onDash = onDash(prefs, now);
-        if (onDash && now - lastWrite < WRITE_EVERY_MS && now >= lastWrite) return;
+        if (onDash && !prefs.getBoolean(PAUSED, false)
+                && now - lastWrite < WRITE_EVERY_MS && now >= lastWrite) return;
         lastWrite = now;
-        SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now);
+        SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now).putBoolean(OPEN, true).remove(PAUSED);
         if (!onDash) edit.putLong(STARTED_AT, now);
         edit.apply();
     }
@@ -38,7 +41,7 @@ final class Dashing {
     private static boolean onDash(SharedPreferences prefs, long now) {
         long seen = prefs.getLong(SEEN_AT, 0);
         long age = now - seen;
-        return seen > prefs.getLong(ENDED_AT, 0) && age >= 0 && age < WINDOW_MS;
+        return open(prefs) && age >= 0 && age < WINDOW_MS;
     }
 
     /**
@@ -55,16 +58,43 @@ final class Dashing {
         return new long[] {started, end};
     }
 
-    /** Dasher said the dash ended or paused. */
+    /** Dasher positively said the dash ended. A pause is still the same shift. */
     static void ended(Context context) {
         lastWrite = 0;
-        prefs(context).edit().putLong(ENDED_AT, System.currentTimeMillis()).apply();
+        prefs(context).edit().putLong(ENDED_AT, System.currentTimeMillis()).putBoolean(OPEN, false)
+                .remove(PAUSED).apply();
+    }
+
+    /** A pause keeps the shift open but must release the screen-on lease. */
+    static void paused(Context context) {
+        if (!prefs(context).getBoolean(PAUSED, false)) {
+            seen(context);
+            prefs(context).edit().putBoolean(PAUSED, true).apply();
+        }
+    }
+
+    static boolean isPaused(Context context) {
+        return prefs(context).getBoolean(PAUSED, false);
     }
 
     /** Whether the homepage should show the app watching: a dash is on and something can watch it. */
     static boolean now(Context context) {
         if (!OfferFilterService.isConnected() && !OfferNotificationService.isConnected()) return false;
         return on(context);
+    }
+
+    /**
+     * An observed shift has not positively ended. Used only to hold automatic installation: a quiet or locked
+     * phone, an interrupted service, and the homepage's half-hour freshness limit are not evidence that a shift
+     * is over. This conservative hold survives restart; the user's Updates tap can still install explicitly.
+     */
+    static boolean awaitingEnd(Context context) {
+        return open(prefs(context));
+    }
+
+    private static boolean open(SharedPreferences prefs) {
+        long seen = prefs.getLong(SEEN_AT, 0);
+        return prefs.getBoolean(OPEN, seen > 0 && seen > prefs.getLong(ENDED_AT, 0));
     }
 
     /**
@@ -75,10 +105,9 @@ final class Dashing {
     static boolean on(Context context) {
         SharedPreferences prefs = prefs(context);
         long seen = prefs.getLong(SEEN_AT, 0);
-        long ended = prefs.getLong(ENDED_AT, 0);
         long age = System.currentTimeMillis() - seen;
-        boolean recent = seen > ended && age >= 0 && age < WINDOW_MS;
-        return recent || (seen > ended && ActiveRouteStore.load(context) != null);
+        boolean recent = open(prefs) && age >= 0 && age < WINDOW_MS;
+        return recent || (open(prefs) && ActiveRouteStore.load(context) != null);
     }
 
     /** For tests: forget the write throttle. */

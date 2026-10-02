@@ -1,12 +1,11 @@
 package com.local.dasherfilter;
 
 import android.content.Context;
+import android.util.AtomicFile;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -500,6 +499,8 @@ final class DecisionLog {
     }
 
     private static final Object LOCK = new Object();
+    /** Reads and atomic replacement share this lock; never held while acquiring LOCK. */
+    private static final Object FILE_LOCK = new Object();
     private static final ExecutorService WRITER = Executors.newSingleThreadExecutor();
     /** Oldest first; null until first loaded from disk. Guarded by {@link #LOCK}. */
     private static List<Entry> entries;
@@ -521,6 +522,15 @@ final class DecisionLog {
      * @return the notifications this reading took (with their in-memory card tags), oldest first; empty when none
      */
     static List<Entry> record(Context context, Entry entry, int secondsLeft) {
+        return record(context, entry, secondsLeft, false);
+    }
+
+    /**
+     * Records the first reading of a proven new screen incarnation separately even when its numbers match the
+     * prior offer. Only the scanner's fresh-countdown/new-offer evidence sets this flag; subsequent reads and
+     * confirmation upgrades use the ordinary overload. Notification pairing and once-per-offer counts still apply.
+     */
+    static List<Entry> record(Context context, Entry entry, int secondsLeft, boolean newScreenInstance) {
         List<Entry> taken = new ArrayList<>();
         try {
             synchronized (LOCK) {
@@ -528,6 +538,7 @@ final class DecisionLog {
                 // Before anything changes, so a first count starts from the history as it was.
                 totals(context);
                 for (int i = all.size() - 1; i >= Math.max(0, all.size() - 6); i--) {
+                    if (newScreenInstance && entry.source == Source.SCREEN) break;
                     Entry previous = all.get(i);
                     if (previous.source != entry.source) continue;
                     if (!previous.sameOffer(entry)) break;
@@ -694,8 +705,10 @@ final class DecisionLog {
             version++;
             File file = file(context);
             WRITER.execute(() -> {
-                //noinspection ResultOfMethodCallIgnored
-                file.delete();
+                synchronized (FILE_LOCK) {
+                    new AtomicFile(file).delete();
+                    new File(file.getPath() + ".tmp").delete();
+                }
             });
         }
     }
@@ -718,6 +731,7 @@ final class DecisionLog {
                     .append(" | ").append(facts(entry.facts))
                     .append(" | ").append(entry.reason)
                     .append(" | ").append(entry.action.label)
+                    .append(" | outcome ").append(outcome(entry).word)
                     .append(entry.autoDecline ? "" : " | auto-decline paused")
                     .append('\n');
             if (!entry.evidence.isEmpty()) {
@@ -809,7 +823,7 @@ final class DecisionLog {
 
     private static List<Entry> loaded(Context context) {
         if (entries == null) {
-            entries = load(file(context));
+            entries = load(context, file(context));
             foldStoredOnce(context, entries);
         }
         return entries;
@@ -844,44 +858,54 @@ final class DecisionLog {
         }
     }
 
-    private static List<Entry> load(File file) {
+    private static List<Entry> load(Context context, File file) {
         List<Entry> out = new ArrayList<>();
-        if (!file.isFile()) return out;
-        try (InputStream in = new FileInputStream(file); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
-            JSONArray array = new JSONArray(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
-            for (int i = Math.max(0, array.length() - MAX_ENTRIES); i < array.length(); i++) {
-                out.add(Entry.fromJson(array.getJSONObject(i)));
+        synchronized (FILE_LOCK) {
+            AtomicFile atomic = new AtomicFile(file);
+            if (!file.exists() && !new File(file.getPath() + ".bak").exists()) return out;
+            try (InputStream in = atomic.openRead(); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    bytes.write(buffer, 0, count);
+                    if (bytes.size() > 4 * 1024 * 1024) throw new IOException("history exceeds bound");
+                }
+                JSONArray array = new JSONArray(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
+                int skipped = 0;
+                for (int i = Math.max(0, array.length() - MAX_ENTRIES); i < array.length(); i++) {
+                    try { out.add(Entry.fromJson(array.getJSONObject(i))); }
+                    catch (JSONException | IllegalArgumentException corruptEntry) { skipped++; }
+                }
+                if (skipped > 0) DiagnosticLog.log(context, "decision-log", "unreadable history entries skipped: " + skipped);
+            } catch (IOException | JSONException | IllegalArgumentException corrupt) {
+                DiagnosticLog.log(context, "decision-log", "history could not be recovered: " + corrupt.getClass().getSimpleName());
             }
-        } catch (IOException | JSONException | IllegalArgumentException corrupt) {
-            out.clear();
         }
         return out;
     }
 
-    /** Called under {@link #LOCK}; entries are immutable, so the writer thread serializes a snapshot. */
+    /** Called under LOCK; immutable entries are serialized off the decision thread. */
     private static void persist(Context context, List<Entry> all) {
         version++;
         List<Entry> snapshot = new ArrayList<>(all);
-        File file = file(context);
+        Context app = context.getApplicationContext();
+        File file = file(app);
         WRITER.execute(() -> {
-            JSONArray array = new JSONArray();
-            try {
-                for (Entry entry : snapshot) array.put(entry.toJson());
-            } catch (JSONException error) {
-                return;
+            synchronized (FILE_LOCK) {
+                AtomicFile atomic = new AtomicFile(file);
+                FileOutputStream out = null;
+                try {
+                    JSONArray array = new JSONArray();
+                    for (Entry entry : snapshot) array.put(entry.toJson());
+                    out = atomic.startWrite();
+                    out.write(array.toString().getBytes(StandardCharsets.UTF_8));
+                    out.getFD().sync();
+                    atomic.finishWrite(out);
+                } catch (IOException | JSONException | RuntimeException failure) {
+                    if (out != null) atomic.failWrite(out);
+                    DiagnosticLog.log(app, "decision-log", "history write failed: " + failure.getClass().getSimpleName());
+                }
             }
-            byte[] bytes = array.toString().getBytes(StandardCharsets.UTF_8);
-            File temp = new File(file.getParentFile(), FILE + ".tmp");
-            try (OutputStream out = new FileOutputStream(temp)) {
-                out.write(bytes);
-            } catch (IOException error) {
-                return;
-            }
-            //noinspection ResultOfMethodCallIgnored
-            temp.renameTo(file);
         });
     }
 

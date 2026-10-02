@@ -1,12 +1,39 @@
-## 0.4.54 — customer-name masking compatibility (unreleased)
+## 0.4.57 — customer-name masking compatibility (unreleased)
 
-- Preserve the continuation candidate's payment/account/unknown-screen discard policy, one-time legacy cleanup, current-notice requirement and durable report receipts.
-- Mask separate customer headings in serialized diagnostics and the separate name after the observed drop-off order-verification prompt. Also mask a separate name after "Scan customer name".
-- Re-mask each queued diagnostic body and pending comment before sending and persist that sanitized content before any network request, without reviving discarded reports.
-- Preserve the base candidate's minimums scale, patient decline retries, calmer fitness skyline/atlas and active-filtering screen-timeout guards.
-- Invented-data regressions cover recognized capture, retained export, unknown-screen discard, pending issue/comment retries and label fallback on Android APIs 26 and 35.
+- Mask separate customer headings, the order-verification prompt and the separate "Scan customer name" heading in retained diagnostic text, while preserving list boundaries, store names and offer figures.
+- Re-mask each queued diagnostic body and pending comment, durably persisting sanitized content before any outgoing request.
+- Preserve the current unknown/payment-screen discard policy, legacy cleanup, consent, job-stop/cancellation guards, and issue/comment receipt reconciliation. An ambiguous response never permits a blind repost.
+- Preserve the current decline recovery, restart suppression, UI and release-identity protections.
+- Invented-data regressions cover recognized capture, unknown-screen discard, queued retries, receipt reconciliation and cancellation.
 
-This is a compatibility proposal on the current 0.4.53 source, not a released app. The complete Android Gradle tests/lint, existing-key signed APK, live-channel and real-handset gates must be rerun on the integrated source. This does not remove reports already sent to GitHub.
+This is a source proposal on 0.4.56, not a released app. Full Android SDK tests, lint, packaging, existing-key signing and physical-device gates remain separate. This does not remove reports already uploaded to GitHub.
+
+## 0.4.56 — decline recovery timing and identity guards
+
+- Keeps Back recovery tied to the original complete offer and continuing countdown, including later retries. Changed labels or missing facts cannot reset the deadline or retry budget.
+- Retains recognized failure evidence while a slow screen read is in progress, and checks error freshness and screen changes immediately before Back. An explicit failure stays unconfirmed on later rereads.
+- Returns to normal confirmation handling once the owned question appears, while retaining failure evidence for that confirmation request.
+
+Validation: 1,669 tests across 92 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. All 207 frozen inputs were unchanged. Published with the original signer through GitHub and Render; a fresh production-updater download verified live 0.4.56/code 62. Evidence is recorded in [the recovery hardening record](VALIDATION_DECLINE_RECOVERY_0.4.56.md). The reported physical Samsung/Dasher failure remains unverified on a handset.
+
+## 0.4.55 — recovery from a failed decline
+
+- Recognizes Dasher's error toast during an automatic first-step decline. If Dasher then leaves a stable, recognized empty/map-only screen with Dasher alone in the foreground, the app can press Back and reread the same offer before retrying.
+- Caps recovery at two Back requests per offer, within the existing decline attempt count and original deadline. User touches, new offers, lock and leaving Dasher stop recovery; a blank loading screen alone never authorizes Back.
+- Keeps the error state from being reported as a completed decline. Recovery does not accept offers or add another control to the interface.
+- Updates the one-time notice to explain Back recovery and ephemeral toast reading. No raw toast text is retained.
+
+Validation: 1,631 tests across 92 suites passed with no failures, errors or skips, including simulated Android 8/15 adapters. Lint completed with zero errors and 34 warnings. The focused regression run passed 169 tests. All 202 frozen build/test inputs were unchanged. Published through GitHub and Render with the original signer; a fresh production-updater download verified live 0.4.55/code 61. See [the validation record](VALIDATION_DECLINE_ERROR_2026-10-02.md). The reported physical Samsung/Dasher failure has not been reproduced on a handset here. Recovery requires an accessibility toast identified as Dasher’s error and a non-actionable empty/map-labelled screen; a clickable map container, unrecognized toast format or ambiguous idle/navigation labels remain unconfirmed and are left to the user.
+
+## 0.4.54 — eleven-study reliability closeout
+
+- Keeps paused and quiet shifts safe from automatic installation; avoids repeatedly downloading an already verified waiting update. Uses the existing original-signer auto-update feeds.
+- Stops stale automation on lock/restart, handles scanner and Peek failures conservatively, and keeps fresh identical reoffers separate in history.
+- Makes report sharing responsive, bounds and clears place names, recovers interrupted history writes, and prevents repeated issue/comment uploads after lost replies.
+- Fixes older-Android split refresh, app-dialog touch attribution, setup guidance, alert evidence and failed sound restoration recovery.
+- Keeps learning details inside the selected ticket, labels strict scores as a reference, and corrects fresh outcome animations without adding permanent controls.
+
+Validation: 1,579 tests across 90 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. Published through GitHub and Render with the original signer; a fresh production-updater download verified live 0.4.54. See [closeout validation](VALIDATION_CLOSEOUT_2026-10-02.md). [All eleven investigations](INVESTIGATION_CLOSEOUT.md) are reconciled finding by finding, with optional recommendations and phone/external checks explicitly distinguished. The new privacy notice must be accepted once after updating. Automatic hotspot measurement remains unavailable; physical-phone checks and historical-report containment remain unverified.
 
 ## 0.4.53 — a quieter scene
 

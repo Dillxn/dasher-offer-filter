@@ -246,7 +246,7 @@ public class ScoreByAreaAdapterTest {
             find(content, DecisionChartView.class).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             // $12.00 for 4 mi, 20 min, 2 stops: strictly short of $15.40 for the miles; by area 110%.
-            assertNotNull(shownText(content, "Score 110%"));
+            assertNotNull(shownText(content, "Score reference · 110%"));
             assertNotNull(shownText(content, "Below your per-mile rate"));
         }
         DecisionLog.clear(app);

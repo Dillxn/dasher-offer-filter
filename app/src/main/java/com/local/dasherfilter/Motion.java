@@ -60,7 +60,8 @@ final class Motion {
     static void next(View view) {
         if (!on()) return;
         long delay = frameDelay();
-        if (delay > 0) view.postInvalidateDelayed(delay);
+        // All calm drawings share a frame boundary; separate views must not drift into many wakeups per second.
+        if (delay > 0) view.postInvalidateDelayed(delay - SystemClock.uptimeMillis() % delay);
         else view.postInvalidateOnAnimation();
     }
 

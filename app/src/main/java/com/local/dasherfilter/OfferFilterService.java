@@ -214,6 +214,8 @@ public final class OfferFilterService extends AccessibilityService {
     static volatile Runnable nodeFetchForTests;
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean scannerFaulted;
+    private boolean restartStateLoaded;
     private HandlerThread scannerThread;
     /** The scanner thread's handler: everything below marked "scanner" is touched only there. */
     private Handler scanner;
@@ -353,7 +355,10 @@ public final class OfferFilterService extends AccessibilityService {
             if (screenAwake != null) {
                 if (on) screenAwake.screenOn(); else screenAwake.screenOff();
             }
-            if (!on && !stopped) scanner.postAtFrontOfQueue(() -> peekOver("ended because the screen turned off"));
+            if (!stopped) scanner.postAtFrontOfQueue(() -> {
+                if (!on) suspendScreenReading();
+                else if (!scannerFaulted) scanNow(SystemClock.uptimeMillis(), "screen on");
+            });
         }
     };
     private boolean screenStateWatched;
@@ -372,6 +377,12 @@ public final class OfferFilterService extends AccessibilityService {
     /** Why Dasher's half beside the active app was last left unread (logged once per change), "" for none. */
     private String coverNoted = "";
     private final DeclineState declineState = new DeclineState();
+    private final DeclineErrorRecovery declineError = new DeclineErrorRecovery();
+    /** Published before a first-step request; a toast keeps this identity, never whatever offer is current later. */
+    private volatile ErrorAttempt errorAttempt;
+    private final Runnable errorRecoveryCheck = () -> {
+        if (!stopped && declineError.pending()) scanNow(SystemClock.uptimeMillis(), "decline error recovery");
+    };
     /** The decline under way, as far as Dasher's question goes: never a second first Decline once it was seen. */
     private final DeclineEpisode episode = new DeclineEpisode();
     /** The peek at a background offer under way, if any ({@link Peek}). */
@@ -482,6 +493,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long firstTapWindows;
     private long previousCountdownAt;
     private int previousCountdown = -1;
+    /** A proven fresh countdown keeps its history boundary until its first screen record. */
+    private boolean newScreenInstancePending;
     private long takeoverGeneration;
     private volatile long lateCompletionUntil;
     private long lateCompletionUserActions;
@@ -533,6 +546,9 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void endAuthority(String reason, boolean reset) {
+        errorAttempt = null;
+        declineError.end();
+        scanner.removeCallbacks(errorRecoveryCheck);
         if (declineState.confirmationUntil() != 0 && authorityEndReason.isEmpty()) {
             authorityEndReason = reason;
             confirmLog("authority ended: " + reason);
@@ -576,6 +592,9 @@ public final class OfferFilterService extends AccessibilityService {
     /** The last state the overlay was given, and when (uptime). */
     private OverlayState overlayGiven;
     private long overlayGivenAt;
+    /** A window transition hides old overlay controls until a read started afterward classifies the new screen. */
+    private final AtomicLong overlayTransition = new AtomicLong();
+    private long overlayApprovedTransition;
     /** The last declined offer already reported as stuck. */
     private String reportedStuck = "";
     /** The last offer already reported as unreadable, so repeated reads of it file nothing more. */
@@ -620,7 +639,8 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable windowWatch = new Runnable() {
         @Override public void run() {
             watchPending = false;
-            if (stopped) return;
+            if (stopped || scannerFaulted) return;
+            if (!phoneReadable()) { suspendScreenReading(); return; }
             long now = SystemClock.uptimeMillis();
             if (queued.get() != QUEUED_NONE) {
                 watchWindows(now + WINDOW_WATCH_MS);
@@ -763,6 +783,11 @@ public final class OfferFilterService extends AccessibilityService {
         @Override public void run() {
             if (stopped) return;
             long now = SystemClock.uptimeMillis();
+            // Timeout proves only that nothing was learned; a new offer's urgent reads must not postpone it forever.
+            if (acceptedTracker.expire(now)) {
+                applyNotes();
+                return;
+            }
             if (busy(now) || queued.get() != QUEUED_NONE) {
                 scanner.postAtTime(this, now + BUSY_RETRY_MS);
                 return;
@@ -774,7 +799,7 @@ public final class OfferFilterService extends AccessibilityService {
     };
 
     static boolean isConnected() {
-        return active != null;
+        return active != null && !active.scannerFaulted;
     }
 
     /** Whether the user took over an offer these facts could belong to, so the notification path leaves it alone. */
@@ -974,7 +999,12 @@ public final class OfferFilterService extends AccessibilityService {
             scannerThread.start();
             looper = scannerThread.getLooper();
         }
-        scanner = new Handler(looper);
+        scanner = new Handler(looper) {
+            @Override public void dispatchMessage(android.os.Message message) {
+                try { super.dispatchMessage(message); }
+                catch (RuntimeException error) { scannerFailed(error); }
+            }
+        };
         touchWatch = new TouchWatch(this, this::touched);
         overlay = new DasherOverlay(this);
         silencer = new OfferSilencer(this, scanner, this::mayQuiet);
@@ -1024,6 +1054,8 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override protected void onServiceConnected() {
+        scannerFaulted = false;
+        restartStateLoaded = false;
         active = this;
         if (screenAwake == null) screenAwake = new ScreenAwake(this,
                 () -> !stopped && screen.dasherReadable && knownDasherVisible(-1));
@@ -1052,6 +1084,7 @@ public final class OfferFilterService extends AccessibilityService {
                 }
                 return;
             }
+            restoreRestartState();
             lookSafely();
             status("Accessibility connected. Only visible offer screens can be fully evaluated.");
             // Offer Filter was on screen when an update began: open it again, never over Dasher.
@@ -1064,6 +1097,24 @@ public final class OfferFilterService extends AccessibilityService {
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
     }
 
+    /** Consent may be accepted after connection; the first permitted read restores suppression before any tap. */
+    private void restoreRestartState() {
+        if (restartStateLoaded) return;
+        restartStateLoaded = true;
+        String failure = ScannerFailure.take(this);
+        if (!failure.isEmpty()) DiagnosticLog.log(this, "accessibility",
+                "screen reading reconnected after a scanner failure (" + failure + "); old taps were discarded");
+        RestartSuppression.Saved saved = RestartSuppression.load(this);
+        if (saved != null) {
+            long at = SystemClock.uptimeMillis() - saved.ageMs;
+            takeover = new Takeover(saved.offer, at);
+            takeoverGeneration = OfferNotificationService.generation();
+            previousCountdown = saved.countdown;
+            previousCountdownAt = at;
+            DiagnosticLog.log(this, "takeover", "earlier offer left to you after screen reading restarted; no tap authority restored");
+        }
+    }
+
     /**
      * Called on the main thread for each of Dasher's events: only notes it and hands it to the scanner thread. A
      * click's facts are read here, since Android recycles the event when this returns.
@@ -1071,11 +1122,39 @@ public final class OfferFilterService extends AccessibilityService {
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
         // Until the first-run notice is accepted, nothing is read, decided or tapped.
-        if (!Consent.accepted(this)) return;
+        if (!Consent.accepted(this) || scannerFaulted) return;
+        if (!phoneReadable()) {
+            scanner.postAtFrontOfQueue(this::suspendScreenReading);
+            return;
+        }
         int type = event.getEventType();
+        if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            // Toasts have no source node. Classify while Android owns the event; keep no raw message or event.
+            ErrorAttempt attempt = errorAttempt;
+            if (attempt != null && isDasherPackage(event.getPackageName())
+                    && "android.widget.Toast".contentEquals(nonNull(event.getClassName()))
+                    && event.getParcelableData() == null && event.getText().size() == 1
+                    && isErrorWord(event.getText().get(0))) {
+                long eventAt = event.getEventTime();
+                long receivedAt = SystemClock.uptimeMillis();
+                // Publish before queuing: an already-running read must see the error before it can replace this
+                // request or interpret an idle screen as its successful completion. A fast toast can arrive while
+                // performAction is still in flight; accepted is checked later, on the scanner.
+                if (eventAt >= attempt.at && eventAt <= receivedAt
+                        && receivedAt - eventAt <= DeclineErrorRecovery.ERROR_FRESH_MS
+                        && attempt.errorAt.compareAndSet(-1, eventAt)) {
+                    scanner.postAtFrontOfQueue(this::consumeDeclineError);
+                }
+            }
+            return; // A toast is not a window transition, notification offer, or user click.
+        }
         boolean windowsChanged = type == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (windowsChanged && ownOverlayChange(event)) return;
         if (!windowsChanged && !isDasherPackage(event.getPackageName())) return;
+        if (windowsChanged || type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            overlayTransition.incrementAndGet();
+            onMain(() -> { if (overlay != null) overlay.suspend(); });
+        }
         if (screenAwake != null) screenAwake.start();
         long at = SystemClock.uptimeMillis();
         Click click = type == AccessibilityEvent.TYPE_VIEW_CLICKED ? Click.of(event, at) : null;
@@ -1143,6 +1222,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override public void onInterrupt() {
+        errorAttempt = null; // Revoke Back immediately, even while the scanner is inside a slow read.
         if (screenAwake != null) screenAwake.stop();
         onScanner(() -> {
             scanner.removeCallbacks(recheck);
@@ -1260,8 +1340,88 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Runs on the scanner thread: at once when already there, else queued in order. */
     private void onScanner(Runnable work) {
-        if (onScannerThread()) work.run();
+        if (onScannerThread()) {
+            try { work.run(); } catch (RuntimeException error) { scannerFailed(error); }
+        }
         else scanner.post(work);
+    }
+
+    /** Fail closed if a callback outside the normal read guard throws; the looper remains alive for a reconnect. */
+    private void scannerFailed(RuntimeException error) {
+        if (scannerFaulted) return;
+        scannerFaulted = true;
+        errorAttempt = null;
+        declineError.end();
+        scanner.removeCallbacksAndMessages(null);
+        queued.set(QUEUED_NONE);
+        clicks.clear();
+        declineState.reset();
+        episode.end();
+        acceptedTracker.reset();
+        heldConfirmation = null;
+        decliningOffer = null;
+        declinedOfferShowing = false;
+        busyPublished = false;
+        peekWatched = false;
+        recheckPending = false;
+        watchPending = false;
+        quietScanPending = false;
+        confirmRetryPending = false;
+        confirmPollPending = false;
+        confirmPollUntil = NEVER;
+        peekReturning = false;
+        try { peek.end(false, false, Peek.now()); peek.forgetFront(); } catch (RuntimeException ignored) { }
+        peekPhase = Peek.Phase.NONE;
+        screen = Screen.NOT_SHOWN;
+        try { ScannerFailure.remember(this, error); } catch (RuntimeException ignored) { /* Still stop every tap. */ }
+        try { DiagnosticLog.log(this, "accessibility", "scanner stopped: " + error.getClass().getSimpleName()); }
+        catch (RuntimeException ignored) { /* Failure reporting cannot restart automation. */ }
+        try { silencer.stop(); } catch (RuntimeException ignored) { /* Restore again on main. */ }
+        onMain(() -> {
+            try { OfferSilencer.restore(this); } catch (RuntimeException ignored) { }
+            try { if (screenAwake != null) screenAwake.stop(); } catch (RuntimeException ignored) { }
+            try { if (touchWatch != null) touchWatch.stop(); } catch (RuntimeException ignored) { }
+            try { if (overlay != null) overlay.hide(); } catch (RuntimeException ignored) { }
+            try {
+                FilterStore.setLastStatus(this, "Screen reading stopped after an error. Turn screen reading off and on to reconnect.");
+                Toast.makeText(this, "Screen reading stopped; reconnect it in " + AppName.NAME, Toast.LENGTH_LONG).show();
+            } catch (RuntimeException ignored) { }
+        });
+    }
+
+    /** Power/keyguard metadata only; no windows or app roots while the display is off or locked. */
+    private boolean phoneReadable() {
+        try {
+            PowerManager power = getSystemService(PowerManager.class);
+            KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+            return (power == null || power.isInteractive()) && (keyguard == null || !keyguard.isKeyguardLocked());
+        } catch (RuntimeException unavailable) { return false; }
+    }
+
+    private void suspendScreenReading() {
+        long now = SystemClock.uptimeMillis();
+        if (declineState.hasPendingConfirmation(now) || episode.active(now)) {
+            handBack(HandBack.SCREEN_OFF, "screen off or locked", now);
+        }
+        scanner.removeCallbacks(windowWatch);
+        watchPending = false;
+        scanner.removeCallbacks(recheck);
+        recheckPending = false;
+        scanner.removeCallbacks(quietScan);
+        quietScanPending = false;
+        scanner.removeCallbacks(confirmRetry);
+        confirmRetryPending = false;
+        scanner.removeCallbacks(watchHoldOver);
+        scanner.removeCallbacks(episodeCheck);
+        scanner.removeCallbacks(aftermathTick);
+        heldConfirmation = null;
+        endAuthority("screen off", true);
+        episode.end();
+        endConfirmationPoll(SystemClock.uptimeMillis());
+        peekOver("ended because the screen turned off");
+        screen = Screen.NOT_SHOWN;
+        syncAutomation();
+        syncOverlay();
     }
 
     /** Runs on the main thread: at once when already there, else queued in order. */
@@ -1362,7 +1522,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** As {@link #watchWindows()}, not before {@code notBefore} (uptime). */
     private void watchWindows(long notBefore) {
-        if (watchPending || stopped || active != this || screen.area == null) return;
+        if (watchPending || stopped || scannerFaulted || !phoneReadable() || active != this || screen.area == null) return;
         watchPending = true;
         scanner.postAtTime(windowWatch, Math.max(lastLookAt + WINDOW_WATCH_MS, notBefore));
     }
@@ -1486,15 +1646,20 @@ public final class OfferFilterService extends AccessibilityService {
      * every {@link #OVERLAY_CHECK_MS} so the tab and guide stay current.
      */
     private void syncOverlay() {
+        long transition = overlayTransition.get();
         Screen seen = screen;
         Rect area = active == this ? seen.area : null;
+        // Positive window metadata is enough to remove a gone overlay; showing controls requires fresh labels.
+        if (area != null && overlayApprovedTransition != transition) return;
         OverlayState next = new OverlayState(area, area != null && seen.split, scene);
         long now = SystemClock.uptimeMillis();
         if (next.equals(overlayGiven) && now - overlayGivenAt < OVERLAY_CHECK_MS) return;
         overlayGiven = next;
         overlayGivenAt = now;
         onMain(() -> {
-            if (!stopped && overlay != null) overlay.sync(next.area, next.split, next.scene);
+            if (!stopped && !scannerFaulted && overlay != null && overlayTransition.get() == transition) {
+                overlay.sync(next.area, next.split, next.scene);
+            }
         });
     }
 
@@ -1936,7 +2101,11 @@ public final class OfferFilterService extends AccessibilityService {
         /** Dasher's question could not be tapped, or Dasher did not act on it: the app gives up. */
         NOT_TAPPED,
         /** The user's new minimum scale superseded the rules that authorized this decline. */
-        MINIMUMS_CHANGED
+        MINIMUMS_CHANGED,
+        /** A screen-off or lock boundary invalidated the visible offer and its pending taps. */
+        SCREEN_OFF,
+        /** Dasher explicitly reported a failed request; no later idle frame can upgrade it optimistically. */
+        DASHER_ERROR
     }
 
     /**
@@ -1948,9 +2117,13 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void handBack(HandBack why, String detail, long now) {
         boolean alreadyConfirmed = declineState.confirmationTapped();
-        takeover = new Takeover(declinedOffer, now);
+        boolean givenUp = why == HandBack.NOT_TAPPED || why == HandBack.DASHER_ERROR;
+        takeover = new Takeover(declinedOffer, now, givenUp
+                ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED : DecisionLog.Action.USER_TOOK_OVER);
+        RestartSuppression.remember(this, declinedOffer, previousCountdown);
         takeoverGeneration = OfferNotificationService.generation();
-        takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED && declinedEntry != null
+        takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED
+                && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
         if (why == HandBack.NOT_TAPPED && alreadyConfirmed) {
@@ -1972,7 +2145,6 @@ public final class OfferFilterService extends AccessibilityService {
         if (lateCompletionUntil > now) scanner.postAtTime(syncAutomation, lateCompletionUntil);
         // The user's own, unless the decline was confirmed before they acted. Given up, the decline did not go through
         // (Dasher still asks, or still shows the offer), whether or not its confirmation was tapped: left to the user.
-        boolean givenUp = why == HandBack.NOT_TAPPED;
         if (declinedEntry != null && (givenUp || !alreadyConfirmed)) {
             recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
                     declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
@@ -2011,6 +2183,16 @@ public final class OfferFilterService extends AccessibilityService {
                         : "Minimums changed; this earlier decline is left to you.");
                 toast = "Minimums changed; automatic taps stopped for this offer";
                 break;
+            case DASHER_ERROR:
+                DiagnosticLog.log(this, "confirm", "Dasher reported a decline error; completion is unconfirmed");
+                status("Dasher reported an error; this decline is unconfirmed and left to you.");
+                toast = "Dasher reported a decline error; offer left to you";
+                break;
+            case SCREEN_OFF:
+                DiagnosticLog.log(this, "accessibility", "screen off or locked" + halted);
+                status("Screen off or locked; this earlier offer is left to you.");
+                toast = "Screen off or locked; automatic taps stopped";
+                break;
             default:
                 DiagnosticLog.log(this, "confirm", "confirmation not tapped: " + detail + "; the offer is left to you");
                 status("Dasher's question could not be confirmed, so this offer is left to you.");
@@ -2024,6 +2206,8 @@ public final class OfferFilterService extends AccessibilityService {
                 : why == HandBack.CLICK ? "you tapped Dasher during the decline"
                 : why == HandBack.BACK_TO_OFFER ? "you went back to the offer from Dasher's question"
                 : why == HandBack.MINIMUMS_CHANGED ? "the minimum scale changed"
+                : why == HandBack.SCREEN_OFF ? "the screen turned off or locked"
+                : why == HandBack.DASHER_ERROR ? "Dasher reported a decline error"
                 : "Dasher's question was not confirmed"));
     }
 
@@ -2056,6 +2240,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (takeover != Takeover.NONE) {
             DiagnosticLog.log(this, "takeover", "ended: " + reason);
             takeover = Takeover.NONE;
+            RestartSuppression.clear(this);
         }
     }
 
@@ -2108,7 +2293,7 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void startPeek(Peek.Request request) {
         try {
-            if (stopped) {
+            if (stopped || scannerFaulted) {
                 peekNotTaken(request, "screen reading stopped");
                 return;
             }
@@ -2159,7 +2344,9 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** A step of a peek failed: logged, and the peek ends with Dasher left as it is. */
     private void peekFailed(String step, RuntimeException error) {
+        FilterStore.setPeek(this, false);
         Peek.log(this, "failed while " + step + ": " + error.getClass().getSimpleName());
+        status("Peek paused after an error. Turn Peek back on in Settings when ready.");
         boolean arming = peek.phase() == Peek.Phase.ARMING;
         Peek.Request request = peek.request();
         try {
@@ -2336,8 +2523,15 @@ public final class OfferFilterService extends AccessibilityService {
     /** An app's launcher activity, as its launch intent names it; null when it has none. */
     private ComponentName launcher(String pkg) {
         try {
-            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-            return launch == null ? null : launch.getComponent();
+            Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg);
+            List<ResolveInfo> choices = getPackageManager().queryIntentActivities(launch, 0);
+            if (choices != null) for (ResolveInfo choice : choices) {
+                ActivityInfo info = choice.activityInfo;
+                if (info != null && info.enabled && info.exported && pkg.equals(info.packageName)) {
+                    return new ComponentName(info.packageName, info.name);
+                }
+            }
+            return null;
         } catch (RuntimeException unavailable) {
             return null;
         }
@@ -2994,11 +3188,15 @@ public final class OfferFilterService extends AccessibilityService {
      * @return true when another check should follow shortly
      */
     private boolean checkOffer(String trigger, long eventAt, int maxNodes) {
+        if (scannerFaulted) return false;
+        if (!phoneReadable()) { suspendScreenReading(); return false; }
         // A guarded return is already queued on main; no new read/tap may cross that boundary.
         if (peekReturning) return false;
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
         if (!Consent.accepted(this)) return false;
+        restoreRestartState();
         long started = SystemClock.uptimeMillis();
+        long overlayAtStart = overlayTransition.get();
         long startedNanos = System.nanoTime();
         currentReadStartedAt = started;
         boolean hotAtStart = hot(started);
@@ -3041,6 +3239,10 @@ public final class OfferFilterService extends AccessibilityService {
             episode.readDuration(lastReadDurationMs);
             // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
+            if (sceneLabels != null && !readSkipped && overlayTransition.get() == overlayAtStart) {
+                if (overlayApprovedTransition != overlayAtStart) overlayGiven = null;
+                overlayApprovedTransition = overlayAtStart;
+            }
             if (!quietTakenOver && (offerOnScreen || offerEvidence)) offerSeenAt = lastScanEndAt;
             syncAutomation();
             syncOverlay();
@@ -3162,13 +3364,16 @@ public final class OfferFilterService extends AccessibilityService {
         offerEvidence = false;
         quietTakenOver = false;
         Look look = look();
+        if (consumeDeclineError()) return declineError.pending();
         if (!look.activeKnown) {
+            declineError.notBlank();
             readSkipped = true;
             return settings.enabled;
         }
         peekSaw(look, now);
         AccessibilityNodeInfo root = look.dasherRoot;
         if (root == null) {
+            if (declineError.pending()) handBack(HandBack.NOT_TAPPED, "Dasher left the foreground during error recovery", now);
             if (declineState.hasPendingConfirmation(now)) noteLook("question not read: Dasher's window is unavailable");
             // Dasher off screen for a moment (the shade, recent apps, our own screen): an Accept tap waiting for its
             // delivery screen, and what came after an offer left, are kept; only what was on screen is forgotten.
@@ -3189,8 +3394,10 @@ public final class OfferFilterService extends AccessibilityService {
             stop = () -> dasherEvents.get() != events && queued.get() == QUEUED_FRONT;
         }
         Scan scan = read(root, readCap, stop);
+        if (consumeDeclineError()) return declineError.pending();
         scan.where = look.split ? "Dasher's half of the split screen" : "the active window";
         if (scan.abandoned) {
+            declineError.notBlank();
             cutReads++;
             readSkipped = true;
             DiagnosticLog.log(this, "scan", "read cut short by a window change while the question is awaited, after "
@@ -3201,6 +3408,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean pending = declineState.hasPendingConfirmation(now);
         boolean lookForQuestion = pending || episode.active(now);
         if (scan.truncated && readCap < MAX_SCAN_NODES) {
+            declineError.notBlank();
             // A poll for Dasher's question reads a window only so far: a bigger one is left to the full reads. The
             // question may be in a window of its own beside it, though (0.4.42 looked nowhere else): look there.
             Scan elsewhere = lookForQuestion ? questionElsewhere(look) : null;
@@ -3223,6 +3431,7 @@ public final class OfferFilterService extends AccessibilityService {
         offerOnScreen = scan.truncated;
         offerEvidence = scan.truncated;
         if (scan.truncated) {
+            declineError.notBlank();
             declinedOfferShowing = false;
             // Perhaps an offer: a peek does not go back over it for want of one.
             peek.offerSign();
@@ -3234,13 +3443,14 @@ public final class OfferFilterService extends AccessibilityService {
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         Scan confirmation = confirmationScan(scan, lookForQuestion, look);
+        if (consumeDeclineError()) return declineError.pending();
         readShowsQuestion = confirmation != null && DeclineConfirmation.hasPrompt(confirmation.text);
         offerOnScreen = confirmation != null || scan.accept != null || scan.decline != null;
+        if (handleDeclineError(scan, look, confirmation, offer, now)) return declineError.pending();
         // Anything of an offer, even partly drawn, and Dasher's next changes are read at once: they may complete it.
-        boolean navigationOnly = DasherScene.showsNavigation(scan.text) && !offerOnScreen
-                && !scan.acceptLabel && !scan.declineLabel && offer.payCents == null
-                && offer.payAtMostCents == null && offer.stops == null;
-        offerEvidence = offerOnScreen || scan.acceptLabel || scan.declineLabel || (anyFact(offer) && !navigationOnly);
+        offerEvidence = offerOnScreen || scan.acceptLabel || scan.declineLabel
+                || DasherScene.showsNewOffer(scan.text)
+                || AcceptedOfferTracker.offerFacts(offer, scan.text);
         // An offer's Accept or Decline, or a question: a peek no longer goes back for want of an offer. Figures alone
         // (a dash's earnings, navigation's distances) are not one.
         if (offerOnScreen || scan.acceptLabel || scan.declineLabel) peek.offerSign();
@@ -3299,6 +3509,147 @@ public final class OfferFilterService extends AccessibilityService {
         return handled;
     }
 
+    private static boolean isErrorWord(CharSequence label) {
+        return label != null && label.length() <= 32
+                && "error".equals(OfferEvidence.normalize(label.toString()).toLowerCase(Locale.US)
+                        .replaceAll("[.!…]+$", ""));
+    }
+
+    /** Consume the request-bound main-thread latch before a slow read can act on its earlier view of the world. */
+    private boolean consumeDeclineError() {
+        ErrorAttempt attempt = errorAttempt;
+        if (attempt == null || !attempt.accepted || attempt.errorConsumed) return false;
+        long eventAt = attempt.errorAt.get();
+        if (eventAt < 0) return false;
+        attempt.errorConsumed = true; // Scanner-owned; handBack can safely end this authority below.
+        long now = SystemClock.uptimeMillis();
+        // The event was fresh and bound to this successful request when received. A slow read crossing its
+        // deadline (or a changed tap guard) removes recovery authority, not the evidence that it failed.
+        // An ended/replaced request, however, must never apply its evidence to a subsequent offer.
+        if (attempt != errorAttempt) return false;
+        if (attempt.confirmation || !recoveryAuthority(attempt, now)
+                || now - eventAt > DeclineErrorRecovery.ERROR_FRESH_MS) {
+            handBack(HandBack.DASHER_ERROR, "Dasher reported an error after a decline request", now);
+            return true;
+        }
+        if (!declineError.error(attempt, eventAt, now)) return false;
+        DiagnosticLog.logOnChange(this, "confirm", "decline-error", "Dasher reported an error after a Decline request");
+        // A read under way may have started before the error. Make a fresh complete observation next.
+        declineError.notBlank();
+        scheduleErrorRecovery();
+        return true;
+    }
+
+    /** Still this automatic first step, never a manual decline, add-on or already seen confirmation. */
+    private boolean recoveryAuthority(ErrorAttempt attempt, long now) {
+        return errorRequestCurrent(attempt, now) && !attempt.confirmation
+                && declineState.confirmationTries() == 0 && episode.active(now)
+                && !episode.questionWasSeen() && !episode.wasConfirmed();
+    }
+
+    private boolean errorRequestCurrent(ErrorAttempt attempt, long now) {
+        if (attempt == null || attempt != errorAttempt || !attempt.accepted || stopped || scannerFaulted
+                || !Consent.accepted(this) || !phoneReadable() || takeover != Takeover.NONE
+                || userActions.get() != attempt.actions || touchesHeld > 0
+                || OfferNotificationService.generation() != attempt.generation
+                || !declineState.hasPendingConfirmation(now)) return false;
+        FilterSettings current = FilterStore.load(this);
+        return current.enabled && current.minimumScalePercent == attempt.scale;
+    }
+
+    /**
+     * An error signal blocks terminal-map interpretation. Only an empty/map-labelled, control-free full read can
+     * authorize Back; an ambiguous idle/delivery map is left to the user after the short evidence window.
+     */
+    private boolean handleDeclineError(Scan scan, Look look, Scan confirmation, OfferSnapshot offer, long now) {
+        if (!declineError.pending()) return false;
+        ErrorAttempt attempt = errorAttempt;
+        if (!recoveryAuthority(attempt, now) || declineError.expired(now)) {
+            handBack(HandBack.NOT_TAPPED, "decline error recovery stopped; the offer could not be revalidated", now);
+            return true;
+        }
+        if (confirmation != null) {
+            // A question is handled by the normal confirmation path; never dismiss it with Back.
+            declineError.clearSignal();
+            return false;
+        }
+        if (questionLookIncomplete) {
+            declineError.notBlank();
+            scheduleErrorRecovery();
+            return true;
+        }
+        if (scan.accept != null && scan.decline != null) return false; // handleOffer revalidates a return.
+        boolean safeBlank = !scan.actionable && !scan.acceptLabel && !scan.declineLabel && !anyFact(offer)
+                && !scan.truncated && look.dasherActive && !look.split && blankMapLabels(scan.text);
+        if (!safeBlank) declineError.notBlank();
+        if (declineError.returning()) {
+            scheduleErrorRecovery();
+            return true;
+        }
+        if (declineError.exhausted()) {
+            handBack(HandBack.NOT_TAPPED, "Dasher's decline error repeated after two recovery attempts", now);
+            return true;
+        }
+        if (!safeBlank || !declineError.blankReady(now)) {
+            scheduleErrorRecovery();
+            return true;
+        }
+        // Global Back acts on the focused app, unlike a node click in an inactive split half.
+        if (lastReadEvents != dasherEvents.get() || readWindowChanges != windowChanges.get()
+                || windowsChangedSinceLastLook() || !foregroundDasherForBack(look.dasherWindow)
+                || !recoveryAuthority(attempt, SystemClock.uptimeMillis())
+                || declineError.expired(SystemClock.uptimeMillis())
+                || lastReadEvents != dasherEvents.get() || readWindowChanges != windowChanges.get()) {
+            handBack(HandBack.NOT_TAPPED, "the screen changed before decline error recovery", now);
+            return true;
+        }
+        declineError.backRequested(SystemClock.uptimeMillis()); // Consume first, even if Android refuses.
+        boolean requested = globalActionHere(GLOBAL_ACTION_BACK);
+        DiagnosticLog.log(this, "confirm", "decline error recovery Back " + (requested ? "requested" : "refused")
+                + "; no decline completion inferred");
+        if (!requested) {
+            handBack(HandBack.NOT_TAPPED, "Android refused Back for the failed decline", SystemClock.uptimeMillis());
+        } else {
+            status("Dasher reported a decline error; checking the offer again after Back.");
+            scheduleErrorRecovery();
+        }
+        return true;
+    }
+
+    private void scheduleErrorRecovery() {
+        scanner.removeCallbacks(errorRecoveryCheck);
+        scanner.postDelayed(errorRecoveryCheck, 150);
+    }
+
+    private static boolean blankMapLabels(List<String> labels) {
+        for (String label : labels) {
+            String word = OfferEvidence.normalize(label).toLowerCase(Locale.US);
+            if (!word.isEmpty() && !word.equals("map") && !word.equals("map view")
+                    && !word.equals("google map") && !isErrorWord(word)) return false;
+        }
+        return true;
+    }
+
+    private boolean foregroundDasherForBack(AccessibilityWindowInfo readWindow) {
+        if (readWindow == null || !phoneReadable()) return false;
+        List<AccessibilityWindowInfo> windows;
+        try { windows = windowSource.get(); } catch (RuntimeException unavailable) { return false; }
+        if (windows == null) return false;
+        AccessibilityWindowInfo activeApp = null;
+        int apps = 0;
+        for (AccessibilityWindowInfo window : windows) {
+            if (window.getType() == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER
+                    || window.getType() == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+                    || (window.getType() == AccessibilityWindowInfo.TYPE_SYSTEM && window.isActive())) return false;
+            if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                apps++;
+                if (window.isActive()) activeApp = window;
+            }
+        }
+        return apps == 1 && activeApp != null && activeApp.isFocused() && activeApp.getId() == readWindow.getId()
+                && knownDasherVisible(readWindow.getId()) && activeWindowUncovered(windows, activeApp);
+    }
+
     /**
      * Second step of a decline this service requested. Pausing or a newer offer revokes the authority. Every look that
      * finds it, and every try at its Decline, goes in the log. Its Decline is tried
@@ -3306,6 +3657,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Dasher), 300 ms after refusals or 2–3 seconds after taken requests; then the offer is left to the user.
      */
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
+        if (consumeDeclineError()) return declineError.pending();
         if (minimumScaleChanged(FilterStore.load(this).minimumScalePercent, SystemClock.uptimeMillis())) return false;
         diagnostic("confirmation", confirmation, null, null);
         declinedOfferShowing = true;
@@ -3347,6 +3699,9 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
         questionLooks++;
+        // A real owned question resumes its ordinary confirmation lifecycle. Back recovery has ended, but keep
+        // the request's error latch until the confirmation request replaces it; a late error can still arrive.
+        declineError.end();
         if (episode.active(now)) episode.questionSeen(now);
         if (countdown(confirmation.text) == 0 && !episode.wasConfirmed()) {
             handBack(HandBack.NOT_TAPPED, "its question ran out to 0:00 without a confirmation", now);
@@ -3389,7 +3744,14 @@ public final class OfferFilterService extends AccessibilityService {
         heldConfirmation = null;
         scanner.removeCallbacks(watchHoldOver);
         AccessibilityNodeInfo target = confirmation.declineTargets.get(selected);
-        Tap tap = dasherStillReadable(target) ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
+        boolean readable = dasherStillReadable(target);
+        if (consumeDeclineError()) return declineError.pending();
+        ErrorAttempt confirmationRequest = new ErrorAttempt(declineGeneration, userActions.get(), declineMinimumScale,
+                SystemClock.uptimeMillis(), true);
+        errorAttempt = confirmationRequest;
+        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
+        if (tap == Tap.TAPPED) confirmationRequest.accepted = true;
+        else if (errorAttempt == confirmationRequest) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         if (tap == Tap.HELD) {
             // A touch in split screen is being judged: tapped once it is found to be on Offer Filter's half (the
@@ -3515,6 +3877,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
     private boolean handleOtherScreen(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
+        if (consumeDeclineError()) return declineError.pending();
         if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)
                 || OfferEvidence.isDashOver(scan.text)) {
             if (episode.questionWasSeen() && !episode.wasConfirmed() && declineState.confirmationLapsed(now)
@@ -3580,11 +3943,16 @@ public final class OfferFilterService extends AccessibilityService {
             acceptedTracker.afterScreen(scan.text, facts, now);
         }
         applyNotes();
+        if (OfferEvidence.isIdle(scan.text) || OfferEvidence.isDashOver(scan.text)) {
+            captureOtherScreen(scan, now, OfferEvidence.isPaused(scan.text) ? "dash paused" : "idle");
+        }
         // Diagnostics after a dash (the user's opt-in) are filed when Dasher shows it ended; a cheap check when off.
         DashDiagnostics.screen(this, scan.text);
         if (OfferEvidence.isDashOver(scan.text)) {
             onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
+        } else if (OfferEvidence.isPaused(scan.text)) {
+            Dashing.paused(this);
         } else if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
             Dashing.seen(this);
         } else if (OfferEvidence.isPreDashHome(scan.text)) {
@@ -3601,7 +3969,10 @@ public final class OfferFilterService extends AccessibilityService {
             forgetTakeover("idle");
             readIdentity = null;
             boundedOffer = null;
-            status(pending
+            RestartSuppression.clear(this);
+            status(OfferEvidence.isPaused(scan.text) ? "Dasher is paused; this dash is still on."
+                    : OfferEvidence.isDashOver(scan.text) ? "Dasher's dash ended."
+                    : pending
                     ? "Dasher returned to the idle screen after decline; no active offer visible."
                     : "Dasher is finding offers.");
             return false;
@@ -3618,6 +3989,7 @@ public final class OfferFilterService extends AccessibilityService {
             forgetTakeover("delivery");
             readIdentity = null;
             boundedOffer = null;
+            RestartSuppression.clear(this);
         }
         if (scan.accept == null && scan.decline == null) {
             // With capture on, Dasher's other screens (a shopping list, an item, a delivery) are kept too, so their
@@ -3628,7 +4000,8 @@ public final class OfferFilterService extends AccessibilityService {
                     ? "after an offer left (" + Math.round(left / 1000.0) + " s)" : "other") && aftermath) {
                 aftermathLines++;
             }
-            declineState.offerGone();
+            // A loading/map frame cannot replenish the still-pending offer's retry budget.
+            if (!declineState.hasPendingConfirmation(now)) declineState.offerGone();
             return declineState.hasPendingConfirmation(now);
         }
         // Half an offer: still ours only if it positively shows the declined offer's facts.
@@ -3691,11 +4064,14 @@ public final class OfferFilterService extends AccessibilityService {
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed. " + (accepted.addOn
                 ? "Add-on route updated; standalone baseline unchanged."
-                : "Standalone payout baseline updated."));
+                : kind == DecisionLog.StepKind.ACCEPTED_LEARNED
+                        ? "Standalone minimums learned from this offer."
+                        : "Standalone minimums unchanged."));
     }
 
     /** A readable offer with distinct Accept and Decline targets. Only a known failure is declined, at once. */
     private boolean handleOffer(Scan scan, OfferSnapshot offer, FilterSettings settings, long now, long generation) {
+        if (consumeDeclineError()) return declineError.pending();
         int readCountdown = countdown(scan.text);
         boolean newCountdown = previousCountdown >= 0 && readCountdown >= 0
                 && readCountdown * 1000L > previousCountdown * 1000L - (now - previousCountdownAt) + 3_000;
@@ -3709,17 +4085,36 @@ public final class OfferFilterService extends AccessibilityService {
             boundedOffer = offer;
             if (boundedUntil <= now) boundedUntil = now + (readCountdown >= 0 ? readCountdown * 1000L + 3_000 : 30_000);
         } else { boundedOffer = null; boundedUntil = 0; }
+        if (newCountdown) newScreenInstancePending = true;
         if (newCountdown && ((takeover != Takeover.NONE && offer.agreesWith(takeover.offer))
-                || (episode.active(now) && offer.agreesWith(episode.offer())))) {
+                || offer.agreesWith(declinedOffer))) {
             forgetTakeover("new instance (countdown)");
             endAuthority("new instance (countdown)", true);
             episode.end();
         }
         if (takeover != Takeover.NONE && takeoverGeneration != OfferNotificationService.generation()
                 && OfferNotificationService.freshBackgroundGeneration() > takeoverGeneration) {
+            newScreenInstancePending = true;
             forgetTakeover("fresh notification");
             endAuthority("fresh notification", true);
             episode.end();
+        }
+        if (declineError.pending() || declineError.hasBackAttempt()) {
+            if (offer.contradicts(declinedOffer)) {
+                // Positively different figures get the normal new-offer decision, with no inherited recovery.
+                endAuthority("different offer during error recovery", true);
+                episode.end();
+            } else if (readCountdown < 0 || previousCountdown < 0
+                    || !DeclineState.offerKey(offer, scan.text).equals(declinedKey)
+                    || !recoveryAuthority(errorAttempt, SystemClock.uptimeMillis())) {
+                // Partial facts or changed stable labels cannot create a new key and replenish any budget.
+                handBack(HandBack.DASHER_ERROR, "the original offer and countdown could not be verified after its error", now);
+                return false;
+            } else if (declineError.returning()) {
+                episode.returnedAfterErrorBack();
+                declineError.clearSignal();
+                DiagnosticLog.log(this, "confirm", "same offer revalidated after error recovery; normal retry limits remain");
+            }
         }
         previousCountdown = readCountdown;
         previousCountdownAt = now;
@@ -3749,10 +4144,12 @@ public final class OfferFilterService extends AccessibilityService {
             acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
             applyNotes();
             boolean wasPeeked = peekReads(offer);
-            record(scan, isAddOn, decision, settings, DecisionLog.Action.USER_TOOK_OVER, wasPeeked);
+            record(scan, isAddOn, decision, settings, takeover.action, wasPeeked);
             quietTakenOver = true;
             if (wasPeeked) peekOver("left Dasher up because you took over this offer");
-            status(detail + "\nYou took over this offer; no automatic action.");
+            status(detail + (takeover.action == DecisionLog.Action.CONFIRMATION_NOT_TAPPED
+                    ? "\nThe decline is unconfirmed and left to you; no automatic action."
+                    : "\nYou took over this offer; no automatic action."));
             return false;
         }
         // A clearly different offer, or a long-expired takeover, ends it, and the decline before it.
@@ -3833,8 +4230,24 @@ public final class OfferFilterService extends AccessibilityService {
             if (key.equals(declinedKey)) reportIfStuck(scan, now);
             return declineState.hasPendingConfirmation(now);
         }
+        // A restart may only recover suppression, never tap authority. Persist before Android can take the request.
+        if ((!episode.active(now) || !episode.covers(key, offer))
+                && !RestartSuppression.remember(this, offer, secondsLeft)) {
+            status("Could not preserve this offer's restart guard; no automatic action.");
+            return false;
+        }
+        // Finish metadata calls under the old request identity, then consume any error they received.
+        boolean readable = dasherStillReadable(scan.decline);
+        if (consumeDeclineError()) return declineError.pending();
+        // Publish identity before the Android call so a fast toast can be copied while the call is under way.
+        ErrorAttempt attempt = !isAddOn && !routeStored && scene != DasherScene.ROUTE
+                && !episode.questionWasSeen() && !episode.wasConfirmed()
+                ? new ErrorAttempt(generation, userActions.get(), settings.minimumScalePercent, SystemClock.uptimeMillis(), false)
+                : null;
+        errorAttempt = attempt;
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
-        Tap tap = dasherStillReadable(scan.decline) ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
+        if (tap != Tap.TAPPED && errorAttempt == attempt) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         long tappedAt = SystemClock.uptimeMillis();
         if (stopped) return false;
@@ -3859,6 +4272,10 @@ public final class OfferFilterService extends AccessibilityService {
             long remaining = secondsLeft >= 0 ? Math.max(0, secondsLeft * 1000L - (ownTapAt - now)) : -1;
             declineState.readDuration(tappedAt - currentReadStartedAt);
             declineState.declineSent(key, ownTapAt, remaining);
+            if (attempt != null) {
+                declineError.requested(attempt, attempt.at, declineState.declineAttempts());
+                attempt.accepted = true;
+            }
             authorityEndReason = "";
             declineGeneration = generation;
             declineMinimumScale = settings.minimumScalePercent;
@@ -3940,7 +4357,9 @@ public final class OfferFilterService extends AccessibilityService {
         labels.addAll(scan.metricParts);
         DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, addOn, decision.basis, decision,
                 action, settings.enabled, labels).peeked(peeked);
-        recordRead(entry, OfferEvidence.secondsLeft(scan.text), true);
+        boolean freshInstance = newScreenInstancePending;
+        newScreenInstancePending = false;
+        recordRead(entry, OfferEvidence.secondsLeft(scan.text), true, freshInstance);
         return entry;
     }
 
@@ -3954,9 +4373,13 @@ public final class OfferFilterService extends AccessibilityService {
      * and one handled after it later; a later step of a reading already recorded keeps that reading's time.
      */
     private void recordRead(DecisionLog.Entry entry, int secondsLeft, boolean newReading) {
+        recordRead(entry, secondsLeft, newReading, false);
+    }
+
+    private void recordRead(DecisionLog.Entry entry, int secondsLeft, boolean newReading, boolean freshInstance) {
         onMain(() -> {
             DecisionLog.Entry stamped = newReading ? entry.withTime(System.currentTimeMillis()) : entry;
-            for (DecisionLog.Entry notice : DecisionLog.record(this, stamped, secondsLeft)) {
+            for (DecisionLog.Entry notice : DecisionLog.record(this, stamped, secondsLeft, freshInstance)) {
                 if (notice.alertTag == null) continue;
                 OfferAlerts.clear(this, notice.alertTag);
                 OfferNotificationService.readOnScreen(notice.alertTag, entry.facts);
@@ -4074,6 +4497,7 @@ public final class OfferFilterService extends AccessibilityService {
             return Tap.REFUSED;
         }
         if (FilterStore.load(this).minimumScalePercent != minimumScale) return Tap.RULES_CHANGED;
+        if (!phoneReadable() || scannerFaulted) return Tap.REFUSED;
         ownTapAt = now;
         ownTapTarget = node;
         // For the touch watch and the clicks: a touch from here until OWN_ACTION_ECHO_MS after the call returns is
@@ -4098,6 +4522,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Window metadata only: never asks an app's UI thread for a root, including on the notification main thread. */
     private boolean knownDasherVisible(int targetId) {
+        if (!phoneReadable() || scannerFaulted) return false;
         android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
         if (power != null && !power.isInteractive()) return false;
         List<AccessibilityWindowInfo> windows;
@@ -4191,6 +4616,8 @@ public final class OfferFilterService extends AccessibilityService {
      * @return null when {@code stop} stopped it
      */
     private Look see(boolean onScanner, BooleanSupplier stop) {
+        if (!phoneReadable()) return new Look(true, false, null, null, false, false,
+                Collections.emptyList(), new java.util.IdentityHashMap<>(), null, "screen off or locked");
         List<AccessibilityWindowInfo> listed;
         long started = System.nanoTime();
         try {
@@ -4690,6 +5117,21 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /** What a look at the windows found, for any thread. */
+    private static final class ErrorAttempt {
+        final long generation, actions, at;
+        final int scale;
+        final boolean confirmation;
+        volatile boolean accepted;
+        /** The first validated toast timestamp; no message or Android event is retained. */
+        final AtomicLong errorAt = new AtomicLong(-1);
+        /** Scanner-owned: each latched signal is applied at most once, including while a read is under way. */
+        boolean errorConsumed;
+        ErrorAttempt(long generation, long actions, int scale, long at, boolean confirmation) {
+            this.generation = generation; this.actions = actions; this.scale = scale; this.at = at;
+            this.confirmation = confirmation;
+        }
+    }
+
     private static final class Screen {
         static final Screen UNKNOWN = new Screen(false, false, null, false, false);
         /** A look that failed: as Dasher not on screen. */
@@ -4730,10 +5172,16 @@ public final class OfferFilterService extends AccessibilityService {
         static final Takeover NONE = new Takeover(OfferSnapshot.UNKNOWN, 0);
         final OfferSnapshot offer;
         final long at;
+        final DecisionLog.Action action;
 
         Takeover(OfferSnapshot offer, long at) {
+            this(offer, at, DecisionLog.Action.USER_TOOK_OVER);
+        }
+
+        Takeover(OfferSnapshot offer, long at, DecisionLog.Action action) {
             this.offer = offer;
             this.at = at;
+            this.action = action;
         }
 
         boolean covers(OfferSnapshot facts, long now) {
@@ -4788,6 +5236,8 @@ public final class OfferFilterService extends AccessibilityService {
         /** Whether an Accept or Decline label showed, with or without a button to tap yet. */
         boolean acceptLabel;
         boolean declineLabel;
+        /** Any visible enabled click target blocks global Back, even an unrecognized control. */
+        boolean actionable;
         boolean truncated;
         int visited;
         /** Which window this read was of, for the log ("the active window", "another window of Dasher's"). */
@@ -4818,6 +5268,7 @@ public final class OfferFilterService extends AccessibilityService {
             }
             String own = "";
             if (node.isVisibleToUser()) {
+                if (node.isEnabled() && hasClickAction(node)) actionable = true;
                 addLabel(node, node.getText());
                 addLabel(node, node.getContentDescription());
                 own = OfferEvidence.normalize(node.getText() == null ? null : node.getText().toString());

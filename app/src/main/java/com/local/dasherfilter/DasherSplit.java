@@ -4,10 +4,14 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Insets;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.WindowInsets;
+import android.view.WindowMetrics;
 import java.lang.ref.WeakReference;
 import java.util.Locale;
 import java.util.function.Consumer;
@@ -74,7 +78,7 @@ final class DasherSplit {
      * @param dasherInstalled whether {@link #dasher} found Dasher, as the page last asked Android
      */
     static boolean offered(Activity activity, boolean dasherInstalled) {
-        return dasherInstalled && !(activity.isInMultiWindowMode() && OfferFilterService.dasherBeside());
+        return dasherInstalled && !(inSplit(activity) && OfferFilterService.dasherBeside());
     }
 
     /** Whether the user's tap on Split is still waiting for the screen to split (any thread): no peek meanwhile. */
@@ -86,7 +90,42 @@ final class DasherSplit {
 
     /** What the button says to screen readers: {@link #SPLIT_LABEL}, or {@link #BESIDE_LABEL} once split. */
     static String label(Activity activity) {
-        return activity.isInMultiWindowMode() ? BESIDE_LABEL : SPLIT_LABEL;
+        return inSplit(activity) ? BESIDE_LABEL : SPLIT_LABEL;
+    }
+
+    /** Android's multi-window flag includes floating windows and PiP. Only reject shapes we can distinguish. */
+    private static boolean inSplit(Activity activity) {
+        return activity.isInMultiWindowMode() && !floating(activity);
+    }
+
+    private static boolean floating(Activity activity) {
+        if (activity.isInPictureInPictureMode()) return true;
+        if (!activity.isInMultiWindowMode() || Build.VERSION.SDK_INT < 30) return false;
+        try {
+            WindowMetrics current = activity.getWindowManager().getCurrentWindowMetrics();
+            WindowMetrics maximum = activity.getWindowManager().getMaximumWindowMetrics();
+            Rect available = new Rect(maximum.getBounds());
+            Insets bars = maximum.getWindowInsets().getInsetsIgnoringVisibility(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            available.set(available.left + bars.left, available.top + bars.top,
+                    available.right - bars.right, available.bottom - bars.bottom);
+            return floatingBounds(current.getBounds(), available,
+                    Math.round(8 * activity.getResources().getDisplayMetrics().density));
+        } catch (RuntimeException unavailable) {
+            // Older/OEM APIs may not distinguish the modes. Do not invent a window type from unknown metrics.
+            return false;
+        }
+    }
+
+    /** An ordinary split pane spans one usable dimension; a small window inset on both axes does not. */
+    static boolean floatingBounds(Rect current, Rect available, int tolerance) {
+        return current != null && available != null && !current.isEmpty() && !available.isEmpty()
+                && current.width() + tolerance < available.width()
+                && current.height() + tolerance < available.height();
+    }
+
+    private static String floatingHint() {
+        return "Open " + AppName.NAME + " in full screen, then choose Split screen with Dasher.";
     }
 
     /**
@@ -102,6 +141,11 @@ final class DasherSplit {
         if (dasher == null) {
             log(activity, "tap: Dasher is not installed");
             return "Dasher is not installed.";
+        }
+        if (floating(activity)) {
+            requestedAt = 0;
+            log(activity, "tap in a floating window: no adjacent launch requested");
+            return floatingHint();
         }
         if (activity.isInMultiWindowMode()) {
             requestedAt = 0;
@@ -182,7 +226,13 @@ final class DasherSplit {
                 verifier = null;
                 Activity shown = page.get();
                 if (requestedAt == 0 || shown == null || shown.isFinishing()) return;
-                if (shown.isInMultiWindowMode()) return;
+                if (floating(shown)) {
+                    requestedAt = 0;
+                    log(shown, "floating window after split request: nothing opened");
+                    if (later != null) later.accept(floatingHint());
+                    return;
+                }
+                if (inSplit(shown)) return;
                 log(shown, "no split " + VERIFY_MS + " ms after Android took the request: opening recent apps");
                 String said = byHand(shown);
                 if (said != null && later != null) later.accept(said);
@@ -217,6 +267,11 @@ final class DasherSplit {
     static void resumed(Activity activity) {
         if (requestedAt == 0 || !activity.isInMultiWindowMode()) return;
         cancelVerify();
+        if (floating(activity)) {
+            requestedAt = 0;
+            log(activity, "floating window after split request: nothing opened");
+            return;
+        }
         long after = SystemClock.uptimeMillis() - requestedAt;
         boolean fresh = after < waitMs;
         requestedAt = 0;
@@ -233,7 +288,9 @@ final class DasherSplit {
 
     /** Offer Filter's screen entered or left split screen (or came back in it): logged once per change. */
     static void windowMode(Activity activity) {
-        boolean inSplit = activity.isInMultiWindowMode();
+        boolean inSplit = inSplit(activity);
+        // A confirmed exit overrides the 20-second sighting grace; a later split with Maps is not beside Dasher.
+        if (!inSplit) OfferFilterService.sawDasherBeside(0);
         if (loggedSplit != null && loggedSplit == inSplit) return;
         boolean first = loggedSplit == null;
         loggedSplit = inSplit;

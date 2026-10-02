@@ -118,10 +118,10 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         NotificationChannel offers = new NotificationChannel("orders", "Orders", NotificationManager.IMPORTANCE_HIGH);
         offers.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null);
         FilterStore.recordDoorDashOfferChannel(app, "orders");
-        FilterStore.recordDoorDashChannel(app, offers);
+        FilterStore.recordDoorDashChannel(app, offers, true);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
-            View dasher = shownIcon(content, "DoorDash's offer alerts aren't Silent. Fix.");
+            View dasher = shownIcon(content, "DoorDash's offer alert also sounded. Fix.");
             View installs = shownIcon(content, "Updates can't install. Fix.");
             View location = shownIcon(content, "The offer map needs location. Fix.");
             assertNotNull("Dasher's offer channel rings", dasher);
@@ -147,7 +147,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             ((Switch) findButton(content, "Offer map")).setChecked(false);
             activity.pause().resume();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
-            assertNull(shownIcon(content, "DoorDash's offer alerts aren't Silent. Fix."));
+            assertNull(shownIcon(content, "DoorDash's offer alert also sounded. Fix."));
             assertNull(shownIcon(content, "Updates can't install. Fix."));
             assertNull("with the map off, location is not needed", shownIcon(content,
                     "The offer map needs location. Fix."));
@@ -160,6 +160,8 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         NotificationChannel rings = new NotificationChannel("orders", "Orders", NotificationManager.IMPORTANCE_HIGH);
         rings.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null);
         FilterStore.recordDoorDashChannel(app, rings);
+        assertFalse("configured sound alone cannot create a Fix", FilterStore.doorDashChannelAlerts(app));
+        FilterStore.recordDoorDashChannel(app, rings, true);
         assertTrue(FilterStore.doorDashChannelAlerts(app));
         FilterStore.recordDoorDashChannel(app, null);
         assertTrue("unknown keeps what was last seen", FilterStore.doorDashChannelAlerts(app));

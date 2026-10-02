@@ -68,6 +68,7 @@ final class DasherOverlay implements DasherTab.Listener {
     /** Until when (uptime) a tab tucked away for a delivery stays out after a tap. */
     private long outUntil;
     private boolean dragging;
+    private boolean suspended;
     private int dragFromX;
     private int dragFromY;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -93,7 +94,7 @@ final class DasherOverlay implements DasherTab.Listener {
 
     /** Whether anything of it is over Dasher now. */
     boolean isShowing() {
-        return tab != null || guide != null;
+        return !suspended && (tab != null || guide != null);
     }
 
     DasherTab tab() {
@@ -113,6 +114,7 @@ final class DasherOverlay implements DasherTab.Listener {
             hide();
             return;
         }
+        suspended = false;
         area.set(dasher);
         this.split = split;
         this.scene = scene == null ? DasherScene.UNKNOWN : scene;
@@ -122,6 +124,7 @@ final class DasherOverlay implements DasherTab.Listener {
         } else {
             if (tab == null) show();
             if (tab != null) {
+                tab.setVisibility(android.view.View.VISIBLE);
                 tab.show(state(FilterStore.load(service)));
                 if (!dragging) layoutTab();
             }
@@ -184,7 +187,7 @@ final class DasherOverlay implements DasherTab.Listener {
 
     /** Puts the tab on its edge at its place, looking as it should now. */
     private void layoutTab() {
-        if (tab == null || dragging) return;
+        if (tab == null || dragging || suspended) return;
         DasherTab.Look look = restingLook();
         boolean right = onRight();
         tab.setLook(look, right, tucksAway());
@@ -218,6 +221,7 @@ final class DasherOverlay implements DasherTab.Listener {
     // ---- What the user does with the tab ----
 
     @Override public void tapped() {
+        if (suspended) return;
         DasherTab view = tab;
         if (view == null) return;
         if (tucksAway()) {
@@ -237,7 +241,7 @@ final class DasherOverlay implements DasherTab.Listener {
     }
 
     @Override public void dragStarted() {
-        if (tab == null) return;
+        if (tab == null || suspended) return;
         dragging = true;
         hideGuide();
         boolean right = onRight();
@@ -249,14 +253,14 @@ final class DasherOverlay implements DasherTab.Listener {
     }
 
     @Override public void dragged(float dx, float dy) {
-        if (tab == null || !dragging) return;
+        if (tab == null || !dragging || suspended) return;
         int width = ui().dp(DasherTab.WIDTH_DP);
         place(tab, clamp(dragFromX + Math.round(dx), area.left, Math.max(area.left, area.right - width)),
                 clamp(dragFromY + Math.round(dy), minTop(), maxTop()), width);
     }
 
     @Override public void dropped() {
-        if (tab == null || !dragging) return;
+        if (tab == null || !dragging || suspended) return;
         dragging = false;
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) tab.getLayoutParams();
         // It lands on the nearer edge, where it was let go.
@@ -267,7 +271,7 @@ final class DasherOverlay implements DasherTab.Listener {
     }
 
     @Override public boolean move(DasherTab.Move how) {
-        if (tab == null || dragging) return false;
+        if (tab == null || dragging || suspended) return false;
         boolean right = onRight();
         int top = tabTop();
         int next = how == DasherTab.Move.UP ? clamp(top - ui().dp(STEP_DP), minTop(), maxTop())
@@ -294,7 +298,7 @@ final class DasherOverlay implements DasherTab.Listener {
             }
         }
         // Only over the wait for offers; never while the tab is being moved, or beside a tab that is not there.
-        if (pointer == null || scene != DasherScene.WAITING || dragging || area.isEmpty() || (!split && tab == null)) {
+        if (suspended || pointer == null || scene != DasherScene.WAITING || dragging || area.isEmpty() || (!split && tab == null)) {
             hideGuide();
             return;
         }
@@ -409,7 +413,19 @@ final class DasherOverlay implements DasherTab.Listener {
         }
     }
 
+    /** A new Dasher window makes the old controls inert until a fresh screen classification. */
+    void suspend() {
+        suspended = true;
+        dragging = false;
+        if (tab != null) {
+            touchable(false);
+            tab.setVisibility(android.view.View.INVISIBLE);
+        }
+        hideGuide();
+    }
+
     void hide() {
+        suspended = false;
         hideTab();
         hideGuide();
     }

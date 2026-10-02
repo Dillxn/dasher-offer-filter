@@ -94,7 +94,7 @@ final class ScreenAwake {
     static boolean wanted(Context context) {
         if (!Consent.accepted(context)) return false;
         FilterSettings rules = FilterStore.load(context);
-        if (!rules.enabled || !rules.hasAnyRule() || !Dashing.on(context)) return false;
+        if (!rules.enabled || !rules.hasAnyRule() || !Dashing.on(context) || Dashing.isPaused(context)) return false;
         try {
             PowerManager power = context.getSystemService(PowerManager.class);
             KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);

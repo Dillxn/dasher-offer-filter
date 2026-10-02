@@ -8,6 +8,7 @@ package and embedded version, a version code above the one already published, an
 app's own policy code. It never signs, commits or pushes; commit release/ and push it to main afterwards.
 """
 import hashlib, json, os, pathlib, re, subprocess
+from release_identity import check_channel
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SIGNER = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
 PACKAGE = 'com.local.dasherfilter'
@@ -39,6 +40,12 @@ def main():
     badging = run(str(sdk / 'aapt2'), 'dump', 'badging', str(apk))
     if f"package: name='{PACKAGE}' versionCode='{code}' versionName='{version}'" not in badging:
         raise ValueError('APK package/embedded version disagrees with app/build.gradle')
+
+    # Check the other channel freshly with the app's actual transport and APK verification. A stale local
+    # manifest cannot authorize reusing a code already served by the retired full Render build.
+    run('python3', str(ROOT / 'tools/verify_channel.py'))
+    live = json.loads((ROOT / '.channel-check/latest.json').read_text())
+    check_channel(code, head, hashlib.sha256(data).hexdigest(), live, 'Render')
 
     feed = {'packageName': PACKAGE, 'versionCode': code, 'versionName': version, 'apkUrl': REPO_APK,
             'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data), 'encoding': 'raw', 'sourceCommit': head}
