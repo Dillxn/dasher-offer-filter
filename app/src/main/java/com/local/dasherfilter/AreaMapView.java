@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
@@ -11,8 +12,10 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +39,24 @@ final class AreaMapView extends View {
     private static final double MILES_PER_DEGREE_LATITUDE = 69.05;
     private static final int[] MEDALS = {0xFFE3B341, 0xFFB9BDC3, 0xFFCD8B4E};
     private static final int GOLD = 0xFFD39B2A;
+    static final int EXPLAIN_ATLAS = 0x01030001;
+    private static final String TITLE = "Atlas · where offers reached you";
+    private static final String KEY = "Gold: higher $/mi · ranks 1–3 · dashed: <" + AreaMap.MIN_OFFERS
+            + " offers with miles";
+    private static final String POSITION_KEY = "You · dots toward #1";
+    private static final String HELP = "Each square is the approximate area your phone was in when standalone "
+            + "offers arrived, including declined offers. These are receiving areas, not pickups, final stops "
+            + "or Dasher hotspots.\n\n"
+            + "Gold: deeper gold means higher offered pay per mile among your ranked areas. The rate is total "
+            + "offered pay divided by total offer miles, using only offers with both figures.\n\n"
+            + "1, 2, 3: the highest ranked areas. At least " + AreaMap.MIN_OFFERS
+            + " offers with pay and miles are needed before ranking, so one offer cannot put an area first. "
+            + "Dashed squares need more measured offers.\n\n"
+            + "You: the phone’s latest available location. The dotted trail points toward #1; it is not a road "
+            + "route. North is up and the scale shows straight-line distance.\n\n"
+            + "Tap a square for its rate and sample count. Tap its details below the atlas to open Maps. "
+            + "This is recorded offer history, not earnings or a prediction of future offers. It does not "
+            + "supply the hotspot spoke.";
 
     private final Ui ui;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,6 +65,8 @@ final class AreaMapView extends View {
     private final RectF rect = new RectF();
     private final RectF pill = new RectF();
     private final android.text.TextPaint labelText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final android.text.TextPaint keyText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private boolean helpPressed;
     private final Path path = new Path();
     /** Made once: the map redraws every frame while its "You" halo breathes. */
     private final DashPathEffect unrankedDash;
@@ -201,7 +224,7 @@ final class AreaMapView extends View {
     }
 
     private String describe() {
-        if (cells.isEmpty()) return emptyMessage + ".";
+        if (cells.isEmpty()) return emptyMessage + ". " + spokenKey();
         List<String> best = new ArrayList<>();
         for (int i = 0; i < Math.min(3, ranked.size()); i++) {
             AreaMap.Cell cell = ranked.get(i);
@@ -215,7 +238,15 @@ final class AreaMapView extends View {
         return (hereName == null ? "" : "You are in " + hereName + ". ")
                 + "Best paying areas by pay per mile: " + (best.isEmpty() ? "none ranked yet" : String.join("; ", best))
                 + "." + (unranked > 0 ? " " + unranked + (unranked == 1 ? " area has" : " areas have")
-                + " too few offers to rank." : "");
+                + " too few offers to rank." : "") + " " + spokenKey();
+    }
+
+    private String spokenKey() {
+        return "Offer atlas: phone areas when offers arrived, not pickups, final stops or Dasher hotspots. "
+                + "Deeper gold means higher total offered pay divided by total offer miles. "
+                + "Numbers 1 to 3 rank the best sampled areas. Dashed squares have fewer than " + AreaMap.MIN_OFFERS
+                + " offers with pay and miles. The blue dot is You; the dotted trail points toward number 1, "
+                + "not a road route. North is up. Recorded history, not a prediction. Use Explain atlas for the key.";
     }
 
     /** Whatever the page gives it on one screen; asked with no limit, the least it reads well at. */
@@ -227,6 +258,9 @@ final class AreaMapView extends View {
     }
 
     private void project(float width, float height) {
+        // The key has its own strip; no ranked square or name is hidden behind its words.
+        float keyHeight = keyHeight();
+        height = Math.max(ui.dp(34), height - keyHeight);
         double minLat = Double.MAX_VALUE;
         double maxLat = -Double.MAX_VALUE;
         double minLng = Double.MAX_VALUE;
@@ -259,7 +293,9 @@ final class AreaMapView extends View {
         top = maxLat + (height / scale - spanY) / 2;
         // Squares stay big enough to read and tap: in a short strip of ground, the map centres on where you are
         // (else on the best square) and lets far squares fall outside it.
-        double readable = ui.dp(34) / AreaMap.CELL_DEGREES;
+        // The shortest maps leave 50 dp below the key. A slightly smaller square can keep both your dot and a
+        // nearby #1 badge visible there; normal maps keep their 34 dp minimum.
+        double readable = Math.min(ui.dp(34), Math.max(ui.dp(24), height - ui.dp(22))) / AreaMap.CELL_DEGREES;
         if (scale < readable) {
             scale = readable;
             AreaMap.Cell focus = ranked.isEmpty() ? cells.get(0) : ranked.get(0);
@@ -273,7 +309,10 @@ final class AreaMapView extends View {
                 // Both in the clear middle (inside the faded edges, with room for the coin) when they fit: centre
                 // between them. Otherwise stay on you.
                 double roomX = (width / 2 - sideFade(width) - ui.dp(14)) / scale;
-                double roomY = (height / 2 - topFade(height) - ui.dp(14)) / scale;
+                // Below the key there is no faded top edge. In a short map keep the two markers within its
+                // actual clear height; using the full-map edge margin would unnecessarily hide a nearby #1.
+                double roomY = (height / 2 - (height <= ui.dp(80) ? ui.dp(10)
+                        : topFade(height) + ui.dp(14))) / scale;
                 if (Math.abs(coinLongitude - longitude) * squash <= 2 * roomX
                         && Math.abs(coinLatitude - latitude) <= 2 * roomY) {
                     latitude = (latitude + coinLatitude) / 2;
@@ -283,6 +322,11 @@ final class AreaMapView extends View {
             left = longitude * squash - width / scale / 2;
             top = latitude + height / scale / 2;
         }
+        top += keyHeight / scale;
+    }
+
+    private float keyHeight() {
+        return ui.dp(34);
     }
 
     private float x(double longitude) {
@@ -306,14 +350,16 @@ final class AreaMapView extends View {
             text.setColor(brown());
             text.setTextSize(Math.min(ui.sp(14), ui.dp(20)));
             text.setFakeBoldText(false);
-            canvas.drawText(emptyMessage, width / 2, height / 2, text);
+            canvas.drawText(emptyMessage, width / 2, (height + keyHeight()) / 2, text);
             text.setFakeBoldText(true);
             drawNorth(canvas, width);
+            drawKey(canvas, width, height);
             return;
         }
         project(width, height);
         // The land is drawn into its own layer, faded at the edges, then laid on the ground.
         int land = canvas.saveLayer(0, 0, width, height, null);
+        canvas.clipRect(0, keyHeight(), width, height);
         drawGrid(canvas, width, height);
 
         double best = ranked.isEmpty() ? 0 : ranked.get(0).centsPerMile();
@@ -351,11 +397,73 @@ final class AreaMapView extends View {
         canvas.restoreToCount(land);
         drawNorth(canvas, width);
         drawScale(canvas, height);
+        drawKey(canvas, width, height);
         if (here != null) Motion.next(this);
     }
 
     private int brown() {
         return ui.dark ? 0xFFC9B48C : 0xFF7A5C3A;
+    }
+
+    /** A small, persistent key. The full definitions are one tap away, outside Settings. */
+    private void drawKey(Canvas canvas, float width, float height) {
+        keyText.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF4A3622);
+        keyText.setTextAlign(Paint.Align.LEFT);
+        keyText.setTypeface(Ui.MEDIUM);
+        keyText.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
+        CharSequence title = Ui.fit(keyText, TITLE, width - ui.dp(60), 0.9f);
+        canvas.drawText(title, 0, title.length(), ui.dp(12), ui.dp(14), keyText);
+        keyText.setTextSize(Math.min(ui.sp(10), ui.dp(12)));
+        CharSequence key = Ui.fit(keyText, KEY, width - ui.dp(24), 0.9f);
+        canvas.drawText(key, 0, key.length(), ui.dp(12), ui.dp(29), keyText);
+
+        float cx = width - ui.dp(25), cy = ui.dp(13);
+        line.setColor(brown());
+        line.setStrokeWidth(Math.max(1, ui.dp(1)));
+        canvas.drawCircle(cx, cy, ui.dp(7), line);
+        text.setColor(brown());
+        text.setTextSize(ui.dp(10));
+        canvas.drawText("i", cx, cy + ui.dp(3.5f), text);
+
+        if (!cells.isEmpty()) {
+            // Kept to the right of the distance scale. The blue sample makes "You" identifiable without guessing.
+            keyText.setTextSize(Math.min(ui.sp(10), ui.dp(12)));
+            keyText.setTextAlign(Paint.Align.RIGHT);
+            CharSequence position = Ui.fit(keyText, POSITION_KEY, width * 0.53f, 0.9f);
+            float right = width - ui.dp(12);
+            float baseline = height - ui.dp(5);
+            float words = keyText.measureText(position, 0, position.length());
+            pill.set(right - words - ui.dp(14), baseline - keyText.getTextSize(), right + ui.dp(4), baseline + ui.dp(3));
+            fill.setColor(ui.dark ? 0xE614171C : 0xE6FFFFFF);
+            canvas.drawRoundRect(pill, ui.dp(6), ui.dp(6), fill);
+            fill.setColor(ui.accent);
+            canvas.drawCircle(right - words - ui.dp(7), baseline - keyText.getTextSize() / 3, ui.dp(3), fill);
+            canvas.drawText(position, 0, position.length(), right, baseline, keyText);
+        }
+    }
+
+    /** Shared by the visible info target and the screen-reader action. */
+    void explainAtlas() {
+        new AlertDialog.Builder(getContext()).setTitle("Reading the atlas").setMessage(HELP)
+                .setPositiveButton("Got it", null).show();
+    }
+
+    /** Bounds of the info control; independent of any particular recorded area. */
+    RectF helpBounds() {
+        return new RectF(getWidth() - ui.dp(49), 0, getWidth() - ui.dp(1), Math.min(getHeight(), ui.dp(44)));
+    }
+
+    @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(EXPLAIN_ATLAS, "Explain atlas"));
+    }
+
+    @Override public boolean performAccessibilityAction(int action, Bundle arguments) {
+        if (action == EXPLAIN_ATLAS) {
+            explainAtlas();
+            return true;
+        }
+        return super.performAccessibilityAction(action, arguments);
     }
 
     /** A few faint field boundaries, so the ground still reads as land before any offer is mapped. */
@@ -479,13 +587,13 @@ final class AreaMapView extends View {
         canvas.drawCircle(cx, cy, ui.dp(7.5f), fill);
         fill.setColor(ui.accent);
         canvas.drawCircle(cx, cy, ui.dp(5.5f), fill);
-        // No label: the blue dot is you, and the signpost on the hills names where.
+        // The persistent key labels this blue dot "You"; the signpost names the place.
     }
 
     /** A compass rose with north marked. */
     private void drawNorth(Canvas canvas, float width) {
         float cx = width - ui.dp(30);
-        float cy = ui.dp(36);
+        float cy = ui.dp(54);
         float big = ui.dp(15);
         float small = ui.dp(4);
         int ink = brown();
@@ -533,6 +641,19 @@ final class AreaMapView extends View {
 
     @SuppressLint("ClickableViewAccessibility")
     @Override public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            helpPressed = helpBounds().contains(event.getX(), event.getY());
+            if (helpPressed) return true;
+        }
+        if (helpPressed) {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                helpPressed = false;
+                if (helpBounds().contains(event.getX(), event.getY())) explainAtlas();
+            } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                helpPressed = false;
+            }
+            return true;
+        }
         if (event.getAction() == MotionEvent.ACTION_UP && !cells.isEmpty()) {
             project(getWidth(), getHeight());
             AreaMap.Cell nearest = null;

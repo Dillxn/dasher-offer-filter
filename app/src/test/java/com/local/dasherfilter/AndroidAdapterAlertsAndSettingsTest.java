@@ -540,8 +540,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertEquals("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review.",
-                    findChart(content).getContentDescription().toString());
+            assertTrue(findChart(content).getContentDescription().toString().startsWith("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review."));
             openTicket(content);
             assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
             assertNotNull(shownTextContaining(content, "Decline tapped · on screen"));

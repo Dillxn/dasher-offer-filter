@@ -751,20 +751,29 @@ public class AccessibilityAdapterTest {
     public void aDeclinedOfferStillShowingAfterFiveSecondsIsReportedOnce() {
         reportsOn();
         AccessibilityNodeInfo stuck = offer("$7.90");
-        for (int i = 0; i < DeclineState.MAX_ATTEMPTS; i++) {
-            show(stuck);
-            ShadowSystemClock.advanceBy(Duration.ofMillis(300));
-        }
         show(stuck);
+        // Taken first-step requests now give Dasher two seconds: requests at 0, 2 and 4 seconds.
+        for (int i = 1; i < DeclineState.MAX_ATTEMPTS - 1; i++) {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
+            show(stuck);
+        }
         ReportOutbox.flush();
         assertEquals("not yet: Dasher may still be closing it", 0, ReportOutbox.queued(app));
 
-        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.STUCK_MS));
+        ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.STUCK_MS
+                - (DeclineState.MAX_ATTEMPTS - 2) * DeclineState.RETRY_INTERVAL_MS));
         show(stuck);
         show(stuck);
         ReportOutbox.flush();
         assertEquals(1, ReportOutbox.queued(app));
+        // Spend the final retry after its patient interval, then prove the cap still holds before authority expires.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
+        show(stuck);
+        ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
+        show(stuck);
         assertEquals(DeclineState.MAX_ATTEMPTS, Shadows.shadowOf(decline).getPerformedActions().size());
+        ReportOutbox.flush();
+        assertEquals("later reads and retries never duplicate the report", 1, ReportOutbox.queued(app));
     }
 
     @Test

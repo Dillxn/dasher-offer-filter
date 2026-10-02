@@ -117,6 +117,8 @@ public final class OfferFilterService extends AccessibilityService {
     /** After the first Decline tap, Dasher's question is looked for this often, for this long. */
     static final long CONFIRM_POLL_MS = 100;
     static final long CONFIRM_POLL_WINDOW_MS = 3_000;
+    /** A quiet window can gain a delayed question without an accessibility event; read it at most once a second. */
+    static final long CONFIRM_QUIET_READ_MS = 1_000;
     /**
      * Besides the window a read just read, Dasher's question is looked for in this many of Dasher's other windows at
      * most (the newest first), each read to this many nodes at most: a dialog is a few nodes, never a whole screen.
@@ -348,10 +350,14 @@ public final class OfferFilterService extends AccessibilityService {
         @Override public void onReceive(Context context, Intent intent) {
             boolean on = !Intent.ACTION_SCREEN_OFF.equals(intent.getAction());
             screenTurned(on, SystemClock.uptimeMillis());
+            if (screenAwake != null) {
+                if (on) screenAwake.screenOn(); else screenAwake.screenOff();
+            }
             if (!on && !stopped) scanner.postAtFrontOfQueue(() -> peekOver("ended because the screen turned off"));
         }
     };
     private boolean screenStateWatched;
+    private ScreenAwake screenAwake;
 
     /**
      * Dasher's own windows, by ID, as reads found them (written on the scanner thread, any thread may read): the log's
@@ -462,6 +468,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long readWaitedMs;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
     private long declineGeneration;
+    /** The global minimum scale that authorized the last first-step request. */
+    private int declineMinimumScale = 100;
     /** The offer whose Decline was last tapped: only its own confirmation may be tapped. */
     private OfferSnapshot declinedOffer = OfferSnapshot.UNKNOWN;
     /** Its decision-log entry, upgraded when the confirmation is tapped too. */
@@ -530,6 +538,7 @@ public final class OfferFilterService extends AccessibilityService {
             confirmLog("authority ended: " + reason);
         }
         if (reset) declineState.reset(); else declineState.endConfirmation();
+        scanner.removeCallbacks(declineRetry);
     }
 
     private void recoverLateCompletion(long now, String evidence) {
@@ -651,7 +660,8 @@ public final class OfferFilterService extends AccessibilityService {
      * After the first Decline tap, every {@link #CONFIRM_POLL_MS}: Dasher's question is looked for. A read that
      * Dasher's events asked for comes first and looks anyway; otherwise Android's list of windows is asked for (not
      * Dasher), and the windows are read (each at most once, and only so far) when that list, or Dasher's events,
-     * changed since the last read began. Ends after {@link #CONFIRM_POLL_WINDOW_MS}, or once the question is tapped.
+     * changed since the last read began. A quiet window gets a bounded read once a second in case Dasher omitted
+     * its event. Ends after {@link #CONFIRM_POLL_WINDOW_MS}, or once the question is tapped.
      */
     private final Runnable confirmPoll = new Runnable() {
         @Override public void run() {
@@ -663,7 +673,8 @@ public final class OfferFilterService extends AccessibilityService {
                 return;
             }
             if (queued.get() == QUEUED_NONE
-                    && (dasherEvents.get() != lastReadEvents || windowsChangedSinceLastLook())) {
+                    && (dasherEvents.get() != lastReadEvents || windowsChangedSinceLastLook()
+                    || now - lastScanEndAt >= CONFIRM_QUIET_READ_MS)) {
                 // Once the question is tapped, the offer closing is read again every moment, as after any read.
                 if (checkOffer("confirmation poll", now, MAX_CONFIRM_NODES)) scheduleRecheck();
                 watchWindows();
@@ -678,6 +689,14 @@ public final class OfferFilterService extends AccessibilityService {
         long now = SystemClock.uptimeMillis();
         if (!declineState.hasPendingConfirmation(now) || declineState.confirmationTries() == 0) return;
         if (checkOffer("confirmation retry", now, MAX_SCAN_NODES)) scheduleRecheck();
+        watchWindows();
+    };
+    /** A taken first-step request stalled: read afresh before its patient, bounded retry, even without an event. */
+    private final Runnable declineRetry = () -> {
+        if (stopped) return;
+        long now = SystemClock.uptimeMillis();
+        if (!awaitingConfirmation(now) || !episode.active(now) || episode.left()) return;
+        if (checkOffer("first-step retry", now, MAX_SCAN_NODES)) scheduleRecheck();
         watchWindows();
     };
     /** {@link DeclineEpisode#GLITCH_MS} after the declined offer showed again once its question was confirmed. */
@@ -1006,6 +1025,9 @@ public final class OfferFilterService extends AccessibilityService {
 
     @Override protected void onServiceConnected() {
         active = this;
+        if (screenAwake == null) screenAwake = new ScreenAwake(this,
+                () -> !stopped && screen.dasherReadable && knownDasherVisible(-1));
+        screenAwake.start();
         watchScreenState();
         watchCameras();
         Updater.schedule(this);
@@ -1054,6 +1076,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean windowsChanged = type == AccessibilityEvent.TYPE_WINDOWS_CHANGED;
         if (windowsChanged && ownOverlayChange(event)) return;
         if (!windowsChanged && !isDasherPackage(event.getPackageName())) return;
+        if (screenAwake != null) screenAwake.start();
         long at = SystemClock.uptimeMillis();
         Click click = type == AccessibilityEvent.TYPE_VIEW_CLICKED ? Click.of(event, at) : null;
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
@@ -1120,6 +1143,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override public void onInterrupt() {
+        if (screenAwake != null) screenAwake.stop();
         onScanner(() -> {
             scanner.removeCallbacks(recheck);
             recheckPending = false;
@@ -1191,6 +1215,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void stop() {
         boolean first = !stopped;
         stopped = true;
+        if (screenAwake != null) screenAwake.stop();
         if (active == this) active = null;
         if (screenStateWatched) {
             screenStateWatched = false;
@@ -1909,7 +1934,9 @@ public final class OfferFilterService extends AccessibilityService {
         /** The declined offer showing again after its screen gave way to its question, with no confirmation taken. */
         BACK_TO_OFFER,
         /** Dasher's question could not be tapped, or Dasher did not act on it: the app gives up. */
-        NOT_TAPPED
+        NOT_TAPPED,
+        /** The user's new minimum scale superseded the rules that authorized this decline. */
+        MINIMUMS_CHANGED
     }
 
     /**
@@ -1923,7 +1950,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean alreadyConfirmed = declineState.confirmationTapped();
         takeover = new Takeover(declinedOffer, now);
         takeoverGeneration = OfferNotificationService.generation();
-        takeoverDisplayEligible = why != HandBack.NOT_TAPPED && declinedEntry != null
+        takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
         if (why == HandBack.NOT_TAPPED && alreadyConfirmed) {
@@ -1977,6 +2004,13 @@ public final class OfferFilterService extends AccessibilityService {
                 status("You went back to the offer, so auto-decline stopped for it.");
                 toast = AppName.NAME + " stopped tapping this offer";
                 break;
+            case MINIMUMS_CHANGED:
+                DiagnosticLog.log(this, "rules", "minimum scale changed " + detail + halted);
+                status(alreadyConfirmed
+                        ? "Minimums changed after a confirmation was requested; nothing more will be tapped."
+                        : "Minimums changed; this earlier decline is left to you.");
+                toast = "Minimums changed; automatic taps stopped for this offer";
+                break;
             default:
                 DiagnosticLog.log(this, "confirm", "confirmation not tapped: " + detail + "; the offer is left to you");
                 status("Dasher's question could not be confirmed, so this offer is left to you.");
@@ -1989,7 +2023,25 @@ public final class OfferFilterService extends AccessibilityService {
         peekOver("left Dasher up because " + (why == HandBack.TOUCH ? "you touched the screen during the decline"
                 : why == HandBack.CLICK ? "you tapped Dasher during the decline"
                 : why == HandBack.BACK_TO_OFFER ? "you went back to the offer from Dasher's question"
+                : why == HandBack.MINIMUMS_CHANGED ? "the minimum scale changed"
                 : "Dasher's question was not confirmed"));
+    }
+
+    /** A new global buffer never inherits the old scale's in-flight decline authority. */
+    private boolean minimumScaleChanged(int currentScale, long now) {
+        if (currentScale == declineMinimumScale
+                || (!declineState.hasPendingConfirmation(now) && !episode.active(now))) return false;
+        handBack(HandBack.MINIMUMS_CHANGED, "from " + declineMinimumScale + "% to " + currentScale + "%", now);
+        return true;
+    }
+
+    /** No initial request was made with stale minimums; judge a fresh screen with the newly saved scale. */
+    private void staleMinimumScaleRead() {
+        long now = SystemClock.uptimeMillis();
+        if (!minimumScaleChanged(FilterStore.load(this).minimumScalePercent, now)) {
+            status("Minimums changed while reading; checking the offer again.");
+        }
+        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "minimum scale changed"); });
     }
 
     /**
@@ -3100,6 +3152,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A notification from here on may be a newer offer: it revokes the confirmation of a decline tapped below.
         long generation = OfferNotificationService.generation();
         FilterSettings settings = FilterStore.load(this);
+        minimumScaleChanged(settings.minimumScalePercent, now);
         if (rulesEnabled == null || rulesEnabled != settings.enabled) {
             DiagnosticLog.log(this, "rules", "auto-decline " + (settings.enabled ? "resumed" : "paused") + " (settings)");
             rulesEnabled = settings.enabled;
@@ -3253,6 +3306,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Dasher), 300 ms after refusals or 2–3 seconds after taken requests; then the offer is left to the user.
      */
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
+        if (minimumScaleChanged(FilterStore.load(this).minimumScalePercent, SystemClock.uptimeMillis())) return false;
         diagnostic("confirmation", confirmation, null, null);
         declinedOfferShowing = true;
         if (!declineState.hasPendingConfirmation(now)) {
@@ -3335,7 +3389,8 @@ public final class OfferFilterService extends AccessibilityService {
         heldConfirmation = null;
         scanner.removeCallbacks(watchHoldOver);
         AccessibilityNodeInfo target = confirmation.declineTargets.get(selected);
-        Tap tap = dasherStillReadable(target) ? ownTap(target, declinedOffer) : Tap.REFUSED;
+        Tap tap = dasherStillReadable(target) ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
+        if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         if (tap == Tap.HELD) {
             // A touch in split screen is being judged: tapped once it is found to be on Offer Filter's half (the
             // offer is handed back if it was on Dasher's), its authority checked again then.
@@ -3654,7 +3709,8 @@ public final class OfferFilterService extends AccessibilityService {
             boundedOffer = offer;
             if (boundedUntil <= now) boundedUntil = now + (readCountdown >= 0 ? readCountdown * 1000L + 3_000 : 30_000);
         } else { boundedOffer = null; boundedUntil = 0; }
-        if (takeover != Takeover.NONE && newCountdown && offer.agreesWith(takeover.offer)) {
+        if (newCountdown && ((takeover != Takeover.NONE && offer.agreesWith(takeover.offer))
+                || (episode.active(now) && offer.agreesWith(episode.offer())))) {
             forgetTakeover("new instance (countdown)");
             endAuthority("new instance (countdown)", true);
             episode.end();
@@ -3778,7 +3834,8 @@ public final class OfferFilterService extends AccessibilityService {
             return declineState.hasPendingConfirmation(now);
         }
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
-        Tap tap = dasherStillReadable(scan.decline) ? ownTap(scan.decline, offer) : Tap.REFUSED;
+        Tap tap = dasherStillReadable(scan.decline) ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
+        if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         long tappedAt = SystemClock.uptimeMillis();
         if (stopped) return false;
         diagnostic(phase, scan, offer, decision);
@@ -3800,9 +3857,11 @@ public final class OfferFilterService extends AccessibilityService {
         if (tap == Tap.TAPPED) {
             boolean firstTap = !key.equals(declinedKey) || !declineState.hasPendingConfirmation(now);
             long remaining = secondsLeft >= 0 ? Math.max(0, secondsLeft * 1000L - (ownTapAt - now)) : -1;
+            declineState.readDuration(tappedAt - currentReadStartedAt);
             declineState.declineSent(key, ownTapAt, remaining);
             authorityEndReason = "";
             declineGeneration = generation;
+            declineMinimumScale = settings.minimumScalePercent;
             declinedOffer = offer;
             declinedOfferShowing = true;
             if (firstTap) {
@@ -3830,6 +3889,9 @@ public final class OfferFilterService extends AccessibilityService {
             declinedEntry = record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_TAPPED, peeked);
             // Dasher's question is looked for from now on, every CONFIRM_POLL_MS, instead of re-reading everything.
             startConfirmationPoll(tappedAt);
+            scanner.removeCallbacks(declineRetry);
+            long retryAt = declineState.nextDeclineAt();
+            if (retryAt >= 0) scanner.postAtTime(declineRetry, retryAt);
             DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail
                     + "; read after " + readTrigger + " (waited " + readWaitedMs + " ms)"
                     + "; sound playing: " + OfferSilencer.playing(this));
@@ -3852,7 +3914,12 @@ public final class OfferFilterService extends AccessibilityService {
         reportedStuck = declinedKey;
         List<String> labels = new ArrayList<>(scan.text);
         labels.addAll(scan.metricParts);
-        DiagnosticLog.log(this, "accessibility", "decline still showing after " + (now - declinedAt) + " ms");
+        String stage = !episode.questionWasSeen() ? "waiting for the question"
+                : episode.wasConfirmed() ? "question requested; waiting for Dasher to close it"
+                : "question seen; not confirmed";
+        DiagnosticLog.log(this, "accessibility", "decline still showing after " + (now - declinedAt)
+                + " ms; " + stage + "; first-step requests " + declineState.declineAttempts()
+                + "/" + DeclineState.MAX_ATTEMPTS);
         ReportOutbox.fileAutomatic(this, ProblemReport.Kind.DECLINE_STUCK, declinedEntry, labels, null);
     }
 
@@ -3983,7 +4050,7 @@ public final class OfferFilterService extends AccessibilityService {
      * What happened to one of the app's own taps. {@link #HELD}: not made yet, because a touch in split screen is
      * still being judged (Offer Filter's half, or Dasher's); it is tried again once it is.
      */
-    private enum Tap { TAPPED, REFUSED, TAKEN_OVER, HELD }
+    private enum Tap { TAPPED, REFUSED, TAKEN_OVER, HELD, RULES_CHANGED }
 
     /**
      * The app's own tap, unless the user touched the screen since this offer's decline began: then the offer is
@@ -3991,7 +4058,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Its click event, arriving just after, is not mistaken for the user's. While a touch in split screen is being
      * judged, nothing is tapped on the offer being declined.
      */
-    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer) {
+    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale) {
         // Before the touches are taken: a touch judged the user's is counted before it stops being held.
         boolean held = touchesHeld > 0;
         takeOverIfTouched();
@@ -4006,6 +4073,7 @@ public final class OfferFilterService extends AccessibilityService {
             lastRefusal = refusal;
             return Tap.REFUSED;
         }
+        if (FilterStore.load(this).minimumScalePercent != minimumScale) return Tap.RULES_CHANGED;
         ownTapAt = now;
         ownTapTarget = node;
         // For the touch watch and the clicks: a touch from here until OWN_ACTION_ECHO_MS after the call returns is

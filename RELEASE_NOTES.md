@@ -1,11 +1,24 @@
-## 0.4.52 — customer-name masking compatibility (unreleased)
+## 0.4.53 — customer-name masking compatibility (unreleased)
 
 - Preserve the continuation candidate's payment/account/unknown-screen discard policy, one-time legacy cleanup, current-notice requirement and durable report receipts.
 - Mask separate customer headings in serialized diagnostics and the separate name after the observed drop-off order-verification prompt. Also mask a separate name after "Scan customer name".
 - Re-mask each queued diagnostic body and pending comment before sending and persist that sanitized content before any network request, without reviving discarded reports.
+- Preserve the base candidate's minimums scale, patient decline retries, fitness skyline/atlas and active-filtering screen-timeout guards.
 - Invented-data regressions cover recognized capture, retained export, unknown-screen discard, pending issue/comment retries and label fallback on Android APIs 26 and 35.
 
-This is a compatibility proposal on the unreleased 0.4.51 source candidate, not a released app. The complete Android Gradle tests/lint, existing-key signed APK, live-channel and real-handset gates must be rerun on the integrated source. This does not remove reports already sent to GitHub.
+This is a compatibility proposal on the unreleased 0.4.52 source candidate, not a released app. The complete Android Gradle tests/lint, existing-key signed APK, live-channel and real-handset gates must be rerun on the integrated source. This does not remove reports already sent to GitHub.
+
+## 0.4.52 — fitness, minimums buffer and stalled-decline candidate, not released
+
+- Adds a score tree beside each offer building: buildings remain payout, trees show recorded score fitness, and unknown scores stay visibly unknown.
+- Adds separate labeled references for the current score cutoff and overall payout minimum, including the existing learned payout floor when enabled. Historical required-pay marks, outcome flags and tapping an offer remain.
+- Keeps payout and percent scales independent. Strict rules still judge each active minimum, and area mode still permits compensation between spokes.
+- Labels the five axes in plain language and explains the atlas's historical offer-arrival cells, pay-per-mile colors, sample counts and ranks. These areas are not delivery endpoints or measured Dasher hotspots.
+- Adds one overall minimums scale, default 100%. Set 97% to allow exact 97% baseline fitness in area mode; strict mode applies 97% to each active floor. Saved and learned minima remain intact, and max stops and unread-data handling stay unchanged.
+- Prevents automatic screen timeout during active, visible filtering with a short renewable screen-on lease. Manual lock, screen-off, hidden Dasher, pause and service shutdown stop it; the app never unlocks or wakes the phone.
+- Spaces first-step Decline retries out to give a delayed confirmation time to appear and rechecks without needing another Dasher event. Retries retain the original offer deadline and stop for user takeover or a fresh offer. Changing the buffer stops remaining taps under the old cutoff. It does not press Back to escape an unrecognized hung screen.
+
+Validation: 1,421 Java/JUnit and simulated Android 8/15 tests passed across 80 suites with no failures, errors or skips. Android lint completed with 0 errors and 32 warnings; unsigned 0.4.52 packaging and native phone/night/compact previews were checked. A fresh production-transport check verified the existing live 0.4.49 feed. See [the candidate validation record](VALIDATION_2026-10-02.md). Includes the earlier unreleased privacy, decline, Peek and fifth-spoke source work; no signed upgrade or automatic hotspot measurement is claimed.
 
 ## 0.4.51 — fifth-spoke candidate, not released
 

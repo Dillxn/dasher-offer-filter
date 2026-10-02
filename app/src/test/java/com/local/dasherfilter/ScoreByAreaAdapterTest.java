@@ -67,7 +67,7 @@ public class ScoreByAreaAdapterTest {
             assertTrue(star.backdrop());
             assertFalse("strict is the default", star.byArea());
             android.graphics.RectF toggle = star.scoreToggleBox();
-            assertNotNull("an icon-only toggle by the chart", toggle);
+            assertNotNull("the shared scale and mode control by the chart", toggle);
             Ui ui = new Ui(app);
             assertTrue("a full touch target", toggle.width() >= ui.dp(48) - 1);
             for (int axis = 0; axis < 4; axis++) {
@@ -83,7 +83,8 @@ public class ScoreByAreaAdapterTest {
             // Screen readers find it as a switch.
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             AccessibilityNodeInfo node = nodes.createAccessibilityNodeInfo(MinimumsStarView.SCORE_ID);
-            assertEquals("Score by area", node.getContentDescription().toString());
+            assertEquals("Minimums 100%. Score by area off. Drag sideways to scale all minimums; tap to change scoring mode.",
+                    node.getContentDescription().toString());
             assertEquals(Switch.class.getName(), node.getClassName().toString());
             assertTrue(node.isCheckable());
             assertFalse(node.isChecked());

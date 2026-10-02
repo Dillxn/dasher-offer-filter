@@ -433,6 +433,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override protected void onPause() {
         resumed = false;
+        refreshScreenAwake();
         handler.removeCallbacks(refresh);
         DasherSplit.paused(this);
         Tilt.stop();
@@ -876,6 +877,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 setScoreMode(on);
             }
 
+            @Override public void setMinimumScalePercent(int percent) {
+                FilterSettings saved = FilterStore.load(MainActivity.this);
+                FilterSettings next = saved.withMinimumScalePercent(percent);
+                if (next.minimumScalePercent != saved.minimumScalePercent) saveRules(saved, next);
+            }
+
             @Override public void setMaxStops(int stops) {
                 setStops(stops);
             }
@@ -898,8 +905,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         FilterSettings saved = FilterStore.load(this);
         if (saved.scoreByArea == on) return false;
         FilterStore.save(this, saved.withScoreByArea(on));
-        DiagnosticLog.log(this, "rules", on ? "score by area on: a standalone offer passes at a 100% area score; "
-                + "max stops stays a hard limit, add-ons stay strict" : "score by area off: every minimum must be met");
+        DiagnosticLog.log(this, "rules", on ? "score by area on: a standalone offer passes at a "
+                + saved.minimumScalePercent + "% area score; max stops stays a hard limit, add-ons stay strict"
+                : "score by area off: every minimum must be met at " + saved.minimumScalePercent + "% scale");
         rulesChanged();
         updateMeter();
         return true;
@@ -1004,6 +1012,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         mapParams.topMargin = ui.dp(2);
         body.addView(areaMap, mapParams);
         areaLine = ui.text("", 13, ui.ink, true);
+        // A rate and its sample count can wrap at large font sizes; keep the two caption lines compact.
+        areaLine.setLineSpacing(0, 1f);
         areaLine.setGravity(Gravity.CENTER);
         areaLine.setMinHeight(ui.dp(36));
         areaLine.setBackground(ui.pressable(12));
@@ -1178,7 +1188,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- State ----
 
+    private void refreshScreenAwake() {
+        int flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+        if (resumed && OfferFilterService.isConnected() && ScreenAwake.wanted(this)) getWindow().addFlags(flag);
+        else getWindow().clearFlags(flag);
+    }
+
     private void refresh() {
+        refreshScreenAwake();
         if (stateLine == null || noticeShown()) return;
         arrangeForSplit();
         FilterSettings saved = FilterStore.load(this);
@@ -1393,10 +1410,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         hero.set(state, counts, totals, label);
     }
 
-    /** Redraws the minimums from the saved rules, with the latest fully read offer as the example. */
+    /** Redraws current rule references and minimums, with the latest fully read offer as the example. */
     private void updateMeter() {
         if (minimums == null) return;
-        minimums.show(FilterStore.load(this), exampleOffer(), recentEntries);
+        FilterSettings rules = FilterStore.load(this);
+        if (chart != null) chart.setRules(rules);
+        minimums.show(rules, exampleOffer(), recentEntries);
     }
 
     /**
@@ -1630,7 +1649,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int rank = areaMap.rank(cell);
         String where = AreaMap.from(areaHere, cell);
         String name = Places.name(this, cell.latitude(), cell.longitude());
-        String rate = cell.ranked() ? cell.perMile() : cell.offers + (cell.offers == 1 ? " offer" : " offers");
+        String rate = cell.ranked() ? cell.perMile() + " · " + cell.mileOffers + " offers"
+                : cell.offers + (cell.offers == 1 ? " offer" : " offers");
         // Its rank is on its coin; "of you" and Maps go without saying on the page, not to screen readers.
         List<String> parts = new java.util.ArrayList<>();
         if (name != null) parts.add(name);
