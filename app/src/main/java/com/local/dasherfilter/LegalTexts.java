@@ -112,7 +112,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Draft of 1 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 2 October 2026. Not legal advice; have a lawyer review before public release.
 
             {app} has no account, no ads, no analytics and no server that collects your data. It does not sell or \
             rent your data. What it reads stays on your phone, except in the cases listed under What leaves the \
@@ -148,13 +148,23 @@ final class LegalTexts {
             carries and nothing older than 24 hours. Screens recognized as payment, account or earnings pages are \
             discarded; at most one line a minute records that a screen was not kept.
             - The offer map, if it is on and location is allowed: the square of about 2 km you were in when each \
-            offer came in, and place names for those squares.
+            offer came in. The separate place-name cache holds at most 300 rounded positions; older names are \
+            removed as others are used.
             - While you are dashing: whether a dash is on, and the current route's pay, miles, time and stops.
+            - One temporary record that prevents automatic taps on a possibly taken-over offer after a restart: \
+            numeric pay, miles, minutes, stops, countdown, and device uptime/boot number. It can suppress taps for \
+            at most two minutes; the app discards it when it next checks an expired record, observes the offer \
+            ended, or you clear history. It never restores permission to tap. One scanner-error category, without \
+            the error message or screen text, is kept until the next service connection or Clear history.
             - A GitHub connection, if you set one up, and the state of updates.
             - During Peek, the previous app's identifier and launcher component stay only in memory. They are \
             cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 \
             seconds after returning). They are never saved or sent; Peek logs describe only the kind of previous \
             app, such as a navigation app or the home screen. Its screen text is never kept.
+
+            Decision and confirmation lines take priority over repeated scan timings within the existing log \
+            limits. Reports include numeric counts of discarded log lines or queued reports, so missing evidence is \
+            visible. Atomic history writes keep a recovery copy only while replacing the same bounded history.
 
             Screen text is masked before it is kept: customer names, your own name, street addresses, city, state \
             and ZIP lines, apartment numbers, phone numbers, email addresses, delivery instructions, card numbers \
@@ -185,7 +195,9 @@ final class LegalTexts {
             as issues: when an offer cannot be read, when the app hits an error or a decline does not finish, and \
             when you tap Report this offer. Every word that is not part of an offer's wording (pay, miles, buttons \
             and the like) is masked first, and a problem report never carries the logs. A note you type with Report \
-            this offer is sent as you typed it.
+            this offer is sent as you typed it. Issue and comment parts carry opaque receipt identifiers; uncertain \
+            sends are reconciled against those receipts before proceeding, and can remain pending rather than being \
+            sent twice.
             - Diagnostics after each dash, only if you turn them on (off by default; they need Send problem reports \
             on). After a dash ends, the same masked report that Share report makes is filed to that private \
             repository, at most one issue per detected dash and six times a day. Each dash has a random receipt \
@@ -197,8 +209,9 @@ final class LegalTexts {
             - A report you share and the diagnostics after each dash also name your phone's Android version and \
             maker (for example "Android 15 (API 35), Google"); problem reports do not.
             - Place names. To name the squares on the map, the app asks Android's own place lookup (Google's \
-            servers on most phones) about positions rounded to about half a kilometre, each once, and keeps the \
-            names on the phone. Nothing about your offers goes with them.
+            servers on most phones) about positions rounded to about half a kilometre, once while a position \
+            remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes \
+            with them.
             - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for \
             them and counts nothing.
 
@@ -219,7 +232,8 @@ final class LegalTexts {
             requires an unlocked, quiet phone and skips when its checks find typing, a call, microphone/camera use, \
             split or floating windows, a pinned or unrecognized app, or another conflicting action. Its checks \
             depend on what Android exposes; they are not a safety guarantee.
-            - Clear history (Settings) removes the decisions, both logs and the offer map.
+            - Clear history (Settings) removes the decisions, both logs, the offer map and cached place names, plus \
+            the temporary restart/error records above. Lookups already in progress cannot restore cleared names.
             - Turning Send problem reports off, or disconnecting GitHub, stops reports and discards reports not yet \
             sent.
             - Disconnecting GitHub (Settings) removes the GitHub token.

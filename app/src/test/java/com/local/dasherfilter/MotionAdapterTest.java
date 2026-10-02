@@ -148,6 +148,10 @@ public class MotionAdapterTest {
         try {
             Motion.setCalm(true);
             org.robolectric.shadows.ShadowView shadow = Shadows.shadowOf(view);
+            // Calm views share wall-clock frame boundaries, rather than starting independent timers.
+            long untilBoundary = Motion.CALM_FRAME_MS
+                    - android.os.SystemClock.uptimeMillis() % Motion.CALM_FRAME_MS;
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(untilBoundary));
             shadow.clearWasInvalidated();
             Motion.next(view);
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())

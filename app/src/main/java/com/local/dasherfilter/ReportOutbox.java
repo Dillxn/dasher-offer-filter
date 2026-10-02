@@ -60,6 +60,14 @@ final class ReportOutbox {
     private static final String KEY_TOKEN = "token";
     private static final String KEY_POSTED = "posted";
     private static final String KEY_ISSUE = "issue";
+    private static final String KEY_COMMENT_POSTED = "comment_posted";
+    private static final String KEY_COMMENT_INDEX = "comment_index";
+    private static final String PROBLEM_MARK = "offer-filter-report:";
+    private static final String COMMENT_MARK = "offer-filter-part:";
+    private static final String DROPPED = "dropped_reports";
+    private static volatile int queueSize = -1;
+    private static volatile long reportGeneration;
+    private static volatile long diagnosticGeneration;
 
     /** Where older versions kept a pasted report token; removed on sight (see {@link #retireToken}). */
     private static final String RETIRED_TOKEN = "token";
@@ -78,6 +86,7 @@ final class ReportOutbox {
     private static final ExecutorService DISK = Executors.newSingleThreadExecutor();
     /** Receipt rewrites and cancellation deletes cannot recreate a report removed during an in-flight POST. */
     private static final Object QUEUE_LOCK = new Object();
+    private static final Object RETIRE_LOCK = new Object();
     /** Signatures filed recently, mirrored from prefs so repeat screen reads cost no I/O. Guarded by itself. */
     private static final Map<String, Long> seen = new HashMap<>();
     private static boolean seenLoaded;
@@ -106,7 +115,10 @@ final class ReportOutbox {
      * Connecting GitHub alone never turns reports on.
      */
     static void useGitHub(Context context, boolean on) {
-        prefs(context).edit().putBoolean(VIA_GITHUB, on).remove(LAST_ERROR).apply();
+        synchronized (QUEUE_LOCK) {
+            if (!on) reportGeneration++;
+            prefs(context).edit().putBoolean(VIA_GITHUB, on).remove(LAST_ERROR).apply();
+        }
         Context app = context.getApplicationContext();
         if (on) {
             schedule(app);
@@ -119,6 +131,7 @@ final class ReportOutbox {
 
     /** GitHub was disconnected: reports that went through it stop, and what was waiting is discarded. */
     static void connectionRemoved(Context context) {
+        synchronized (QUEUE_LOCK) { reportGeneration++; }
         DashDiagnostics.stop(context);
         if (!prefs(context).getBoolean(VIA_GITHUB, false)) return;
         prefs(context).edit().putBoolean(VIA_GITHUB, false).apply();
@@ -144,7 +157,7 @@ final class ReportOutbox {
      */
     private static void retireToken(Context context, SharedPreferences prefs) {
         boolean pasted;
-        synchronized (ReportOutbox.class) {
+        synchronized (RETIRE_LOCK) {
             if (!prefs.contains(RETIRED_TOKEN)) return;
             Object stored = prefs.getAll().get(RETIRED_TOKEN);
             pasted = stored instanceof String && !((String) stored).trim().isEmpty();
@@ -171,20 +184,23 @@ final class ReportOutbox {
      * @return whether every old queued file was removed (false keeps sends paused)
      */
     static boolean discardAllNow(Context context) {
-        File directory = new File(context.getApplicationContext().getFilesDir(), DIR);
-        if (!directory.exists()) return true;
-        File[] files = directory.listFiles();
-        if (files == null) return false;
-        if (files.length == 0) return true;
-        boolean removed = true;
-        for (File file : files) {
-            if (file.exists() && !deleteQueued(file) && file.exists()) removed = false;
+        synchronized (QUEUE_LOCK) {
+            File directory = new File(context.getApplicationContext().getFilesDir(), DIR);
+            if (!directory.exists()) { queueSize = 0; return true; }
+            File[] queued = directory.listFiles();
+            if (queued == null) return false;
+            boolean removed = true;
+            for (File file : queued) {
+                if (file.exists() && !deleteQueued(file) && file.exists()) removed = false;
+            }
+            queueSize = files(context).length;
+            return removed;
         }
-        return removed;
     }
 
     /** Unsent diagnostics after a dash are deleted; problem reports stay. */
     static void discardDiagnostics(Context context) {
+        synchronized (QUEUE_LOCK) { diagnosticGeneration++; }
         Context app = context.getApplicationContext();
         DISK.execute(() -> {
             for (File file : files(app)) {
@@ -277,6 +293,7 @@ final class ReportOutbox {
      * @return whether the report was queued
      */
     static boolean submit(Context context, ProblemReport report, boolean byUser) {
+        long generation = reportGeneration;
         if (!enabled(context)) return false;
         long now = clock.getAsLong();
         synchronized (seen) {
@@ -292,7 +309,7 @@ final class ReportOutbox {
             }
         }
         Context app = context.getApplicationContext();
-        DISK.execute(() -> write(app, report, now));
+        DISK.execute(() -> write(app, report, now, generation));
         return true;
     }
 
@@ -302,20 +319,22 @@ final class ReportOutbox {
     }
 
     private static boolean withinDailyCap(Context context, String key, int max, long now) {
-        SharedPreferences prefs = prefs(context);
-        // The phone's own day, so the allowance renews at local midnight.
-        long day = (now + TimeZone.getDefault().getOffset(now)) / 86_400_000L;
-        SharedPreferences.Editor editor = prefs.edit();
-        if (prefs.getLong(DAY, -1) != day) {
-            editor.putLong(DAY, day).putInt(AUTOMATIC_TODAY, 0).putInt(BY_USER_TODAY, 0).putInt(DIAGNOSTICS_TODAY, 0);
+        synchronized (seen) {
+            SharedPreferences prefs = prefs(context);
+            // The phone's own day, so the allowance renews at local midnight.
+            long day = (now + TimeZone.getDefault().getOffset(now)) / 86_400_000L;
+            SharedPreferences.Editor editor = prefs.edit();
+            if (prefs.getLong(DAY, -1) != day) {
+                editor.putLong(DAY, day).putInt(AUTOMATIC_TODAY, 0).putInt(BY_USER_TODAY, 0).putInt(DIAGNOSTICS_TODAY, 0);
+            }
+            int count = prefs.getLong(DAY, -1) == day ? prefs.getInt(key, 0) : 0;
+            if (count >= max) {
+                editor.apply();
+                return false;
+            }
+            editor.putInt(key, count + 1).apply();
+            return true;
         }
-        int count = prefs.getLong(DAY, -1) == day ? prefs.getInt(key, 0) : 0;
-        if (count >= max) {
-            editor.apply();
-            return false;
-        }
-        editor.putInt(key, count + 1).apply();
-        return true;
     }
 
     /** A dash's own token, random: kept with its queued diagnostics, and in its issue's body ({@link #dashMark}). */
@@ -341,6 +360,14 @@ final class ReportOutbox {
      * @return whether they were queued
      */
     static boolean submitDiagnostics(Context context, String title, java.util.List<String> parts, String token) {
+        return submitDiagnostics(context, title, parts, token, null);
+    }
+
+    /** Completion reports durable queue admission, rather than merely admission to the disk executor. */
+    static boolean submitDiagnostics(Context context, String title, java.util.List<String> parts, String token,
+                                     java.util.function.Consumer<Boolean> completion) {
+        long generation = reportGeneration;
+        long dashGeneration = diagnosticGeneration;
         if (!DashDiagnostics.on(context) || parts.isEmpty() || token == null || token.isEmpty()
                 || !parts.get(0).contains(dashMark(token))) return false;
         long now = clock.getAsLong();
@@ -356,24 +383,31 @@ final class ReportOutbox {
             return false;
         }
         Context app = context.getApplicationContext();
-        DISK.execute(() -> write(app, item, now, DIAGNOSTICS_SUFFIX));
+        DISK.execute(() -> {
+            boolean queued = write(app, item, now, DIAGNOSTICS_SUFFIX, generation, dashGeneration);
+            if (completion != null) completion.accept(queued);
+        });
         return true;
     }
 
-    private static void write(Context context, ProblemReport report, long now) {
+    private static void write(Context context, ProblemReport report, long now, long generation) {
         try {
-            write(context, new JSONObject().put("title", report.title).put("body", report.body), now, ".json");
+            write(context, new JSONObject().put("title", report.title).put("body", report.body), now, ".json", generation, -1);
         } catch (JSONException impossible) {
             // Only strings are put.
         }
     }
 
-    private static void write(Context context, JSONObject item, long now, String suffix) {
+    private static boolean write(Context context, JSONObject item, long now, String suffix,
+                                 long generation, long dashGeneration) {
         // Reports an older version queued go first, once (they were built from what it kept), never this one.
-        if (!DiagnosticLog.cleanUpOnce(context)) return;
-        if (!enabled(context) || (DIAGNOSTICS_SUFFIX.equals(suffix) && !DashDiagnostics.on(context))) return;
+        if (!DiagnosticLog.cleanUpOnce(context)) { dropped(context, "privacy cleanup incomplete"); return false; }
+        if (!enabled(context) || (DIAGNOSTICS_SUFFIX.equals(suffix) && !DashDiagnostics.on(context))) return false;
         File dir = dir(context);
-        if (dir == null || queued(context) >= MAX_QUEUED) return;
+        if (dir == null || queued(context) >= MAX_QUEUED) {
+            dropped(context, dir == null ? "storage unavailable" : "queue full");
+            return false;
+        }
         try {
             // Time first, so the oldest sends first; the sequence keeps same-millisecond reports apart.
             File file;
@@ -381,40 +415,68 @@ final class ReportOutbox {
                 file = new File(dir, String.format(java.util.Locale.US, "%013d-%06d", now,
                         sequence.incrementAndGet() % 1_000_000) + suffix);
             } while (file.exists());
-            try (OutputStream out = new FileOutputStream(file)) {
-                out.write(item.toString().getBytes(StandardCharsets.UTF_8));
+            synchronized (QUEUE_LOCK) {
+                // Opt-out and deletion share this lock. Epochs also reject old work after a quick off/on.
+                if (generation != reportGeneration || !enabled(context)
+                        || (DIAGNOSTICS_SUFFIX.equals(suffix)
+                            && (dashGeneration != diagnosticGeneration || !DashDiagnostics.on(context)))) return false;
+                replace(file, item);
+                queueSize = files(context).length;
             }
             schedule(context);
+            return true;
         } catch (IOException | RuntimeException error) {
             // On this background thread an escaping exception would take the whole app, screen reader included.
-            DiagnosticLog.log(context, "report", "could not queue report: " + error.getClass().getSimpleName());
+            dropped(context, "storage " + error.getClass().getSimpleName());
+            return false;
         }
     }
 
+    private static void dropped(Context context, String why) {
+        synchronized (QUEUE_LOCK) {
+            SharedPreferences saved = prefs(context);
+            saved.edit().putLong(DROPPED, saved.getLong(DROPPED, 0) + 1).apply();
+        }
+        DiagnosticLog.log(context, "report", "report not queued: " + why);
+    }
+
+    static String lossSummary(Context context) {
+        return "outbox queue/storage drops=" + prefs(context).getLong(DROPPED, 0);
+    }
+
     private static boolean deleteQueued(File file) {
-        synchronized (QUEUE_LOCK) { return !file.exists() || file.delete() || !file.exists(); }
+        synchronized (QUEUE_LOCK) {
+            boolean existed = file.exists();
+            boolean deleted = !existed || file.delete() || !file.exists();
+            if (deleted && existed && queueSize > 0) queueSize--;
+            return deleted;
+        }
     }
 
     /** Replaces a receipt durably, unless cancellation already removed it. Never resurrects a discarded report. */
     private static void rewrite(File file, JSONObject item) throws IOException {
         synchronized (QUEUE_LOCK) {
             if (!file.isFile()) throw new IOException("Report was discarded");
-            File next = new File(file.getPath() + ".tmp");
-            try {
-                try (FileOutputStream out = new FileOutputStream(next)) {
-                    out.write(item.toString().getBytes(StandardCharsets.UTF_8));
-                    out.getFD().sync();
-                }
-                if (!next.renameTo(file)) throw new IOException("could not replace " + file.getName());
-                // The rename must reach storage before a POST, not only the temporary file's contents.
-                try (java.nio.channels.FileChannel directory = java.nio.channels.FileChannel.open(
-                        file.getParentFile().toPath(), java.nio.file.StandardOpenOption.READ)) {
-                    directory.force(true);
-                }
-            } finally {
-                // A failed write must not leave an unsent report outside the queue's normal .json cleanup.
-                if (next.exists()) next.delete();
+            replace(file, item);
+        }
+    }
+
+    private static void replace(File file, JSONObject item) throws IOException {
+        File next = new File(file.getPath() + ".tmp");
+        try {
+            try (FileOutputStream out = new FileOutputStream(next)) {
+                out.write(item.toString().getBytes(StandardCharsets.UTF_8));
+                out.getFD().sync();
             }
+            if (!next.renameTo(file)) throw new IOException("could not replace " + file.getName());
+            // The rename must reach storage before a POST, not only the temporary file's contents.
+            try (java.nio.channels.FileChannel directory = java.nio.channels.FileChannel.open(
+                    file.getParentFile().toPath(), java.nio.file.StandardOpenOption.READ)) {
+                directory.force(true);
+            }
+        } finally {
+            // A failed write must not leave an unsent report outside the queue's normal .json cleanup.
+            if (next.exists()) next.delete();
         }
     }
 
@@ -426,7 +488,7 @@ final class ReportOutbox {
         Context app = context.getApplicationContext();
         ReportJobService.scheduleWhenIdle(JOB_ID, () -> {
             JobScheduler jobs = app.getSystemService(JobScheduler.class);
-            if (jobs == null || queued(app) == 0) return;
+            if (jobs == null || queued(app) == 0 || jobs.getPendingJob(JOB_ID) != null) return;
             jobs.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(app, ReportJobService.class))
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                     .setBackoffCriteria(60_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
@@ -449,12 +511,16 @@ final class ReportOutbox {
      *
      * @return true when some reports should be retried later (for example, no connection)
      */
-    static synchronized boolean drain(Context context) {
+    static boolean drain(Context context) {
+        return drain(context, () -> false);
+    }
+
+    static synchronized boolean drain(Context context, java.util.function.BooleanSupplier stopped) {
         // What an older version queued goes unsent, once (DiagnosticLog.cleanUpOnce).
         if (!DiagnosticLog.cleanUpOnce(context)) return true;
         if (!Consent.accepted(context)) return false;
         for (File file : files(context)) {
-            if (Thread.currentThread().isInterrupted()) return true;
+            if (Thread.currentThread().isInterrupted() || stopped.getAsBoolean()) return true;
             if (!Consent.accepted(context)) return false;
             boolean diagnostics = isDiagnostics(file);
             // Read per report, so turning reports off stops sending at once.
@@ -474,13 +540,12 @@ final class ReportOutbox {
             try {
                 JSONObject item = new JSONObject(read(file));
                 if (diagnostics) {
-                    int issue = sendDiagnostics(context, token, file, item);
+                    int issue = sendDiagnostics(context, token, file, item, stopped);
                     prefs(context).edit().putInt(LAST_DIAGNOSTICS, issue).remove(LAST_ERROR).apply();
                     DiagnosticLog.log(context, "report", "filed diagnostics issue #" + issue);
                     continue;
                 }
-                requireReportConsent(context, false);
-                int issue = GitHubIssues.create(token, item.getString("title"), item.getString("body"));
+                int issue = sendIssue(context, token, file, item, false, stopped);
                 //noinspection ResultOfMethodCallIgnored
                 deleteQueued(file);
                 prefs(context).edit().putInt(LAST_ISSUE, issue).putLong(LAST_SENT_AT, clock.getAsLong())
@@ -524,63 +589,113 @@ final class ReportOutbox {
      *
      * @return the issue's number
      */
-    private static int sendDiagnostics(Context context, String token, File file, JSONObject item)
-            throws IOException, JSONException {
-        requireReportConsent(context, true);
+    private static int sendIssue(Context context, String token, File file, JSONObject item, boolean diagnostics,
+                                 java.util.function.BooleanSupplier stopped) throws IOException, JSONException {
         int issue = item.optInt(KEY_ISSUE, 0);
-        if (issue <= 0) {
-            java.util.List<String> labels = new java.util.ArrayList<>();
-            org.json.JSONArray named = item.optJSONArray("labels");
-            for (int i = 0; named != null && i < named.length(); i++) labels.add(named.getString(i));
-            String title = item.getString("title");
-            String body = item.getString("body");
-            String dash = item.optString(KEY_TOKEN, "");
-            if (!dash.isEmpty() && item.optBoolean(KEY_POSTED, false)) {
-                issue = GitHubIssues.find(token, labels.isEmpty() ? null : labels.get(0), dashMark(dash));
-                // A lost response cannot prove the POST failed. Never send another issue for this dash.
-                if (issue <= 0) throw new IOException("Dash receipt not found yet; no duplicate issue created");
-            }
-            if (issue <= 0) {
-                if (!item.optBoolean(KEY_POSTED, false)) {
-                    item.put(KEY_POSTED, true);
-                    rewrite(file, item);
-                }
-                try {
-                    requireReportConsent(context, true);
-                    issue = GitHubIssues.create(token, title, body, labels);
-                } catch (GitHubIssues.Rejected rejected) {
-                    // A label GitHub will not take must not cost the dash its diagnostics: filed again without it,
-                    // and a retry then looks for it among issues of any label.
-                    if (rejected.code != 422 || labels.isEmpty()) {
-                        // Explicit rejection (except a server failure) proves this request created no issue.
-                        if (rejected.code < 500) {
-                            item.remove(KEY_POSTED);
-                            rewrite(file, item);
-                        }
-                        throw rejected;
-                    }
-                    item.remove("labels");
-                    rewrite(file, item);
-                    requireReportConsent(context, true);
-                    issue = GitHubIssues.create(token, title, body, null);
-                }
-            }
-            requireReportConsent(context, true);
-            item.put(KEY_ISSUE, issue);
-            rewrite(file, item);
+        if (issue > 0) return issue;
+        String receipt = item.optString(KEY_TOKEN, "");
+        if (receipt.isEmpty()) {
+            receipt = newDashToken();
+            item.put(KEY_TOKEN, receipt);
         }
+        String marker = diagnostics ? dashMark(receipt) : "<!-- " + PROBLEM_MARK + receipt + " -->";
+        String body = item.getString("body");
+        if (!body.contains(marker)) { body += "\n" + marker; item.put("body", body); }
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        org.json.JSONArray named = item.optJSONArray("labels");
+        for (int i = 0; named != null && i < named.length(); i++) labels.add(named.getString(i));
+        beforePart(context, diagnostics, stopped);
+        if (item.optBoolean(KEY_POSTED, false)) {
+            issue = GitHubIssues.find(token, null, marker);
+            if (issue <= 0) throw new IOException("Report receipt not found yet; no duplicate issue created");
+        } else {
+            item.put(KEY_POSTED, true);
+            rewrite(file, item);
+            try {
+                beforeAttempt(context, diagnostics, stopped, file, item, KEY_POSTED);
+                issue = GitHubIssues.create(token, item.getString("title"), body, labels);
+            } catch (GitHubIssues.Rejected rejected) {
+                if (rejected.code != 422 || labels.isEmpty()) {
+                    clearRejectedAttempt(file, item, KEY_POSTED, rejected);
+                    throw rejected;
+                }
+                // This explicit validation refusal proves no issue exists. Retry without the rejected label.
+                item.remove("labels");
+                rewrite(file, item);
+                try {
+                    beforeAttempt(context, diagnostics, stopped, file, item, KEY_POSTED);
+                    issue = GitHubIssues.create(token, item.getString("title"), body, null);
+                } catch (GitHubIssues.Rejected second) {
+                    clearRejectedAttempt(file, item, KEY_POSTED, second);
+                    throw second;
+                }
+            }
+        }
+        // Keep a receipt even when Android stopped the job during the request. No further part may be sent.
+        item.put(KEY_ISSUE, issue);
+        rewrite(file, item);
+        return issue;
+    }
+
+    private static int sendDiagnostics(Context context, String token, File file, JSONObject item,
+                                       java.util.function.BooleanSupplier stopped) throws IOException, JSONException {
+        int issue = sendIssue(context, token, file, item, true, stopped);
         org.json.JSONArray comments = item.optJSONArray("comments");
         while (comments != null && comments.length() > 0) {
-            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("stopped");
-            requireReportConsent(context, true);
-            GitHubIssues.comment(token, issue, comments.getString(0));
-            requireReportConsent(context, true);
+            beforePart(context, true, stopped);
+            int index = item.optInt(KEY_COMMENT_INDEX, 0);
+            String marker = "<!-- " + COMMENT_MARK + item.getString(KEY_TOKEN) + ":" + index + " -->";
+            if (item.optBoolean(KEY_COMMENT_POSTED, false)) {
+                if (!GitHubIssues.findComment(token, issue, marker)) {
+                    throw new IOException("Comment receipt not found yet; no duplicate comment created");
+                }
+            } else {
+                item.put(KEY_COMMENT_POSTED, true);
+                rewrite(file, item);
+                try {
+                    beforeAttempt(context, true, stopped, file, item, KEY_COMMENT_POSTED);
+                    GitHubIssues.comment(token, issue, comments.getString(0) + "\n" + marker);
+                } catch (GitHubIssues.Rejected rejected) {
+                    clearRejectedAttempt(file, item, KEY_COMMENT_POSTED, rejected);
+                    throw rejected;
+                }
+            }
             comments.remove(0);
+            item.remove(KEY_COMMENT_POSTED);
+            item.put(KEY_COMMENT_INDEX, index + 1);
             rewrite(file, item);
         }
-        //noinspection ResultOfMethodCallIgnored
         deleteQueued(file);
         return issue;
+    }
+
+    /** A timeout or server error can follow a completed POST; only an explicit other 4xx proves no creation. */
+    private static void clearRejectedAttempt(File file, JSONObject item, String key, GitHubIssues.Rejected rejected)
+            throws IOException {
+        if (rejected.code >= 400 && rejected.code < 500 && rejected.code != 408) {
+            item.remove(key);
+            rewrite(file, item);
+        }
+    }
+
+    /** A stop/opt-out detected before calling transport is a known non-attempt, not an ambiguous send. */
+    private static void beforeAttempt(Context context, boolean diagnostics,
+                                      java.util.function.BooleanSupplier stopped, File file, JSONObject item, String key)
+            throws IOException {
+        try { beforePart(context, diagnostics, stopped); }
+        catch (IOException paused) {
+            item.remove(key);
+            rewrite(file, item);
+            throw paused;
+        }
+    }
+
+    private static void beforePart(Context context, boolean diagnostics, java.util.function.BooleanSupplier stopped)
+            throws IOException {
+        if (stopped.getAsBoolean() || Thread.currentThread().isInterrupted()) {
+            throw new java.io.InterruptedIOException("Report job stopped before next request");
+        }
+        requireReportConsent(context, diagnostics);
     }
 
     /** Rechecked before each outgoing part; switching reports off cannot leak the rest of a long report. */
@@ -608,7 +723,11 @@ final class ReportOutbox {
     }
 
     static int queued(Context context) {
-        return files(context).length;
+        if (queueSize >= 0) return queueSize;
+        synchronized (QUEUE_LOCK) {
+            if (queueSize < 0) queueSize = files(context).length;
+            return queueSize;
+        }
     }
 
     private static File[] files(Context context) {
@@ -681,6 +800,7 @@ final class ReportOutbox {
             seenLoaded = false;
         }
         appVersion = null;
+        queueSize = -1;
     }
 
     private static SharedPreferences prefs(Context context) {

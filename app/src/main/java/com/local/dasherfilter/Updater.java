@@ -105,6 +105,29 @@ final class Updater {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
     private static volatile Intent pendingConfirmation;
+    /** Only skips work while waiting; it never authorizes an install or survives a process restart. */
+    private static volatile VerifiedReady verifiedReady;
+
+    private static final class VerifiedReady {
+        final File file;
+        final Release release;
+        final long installedCode;
+        final long size;
+        final long modified;
+
+        VerifiedReady(File file, Release release, long installedCode) {
+            this.file = file;
+            this.release = release;
+            this.installedCode = installedCode;
+            this.size = file.length();
+            this.modified = file.lastModified();
+        }
+
+        boolean unchanged(Context app, PackageInfo installed) throws IOException {
+            return installedCode == versionCode(installed) && file.equals(apkFile(app)) && file.isFile()
+                    && file.length() == size && file.lastModified() == modified;
+        }
+    }
 
     /** A screen that can say the user is mid-task (for example typing rules), which an update would interrupt. */
     interface Busy {
@@ -330,6 +353,18 @@ final class Updater {
             prefs.edit().putLong(ATTEMPT_AT, now).apply();
             if (manual) DiagnosticLog.log(app, "update", "check start manual=true installed=" + version(app));
             PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
+            VerifiedReady ready = verifiedReady;
+            if (!manual && ready != null && ready.unchanged(app, installed) && Dashing.awaitingEnd(app)
+                    && !prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)
+                    && app.getPackageManager().canRequestPackageInstalls()) {
+                // The first check already downloaded and verified this APK. A five-minute wakeup during a
+                // hours-long dash only needs to keep waiting. Once the dash ends (or the user asks), both feeds
+                // and every APK check run again before installation; these cheap file checks cannot install it.
+                settle(app, trigger, AFTER_DASH, ready.release);
+                retry(app, DASH_RETRY_MS, false);
+                return;
+            }
+            verifiedReady = null;
             if (manual) status(app, "Checking for updates…");
             else show(app, "Checking for updates…");
 
@@ -351,7 +386,9 @@ final class Updater {
                 if (jobs != null) jobs.cancel(RETRY_JOB_ID);
                 return;
             }
-            install(app, verifiedApk(app, release, installed), release, trigger);
+            File apk = verifiedApk(app, release, installed);
+            verifiedReady = new VerifiedReady(apk, release, versionCode(installed));
+            install(app, apk, release, trigger);
         } catch (Exception error) {
             if (Thread.currentThread().isInterrupted()) {
                 status(app, "Update check interrupted; no installation started.");
@@ -585,13 +622,13 @@ final class Updater {
 
     /**
      * Why a verified update does not install now (it is retried), or null when it may. An automatic one waits while a
-     * dash is on ({@link Dashing#now}): installing closes Offer Filter, and with it its half of a split screen beside
-     * Dasher and anything it was watching, so it waits for the dash to end. It also waits while an offer or delivery
+     * dash has not been seen to end ({@link Dashing#awaitingEnd}): installing closes Offer Filter, and with it its
+     * half of a split screen beside Dasher and anything it was watching. It also waits while an offer or delivery
      * is up, or while the user is in the middle of something on Offer Filter's screen an update would lose (typing
      * rules). The user's own check still installs mid-dash; only Dasher on screen holds it back.
      */
     static String heldBack(Context context, boolean manual) {
-        if (!manual && Dashing.now(context)) return AFTER_DASH;
+        if (!manual && Dashing.awaitingEnd(context)) return AFTER_DASH;
         boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
         if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
             return "Update verified; installation deferred while an offer/delivery is active.";
@@ -617,8 +654,8 @@ final class Updater {
         }
         if (manual) prefs.edit().remove(MANUAL_RETRY_REQUIRED).apply();
         if (!context.getPackageManager().canRequestPackageInstalls()) {
-            settle(context, trigger, "Update verified and ready. Enable Allow from this source under Allow automatic "
-                    + "installs.", checked);
+            settle(context, trigger, "Update verified and ready. In Settings, tap Fix beside Updates can't install, "
+                    + "then enable Allow from this source.", checked);
             return;
         }
         String wait = heldBack(context, manual);
@@ -688,7 +725,10 @@ final class Updater {
     /** Shows Android's install confirmation: directly when the app is open, otherwise as a quiet notification. */
     static void confirmation(Context context, Intent intent) {
         pendingConfirmation = intent;
-        status(context, "Android requires installation confirmation. Tap Check / install update or the update "
+        // Android is waiting for the user, not installing. Keep its session/intent, but release the blocking
+        // updating cover so the user can reach Settings and reopen the confirmation after dismissing it.
+        prefs(context).edit().remove(COMMITTED_AT).apply();
+        status(context, "Android requires installation confirmation. Tap Updates in Settings or the update "
                 + "notification.");
         MAIN.post(() -> {
             Activity activity = foreground.get();
@@ -806,12 +846,13 @@ final class Updater {
                 .putBoolean(MANUAL_RETRY_REQUIRED, true)
                 .apply();
         status(context, "Android installation failed (" + code + "): " + detail
-                + ". Tap Check / install update to retry.");
+                + ". Tap Updates in Settings to retry.");
     }
 
     /** Forgets any prepared update: session bookkeeping, the cached APK, and the confirmation notice. */
     static void clearReady(Context context) {
         pendingConfirmation = null;
+        verifiedReady = null;
         prefs(context).edit()
                 .remove(SESSION)
                 .remove(SESSION_AT)

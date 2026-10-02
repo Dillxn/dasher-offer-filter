@@ -20,6 +20,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
@@ -93,6 +94,9 @@ final class DiagnosticLog {
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
     private static final Object LOCK = new Object();
+    private static final AtomicLong droppedLines = new AtomicLong();
+    private static final AtomicLong failedWrites = new AtomicLong();
+    private static volatile long clearGeneration;
     /** Kept states, by source and topic, and when each was last written (wall clock). */
     private static final String STATE = "state:";
     private static final String STATE_AT = "state_at:";
@@ -351,26 +355,58 @@ final class DiagnosticLog {
         return source >= 0 && line.startsWith("[" + NAVIGATION_SOURCE + "]", source + 1);
     }
 
+    /** Timing telemetry has a separate effective budget: it cannot evict decision/confirmation context. */
+    static String fitLog(String log, int budget, boolean bytes) {
+        if (size(log, bytes) <= budget) return log;
+        List<String> lines = new ArrayList<>();
+        int start = 0;
+        while (start < log.length()) {
+            int end = log.indexOf('\n', start);
+            end = end < 0 ? log.length() : end + 1;
+            lines.add(log.substring(start, end));
+            start = end;
+        }
+        long total = size(log, bytes);
+        boolean[] dropped = new boolean[lines.size()];
+        for (int pass = 0; pass < 2 && total > budget; pass++) {
+            for (int i = 0; i < lines.size() && total > budget; i++) {
+                String line = lines.get(i);
+                int source = line.indexOf(" [");
+                boolean timing = source >= 0 && line.startsWith("[scan]", source + 1);
+                if (dropped[i] || (pass == 0 && !timing)) continue;
+                dropped[i] = true;
+                total -= size(line, bytes);
+            }
+        }
+        StringBuilder kept = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) if (!dropped[i]) kept.append(lines.get(i));
+        return kept.toString();
+    }
+
     private static long size(String text, boolean bytes) {
         return bytes ? text.getBytes(StandardCharsets.UTF_8).length : text.length();
     }
 
     private static void write(Context app, String name, Supplier<byte[]> line) {
+        long generation = clearGeneration;
         try {
             WRITER.execute(() -> {
+                if (generation != clearGeneration) return;
                 byte[] bytes;
                 try {
                     bytes = line.get();
                 } catch (RuntimeException | StackOverflowError unmaskable) {
+                    droppedLines.incrementAndGet();
                     // Never written unmasked, and never a crash: an escaping error here would take the screen reader.
                     bytes = line(System.currentTimeMillis(), "log", "a line could not be masked and was dropped: "
                             + unmaskable.getClass().getSimpleName());
                 }
                 // A screen not kept, and its note already written this minute.
-                if (bytes != null) append(app, name, bytes);
+                if (bytes != null) append(app, name, bytes, generation);
             });
         } catch (RejectedExecutionException queueFull) {
-            // Diagnostics are best effort; dropping an entry is preferable to delaying an offer decision.
+            // Diagnostics must never delay an offer; retain only a numeric loss count.
+            droppedLines.incrementAndGet();
         }
     }
 
@@ -420,7 +456,7 @@ final class DiagnosticLog {
     static String fullReport(Context context) {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
-        String log = newest(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS);
+        String log = fitLog(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS, false);
         String screens = newestScreens(PersonalText.maskLine(withoutAccountScreens(readScreens(context))),
                 System.currentTimeMillis());
         return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"
@@ -435,15 +471,19 @@ final class DiagnosticLog {
                 + "Screen text capture: " + (isEnabled(context) ? "automatic, masked" : "off")
                 + " (kept on this phone: about what one report carries, never older than 24 hours)\n"
                 + "Diagnostics after each dash: " + DashDiagnostics.reportLine(context) + "\n"
+                + lossSummary() + "; " + ReportOutbox.lossSummary(context) + "\n"
                 + "Last status: " + PersonalText.maskLine(FilterStore.lastStatus(context).replace('\n', ' ')) + "\n"
                 + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"
+                + "Current when this report was generated; not a reconstructed historical baseline.\n"
                 + "Auto-decline saved: " + rules.enabled
                 + "; flat cents=" + rules.flatCents
                 + "; per-mile cents=" + rules.perMileCents
                 + "; per-minute cents=" + rules.perMinuteCents
                 + "; per-stop cents=" + rules.perStopCents
                 + "; max stops=" + rules.maxStops
+                + "; hotspot proximity hundredths/mi=" + rules.hotspotProximityHundredths
+                + "; minimum scale percent=" + rules.minimumScalePercent
                 + "; rising offers=" + rules.risingOffers
                 + "; highest accepted cents=" + rules.lastAcceptedCents
                 + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
@@ -487,12 +527,14 @@ final class DiagnosticLog {
      */
     private static String learningTimes(Context context) {
         long[] times = FilterStore.learningTimes(context);
-        SimpleDateFormat time = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+        SimpleDateFormat time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
         String[] shown = new String[times.length];
         for (int i = 0; i < times.length; i++) {
             shown[i] = times[i] > 0 ? time.format(new Date(times[i])) : "not recorded";
         }
-        return "; learning (auto-decline and Adaptive minimum both on) since=" + shown[0]
+        FilterSettings current = FilterStore.load(context);
+        return "; learning now=" + (current.enabled && current.risingOffers ? "on" : "off")
+                + "; learning (auto-decline and Adaptive minimum both on) since=" + shown[0]
                 + "; learning last turned off=" + shown[1] + "; adaptive minimums last reset=" + shown[2];
     }
 
@@ -583,9 +625,17 @@ final class DiagnosticLog {
         notKeptAt = Long.MIN_VALUE;
     }
 
+    static String lossSummary() {
+        return "Diagnostics since process start: dropped lines=" + droppedLines.get()
+                + "; failed writes=" + failedWrites.get();
+    }
+
     /** Removes both logs and every kept state (Clear history). */
     static void clear(Context context) {
+        synchronized (LOCK) { clearGeneration++; }
         flush();
+        droppedLines.set(0);
+        failedWrites.set(0);
         synchronized (LOCK) {
             //noinspection ResultOfMethodCallIgnored
             file(context).delete();
@@ -602,10 +652,11 @@ final class DiagnosticLog {
         }
     }
 
-    private static void append(Context context, String name, byte[] bytes) {
+    private static void append(Context context, String name, byte[] bytes, long generation) {
         // Before anything new is written, what an older version kept is cleaned up (once; never under LOCK).
         if (!cleanUpOnce(context)) return;
         synchronized (LOCK) {
+            if (generation != clearGeneration) return;
             File file = new File(context.getFilesDir(), name);
             boolean screens = SCREENS_FILE.equals(name);
             try {
@@ -619,14 +670,18 @@ final class DiagnosticLog {
                         out.write(fitScreens(log, SCREENS_KEEP_BYTES, true, now).getBytes(StandardCharsets.UTF_8));
                     }
                 } else if (!screens && file.length() > MAX_BYTES) {
-                    trimToRecentLines(file, KEEP_BYTES);
+                    String log = new String(readBytes(file), StandardCharsets.UTF_8);
+                    try (OutputStream out = new FileOutputStream(file, false)) {
+                        out.write(fitLog(log, KEEP_BYTES, true).getBytes(StandardCharsets.UTF_8));
+                    }
                 }
                 if (now - prunedAt > PRUNE_EVERY_MS) {
                     prunedAt = now;
                     dropOlderThan(file, now - KEEP_MS);
                 }
-            } catch (IOException ignored) {
-                // Best effort, as above.
+            } catch (IOException | RuntimeException ignored) {
+                failedWrites.incrementAndGet();
+                // Numeric accounting must not recursively enqueue another failing log write.
             }
         }
     }

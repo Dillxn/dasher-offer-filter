@@ -776,16 +776,23 @@ final class AcceptedOfferTracker {
         endTapAt = -1;
     }
 
+    /** A timeout only records that no acceptance was established; it never reads a screen or teaches. */
+    boolean expire(long now) {
+        Watch w = watch;
+        if (w == null || w.leftAt < 0 || now - w.leftAt < AFTER_MS) return false;
+        resolve(w, End.TIMEOUT, now);
+        return true;
+    }
+
     /**
      * Time passing: an unrecognised screen that stayed {@link #SETTLE_MS} (while Dasher can be read), or
      * {@link #AFTER_MS} without a verdict.
      */
     void tick(long now, boolean dasherReadable) {
+        if (expire(now)) return;
         Watch w = watch;
         if (w == null || w.leftAt < 0) return;
-        if (now - w.leftAt >= AFTER_MS) {
-            resolve(w, End.TIMEOUT, now);
-        } else if (w.unclear != null && now - w.unclearSince >= SETTLE_MS) {
+        if (w.unclear != null && now - w.unclearSince >= SETTLE_MS) {
             if (dasherReadable) {
                 resolve(w, End.UNCLEAR, now);
             } else {

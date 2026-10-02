@@ -462,8 +462,8 @@ final class AreaMapView extends View {
 
     /** Shared by the visible info target and the screen-reader action. */
     void explainAtlas() {
-        new AlertDialog.Builder(getContext()).setTitle("Reading the atlas").setMessage(HELP)
-                .setPositiveButton("Got it", null).show();
+        OwnWindowTouches.show(new AlertDialog.Builder(getContext()).setTitle("Reading the atlas").setMessage(HELP)
+                .setPositiveButton("Got it", null));
     }
 
     /** Bounds of the info control; independent of any particular recorded area. */

@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -21,6 +22,11 @@ import android.widget.TextView;
  */
 public final class LegalActivity extends Activity {
     static final String DOC = "doc";
+
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        OwnWindowTouches.onTouch(event);
+        return super.dispatchTouchEvent(event);
+    }
 
     static Intent intent(Context context, LegalTexts.Doc doc) {
         return new Intent(context, LegalActivity.class).putExtra(DOC, doc.name());

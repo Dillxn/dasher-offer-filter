@@ -127,7 +127,9 @@ public class PeekTest {
     /** An app on the simulated phone, with a launcher (or home) entry. */
     private void installed(ComponentName activity, String category) {
         ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
-        packages.addActivityIfNotPresent(activity);
+        android.content.pm.ActivityInfo declared = packages.addActivityIfNotPresent(activity);
+        declared.enabled = true;
+        declared.exported = true;
         IntentFilter entry = new IntentFilter(Intent.ACTION_MAIN);
         entry.addCategory(category);
         entry.addCategory(Intent.CATEGORY_DEFAULT);

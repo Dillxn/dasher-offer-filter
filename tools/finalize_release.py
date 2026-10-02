@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One version per source; verify embedded metadata and publish no private build files."""
 import fnmatch, hashlib, html, json, os, pathlib, re, shutil, subprocess, xml.etree.ElementTree as ET
+from release_identity import check_channel, require_current_main
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # The name the user sees, from its one source in the app (AppName.NAME), as tools/legal_texts.py reads it.
 NAME = re.search(r'NAME = "([^"]+)"', (ROOT / 'app/src/main/java/com/local/dasherfilter/AppName.java').read_text()).group(1)
@@ -11,6 +12,9 @@ def main():
     version = re.search(r"versionName '([^']+)'", gradle).group(1)
     code = int(re.search(r'versionCode (\d+)', gradle).group(1))
     head = run('git', 'rev-parse', 'HEAD').strip()
+    # release/latest.json is only evidence of the other channel if this checkout is still current main.
+    # An unavailable/private remote or an old deployment fails closed; Render normally mirrors release/ instead.
+    require_current_main(head, run('git', 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'))
     previous = json.loads((ROOT / '.channel-check/latest.json').read_text())
     if code < previous['versionCode'] or (code == previous['versionCode'] and previous.get('sourceCommit') != head):
         raise ValueError('Refusing a downgrade or changed source without a version increment')
@@ -41,10 +45,16 @@ def main():
     badging = run(str(sdk / 'aapt2'), 'dump', 'badging', str(apk))
     expected = f"package: name='com.local.dasherfilter' versionCode='{code}' versionName='{version}'"
     if expected not in badging: raise ValueError('Packaged version disagrees with build.gradle')
-    public = ROOT / 'public'; shutil.rmtree(public, ignore_errors=True); public.mkdir()
     if code == previous['versionCode']:
         # Same-source redeploy verifies current live bytes without mutating a published version.
         apk = ROOT / '.channel-check/OfferFilter.apk'
+    digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+    check_channel(code, head, digest, previous, 'Render')
+    repo_feed = ROOT / 'release/latest.json'
+    if repo_feed.exists():
+        check_channel(code, head, digest, json.loads(repo_feed.read_text()), 'GitHub')
+    public = ROOT / 'public'; shutil.rmtree(public, ignore_errors=True); public.mkdir()
+    if code == previous['versionCode']:
         shutil.copy2(ROOT / '.channel-check/latest.json', public / 'latest.json')
     else:
         data = apk.read_bytes()

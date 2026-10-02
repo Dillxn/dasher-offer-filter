@@ -36,7 +36,7 @@ public final class ReportJobService extends JobService {
 
     private final class Work implements Runnable {
         final JobParameters parameters;
-        boolean stopped;
+        volatile boolean stopped;
         Thread thread;
 
         Work(JobParameters parameters) { this.parameters = parameters; }
@@ -51,7 +51,7 @@ public final class ReportJobService extends JobService {
                     thread = Thread.currentThread();
                 }
                 if (check) DashDiagnostics.check(ReportJobService.this);
-                else retry = ReportOutbox.drain(ReportJobService.this);
+                else retry = ReportOutbox.drain(ReportJobService.this, () -> stopped);
             } catch (RuntimeException unexpected) {
                 DiagnosticLog.log(ReportJobService.this, check ? "diagnostics" : "report",
                         (check ? "quiet check failed: " : "send failed: ") + unexpected.getClass().getSimpleName());
@@ -77,7 +77,7 @@ public final class ReportJobService extends JobService {
             Work work = RUNNING.get(id);
             if (work != null && work.parameters == parameters) {
                 work.stopped = true;
-                if (work.thread != null) work.thread.interrupt();
+                // Let the in-flight request finish and keep its receipt. The drain stops before its next request.
                 // Don't cancel the queued runnable: its finally must release RUNNING even if it never started.
             }
         }

@@ -403,8 +403,9 @@ public final class OfferNotificationService extends NotificationListenerService 
             Ranking rank = ranking(ranking, source.getKey());
             boolean dasherSounded = dasherAlertSounded(rank, source, update);
             logChannel(rank == null ? null : rank.getChannel(), notification, dasherSounded);
-            // Settings asks for Dasher's offer channel to be set to Silent while it is seen to alert.
-            FilterStore.recordDoorDashChannel(this, rank == null ? null : rank.getChannel());
+            // Configured sound is not evidence that a post alerted. Replays may clear a known Silent channel,
+            // but only a fresh post Android indicated sounded can add the Settings Fix.
+            FilterStore.recordDoorDashChannel(this, rank == null ? null : rank.getChannel(), !replay && dasherSounded);
             boolean addOn = AddOnOffer.isLikely(labels);
 
             if (offer.state.coveredByScreen(decision.result, decision.basis, foreground, replay,
@@ -435,7 +436,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             }
 
             offer.contentIntent = notification.contentIntent;
-            offer.dasherSounded = dasherSounded;
+            offer.dasherSounded |= dasherSounded;
             // Peek is decided before the card: the notification cannot judge this offer (it names the store, not the
             // pay), and when a peek will be tried the card is posted silently (no ring, so no sound given back over
             // the decline to come); it rings once only if the peek does not happen.
@@ -630,6 +631,9 @@ public final class OfferNotificationService extends NotificationListenerService 
         boolean dasherRings = ring && review && dasherSounds;
         if (dasherRings) {
             ring = false;
+            // The native alert was heard even if our card is currently blocked. A later allowed post must not
+            // spend this offer's ring a second time, but a failed post still must not count as displayed.
+            offer.state.rang = true;
             DiagnosticLog.log(this, "alert", "no ring: Android shows Dasher's own alert for this offer sounded");
         }
         String detail = review ? reviewText(facts, decision, peeking) : facts.summary() + "; " + decision.summary();
@@ -710,8 +714,9 @@ public final class OfferNotificationService extends NotificationListenerService 
                 found = offer;
             }
         }
-        // A passing card always rings once; an unclear one not when Dasher's own alert for it sounded.
-        boolean ring = result == OfferRule.Result.KEEP || found == null || !found.dasherSounded;
+        // A navigation return uses the same per-offer budget as the first card and its later updates.
+        boolean ring = (found == null || found.state.shouldRing(result, false, false))
+                && (result == OfferRule.Result.KEEP || found == null || !found.dasherSounded);
         String tag = found != null ? found.alertTag : "peek-" + System.currentTimeMillis();
         boolean posted = OfferAlerts.notifyOffer(this, tag, found == null ? null : found.contentIntent, result, text,
                 ring, found == null ? "" : found.store);

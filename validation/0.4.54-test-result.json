@@ -1,0 +1,20 @@
+{
+  "version": "0.4.54",
+  "versionCode": 60,
+  "completedUtc": "2026-10-02T17:03:54.615095+00:00",
+  "command": "./gradlew -q testDebugUnitTest -PallSdks lintDebug --continue (JDK17, SDK36, build-tools35.0.0)",
+  "exitCode": 0,
+  "suiteCount": 90,
+  "tests": {
+    "tests": 1579,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "Warning": 34
+  },
+  "sourceManifest": "validation/0.4.54-test-inputs.json",
+  "aggregateSha256": "fe852e872be818964459d7410d199d3563bbab76cc8d6c9e242d7431271aa175",
+  "changedInputFiles": []
+}

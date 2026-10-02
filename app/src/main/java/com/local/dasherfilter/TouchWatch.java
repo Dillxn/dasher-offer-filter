@@ -60,8 +60,9 @@ final class TouchWatch {
         try {
             windows.addView(watcher, params);
             view = watcher;
+            DiagnosticLog.logOnChange(service, "accessibility", "touch-watch", "touch watch available");
         } catch (RuntimeException refused) {
-            DiagnosticLog.log(service, "accessibility",
+            DiagnosticLog.logOnChange(service, "accessibility", "touch-watch",
                     "touch watch unavailable: " + refused.getClass().getSimpleName());
         }
     }

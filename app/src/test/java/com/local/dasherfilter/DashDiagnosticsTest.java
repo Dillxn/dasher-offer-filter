@@ -438,32 +438,25 @@ public class DashDiagnosticsTest {
     }
 
     @Test
-    public void offlineItWaitsAndARetryNeverFilesTheDashTwice() throws IOException, JSONException {
+    public void rateLimitedPartsWaitAndARetryNeverFilesTheDashTwice() throws IOException, JSONException {
         diagnosticsOn();
         aLongDash();
         dashUntilItEnds();
         assertEquals(1, queuedDiagnostics());
 
-        // The issue goes through, its comments do not (GitHub is down): kept for the outbox's retry with backoff.
+        // An explicit rate-limit refusal proves the comment was not created; it may be retried.
         on("/issues", 201, "{\"number\": 7}");
-        on("/issues/7/comments", 503, "{\"message\": \"try later\"}");
+        on("/issues/7/comments", 429, "{\"message\": \"try later\"}");
         assertTrue("asks Android to retry", ReportOutbox.drain(app));
         assertEquals(1, queuedDiagnostics());
         JobScheduler jobs = app.getSystemService(JobScheduler.class);
         assertTrue(jobs.getPendingJob(ReportOutbox.JOB_ID) != null);
 
-        // No connection at all.
-        String reachable = GitHubIssues.endpoint;
-        int closedPort;
-        try (ServerSocket socket = new ServerSocket(0)) {
-            closedPort = socket.getLocalPort();
-        }
-        GitHubIssues.endpoint = "http://127.0.0.1:" + closedPort + "/issues";
-        assertTrue(ReportOutbox.drain(app));
+        // While Android has stopped the job, no outgoing part is attempted or marked ambiguous.
+        assertTrue(ReportOutbox.drain(app, () -> true));
         assertEquals(1, queuedDiagnostics());
 
         // Back online: only the comments still owed are sent, on the issue already filed.
-        GitHubIssues.endpoint = reachable;
         for (int i = 0; i < 5; i++) on("/issues/7/comments", 201, "{\"id\": " + i + "}");
         assertFalse(ReportOutbox.drain(app));
         assertEquals(0, queuedDiagnostics());
@@ -535,8 +528,9 @@ public class DashDiagnosticsTest {
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash ended", "$84.20")));
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash summary", "4 offers")));
         assertEquals(DashDiagnostics.End.DASH_OVER, DashDiagnostics.endOf(Arrays.asList("Dash now", "Schedule")));
-        assertEquals(DashDiagnostics.End.END_DASH, DashDiagnostics.endOf(Arrays.asList("End dash?",
+        assertNull("a proposal to end can still be cancelled", DashDiagnostics.endOf(Arrays.asList("End dash?",
                 "Are you sure you want to end your dash?", "End dash", "Cancel")));
+        assertNull("a menu action alone is not completion", DashDiagnostics.endOf(Arrays.asList("End dash")));
         assertNull("the dash's own screen", DashDiagnostics.endOf(Arrays.asList("Finding offers", "End dash")));
         assertNull("a pause", DashDiagnostics.endOf(Arrays.asList("Dash paused", "Resume dash", "End dash")));
         assertNull("a delivery", DashDiagnostics.endOf(Arrays.asList("Deliver by 9:45 PM", "Complete delivery steps",

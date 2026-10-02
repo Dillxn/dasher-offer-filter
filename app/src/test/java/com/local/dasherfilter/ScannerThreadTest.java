@@ -284,11 +284,13 @@ public class ScannerThreadTest {
     @Implements(className = "android.view.WindowManagerImpl", isInAndroidSdk = false)
     public static class RefusingWindowManager extends ShadowWindowManagerImpl {
         static volatile boolean refuse;
+        static final AtomicInteger refusedAttempts = new AtomicInteger();
 
         @Implementation
         @Override
         public void addView(View view, ViewGroup.LayoutParams params) {
             if (refuse && !(view instanceof DasherTab) && !(view instanceof DasherGuide)) {
+                refusedAttempts.incrementAndGet();
                 throw new WindowManager.BadTokenException("refused");
             }
             super.addView(view, params);
@@ -473,17 +475,20 @@ public class ScannerThreadTest {
     @Config(shadows = RefusingWindowManager.class)
     public void aTouchWatchAndroidWouldNotAddIsAskedForAgainAndTheDeclineGoesOn() {
         RefusingWindowManager.refuse = true;
+        RefusingWindowManager.refusedAttempts.set(0);
         OfferFilterService service = service(false);
         show(service, offer("$7.90"));
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
         assertTrue(touchWatches().isEmpty());
         assertEquals(1, count(DiagnosticLog.read(app), "touch watch unavailable"));
+        int firstRefusals = RefusingWindowManager.refusedAttempts.get();
 
         // Without the watch the decline goes on, as it always has: the confirmation is not held for it.
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(service, confirmation(confirm));
         assertEquals(1, Shadows.shadowOf(confirm).getPerformedActions().size());
-        assertEquals("asked again at the next read", 2, count(DiagnosticLog.read(app), "touch watch unavailable"));
+        assertTrue("asked again at the next read", RefusingWindowManager.refusedAttempts.get() > firstRefusals);
+        assertEquals("unchanged refusal does not flood the log", 1, count(DiagnosticLog.read(app), "touch watch unavailable"));
 
         // Android takes it now: the next read asks again and the watch comes up (before, it was never asked again).
         RefusingWindowManager.refuse = false;

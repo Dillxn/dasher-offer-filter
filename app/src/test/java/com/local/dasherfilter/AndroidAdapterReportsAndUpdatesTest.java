@@ -107,20 +107,33 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 30, 100, 3, true, 0));
         FilterStore.recordAccepted(app, new OfferSnapshot(2500, 6.0, 25, 2));
         String report = DiagnosticLog.report(app);
-        assertTrue(report.contains("per-minute cents=30; per-stop cents=100; max stops=3; rising offers=true; "
-                + "highest accepted cents=2500"));
+        for (String field : Arrays.asList("Auto-decline saved: true", "flat cents=2000", "per-mile cents=150",
+                "per-minute cents=30", "per-stop cents=100", "max stops=3", "rising offers=true",
+                "highest accepted cents=2500", "hotspot proximity hundredths/mi=0", "minimum scale percent=100",
+                "learned from manual declines=none", "score by area=false")) {
+            assertTrue("saved rule missing: " + field, report.contains(field));
+        }
+        assertTrue(report.contains("Current when this report was generated; not a reconstructed historical baseline."));
+        assertTrue(report.contains("learning now=on"));
         assertTrue(report.contains("$1.00 per stop"));
         assertTrue(report.contains("best accepted=$1.00/min, $4.17/mi, $12.50/stop"));
         assertTrue(report.contains("Notification access granted: false"));
     }
 
     @Test
-    public void shareReportCarriesTheDecisionHistory() {
+    public void shareReportCarriesTheDecisionHistory() throws Exception {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             findButton(activity.get().findViewById(android.R.id.content), "Share report").performClick();
 
-            Intent chooser = Shadows.shadowOf(app).getNextStartedActivity();
+            Intent chooser = null;
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (chooser == null && System.nanoTime() < deadline) {
+                Shadows.shadowOf(Looper.getMainLooper()).idle();
+                chooser = Shadows.shadowOf(app).getNextStartedActivity();
+                if (chooser == null) Thread.sleep(5);
+            }
+            assertNotNull("the background report opens the chooser when ready", chooser);
             assertEquals(Intent.ACTION_CHOOSER, chooser.getAction());
             Intent sent = chooser.getParcelableExtra(Intent.EXTRA_INTENT);
             assertEquals(Intent.ACTION_SEND, sent.getAction());

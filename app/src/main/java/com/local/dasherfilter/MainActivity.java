@@ -65,14 +65,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
     private static final String SKY_CHOSEN = "sky_chosen";
+    private static final String SETUP_PREFS = "setup_steps";
+    private static final String NOTIFICATIONS_ASKED = "notifications_asked";
+    private static final String ACCESSIBILITY_OPENED = "accessibility_opened";
     /** With no rule saved, the line under the mascot: the fewest words that say how to begin. */
     static final String START_HINT = "Drag a knob to start";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final ReportShare reportShare = new ReportShare();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
+            if (!started) return;
             refresh();
-            handler.postDelayed(this, 1000);
+            if (started) handler.postDelayed(this, 1000);
         }
     };
     /**
@@ -88,9 +93,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private final Asked<Boolean> installsAllowed = new Asked<>(() -> getPackageManager().canRequestPackageInstalls());
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
+    private final Asked<Boolean> screenReadingEnabled = new Asked<>(this::screenReadingEnabled);
     private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
     /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
     private boolean resumed;
+    private boolean started;
+    private boolean restrictedSettingsHint;
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
@@ -136,6 +144,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private long shownHistoryVersion = -1;
     /** The newest offer the page has seen (when it was recorded), so the mascot plays out each new one once. */
     private long seenOfferAt = -1;
+    private long liveAnimationOfferAt;
+    private DecisionLog.Outcome shownOfferOutcome;
     /** A new offer plays out only when decided this recently, a moment after it was recorded (its line settled). */
     private static final long OFFER_FRESH_MS = 20_000;
     private static final long OFFER_SETTLE_MS = 1200;
@@ -210,6 +220,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Button githubRow;
     private Switch reportViaGitHub;
     private TextView reportStatus;
+    private Button shareReportRow;
     private Switch diagnosticsAfterDash;
     private TextView diagnosticsStatus;
     private GitHubConnect.State shownGitHub;
@@ -327,6 +338,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         else super.onBackPressed();
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        started = true;
+        handler.removeCallbacks(refresh);
+        handler.post(refresh);
+    }
+
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
@@ -336,6 +354,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (GitHubConnect.configured()) GitHubConnect.resume(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
+        restrictedSettingsHint = Build.VERSION.SDK_INT >= 33
+                && getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(ACCESSIBILITY_OPENED, false)
+                && !screenReadingEnabled.get();
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -362,7 +383,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** The screen reader looked at the windows for this page: laid out for what it saw (Dasher beside or not). */
     private final Runnable windowsLooked = () -> {
-        if (resumed) refresh();
+        if (started) refresh();
     };
 
     /**
@@ -370,9 +391,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * not hand the offer back (the user's decision). Only its time is passed on, before anything else sees it.
      */
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
-            OfferFilterService.ownScreenTouched(event.getEventTime());
-        }
+        OwnWindowTouches.onTouch(event);
         return super.dispatchTouchEvent(event);
     }
 
@@ -392,6 +411,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         installsAllowed.forget();
         locationAllowed.forget();
         locationAlways.forget();
+        screenReadingEnabled.forget();
         here.forget();
     }
 
@@ -433,12 +453,23 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override protected void onPause() {
         resumed = false;
+        cancelReportShare();
         refreshScreenAwake();
-        handler.removeCallbacks(refresh);
         DasherSplit.paused(this);
         Tilt.stop();
         Updater.background(this);
         super.onPause();
+    }
+
+    @Override protected void onStop() {
+        started = false;
+        handler.removeCallbacks(refresh);
+        super.onStop();
+    }
+
+    @Override protected void onDestroy() {
+        cancelReportShare();
+        super.onDestroy();
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
@@ -473,6 +504,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         showingSettings = settings;
         mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
+        if (!settings) cancelReportShare();
+        else if (!noticeShown()) refreshSettings();
         // Behind the status bar: the top of the main page's sky, or the Settings page.
         root.setBackgroundColor(settings ? ui.page : ScenePage.skyTop(ui));
         if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(settings ? ui.page : ScenePage.skyTop(ui));
@@ -664,8 +697,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         lines.addView(stateLine, stateParams);
         LinearLayout problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
-        screenReading = new Readiness(problems, "Screen reading is off",
-                () -> open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
         addFeeNotice(problems);
@@ -966,7 +998,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             toast("Hotspot distance is not readable yet. Offers needing it will be left for review."
                     + (firstRule ? " Auto-decline stays paused." : ""));
         }
-        else if (firstRule) toast("Rule saved. Auto-decline stays paused until you Resume it.");
+        else if (firstRule) toast("Rule saved. Tap the mascot to turn on auto-decline.");
         return true;
     }
 
@@ -975,7 +1007,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * accepted pay, every best rate and what declines taught. The set minimums and the switch stay as they are.
      */
     private void confirmResetLearned() {
-        new AlertDialog.Builder(this)
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Reset learned minimums?")
                 .setMessage("Forgets the highest pay you accepted, the best rates and what your own declines taught. "
                         + "Your set minimums stay.")
@@ -986,8 +1018,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     updateMeter();
                     toast("Learned minimums reset.");
                 })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setNegativeButton("Cancel", null));
     }
 
     /**
@@ -1034,7 +1065,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout body = body(page);
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
-        doorDashAlerts = new Readiness(setup, "DoorDash's offer alerts aren't Silent", this::openDoorDashChannel);
+        doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
         installs = new Readiness(setup, "Updates can't install", () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);
@@ -1066,7 +1097,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (GitHubConnect.configured()) githubRow = ui.listRow(connections, "Connect GitHub", this::tapGitHub);
 
         LinearLayout reports = group(body);
-        ui.listRow(reports, "Share report", this::shareReport);
+        shareReportRow = ui.listRow(reports, "Share report", this::shareReport);
         // Problem reports go only through the GitHub connection: shown once it is connected, off until turned on.
         reportViaGitHub = ui.toggle(reports, "Send problem reports", ReportOutbox.useGitHubChosen(this));
         reportViaGitHub.setOnCheckedChangeListener((view, on) -> {
@@ -1124,7 +1155,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void tapGitHub() {
         GitHubConnect.State state = GitHubConnect.state(this);
         if (state == GitHubConnect.State.CONNECTED) {
-            new AlertDialog.Builder(this)
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
                     .setTitle("Disconnect GitHub?")
                     .setMessage("Updates then come only from the update server. Problem reports and diagnostics stop, "
                             + "and any not yet sent are discarded.")
@@ -1132,10 +1163,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
                         GitHubConnect.disconnect(this);
                         refresh();
                     })
-                    .setNegativeButton("Cancel", null)
-                    .show();
+                    .setNegativeButton("Cancel", null));
         } else if (state == GitHubConnect.State.WAITING) {
-            new AlertDialog.Builder(this)
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
                     .setTitle("Connect GitHub")
                     .setMessage("Enter " + GitHubConnect.userCode(this) + " on GitHub.")
                     .setPositiveButton("Open GitHub", (dialog, which) -> openGitHub())
@@ -1143,8 +1173,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                         GitHubConnect.disconnect(this);
                         refresh();
                     })
-                    .setNegativeButton("Cancel", null)
-                    .show();
+                    .setNegativeButton("Cancel", null));
         } else if (!askingGitHub) {
             connectGitHub();
         }
@@ -1178,19 +1207,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (methods.isEmpty()) return;
         String[] labels = new String[methods.size()];
         for (int i = 0; i < labels.length; i++) labels[i] = methods.get(i).label;
-        new AlertDialog.Builder(this)
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Tip with")
                 .setItems(labels, (dialog, which) ->
                         open(new Intent(Intent.ACTION_VIEW, Uri.parse(Support.link(methods.get(which))))))
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setNegativeButton("Cancel", null));
     }
 
     // ---- State ----
 
     private void refreshScreenAwake() {
         int flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-        if (resumed && OfferFilterService.isConnected() && ScreenAwake.wanted(this)) getWindow().addFlags(flag);
+        if (resumed && OfferFilterService.isConnected() && !Dashing.isPaused(this)
+                && ScreenAwake.wanted(this)) getWindow().addFlags(flag);
         else getWindow().clearFlags(flag);
     }
 
@@ -1220,7 +1249,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
 
-        screenReading.update(OfferFilterService.isConnected());
+        boolean readerConnected = OfferFilterService.isConnected();
+        screenReading.problem(screenReadingEnabled.get() ? "Screen reading stopped"
+                : restrictedSettingsHint ? "Screen reading is off · switch greyed out?" : "Screen reading is off");
+        screenReading.update(readerConnected);
         backgroundOffers.update(OfferNotificationService.isConnected());
         offerAlerts.update(alertsAllowed.get());
         refreshFeeNotice();
@@ -1265,7 +1297,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             reportViaGitHub.setChecked(ReportOutbox.useGitHubChosen(this));
         }
         reportStatus.setVisibility(connected && reporting ? View.VISIBLE : View.GONE);
-        if (reporting) reportStatus.setText(ReportOutbox.status(this));
+        if (reporting && showingSettings) reportStatus.setText(ReportOutbox.status(this));
         diagnosticsAfterDash.setVisibility(connected ? View.VISIBLE : View.GONE);
         diagnosticsAfterDash.setEnabled(DashDiagnostics.allowed(this));
         if (diagnosticsAfterDash.isChecked() != DashDiagnostics.on(this)) {
@@ -1383,13 +1415,31 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void noteNewOffer(List<DecisionLog.Entry> recent) {
         long newest = recent.isEmpty() ? 0 : recent.get(0).at;
         boolean opening = seenOfferAt < 0;
-        if (!opening && newest <= seenOfferAt) return;
+        if (!opening && newest == seenOfferAt) {
+            if (newest == liveAnimationOfferAt && shownOfferOutcome != null
+                    && System.currentTimeMillis() - newest <= OFFER_FRESH_MS) {
+                DecisionLog.Outcome outcome = DecisionLog.outcome(recent.get(0));
+                if (outcome != shownOfferOutcome) {
+                    shownOfferOutcome = outcome;
+                    hero.showOffer(outcome);
+                }
+            }
+            return;
+        }
+        if (!opening && newest < seenOfferAt) return;
         seenOfferAt = newest;
+        liveAnimationOfferAt = 0;
+        shownOfferOutcome = null;
         if (opening || System.currentTimeMillis() - newest > OFFER_FRESH_MS) return;
+        liveAnimationOfferAt = newest;
         handler.postDelayed(() -> {
-            if (isFinishing()) return;
+            if (!started || isFinishing() || isDestroyed() || liveAnimationOfferAt != newest
+                    || System.currentTimeMillis() - newest > OFFER_FRESH_MS) return;
             List<DecisionLog.Entry> now = DecisionLog.recent(this, 1);
-            if (!now.isEmpty() && now.get(0).at == newest) hero.showOffer(DecisionLog.outcome(now.get(0)));
+            if (!now.isEmpty() && now.get(0).at == newest) {
+                shownOfferOutcome = DecisionLog.outcome(now.get(0));
+                hero.showOffer(shownOfferOutcome);
+            }
         }, OFFER_SETTLE_MS);
     }
 
@@ -1466,7 +1516,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ticket.addView(card, cardParams);
         // The offer's area score as decided, in either mode; a reason by score already says it.
         if (entry.scorePercent >= 0 && !entry.reason.startsWith(OfferRule.SCORE_REASON)) {
-            TextView score = ui.text(AreaScore.label(entry.scorePercent), 14, ui.inkSecondary, true);
+            TextView score = ui.text("Score reference · " + AreaScore.label(entry.scorePercent)
+                    .replaceFirst("^Score ", ""), 14, ui.inkSecondary, true);
             score.setPadding(0, ui.dp(8), 0, 0);
             ticket.addView(score);
         }
@@ -1479,6 +1530,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 + (entry.autoDecline ? "" : " · while paused"), 13, ui.inkSecondary, false);
         action.setPadding(0, ui.dp(4), 0, 0);
         ticket.addView(action);
+        if (!entry.steps.isEmpty()) {
+            List<String> learning = new java.util.ArrayList<>();
+            for (DecisionLog.Step step : entry.steps) learning.add(step.text());
+            TextView learned = ui.text(String.join("\n", learning), 13, ui.inkSecondary, false);
+            learned.setPadding(0, ui.dp(6), 0, 0);
+            ticket.addView(learned);
+        }
         if (entry.notification != null) {
             // Dasher's notification of this same offer, folded into its line.
             TextView notice = ui.text("Dasher's notification " + DecisionLog.noticeWhen(entry) + ": "
@@ -1731,7 +1789,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout frame = ui.column();
         frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0);
         frame.addView(note, Ui.matchWidth());
-        new AlertDialog.Builder(this)
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Report this offer?")
                 .setMessage("Sends what the app read (other words masked, so names and streets stay here), your "
                         + "rules and recent decisions to your private repository, where Claude diagnoses it.")
@@ -1741,36 +1799,52 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     toast(queued ? "Report queued. It sends when you're online." : "Daily report limit reached.");
                     refresh();
                 })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setNegativeButton("Cancel", null));
     }
 
-    /** One confirm for everything the history holds on the phone: decisions, captured text and offer areas. */
+    /** One confirm for decisions, captured text, offer areas and cached place names. */
     private void confirmClearHistory() {
-        new AlertDialog.Builder(this)
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Clear history?")
-                .setMessage("Removes the offer decisions, the captured screen text and the offer areas from this "
-                        + "phone. Your rules stay.")
+                .setMessage("Removes the offer decisions, captured screen text, offer areas and cached place names "
+                        + "from this phone. Your rules stay.")
                 .setPositiveButton("Clear", (dialog, which) -> {
+                    cancelReportShare();
                     DecisionLog.clear(this);
                     DiagnosticLog.clear(this);
                     AreaMap.forget(this);
+                    Places.forget(this);
+                    RestartSuppression.clear(this);
+                    ScannerFailure.clear(this);
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;
                     ticketOpen = false;
                     refresh();
                 })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setNegativeButton("Cancel", null));
     }
 
     /** Offers any app for the diagnostic report; mail keeps its "Offer Filter diagnostics" subject. */
     private void shareReport() {
-        open(Intent.createChooser(new Intent(Intent.ACTION_SEND)
-                .setType("text/plain")
-                .putExtra(Intent.EXTRA_SUBJECT, DiagnosticLog.reportSubject(this))
-                .putExtra(Intent.EXTRA_TEXT, DiagnosticLog.report(this)), "Share " + AppName.NAME + " report"));
+        if (!resumed || noticeShown() || isFinishing() || isDestroyed()) return;
+        if (reportShare.start(this, report -> {
+            shareReportRow.setEnabled(true);
+            if (!resumed || noticeShown() || isFinishing() || isDestroyed()) return;
+            if (report == null) {
+                toast("Could not prepare the report. Try again.");
+                return;
+            }
+            open(Intent.createChooser(new Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, report.subject)
+                    .putExtra(Intent.EXTRA_TEXT, report.body), "Share " + AppName.NAME + " report"));
+        })) shareReportRow.setEnabled(false);
+    }
+
+    private void cancelReportShare() {
+        reportShare.cancel();
+        if (shareReportRow != null) shareReportRow.setEnabled(true);
     }
 
     private void openNotificationAccess() {
@@ -1783,16 +1857,69 @@ public final class MainActivity extends Activity implements Updater.Busy {
         open(intent);
     }
 
+    private boolean screenReadingEnabled() {
+        String enabled = Settings.Secure.getString(getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        if (enabled == null) return false;
+        ComponentName ours = new ComponentName(this, OfferFilterService.class);
+        for (String component : enabled.split(":")) {
+            if (ours.equals(ComponentName.unflattenFromString(component))) return true;
+        }
+        return false;
+    }
+
+    private void fixScreenReading() {
+        if (restrictedSettingsHint && !screenReadingEnabled.get()) {
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
+                    .setTitle("Switch greyed out?")
+                    .setMessage("If Android blocks the switch, open App info, then its three-dot menu and "
+                            + "Allow restricted settings. Then return to Accessibility to enable screen reading.")
+                    .setPositiveButton("App info", (dialog, which) -> open(new Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
+                    .setNegativeButton("Accessibility", (dialog, which) -> openScreenReadingSettings())
+                    .setNeutralButton("Cancel", null));
+        } else {
+            openScreenReadingSettings();
+        }
+    }
+
+    private void openScreenReadingSettings() {
+        getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(ACCESSIBILITY_OPENED, true).apply();
+        if (Build.VERSION.SDK_INT >= 31) {
+            // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
+            Intent details = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                    .putExtra(Intent.EXTRA_COMPONENT_NAME,
+                            new ComponentName(this, OfferFilterService.class).flattenToString());
+            try {
+                startActivity(details);
+                return;
+            } catch (RuntimeException unsupported) {
+                // The public accessibility list remains available on phones without a direct service screen.
+            }
+        }
+        open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+    }
+
     private void configureOfferAlerts() {
         OfferAlerts.ensureChannel(this);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
+            boolean asked = getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(NOTIFICATIONS_ASKED, false);
+            if (asked && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                openAppNotifications();
+                return;
+            }
+            getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(NOTIFICATIONS_ASKED, true).apply();
             requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
             return;
         }
-        open(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
-                .putExtra(Settings.EXTRA_CHANNEL_ID, OfferAlerts.CHANNEL_ID));
+        openAppNotifications();
+    }
+
+    private void openAppNotifications() {
+        // Passing offers, review cards and the paused-until-opened reminder each have their own channel.
+        open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,
+                getPackageName()));
     }
 
     private void openDoorDashChannel() {
@@ -1859,6 +1986,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private final class Readiness {
         private final LinearLayout row;
+        private final TextView text;
 
         Readiness(LinearLayout parent, String problem, Runnable onFix) {
             row = ui.row();
@@ -1873,7 +2001,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
             sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             row.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
-            TextView text = ui.text(problem, 15, ui.ink, false);
+            text = ui.text(problem, 15, ui.ink, false);
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
             row.addView(ui.text("Fix", 15, ui.accent, true));
@@ -1882,6 +2010,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         void update(boolean ready) {
             row.setVisibility(ready ? View.GONE : View.VISIBLE);
+        }
+
+        void problem(String problem) {
+            if (problem.contentEquals(text.getText())) return;
+            text.setText(problem);
+            row.setContentDescription(problem + ". Fix.");
         }
     }
 }

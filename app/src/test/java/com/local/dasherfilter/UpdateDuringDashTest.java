@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import android.os.Looper;
+import android.content.Intent;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -13,6 +14,7 @@ import org.robolectric.annotation.LooperMode;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Split-audit P3: an automatic update installed mid-dash closed Offer Filter, and with it its half of a split screen
@@ -25,6 +27,26 @@ import static org.junit.Assert.assertNull;
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class UpdateDuringDashTest extends AndroidAdapterTestBase {
+    @Test public void aQuietDisconnectedShiftIsHeldUntilItsPositiveEnd() {
+        app.getSharedPreferences("dashing", 0).edit().putLong("seen_at", System.currentTimeMillis()
+                - 2 * Dashing.WINDOW_MS).remove("ended_at").commit();
+        assertFalse("the homepage no longer claims live monitoring", Dashing.now(app));
+        assertEquals(Updater.AFTER_DASH, Updater.heldBack(app, false));
+        assertNull("the explicit Updates tap remains available", Updater.heldBack(app, true));
+        Dashing.ended(app);
+        assertNull(Updater.heldBack(app, false));
+    }
+
+    @Test public void waitingForAndroidConfirmationReleasesTheBlockingInstallCover() {
+        Updater.prefs(app).edit().putInt("session", 7).commit();
+        Updater.installStarted(app, true);
+        assertTrue(Updater.installing(app));
+        Updater.confirmation(app, new Intent("synthetic.install.confirmation"));
+        assertFalse("waiting for consent is not an installation in progress", Updater.installing(app));
+        assertTrue("Android's live session is kept", Updater.isCurrentSession(app, 7));
+        assertTrue(Updater.status(app).contains("Updates in Settings"));
+    }
+
     @Test
     public void anAutomaticInstallWaitsForTheDashToEndButTheUsersOwnCheckDoesNot() {
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();

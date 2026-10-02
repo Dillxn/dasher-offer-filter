@@ -1,3 +1,13 @@
+## 0.4.54 — eleven-study reliability closeout
+
+- Keeps paused and quiet shifts safe from automatic installation; avoids repeatedly downloading an already verified waiting update. Uses the existing original-signer auto-update feeds.
+- Stops stale automation on lock/restart, handles scanner and Peek failures conservatively, and keeps fresh identical reoffers separate in history.
+- Makes report sharing responsive, bounds and clears place names, recovers interrupted history writes, and prevents repeated issue/comment uploads after lost replies.
+- Fixes older-Android split refresh, app-dialog touch attribution, setup guidance, alert evidence and failed sound restoration recovery.
+- Keeps learning details inside the selected ticket, labels strict scores as a reference, and corrects fresh outcome animations without adding permanent controls.
+
+Validation: 1,579 tests across 90 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. Signing/publication evidence: [closeout validation](VALIDATION_CLOSEOUT_2026-10-02.md). [All eleven investigations](INVESTIGATION_CLOSEOUT.md) are reconciled finding by finding, with optional recommendations and phone/external checks explicitly distinguished. The new privacy notice must be accepted once after updating. Automatic hotspot measurement and historical-report containment remain unverified.
+
 ## 0.4.53 — a quieter scene
 
 - The constellation displays one offer at a time: the latest, or the one selected from the skyline. Hidden history no longer adds overlapping polygons or invisible touch targets. The five axis meanings, saved and learned minimums, and whole-shape buffer remain.

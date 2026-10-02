@@ -235,25 +235,35 @@ final class OfferSilencer {
         SharedPreferences prefs = prefs(context);
         if (prefs.getAll().isEmpty()) return;
         AudioManager audio = context.getSystemService(AudioManager.class);
-        if (audio != null) {
-            for (int stream : STREAMS) {
-                String key = key(stream);
-                if (!prefs.contains(key)) continue;
-                try {
-                    if (stream == AudioManager.STREAM_ALARM) {
-                        // Left alone if the user has changed it since.
-                        if (audio.getStreamVolume(stream) <= prefs.getInt(setKey(stream), -1)) {
-                            audio.setStreamVolume(stream, prefs.getInt(key, 0), 0);
+        if (audio == null) return;
+        for (int stream : STREAMS) {
+            String key = key(stream);
+            if (!prefs.contains(key)) continue;
+            try {
+                if (stream == AudioManager.STREAM_ALARM) {
+                    // Left alone if the user has changed it since.
+                    if (audio.getStreamVolume(stream) <= prefs.getInt(setKey(stream), -1)) {
+                        int original = prefs.getInt(key, 0);
+                        audio.setStreamVolume(stream, original, 0);
+                        if (audio.getStreamVolume(stream) != original) {
+                            DiagnosticLog.log(context, "sound", "could not restore alarm: volume unchanged");
+                            continue;
                         }
-                    } else if (audio.isStreamMute(stream)) {
-                        audio.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0);
                     }
-                } catch (SecurityException refused) {
-                    DiagnosticLog.log(context, "sound", "could not restore " + streamName(stream));
+                } else if (audio.isStreamMute(stream)) {
+                    audio.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0);
+                    if (audio.isStreamMute(stream)) {
+                        DiagnosticLog.log(context, "sound", "could not restore media: still muted");
+                        continue;
+                    }
                 }
+                // Forget only a confirmed restore or a stream the user changed. A denied/ignored restore must
+                // leave its durable receipt for the next service start, boot, or package replacement to retry.
+                prefs.edit().remove(key).remove(setKey(stream)).commit();
+            } catch (SecurityException refused) {
+                DiagnosticLog.log(context, "sound", "could not restore " + streamName(stream));
             }
         }
-        prefs.edit().clear().commit();
     }
 
     private static boolean handled(int stream) {

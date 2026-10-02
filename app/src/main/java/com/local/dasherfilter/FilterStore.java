@@ -45,6 +45,8 @@ final class FilterStore {
     private static final String DECLINED_STOP_PAY = "declined_stop_pay";
     private static final String DECLINED_STOPS = "declined_stops";
     private static final String DOORDASH_OFFER_CHANNEL = "doordash_offer_channel";
+    /** Evidence from a post, separate from older versions' channel-configuration-only flag. */
+    private static final String DOORDASH_POST_SOUNDED = "doordash_post_sounded";
     /**
      * Whether Dasher's offer channel alerts (sound or vibration at default importance or above), as Android's ranking
      * of its last offer notification said; absent until one was seen with its channel.
@@ -268,7 +270,7 @@ final class FilterStore {
         if (channelId == null || channelId.trim().isEmpty()) return;
         SharedPreferences prefs = prefs(context);
         if (!channelId.equals(prefs.getString(DOORDASH_OFFER_CHANNEL, ""))) {
-            prefs.edit().putString(DOORDASH_OFFER_CHANNEL, channelId).apply();
+            prefs.edit().putString(DOORDASH_OFFER_CHANNEL, channelId).remove(DOORDASH_POST_SOUNDED).apply();
         }
     }
 
@@ -277,25 +279,32 @@ final class FilterStore {
     }
 
     /**
-     * Notes whether Dasher's offer channel, as Android ranked its last offer notification, alerts: importance default
-     * or above with a sound or vibration. A channel Android does not say (null) changes nothing.
+     * Channel settings alone never create a mandatory Fix. A known Silent setting can clear a previously observed
+     * alert; a channel Android does not describe changes nothing.
      */
     static void recordDoorDashChannel(Context context, android.app.NotificationChannel channel) {
-        if (channel == null) return;
-        boolean alerts = channel.getImportance() >= android.app.NotificationManager.IMPORTANCE_DEFAULT
-                && (channel.getSound() != null || channel.shouldVibrate());
+        recordDoorDashChannel(context, channel, false);
+    }
+
+    /** A fresh post Android indicated sounded, under the same evidence rule used to avoid a second ring. */
+    static void recordDoorDashChannel(Context context, android.app.NotificationChannel channel, boolean postSounded) {
         SharedPreferences prefs = prefs(context);
-        if (!prefs.contains(DOORDASH_CHANNEL_ALERTS) || prefs.getBoolean(DOORDASH_CHANNEL_ALERTS, false) != alerts) {
-            prefs.edit().putBoolean(DOORDASH_CHANNEL_ALERTS, alerts).apply();
+        boolean configuredToAlert = channel != null
+                && channel.getImportance() >= android.app.NotificationManager.IMPORTANCE_DEFAULT
+                && (channel.getSound() != null || channel.shouldVibrate());
+        if (postSounded) {
+            prefs.edit().putBoolean(DOORDASH_POST_SOUNDED, true).remove(DOORDASH_CHANNEL_ALERTS).apply();
+        } else if (channel != null && !configuredToAlert) {
+            prefs.edit().remove(DOORDASH_POST_SOUNDED).remove(DOORDASH_CHANNEL_ALERTS).apply();
         }
     }
 
     /**
-     * Whether Dasher's offer channel was last seen alerting, so Settings asks for it to be set to Silent; false until
-     * an offer notification showed its channel.
+     * Whether Android indicated an offer post sounded and its channel has not since been seen Silent. Unknown
+     * ranking and replays cannot create this evidence; old channel-configuration-only flags are not evidence.
      */
     static boolean doorDashChannelAlerts(Context context) {
-        return prefs(context).getBoolean(DOORDASH_CHANNEL_ALERTS, false);
+        return prefs(context).getBoolean(DOORDASH_POST_SOUNDED, false);
     }
 
     static void setLastStatus(Context context, String status) {

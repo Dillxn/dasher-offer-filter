@@ -619,6 +619,33 @@ public class SameOfferAdapterTest {
         assertFalse("Dasher's own alert is heard: no second ring", rings(notifications().getAllNotifications().get(0)));
         assertEquals("DASHER_SOUNDS", DecisionLog.recent(app, 1).get(0).action.name());
         assertTrue(DecisionLog.report(app, 1).contains("Dasher's own offer alert sounds"));
+        assertTrue("Settings has actual post evidence", FilterStore.doorDashChannelAlerts(app));
+    }
+
+    @Test
+    public void aNativeAlertStillConsumesTheRingWhenOurReplacementWasBlocked() throws Exception {
+        notifications().setNotificationsEnabled(false);
+        postSounded(doorDashOffer(STORE_A));
+        assertEquals(0, notifications().size());
+        notifications().setNotificationsEnabled(true);
+        post(doorDashOffer("New Delivery! 0:45 left", STORE_A, System.currentTimeMillis()));
+        assertEquals(1, notifications().size());
+        assertFalse("Android already sounded for this offer", rings(notifications().getAllNotifications().get(0)));
+    }
+
+    @Test
+    public void aPeekNavigationCardCannotRingAgainForAnAlreadyAnnouncedOffer() {
+        listener.get().onListenerConnected();
+        post(doorDashOffer(STORE_A));
+        assertTrue(rings(notifications().getAllNotifications().get(0)));
+        String tag = app.getSystemService(NotificationManager.class).getActiveNotifications()[0].getTag();
+        OfferSnapshot read = new OfferSnapshot(2500, 7.2, 21, 2);
+        OfferNotificationService.readOnScreen(tag, read);
+        OfferNotificationService.peekCard(app, read, OfferRule.Result.KEEP, "$25.00 passes");
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(1, notifications().size());
+        assertFalse("navigation's observed card shares the original ring budget",
+                rings(notifications().getAllNotifications().get(0)));
     }
 
     @Test
@@ -632,6 +659,7 @@ public class SameOfferAdapterTest {
         assertEquals(1, notifications().size());
         assertTrue(rings(notifications().getAllNotifications().get(0)));
         assertEquals("CHECK_BELL", DecisionLog.recent(app, 1).get(0).action.name());
+        assertFalse("configured channel sound cannot create a mandatory Fix", FilterStore.doorDashChannelAlerts(app));
     }
 
     @Test
