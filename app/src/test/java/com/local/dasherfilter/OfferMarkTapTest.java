@@ -29,7 +29,8 @@ import static org.junit.Assert.assertTrue;
  * Tapping an offer on the constellation through the real page: a tap on one of its marks, or inside its polygon,
  * opens its ticket exactly as a tap on its building in the skyline does (both show it chosen, and its shape stands out
  * while the ticket is open); the knobs and the buttons keep their touches, a drag opens nothing, a tap on empty sky
- * opens nothing, and with an older offer chosen it chooses the newest again. Screen readers reach each marked offer and open it. The rules: $5 pay, $3.00 a mile,
+ * opens nothing, and with an older offer chosen it chooses the newest again. Only the latest or skyline-selected
+ * offer is plotted or exposed for touch and screen readers; history stays selectable in the skyline. The rules: $5 pay, $3.00 a mile,
  * $0.20 a minute, $1.00 a stop, at most 3 stops; the newest offer ($24.00 for 6 mi, 25 min, 2 stops) passes and is the
  * chart's example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
  */
@@ -55,7 +56,10 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                     chart.selectedEntry().facts.payCents);
             assertEquals(-1, star.openedOffer());
 
-            // The older offer's mark clearest of the knobs and the other offer's marks.
+            assertNull("history is not piled over the current offer", star.markAt(OLDER, 0));
+            chart.select(0); // Browse history in the skyline; it becomes the constellation's one offer.
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNull("the previous offer no longer has a hidden touch target", star.markAt(NEWEST, 0));
             float[] mark = clearestMark(star, OLDER);
             assertTrue("a mark well clear of every knob and other mark", clearance(star, mark, OLDER)
                     > new Ui(app).dp(30));
@@ -71,14 +75,16 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertEquals(-1, star.pressedOffer());
             assertFalse("no page opens", settingsShown(content));
 
-            // Closed, the skyline keeps it chosen and the constellation lets it go.
+            // Closed, both graphs keep this offer chosen; the ticket emphasis goes away.
             activity.get().onBackPressed();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertNull(shownTextContaining(content, "Read: $9.75"));
             assertEquals(-1, star.openedOffer());
             assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
 
-            // The newest offer's mark opens the newest, and the skyline follows.
+            // Selecting the newest building makes its mark available again.
+            chart.select(1);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             touch(content, star, MotionEvent.ACTION_DOWN, clearestMark(star, NEWEST));
             touch(content, star, MotionEvent.ACTION_UP, clearestMark(star, NEWEST));
             assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
@@ -88,14 +94,14 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void aTapInsideTwoOverlappingShapesOpensTheNewest() {
+    public void strictModeShowsAndOpensTheSkylineSelectionRatherThanTheHiddenNewest() {
         seed(RULES);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
-            // The older offer chosen on the skyline (its ticket closed): strictly, its shape is not drawn on top.
+            // The older skyline selection is the only plotted offer, in strict mode too.
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
@@ -104,9 +110,9 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNotNull("a place inside both shapes, clear of every mark and knob", inBoth);
             tapThrough(content, star, inBoth);
 
-            assertEquals("the newest shape is on top", Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
-            assertNotNull(shownTextContaining(content, "Read: $24.00"));
-            assertEquals(NEWEST, star.openedOffer());
+            assertEquals("only the selected shape receives touches", Integer.valueOf(975), chart.selectedEntry().facts.payCents);
+            assertNotNull(shownTextContaining(content, "Read: $9.75"));
+            assertEquals(OLDER, star.openedOffer());
             assertFalse(settingsShown(content));
         }
     }
@@ -162,7 +168,9 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
-            // The older offer opened from its mark, then its ticket closed: it stays chosen.
+            // Browse the older offer in the skyline, open its mark, then close its ticket: it stays chosen.
+            chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             tapThrough(content, star, clearestMark(star, OLDER));
             activity.get().onBackPressed();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
@@ -200,6 +208,8 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
             Ui ui = new Ui(app);
+            chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             // The per-mile knob ($3.00 a mile asks $18.00 of 6 mi) sits on the older offer's per-mile mark ($17.73).
             float[] knob = star.knobAt(1);
             float[] mark = star.markAt(OLDER, 1);
@@ -213,7 +223,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertTrue("saved: " + FilterStore.load(app).perMileCents, FilterStore.load(app).perMileCents > 300);
             assertNull("no ticket", shownTextContaining(content, "Read: $"));
             assertEquals(-1, star.openedOffer());
-            assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
+            assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
             assertFalse(settingsShown(content));
 
             // A drag that sets out from an offer's mark (on no knob) is not a tap either.
@@ -226,7 +236,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertEquals("a drag lets the offer go", -1, star.pressedOffer());
             touch(content, star, MotionEvent.ACTION_UP, across);
             assertNull(shownTextContaining(content, "Read: $"));
-            assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
+            assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
             assertFalse(settingsShown(content));
 
             // A tap on the knob, though the mark is within reach, is the knob's: it opens nothing.
@@ -240,7 +250,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void screenReadersReachEachMarkedOfferAfterTheControlsAndOpenItsTicket() throws Exception {
+    public void screenReadersReachOnlyTheDisplayedOfferAndSelectionClearsHiddenFocus() throws Exception {
         seed(RULES);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -250,11 +260,23 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("the knobs, the max stops badge, the toggles, then the offers newest first",
+            assertEquals("the knobs, max stops, toggles, then only the displayed offer",
                     Arrays.asList(AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE, AreaScore.STOP,
                             MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.SCORE_ID,
-                            MinimumsStarView.OFFER_ID, MinimumsStarView.OFFER_ID + 1),
+                            MinimumsStarView.OFFER_ID),
                     childIds(host));
+            assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER));
+            assertFalse("hidden offers cannot be activated through stale accessibility ids",
+                    nodes.performAction(MinimumsStarView.OFFER_ID + OLDER, AccessibilityNodeInfo.ACTION_CLICK, null));
+            String newest = nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + NEWEST)
+                    .getContentDescription().toString();
+            assertTrue(newest, newest.startsWith("Offer $24.00, 6 mi, 25 min, 2 stops, passed"));
+            assertTrue(nodes.performAction(MinimumsStarView.OFFER_ID + NEWEST,
+                    AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null));
+            chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals("focus on the now-hidden offer is cleared", -1, star.focusedNode());
+            assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + NEWEST));
 
             AccessibilityNodeInfo older = nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER);
             String said = older.getContentDescription().toString();
@@ -268,10 +290,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             }
             assertNotNull("double-tap", click);
             assertEquals("show details", String.valueOf(click.getLabel()));
-            String newest = nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + NEWEST)
-                    .getContentDescription().toString();
-            assertTrue(newest, newest.startsWith("Offer $24.00, 6 mi, 25 min, 2 stops, passed"));
-            assertNull("no more offers than marked",
+            assertNull("no more offers than recorded",
                     nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + 2));
 
             assertTrue(nodes.performAction(MinimumsStarView.OFFER_ID + OLDER, AccessibilityNodeInfo.ACTION_CLICK,
@@ -283,6 +302,77 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertTrue("its node says it is the one open",
                     nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER).isSelected());
             assertFalse(settingsShown(content));
+        }
+    }
+
+    @Test
+    public void hiddenHistoricalMarksAndPolygonsCannotOpenTickets() {
+        seed(RULES);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            DecisionChartView chart = findChart(content);
+            float[] newestMark = clearestMark(star, NEWEST);
+            assertFalse("the latest mark is outside the older shape", inside(star.offerShape(OLDER), newestMark));
+            chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNull(star.markAt(NEWEST, 0));
+            // This used to be an offer target. It is now empty sky, so deselection must not open a hidden ticket.
+            touch(content, star, MotionEvent.ACTION_DOWN, newestMark);
+            assertEquals(-1, star.pressedOffer());
+            touch(content, star, MotionEvent.ACTION_UP, newestMark);
+            assertNull(shownTextContaining(content, "Read: $"));
+            assertEquals(-1, star.openedOffer());
+            assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
+        }
+    }
+
+    @Test
+    public void newestAddOnDoesNotSilentlyShowTheOlderStandaloneOffer() {
+        unplottableNewest(false);
+    }
+
+    @Test
+    public void newestOfferWithUnreadPayDoesNotSilentlyShowTheOlderReadableOffer() {
+        unplottableNewest(true);
+    }
+
+    private void unplottableNewest(boolean unreadPay) {
+        FilterStore.save(app, RULES);
+        record(RULES, 180_000, 2400, 6.0, 25, 2);
+        OfferSnapshot facts = new OfferSnapshot(unreadPay ? null : 700, 2.0, 12, 2);
+        DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, !unreadPay, facts,
+                new OfferRule.Decision(OfferRule.Result.REVIEW, 0, "offer needs review", facts),
+                DecisionLog.Action.NEEDS_REVIEW, true, java.util.Collections.emptyList())
+                .withTime(System.currentTimeMillis() - 60_000));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            DecisionChartView chart = findChart(content);
+            AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
+            assertEquals(!unreadPay, chart.selectedEntry().addOn);
+            assertEquals(facts.payCents, chart.selectedEntry().facts.payCents);
+            assertEquals("no score borrowed from an older offer", -1, star.emphasizedScore());
+            for (int axis = 0; axis < AreaScore.AXES; axis++) assertNull(star.markAt(0, axis));
+            assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID));
+            assertFalse(nodes.performAction(MinimumsStarView.OFFER_ID, AccessibilityNodeInfo.ACTION_CLICK, null));
+
+            chart.select(0); // Explicit history selection can still show the older standalone offer.
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNotNull(clearestMark(star, 0));
+            assertNotNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID));
+            star.showTicket(DecisionLog.recent(app, 2).get(0));
+            assertNull("an unplottable ticket cannot expose the previous selection's target", star.markAt(0, 0));
+            assertEquals("its spoken score cannot come from the previous selection either", -1, star.emphasizedScore());
+            star.showTicket(null);
+            chart.select(1); // The real latest entry is again selected, though it has no constellation polygon.
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            for (int axis = 0; axis < AreaScore.AXES; axis++) assertNull(star.markAt(0, axis));
+            assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID));
+            assertEquals(-1, star.emphasizedScore());
+            assertNull(shownTextContaining(content, "Read: $24.00"));
         }
     }
 

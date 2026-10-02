@@ -125,6 +125,42 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue("the pay spoke is compensable in area mode: " + area, area.contains("compensat"));
     }
 
+    @Test public void screenReadersCanBrowseHistoryAndOpenTheSelectedOffer() {
+        FilterStore.save(app, RULES);
+        long now = System.currentTimeMillis();
+        DecisionLog.record(app, offer(now - 60_000, 800, 1000, 80));
+        DecisionLog.record(app, offer(now, 1600, 1000, 160));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            DecisionChartView chart = find(content, DecisionChartView.class);
+            int previous = android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+            int next = android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD;
+            assertEquals(Integer.valueOf(1600), chart.selectedEntry().facts.payCents);
+            assertTrue(chart.performAccessibilityAction(previous, null));
+            assertEquals(Integer.valueOf(800), chart.selectedEntry().facts.payCents);
+            assertTrue(chart.getContentDescription().toString().contains("Selected offer 1 of 2: $8.00"));
+            assertFalse("the first offer does not wrap", chart.performAccessibilityAction(previous, null));
+            assertEquals("browsing alone does not open a ticket", -1,
+                    find(content, MinimumsStarView.class).openedOffer());
+            assertTrue(chart.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,
+                    null));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals("the older offer is open", 1, find(content, MinimumsStarView.class).openedOffer());
+            assertEquals(now - 60_000, chart.selectedEntry().at);
+            assertNotNull(shownTextContaining(content, "80%"));
+            activity.get().onBackPressed();
+            assertTrue(chart.performAccessibilityAction(next, null));
+            assertEquals(Integer.valueOf(1600), chart.selectedEntry().facts.payCents);
+            assertFalse("the latest offer does not wrap", chart.performAccessibilityAction(next, null));
+            android.os.Bundle invalid = new android.os.Bundle();
+            invalid.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,
+                    Float.NaN);
+            assertFalse(chart.performAccessibilityAction(android.R.id.accessibilityActionSetProgress, invalid));
+            assertEquals(Integer.valueOf(1600), chart.selectedEntry().facts.payCents);
+        }
+    }
+
     @Test public void draggingThePayMinimumRefreshesTheSkylineWithoutANewOffer() {
         FilterStore.save(app, RULES);
         DecisionLog.Entry recorded = offer(System.currentTimeMillis(), 1200, 1000, 123);

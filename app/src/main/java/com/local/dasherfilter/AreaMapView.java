@@ -40,10 +40,7 @@ final class AreaMapView extends View {
     private static final int[] MEDALS = {0xFFE3B341, 0xFFB9BDC3, 0xFFCD8B4E};
     private static final int GOLD = 0xFFD39B2A;
     static final int EXPLAIN_ATLAS = 0x01030001;
-    private static final String TITLE = "Atlas · where offers reached you";
-    private static final String KEY = "Gold: higher $/mi · ranks 1–3 · dashed: <" + AreaMap.MIN_OFFERS
-            + " offers with miles";
-    private static final String POSITION_KEY = "You · dots toward #1";
+    private static final String TITLE = "Offers received · $/mi";
     private static final String HELP = "Each square is the approximate area your phone was in when standalone "
             + "offers arrived, including declined offers. These are receiving areas, not pickups, final stops "
             + "or Dasher hotspots.\n\n"
@@ -66,6 +63,8 @@ final class AreaMapView extends View {
     private final RectF pill = new RectF();
     private final android.text.TextPaint labelText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final android.text.TextPaint keyText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF hereLabel = new RectF();
+    private final RectF labelObstacle = new RectF();
     private boolean helpPressed;
     private final Path path = new Path();
     /** Made once: the map redraws every frame while its "You" halo breathes. */
@@ -118,14 +117,15 @@ final class AreaMapView extends View {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        float across = sideFade(width);
+        float landWidth = mapWidth(width);
+        float across = sideFade(landWidth);
         float down = topFade(height);
         int clear = 0x00000000;
         int opaque = 0xFF000000;
         fadeTop = new LinearGradient(0, 0, 0, down, clear, opaque, Shader.TileMode.CLAMP);
         fadeBottom = new LinearGradient(0, height - down, 0, height, opaque, clear, Shader.TileMode.CLAMP);
         fadeLeft = new LinearGradient(0, 0, across, 0, clear, opaque, Shader.TileMode.CLAMP);
-        fadeRight = new LinearGradient(width - across, 0, width, 0, opaque, clear, Shader.TileMode.CLAMP);
+        fadeRight = new LinearGradient(landWidth - across, 0, landWidth, 0, opaque, clear, Shader.TileMode.CLAMP);
     }
 
     /** The left and right ramps: {@link #FADE_DP}, never more than a quarter of a narrow map. */
@@ -258,7 +258,8 @@ final class AreaMapView extends View {
     }
 
     private void project(float width, float height) {
-        // The key has its own strip; no ranked square or name is hidden behind its words.
+        // The heading and right-hand ornaments have their own space, including the info control's full hit area.
+        width = mapWidth(width);
         float keyHeight = keyHeight();
         height = Math.max(ui.dp(34), height - keyHeight);
         double minLat = Double.MAX_VALUE;
@@ -293,7 +294,7 @@ final class AreaMapView extends View {
         top = maxLat + (height / scale - spanY) / 2;
         // Squares stay big enough to read and tap: in a short strip of ground, the map centres on where you are
         // (else on the best square) and lets far squares fall outside it.
-        // The shortest maps leave 50 dp below the key. A slightly smaller square can keep both your dot and a
+        // A slightly smaller square in a very short map can keep both your dot and a
         // nearby #1 badge visible there; normal maps keep their 34 dp minimum.
         double readable = Math.min(ui.dp(34), Math.max(ui.dp(24), height - ui.dp(22))) / AreaMap.CELL_DEGREES;
         if (scale < readable) {
@@ -326,7 +327,42 @@ final class AreaMapView extends View {
     }
 
     private float keyHeight() {
-        return ui.dp(34);
+        return ui.dp(20);
+    }
+
+    private float mapWidth(float width) {
+        return Math.max(1, width - ui.dp(58));
+    }
+
+    private void cellBounds(AreaMap.Cell cell, RectF out) {
+        float inset = ui.dp(2);
+        out.set(x(cell.col * AreaMap.CELL_DEGREES) + inset, y((cell.row + 1) * AreaMap.CELL_DEGREES) + inset,
+                x((cell.col + 1) * AreaMap.CELL_DEGREES) - inset, y(cell.row * AreaMap.CELL_DEGREES) - inset);
+    }
+
+    /** Actual plotted geometry, shared with the drawing and selection checks. */
+    RectF areaBounds(AreaMap.Cell cell) {
+        project(getWidth(), getHeight());
+        RectF out = new RectF();
+        cellBounds(cell, out);
+        return out;
+    }
+
+    private void medalBounds(AreaMap.Cell cell, RectF out) {
+        float radius = ui.dp(11);
+        float corner = Math.max(0, (float) (AreaMap.CELL_DEGREES * scale / 2) - radius - ui.dp(3));
+        float cx = x(cell.longitude()) + corner, cy = y(cell.latitude()) - corner;
+        out.set(cx - radius, cy - radius, cx + radius, cy + radius);
+    }
+
+    RectF rankBounds(AreaMap.Cell cell) {
+        RectF out = new RectF();
+        medalBounds(cell, out);
+        return out;
+    }
+
+    RectF hereLabelBounds() {
+        return new RectF(hereLabel);
     }
 
     private float x(double longitude) {
@@ -340,12 +376,15 @@ final class AreaMapView extends View {
     @Override protected void onDraw(Canvas canvas) {
         float width = getWidth();
         float height = getHeight();
+        float landWidth = mapWidth(width);
+        hereLabel.setEmpty();
         // No paper: the squares lie on the scene's own ground.
         rect.set(0, 0, width, height);
         if (cells.isEmpty()) {
             int fields = canvas.saveLayer(0, 0, width, height, null);
-            drawEmptyFields(canvas, width, height);
-            fadeEdges(canvas, width, height);
+            canvas.clipRect(0, keyHeight(), landWidth, height);
+            drawEmptyFields(canvas, landWidth, height);
+            fadeEdges(canvas, landWidth, height);
             canvas.restoreToCount(fields);
             text.setColor(brown());
             text.setTextSize(Math.min(ui.sp(14), ui.dp(20)));
@@ -353,21 +392,19 @@ final class AreaMapView extends View {
             canvas.drawText(emptyMessage, width / 2, (height + keyHeight()) / 2, text);
             text.setFakeBoldText(true);
             drawNorth(canvas, width);
-            drawKey(canvas, width, height);
+            drawKey(canvas, width);
             return;
         }
         project(width, height);
         // The land is drawn into its own layer, faded at the edges, then laid on the ground.
         int land = canvas.saveLayer(0, 0, width, height, null);
-        canvas.clipRect(0, keyHeight(), width, height);
-        drawGrid(canvas, width, height);
+        canvas.clipRect(0, keyHeight(), landWidth, height);
+        drawGrid(canvas, landWidth, height);
 
         double best = ranked.isEmpty() ? 0 : ranked.get(0).centsPerMile();
         double worst = ranked.isEmpty() ? 0 : ranked.get(ranked.size() - 1).centsPerMile();
-        float inset = ui.dp(2);
         for (AreaMap.Cell cell : cells) {
-            rect.set(x(cell.col * AreaMap.CELL_DEGREES) + inset, y((cell.row + 1) * AreaMap.CELL_DEGREES) + inset,
-                    x((cell.col + 1) * AreaMap.CELL_DEGREES) - inset, y(cell.row * AreaMap.CELL_DEGREES) - inset);
+            cellBounds(cell, rect);
             float corner = Math.min(ui.dp(8), rect.width() / 4);
             if (cell.ranked()) {
                 double share = best > worst ? (cell.centsPerMile() - worst) / (best - worst) : 1;
@@ -393,11 +430,11 @@ final class AreaMapView extends View {
         namesShown = 0;
         for (int i = 0; i < Math.min(3, ranked.size()); i++) drawName(canvas, ranked.get(i));
         if (here != null) drawHere(canvas);
-        fadeEdges(canvas, width, height);
+        fadeEdges(canvas, landWidth, height);
         canvas.restoreToCount(land);
         drawNorth(canvas, width);
         drawScale(canvas, height);
-        drawKey(canvas, width, height);
+        drawKey(canvas, width);
         if (here != null) Motion.next(this);
     }
 
@@ -405,17 +442,14 @@ final class AreaMapView extends View {
         return ui.dark ? 0xFFC9B48C : 0xFF7A5C3A;
     }
 
-    /** A small, persistent key. The full definitions are one tap away, outside Settings. */
-    private void drawKey(Canvas canvas, float width, float height) {
-        keyText.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF4A3622);
+    /** One quiet heading; the full key is one tap away, outside Settings. */
+    private void drawKey(Canvas canvas, float width) {
+        keyText.setColor(brown());
         keyText.setTextAlign(Paint.Align.LEFT);
-        keyText.setTypeface(Ui.MEDIUM);
+        keyText.setTypeface(android.graphics.Typeface.DEFAULT);
         keyText.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
         CharSequence title = Ui.fit(keyText, TITLE, width - ui.dp(60), 0.9f);
         canvas.drawText(title, 0, title.length(), ui.dp(12), ui.dp(14), keyText);
-        keyText.setTextSize(Math.min(ui.sp(10), ui.dp(12)));
-        CharSequence key = Ui.fit(keyText, KEY, width - ui.dp(24), 0.9f);
-        canvas.drawText(key, 0, key.length(), ui.dp(12), ui.dp(29), keyText);
 
         float cx = width - ui.dp(25), cy = ui.dp(13);
         line.setColor(brown());
@@ -424,22 +458,6 @@ final class AreaMapView extends View {
         text.setColor(brown());
         text.setTextSize(ui.dp(10));
         canvas.drawText("i", cx, cy + ui.dp(3.5f), text);
-
-        if (!cells.isEmpty()) {
-            // Kept to the right of the distance scale. The blue sample makes "You" identifiable without guessing.
-            keyText.setTextSize(Math.min(ui.sp(10), ui.dp(12)));
-            keyText.setTextAlign(Paint.Align.RIGHT);
-            CharSequence position = Ui.fit(keyText, POSITION_KEY, width * 0.53f, 0.9f);
-            float right = width - ui.dp(12);
-            float baseline = height - ui.dp(5);
-            float words = keyText.measureText(position, 0, position.length());
-            pill.set(right - words - ui.dp(14), baseline - keyText.getTextSize(), right + ui.dp(4), baseline + ui.dp(3));
-            fill.setColor(ui.dark ? 0xE614171C : 0xE6FFFFFF);
-            canvas.drawRoundRect(pill, ui.dp(6), ui.dp(6), fill);
-            fill.setColor(ui.accent);
-            canvas.drawCircle(right - words - ui.dp(7), baseline - keyText.getTextSize() / 3, ui.dp(3), fill);
-            canvas.drawText(position, 0, position.length(), right, baseline, keyText);
-        }
     }
 
     /** Shared by the visible info target and the screen-reader action. */
@@ -450,7 +468,7 @@ final class AreaMapView extends View {
 
     /** Bounds of the info control; independent of any particular recorded area. */
     RectF helpBounds() {
-        return new RectF(getWidth() - ui.dp(49), 0, getWidth() - ui.dp(1), Math.min(getHeight(), ui.dp(44)));
+        return new RectF(getWidth() - ui.dp(49), 0, getWidth() - ui.dp(1), Math.min(getHeight(), ui.dp(48)));
     }
 
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
@@ -560,10 +578,8 @@ final class AreaMapView extends View {
     /** A coin with the area's place, in its square's top-right corner so the "You" dot stays clear. */
     private void drawMedal(Canvas canvas, AreaMap.Cell cell, int place) {
         float radius = ui.dp(11);
-        float half = (float) (AreaMap.CELL_DEGREES * scale / 2);
-        float corner = Math.max(0, half - radius - ui.dp(3));
-        float cx = x(cell.longitude()) + corner;
-        float cy = y(cell.latitude()) - corner;
+        medalBounds(cell, rect);
+        float cx = rect.centerX(), cy = rect.centerY();
         fill.setColor(0x33000000);
         canvas.drawCircle(cx, cy + ui.dp(1.5f), radius, fill);
         fill.setColor(MEDALS[place]);
@@ -587,7 +603,59 @@ final class AreaMapView extends View {
         canvas.drawCircle(cx, cy, ui.dp(7.5f), fill);
         fill.setColor(ui.accent);
         canvas.drawCircle(cx, cy, ui.dp(5.5f), fill);
-        // The persistent key labels this blue dot "You"; the signpost names the place.
+        // The meaning travels with its marker, without a second legend floating in another corner.
+        keyText.setTypeface(android.graphics.Typeface.DEFAULT);
+        keyText.setColor(brown());
+        keyText.setTextSize(Math.min(ui.sp(10), ui.dp(12)));
+        keyText.setTextAlign(Paint.Align.LEFT);
+        placeHereLabel(cx, cy);
+        if (!hereLabel.isEmpty()) canvas.drawText("You", hereLabel.left,
+                hereLabel.top - keyText.getFontMetrics().ascent, keyText);
+    }
+
+    /** Prefer clear land beside the dot, then free space on a square; never cover a rank or a place name. */
+    private void placeHereLabel(float cx, float cy) {
+        Paint.FontMetrics metrics = keyText.getFontMetrics();
+        float width = keyText.measureText("You"), height = metrics.descent - metrics.ascent;
+        for (int pass = 0; pass < 2; pass++) {
+            for (int ring = 0; ring < 2; ring++) {
+                float gap = ui.dp(14 + ring * 12);
+                for (int side = 0; side < 8; side++) {
+                    float left = side == 0 || side == 4 || side == 6 ? cx + gap
+                            : side == 1 || side == 5 || side == 7 ? cx - gap - width : cx - width / 2;
+                    float top = side == 2 || side == 4 || side == 5 ? cy + gap
+                            : side == 3 || side == 6 || side == 7 ? cy - gap - height : cy - height / 2;
+                    hereLabel.set(left, top, left + width, top + height);
+                    if (labelHasRoom(pass == 0)) return;
+                }
+            }
+        }
+        // Dense or clipped data can leave no honest local label position. The dot and its accessible key remain.
+        hereLabel.setEmpty();
+    }
+
+    private boolean labelHasRoom(boolean avoidSquares) {
+        if (hereLabel.left < ui.dp(6) || hereLabel.right > mapWidth(getWidth()) - ui.dp(6)
+                || hereLabel.top < keyHeight() + ui.dp(2) || hereLabel.bottom > getHeight() - ui.dp(8)) return false;
+        for (int i = 0; i < Math.min(3, ranked.size()); i++) {
+            medalBounds(ranked.get(i), labelObstacle);
+            labelObstacle.inset(-ui.dp(3), -ui.dp(3));
+            if (RectF.intersects(hereLabel, labelObstacle)) return false;
+        }
+        for (int i = 0; i < namesShown; i++) {
+            if (RectF.intersects(hereLabel, namePills[i])) return false;
+        }
+        // Reserve the distance bar and its text as well as the ornaments in the right-hand gutter.
+        labelObstacle.set(ui.dp(12), getHeight() - ui.dp(38), ui.dp(22) + mapWidth(getWidth()) / 3,
+                getHeight() - ui.dp(14));
+        if (RectF.intersects(hereLabel, labelObstacle)) return false;
+        if (avoidSquares) {
+            for (AreaMap.Cell cell : cells) {
+                cellBounds(cell, labelObstacle);
+                if (RectF.intersects(hereLabel, labelObstacle)) return false;
+            }
+        }
+        return true;
     }
 
     /** A compass rose with north marked. */
@@ -621,7 +689,7 @@ final class AreaMapView extends View {
         double pixelsPerMile = scale / MILES_PER_DEGREE_LATITUDE;
         double[] choices = {0.25, 0.5, 1, 2, 5, 10, 20, 50};
         double miles = choices[0];
-        for (double choice : choices) if (choice * pixelsPerMile <= getWidth() / 3.0) miles = choice;
+        for (double choice : choices) if (choice * pixelsPerMile <= mapWidth(getWidth()) / 3.0) miles = choice;
         float length = (float) (miles * pixelsPerMile);
         float x0 = ui.dp(18);
         float y0 = height - ui.dp(18);
@@ -654,11 +722,15 @@ final class AreaMapView extends View {
             }
             return true;
         }
-        if (event.getAction() == MotionEvent.ACTION_UP && !cells.isEmpty()) {
+        if (event.getAction() == MotionEvent.ACTION_UP && !cells.isEmpty()
+                && event.getX() >= 0 && event.getX() < mapWidth(getWidth()) && event.getY() >= keyHeight()) {
             project(getWidth(), getHeight());
             AreaMap.Cell nearest = null;
             double nearestDistance = ui.dp(28);
             for (AreaMap.Cell cell : cells) {
+                cellBounds(cell, rect);
+                if (rect.right <= 0 || rect.left >= mapWidth(getWidth()) || rect.bottom <= keyHeight()
+                        || rect.top >= getHeight()) continue;
                 double distance = Math.hypot(x(cell.longitude()) - event.getX(), y(cell.latitude()) - event.getY());
                 double half = AreaMap.CELL_DEGREES * scale / 2;
                 if (distance - half < nearestDistance) {

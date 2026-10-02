@@ -39,13 +39,13 @@ import java.util.List;
  * with the minimums you set (solid, round stars) and the adaptive minimums learned from offers you accepted or
  * declined by hand (dashed, sparkles). Distance from the middle is the pay each one asks of one example offer, so
  * the four monetary spokes share a dollar scale. The fifth uses a fixed display conversion only (1 inverse mile
- * at the $10 radius), and its own readout states inverse miles and the equivalent maximum distance. Recent offers are small marks on each spoke at what their own pay, per mile,
- * per minute and per stop would pay for the example (● passed, ✕ declined, ○ review): a mark outside a minimum beat
+ * at the $10 radius), and its own readout states inverse miles and the equivalent maximum distance. The latest or
+ * skyline-selected offer has small marks on each spoke at what its pay, per mile, per minute and per stop would pay
+ * for the example (● passed, ✕ declined, ○ review): a mark outside a minimum beat
  * it. Every spoke is a floor of the same kind: the set per-stop minimum asks the example's stops × its rate, as the
  * adaptive one does. The shapes glide to new values and the adaptive sparkles breathe; with Android's animations off
  * they rest. By day the stars are drawn in ink on the morning sky, by night they shine. Each spoke is marked by its
- * icon (a coin, a road, a clock, a pin), with no words or key on the page; screen readers hear the whole of it, and
- * what the example offer needs.
+ * icon and a short plain-language label; screen readers hear the whole of it and what the example offer needs.
  *
  * <p>The spokes stand {@link #SPREAD} degrees above and below level, to the left and to the right, so a wide sky (or a
  * short header) holds a wide chart. On a whole screen or beside Dasher it is the page's sky itself: the page's
@@ -58,7 +58,7 @@ import java.util.List;
  * <p>As the sky, the set minimums are knobs: each spoke's round star, ringed so it reads as something to take hold
  * of (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle: with no rule at all,
  * five of them, so the first rule is a drag), grows under a finger and can be dragged along its spoke, in steps, with a
- * light tick at each; a small readout beside it says the value while it moves, and letting go saves it at once. A knob
+ * light tick at each; pressing or focusing shows its name and value before moving it, and letting go saves it at once. A knob
  * keeps its exact value until the finger has moved it half a step along its spoke, so a wobble never snaps it to a
  * step; it is taken only by a finger moving along its spoke, so a scroll of the page or a slide across it is left to
  * the page. Dragged into the middle, the rule is off (a knob resting near the middle must be pushed a clear way further
@@ -72,8 +72,8 @@ import java.util.List;
  * Screen readers reach each knob and the badge as adjustable controls, the buttons as a button and switches (the
  * sparkle's Reset among its actions). In a header the chart takes a tap only.
  *
- * <p>Each recent offer's points are also joined into a polygon of its own, faint (about a twentieth of its color, in a
- * faint outline), in the spokes' order, leaving out a spoke it did not say. A second round button beside the adopt
+ * <p>The displayed offer's points are joined in the spokes' order, leaving out a spoke it did not say. Other offers
+ * remain in history and can be selected on the skyline; their hidden polygons receive no touches or accessibility focus. A second round button beside the adopt
  * button's place (an offer's shape around the minimums' smaller one) turns score by area on and off ({@link
  * AreaScore}); screen readers reach it as a switch. By area the chart is drawn in normalized space: every active
  * minimum (the set one, or the adaptive one where that asks more and is on) stands at the same radius, 100%, so the
@@ -83,7 +83,7 @@ import java.util.List;
  * a faint dashed outline just outside the set shape instead, in either mode); the rings stand 50% apart, labeled at 100% and the outer ring; an
  * offer's points stand at its ratio on each spoke ({@code pay ÷ the floor that spoke puts on that offer}), so its
  * polygon's area against the minimums' is its score squared, exactly, within the outer ring. The newest offer's polygon
- * (or the one chosen on the skyline) stands out, with its score beside it ("121%"). The knobs still set the minimums,
+ * (or the one chosen on the skyline) stands out; its score remains in the offer's ticket and spoken description. The knobs still set the minimums,
  * in their own units: while one is held the scale holds still (the minimums' polygon follows the knob along its spoke, its
  * readout says its units, and the chosen offer's score follows what it asks), and when it is let go everything
  * settles to the new minimums, each again at 100%.
@@ -95,7 +95,7 @@ import java.util.List;
  * either mode, and a finger going down on an offer picks it out lightly first. The knobs and the buttons keep their
  * touches first; a tap on the circle that is on no offer is the chart's own (in a short window it moves the chart
  * between the header and the sky; elsewhere it does nothing). The marked offers are
- * those on the skyline. Screen readers reach each marked offer after the knobs and the buttons, newest first ("Offer
+ * selected from the skyline. Screen readers reach the one displayed offer after the knobs and buttons ("Offer
  * $9.75, 3.3 mi, 18 min, 2 stops, declined"), and a double-tap opens its ticket. In a header the chart takes a tap
  * only, as before.
  */
@@ -191,6 +191,8 @@ final class MinimumsStarView extends View {
     private final List<float[]> markTo = new ArrayList<>();
     /** The offer chosen on the skyline (by when it was recorded), whose polygon stands out by area; -1: the newest. */
     private long emphasizedAt = -1;
+    /** Actual newest input entry, before excluding add-ons or missing pay; never substitute an older plotted offer. */
+    private long newestEntryAt = -1;
     /** The offer whose ticket is open (by when it was recorded): its polygon and marks stand out; -1 for none. */
     private long openAt = -1;
     /** The offer a finger went down on (by when it was recorded), picked out lightly until it lifts; -1 for none. */
@@ -652,6 +654,7 @@ final class MinimumsStarView extends View {
      * {@link #MARKS} newest), so each mark's ticket opens as its building's does.
      */
     private void markOffers(List<DecisionLog.Entry> recent, OfferSnapshot example, FilterSettings rules) {
+        newestEntryAt = recent == null || recent.isEmpty() ? -1 : recent.get(0).at;
         List<Long> before = new ArrayList<>(markTimes);
         List<float[]> drawn = new ArrayList<>();
         float glide = Motion.settle(glideStart, GLIDE_MS);
@@ -886,9 +889,9 @@ final class MinimumsStarView extends View {
                         : " is on: an offer passes at " + shownRules.minimumScalePercent + "% fitness or more")
                         + (shownRules.maxStops > 0 ? ", and declines above " + shownRules.maxStops
                         + (shownRules.maxStops == 1 ? " stop." : " stops.") : ".") : "");
-        int chosen = emphasized();
+        int chosen = strongShape();
         if (chosen >= 0 && markScores.get(chosen) >= 0) {
-            described += " " + (chosen == 0 && emphasizedAt < 0 ? "The newest offer" : "The chosen offer") + " scores "
+            described += " " + (markTimes.get(chosen) == newestEntryAt ? "The newest offer" : "The chosen offer") + " scores "
                     + markScores.get(chosen) + "% by area.";
         }
         if (!byArea) described += " The hotspot spoke uses inverse miles: closer is farther out; "
@@ -900,15 +903,7 @@ final class MinimumsStarView extends View {
                 + " Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers."
                 + " Drag the percentage sideways to scale all minimums without changing those saved values.";
         if (marks.isEmpty()) return described;
-        int passed = 0;
-        int declined = 0;
-        for (OfferRule.Result result : markResults) {
-            if (result == OfferRule.Result.KEEP) passed++;
-            else if (result == OfferRule.Result.DECLINE) declined++;
-        }
-        return described + " Marked: your last " + marks.size() + (marks.size() == 1 ? " offer, " : " offers, ")
-                + passed + " passed, " + declined + " declined, " + (marks.size() - passed - declined)
-                + " to review.";
+        return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
 
     // ---- Layout: the constellation's circle, with a spoke icon at each corner (or beside it, in a header). ----
@@ -1328,7 +1323,7 @@ final class MinimumsStarView extends View {
         drawChosenOutline(canvas, cx, cy, radius);
         boolean knobs = knobsOn();
         if (knobs) drawKnobs(canvas, cx, cy, radius, glide);
-        if (byArea) drawScoreLabel(canvas, cx, cy, radius);
+        // The selected offer's ticket carries its score; the persistent percentage here controls the minimums.
         if (knobs) placeStops();
         for (int i = 0; i < NAMES.length; i++) {
             if (!skyIcon(i, cx, cy, radius, iconBox)) continue;
@@ -1339,7 +1334,7 @@ final class MinimumsStarView extends View {
         for (Veil veil : veils) drawVeil(canvas, veil.box, veil.round, veil.fade);
         canvas.restoreToCount(layer);
         // The held knob's readout is placed first, so the rings' dollars it would cover step aside for it.
-        if (dragging) placeReadout(cx, cy, radius);
+        if (readoutAxis() >= 0) placeReadout(cx, cy, radius);
         drawLevelLabels(canvas, cx, cy, radius, glide);
         if (!knobs) return;
         // Over everything, never faded: the buttons, and the knob under the finger (with what it is set to, once it
@@ -1352,7 +1347,10 @@ final class MinimumsStarView extends View {
         if (dragging) {
             drawHeld(canvas, point(cx, cy, radius, held, heldFraction()), dragValue, true);
         } else if (pressing()) {
-            drawHeld(canvas, point(cx, cy, radius, held, knobFraction(held, glide)), setRates[held], false);
+            drawHeld(canvas, point(cx, cy, radius, held, knobFraction(held, glide)), setRates[held], true);
+        } else if (readoutAxis() >= 0) {
+            int axis = readoutAxis();
+            drawHeld(canvas, point(cx, cy, radius, axis, knobFraction(axis, glide)), setRates[axis], true);
         }
     }
 
@@ -1460,7 +1458,7 @@ final class MinimumsStarView extends View {
         float baseline = cy - (metrics.ascent + metrics.descent) / 2;
         levelText.setTextAlign(Paint.Align.LEFT);
         for (int i = 0; i < levelBoxes.size(); i++) {
-            if (dragging && RectF.intersects(levelBoxes.get(i), pillBox)) continue;
+            if (readoutAxis() >= 0 && RectF.intersects(levelBoxes.get(i), pillBox)) continue;
             // Twice, so the halo is soft but full.
             canvas.drawText(levelWords.get(i), levelBoxes.get(i).left, baseline, levelText);
             canvas.drawText(levelWords.get(i), levelBoxes.get(i).left, baseline, levelText);
@@ -1535,8 +1533,15 @@ final class MinimumsStarView extends View {
     private void drawGrid(Canvas canvas, float cx, float cy, float radius) {
         line.setPathEffect(null);
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        line.setColor(ui.dark ? 0x2EFFFFFF : 0x260B2A55);
-        for (int ring = 1; ring <= rings; ring++) canvas.drawCircle(cx, cy, radius * ring / rings, line);
+        // Keep the useful reference ring; the rest is a quiet guide behind the offer and minimums.
+        boolean adjusting = readoutAxis() >= 0 || scaleDragging;
+        for (int ring = 1; ring <= rings; ring++) {
+            boolean reference = byArea ? ring == Math.round(1 / AREA_RING) : ring == rings;
+            line.setColor(ui.dark ? (reference || adjusting ? 0x24FFFFFF : 0x0EFFFFFF)
+                    : (reference || adjusting ? 0x180B2A55 : 0x0A0B2A55));
+            canvas.drawCircle(cx, cy, radius * ring / rings, line);
+        }
+        line.setColor(ui.dark ? 0x20FFFFFF : 0x160B2A55);
         for (int i = 0; i < NAMES.length; i++) {
             float[] tip = point(cx, cy, radius, i, 1);
             canvas.drawLine(cx, cy, tip[0], tip[1], line);
@@ -1576,19 +1581,12 @@ final class MinimumsStarView extends View {
         return (float) Math.min(1, value / outer);
     }
 
-    /**
-     * Each recent offer on each spoke it can be placed on; older ones fainter, the newest with a soft pulse. Over them,
-     * the offer a finger is on, lightly picked out, and the one whose ticket is open, standing out.
-     */
+    /** The displayed offer's observed marks; a touch or open ticket adds emphasis without revealing old overlays. */
     private void drawMarks(Canvas canvas, float cx, float cy, float radius) {
         float glide = Motion.settle(glideStart, GLIDE_MS);
-        int open = opened();
-        int pressed = pressed();
-        for (int m = marks.size() - 1; m >= 0; m--) {
-            if (m != open && m != pressed) drawOfferMarks(canvas, cx, cy, radius, m, glide, 0);
+        for (int m = 0; m < marks.size(); m++) if (displayedOffer(m)) {
+            drawOfferMarks(canvas, cx, cy, radius, m, glide, m == opened() ? 2 : m == pressed() ? 1 : 0);
         }
-        if (pressed >= 0 && pressed != open) drawOfferMarks(canvas, cx, cy, radius, pressed, glide, 1);
-        if (open >= 0) drawOfferMarks(canvas, cx, cy, radius, open, glide, 2);
     }
 
     /** Offers side by side on a spoke step a little aside so they do not hide one another. */
@@ -1614,7 +1612,7 @@ final class MinimumsStarView extends View {
                 fill.setColor(color | (lift == 2 ? 0x40000000 : 0x2C000000));
                 canvas.drawCircle(at[0], at[1], ui.dp(lift == 2 ? 8 : 10) * detail, fill);
             }
-            if (m == 0) {
+            if (m == 0 && lift > 0) {
                 float pulse = Motion.on() ? Motion.loop(2.4f, 0) : 1;
                 line.setPathEffect(null);
                 line.setStrokeWidth(Math.max(1, ui.dp(1)));
@@ -1809,30 +1807,23 @@ final class MinimumsStarView extends View {
         return reach;
     }
 
-    /**
-     * Each recent offer's own polygon, its points joined in the spokes' order (those it did not say left out): faint,
-     * the newest drawn last; the one a finger is on a little stronger, over them; and over everything the one whose
-     * ticket is open, or by area the chosen offer's (the newest unless one is chosen on the skyline), standing out.
-     */
+    /** The latest or skyline-selected offer's polygon; hidden history stays out of the everyday constellation. */
     private void drawOfferShapes(Canvas canvas, float cx, float cy, float radius) {
         float glide = Motion.settle(glideStart, GLIDE_MS);
-        int chosen = strongShape();
-        int pressed = pressed();
-        for (int m = marks.size() - 1; m >= 0; m--) {
-            if (m != chosen && m != pressed) drawOfferShape(canvas, cx, cy, radius, m, glide, false, false);
+        for (int m = 0; m < marks.size(); m++) if (displayedOffer(m)) {
+            drawOfferShape(canvas, cx, cy, radius, m, glide, true, m == pressed());
         }
-        if (pressed >= 0 && pressed != chosen) drawOfferShape(canvas, cx, cy, radius, pressed, glide, false, true);
-        if (chosen >= 0) drawOfferShape(canvas, cx, cy, radius, chosen, glide, true, chosen == pressed);
     }
 
-    /**
-     * The offer whose polygon stands out, drawn over the rest (and found first by a touch): the one whose ticket is
-     * open, else by area the chosen one; -1 for none.
-     */
+    /** The ticket's offer, or the skyline's selection/latest: the one offer shown in either scoring mode. */
     private int strongShape() {
-        int open = opened();
-        if (open >= 0) return open;
-        return byArea ? emphasized() : -1;
+        // An open unplottable offer must not reveal a different offer behind its ticket.
+        return backdrop() && openAt >= 0 ? opened() : emphasized();
+    }
+
+    /** One presentation predicate shared by drawing, touch targets and accessibility nodes. History stays intact. */
+    private boolean displayedOffer(int m) {
+        return m >= 0 && m < marks.size() && m == strongShape();
     }
 
     /** The marked offer whose ticket is open, as the sky shows it (a header's chart stays as it was); -1 for none. */
@@ -1876,7 +1867,7 @@ final class MinimumsStarView extends View {
         path.close();
         int color = markColor(markResults.get(m)) & 0x00FFFFFF;
         if (points.size() > 2) {
-            int alpha = strong ? (pressed ? 0x34000000 : 0x24000000) : pressed ? 0x1C000000 : OFFER_FILL;
+            int alpha = strong ? (pressed ? 0x28000000 : 0x12000000) : pressed ? 0x1C000000 : OFFER_FILL;
             fill.setColor(color | alpha);
             canvas.drawPath(path, fill);
         }
@@ -1900,20 +1891,19 @@ final class MinimumsStarView extends View {
 
     /** The offer whose polygon stands out by area: the one chosen on the skyline, else the newest; -1 for none. */
     private int emphasized() {
-        if (marks.isEmpty()) return -1;
-        return emphasizedAt < 0 ? 0 : markTimes.indexOf(emphasizedAt);
+        long selectedAt = emphasizedAt < 0 ? newestEntryAt : emphasizedAt;
+        return selectedAt < 0 ? -1 : markTimes.indexOf(selectedAt);
     }
 
-    /**
-     * The offer chosen on the skyline ({@code null}: follow the newest): by area its polygon stands out, with its
-     * score beside it, and screen readers hear that score.
-     */
+    /** The skyline selection ({@code null}: latest) is the one displayed in either mode, with its spoken score. */
     void emphasize(DecisionLog.Entry entry) {
         long at = entry == null ? -1 : entry.at;
         if (at == emphasizedAt) return;
         emphasizedAt = at;
         setContentDescription(caption() + " " + describe());
+        dropGoneFocus();
         invalidate();
+        nodesChanged();
     }
 
     /**
@@ -1924,6 +1914,8 @@ final class MinimumsStarView extends View {
         long at = entry == null ? -1 : entry.at;
         if (at == openAt) return;
         openAt = at;
+        setContentDescription(caption() + " " + describe());
+        dropGoneFocus();
         invalidate();
         nodesChanged();
     }
@@ -1933,7 +1925,7 @@ final class MinimumsStarView extends View {
      * the minimum the knob asks; -1 when none can be worked out (for tests too).
      */
     int emphasizedScore() {
-        int chosen = emphasized();
+        int chosen = strongShape();
         if (chosen < 0) return -1;
         if (!dragging || held < 0) return markScores.get(chosen);
         int[] rates = shownRules.minimums();
@@ -2317,15 +2309,13 @@ final class MinimumsStarView extends View {
     /** The marked offers in the order a touch finds them, as they are drawn from the top down. */
     private List<Integer> topDown() {
         List<Integer> order = new ArrayList<>();
-        int strong = strongShape();
-        if (strong >= 0) order.add(strong);
-        for (int m = 0; m < marks.size(); m++) if (m != strong) order.add(m);
+        for (int m = 0; m < marks.size(); m++) if (displayedOffer(m)) order.add(m);
         return order;
     }
 
     /** Where offer {@code m}'s mark on spoke {@code axis} is drawn now as the sky, in this view's pixels; else null. */
     private float[] markPoint(int m, int axis, float glide) {
-        if (Double.isNaN(marks.get(m)[axis]) || outer <= 0) return null;
+        if (!displayedOffer(m) || Double.isNaN(marks.get(m)[axis]) || outer <= 0) return null;
         return point(skyX, skyY, skyRadius, axis, markShown(m, glide)[axis], markAside(m, skyDetail()));
     }
 
@@ -2375,7 +2365,7 @@ final class MinimumsStarView extends View {
 
     /** Opens marked offer {@code m}'s ticket through the page, as a tap on its building does. */
     private boolean openOffer(int m) {
-        if (offerTaps == null || m < 0 || m >= markEntries.size()) return false;
+        if (offerTaps == null || !displayedOffer(m) || m >= markEntries.size()) return false;
         offerTaps.open(markEntries.get(m));
         return true;
     }
@@ -2688,7 +2678,7 @@ final class MinimumsStarView extends View {
         int color = setColor();
         float breathe = 1 + 0.14f * Motion.wave(3.2f, 0);
         for (int i = 0; i < NAMES.length; i++) {
-            if (!knobShown(i) || ((dragging || pressing()) && i == held)) continue;
+            if (!knobShown(i) || i == readoutAxis()) continue;
             float fraction = knobFraction(i, glide);
             float[] at = point(cx, cy, radius, i, fraction);
             line.setPathEffect(null);
@@ -2756,14 +2746,30 @@ final class MinimumsStarView extends View {
         return DecisionLog.money(rate) + UNITS[axis];
     }
 
+    /** The currently adjusted or explored axis; pressing shows meaning before a value is changed. */
+    private int readoutAxis() {
+        if ((dragging || pressing()) && held >= 0) return held;
+        return knobsOn() && focusedNode >= 0 && focusedNode < NAMES.length && knobShown(focusedNode)
+                ? focusedNode : -1;
+    }
+
+    private String focusedReadout() {
+        int axis = readoutAxis();
+        if (axis < 0) return "";
+        String name = axis == AreaScore.HOTSPOT ? "Final stop → hotspot" : AXIS_LABELS[axis];
+        return name + " · " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]);
+    }
+
     /**
      * Where the held knob's readout stands, into the pill box: above the knob, clear of the finger, where that is
      * inside the page and clear of the words and the mascot; else beside it (towards the page's middle, then away),
      * else below it; else above it, kept inside the page.
      */
     private void placeReadout(float cx, float cy, float radius) {
-        float[] at = point(cx, cy, radius, held, heldFraction());
-        String words = readout(held, dragValue);
+        int axis = readoutAxis();
+        float fraction = dragging ? heldFraction() : knobFraction(axis, Motion.settle(glideStart, GLIDE_MS));
+        float[] at = point(cx, cy, radius, axis, fraction);
+        String words = focusedReadout();
         float height = Math.max(ui.dp(26), Ui.lineHeight(pillText) + ui.dp(8));
         float width = pillText.measureText(words) + ui.dp(22);
         float gap = ui.dp(30);
@@ -2786,7 +2792,7 @@ final class MinimumsStarView extends View {
 
     /** The held knob's readout ("$1.55/mi", or "off") in a small pill where {@link #placeReadout} put it. */
     private void drawReadout(Canvas canvas) {
-        String words = readout(held, dragValue);
+        String words = focusedReadout();
         float height = pillBox.height();
         fill.setColor(setColor());
         canvas.drawRoundRect(pillBox, height / 2, height / 2, fill);
@@ -3282,19 +3288,9 @@ final class MinimumsStarView extends View {
         }
         canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
         int color = byArea ? setColor() : ui.inkSecondary;
-        if (scaleDragging || scorePressed) {
-            scaleText.setTextSize(Math.min(ui.sp(8), ui.dp(9)));
-            scaleText.setColor(color);
-            canvas.drawText("Minimums", x, y - ui.dp(5), scaleText);
-        } else {
-            areaGlyph.setAccents(color, color);
-            areaGlyph.setLevel(byArea ? 1 : 0);
-            int size = ui.dp(17);
-            int left = Math.round(x - size / 2f);
-            int top = Math.round(y - ui.dp(17));
-            areaGlyph.setBounds(left, top, left + size, top + size);
-            areaGlyph.draw(canvas);
-        }
+        scaleText.setTextSize(Math.min(ui.sp(9), ui.dp(10)));
+        scaleText.setColor(color);
+        canvas.drawText("Mins", x, y - ui.dp(6), scaleText);
         scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
         scaleText.setColor(color);
         canvas.drawText(shownScalePercent() + "%", x, y + ui.dp(13), scaleText);
@@ -3466,7 +3462,7 @@ final class MinimumsStarView extends View {
     private String knobSaid(int axis) {
         int rate = setRates[axis];
         if (axis == AreaScore.HOTSPOT) {
-            int chosen = emphasized();
+            int chosen = strongShape();
             Double miles = chosen < 0 ? null : markFacts.get(chosen).finalStopHotspotMiles;
             String threshold = rate > 0 ? String.format(java.util.Locale.US, "%.2f inverse miles, "
                     + "final stop at most %s miles from nearest hotspot", rate / 100.0, distanceText(100.0 / rate))
@@ -3621,7 +3617,7 @@ final class MinimumsStarView extends View {
 
     /** A knob (0 to 4), a button, a toggle, the badge or a marked offer that is there now. */
     private boolean shownNode(int id) {
-        if (id >= OFFER_ID) return offersOn() && outer > 0 && id - OFFER_ID < marks.size();
+        if (id >= OFFER_ID) return offersOn() && outer > 0 && displayedOffer(id - OFFER_ID);
         if (id < 0 || id > STOPS_ID || !knobsOn()) return false;
         if (id == SCORE_ID) return scoreToggleShown();
         if (id == ADAPTIVE_ID) return adaptiveShown();

@@ -1649,12 +1649,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int rank = areaMap.rank(cell);
         String where = AreaMap.from(areaHere, cell);
         String name = Places.name(this, cell.latitude(), cell.longitude());
-        String rate = cell.ranked() ? cell.perMile() + " · " + cell.mileOffers + " offers"
-                : cell.offers + (cell.offers == 1 ? " offer" : " offers");
+        String samples = cell.mileOffers + (cell.mileOffers == 1 ? " offer" : " offers");
+        String rate = cell.ranked() ? cell.perMile() + " · " + samples : "Unranked · " + samples + " with miles";
         // Its rank is on its coin; "of you" and Maps go without saying on the page, not to screen readers.
         List<String> parts = new java.util.ArrayList<>();
         if (name != null) parts.add(name);
-        if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
+        else if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
         parts.add(rate);
         areaLine.setText(String.join(" · ", parts) + "  ›");
         String spoken = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)

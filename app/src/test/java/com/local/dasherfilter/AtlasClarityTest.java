@@ -65,7 +65,7 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
             draw(map);
             RectF info = map.helpBounds();
             assertTrue("info remains a full touch target", info.width() >= new Ui(app).dp(48));
-            assertTrue(info.height() >= new Ui(app).dp(44));
+            assertTrue(info.height() >= new Ui(app).dp(48));
             tap(map, info.centerX(), info.centerY());
             AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(dialog);
@@ -80,7 +80,7 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
             dialog.dismiss();
 
             // The same view still lets an ordinary square tap select it and dispatch its normal click.
-            tap(map, map.getWidth() / 2f, (map.getHeight() + new Ui(app).dp(34)) / 2f);
+            tap(map, map.getWidth() / 2f, map.getHeight() / 2f);
             assertEquals(1, selected.size());
             assertEquals(only.row, map.selected().row);
             assertEquals(1, ordinaryClicks[0]);
@@ -107,6 +107,33 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void visibleOfferSquaresCannotSitUnderTheInfoTouchTarget() {
+        try (ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class).setup()) {
+            Activity activity = controller.get();
+            AreaMapView map = new AreaMapView(activity, new Ui(activity));
+            activity.setContentView(map);
+            AreaMap.Cell best = square(1800, -6100, 3, 3600, 12);
+            AreaMap.Cell eastern = square(1801, -6094, 3, 2400, 12);
+            List<AreaMap.Cell> selected = new ArrayList<>();
+            map.setOnSelect(selected::add);
+            map.show(Arrays.asList(best, eastern), null);
+            size(map, 411, 124);
+            draw(map).recycle();
+
+            // This eastern square previously landed inside the 48 dp info target: tapping visible data opened help.
+            RectF square = map.areaBounds(eastern);
+            assertTrue(square.centerX() > 0 && square.centerX() < map.getWidth());
+            assertTrue(square.centerY() > 0 && square.centerY() < map.getHeight());
+            assertFalse("the plotted square must be clear of the help control",
+                    RectF.intersects(square, map.helpBounds()));
+            tap(map, square.centerX(), square.centerY());
+            assertEquals(1, selected.size());
+            assertEquals(eastern.row, selected.get(0).row);
+            assertEquals(eastern.col, selected.get(0).col);
+            assertNull("a data tap must not open help", ShadowAlertDialog.getLatestAlertDialog());
+        }
+    }
+
     @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void atlasKeyRendersAtPhoneAndShortMapSizes() throws Exception {
         preview(360, 220, "phone");
@@ -123,13 +150,20 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
 
     private void preview(int width, int height, String name) throws Exception {
         AreaMapView map = new AreaMapView(app, new Ui(app));
-        map.show(Arrays.asList(square(1801, -6100, 5, 5000, 20), square(1800, -6100, 3, 2400, 12),
-                square(1800, -6101, 2, 2000, 5)), new double[] {36.01, -121.99});
+        List<AreaMap.Cell> cells = Arrays.asList(square(1801, -6100, 5, 5000, 20),
+                square(1800, -6100, 3, 2400, 12), square(1800, -6101, 2, 2000, 5));
+        map.show(cells, new double[] {36.01, -121.99});
         size(map, width, height);
         Bitmap bitmap = draw(map);
         RectF info = map.helpBounds();
         assertTrue(info.left >= 0 && info.right <= map.getWidth());
         assertTrue(info.top >= 0 && info.bottom <= map.getHeight());
+        RectF label = map.hereLabelBounds();
+        assertFalse("You remains readable in these phone and short-map scenes", label.isEmpty());
+        for (AreaMap.Cell cell : cells) {
+            if (cell.ranked()) assertFalse("You must never cross a rank badge",
+                    RectF.intersects(label, map.rankBounds(cell)));
+        }
         File directory = new File("build/reports/atlas-clarity");
         assertTrue(directory.isDirectory() || directory.mkdirs());
         try (FileOutputStream out = new FileOutputStream(new File(directory, name + ".png"))) {

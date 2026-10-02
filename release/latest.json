@@ -1,10 +1,10 @@
 {
   "packageName": "com.local.dasherfilter",
-  "versionCode": 55,
-  "versionName": "0.4.49",
+  "versionCode": 59,
+  "versionName": "0.4.53",
   "apkUrl": "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main",
-  "sha256": "c78a77bb0fcb4f3035e79ea7481fc67a734921d6803cff738cf7a30af259a9e1",
-  "size": 324691,
+  "sha256": "548c08eb0504d390b2a03e971a2b0416c3618d7cf8f3b6c31a12aba32dd58f58",
+  "size": 382035,
   "encoding": "raw",
-  "sourceCommit": "4859d7c908f0b677b33a39eff588c5353b7191d4"
+  "sourceCommit": "b88940191ed669e936a07b5489e7bba565638e75"
 }

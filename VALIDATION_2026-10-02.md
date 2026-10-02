@@ -1,5 +1,7 @@
 # Offer Filter 0.4.52 candidate validation
 
+Release addendum (October 2 UTC): this candidate was subsequently signed with the existing cloud key and published in commit `353222a84675c7462132f1137edeca077bdf696c`. GitHub and Render served the same 0.4.52 / 58 APK (377,939 bytes, SHA-256 `aadc3f6c7eb57e39cf2ef472f30b5301380a22fc25217cffd5094dcbd7e15fd0`); a fresh production-updater download verified package, version, size, hash and original signer. The candidate-time record below is retained as historical evidence. Physical-phone behavior and automatic hotspot acquisition remain unverified.
+
 Candidate: **0.4.52 / versionCode 58**, package `com.local.dasherfilter`. Work checked on October 1 in New York / October 2 UTC. This is a source candidate, **not a shipped upgrade**.
 
 ## Changes
