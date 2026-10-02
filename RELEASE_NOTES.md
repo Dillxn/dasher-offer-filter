@@ -4,7 +4,7 @@
 - Skyline buildings use quieter landscape colors and small roof symbols; the selected offer keeps a full outcome badge. Fitness trees and both threshold lines remain visible.
 - The atlas has one short heading and a nearby You label. Its full key stays in the info popup, and the selected-area line keeps the offered rate and eligible sample count.
 
-Validation: 1,431 Java/JUnit and simulated Android 8/15 tests passed across 80 suites, with 0 failures, errors or skips. Lint completed with 0 errors and 32 warnings; native day, night and compact previews were inspected. See [the UI validation record](VALIDATION_CALM_2026-10-02.md).
+Validation: 1,431 Java/JUnit and simulated Android 8/15 tests passed across 80 suites, with 0 failures, errors or skips. Lint completed with 0 errors and 32 warnings; native day, night and compact previews were inspected. Published through both automatic update feeds with the original signer; a production-updater download verified live 0.4.53. See [the UI validation record](VALIDATION_CALM_2026-10-02.md).
 
 ## 0.4.52 — fitness skyline, minimums buffer and reliability
 
