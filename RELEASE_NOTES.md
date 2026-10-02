@@ -6,7 +6,7 @@
 - Fixes older-Android split refresh, app-dialog touch attribution, setup guidance, alert evidence and failed sound restoration recovery.
 - Keeps learning details inside the selected ticket, labels strict scores as a reference, and corrects fresh outcome animations without adding permanent controls.
 
-Validation: 1,579 tests across 90 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. Signing/publication evidence: [closeout validation](VALIDATION_CLOSEOUT_2026-10-02.md). [All eleven investigations](INVESTIGATION_CLOSEOUT.md) are reconciled finding by finding, with optional recommendations and phone/external checks explicitly distinguished. The new privacy notice must be accepted once after updating. Automatic hotspot measurement and historical-report containment remain unverified.
+Validation: 1,579 tests across 90 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. Published through GitHub and Render with the original signer; a fresh production-updater download verified live 0.4.54. See [closeout validation](VALIDATION_CLOSEOUT_2026-10-02.md). [All eleven investigations](INVESTIGATION_CLOSEOUT.md) are reconciled finding by finding, with optional recommendations and phone/external checks explicitly distinguished. The new privacy notice must be accepted once after updating. Automatic hotspot measurement remains unavailable; physical-phone checks and historical-report containment remain unverified.
 
 ## 0.4.53 — a quieter scene
 

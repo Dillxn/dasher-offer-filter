@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 60,
+  "versionName": "0.4.54",
+  "sourceCommit": "f507d61bbcb63e9837d62322d5e74699ea296f1b",
+  "sha256": "821a8763576f9fe620b6ef17dc0e8651a9fbb43ec19ae0928e83c21c174baf12",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "bytes": 398419,
+  "verifiedAtUtc": "2026-10-02T18:38:25.834199+00:00",
+  "releaseCommit": "9637e4efa94b215c02d65c26f44cc53496e1cc9a",
+  "renderDeployId": "dep-davvjh5g1s2s73c1h8ng",
+  "renderLiveAtUtc": "2026-10-02T18:37:26.916552Z",
+  "renderFeed": "https://dash-offer-filter-build.onrender.com/latest.json"
+}

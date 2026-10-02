@@ -1,6 +1,6 @@
 # Eleven-study closeout: Offer Filter 0.4.54
 
-Starting source: `bc7c0bc1a928ed09ca846007c5627195ea0fa1b0` (published 0.4.53, code 59). Candidate: **0.4.54, code 60**, package `com.local.dasherfilter`. The original signing identity is required. The recovered studies were research returns, not evidence that their interrupted implementations shipped.
+Starting source: `bc7c0bc1a928ed09ca846007c5627195ea0fa1b0` (published 0.4.53, code 59). Released: **0.4.54, code 60**, package `com.local.dasherfilter`. Tested source: `f507d61bbcb63e9837d62322d5e74699ea296f1b`. Published with the original signing identity in release commit `9637e4efa94b215c02d65c26f44cc53496e1cc9a`. The recovered studies were research returns, not evidence that their interrupted implementations shipped.
 
 ## What changed
 
@@ -23,9 +23,25 @@ The first integration run compiled and ran 1,541 tests across 88 suites, exposin
 
 The [machine-readable test receipt](validation/0.4.54-test-result.json) and [frozen input hashes](validation/0.4.54-test-inputs.json) are retained with the source.
 
-Signing and live publication are recorded separately after this tested source commit; no handset install is implied by this gate.
+The source gate above and the publication evidence below are separate checks; neither implies a handset install.
 
 Four Python release-identity regressions passed, covering version advance, same-code source/byte conflicts, malformed/downgrade feeds and stale remote-main checkouts. A pre-release production `UpdateTransport` probe verified the existing live **0.4.53 / code 59** APK: 382,035 bytes, SHA-256 `548c08eb0504d390b2a03e971a2b0416c3618d7cf8f3b6c31a12aba32dd58f58`, original signer `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703`.
+
+## Publication and live update verification
+
+The original-key APK was published in GitHub release commit `9637e4efa94b215c02d65c26f44cc53496e1cc9a`, built from tested source `f507d61bbcb63e9837d62322d5e74699ea296f1b`. Render deployment `dep-davvjh5g1s2s73c1h8ng` became live at `2026-10-02T18:37:26.916552Z` and mirrors that same APK.
+
+A fresh download through the app's production `UpdateTransport.java` passed at `2026-10-02T18:38:25.834199+00:00`. The [machine-readable live receipt](validation/0.4.54-live-channel.json) records:
+
+| Field | Verified value |
+|---|---|
+| Package/version | `com.local.dasherfilter`, 0.4.54 / code 60 |
+| APK size | 398,419 bytes |
+| APK SHA-256 | `821a8763576f9fe620b6ef17dc0e8651a9fbb43ec19ae0928e83c21c174baf12` |
+| Original signer SHA-256 | `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703` |
+| Public update feed | `https://dash-offer-filter-build.onrender.com/latest.json` |
+
+GitHub and Render now serve the signed 0.4.54 update. This verifies published metadata, downloaded bytes, package/version and signing identity; it does not establish installation on the user's phone or physical Dasher behavior. Subsequent fixes are tracked under their own release version.
 
 ## Boundaries of the evidence
 

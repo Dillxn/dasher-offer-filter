@@ -1,6 +1,6 @@
 # Original eleven investigations: finding-by-finding closeout
 
-Audit date: 2026-10-02. Starting published repository: `bc7c0bc1a928ed09ca846007c5627195ea0fa1b0`, release 0.4.53 / code 59. The closeout source is now **implemented and tested as 0.4.54 / code 60; signing and publication are pending**. The final integrated gate passed 1,579 tests in 90 suites on API 26/35, with zero failures, errors or skips; lint passed with zero errors and 34 warnings. All 199 frozen inputs remained unchanged (aggregate SHA-256 `fe852e872be818964459d7410d199d3563bbab76cc8d6c9e242d7431271aa175`). This is source/simulation evidence, not a completed handset check or release publication.
+Audit date: 2026-10-02. Starting published repository: `bc7c0bc1a928ed09ca846007c5627195ea0fa1b0`, release 0.4.53 / code 59. The closeout is now **implemented, tested and published as 0.4.54 / code 60**, from source `f507d61bbcb63e9837d62322d5e74699ea296f1b` and release commit `9637e4efa94b215c02d65c26f44cc53496e1cc9a`. The final integrated gate passed 1,579 tests in 90 suites on API 26/35, with zero failures, errors or skips; lint passed with zero errors and 34 warnings. All 199 frozen inputs remained unchanged (aggregate SHA-256 `fe852e872be818964459d7410d199d3563bbab76cc8d6c9e242d7431271aa175`). Original-signer publication through GitHub and Render and a fresh production-updater download are recorded in `VALIDATION_CLOSEOUT_2026-10-02.md` and `validation/0.4.54-live-channel.json`. These checks do not establish a completed handset installation or scenario test.
 
 ## Scope and evidence
 
@@ -13,7 +13,7 @@ Statuses:
 | Status | Meaning |
 |---|---|
 | already fixed | Source remedy is present in the published 0.4.53 baseline; listed tests/documents support the bounded claim. This does not prove handset behavior. |
-| implemented in 0.4.54 — owner | Remedy is in the source that passed the final integrated gate above. Signing/publication and real-phone behavior are separate evidence. |
+| implemented in 0.4.54 — owner | Remedy is in the source that passed the final integrated gate and was published with the original signer. Real-phone behavior remains separate evidence. |
 | intentional user decision | A later explicit user decision controls the behavior. It is not an unimplemented bug. |
 | needs field | The original uncertainty requires observed phone/Dasher behavior or measurement; simulation cannot close it. |
 | external blocked | Requires an external account action, owner evidence, unavailable platform/source data, or a publishing/legal decision. |
@@ -21,7 +21,7 @@ Statuses:
 
 Owners: **atlas** = MainActivity/Places; **decline** = accessibility/decline/Peek state; **diagnostic** = logs/history/outbox/GitHubIssues; **fifth** = updates/receiver/notification/silencer; **root** = integration, consent/privacy/legal and remaining coordination.
 
-Published evidence is in `VALIDATION_2026-10-01.md`, `VALIDATION_2026-10-02.md`, `VALIDATION_HOTSPOT_2026-10-01.md`, `VALIDATION_CALM_2026-10-02.md`, `RELEASE_NOTES.md`, and `release/latest.json`. The 0.4.53 validation records 1,431 tests across API 26/35, lint, original signer, signed artifacts and live update transport verification. It explicitly does not establish a fresh Samsung installation, real touch delivery, navigation audio/task restoration, or historical report containment.
+Published evidence is in `VALIDATION_2026-10-01.md`, `VALIDATION_2026-10-02.md`, `VALIDATION_HOTSPOT_2026-10-01.md`, `VALIDATION_CALM_2026-10-02.md`, `VALIDATION_CLOSEOUT_2026-10-02.md`, `RELEASE_NOTES.md`, and `release/latest.json`. The closeout validation and live-channel receipt verify published 0.4.54; the 0.4.53 validation records 1,431 tests across API 26/35, lint, original signer, signed artifacts and live update transport verification. It explicitly does not establish a fresh Samsung installation, real touch delivery, navigation audio/task restoration, or historical report containment.
 
 ### Shared evidence references
 
@@ -154,7 +154,7 @@ Original 24 recommendations are retained below; alternate numeric suggestions ar
 | 4.m7 | GitHub expiry only Settings, combined with stale Render stops updates | **already fixed** stale-Render dependency removed (FEED); connection failure remains honest Settings/report state (`GitHubConnect`). New alert optional. |
 | 4.m8 | Non-owner GitHub connection appears useful without repo-access check | **still actionable** `GitHubConnect` access-probe/clear failure wording review; public updates already work through Render. |
 | 4.m9 | Outbox/diagnostics send while new notice pending | **already fixed** (SEND/ConsentGateTest). |
-| 4.m10 | Two signing scripts can reuse a code from different source | **already fixed** active Render path has one GitHub authority (FEED); **implemented in 0.4.54 — root** shared `tools/release_identity.py` checks both publish/finalize paths. Publisher freshly verifies live Render with production transport; retired finalizer requires HEAD to equal freshly queried GitHub main before trusting its checkout feed. `tools/test_release_identity.py` four regressions passed. The integrated gate passed; signing/publication are pending. |
+| 4.m10 | Two signing scripts can reuse a code from different source | **already fixed** active Render path has one GitHub authority (FEED); **implemented in 0.4.54 — root** shared `tools/release_identity.py` checks both publish/finalize paths. Publisher freshly verifies live Render with production transport; retired finalizer requires HEAD to equal freshly queried GitHub main before trusting its checkout feed. `tools/test_release_identity.py` four regressions passed. The integrated gate passed; 0.4.54 was signed with the original key and published through both feeds, then verified by a fresh production-updater download. |
 | 4.m11 | Relaunch call reported as success though Android may silently block | **already fixed** method contract says requested, foreground acknowledgement clears receipt (`Updater.relaunchAfterUpdate`/`relaunched`); actual relaunch **needs field**. Avoid stronger success wording. |
 | 4.F01 | Browser first install, restricted settings, Play Protect/Auto Blocker, Pixel and Android8–11 update confirmation/services | **needs field**. Live transport and signed artifact are not installation evidence. |
 | 4.F02 | OEM force-stop/cleaners, 24-hour accessibility warning, Advanced Protection, denied permissions, background location, device flow | **needs field**. Never label app an accessibility tool to bypass platform protections. |
@@ -407,7 +407,7 @@ These proposals are retained for traceability; they are not undiscovered bugs or
 
 1. **Research complete:** eleven of eleven reports recovered and reviewed. This ledger replaces the earlier absence of an itemized disposition record.
 2. **Published before this closeout:** 0.4.53 includes privacy/core/Peek and later chart/atlas/hotspot-model work, with tests/signing/live feed evidence in its validation file.
-3. **Implemented and tested closeout:** rows marked “implemented in 0.4.54” passed the final integrated 1,579-test / 90-suite API 26/35 gate and lint (zero errors, 34 warnings). Original-signer packaging and publication still require the existing release protocol; they are not implied by this source validation.
+3. **Published closeout:** rows marked “implemented in 0.4.54” passed the final integrated 1,579-test / 90-suite API 26/35 gate and lint (zero errors, 34 warnings). Release `9637e4efa94b215c02d65c26f44cc53496e1cc9a` publishes the original-signer APK through GitHub and Render; production `UpdateTransport` verified the live 398,419-byte APK at 2026-10-02 18:38:25 UTC. The detailed receipt is `validation/0.4.54-live-channel.json`; no handset install is implied.
 4. **Real handset work remains:** no completed Samsung/Pixel/Android8–16 full scenario matrix is claimed. Test decline timing/confirmation, takeover/reoffer, split/dialog/keyboard/shade, Peek launch/return/calls/typing/lock, sound restoration, install/reconnect, scan/frame/battery cost, and reporting consent/idempotency on a privacy-safe build.
 5. **External containment remains:** historical private issues containing payment details and card replacement/lock were reported in the handoff, not verified done. Do not reopen, reproduce or re-upload raw old reports to prove code coverage.
 6. **Later hotspot request is separate:** reciprocal model/control is implemented; verified final-stop identity, real current Dasher hotspots, distance geometry and freshness are unavailable (`HOTSPOT_SPOKE.md`). Historical arrival-area squares must never stand in for actual hotspots. This is not one of the original eleven completed implementation tracks.
