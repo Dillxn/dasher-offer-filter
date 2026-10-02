@@ -18,7 +18,17 @@ The final full gate, `./gradlew -q testDebugUnitTest -PallSdks lintDebug --conti
 
 All 202 frozen build/test inputs remained unchanged throughout the final gate. Aggregate SHA-256: `8350e7d252bdd32d10fcdb39b11f789e044b550ab36c22034c77b7931ceda1c9`. Evidence: [input hashes](validation/0.4.55-inputs.json), [full result](validation/0.4.55-tests.json), [focused result](validation/0.4.55-focused-tests.json). The earlier full run was canceled for the discovered retry-budget issue and is not the release gate.
 
-Original-key signing and publication through the existing GitHub/Render auto-update feeds are pending at this source checkpoint.
+## Published release
+
+Released **0.4.55 / code 61** through the existing auto-update feeds. Source commit: `74ce3111963dc8daa2b140d844c62b40695fb08a`; release commit: `108393ef901291fa28dda18aa2fe0d189c4d63cc`.
+
+- Package: `com.local.dasherfilter`; APK: **402,515 bytes**.
+- SHA-256: `edd0a73266e68c301239f07f6b9f326230295ea834575a74059988481dec9328`.
+- Original signer: `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703`.
+- GitHub's published manifest matches the signed release. Render deploy `dep-db003j67bikc73fm06b0` went live at `2026-10-02T19:11:41.128742Z`.
+- Fresh production `UpdateTransport.java` download verification passed at `2026-10-02T19:12:03.129175+00:00`: exact size/hash, embedded package/version and original signer. [Machine-readable live receipt](validation/0.4.55-live-channel.json).
+
+This verifies publication and the downloaded APK, not installation or real Dasher behavior on the owner's handset.
 
 The focused review also checked two failure paths: passive rereads after a refused Back must preserve the unconfirmed result instead of claiming a user touch, and changing display labels must not reset a recovered offer’s deadline or retry budget. These are regression requirements, not evidence of a successful real-phone decline.
 
