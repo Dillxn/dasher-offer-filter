@@ -1,0 +1,33 @@
+{
+  "version": "0.4.55",
+  "versionCode": 61,
+  "sdkLevels": [
+    26,
+    35
+  ],
+  "completedUtc": "2026-10-02T19:06:34.216379+00:00",
+  "command": "python /workspace/scratch/931021c809b3/android_env.py ./gradlew -q testDebugUnitTest -PallSdks lintDebug --continue",
+  "exitCode": 0,
+  "suiteCount": 92,
+  "tests": {
+    "tests": 1631,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "failures": [],
+  "lint": {
+    "errors": 0,
+    "warnings": 34,
+    "otherSeverities": {}
+  },
+  "inputManifest": "validation/0.4.55-inputs.json",
+  "inputCount": 202,
+  "aggregateSha256": "8350e7d252bdd32d10fcdb39b11f789e044b550ab36c22034c77b7931ceda1c9",
+  "changedInputFiles": [],
+  "addedInputFiles": [],
+  "sourceIntegrityPassed": true,
+  "focusedProof": "validation/0.4.55-focused-tests.json",
+  "signingPerformed": false,
+  "publicationPerformed": false
+}

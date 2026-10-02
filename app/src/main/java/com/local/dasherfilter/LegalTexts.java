@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Draft of 1 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 2 October 2026. Not legal advice; have a lawyer review before public release.
 
             ## What {app} is
 
@@ -55,6 +55,10 @@ final class LegalTexts {
             service and notification access, which you turn on yourself.
             - It compares each offer with the minimums you set. When an offer is below them, it can tap Decline, \
             and then Dasher's confirmation, for you. It never taps Accept.
+            - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
+            it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
+            checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
+            stops this recovery; an unknown loading screen alone never permits it.
             - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly \
             open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were \
             using after completion evidence; while navigation is detected, it also returns for passing or unclear \
@@ -125,6 +129,8 @@ final class LegalTexts {
             include store names, customer names and addresses.
             - Dasher's notifications, through Android's notification access. Android shows the app every \
             notification; it ignores every app but Dasher.
+            - Dasher's short error messages (toasts), through accessibility, only to recognize a failed decline. \
+            Their wording is not stored or sent; recovery logs keep a fixed error category and attempt counts.
             - Peek, on by default after the current notice is accepted, can briefly bring Dasher forward to read a \
             fresh background offer. To return you afterward, it checks Android's window information and the app \
             identifier of the app previously in front. It does not read that app's text. It also checks screen \

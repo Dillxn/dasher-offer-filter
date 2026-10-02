@@ -155,6 +155,14 @@ final class DeclineEpisode {
         return Back.DECLINE_AGAIN;
     }
 
+    /** The app's guarded error Back revealed the same offer; this was not an observed user Back. */
+    void returnedAfterErrorBack() {
+        if (questionWasSeen() || confirmed) return;
+        leftAt = NEVER;
+        tentativeLeftAt = NEVER;
+        backAt = NEVER;
+    }
+
     /** The decline is over: handed back, given up, or Dasher moved on. */
     void end() {
         over = true;

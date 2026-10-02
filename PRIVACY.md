@@ -8,6 +8,7 @@ Offer Filter has no account, no ads, no analytics and no server that collects yo
 
 - Dasher's screen, through Android's accessibility service, while Dasher is on screen or in its half of a split screen: each offer's pay, miles, time and stops, and the other text Dasher shows, which can include store names, customer names and addresses.
 - Dasher's notifications, through Android's notification access. Android shows the app every notification; it ignores every app but Dasher.
+- Dasher's short error messages (toasts), through accessibility, only to recognize a failed decline. Their wording is not stored or sent; recovery logs keep a fixed error category and attempt counts.
 - Peek, on by default after the current notice is accepted, can briefly bring Dasher forward to read a fresh background offer. To return you afterward, it checks Android's window information and the app identifier of the app previously in front. It does not read that app's text. It also checks screen lock, keyboard and window state, call/audio mode, and Android's available microphone/camera-in-use indicators; it does not record audio or images.
 - Approximate location, only if you allow it, for the offer map. It never asks for precise location.
 

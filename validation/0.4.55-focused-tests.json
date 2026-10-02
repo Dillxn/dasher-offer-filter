@@ -1,0 +1,68 @@
+{
+  "version": "0.4.55",
+  "versionCode": 61,
+  "sdkLevels": [
+    26,
+    35
+  ],
+  "completedUtc": "2026-10-02T19:02:21.523534+00:00",
+  "suiteCount": 10,
+  "counts": {
+    "tests": 169,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "suites": [
+    {
+      "name": "com.local.dasherfilter.DeclineStateTest",
+      "tests": 11,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.LegalTextsTest",
+      "tests": 4,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.ConsentReminderTest",
+      "tests": 12,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.ConsentGateTest",
+      "tests": 14,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.SplitTouchTest",
+      "tests": 8,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.StalledDeclineTest",
+      "tests": 28,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.DeclineEpisodeTest",
+      "tests": 10,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.DeclineHandBackTest",
+      "tests": 30,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.DeclineErrorRecoveryAdapterTest",
+      "tests": 38,
+      "failures": 0
+    },
+    {
+      "name": "com.local.dasherfilter.DeclineErrorRecoveryTest",
+      "tests": 14,
+      "failures": 0
+    }
+  ]
+}

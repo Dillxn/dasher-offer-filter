@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 6;
+    static final int VERSION = 7;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -23,9 +23,9 @@ final class Consent {
     /** The notice: a few short points, each a bold lead and a line or two after it. */
     static final String[][] POINTS = {
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
-        {"What it does.", "It reads Dasher's screen and notifications on this phone. It only ever taps Decline (and "
-                + "Dasher's \"are you sure\") on offers below your minimums, never Accept. While it declines, it "
-                + "can turn offer sound down for a moment."},
+        {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
+                + "on offers below your minimums, never Accept. If Dasher shows an error and gets stuck during a decline, "
+                + "it may go Back and retry, at most twice. Your touch stops it. It can briefly turn offer sound down."},
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer, then return to your previous app. It never accepts offers. Turn Peek off in Settings."},
         {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "

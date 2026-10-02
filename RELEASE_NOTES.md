@@ -1,3 +1,12 @@
+## 0.4.55 — recovery from a failed decline
+
+- Recognizes Dasher's error toast during an automatic first-step decline. If Dasher then leaves a stable, recognized empty/map-only screen with Dasher alone in the foreground, the app can press Back and reread the same offer before retrying.
+- Caps recovery at two Back requests per offer, within the existing decline attempt count and original deadline. User touches, new offers, lock and leaving Dasher stop recovery; a blank loading screen alone never authorizes Back.
+- Keeps the error state from being reported as a completed decline. Recovery does not accept offers or add another control to the interface.
+- Updates the one-time notice to explain Back recovery and ephemeral toast reading. No raw toast text is retained.
+
+Validation: 1,631 tests across 92 suites passed with no failures, errors or skips, including simulated Android 8/15 adapters. Lint completed with zero errors and 34 warnings. The focused regression run passed 169 tests. All 202 frozen build/test inputs were unchanged. Original-key signing and publication are pending at this source checkpoint. See [the validation record](VALIDATION_DECLINE_ERROR_2026-10-02.md). The reported physical Samsung/Dasher failure has not been reproduced on a handset here. Recovery requires an accessibility toast identified as Dasher’s error and a non-actionable empty/map-labelled screen; a clickable map container, unrecognized toast format or ambiguous idle/navigation labels remain unconfirmed and are left to the user.
+
 ## 0.4.54 — eleven-study reliability closeout
 
 - Keeps paused and quiet shifts safe from automatic installation; avoids repeatedly downloading an already verified waiting update. Uses the existing original-signer auto-update feeds.
