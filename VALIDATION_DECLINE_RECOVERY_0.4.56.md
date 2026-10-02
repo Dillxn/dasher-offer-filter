@@ -17,7 +17,18 @@ The disconnected continuation was recovered from the working source and reconcil
 
 The suite includes simulated Android 8/API 26 and Android 15/API 35 adapters, including original deadline/Back/attempt bounds, partial facts and missing countdowns, changed stable labels, touch/app switches, errors during slow traversal/window reads, deadline-crossing failure evidence, late content/window changes before Back, and normal confirmation settling after recovery.
 
-Signing and publication use the original signer and existing GitHub/Render updater. Live publication verification is recorded below after deployment.
+## Published release
+
+Released **0.4.56 / code 62** through the existing GitHub and Render update feeds. Source commit: `97a4918d92adb1406cba17370e769556cdda8669`; release commit: `f9c9694f97ca179f42f28bb8b22d20f075097ebc`.
+
+- Package: `com.local.dasherfilter`; signed APK: **402,515 bytes**.
+- SHA-256: `d4148cb7eb895fdae1a93ed295a4eae90f8610ba7107c7fa65131079c94d8219`.
+- Original signer: `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703`.
+- The original `tools/sign-local.sh` and `tools/publish-repo-feed.py` performed signing and publication checks. All 207 frozen source inputs remained unchanged after signing.
+- GitHub main's feed matched the local signed release. Render deploy `dep-db00hlu7bikc73fneq9g` went live at `2026-10-02T19:41:45.423414Z`.
+- A fresh production `UpdateTransport.java` download verified **0.4.56/code 62**, exact APK size/hash, embedded package/version and original signer. A rollout-time probe still saw 0.4.55; the final successful probe was after the new deployment became live.
+
+Evidence: [signed-artifact receipt](validation/0.4.56-signed-artifact.json), [live-channel receipt](validation/0.4.56-live-channel.json). These receipts establish publication and downloaded APK identity, not handset installation.
 
 ## Limits
 

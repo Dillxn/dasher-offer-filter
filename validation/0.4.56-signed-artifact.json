@@ -1,0 +1,32 @@
+{
+  "result": "PASS",
+  "packageName": "com.local.dasherfilter",
+  "versionCode": 62,
+  "versionName": "0.4.56",
+  "sha256": "d4148cb7eb895fdae1a93ed295a4eae90f8610ba7107c7fa65131079c94d8219",
+  "bytes": 402515,
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "sourceCommit": "97a4918d92adb1406cba17370e769556cdda8669",
+  "verifiedAtUtc": "2026-10-02T19:41:25.204532+00:00",
+  "verification": "apksigner verify --min-sdk-version 26 plus aapt2 package/version inspection",
+  "apkPath": "/workspace/scratch/26cc61183fd0/dd-offer-filter/dist/OfferFilter-0.4.56.apk",
+  "gate": {
+    "sourceCommit": "97a4918d92adb1406cba17370e769556cdda8669",
+    "gateResult": "PASS",
+    "suiteCount": 92,
+    "tests": {
+      "tests": 1669,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lintErrors": 0,
+    "lintWarnings": 34,
+    "inputCount": 207,
+    "aggregateSha256": "1191477412724ce8dfc5bf520033954fcbe6f2260bb52ef2df23eb72b24fcccd",
+    "testReceiptSha256": "90455601ccfe24cdbf4dedea4c989159f1728d519678304cdd4fea52f5584dd9",
+    "inputManifestSha256": "6c4e275c298f5507cf91beddf38657b7d22f6900801e9a87a9109b12d58230b1"
+  },
+  "published": false,
+  "deviceInstallVerified": false
+}

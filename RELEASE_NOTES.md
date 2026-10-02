@@ -4,7 +4,7 @@
 - Retains recognized failure evidence while a slow screen read is in progress, and checks error freshness and screen changes immediately before Back. An explicit failure stays unconfirmed on later rereads.
 - Returns to normal confirmation handling once the owned question appears, while retaining failure evidence for that confirmation request.
 
-Validation: 1,669 tests across 92 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. All 207 frozen inputs were unchanged. Evidence is recorded in [the recovery hardening record](VALIDATION_DECLINE_RECOVERY_0.4.56.md). The reported physical Samsung/Dasher failure remains unverified on a handset.
+Validation: 1,669 tests across 92 suites passed with zero failures, errors or skips; lint has zero errors and 34 warnings. All 207 frozen inputs were unchanged. Published with the original signer through GitHub and Render; a fresh production-updater download verified live 0.4.56/code 62. Evidence is recorded in [the recovery hardening record](VALIDATION_DECLINE_RECOVERY_0.4.56.md). The reported physical Samsung/Dasher failure remains unverified on a handset.
 
 ## 0.4.55 — recovery from a failed decline
 
