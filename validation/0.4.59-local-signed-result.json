@@ -1,0 +1,69 @@
+{
+  "adapterSdkCases": {
+    "AccessibilityAdapterTest": {
+      "26": 55,
+      "35": 55
+    },
+    "AdaptiveMinimumLifecycleTest": {
+      "26": 8,
+      "35": 8
+    },
+    "AndroidAdapterAlertsAndSettingsTest": {
+      "26": 30,
+      "35": 30
+    },
+    "AndroidAdapterChartTest": {
+      "26": 22,
+      "35": 22
+    },
+    "AndroidAdapterHomepageTest": {
+      "26": 17,
+      "35": 17
+    },
+    "AndroidAdapterReportsAndUpdatesTest": {
+      "26": 17,
+      "35": 17
+    },
+    "AutoAcceptAdapterTest": {
+      "26": 16,
+      "35": 16
+    },
+    "AutoAcceptSettingsTest": {
+      "26": 2,
+      "35": 2
+    },
+    "ConsentGateTest": {
+      "26": 9,
+      "35": 9
+    }
+  },
+  "androidAdapterRuntime": "Robolectric API 26 and 35; simulation only",
+  "deviceInstallVerified": false,
+  "inputCount": 281,
+  "inputSha256": "a72ecdd70e16a3d23a9d998a4022b61a2ff9a9f6d8819e55d61d7ccd20994ce1",
+  "junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1833
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 35
+  },
+  "suites": 102,
+  "sourceCommit": "a0a417f9fc5eff4b878b26694829cbdc29c516cb",
+  "versionName": "0.4.59",
+  "versionCode": 65,
+  "packageName": "com.local.dasherfilter",
+  "apkSha256": "cc1000c8ad33731f6a8fc3b9b016d7dfc6e8e6c40fdb988d23709efc247a20f4",
+  "apkBytes": 423069,
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "buildLocation": "local execution workspace",
+  "signed": true,
+  "published": false,
+  "blocker": "Workspace cannot reach the production update host; network escalation is disabled by runtime approval policy. publish-repo-feed.py refused before writing release files.",
+  "lastVerifiedLiveVersion": "0.4.56",
+  "renderConfiguration": "main; bash render-build.sh; auto-deploy off; no further Android cloud builds",
+  "recordedAt": "2026-10-03T19:54:07.837431+00:00"
+}
