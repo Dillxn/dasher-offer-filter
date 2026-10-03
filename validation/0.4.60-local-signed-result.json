@@ -1,0 +1,309 @@
+{
+  "sourceCommit": "140cf0ed2be3844bbe8005754d6ff79e249b7d94",
+  "versionName": "0.4.60",
+  "versionCode": 66,
+  "packageName": "com.local.dasherfilter",
+  "junit": {
+    "tests": 1945,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "suites": 107,
+  "adapterSdkCases": {
+    "com.local.dasherfilter.MinimumScaleIntegrationTest": {
+      "26": 5,
+      "35": 8
+    },
+    "com.local.dasherfilter.CardTapAdapterTest": {
+      "26": 5,
+      "35": 5
+    },
+    "com.local.dasherfilter.UpdateDuringDashTest": {
+      "26": 3,
+      "35": 3
+    },
+    "com.local.dasherfilter.QualifyingWaitStoreTest": {
+      "26": 8,
+      "35": 8
+    },
+    "com.local.dasherfilter.SameOfferAdapterTest": {
+      "26": 28,
+      "35": 29
+    },
+    "com.local.dasherfilter.AreaDeclineLessonTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.AutoAcceptSettingsTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.ScannerRobustnessTest": {
+      "26": 11,
+      "35": 11
+    },
+    "com.local.dasherfilter.SettingsConsolidatedTest": {
+      "26": 11,
+      "35": 11
+    },
+    "com.local.dasherfilter.PeekSettingsTest": {
+      "26": 1,
+      "35": 1
+    },
+    "com.local.dasherfilter.AtlasClarityTest": {
+      "26": 4,
+      "35": 6
+    },
+    "com.local.dasherfilter.DasherOverlayTest": {
+      "26": 6,
+      "35": 6
+    },
+    "com.local.dasherfilter.AreaMapViewTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.SplitJourneyTest": {
+      "26": 7,
+      "35": 7
+    },
+    "com.local.dasherfilter.ConstellationControlsTest": {
+      "26": 8,
+      "35": 8
+    },
+    "com.local.dasherfilter.PlacesTest": {
+      "26": 8,
+      "35": 8
+    },
+    "com.local.dasherfilter.ScreensLogNavigationTest": {
+      "26": 3,
+      "35": 3
+    },
+    "com.local.dasherfilter.MascotPlaysOffersTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.MotionAdapterTest": {
+      "26": 6,
+      "35": 6
+    },
+    "com.local.dasherfilter.PrivacyBoundaryTest": {
+      "26": 12,
+      "35": 12
+    },
+    "com.local.dasherfilter.RobustStorageTest": {
+      "26": 16,
+      "35": 16
+    },
+    "com.local.dasherfilter.OfferAlertsReadinessTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.OfferSilencerRecoveryTest": {
+      "26": 12,
+      "35": 12
+    },
+    "com.local.dasherfilter.ScoreByAreaAdapterTest": {
+      "26": 7,
+      "35": 7
+    },
+    "com.local.dasherfilter.ItemConstellationTest": {
+      "26": 8,
+      "35": 13
+    },
+    "com.local.dasherfilter.StalledDeclineTest": {
+      "26": 14,
+      "35": 14
+    },
+    "com.local.dasherfilter.PeekTest": {
+      "26": 49,
+      "35": 49
+    },
+    "com.local.dasherfilter.OfferOutcomeTest": {
+      "26": 5,
+      "35": 5
+    },
+    "com.local.dasherfilter.HotspotConstellationTest": {
+      "26": 6,
+      "35": 8
+    },
+    "com.local.dasherfilter.AccessibilityAdapterTest": {
+      "26": 58,
+      "35": 58
+    },
+    "com.local.dasherfilter.AxisClarityTest": {
+      "26": 4,
+      "35": 4
+    },
+    "com.local.dasherfilter.DeclineHandBackTest": {
+      "26": 15,
+      "35": 15
+    },
+    "com.local.dasherfilter.AndroidAdapterHomepageTest": {
+      "26": 17,
+      "35": 17
+    },
+    "com.local.dasherfilter.ItemSettingsTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.MaskedCaptureAdapterTest": {
+      "26": 4,
+      "35": 4
+    },
+    "com.local.dasherfilter.AdaptiveMinimumLifecycleTest": {
+      "26": 8,
+      "35": 8
+    },
+    "com.local.dasherfilter.HotspotSettingsTest": {
+      "26": 5,
+      "35": 5
+    },
+    "com.local.dasherfilter.OwnWindowTouchesTest": {
+      "26": 7,
+      "35": 7
+    },
+    "com.local.dasherfilter.AutoAcceptAdapterTest": {
+      "26": 22,
+      "35": 22
+    },
+    "com.local.dasherfilter.AndroidAdapterAlertsAndSettingsTest": {
+      "26": 30,
+      "35": 30
+    },
+    "com.local.dasherfilter.AndroidAdapterReportsAndUpdatesTest": {
+      "26": 17,
+      "35": 17
+    },
+    "com.local.dasherfilter.SplitTouchTest": {
+      "26": 4,
+      "35": 4
+    },
+    "com.local.dasherfilter.AndroidAdapterChartTest": {
+      "26": 22,
+      "35": 22
+    },
+    "com.local.dasherfilter.PeekStateTest": {
+      "26": 12,
+      "35": 12
+    },
+    "com.local.dasherfilter.UpdaterHeldReadyTest": {
+      "26": 6,
+      "35": 6
+    },
+    "com.local.dasherfilter.SplitWindowsTest": {
+      "26": 7,
+      "35": 7
+    },
+    "com.local.dasherfilter.ConfirmationLeftToYouTest": {
+      "26": 13,
+      "35": 13
+    },
+    "com.local.dasherfilter.DeclineErrorRecoveryAdapterTest": {
+      "26": 44,
+      "35": 44
+    },
+    "com.local.dasherfilter.QuietLogAdapterTest": {
+      "26": 7,
+      "35": 7
+    },
+    "com.local.dasherfilter.AppearanceTest": {
+      "26": 9,
+      "35": 9
+    },
+    "com.local.dasherfilter.MainActivityRobustnessTest": {
+      "26": 7,
+      "35": 10
+    },
+    "com.local.dasherfilter.AreaMapTest": {
+      "26": 8,
+      "35": 8
+    },
+    "com.local.dasherfilter.DashingUpdateHoldTest": {
+      "26": 5,
+      "35": 5
+    },
+    "com.local.dasherfilter.DashDiagnosticsTest": {
+      "26": 13,
+      "35": 13
+    },
+    "com.local.dasherfilter.ItemHistoryTest": {
+      "26": 12,
+      "35": 12
+    },
+    "com.local.dasherfilter.ItemAuthorityAdapterTest": {
+      "26": 10,
+      "35": 10
+    },
+    "com.local.dasherfilter.RestartSuppressionTest": {
+      "26": 4,
+      "35": 4
+    },
+    "com.local.dasherfilter.AdaptiveShapeByAreaTest": {
+      "26": 3,
+      "35": 3
+    },
+    "com.local.dasherfilter.ConsentReminderTest": {
+      "26": 6,
+      "35": 6
+    },
+    "com.local.dasherfilter.OfferMarkTapTest": {
+      "26": 11,
+      "35": 11
+    },
+    "com.local.dasherfilter.ScannerThreadTest": {
+      "26": 31,
+      "35": 31
+    },
+    "com.local.dasherfilter.NewOfferCardTest": {
+      "26": 1,
+      "35": 1
+    },
+    "com.local.dasherfilter.TicketLearningAndCorrectionTest": {
+      "26": 2,
+      "35": 2
+    },
+    "com.local.dasherfilter.SkylineFitnessTest": {
+      "26": 7,
+      "35": 10
+    },
+    "com.local.dasherfilter.ScreenAwakeTest": {
+      "26": 11,
+      "35": 11
+    },
+    "com.local.dasherfilter.AcceptanceEvidenceTest": {
+      "26": 20,
+      "35": 20
+    },
+    "com.local.dasherfilter.ConsentGateTest": {
+      "26": 9,
+      "35": 9
+    },
+    "com.local.dasherfilter.WaitAndAvailabilityUiTest": {
+      "26": 4,
+      "35": 4
+    }
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 34
+  },
+  "inputCount": 298,
+  "inputSha256": "5d911dcad9459d99f759f1f220a748580c83bbcf1c0c87aaa4a42095769c89b9",
+  "androidAdapterRuntime": "Robolectric API 26 and 35; simulation only",
+  "buildLocation": "local execution workspace",
+  "deviceInstallVerified": false,
+  "physicalAcceptanceVerified": false,
+  "physicalSoundAndNavigationVerified": false,
+  "signed": true,
+  "published": true,
+  "recordedAt": "2026-10-03T21:13:00.683090+00:00",
+  "apkSha256": "e52b4e857fa9130c9f91c27378fb2c1de4ca256175d150d1b1fdcfef03d0e562",
+  "apkBytes": 435357,
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "signedAt": "2026-10-03T21:13:56.317238+00:00",
+  "releaseCommit": "10b90c5b6344c3cb1ce98a1cfb7731ada29a311b",
+  "liveVerificationRecord": "validation/0.4.60-live-publication.json",
+  "publicationRecordedAt": "2026-10-03T21:19:23.358786+00:00",
+  "temporarySigningExportsRemoved": true
+}

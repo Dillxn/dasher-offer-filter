@@ -1,5 +1,7 @@
 ## 0.4.60 — honest outcomes, observed waiting and a clearer scene
 
+**Published October 3, 2026:** locally signed with the original key and shipped through both automatic-update channels. 1,945 tests / 107 suites passed on simulated API26/35; lint zero errors /34 warnings. Fresh production-updater download verified the live .60/code66 APK, 435,357 bytes, exact hash and original certificate. See [release validation](VALIDATION_OBSERVED_OUTCOMES_0.4.60.md). Physical-phone behavior remains unverified.
+
 - Keeps an automatic Accept request distinct from a confirmed acceptance. A successful Android button action alone cannot raise accepted totals; confirmation needs subsequent delivery or pickup progress, and a generic Directions label or an unlearned step is not proof. Automatic requests still do not train adaptive floors and are never retried with Back.
 - Adds a local estimate of the wait until a qualifying offer, learned from newly observed eligible waiting and numeric offers in the last 24 hours. It rechecks those offers against the current rules, excludes delivery/off-screen/locked/unknown gaps, and shows a learning or unreadable-data state until the evidence is sufficient. It is an approximate historical rate, not a countdown or a promise of the next offer.
 - Makes the unavailable hotspot measurement explicit instead of presenting a working adjustment. An existing hotspot rule is preserved until the user chooses to turn it off. Pay/item distinguishes an observed count, an unavailable shopping count and an inapplicable rule; quantities are never guessed. Strict/area scoring and the chosen adaptive learning behavior are unchanged.
@@ -7,7 +9,7 @@
 - Removes a previous offer's 20-second sound-protection hold from a new decline episode, while preserving protection for a later passing or unclear offer. This cannot silence a native alert that Android already played before notifying Offer Filter.
 - Raises the notice to version 11 for the bounded local waiting history and on-device theme location use. Clear history also clears waiting observations. Acceptance-rate risk, own-risk acknowledgement and the separate optional auto-accept confirmation remain.
 
-Validation and publication: candidate work in progress. Final local dual-SDK tests, lint, original-signer packaging and live updater verification must be recorded before this release is described as shipped. No physical-phone result is claimed, including the reported intermittent in-app map problem.
+Validation and publication are complete as recorded above. No physical-phone result is claimed, including the reported intermittent in-app map problem.
 
 ## 0.4.59 — optional auto-accept and a recoverable release path
 

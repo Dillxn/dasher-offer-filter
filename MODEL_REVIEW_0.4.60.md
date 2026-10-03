@@ -27,3 +27,7 @@ The delivery-time edge tab can consume touches in its 16 × 56 dp strip. A coinc
 ## Evidence boundary
 
 Local regression tests and code inspection can establish these paths and arithmetic. They do not certify physical-phone acceptance, audio timing, navigation, eligible-wait coverage or accessibility behavior. Live release checks separately verify published APK bytes and original signing identity.
+
+## Later field evidence — October 3, 21:25 UTC
+
+Diagnostic #42 from .59 clarifies the selected automatic-accept incident: verification canceled at the final guard before any Android click, and history said PASSED (matched rules), not ACCEPTED. The log does not identify the failed predicate. This is distinct from the source-proven false-acceptance paths fixed in .60. The next narrow change should distinguish an unsent automatic choice from a rules match and record fixed, privacy-safe guard reasons without weakening authority. No .61 result is claimed here.

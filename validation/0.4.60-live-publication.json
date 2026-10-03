@@ -1,0 +1,18 @@
+{
+  "result": "PASS",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 66,
+  "versionName": "0.4.60",
+  "sourceCommit": "140cf0ed2be3844bbe8005754d6ff79e249b7d94",
+  "sha256": "e52b4e857fa9130c9f91c27378fb2c1de4ca256175d150d1b1fdcfef03d0e562",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "bytes": 435357,
+  "verifiedAt": "2026-10-03T21:19:23.358786+00:00",
+  "releaseCommit": "10b90c5b6344c3cb1ce98a1cfb7731ada29a311b",
+  "renderDeployId": "dep-db0n0qlg1s2s73eq70cg",
+  "renderLiveAt": "2026-10-03T21:15:56.347032Z",
+  "repositoryApkBlob": "b6736445023bdff1f805fbfad1d4807f58df0521",
+  "repositoryManifestBlob": "e98d455e5cc4c6dd66eee6666d4d97ebbdcf21bf",
+  "buildTestPackageSignLocation": "local execution workspace",
+  "physicalPhoneVerified": false
+}

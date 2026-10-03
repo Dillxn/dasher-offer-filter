@@ -1,0 +1,27 @@
+{
+  "auditedAt": "2026-10-03T21:26:34.221194+00:00",
+  "issuesUpdatedSince": "2026-10-03T20:54:44Z",
+  "issues": [
+    {
+      "number": 42,
+      "label": "diagnostics",
+      "version": "0.4.59",
+      "createdAt": "2026-10-03T21:14:54Z",
+      "dashToken": "d5e6e8b2f800e50fc0b93be390c68d19",
+      "dashWindowEastern": "2026-10-03 16:13\u201316:42",
+      "deduplication": "No matching Gmail copy; new dash report, not a duplicate of the selected shopping-offer reports #40/#41.",
+      "findings": [
+        "Four first-step decline requests each have a confirmation request followed by idle or closed-question evidence in the retained window. This does not prove every historical decline worked.",
+        "At16:42:03.169 automatic acceptance entered verification; at16:42:04.699 it canceled at the final pre-dispatch guard. No automatic Accept REQUESTED or REFUSED action appears.",
+        "Selected offer history says PASSED / No action: passes your rules. It does not say ACCEPTED. Later observation says neither delivery nor waiting, so no acceptance is established.",
+        "Window metadata supports split/bottom/ours/48. Touch monitoring had reached readiness. Split alone is not a refusal reason; actual failed predicate is not logged.",
+        "Current .60 fixes independent reproduced post-request false-acceptance paths. This new report identifies a distinct pre-dispatch status/diagnostic gap. A narrow .61 follow-up is being prepared, with guards unchanged."
+      ]
+    }
+  ],
+  "gmailAfterEpoch": 1791060884,
+  "newGmailIds": [],
+  "rawDiagnosticsStored": false,
+  "messagesSent": false,
+  "reportsDeleted": false
+}
