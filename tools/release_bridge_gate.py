@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -13,6 +14,35 @@ ADAPTERS = (
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
     "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "AdaptiveMinimumLifecycleTest", "ConsentGateTest",
 )
+
+
+def check_main(root, source, expected_main, external=False, environment=None):
+    """An originless Render exporter can defer main reads to its external caller.
+
+    This does not grant publication authority: the caller must read main before
+    and after this build and immediately before the non-force source/feed push.
+    """
+    if not re.fullmatch(r"[a-f0-9]{40}", source or "") or not re.fullmatch(r"[a-f0-9]{40}", expected_main or ""):
+        raise ValueError("Invalid pinned source or main")
+    def git(*args):
+        try:
+            return subprocess.run(["git", *args], cwd=root, check=True, text=True, capture_output=True).stdout
+        except subprocess.CalledProcessError:
+            raise ValueError("Git authority check failed") from None
+    if git("rev-parse", "HEAD").strip() != source:
+        raise ValueError("Pinned source mismatch")
+    if "origin" in git("remote").splitlines():
+        refs = [line.split() for line in git("ls-remote", "--exit-code", "origin", "refs/heads/main").splitlines()
+                if line.strip()]
+        if refs != [[expected_main, "refs/heads/main"]]:
+            raise ValueError("Main moved; signing bridge refused")
+        return dict(mode="origin", sourceCommit=source, observedMain=expected_main)
+    env = os.environ if environment is None else environment
+    if not external or env.get("RENDER") != "true" or env.get("RENDER_GIT_COMMIT") != source:
+        raise ValueError("No origin: require explicit external-main checking in the pinned Render checkout")
+    return dict(mode="external-required", sourceCommit=source, callerExpectedMain=expected_main,
+                mainObservedByBuild=False, publishesNewFeed=False,
+                callerMustCheck="before build, after build, immediately before non-force publication")
 
 
 def sdk_evidence(root, reports):
@@ -108,10 +138,19 @@ def gate(root, frozen):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("freeze", "verify"))
-    parser.add_argument("--snapshot", type=pathlib.Path, required=True)
+    parser.add_argument("command", choices=("freeze", "verify", "check-main"))
+    parser.add_argument("--snapshot", type=pathlib.Path)
+    parser.add_argument("--source")
+    parser.add_argument("--expected-main")
+    parser.add_argument("--external-main-check", action="store_true")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[1]
+    if args.command == "check-main":
+        print("OFFER_FILTER_MAIN_CHECK_V1 " + json.dumps(check_main(
+            root, args.source, args.expected_main, args.external_main_check), sort_keys=True))
+        return
+    if args.snapshot is None:
+        parser.error("--snapshot is required for freeze/verify")
     if args.command == "freeze":
         with args.snapshot.open("x", encoding="utf-8") as output:
             json.dump(snapshot(root), output, sort_keys=True)

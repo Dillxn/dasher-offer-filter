@@ -2,6 +2,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import release_bridge_gate as gate
 
@@ -79,6 +80,45 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         path.write_text(path.read_text().replace('name="example"', 'name="example[35]"'))
         result = gate.gate(self.root, self.frozen)
         self.assertEqual({"26": 1, "35": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+
+
+class MainAuthorityTest(unittest.TestCase):
+    source = "a" * 40
+    main = "b" * 40
+
+    def check(self, outputs, external=False, environment=None):
+        results = [subprocess.CompletedProcess([], 0, stdout=text) for text in outputs]
+        with patch.object(gate.subprocess, "run", side_effect=results):
+            return gate.check_main(pathlib.Path("/tmp"), self.source, self.main, external, environment or {})
+
+    def test_origin_is_checked_even_when_external_mode_requested(self):
+        result = self.check([self.source, "origin\n", self.main + "\trefs/heads/main\n"], True)
+        self.assertEqual("origin", result["mode"])
+        with self.assertRaises(ValueError):
+            self.check([self.source, "origin\n", "c" * 40 + "\trefs/heads/main\n"], True)
+
+    def test_originless_render_requires_explicit_flag_and_exact_platform_commit(self):
+        good = {"RENDER": "true", "RENDER_GIT_COMMIT": self.source}
+        result = self.check([self.source, ""], True, good)
+        self.assertEqual("external-required", result["mode"])
+        self.assertFalse(result["mainObservedByBuild"])
+        self.assertFalse(result["publishesNewFeed"])
+        for flag, env in ((False, good), (True, {}), (True, {"RENDER": "false", "RENDER_GIT_COMMIT": self.source}),
+                          (True, {"RENDER": "true", "RENDER_GIT_COMMIT": self.main})):
+            with self.subTest(flag=flag, env=env), self.assertRaises(ValueError):
+                self.check([self.source, ""], flag, env)
+
+    def test_wrong_checkout_never_reaches_external_fallback(self):
+        with self.assertRaises(ValueError):
+            self.check([self.main], True, {"RENDER": "true", "RENDER_GIT_COMMIT": self.source})
+
+    def test_remote_network_failure_never_becomes_external_authority(self):
+        results = [subprocess.CompletedProcess([], 0, stdout=self.source),
+                   subprocess.CompletedProcess([], 0, stdout="origin\n"),
+                   subprocess.CalledProcessError(128, ["git", "ls-remote"], stderr="private")]
+        with patch.object(gate.subprocess, "run", side_effect=results), self.assertRaisesRegex(ValueError, "Git authority check failed"):
+            gate.check_main(pathlib.Path("/tmp"), self.source, self.main, True,
+                            {"RENDER": "true", "RENDER_GIT_COMMIT": self.source})
 
 
 if __name__ == "__main__":

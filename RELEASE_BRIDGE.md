@@ -12,7 +12,25 @@ It does not require a GitHub write token in Render or any additional service.
 2. In the existing Render service, record the original branch/build command and
    deploy the pinned source using `bash tools/render-sign-bridge.sh SOURCE MAIN`.
    Both arguments must be full 40-character SHAs, not moving branch names. The
-   actual checkout HEAD and current remote main must match them.
+   actual checkout HEAD and current remote main must match them. Set Render's
+   branch to the candidate branch and pin the deployment commit; do not prepend
+   `git fetch origin` because Render may remove the checkout's origin remote.
+
+   For a confirmed originless Render checkout only, the caller must freshly read
+   GitHub main before the build, after the build and immediately before the final
+   non-force publication. Declare that external responsibility explicitly with:
+
+   ```sh
+   bash tools/render-sign-bridge.sh SOURCE MAIN --external-main-check
+   ```
+
+   The exception requires `RENDER=true` and `RENDER_GIT_COMMIT=SOURCE`, retains
+   exact checkout pinning and every signing/test/artifact gate, and truthfully
+   logs `mainObservedByBuild=false`. It only exports a signed artifact and mirrors
+   the old feed; it grants no new-feed publication authority. If origin is present,
+   the helper always checks it directly, even when the flag was supplied. A failed
+   or moved origin check cannot fall back to the external mode. Stop publication
+   on any changed main and reconcile concurrent work before proceeding.
 3. The build runs the existing `tools/sign-local.sh` with Render's original signer,
    including the dual-SDK tests once, then Android lint. It hashes every tracked
    file before/after. It refuses untracked source inputs. It verifies the signed

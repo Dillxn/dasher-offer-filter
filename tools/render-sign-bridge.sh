@@ -6,21 +6,20 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source_commit="${1:?Pass the exact reviewed source commit}"
 expected_main="${2:?Pass the expected current main commit}"
+main_check_mode="${3:-}"
+[[ "$#" -le 3 && ( -z "$main_check_mode" || "$main_check_mode" == '--external-main-check' ) ]] || {
+    echo 'Unknown signing bridge mode' >&2; exit 1;
+}
 [[ "$source_commit" =~ ^[a-f0-9]{40}$ && "$expected_main" =~ ^[a-f0-9]{40}$ ]] || exit 1
 [[ "$(git rev-parse HEAD)" == "$source_commit" ]] || { echo 'Pinned source mismatch' >&2; exit 1; }
 git diff --quiet HEAD -- || { echo 'Tracked source is dirty' >&2; exit 1; }
 bridge_tmp="$(mktemp -d)"
 trap 'rm -rf "$bridge_tmp"' EXIT
 check_main() {
-    git ls-remote --exit-code origin refs/heads/main > "$bridge_tmp/main" 2> "$bridge_tmp/git-error" || {
-        echo 'Cannot establish fresh main; signing bridge refused' >&2; exit 1;
-    }
-    python3 - "$expected_main" "$bridge_tmp/main" <<'PY'
-import pathlib, sys
-refs = [line.split() for line in pathlib.Path(sys.argv[2]).read_text().splitlines() if line.strip()]
-if refs != [[sys.argv[1], 'refs/heads/main']]:
-    sys.exit('Main moved; signing bridge refused')
-PY
+    local main_args=()
+    [[ -z "$main_check_mode" ]] || main_args+=("$main_check_mode")
+    python3 tools/release_bridge_gate.py check-main --source "$source_commit" \
+        --expected-main "$expected_main" "${main_args[@]}"
 }
 check_main
 python3 tools/release_bridge_gate.py freeze --snapshot "$bridge_tmp/inputs.json"
