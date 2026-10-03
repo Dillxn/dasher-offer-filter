@@ -1,0 +1,42 @@
+{
+  "recordedAt": "2026-10-03T22:17:30.576Z",
+  "since": "2026-10-03T21:41:26.630Z",
+  "gmail": {
+    "account": "personal",
+    "matchingMessageIds": [],
+    "query": "after:1791063686 {\"Offer Filter\" \"dasher-offer-filter\"}"
+  },
+  "issues": [
+    {
+      "number": 44,
+      "createdAt": "2026-10-03T21:58:29Z",
+      "version": "0.4.59",
+      "dashId": "9f6e791dbd4d6e7de9e5477aa0d2499b",
+      "overlappingHistory": [
+        42,
+        43
+      ],
+      "findings": [
+        "The automatic-accept cancellation repeats #42, before any Android click. No fresh .61 refusal category or .61 failure is evidenced.",
+        "The unread shopping offer repeats #43; unknown payout and one observed item do not establish a new parser defect.",
+        "One retained decline at 17:28 Eastern has first tap, confirmation, closed question and finding-offers evidence.",
+        "At 17:33:01 Eastern the phone downloaded .60 and reported update ready, installing after the dash; installed version remained .59. This supports the download/deferral path, not a completed .60 or .61 phone installation.",
+        "Later navigation labels do not establish a Dasher in-app map failure or its cause."
+      ]
+    }
+  ],
+  "appSourceChanged": false,
+  "release": {
+    "version": "0.4.61",
+    "source": "8c357f11973a08e9f5b81b3d2657f050274405c9",
+    "published": "277a5636f35e19bf5ff1d58e6cd978274ad4b206",
+    "previousVerifiedCheckpoint": "2ee71766844f88be501879c95e6a1c3900248d18"
+  },
+  "nextWork": [
+    "Inspect future .61 reports for actual cancellation category, acceptance confirmation, map/Peek behavior and update install evidence.",
+    "No speculative guard/parser/map change; preserve action and privacy controls."
+  ],
+  "sent": false,
+  "deleted": false,
+  "rawReportsPersisted": false
+}

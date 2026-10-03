@@ -2,6 +2,15 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## Diagnostics continuation — October 3, 22:17 UTC
+
+- Fresh main was `2ee71766844f88be501879c95e6a1c3900248d18`; .61 source/release and verified original-signer bytes remain unchanged. No Android rebuild, signing, or new app release was needed.
+- Personal Gmail had no new matching copies since21:41:26UTC. New diagnostics #44, created21:58:29UTC by .59, dash token `9f6e791dbd4d6e7de9e5477aa0d2499b`, repeats the #42 automatic-accept cancellation and #43 unread shopping history; these are not independent new failures or evidence against .61. One later retained decline has confirmation/idle evidence. See `validation/2026-10-03-2217-diagnostics-audit.json`.
+- New physical-phone updater evidence: at17:33:01Eastern, the app downloaded .60 and reported it ready to install after the dash, while installed version remained .59. This establishes download and deliberate during-dash deferral, not completed installation of .60 or .61. The .61 public-channel verification remains recorded separately. Do not claim the phone is running .61.
+- No new actionable parser/acceptance/map defect is established. #38 Peek/missing offer and historical .56 in-app map remain unresolved; future .61 refusal categories should help diagnose fresh candidates. No guard relaxation or speculative fix. No raw diagnostic export, email sends, issue comments or deletions.
+- Public site source `9c425f04959de01bcbe772da5b7d722a8f89d7d8` adds temporary background-motion suspension during film playback/dialogs while preserving the visitor's motion preference. Video/audio exports are unchanged. Live verification is recorded separately in public `SITE_VALIDATION.md`; this remains a playable marketing draft.
+- Next: inspect reports newer than22:17:30UTC, seek .61 phone outcome/install evidence without guessing, and continue original film/calm-interface refinement. Existing release gates and local-only Android build policy remain unchanged.
+
 ## Latest shipped continuation — October 3, 21:53 UTC
 
 - **0.4.61/code67 is published and live.** Source `8c357f11973a08e9f5b81b3d2657f050274405c9`, release commit `277a5636f35e19bf5ff1d58e6cd978274ad4b206`; candidate branch `codex/accept-not-sent-0-4-61` retains the source. Original-signer APK: 435,357 bytes, SHA-256 `d536d43b5a4e9268bd2947c9097f99f862250eb93f288830b89ffeef72cd0f09`. All Android build/test/package/sign work was local. Render only mirrored the finished artifact, live at 21:52:04 UTC (`dep-db0nhp6gekts73ag6h00`). Fresh production updater download verified .61 package/version/size/hash/certificate; GitHub feed and blobs match.
