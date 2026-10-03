@@ -121,4 +121,19 @@ public class DecisionLogStepsTest {
         assertEquals(1, loaded.get(0).steps.size());
         assertEquals(DecisionLog.StepKind.NOT_ACCEPTED, loaded.get(0).steps.get(0).kind);
     }
+
+    @Test public void requestIsNeverAcceptedFromManualNotLearnedInferenceAndPersistsTruthfully() {
+        DecisionLog.record(app, passing(System.currentTimeMillis()));
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED,
+                "awaiting observed delivery", 60_000);
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.NOT_LEARNED,
+                AcceptedOfferTracker.DELIVERY_UNDER_WAY, 60_000);
+        assertEquals(DecisionLog.Outcome.REQUESTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED,
+                "delivery not confirmed", 60_000);
+        DecisionLog.flush(); DecisionLog.forgetCache();
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+    }
 }

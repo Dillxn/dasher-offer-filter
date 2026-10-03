@@ -301,6 +301,8 @@ final class AcceptedOfferTracker {
         long countdownAt;
         /** When a read first found it gone after its last read, -1 while it shows. */
         long goneAt = -1;
+        /** Automatic requests never enter the manual/no-tap inference path. */
+        boolean automaticRequest;
 
         Sighting(String key, OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn, boolean deliveryBefore,
                  boolean waitingBefore) {
@@ -416,7 +418,15 @@ final class AcceptedOfferTracker {
         // A delivery, the wait for offers or the dash's end read since the last offer: this is a new showing.
         boolean anew = lastClear != null;
         // A different offer cancels an Accept waiting for its delivery screen; the same offer read again does not.
-        if (pending != null && (anew || !key.equals(pending.key))) clearPending();
+        if (pending != null && (anew || !key.equals(pending.key))) {
+            unconfirmedAutomatic("another offer or a new showing came before delivery confirmation");
+            clearPending();
+        }
+        if (pending != null && pending.automaticRequest && (pending.goneAt >= 0
+                || secondsLeft >= 0 && pending.secondsLeft >= 0
+                && secondsLeft * 1000L > pending.secondsLeft * 1000L - (now - pending.countdownAt) + 3_000)) {
+            unconfirmedAutomatic("the offer returned or its countdown restarted before delivery confirmation");
+        }
         Sighting s = !anew && visible != null && visible.key.equals(key) ? visible
                 : pending != null ? pending
                 : sighting(key, offer, routeAfter, addOn, routeStored);
@@ -456,6 +466,37 @@ final class AcceptedOfferTracker {
         return offer.fingerprint() + "->" + (routeAfter == null ? "null" : routeAfter.fingerprint()) + ":" + addOn;
     }
 
+    /**
+     * Android received one automatic request. A click result is not a user's tap and cannot enter the weaker
+     * manual/no-tap route inference. Only this request's subsequent explicit delivery-progress read can confirm it.
+     */
+    void automaticAcceptRequested(OfferSnapshot offer, long now, boolean dispatched) {
+        Watch w = watch;
+        if (w != null && w.sameOffer(offer, false)) watch = null;
+        clearPending();
+        Sighting s = visible;
+        if (!dispatched || s == null || s.addOn || now - s.at > 2_000
+                || !s.offer.fingerprint().equals(offer.fingerprint())) {
+            note(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, offer,
+                    dispatched ? "the requested offer could not be verified; no acceptance claimed"
+                            : "Android refused the request; no acceptance claimed and no repeat request");
+            return;
+        }
+        s.automaticRequest = true;
+        pending = s;
+        clickedAt = now;
+        note(DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED, s.line,
+                "waiting up to 15 s for explicit pickup or delivery progress; no completion claimed");
+    }
+
+    /** Clear only automatic confirmation authority, with a truthful outcome; never grant another click. */
+    private boolean unconfirmedAutomatic(String reason) {
+        if (pending == null || !pending.automaticRequest) return false;
+        note(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, pending.line, reason);
+        clearPending();
+        return true;
+    }
+
     /** @return the offer the tap is taken to accept, or null when no readable offer was on screen recently */
     OfferSnapshot acceptClicked(long now) {
         Watch w = watch;
@@ -467,6 +508,7 @@ final class AcceptedOfferTracker {
         boolean recent = s != null && now - s.at <= MAX_OFFER_AGE_AT_CLICK_MS;
         boolean readablePay = recent && s.offer.payCents != null && s.offer.payCents > 0;
         if (readablePay) {
+            s.automaticRequest = false;
             pending = s;
             clickedAt = now;
             note(DecisionLog.StepKind.ACCEPT_TAPPED, s.line, "waiting for a delivery screen");
@@ -483,7 +525,9 @@ final class AcceptedOfferTracker {
     OfferSnapshot missedAcceptance(long now) {
         if (pending == null || now - clickedAt <= MAX_CLICK_TO_PROGRESS_MS) return null;
         OfferSnapshot missed = pending.offer;
-        note(DecisionLog.StepKind.ACCEPT_UNCONFIRMED, pending.line, "");
+        note(pending.automaticRequest ? DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED
+                : DecisionLog.StepKind.ACCEPT_UNCONFIRMED, pending.line,
+                pending.automaticRequest ? "no explicit pickup or delivery progress within 15 s" : "");
         clearPending();
         return missed;
     }
@@ -500,11 +544,18 @@ final class AcceptedOfferTracker {
      */
     Acceptance observeOtherScreen(List<String> labels, boolean offerFacts, long now) {
         if (pending == null || now - clickedAt > MAX_CLICK_TO_PROGRESS_MS) {
+            unconfirmedAutomatic("no explicit pickup or delivery progress within 15 s");
             clearPending();
             return null;
         }
+        After shown = classify(labels, offerFacts);
+        if (pending.automaticRequest && (shown == After.WAITING || shown == After.DASH_OVER
+                || shown == After.NEW_OFFER || DeclineConfirmation.hasPrompt(labels))) {
+            unconfirmedAutomatic("Dasher returned to waiting, ended the dash, or showed another offer/decline question");
+            return null;
+        }
         if (pending.goneAt < 0) pending.goneAt = now;
-        if (!isDeliveryScreen(labels) || classify(labels, offerFacts) != After.ROUTE) return null;
+        if (!isDeliveryScreen(labels) || shown != After.ROUTE) return null;
         Sighting s = pending;
         clearPending();
         Watch w = watch;
@@ -512,7 +563,8 @@ final class AcceptedOfferTracker {
         if (w != null && w.sameOffer(s.line, s.addOn)) watch = null;
         String why = s.addOn ? null : notLearnedWithTap(s.deliveryBefore, s.secondsLeft, s.countdownAt, s.goneAt);
         if (why != null) {
-            note(DecisionLog.StepKind.NOT_LEARNED, s.line, why);
+            note(s.automaticRequest ? DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED
+                    : DecisionLog.StepKind.NOT_LEARNED, s.line, why);
             return null;
         }
         lastClear = After.ROUTE;
@@ -619,6 +671,7 @@ final class AcceptedOfferTracker {
      * taken as accepted without a tap (a delivery screen after it would prove nothing).
      */
     void declineRequestedElsewhere() {
+        unconfirmedAutomatic("a decline was requested before delivery confirmation");
         Watch w = watch;
         if (w != null) w.declinedElsewhere = true;
     }
@@ -628,6 +681,7 @@ final class AcceptedOfferTracker {
      * the user tapped Decline on the offer watched, if it was read moments ago. Held until Dasher moves on.
      */
     void declineQuestion(long now) {
+        unconfirmedAutomatic("Dasher asked to confirm declining it before delivery confirmation");
         Watch w = watch;
         if (w == null) return;
         if (w.questionAt < 0) {
@@ -651,6 +705,7 @@ final class AcceptedOfferTracker {
      * Nothing is taught at the tap itself.
      */
     void declineTapped(long now) {
+        unconfirmedAutomatic("you tapped Decline before delivery confirmation");
         Watch w = watch;
         if (w == null || now - w.lastAt > MAX_OFFER_AGE_AT_CLICK_MS) return;
         w.declineTapped = true;
@@ -801,6 +856,9 @@ final class AcceptedOfferTracker {
 
     /** A timeout only records that no acceptance was established; it never reads a screen or teaches. */
     boolean expire(long now) {
+        if (pending != null && pending.automaticRequest && now - clickedAt > MAX_CLICK_TO_PROGRESS_MS) {
+            return unconfirmedAutomatic("no explicit pickup or delivery progress within 15 s");
+        }
         Watch w = watch;
         if (w == null || w.leftAt < 0 || now - w.leftAt < AFTER_MS) return false;
         resolve(w, End.TIMEOUT, now);
@@ -828,11 +886,13 @@ final class AcceptedOfferTracker {
 
     /** When {@link #tick} is next due (uptime), or -1 when nothing is waiting. */
     long nextDeadline() {
+        long automaticDue = pending != null && pending.automaticRequest
+                ? clickedAt + MAX_CLICK_TO_PROGRESS_MS + 1 : -1;
         Watch w = watch;
-        if (w == null || w.leftAt < 0) return -1;
+        if (w == null || w.leftAt < 0) return automaticDue;
         long due = w.leftAt + AFTER_MS;
         if (w.unclear != null) due = Math.min(due, w.unclearSince + SETTLE_MS);
-        return due;
+        return automaticDue < 0 ? due : Math.min(due, automaticDue);
     }
 
     /** How long ago the offer watched left the screen, or -1 while it shows or none is watched. */
@@ -1048,6 +1108,7 @@ final class AcceptedOfferTracker {
 
     /** Dasher left the screen for a moment (the shade, recent apps, another app): what was seen is kept. */
     void forgetVisible() {
+        unconfirmedAutomatic("Dasher left the readable foreground before delivery confirmation");
         visible = null;
     }
 

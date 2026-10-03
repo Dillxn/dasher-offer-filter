@@ -103,7 +103,7 @@ import java.util.List;
 final class MinimumsStarView extends View {
     private static final String[] NAMES = {"Pay", "Per mile", "Per minute", "Per stop",
             "Final-stop hotspot proximity", "Per item"};
-    static final String[] AXIS_LABELS = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot", "Pay / item"};
+    static final String[] AXIS_LABELS = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Hotspot unavailable", "Pay / item"};
     /** Each spoke is marked with an icon; the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
             Glyph.Shape.PIN, Glyph.Shape.HOTSPOT, Glyph.Shape.BAG};
@@ -260,6 +260,9 @@ final class MinimumsStarView extends View {
     interface Changes {
         /** Sets spoke {@code axis}'s minimum to {@code cents} of its own unit (0 turns it off), saving it at once. */
         void setMinimum(int axis, int cents);
+
+        /** Explains the unavailable hotspot measurement; an existing rule may be turned off only by explicit choice. */
+        default void explainHotspotUnavailable() {}
 
         /**
          * Makes the adaptive minimums the saved set ones; answers what Undo puts back (the saved minimums it replaced,
@@ -688,6 +691,20 @@ final class MinimumsStarView extends View {
         boolean rounded = offer.payCents % offer.items != 0;
         String rate = String.format(java.util.Locale.US, "$%.2f/item", offer.payCents / (100.0 * offer.items));
         return count + " · " + (rounded ? "≈" : "") + rate;
+    }
+
+    /** A missing shopping count and an inapplicable item rule have different meanings. */
+    static String itemState(OfferSnapshot offer) {
+        String observed = itemsLabel(offer);
+        return observed.isEmpty() ? "Item rule not applicable: no shopping or items shown" : observed;
+    }
+
+    private OfferSnapshot selectedFacts() {
+        // The editable example may borrow route quantities from an older readable offer. Never combine its pay
+        // with a newly selected unreadable offer's item count, or imply a rate that was not observed.
+        long selectedAt = openAt >= 0 ? openAt : emphasizedAt >= 0 ? emphasizedAt : newestEntryAt;
+        for (DecisionLog.Entry entry : shownRecent) if (entry.at == selectedAt) return entry.facts;
+        return OfferSnapshot.UNKNOWN;
     }
 
     /** Each recent offer's cents on each spoke for the example offer, as the strict chart places it. */
@@ -1251,10 +1268,13 @@ final class MinimumsStarView extends View {
 
     private void drawAxisLabels(Canvas canvas) {
         placeAxisLabels();
+        int color = axisText.getColor();
         for (int i = 0; i < axisLabels.length; i++) {
             RectF box = axisLabels[i];
+            axisText.setColor(i == AreaScore.HOTSPOT ? ui.inkSecondary : color);
             if (!box.isEmpty()) canvas.drawText(AXIS_LABELS[i], box.left, box.top - axisText.ascent(), axisText);
         }
+        axisText.setColor(color);
     }
 
     /** The rings' dollars as the sky shows them now, left to right (for tests). */
@@ -2561,7 +2581,13 @@ final class MinimumsStarView extends View {
                         stopsPressed = false;
                         invalidate();
                     }
-                    if (held >= 0 && alongSpoke(held, x - downX, y - downY)) {
+                    if (held == AreaScore.HOTSPOT) {
+                        // There is no production measurement reader. Keep saved rules, but do not offer a
+                        // draggable control that can quietly make all compensated scores unreadable.
+                        keepTouch(false);
+                        held = -1;
+                        invalidate();
+                    } else if (held >= 0 && alongSpoke(held, x - downX, y - downY)) {
                         takeKnob();
                     } else if (held >= 0) {
                         // Across the spoke: not a drag, and no longer a tap.
@@ -2600,9 +2626,12 @@ final class MinimumsStarView extends View {
                 boolean asked = adaptiveHeld;
                 boolean stops = stopsPressed && tapping;
                 boolean tap = tapping;
+                boolean hotspot = tap && held == AreaScore.HOTSPOT;
                 long tappedAt = tap ? pressedAt : -1;
                 endTouch(true);
-                if (button) {
+                if (hotspot) {
+                    explainHotspot();
+                } else if (button) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     pressAdopt();
                 } else if (toggle) {
@@ -2685,6 +2714,7 @@ final class MinimumsStarView extends View {
      * the rings hold still until it is let go.
      */
     private void takeKnob() {
+        if (held == AreaScore.HOTSPOT) return;
         dragging = true;
         if (outer <= 0) {
             ringCents = FIRST_RING_CENTS;
@@ -2779,10 +2809,10 @@ final class MinimumsStarView extends View {
      * knob sits on its spoke's sparkle (as after adopting), the sparkle's outline shows over it.
      */
     private void drawKnobs(Canvas canvas, float cx, float cy, float radius, float glide) {
-        int color = setColor();
         float breathe = 1 + 0.14f * Motion.wave(3.2f, 0);
         for (int i = 0; i < NAMES.length; i++) {
             if (!knobShown(i) || i == readoutAxis()) continue;
+            int color = i == AreaScore.HOTSPOT ? ui.inkSecondary : setColor();
             float fraction = knobFraction(i, glide);
             float[] at = point(cx, cy, radius, i, fraction);
             line.setPathEffect(null);
@@ -2793,7 +2823,7 @@ final class MinimumsStarView extends View {
                 line.setColor((color & 0x00FFFFFF) | 0xC0000000);
                 line.setStrokeWidth(ui.dp(1.8f));
                 canvas.drawCircle(at[0], at[1], ui.dp(5) * detail, line);
-                if (beckoning()) {
+                if (i != AreaScore.HOTSPOT && beckoning()) {
                     // Two swells, each a ring growing out of the knob's own and fading.
                     long half = BECKON_MS / 2;
                     float swell = ((SystemClock.uptimeMillis() - beckonedAt) % half) / (float) half;
@@ -2860,8 +2890,20 @@ final class MinimumsStarView extends View {
     private String focusedReadout() {
         int axis = readoutAxis();
         if (axis < 0) return "";
-        String name = axis == AreaScore.HOTSPOT ? "Final stop → hotspot" : AXIS_LABELS[axis];
+        if (axis == AreaScore.HOTSPOT) return "Hotspot unavailable · tap for details";
+        if (axis == AreaScore.ITEM) {
+            String observed = itemsLabel(selectedFacts());
+            if (observed.isEmpty()) observed = "not applicable";
+            return "Min " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]) + " · " + observed;
+        }
+        String name = AXIS_LABELS[axis];
         return name + " · " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]);
+    }
+
+    /** Keep the selected item state inside the sky, including large fonts or unusually long numeric values. */
+    private String fittedReadout() {
+        pillText.setTextSize(Math.min(ui.sp(14), ui.dp(18)));
+        return Ui.fit(pillText, focusedReadout(), Math.max(0, getWidth() - ui.dp(30)), 0.85f).toString();
     }
 
     /**
@@ -2873,7 +2915,7 @@ final class MinimumsStarView extends View {
         int axis = readoutAxis();
         float fraction = dragging ? heldFraction() : knobFraction(axis, Motion.settle(glideStart, GLIDE_MS));
         float[] at = point(cx, cy, radius, axis, fraction);
-        String words = focusedReadout();
+        String words = fittedReadout();
         float height = Math.max(ui.dp(26), Ui.lineHeight(pillText) + ui.dp(8));
         float width = pillText.measureText(words) + ui.dp(22);
         float gap = ui.dp(30);
@@ -2896,7 +2938,7 @@ final class MinimumsStarView extends View {
 
     /** The held knob's readout ("$1.55/mi", or "off") in a small pill where {@link #placeReadout} put it. */
     private void drawReadout(Canvas canvas) {
-        String words = focusedReadout();
+        String words = fittedReadout();
         float height = pillBox.height();
         fill.setColor(setColor());
         canvas.drawRoundRect(pillBox, height / 2, height / 2, fill);
@@ -3583,11 +3625,11 @@ final class MinimumsStarView extends View {
     private String knobSaid(int axis) {
         int rate = setRates[axis];
         if (axis == AreaScore.ITEM) {
-            int chosen = strongShape();
-            OfferSnapshot offer = chosen < 0 ? exampleFacts : markFacts.get(chosen);
-            String observed = itemsLabel(offer);
-            if (observed.isEmpty()) observed = "No shopping or item count shown; item rule does not apply";
-            else if (!hasItems(offer)) observed += "; review needed while this minimum is on";
+            OfferSnapshot offer = selectedFacts();
+            String observed = itemState(offer);
+            if (offer != null && offer.itemCountApplicable && !hasItems(offer)) {
+                observed += "; review needed while this minimum is on";
+            }
             return KNOBS[axis] + ", " + readout(axis, rate) + ". " + observed
                     + ". Based on the observed total items, not unique products. No adaptive minimum on this spoke.";
         }
@@ -3598,7 +3640,10 @@ final class MinimumsStarView extends View {
                     + "final stop at most %s miles from nearest hotspot", rate / 100.0, distanceText(100.0 / rate))
                     : "off";
             return KNOBS[axis] + ", " + threshold + ". " + hotspotSaid(miles)
-                    + ". No adaptive minimum on this spoke.";
+                    + ". Automatic measurement unavailable: the app cannot read the final stop and actual hotspots."
+                    + (rate > 0 ? " The saved rule is still active and needs review when this distance is unknown."
+                            + " Tap for details or to turn the hotspot rule off." : " Tap for details.")
+                    + " No adaptive minimum on this spoke.";
         }
         String said = KNOBS[axis] + ", " + (rate > 0 ? DecisionLog.money(rate) : "off");
         if (learnedText[axis] == null) return said;
@@ -3615,11 +3660,17 @@ final class MinimumsStarView extends View {
     }
 
     private boolean setByReader(int axis, int rate) {
+        if (axis == AreaScore.HOTSPOT) return false;
         if (rate == setRates[axis] || changes == null) return false;
         changes.setMinimum(axis, rate);
         say(knobSaid(axis));
         nodesChanged();
         return true;
+    }
+
+    private void explainHotspot() {
+        say("Hotspot measurement unavailable. The app cannot read the final stop and actual hotspots.");
+        if (changes != null) changes.explainHotspotUnavailable();
     }
 
     @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() {
@@ -3655,7 +3706,7 @@ final class MinimumsStarView extends View {
         if (manager == null || !manager.isEnabled() || getParent() == null) return;
         AccessibilityEvent event = newEvent(type);
         event.setPackageName(getContext().getPackageName());
-        event.setClassName(node == ADOPT_ID || node >= OFFER_ID ? Button.class.getName()
+        event.setClassName(node == ADOPT_ID || node == AreaScore.HOTSPOT || node >= OFFER_ID ? Button.class.getName()
                 : node == SCORE_ID || node == ADAPTIVE_ID ? Switch.class.getName() : SeekBar.class.getName());
         if (node == SCORE_ID) event.setChecked(byArea);
         if (node == ADAPTIVE_ID) event.setChecked(adaptiveOn);
@@ -3699,6 +3750,7 @@ final class MinimumsStarView extends View {
             parts.add("rules said " + (result == OfferRule.Result.KEEP ? "pass"
                     : result == OfferRule.Result.DECLINE ? "decline" : "review"));
         }
+        parts.add(itemState(offer));
         if (markScores.get(m) >= 0) {
             parts.add("now scores " + markScores.get(m) + "% by area under the current minimums");
             int recorded = markEntries.get(m).scorePercent;
@@ -3881,6 +3933,14 @@ final class MinimumsStarView extends View {
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
                 return info;
             }
+            if (id == AreaScore.HOTSPOT) {
+                info.setClassName(Button.class.getName());
+                info.setClickable(true);
+                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription("Measurement unavailable");
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                        "Why hotspot measurement is unavailable"));
+                return info;
+            }
             int rate = setRates[id];
             info.setClassName(SeekBar.class.getName());
             float most = FilterSettings.MOST_CENTS / 100f;
@@ -3922,6 +3982,10 @@ final class MinimumsStarView extends View {
                     if (id == ADOPT_ID) timeUndo();
                     return true;
                 case AccessibilityNodeInfo.ACTION_CLICK:
+                    if (id == AreaScore.HOTSPOT) {
+                        explainHotspot();
+                        return true;
+                    }
                     if (id >= OFFER_ID) return openOffer(id - OFFER_ID);
                     if (id == SCORE_ID) {
                         pressScore();

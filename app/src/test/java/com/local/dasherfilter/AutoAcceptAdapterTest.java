@@ -194,6 +194,70 @@ public final class AutoAcceptAdapterTest {
         show(node("Map", false)); pass(16_000);
         assertNull(ActiveRouteStore.load(app)); assertEquals(1500, FilterStore.load(app).lastAcceptedCents);
     }
+    @Test public void genericDirectionsCannotPromoteAutomaticRequestThroughManualInference() {
+        show(node("Finding offers", false));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900);
+        assertEquals(1, clicks(accept));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        show(node("Directions", true));
+        assertNull(ActiveRouteStore.load(app));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        pass(16_000);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+    }
+    @Test public void idleEndsAutomaticConfirmationBeforeALaterUnrelatedDelivery() {
+        show(node("Finding offers", false));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900);
+        show(node("Finding offers", false));
+        show(node("Arrived at store", true));
+        assertNull(ActiveRouteStore.load(app));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void partialAcceptControlsCannotConfirmDeliveryBehindThem() {
+        show(node("Finding offers", false));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900);
+        AccessibilityNodeInfo partial = node("Arrived at store", true);
+        Shadows.shadowOf(partial).addChild(node("Accept", true));
+        show(partial);
+        assertNull(ActiveRouteStore.load(app));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void aRefusedAutomaticClickCannotBecomeAnInferredAcceptance() {
+        show(node("Finding offers", false));
+        AccessibilityNodeInfo root = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
+        Shadows.shadowOf(accept).setOnPerformActionListener((a, b) -> false);
+        show(root); pass(900);
+        show(node("Directions", true));
+        assertNull(ActiveRouteStore.load(app));
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void timeoutAndSameOfferRereadsNeverRecreateManualInferenceOrRetry() {
+        show(node("Finding offers", false));
+        AccessibilityNodeInfo root = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
+        show(root); pass(900); assertEquals(1, clicks(accept));
+        pass(16_000);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:13")); pass(900);
+        assertEquals(0, clicks(accept)); assertEquals(0, clicks(decline));
+        show(node("Directions", true));
+        show(node("Arrived at store", true));
+        assertNull(ActiveRouteStore.load(app));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+    }
+    @Test public void confirmedAutomaticRequestNeverSaysTheUserTappedAccept() {
+        show(node("Finding offers", false));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900);
+        show(node("Arrived at store", true));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(DecisionLog.accepted(entry));
+        for (DecisionLog.Step step : entry.steps) {
+            assertNotEquals(DecisionLog.StepKind.ACCEPT_TAPPED, step.kind);
+            assertFalse(step.detail.contains("you tapped Accept"));
+        }
+    }
     private void touch() {
         ShadowWindowManagerImpl windows = Shadow.extract(service.getSystemService(WindowManager.class));
         for (View view : new java.util.ArrayList<>(windows.getViews())) {

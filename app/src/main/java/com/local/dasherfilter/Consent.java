@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 10;
+    static final int VERSION = 11;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -35,7 +35,9 @@ final class Consent {
                 + "account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
-        {"Your data.", "Offer and dash text stays masked on this phone for up to 24 hours. Offer history includes observed item counts. Payment, account and earnings "
+        {"Your data.", "Offer and dash text stays masked on this phone for up to 24 hours. Offer history includes observed item counts. "
+                + "A local wait estimate keeps up to 200 numeric offer and observed-wait records for 24 hours; these records are not shared. "
+                + "Auto theme uses an existing allowed approximate location on this phone, or a local-clock fallback. Payment, account and earnings "
                 + "screens are discarded. Old diagnostic logs and unsent reports are cleared by this update. Only reports you "
                 + "turn on or share leave the phone, after you accept this notice."},
     };

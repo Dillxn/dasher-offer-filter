@@ -121,6 +121,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: the mascot.
     private TextView stateLine;
+    private TextView waitEstimateLine;
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
@@ -169,6 +170,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
     private View sunButton;
+    private long appearanceCheckedAt = -1;
+    private boolean changingAppearance;
     /**
      * The main page's sky: the header, the mascot with its counts and the page's few lines, with the constellation
      * drawn large behind them all whenever it is not up in the header.
@@ -348,6 +351,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        appearanceCheckedAt = -1;
         // Sound left turned down by a decline the screen reader could not finish is put back here too.
         if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
@@ -538,14 +542,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
             header.addView(splitButton, splitParams);
-            // The sun (or moon) the scene draws here is a button: a tap turns day into night and back.
+            // The existing sun/moon opens the four theme modes; no duplicate Settings row.
             View sun = new View(this);
-            sun.setContentDescription(ui.dark ? "Switch to day" : "Switch to night");
+            sun.setContentDescription(Appearance.resolve(this).description());
             sun.setBackground(ui.pressable(28));
-            sun.setOnClickListener(tapped -> {
-                Appearance.choose(this, !ui.dark);
-                recreate();
-            });
+            sun.setOnClickListener(tapped -> chooseAppearance());
             LinearLayout.LayoutParams sunParams = new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56));
             sunParams.setMarginEnd(ui.dp(10));
             header.addView(sun, sunParams);
@@ -695,6 +696,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         stateParams.gravity = Gravity.CENTER_HORIZONTAL;
         lines.addView(stateLine, stateParams);
+        waitEstimateLine = ui.text("", 13, ui.inkSecondary, false);
+        waitEstimateLine.setGravity(Gravity.CENTER_HORIZONTAL);
+        waitEstimateLine.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
+        waitEstimateLine.setOnClickListener(tapped -> OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Time until a matching offer")
+                .setMessage(QualifyingWaitStore.estimate(this, FilterStore.load(this)).detail())
+                .setPositiveButton("OK", null)));
+        LinearLayout.LayoutParams waitParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        waitParams.gravity = Gravity.CENTER_HORIZONTAL;
+        lines.addView(waitEstimateLine, waitParams);
         LinearLayout problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
         screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
@@ -874,6 +886,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         });
         minimums.setChanges(new MinimumsStarView.Changes() {
+            @Override public void explainHotspotUnavailable() {
+                explainHotspotRule();
+            }
+
             @Override public void setMinimum(int axis, int cents) {
                 int[] one = new int[AreaScore.AXES];
                 java.util.Arrays.fill(one, -1);
@@ -943,6 +959,28 @@ public final class MainActivity extends Activity implements Updater.Busy {
         rulesChanged();
         updateMeter();
         return true;
+    }
+
+    private void explainHotspotRule() {
+        FilterSettings saved = FilterStore.load(this);
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("Hotspot distance is unavailable")
+                .setMessage("The app cannot yet reliably read the last stop's distance to a current Dasher hotspot. "
+                        + "The Atlas shows your recorded offer areas, not Dasher's live hotspots. "
+                        + (saved.hotspotProximityHundredths > 0
+                        ? "Your saved hotspot rule is still on. An offer needing this missing distance stays for "
+                                + "you to review; it cannot qualify for auto-accept. You can turn this rule off."
+                        : "This spoke stays off until the distance can be measured."))
+                .setPositiveButton("OK", null);
+        if (saved.hotspotProximityHundredths > 0) {
+            dialog.setNeutralButton("Turn hotspot rule off", (d, which) -> {
+                int[] changes = new int[AreaScore.AXES];
+                java.util.Arrays.fill(changes, -1);
+                changes[AreaScore.HOTSPOT] = 0;
+                setMinimums(changes);
+            });
+        }
+        OwnWindowTouches.show(dialog);
     }
 
     /**
@@ -1073,7 +1111,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         LinearLayout switches = ui.column();
         body.addView(switches, Ui.matchWidth());
-        Switch mute = ui.toggle(switches, "Mute Dasher's ring while declining",
+        Switch mute = ui.toggle(switches, "Quiet Dasher while declining",
                 FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
         // Peek (on unless turned off): Dasher is brought up for a moment to read a background offer.
@@ -1246,6 +1284,39 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- State ----
 
+    private void chooseAppearance() {
+        Appearance.Mode[] modes = Appearance.Mode.values();
+        String[] labels = new String[modes.length];
+        for (int i = 0; i < modes.length; i++) labels[i] = modes[i].label;
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Theme")
+                .setSingleChoiceItems(labels, Appearance.mode(this).ordinal(), (dialog, which) -> {
+                    if (Appearance.choose(this, modes[which])) {
+                        dialog.dismiss();
+                        changingAppearance = true;
+                        recreate();
+                    } else toast("Theme could not be saved. Please try again.");
+                })
+                .setNeutralButton("About Auto", (dialog, which) -> OwnWindowTouches.show(
+                        new AlertDialog.Builder(this).setTitle("Auto theme")
+                                .setMessage(Appearance.explanation(this)).setPositiveButton("OK", null)))
+                .setNegativeButton("Cancel", null));
+    }
+
+    /** A visible page follows sunrise/sunset within a minute; no timer or location read while stopped. */
+    private boolean refreshAppearance() {
+        if (changingAppearance) return true;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (appearanceCheckedAt >= 0 && now >= appearanceCheckedAt && now - appearanceCheckedAt < 60_000) return false;
+        appearanceCheckedAt = now;
+        Appearance.State appearance = Appearance.resolve(this);
+        if (sunButton != null) sunButton.setContentDescription(appearance.description());
+        if (appearance.night == ui.dark) return false;
+        changingAppearance = true;
+        recreate();
+        return true;
+    }
+
     private void refreshScreenAwake() {
         int flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
         if (resumed && OfferFilterService.isConnected() && !Dashing.isPaused(this)
@@ -1256,6 +1327,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void refresh() {
         refreshScreenAwake();
         if (stateLine == null || noticeShown()) return;
+        if (refreshAppearance()) return;
         arrangeForSplit();
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
@@ -1271,6 +1343,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
             hero.setAction("Set up rules");
         }
         stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
+        waitEstimateLine.setVisibility(saved.enabled && saved.hasAnyRule() ? View.VISIBLE : View.GONE);
+        if (saved.enabled && saved.hasAnyRule()) {
+            String estimate = QualifyingWaitStore.estimate(this, saved).label();
+            if (!estimate.contentEquals(waitEstimateLine.getText())) waitEstimateLine.setText(estimate);
+        }
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
             String label = DasherSplit.label(this);
@@ -1839,11 +1916,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void confirmClearHistory() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Clear history?")
-                .setMessage("Removes the offer decisions, captured screen text, offer areas and cached place names "
+                .setMessage("Removes the offer decisions, waiting estimates, captured screen text, offer areas and cached place names "
                         + "from this phone. Your rules stay.")
                 .setPositiveButton("Clear", (dialog, which) -> {
                     cancelReportShare();
                     DecisionLog.clear(this);
+                    QualifyingWaitStore.clear(this);
                     DiagnosticLog.clear(this);
                     AreaMap.forget(this);
                     Places.forget(this);

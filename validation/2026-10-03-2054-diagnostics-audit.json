@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-03T20:54:44Z",
+  "issueUpdatedSince": "2026-10-03T20:17:00Z",
+  "issueNumbers": [],
+  "newGmailIds": [],
+  "gmailAfterEpoch": 1791058620,
+  "priorDeduplication": {
+    "40/41": "one shopping-offer target; observed count missing",
+    "34/35": "same target",
+    "36/37": "same target"
+  },
+  "newDirectReports": [
+    "Automatic Accept displayed accepted but Dasher did not accept",
+    "Historical 0.4.56 in-app Dasher map sometimes did not open; current status unknown"
+  ],
+  "findings": {
+    "autoAccept": "Four regressions reproduce false acceptance inference; actual physical request failure lacks time-aligned report.",
+    "map": "No established cause or fix. Code audit retained existing guards; edge-tab touch overlap is unproven."
+  },
+  "rawDiagnosticsStored": false,
+  "emailsSent": false,
+  "reportsDeleted": false
+}

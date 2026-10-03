@@ -55,7 +55,9 @@ final class OfferSilencer {
     private boolean silencing;
     /** Only the alarm stream may go down (a decline during a peek); written and read on the owner's thread. */
     private volatile boolean alarmOnly;
-    /** When a passing offer's alert last asked to be heard; elapsed-realtime clock, 0 for never. */
+    /** Original first-tap uptime of this decline episode, or 0 when its age is not known. */
+    private long declineBeganAt;
+    /** When a passing/review offer's alert last asked to be heard; uptime clock, 0 for never. */
     private static volatile long passingAlertAt;
 
     /**
@@ -85,7 +87,18 @@ final class OfferSilencer {
      * so until {@link #stop}.
      */
     void start(boolean alarmOnly) {
+        start(alarmOnly, 0);
+    }
+
+    /**
+     * Starts or refreshes one proven decline. The original first-tap uptime stays the same through retries: a newer
+     * passing/review alert must keep its sound over that old episode. An alert that preceded this decline does not
+     * delay it. An unknown or future episode time retains the conservative full alert protection.
+     */
+    void start(boolean alarmOnly, long firstTapAt) {
         if (audio == null) return;
+        long now = SystemClock.uptimeMillis();
+        declineBeganAt = firstTapAt > 0 && firstTapAt <= now ? firstTapAt : 0;
         if (!silencing) {
             silencing = true;
             this.alarmOnly = alarmOnly;
@@ -102,6 +115,7 @@ final class OfferSilencer {
         if (silencing) {
             silencing = false;
             alarmOnly = false;
+            declineBeganAt = 0;
             handler.removeCallbacks(timeout);
             if (audio != null) audio.unregisterAudioPlaybackCallback(newPlayers);
         }
@@ -110,11 +124,12 @@ final class OfferSilencer {
 
     /**
      * A passing offer is about to ring: its alert outranks a decline still in progress, so the sound comes back now
-     * and stays up for {@link #MAX_MS} while the alert plays. Called on the main thread.
+     * and stays up over that earlier decline for {@link #MAX_MS} while the alert plays. A subsequent proven decline
+     * has its own sound authority. Called on the main thread.
      */
     static void yieldToPassingAlert(Context context) {
         synchronized (LOCK) {
-            passingAlertAt = SystemClock.elapsedRealtime();
+            passingAlertAt = SystemClock.uptimeMillis();
             restoreLocked(context);
         }
     }
@@ -131,9 +146,11 @@ final class OfferSilencer {
         }
     }
 
-    private static boolean yielding() {
-        long since = SystemClock.elapsedRealtime() - passingAlertAt;
-        return passingAlertAt != 0 && since >= 0 && since < MAX_MS;
+    private boolean yielding() {
+        long alertAt = passingAlertAt;
+        long since = SystemClock.uptimeMillis() - alertAt;
+        return alertAt != 0 && since >= 0 && since < MAX_MS
+                && (declineBeganAt <= 0 || alertAt >= declineBeganAt);
     }
 
     /** Forgets a recent passing alert, as a process restart would. */

@@ -71,4 +71,70 @@ public final class AcceptedOfferTrackerTest {
         tracker.acceptClicked(1100);
         assertNotNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store."), 2000));
     }
+
+    private AcceptedOfferTracker requested(boolean dispatched, boolean deliveryBefore, int seconds) {
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker();
+        OfferSnapshot offer = new OfferSnapshot(2000, 4.0, 20, 2);
+        tracker.afterScreen(Arrays.asList(deliveryBefore ? "Arrived at store" : "Finding offers"), 900);
+        tracker.observeOffer(offer, offer, false, offer, seconds, deliveryBefore, 1000);
+        tracker.offerLeftAlone(offer, offer, offer, false, true, seconds, deliveryBefore, 1000);
+        tracker.automaticAcceptRequested(offer, 1800, dispatched);
+        return tracker;
+    }
+
+    @Test public void automaticRequestDoesNotBecomeAManualTapOrInferFromGenericRoute() {
+        AcceptedOfferTracker tracker = requested(true, false, 30);
+        assertEquals(DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED, tracker.takeNotes().get(0).kind);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Directions"), 2000));
+        tracker.afterScreen(Arrays.asList("Directions"), 2000);
+        assertTrue(tracker.takeNotes().isEmpty());
+        assertEquals(16_801, tracker.nextDeadline());
+        assertTrue(tracker.expire(16_801));
+        assertEquals(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, tracker.takeNotes().get(0).kind);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 16_900));
+    }
+
+    @Test public void refusedAutomaticRequestCannotUseTheUntappedClosePath() {
+        AcceptedOfferTracker tracker = requested(false, false, 30);
+        assertEquals(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, tracker.takeNotes().get(0).kind);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2000));
+        tracker.afterScreen(Arrays.asList("Arrived at store"), 2000);
+        assertTrue(tracker.takeNotes().isEmpty());
+    }
+
+    @Test public void automaticRequestNeedsDefiniteProgressButNeverPriorOrExpiredRoute() {
+        AcceptedOfferTracker tracker = requested(true, false, 30);
+        assertNotNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2000));
+        tracker = requested(true, true, 30);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2000));
+        assertEquals(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, tracker.takeNotes().get(1).kind);
+        tracker = requested(true, false, 4);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 3000));
+        assertEquals(DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED, tracker.takeNotes().get(1).kind);
+    }
+
+    @Test public void automaticConfirmationCannotSurviveIdleNewOfferDeclineOrHiddenForeground() {
+        for (String screen : Arrays.asList("Finding offers", "Dash now", "New Delivery!")) {
+            AcceptedOfferTracker tracker = requested(true, false, 30);
+            assertNull(tracker.observeOtherScreen(Arrays.asList(screen), 2000));
+            assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
+        }
+        AcceptedOfferTracker tracker = requested(true, false, 30);
+        tracker.declineTapped(2000);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
+        tracker = requested(true, false, 30);
+        tracker.forgetVisible();
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
+    }
+
+    @Test public void returningOfferOrFreshCountdownEndsOnlyAutomaticConfirmation() {
+        AcceptedOfferTracker tracker = requested(true, false, 30);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Map"), 2000));
+        OfferSnapshot offer = new OfferSnapshot(2000, 4.0, 20, 2);
+        tracker.observeOffer(offer, offer, false, offer, 28, false, 2100);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
+        tracker = requested(true, false, 30);
+        tracker.observeOffer(offer, offer, false, offer, 40, false, 2100);
+        assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
+    }
 }

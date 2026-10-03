@@ -5,9 +5,10 @@ import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Looper;
+import android.os.Bundle;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.widget.SeekBar;
+import android.widget.Button;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.time.Duration;
@@ -51,7 +52,7 @@ public class HotspotConstellationTest extends AndroidAdapterTestBase {
         return sky.star;
     }
 
-    @Test public void screenReaderAdjustsFifthRuleInReciprocalMilesWithoutChangingOtherRules() {
+    @Test public void unavailableHotspotExplainsSavedRuleAndRejectsAllNumericAccessibilityEdits() {
         FilterStore.save(app, RULES);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -59,34 +60,64 @@ public class HotspotConstellationTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             AccessibilityNodeInfo knob = node(star, AreaScore.HOTSPOT);
             assertNotNull(knob);
-            assertEquals(SeekBar.class.getName(), knob.getClassName());
-            assertEquals(0.5f, knob.getRangeInfo().getCurrent(), 0.001f);
+            assertEquals(Button.class.getName(), knob.getClassName());
+            assertNull("an unavailable measurement is not an adjustable slider", knob.getRangeInfo());
+            assertFalse(knob.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS));
+            assertFalse(knob.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD));
             String said = knob.getContentDescription().toString();
             assertTrue(said, said.contains("0.50 inverse miles"));
             assertTrue(said, said.contains("at most 2 miles"));
             assertTrue(said, said.contains("unavailable"));
             assertFalse(said, said.contains("$"));
-            assertTrue(act(star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
-            assertEquals(55, FilterStore.load(app).hotspotProximityHundredths);
+            assertTrue(said, said.contains("saved rule is still active"));
+            assertFalse(act(star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
+            assertFalse(act(star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD));
+            for (float value : new float[] {0, 0.55f, 1}) {
+                Bundle arguments = new Bundle();
+                arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, value);
+                assertFalse(star.getAccessibilityNodeProvider().performAction(AreaScore.HOTSPOT,
+                        android.R.id.accessibilityActionSetProgress, arguments));
+            }
+            assertEquals(50, FilterStore.load(app).hotspotProximityHundredths);
             assertArrayEquals(new int[] {1000, 200, 50, 500},
                     Arrays.copyOf(FilterStore.load(app).minimums(), 4));
-            assertEquals("0.55/mi · ≤1.82 mi", MinimumsStarView.readout(AreaScore.HOTSPOT, 55));
+            assertEquals("0.50/mi · ≤2 mi", MinimumsStarView.readout(AreaScore.HOTSPOT, 50));
         }
     }
 
-    @Test public void fifthKnobDragSavesReciprocalStepsAndCanTurnOff() {
+    @Test public void hotspotDragNeitherEnablesChangesNorClearsSavedRulesAndTapExplains() {
         try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
                 .setup()) {
-            LoneSky sky = new LoneSky(activity.get(), RULES);
-            float[] start = sky.star.knobAt(AreaScore.HOTSPOT);
-            sky.swipe(start, new float[] {start[0], start[1] - sky.ui.dp(70)});
-            assertFalse(sky.saves.isEmpty());
-            String saved = sky.saves.get(sky.saves.size() - 1);
-            assertTrue(saved, saved.startsWith("4="));
-            assertEquals(0, Integer.parseInt(saved.substring(2)) % 5);
-            start = sky.star.knobAt(AreaScore.HOTSPOT);
-            sky.swipe(start, new float[] {sky.star.skyX(), sky.star.skyY()});
-            assertEquals("4=0", sky.saves.get(sky.saves.size() - 1));
+            for (int existing : new int[] {0, 50}) {
+                LoneSky sky = new LoneSky(activity.get(), RULES.withHotspotProximity(existing));
+                final int[] explanations = {0};
+                sky.star.setChanges(new MinimumsStarView.Changes() {
+                    @Override public void setMinimum(int axis, int value) { sky.saves.add(axis + "=" + value); }
+                    @Override public int[] adoptLearned() { return null; }
+                    @Override public void restore(int[] values) {}
+                    @Override public void explainHotspotUnavailable() { explanations[0]++; }
+                });
+                float[] start = sky.star.knobAt(AreaScore.HOTSPOT);
+                sky.swipe(start, new float[] {start[0], start[1] - sky.ui.dp(70)});
+                assertTrue("drag out does not enable/increase", sky.saves.isEmpty());
+                start = sky.star.knobAt(AreaScore.HOTSPOT);
+                sky.swipe(start, new float[] {sky.star.skyX(), sky.star.skyY()});
+                assertTrue("drag in does not silently disable", sky.saves.isEmpty());
+                assertEquals(0, explanations[0]);
+                // Direct dispatch keeps this tap independent of the scroll changed by the preceding drag.
+                start = sky.star.knobAt(AreaScore.HOTSPOT);
+                long now = android.os.SystemClock.uptimeMillis();
+                for (int action : new int[] {android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP}) {
+                    android.view.MotionEvent event = android.view.MotionEvent.obtain(now, now, action,
+                            start[0], start[1], 0);
+                    sky.star.onTouchEvent(event);
+                    event.recycle();
+                }
+                assertEquals(1, explanations[0]);
+                assertTrue(act(sky.star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_CLICK));
+                assertEquals(2, explanations[0]);
+                assertTrue(sky.saves.isEmpty());
+            }
         }
     }
 

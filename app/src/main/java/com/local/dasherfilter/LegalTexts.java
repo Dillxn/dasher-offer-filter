@@ -147,7 +147,9 @@ final class LegalTexts {
             identifier of the app previously in front. It does not read that app's text. It also checks screen \
             lock, keyboard and window state, call/audio mode, and Android's available microphone/camera-in-use \
             indicators; it does not record audio or images.
-            - Approximate location, only if you allow it, for the offer map. It never asks for precise location.
+            - Approximate location, only if you allow it, for the offer map. Auto theme can use the same existing, \
+            fresh approximate location while the offer map is enabled, to calculate sunrise and sunset on the \
+            phone. Theme selection never requests a new location fix or precise location.
 
             Before you accept the current first-run notice, it reads none of this and sends no reports.
 
@@ -160,6 +162,15 @@ final class LegalTexts {
             The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or \
             addresses. This candidate has no automatic reader for that distance and displays it as unavailable; it \
             does not obtain it from your location or the offer map.
+            - Up to 200 numeric wait-estimate records, never older than 24 hours: the observation time, positively \
+            observed waiting duration and any observed offer's pay, miles, minutes, stops, item count/applicability \
+            and numeric hotspot distance if ever available. These separate records contain no merchant names, \
+            screen text, addresses or coordinates and are never included in reports or uploaded. Only visible, \
+            unlocked, eligible waiting is measured; rejected-offer handling counts only after a later recognized \
+            wait or standalone offer confirms it continued. Hidden, unknown, delivery, locked, paused and \
+            stopped-service time is excluded. A restart does not resume an old waiting timer. The estimate rechecks \
+            these numeric offers against your current rules and stays unavailable until enough readable \
+            observations exist; old decision timestamps alone are not treated as waiting time.
             - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. \
             Other screens are captured only during a dash or within ten minutes of a readable offer, and only when \
             positively recognized as offer, confirmation, idle, delivery or navigation screens. \
@@ -183,6 +194,10 @@ final class LegalTexts {
             - A pending hand-decline observation can retain the same numeric offer facts, including observed item \
             count/applicability, to reconcile its outcome, for at most one hour.
             - A GitHub connection, if you set one up, and the state of updates.
+            - Your Day, Night, System or Auto theme choice. Auto is the default for new choices; it calculates the \
+            local sun cycle using only an existing permitted approximate location, without a network request or a \
+            separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
+            to 6 pm. Existing explicit day/night choices are preserved.
             - During Peek, the previous app's identifier and launcher component stay only in memory. They are \
             cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 \
             seconds after returning). They are never saved or sent; Peek logs describe only the kind of previous \
@@ -263,8 +278,9 @@ final class LegalTexts {
             requires an unlocked, quiet phone and skips when its checks find typing, a call, microphone/camera use, \
             split or floating windows, a pinned or unrecognized app, or another conflicting action. Its checks \
             depend on what Android exposes; they are not a safety guarantee.
-            - Clear history (Settings) removes the decisions, both logs, the offer map and cached place names, plus \
-            the temporary restart/error records above. Lookups already in progress cannot restore cleared names.
+            - Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map \
+            and cached place names, plus the temporary restart/error records above. Lookups and wait-record writes \
+            already in progress cannot restore cleared history.
             - Turning Send problem reports off, or disconnecting GitHub, stops reports and discards reports not yet \
             sent.
             - Disconnecting GitHub (Settings) removes the GitHub token.

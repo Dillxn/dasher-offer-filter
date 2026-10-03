@@ -62,7 +62,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void visibleAxisNamesDoNotStealAnyOfTheSixKnobDrags() {
+    @Test public void visibleAxisNamesKeepSupportedDragsAndLeaveUnavailableHotspotUnchanged() {
         FilterStore.save(app, RULES);
         // With setup complete the lower spokes have no foreground warning over them. Such a warning deliberately
         // owns its text area; this exercises all six visible knobs with the new labels present.
@@ -90,7 +90,9 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
                         from[1] + (float) Math.sin(angle) * distance};
                 dragKnob(content, star, from, to, null);
                 int[] after = FilterStore.load(app).minimums();
-                assertTrue("drag reaches named axis " + axis, after[axis] > before[axis]);
+                if (axis == AreaScore.HOTSPOT) {
+                    assertEquals("unavailable measurement cannot be increased", before[axis], after[axis]);
+                } else assertTrue("drag reaches named axis " + axis, after[axis] > before[axis]);
                 for (int other = 0; other < AreaScore.AXES; other++) {
                     if (other != axis) assertEquals("only the chosen spoke changes", before[other], after[other]);
                 }
@@ -130,7 +132,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     private static void assertNamedAxes(MinimumsStarView star) {
-        String[] expected = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot", "Pay / item"};
+        String[] expected = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Hotspot unavailable", "Pay / item"};
         List<RectF> labels = new ArrayList<>();
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
             assertEquals("the visible name identifies the actual metric", expected[axis], star.axisLabelText(axis));

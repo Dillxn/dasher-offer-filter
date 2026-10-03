@@ -124,7 +124,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertNull("all is well: no setup row", shownTextContaining(content, "Fix"));
 
             // What stays: two switches and a few rows.
-            assertTrue(findButton(content, "Mute Dasher's ring while declining").isShown());
+            assertTrue(findButton(content, "Quiet Dasher while declining").isShown());
             assertTrue(findButton(content, "Offer map").isShown());
             assertTrue(row(content, "Updates").isShown());
             assertNotNull(shownButton(content, "Share report"));

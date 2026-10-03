@@ -596,6 +596,10 @@ public final class OfferFilterService extends AccessibilityService {
      * {@link DasherScene#WAITING}, the tab tucks away during an offer or a delivery.
      */
     private DasherScene scene = DasherScene.UNKNOWN;
+    /** Numeric facts for the wait estimator, handed off only after this read made its decision/tap. */
+    private OfferSnapshot waitReadOffer;
+    private boolean waitReadExcluded;
+    private boolean waitReadNewInstance;
     /** This read's labels once it has read a screen without finding it too big, else null. */
     private List<String> sceneLabels;
     /** Whether this read was skipped: Android did not give the active window. */
@@ -663,6 +667,7 @@ public final class OfferFilterService extends AccessibilityService {
             }
             if (busy(now)) {
                 if (windowsChangedSinceLastLook()) scanNow(now, "windows changed");
+                else syncWaitHeartbeat();
                 watchWindows(now + WINDOW_WATCH_MS);
                 return;
             }
@@ -1247,6 +1252,7 @@ public final class OfferFilterService extends AccessibilityService {
         errorAttempt = null; // Revoke Back immediately, even while the scanner is inside a slow read.
         if (screenAwake != null) screenAwake.stop();
         onScanner(() -> {
+            stopWaitEstimate();
             cancelAutoAccept(true);
             scanner.removeCallbacks(recheck);
             recheckPending = false;
@@ -1316,6 +1322,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** On the main thread: everything of ours leaves the screen, the sound comes back, and the scanner ends. */
     private void stop() {
+        stopWaitEstimate();
         boolean first = !stopped;
         stopped = true;
         if (screenAwake != null) screenAwake.stop();
@@ -1373,6 +1380,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void scannerFailed(RuntimeException error) {
         if (scannerFaulted) return;
         scannerFaulted = true;
+        stopWaitEstimate();
         OfferSnapshot waitingAccept = autoAccept.candidate();
         autoAcceptWatched = false;
         autoAccept.block(SystemClock.uptimeMillis());
@@ -1432,6 +1440,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void suspendScreenReading() {
+        stopWaitEstimate();
         cancelAutoAccept(true);
         long now = SystemClock.uptimeMillis();
         if (declineState.hasPendingConfirmation(now) || episode.active(now)) {
@@ -1572,10 +1581,11 @@ public final class OfferFilterService extends AccessibilityService {
             stop = () -> dasherEvents.get() != events;
         }
         try {
-            if (look(stop) == null) return;
+            if (look(stop) == null) { syncWaitHeartbeat(); return; }
         } catch (RuntimeException unreadable) {
             if (!Screen.NOT_SHOWN.equals(screen)) screen = Screen.NOT_SHOWN;
         }
+        syncWaitHeartbeat();
         syncOverlay();
     }
 
@@ -3251,7 +3261,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A guarded return is already queued on main; no new read/tap may cross that boundary.
         if (peekReturning) return false;
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
-        if (!Consent.accepted(this)) { cancelAutoAccept(true); return false; }
+        if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true); return false; }
         restoreRestartState();
         long started = SystemClock.uptimeMillis();
         long overlayAtStart = overlayTransition.get();
@@ -3270,6 +3280,9 @@ public final class OfferFilterService extends AccessibilityService {
         readWaitedMs = Math.max(0, started - eventAt);
         readCap = maxNodes;
         DasherScene before = scene;
+        waitReadOffer = null;
+        waitReadExcluded = false;
+        waitReadNewInstance = false;
         sceneLabels = null;
         readSkipped = false;
         readShowsQuestion = false;
@@ -3298,6 +3311,7 @@ public final class OfferFilterService extends AccessibilityService {
             episode.readDuration(lastReadDurationMs);
             // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
+            syncWaitRead();
             if (sceneLabels != null && !readSkipped && overlayTransition.get() == overlayAtStart) {
                 if (overlayApprovedTransition != overlayAtStart) overlayGiven = null;
                 overlayApprovedTransition = overlayAtStart;
@@ -3308,6 +3322,32 @@ public final class OfferFilterService extends AccessibilityService {
             noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt,
                     hotAtStart || busy(lastScanEndAt));
         }
+    }
+
+    /** Display-only timing: failure cannot alter automation, capture extra words or delay its first tap. */
+    private boolean waitCoverageEligible() {
+        return !stopped && !scannerFaulted && Consent.accepted(this) && phoneReadable()
+                && screen.dasherReadable && FilterStore.load(this).enabled && Dashing.on(this)
+                && !Dashing.isPaused(this) && !inCall() && ActiveRouteStore.load(this) == null;
+    }
+
+    private void stopWaitEstimate() {
+        try { QualifyingWaitStore.stop(this); }
+        catch (RuntimeException unavailable) { /* Optional display-only estimate. */ }
+    }
+
+    private void syncWaitRead() {
+        try {
+            QualifyingWaitStore.screen(this, waitCoverageEligible() && !readSkipped, scene,
+                    waitReadOffer, waitReadExcluded, waitReadNewInstance);
+        } catch (RuntimeException unavailable) {
+            // The estimate is optional. Never turn a timing/storage failure into an offer action or scanner fault.
+        }
+    }
+
+    private void syncWaitHeartbeat() {
+        try { QualifyingWaitStore.heartbeat(this, waitCoverageEligible()); }
+        catch (RuntimeException unavailable) { /* Optional display-only estimate. */ }
     }
 
     /**
@@ -3392,7 +3432,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean quiet = declining && mayQuiet() && FilterStore.silenceWhileDeclining(this);
         // During a peek only Dasher's ring is turned down (the alarm stream): the app the user was in, a map's spoken
         // directions say, plays on media.
-        if (quiet) silencer.start(peeking);
+        if (quiet) silencer.start(peeking, firstTapAt);
         else silencer.stop();
     }
 
@@ -4010,7 +4050,7 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "accept", () -> "Not learned: no delivery screen recognized within 15 s after "
                     + "Accept on " + missed.summary() + "; screen now: " + PersonalText.kept(shown));
         }
-        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, facts, now);
+        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, facts || !offerGone, now);
         if (accepted != null) {
             recordAcceptance(accepted, "you tapped Accept, and Dasher showed a delivery screen");
             applyNotes();
@@ -4226,6 +4266,9 @@ public final class OfferFilterService extends AccessibilityService {
         OfferSnapshot routeAfter = isAddOn ? addOn.combined : offer;
         int secondsLeft = countdown(scan.text);
         boolean routeStored = ActiveRouteStore.load(this) != null;
+        waitReadOffer = offer;
+        waitReadExcluded = isAddOn || routeStored;
+        waitReadNewInstance = newScreenInstancePending;
         acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
         offerAcceptTarget = scan.accept;
         offerDeclineTarget = scan.decline;
@@ -4527,16 +4570,9 @@ public final class OfferFilterService extends AccessibilityService {
             scanner.removeCallbacks(autoAcceptCheck);
             syncAutomation();
         }
-        if (tapped) {
-            // This supplies explicit request provenance to the existing delivery-evidence tracker. The separate
-            // autoRequestedOffer marker prevents both its tap and inferred-close paths from teaching personal mins.
-            acceptedTracker.acceptClicked(now);
-            applyNotes();
-            lastAcceptAt = Peek.now();
-        }
-        step(offer, DecisionLog.StepKind.NOT_LEARNED, tapped
-                ? "automatic Accept requested; waiting for a delivery screen; personal minimums unchanged"
-                : "automatic Accept refused by Android; no acceptance claimed and no repeat request");
+        acceptedTracker.automaticAcceptRequested(offer, now, tapped);
+        applyNotes();
+        if (tapped) lastAcceptAt = Peek.now();
         DiagnosticLog.log(this, "auto-accept", tapped ? "Accept REQUESTED; awaiting observed delivery"
                 : "Accept REFUSED; offer left to user");
         status(tapped ? "Accept requested. Waiting for Dasher to show a delivery; no completion claimed."

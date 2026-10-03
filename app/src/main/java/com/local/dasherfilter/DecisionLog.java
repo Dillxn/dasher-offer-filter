@@ -96,6 +96,8 @@ final class DecisionLog {
         ACCEPTED_OBSERVED("Accepted; display only"),
         TAP_NOT_RECOGNIZED("A tap on Dasher while this offer showed was neither Accept nor Decline"),
         ACCEPT_TAPPED("You tapped Accept"),
+        AUTO_ACCEPT_REQUESTED("Automatic Accept requested; not confirmed"),
+        AUTO_ACCEPT_UNCONFIRMED("Automatic acceptance unconfirmed; left to you"),
         ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
         ACCEPTED_LEARNED("Accepted; the adaptive minimum learned from it"),
         ACCEPTED_NOT_LEARNED("Accepted; nothing learned"),
@@ -357,7 +359,9 @@ final class DecisionLog {
          */
         YOURS("YOURS", "Left to you"),
         /** Later counted or seen as accepted: a learning step "Accepted…", or a seen Accept tap then a delivery. */
-        ACCEPTED("ACCEPTED", "Accepted");
+        ACCEPTED("ACCEPTED", "Accepted"),
+        /** An automatic click was requested; Dasher has not yet shown explicit delivery progress. */
+        REQUESTED("REQUESTED", "Accept requested, not confirmed");
 
         /** The stamp's word. */
         final String word;
@@ -385,6 +389,12 @@ final class DecisionLog {
      */
     static Outcome outcome(Entry entry) {
         if (accepted(entry)) return Outcome.ACCEPTED;
+        // Request and failure are outcomes of their own, never a green acceptance inferred from the rules passing.
+        for (int i = entry.steps.size() - 1; i >= 0; i--) {
+            StepKind kind = entry.steps.get(i).kind;
+            if (kind == StepKind.AUTO_ACCEPT_UNCONFIRMED) return Outcome.YOURS;
+            if (kind == StepKind.AUTO_ACCEPT_REQUESTED) return Outcome.REQUESTED;
+        }
         if (!entry.autoDecline || entry.action == Action.PAUSED || entry.action == Action.USER_TOOK_OVER
                 || entry.action == Action.DECLINE_REFUSED || entry.action == Action.CONFIRMATION_NOT_TAPPED) {
             return Outcome.YOURS;
@@ -421,6 +431,8 @@ final class DecisionLog {
                 case DECLINE_QUESTION:
                 case DECLINE_COUNTED:
                 case NOT_ACCEPTED:
+                case AUTO_ACCEPT_REQUESTED:
+                case AUTO_ACCEPT_UNCONFIRMED:
                     tapped = false;
                     break;
                 case NOT_LEARNED:

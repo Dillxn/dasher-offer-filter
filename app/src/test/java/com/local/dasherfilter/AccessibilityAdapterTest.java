@@ -666,6 +666,54 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void aPreviousPassingAlertDoesNotDelaySilencingANewDecline() {
+        assertPreviousAlertDoesNotDelayNewDecline(OfferRule.Result.KEEP);
+    }
+
+    @Test
+    public void aPreviousReviewAlertDoesNotDelaySilencingANewDecline() {
+        assertPreviousAlertDoesNotDelayNewDecline(OfferRule.Result.REVIEW);
+    }
+
+    private void assertPreviousAlertDoesNotDelayNewDecline(OfferRule.Result result) {
+        audio().setStreamVolume(AudioManager.STREAM_ALARM, 5, 0);
+        playing(false, AudioAttributes.USAGE_ALARM);
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        assertTrue(OfferAlerts.notifyOffer(app, "previous", null, result, "Previous offer", true));
+        show(offer(result == OfferRule.Result.KEEP ? "$25.00" : "Guaranteed pay"));
+        assertEquals("passing or unknown still keeps its sound", 5,
+                audio().getStreamVolume(AudioManager.STREAM_ALARM));
+
+        // Another offer is positively judged below the floor, well inside the previous alert's 20-second window.
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        show(offer("$7.90"));
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+        assertEquals("a different proven decline must not inherit the old alert's delay", alarmFloor(),
+                audio().getStreamVolume(AudioManager.STREAM_ALARM));
+    }
+
+    @Test
+    public void retriesCannotReclaimSoundFromAnAlertPostedAfterTheDeclineBegan() {
+        audio().setStreamVolume(AudioManager.STREAM_ALARM, 5, 0);
+        playing(false, AudioAttributes.USAGE_ALARM);
+        AccessibilityNodeInfo failing = offer("$7.90");
+        show(failing);
+        assertEquals(alarmFloor(), audio().getStreamVolume(AudioManager.STREAM_ALARM));
+        ShadowSystemClock.advanceBy(Duration.ofMillis(1));
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        assertTrue(OfferAlerts.notifyOffer(app, "newer", null, OfferRule.Result.REVIEW, "Unclear new offer", true));
+        assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
+
+        ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
+        show(failing);
+        assertEquals("a fresh retry is still the original decline episode", 2,
+                Shadows.shadowOf(decline).getPerformedActions().size());
+        playing(true, AudioAttributes.USAGE_ALARM);
+        assertEquals("the newer alert keeps authority over this old decline", 5,
+                audio().getStreamVolume(AudioManager.STREAM_ALARM));
+    }
+
+    @Test
     public void aNextOfferOnScreenBringsTheSoundBackEvenUnreadable() {
         audio().setStreamVolume(AudioManager.STREAM_ALARM, 5, 0);
         playing(false, AudioAttributes.USAGE_ALARM);

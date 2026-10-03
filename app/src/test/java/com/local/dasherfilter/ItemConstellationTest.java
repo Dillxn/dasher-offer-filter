@@ -78,7 +78,7 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
             assertTrue(node(star, AreaScore.ITEM).getContentDescription().toString().contains("unavailable"));
             OfferSnapshot withoutItems = offer(null, false);
             star.show(RULES, withoutItems, Collections.singletonList(entry(withoutItems, RULES)));
-            assertTrue(node(star, AreaScore.ITEM).getContentDescription().toString().contains("does not apply"));
+            assertTrue(node(star, AreaScore.ITEM).getContentDescription().toString().contains("not applicable"));
             assertEquals(5, star.offerShape(0).size());
         }
     }
@@ -147,6 +147,49 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
         card.show(entry(offer(null, false), RULES));
         assertFalse(card.getContentDescription().toString().contains("item"));
         assertTrue(MinimumsStarView.itemsLabel(offer(7, true)).contains("≈"));
+    }
+
+    @Test public void selectedItemSpokeExplainsObservedUnavailableAndInapplicableData() throws Exception {
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            OfferSnapshot[] offers = {offer(20, true), offer(null, true), offer(null, false)};
+            String[] states = {"20 items · $0.60/item", "Item count unavailable", "not applicable"};
+            for (int i = 0; i < offers.length; i++) {
+                MinimumsStarView star = show(activity.get(), RULES, offers[i]);
+                star.setOfferTaps(ignored -> {});
+                assertTrue(act(star, AreaScore.ITEM, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS));
+                java.lang.reflect.Method readout = MinimumsStarView.class.getDeclaredMethod("focusedReadout");
+                readout.setAccessible(true);
+                String visible = (String) readout.invoke(star);
+                assertTrue(visible, visible.contains("$0.50/item"));
+                assertTrue(visible, visible.contains(states[i]));
+                String spoken = node(star, MinimumsStarView.OFFER_ID).getContentDescription().toString();
+                assertTrue(spoken, spoken.contains(states[i]));
+                if (i > 0) assertNull("unknown/inapplicable data never creates an item vertex",
+                        star.markAt(0, AreaScore.ITEM));
+            }
+        }
+    }
+
+    @Test public void unreadableSelectedPayoutNeverBorrowsAnOlderOffersPayForItemRate() throws Exception {
+        OfferSnapshot previous = offer(null, false);
+        OfferSnapshot unread = OfferSnapshot.UNKNOWN.withItems(12, true);
+        DecisionLog.Entry past = new DecisionLog.Entry(System.currentTimeMillis() - 60_000,
+                DecisionLog.Source.SCREEN, false, previous, 1000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.PASSES, true, Collections.emptyList());
+        DecisionLog.Entry latest = entry(unread, RULES);
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            MinimumsStarView star = show(activity.get(), RULES, previous);
+            star.show(RULES, previous, Arrays.asList(latest, past));
+            assertTrue(act(star, AreaScore.ITEM, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS));
+            java.lang.reflect.Method readout = MinimumsStarView.class.getDeclaredMethod("focusedReadout");
+            readout.setAccessible(true);
+            assertEquals("Min $0.50/item · 12 items", readout.invoke(star));
+            String spoken = node(star, AreaScore.ITEM).getContentDescription().toString();
+            assertTrue(spoken, spoken.contains("12 items"));
+            assertFalse("old $12 payout must not price the new 12-item offer", spoken.contains("$1.00/item"));
+        }
     }
 
     @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)

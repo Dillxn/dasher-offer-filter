@@ -239,10 +239,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 9 acknowledged acceptance-rate risk, but did not disclose optional automatic acceptance.
-        assertEquals(10, Consent.VERSION);
+        // Version 10 disclosed auto-accept but not prospective waiting history or the solar theme.
+        assertEquals(11, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 9).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 10).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -328,7 +328,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         assertNotNull(shownButton(content, Consent.ACCEPT));
         assertNotNull(shownButton(content, Consent.NOT_NOW));
         assertNull("nothing of the homepage", shownIcon(content, "Settings"));
-        assertNull(shownIcon(content, "Switch to night"));
+        assertNull(shownIcon(content, Appearance.resolve(app).description()));
         assertFalse(find(content, FilterHeroView.class).isShown());
         assertFalse(find(content, MinimumsStarView.class).isShown());
     }

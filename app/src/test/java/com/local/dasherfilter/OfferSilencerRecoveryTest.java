@@ -9,6 +9,9 @@ import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import org.junit.After;
 import org.junit.Before;
@@ -22,6 +25,7 @@ import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAudioManager;
+import org.robolectric.shadows.ShadowSystemClock;
 
 import static org.junit.Assert.*;
 
@@ -142,6 +146,53 @@ public class OfferSilencerRecoveryTest {
         });
         assertEquals(5, prefs().getInt("stream_" + AudioManager.STREAM_ALARM, -1));
         OfferSilencer.restore(app);
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        assertTrue(prefs().getAll().isEmpty());
+    }
+
+    @Test public void missingOrFutureDeclineTimesCannotOverrideARecentAlert() {
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        OfferSilencer.yieldToPassingAlert(app);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        for (long epoch : new long[] {0, -1, SystemClock.uptimeMillis() + 1}) {
+            silencer.start(false, epoch);
+            assertEquals("invalid authority must preserve the alert", 5,
+                    audio.getStreamVolume(AudioManager.STREAM_ALARM));
+            silencer.stop();
+        }
+    }
+
+    @Test public void simultaneousAlertConservativelyWinsOverTheDecline() {
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        long epoch = SystemClock.uptimeMillis();
+        OfferSilencer.yieldToPassingAlert(app);
+        silencer.start(false, epoch);
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+    }
+
+    @Test public void laterDeclineStillCannotMuteWithoutTheOwnersCurrentAuthority() {
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        OfferSilencer.yieldToPassingAlert(app);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        OfferSilencer refused = new OfferSilencer(app, new Handler(Looper.getMainLooper()), () -> false);
+        refused.start(false, SystemClock.uptimeMillis());
+        assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
+        refused.stop();
+    }
+
+    @Test public void aLaterPeekDeclineRemainsAlarmOnlyAndRestoresExactly() {
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        OfferSilencer.yieldToPassingAlert(app);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 8, 0);
+        Shadows.shadowOf(audio).setActivePlaybackConfigurationsFor(Arrays.asList(
+                new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build(),
+                new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build()), false);
+        silencer.start(true, SystemClock.uptimeMillis());
+        assertTrue(audio.getStreamVolume(AudioManager.STREAM_ALARM) < 5);
+        assertFalse("Peek preserves the previous app's media/navigation sound", audio.isStreamMute(AudioManager.STREAM_MUSIC));
+        assertEquals(8, audio.getStreamVolume(AudioManager.STREAM_MUSIC));
+        silencer.stop();
         assertEquals(5, audio.getStreamVolume(AudioManager.STREAM_ALARM));
         assertTrue(prefs().getAll().isEmpty());
     }

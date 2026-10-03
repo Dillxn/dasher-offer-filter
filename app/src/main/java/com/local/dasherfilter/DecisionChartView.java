@@ -556,10 +556,13 @@ final class DecisionChartView extends View {
         for (DecisionLog.Entry entry : entries) counts[DecisionLog.outcome(entry).ordinal()]++;
         int accepted = counts[DecisionLog.Outcome.ACCEPTED.ordinal()];
         int yours = counts[DecisionLog.Outcome.YOURS.ordinal()];
+        int requested = counts[DecisionLog.Outcome.REQUESTED.ordinal()];
         String summary = String.format(Locale.US, "Chart of the last %d offers: %d passed, %s%d declined, %s%d need review.",
                 entries.size(), counts[DecisionLog.Outcome.PASSED.ordinal()],
                 accepted > 0 ? accepted + " accepted, " : "", counts[DecisionLog.Outcome.DECLINED.ordinal()],
-                yours > 0 ? yours + " left to you, " : "", counts[DecisionLog.Outcome.REVIEW.ordinal()]);
+                (yours > 0 ? yours + " left to you, " : "")
+                        + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
+                counts[DecisionLog.Outcome.REVIEW.ordinal()]);
         int unknown = 0;
         int clipped = 0;
         for (DecisionLog.Entry entry : entries) {

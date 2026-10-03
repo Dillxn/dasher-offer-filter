@@ -584,21 +584,32 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void tappingTheSunTurnsTheAppToNightAndTheMoonBackToDay() {
+    public void sunOpensAllFourThemeModesAndExplicitSelectionsPersist() {
+        assertEquals(Appearance.Mode.AUTO, Appearance.mode(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View sun = iconDescribed(activity.get().findViewById(android.R.id.content), "Switch to night");
-            assertNotNull("by day the sun is a button", sun);
+            View sun = iconDescribed(activity.get().findViewById(android.R.id.content),
+                    Appearance.resolve(app).description());
+            assertNotNull("the sun or moon remains the only theme control", sun);
             sun.performClick();
-            assertEquals(Boolean.TRUE, Appearance.chosen(app));
+            android.app.AlertDialog picker = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(4, picker.getListView().getCount());
+            assertEquals("Day", picker.getListView().getItemAtPosition(0));
+            assertEquals("Night", picker.getListView().getItemAtPosition(1));
+            assertEquals("System", picker.getListView().getItemAtPosition(2));
+            assertEquals("Auto", picker.getListView().getItemAtPosition(3));
+            picker.getListView().performItemClick(null, 1, 1);
+            assertEquals(Appearance.Mode.NIGHT, Appearance.mode(app));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
         }
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = activity.get().findViewById(android.R.id.content);
             assertTrue("the whole screen is night now", new Ui(activity.get()).dark);
-            View moon = iconDescribed(content, "Switch to day");
+            View moon = iconDescribed(activity.get().findViewById(android.R.id.content),
+                    Appearance.resolve(app).description());
             assertNotNull(moon);
             moon.performClick();
-            assertEquals(Boolean.FALSE, Appearance.chosen(app));
+            org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+                    .getListView().performItemClick(null, 0, 0);
+            assertEquals(Appearance.Mode.DAY, Appearance.mode(app));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
         }
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
