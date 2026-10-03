@@ -1,3 +1,9 @@
+# 0.4.61 — distinguish an automatic Accept that was never sent
+
+- If a waiting automatic-accept candidate is canceled before Android receives a click, its offer now says “Automatic Accept not sent; left to you” instead of retaining the ordinary green passed result. A later genuine manual acceptance still takes precedence.
+- Diagnostics record a fixed cancellation category at the existing refusal point, without raw screen text or new platform reads. This makes cases like report #42 diagnosable; its historical exact reason remains unknown.
+- Acceptance guards, timing, one-request limit, default-off opt-in and learning are unchanged. This is an outcome/diagnostics correction, not proof that every eligible offer can be accepted on a physical phone.
+
 ## 0.4.60 — honest outcomes, observed waiting and a clearer scene
 
 **Published October 3, 2026:** locally signed with the original key and shipped through both automatic-update channels. 1,945 tests / 107 suites passed on simulated API26/35; lint zero errors /34 warnings. Fresh production-updater download verified the live .60/code66 APK, 435,357 bytes, exact hash and original certificate. See [release validation](VALIDATION_OBSERVED_OUTCOMES_0.4.60.md). Physical-phone behavior remains unverified.

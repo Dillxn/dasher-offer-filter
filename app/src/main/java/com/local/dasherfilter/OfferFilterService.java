@@ -402,6 +402,9 @@ public final class OfferFilterService extends AccessibilityService {
     private volatile long autoAcceptBeganAt;
     private volatile long watchReadyAt;
     private long autoAcceptActionBaseline;
+    /** Armed numeric offer, retained when AutoAccept.observe clears a candidate without sending a request. */
+    private OfferSnapshot autoAcceptWatchedOffer;
+    private String autoAcceptWatchedKey = "";
     private OfferSnapshot autoRequestedOffer;
     private long autoRequestedAt;
     private long ownTapAt = Long.MIN_VALUE / 2;
@@ -1185,7 +1188,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (autoAcceptWatched && click.at >= autoAcceptBeganAt
                     && ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
                 autoAcceptActions.incrementAndGet();
-                scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true));
+                scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
             }
             if (lateCompletionUntil != 0) lateCompletionUntil = 0;
             clickDuringDecline(click);
@@ -1253,7 +1256,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (screenAwake != null) screenAwake.stop();
         onScanner(() -> {
             stopWaitEstimate();
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "service_interrupted");
             scanner.removeCallbacks(recheck);
             recheckPending = false;
             endAuthority("accessibility interrupted", true);
@@ -1355,6 +1358,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (!first || scanner == null) return;
         scanner.removeCallbacksAndMessages(null);
         onScanner(() -> {
+            noteAutoAcceptNotSent("service_stopped");
             endAuthority("service stopped", true);
             acceptedTracker.reset();
             peekOver("ended because screen reading stopped");
@@ -1382,6 +1386,8 @@ public final class OfferFilterService extends AccessibilityService {
         scannerFaulted = true;
         stopWaitEstimate();
         OfferSnapshot waitingAccept = autoAccept.candidate();
+        try { noteAutoAcceptNotSent("scanner_fault"); }
+        catch (RuntimeException unavailable) { /* Diagnostics must not prevent fail-closed cleanup. */ }
         autoAcceptWatched = false;
         autoAccept.block(SystemClock.uptimeMillis());
         watchState = WATCH_DOWN;
@@ -1441,7 +1447,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     private void suspendScreenReading() {
         stopWaitEstimate();
-        cancelAutoAccept(true);
+        cancelAutoAccept(true, "screen_off_or_locked");
         long now = SystemClock.uptimeMillis();
         if (declineState.hasPendingConfirmation(now) || episode.active(now)) {
             handBack(HandBack.SCREEN_OFF, "screen off or locked", now);
@@ -1920,7 +1926,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void touched(long touchAt) {
         if (autoAcceptWatched && touchAt >= autoAcceptBeganAt && ownTaps.touchEcho(touchAt) == null) {
             autoAcceptActions.incrementAndGet();
-            scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true));
+            scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
         }
         boolean peeking = peekWatched;
         // Without a peek, every touch the watch reports is a decline's, as it always was.
@@ -2040,7 +2046,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void ownTouchArrived(long at) {
         if (autoAcceptWatched && at >= autoAcceptBeganAt && ownTaps.touchEcho(at) == null) {
             autoAcceptActions.incrementAndGet();
-            scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true));
+            scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
         }
         boolean released = false;
         java.util.Iterator<long[]> held = heldTouches.iterator();
@@ -3261,7 +3267,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A guarded return is already queued on main; no new read/tap may cross that boundary.
         if (peekReturning) return false;
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
-        if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true); return false; }
+        if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true, "notice_required"); return false; }
         restoreRestartState();
         long started = SystemClock.uptimeMillis();
         long overlayAtStart = overlayTransition.get();
@@ -3292,7 +3298,7 @@ public final class OfferFilterService extends AccessibilityService {
         try {
             return checkReadableOffer();
         } catch (RuntimeException error) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "read_failed");
             endAuthority("screen read failed: " + error.getClass().getSimpleName(), true);
             DiagnosticLog.log(this, "accessibility",
                     "scan rejected; no further action: " + error.getClass().getSimpleName());
@@ -3465,7 +3471,7 @@ public final class OfferFilterService extends AccessibilityService {
         Look look = look();
         if (consumeDeclineError()) return declineError.pending();
         if (!look.activeKnown) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "foreground_unknown");
             declineError.notBlank();
             readSkipped = true;
             return settings.enabled;
@@ -3473,7 +3479,7 @@ public final class OfferFilterService extends AccessibilityService {
         peekSaw(look, now);
         AccessibilityNodeInfo root = look.dasherRoot;
         if (root == null) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "target_window_unreadable");
             if (declineError.pending()) handBack(HandBack.NOT_TAPPED, "Dasher left the foreground during error recovery", now);
             if (declineState.hasPendingConfirmation(now)) noteLook("question not read: Dasher's window is unavailable");
             // Dasher off screen for a moment (the shade, recent apps, our own screen): an Accept tap waiting for its
@@ -3498,7 +3504,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (consumeDeclineError()) return declineError.pending();
         scan.where = look.split ? "Dasher's half of the split screen" : "the active window";
         if (scan.abandoned) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "read_interrupted");
             declineError.notBlank();
             cutReads++;
             readSkipped = true;
@@ -3510,7 +3516,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean pending = declineState.hasPendingConfirmation(now);
         boolean lookForQuestion = pending || episode.active(now);
         if (scan.truncated && readCap < MAX_SCAN_NODES) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "read_incomplete");
             declineError.notBlank();
             // A poll for Dasher's question reads a window only so far: a bigger one is left to the full reads. The
             // question may be in a window of its own beside it, though (0.4.42 looked nowhere else): look there.
@@ -3534,7 +3540,7 @@ public final class OfferFilterService extends AccessibilityService {
         offerOnScreen = scan.truncated;
         offerEvidence = scan.truncated;
         if (scan.truncated) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "read_incomplete");
             declineError.notBlank();
             declinedOfferShowing = false;
             // Perhaps an offer: a peek does not go back over it for want of one.
@@ -3586,12 +3592,12 @@ public final class OfferFilterService extends AccessibilityService {
             confirmation = null;
         }
         if (confirmation != null) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "decline_question");
             return handleConfirmation(confirmation, settings, now);
         }
 
         if (scan.accept == null || scan.decline == null) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "offer_controls_incomplete");
             if (offerEvidence) noteEvidenceWithoutControls(offer);
             return handleOtherScreen(scan, offer, settings, now);
         }
@@ -3605,7 +3611,7 @@ public final class OfferFilterService extends AccessibilityService {
             return settings.enabled;
         }
         if (scan.accept.equals(scan.decline)) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "ambiguous_controls");
             status("Ambiguous shared button target; no action.");
             return false;
         }
@@ -4277,11 +4283,17 @@ public final class OfferFilterService extends AccessibilityService {
         String phase = isAddOn ? "add-on" : "offer";
         String detail = isAddOn ? addOn.summary() : offer.summary();
         String key = DeclineState.offerKey(offer, scan.text);
+        // Close A before recording B, including a fresh showing with identical figures. markStep otherwise targets
+        // the newest numeric match and could incorrectly put A's cancellation on B's new history line.
+        if (autoAcceptWatched && autoAcceptWatchedOffer != null
+                && (newCountdown || !key.equals(autoAcceptWatchedKey))) {
+            noteAutoAcceptNotSent("candidate_replaced");
+        }
         boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE;
         // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
         if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "user_takeover");
             if (declines) diagnostic(phase, scan, offer, decision);
             declinedOfferShowing = false;
             // Its decline was ours, even though the user has it now: a seen Accept tap is still learned from.
@@ -4346,7 +4358,7 @@ public final class OfferFilterService extends AccessibilityService {
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
         if (autoAccept.candidate() != null) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "rules_changed");
             status("Offer rules changed while automatic acceptance was waiting; this offer is left to you.");
             return false;
         }
@@ -4492,7 +4504,7 @@ public final class OfferFilterService extends AccessibilityService {
         long now = SystemClock.uptimeMillis();
         long actions = autoAcceptActions.get();
         if (autoAcceptWatched && actions != autoAcceptActionBaseline) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "user_action");
             return true;
         }
         if (!AutoAccept.eligible(offer, settings, FilterStore.autoAcceptEnabled(this), addOn,
@@ -4500,12 +4512,14 @@ public final class OfferFilterService extends AccessibilityService {
                 || stopped || scannerFaulted || !Consent.accepted(this) || !phoneReadable()
                 || inCall() || keyboardListed() || declineUnderWay(now) || episode.active(now)
                 || now - currentReadStartedAt > 2_000) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "offer_or_phone_ineligible");
             return false;
         }
         AutoAccept.State state = autoAccept.observe(offer, key, settings, secondsLeft, generation,
                 readAt, freshInstance);
-        if (state == AutoAccept.State.BLOCKED) { cancelAutoAccept(false); return true; }
+        if (state == AutoAccept.State.BLOCKED) { cancelAutoAccept(false, "candidate_expired_or_changed"); return true; }
+        autoAcceptWatchedOffer = autoAccept.candidate();
+        autoAcceptWatchedKey = key;
         if (!autoAcceptWatched) {
             autoAcceptActionBaseline = actions;
             autoAcceptBeganAt = now;
@@ -4516,7 +4530,7 @@ public final class OfferFilterService extends AccessibilityService {
         long quietUntil = Math.max(autoAccept.due(), Math.max(autoAcceptBeganAt, watchReadyAt) + AutoAccept.QUIET_MS);
         if (state != AutoAccept.State.READY || watchState != WATCH_UP || now < quietUntil) {
             if (now - autoAcceptBeganAt > 3_000 && watchState != WATCH_UP) {
-                cancelAutoAccept(true);
+                cancelAutoAccept(true, "touch_monitor_unavailable");
                 status("Automatic acceptance skipped because touch monitoring is unavailable.");
                 return true;
             }
@@ -4532,14 +4546,16 @@ public final class OfferFilterService extends AccessibilityService {
         boolean call = inCall();
         FilterSettings current = FilterStore.load(this);
         now = SystemClock.uptimeMillis();
-        if (!visible || refusal != null || keyboard || call || !autoAcceptAuthority(offer, key, current, now)) {
-            cancelAutoAccept(true);
+        String reason = !visible ? "target_window_hidden" : refusal != null ? "target_unusable"
+                : keyboard ? "keyboard" : call ? "call" : autoAcceptRefusal(offer, key, current, now);
+        if (reason != null) {
+            cancelAutoAccept(true, reason);
             status("Automatic acceptance cancelled because the offer or phone state changed; left to you.");
             return true;
         }
         // Commit suppression before Android sees any request. A reconnect can only leave this offer to the user.
         if (!RestartSuppression.remember(this, offer, secondsLeft) || !AutoAcceptMemory.remember(this, offer)) {
-            cancelAutoAccept(true);
+            cancelAutoAccept(true, "persistence_failed");
             status("Could not preserve this offer's restart guard; no automatic acceptance.");
             return true;
         }
@@ -4551,8 +4567,10 @@ public final class OfferFilterService extends AccessibilityService {
         call = inCall();
         current = FilterStore.load(this);
         now = SystemClock.uptimeMillis();
-        if (!visible || keyboard || call || !autoAcceptAuthority(offer, key, current, now)) {
-            cancelAutoAccept(true);
+        reason = !visible ? "target_window_hidden" : keyboard ? "keyboard" : call ? "call"
+                : autoAcceptRefusal(offer, key, current, now);
+        if (reason != null) {
+            cancelAutoAccept(true, reason);
             return true;
         }
         autoAccept.block(now); // Once per offer, even if Android refuses or throws after receiving the request.
@@ -4567,6 +4585,8 @@ public final class OfferFilterService extends AccessibilityService {
         } finally {
             ownTaps.ended(SystemClock.uptimeMillis(), tapped);
             autoAcceptWatched = false;
+            autoAcceptWatchedOffer = null;
+            autoAcceptWatchedKey = "";
             scanner.removeCallbacks(autoAcceptCheck);
             syncAutomation();
         }
@@ -4580,29 +4600,64 @@ public final class OfferFilterService extends AccessibilityService {
         return true;
     }
 
-    /** No external call into Dasher follows this final mutable-authority check except the one requested click. */
-    private boolean autoAcceptAuthority(OfferSnapshot offer, String key, FilterSettings current, long now) {
-        return !stopped && !scannerFaulted && Consent.accepted(this) && phoneReadable()
-                && FilterStore.autoAcceptEnabled(this) && current.enabled
-                && autoAcceptActions.get() == autoAcceptActionBaseline && watchState == WATCH_UP
-                && windowChanges.get() == readWindowChanges && dasherEvents.get() == lastReadEvents
-                && now - currentReadStartedAt <= 2_000 && !isTakenOver(offer, now)
-                && !declineUnderWay(now) && ActiveRouteStore.load(this) == null
-                && autoAccept.current(offer, key, current, OfferNotificationService.generation(), now)
-                && OfferRule.evaluate(offer, current).result == OfferRule.Result.KEEP;
+    /**
+     * The final mutable guard, in the same short-circuit order as the action predicate. Null grants authority;
+     * a fixed category explains refusal without another platform query or any raw node/event text.
+     */
+    private String autoAcceptRefusal(OfferSnapshot offer, String key, FilterSettings current, long now) {
+        if (stopped) return "service_stopped";
+        if (scannerFaulted) return "scanner_fault";
+        if (!Consent.accepted(this)) return "notice_required";
+        if (!phoneReadable()) return "screen_off_or_locked";
+        if (!FilterStore.autoAcceptEnabled(this)) return "auto_accept_disabled";
+        if (!current.enabled) return "rules_paused";
+        if (autoAcceptActions.get() != autoAcceptActionBaseline) return "user_action";
+        if (watchState != WATCH_UP) return "touch_monitor_unavailable";
+        if (windowChanges.get() != readWindowChanges) return "window_changed";
+        if (dasherEvents.get() != lastReadEvents) return "content_changed";
+        if (now - currentReadStartedAt > 2_000) return "read_too_old";
+        if (isTakenOver(offer, now)) return "user_takeover";
+        if (declineUnderWay(now)) return "decline_pending";
+        if (ActiveRouteStore.load(this) != null) return "route_present";
+        if (!autoAccept.current(offer, key, current, OfferNotificationService.generation(), now)) {
+            return "offer_rules_or_deadline_changed";
+        }
+        if (OfferRule.evaluate(offer, current).result != OfferRule.Result.KEEP) return "offer_no_longer_passes";
+        return null;
     }
 
     /** Candidate authority ends on a touch, lock, hidden/partial screen or changed setting; no automatic retry. */
     private void cancelAutoAccept(boolean suppress) {
+        cancelAutoAccept(suppress, "screen_or_offer_changed");
+    }
+
+    private void cancelAutoAccept(boolean suppress, String reason) {
         boolean watched = autoAcceptWatched;
         OfferSnapshot candidate = autoAccept.candidate();
+        noteAutoAcceptNotSent(reason);
         if (candidate != null && suppress) {
             RestartSuppression.remember(this, candidate, Math.max(-1, previousCountdown));
             autoAccept.block(SystemClock.uptimeMillis());
         } else autoAccept.clearCandidate();
         autoAcceptWatched = false;
+        autoAcceptWatchedOffer = null;
+        autoAcceptWatchedKey = "";
         scanner.removeCallbacks(autoAcceptCheck);
         if (watched) syncAutomation();
+    }
+
+    /** This is display/diagnostic provenance only; the user's later actual acceptance can still be observed. */
+    private void noteAutoAcceptNotSent(String reason) {
+        OfferSnapshot candidate = autoAcceptWatchedOffer;
+        autoAcceptWatchedOffer = null; // At most one terminal step, even if cleanup enters another cancellation path.
+        autoAcceptWatchedKey = "";
+        if (!autoAcceptWatched || candidate == null) return;
+        try {
+            step(candidate, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, reason);
+            DiagnosticLog.log(this, "auto-accept", "Accept NOT_SENT; reason=" + reason + "; offer left to user");
+        } catch (RuntimeException unavailable) {
+            // History/log failures cannot retain an armed candidate, its timer or touch watch during cancellation.
+        }
     }
 
     /**

@@ -96,6 +96,7 @@ final class DecisionLog {
         ACCEPTED_OBSERVED("Accepted; display only"),
         TAP_NOT_RECOGNIZED("A tap on Dasher while this offer showed was neither Accept nor Decline"),
         ACCEPT_TAPPED("You tapped Accept"),
+        AUTO_ACCEPT_NOT_SENT("Automatic Accept not sent; left to you"),
         AUTO_ACCEPT_REQUESTED("Automatic Accept requested; not confirmed"),
         AUTO_ACCEPT_UNCONFIRMED("Automatic acceptance unconfirmed; left to you"),
         ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
@@ -392,7 +393,7 @@ final class DecisionLog {
         // Request and failure are outcomes of their own, never a green acceptance inferred from the rules passing.
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
             StepKind kind = entry.steps.get(i).kind;
-            if (kind == StepKind.AUTO_ACCEPT_UNCONFIRMED) return Outcome.YOURS;
+            if (kind == StepKind.AUTO_ACCEPT_NOT_SENT || kind == StepKind.AUTO_ACCEPT_UNCONFIRMED) return Outcome.YOURS;
             if (kind == StepKind.AUTO_ACCEPT_REQUESTED) return Outcome.REQUESTED;
         }
         if (!entry.autoDecline || entry.action == Action.PAUSED || entry.action == Action.USER_TOOK_OVER

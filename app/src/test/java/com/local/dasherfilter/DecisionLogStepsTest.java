@@ -136,4 +136,23 @@ public class DecisionLogStepsTest {
         assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
     }
+
+    @Test public void notSentIsLeftToUserAcrossReloadAndCannotEraseALaterActualAcceptance() {
+        DecisionLog.record(app, passing(System.currentTimeMillis()));
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, "content_changed", 60_000);
+        DecisionLog.flush(); DecisionLog.forgetCache();
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.ACCEPTED_NOT_LEARNED,
+                "you tapped Accept, and Dasher showed a delivery screen", 60_000);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void queuedNotSentAfterTheUsersAcceptDoesNotEraseTheirTapEvidence() {
+        DecisionLog.record(app, passing(System.currentTimeMillis()));
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.ACCEPT_TAPPED, "waiting for a delivery screen", 60_000);
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, "user_action", 60_000);
+        DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.NOT_LEARNED,
+                AcceptedOfferTracker.DELIVERY_UNDER_WAY, 60_000);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
 }

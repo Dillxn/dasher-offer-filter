@@ -69,6 +69,7 @@ public final class AutoAcceptAdapterTest {
         assertNull(ActiveRouteStore.load(app));
         assertEquals(0, FilterStore.load(app).lastAcceptedCents);
         assertTrue(DiagnosticLog.read(app).contains("Accept REQUESTED"));
+        assertFalse(DiagnosticLog.read(app).contains("Accept NOT_SENT"));
         assertEquals(DecisionLog.Action.PASSES, DecisionLog.recent(app, 1).get(0).action);
         pass(500); show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29")); pass(1000);
         assertEquals(0, clicks(accept)); assertEquals(0, clicks(decline));
@@ -121,6 +122,7 @@ public final class AutoAcceptAdapterTest {
             return service.getWindows();
         };
         pass(1000); assertTrue(changed[0]); assertEquals(0, clicks(accept)); assertEquals(0, clicks(decline));
+        assertNotSent("offer_rules_or_deadline_changed");
     }
     @Test public void switchDisabledDuringQuietIntervalCannotTap() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
@@ -161,6 +163,7 @@ public final class AutoAcceptAdapterTest {
             return service.getWindows();
         };
         pass(1000); assertTrue(injected[0]); assertEquals(0, clicks(accept));
+        assertNotSent("content_changed");
     }
     @Test public void refusedClickNeverRetriesOrClaimsAccepted() {
         AccessibilityNodeInfo root = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
@@ -257,6 +260,95 @@ public final class AutoAcceptAdapterTest {
             assertNotEquals(DecisionLog.StepKind.ACCEPT_TAPPED, step.kind);
             assertFalse(step.detail.contains("you tapped Accept"));
         }
+    }
+    @Test public void targetWindowHiddenAtFinalGuardIsNotSentAndExplained() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30"));
+        boolean[] changed = {false};
+        service.windowSource = () -> {
+            if (!changed[0] && calledFrom("dasherStillReadable")) {
+                changed[0] = true;
+                return java.util.Collections.emptyList();
+            }
+            return service.getWindows();
+        };
+        pass(1000); assertTrue(changed[0]); assertEquals(0, clicks(accept));
+        assertNotSent("target_window_hidden");
+    }
+    @Test public void canceledCandidateMarksNotSentOnceWithoutBlockingLaterManualAcceptance() {
+        show(node("Finding offers", false));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
+        touch(); pass(0);
+        assertEquals(0, clicks(accept));
+        assertNotSent("user_action");
+        pass(200); show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29"));
+        assertEquals(0, clicks(accept));
+        click(accept); show(node("Arrived at store", true));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(DecisionLog.accepted(entry));
+        assertNotNull(ActiveRouteStore.load(app));
+        long notSent = entry.steps.stream().filter(step -> step.kind == DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT).count();
+        assertEquals(1, notSent);
+        assertFalse(DiagnosticLog.read(app).contains("Accept REQUESTED"));
+    }
+    @Test public void replacedCandidateGetsNotSentBeforeTheNewOfferCanRequestAccept() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
+        show(offer("$22.00", "2 stops (4 mi) • 20 min", "0:30"));
+        assertEquals(0, clicks(accept));
+        java.util.List<DecisionLog.Entry> entries = DecisionLog.recent(app, 2);
+        assertEquals(2, entries.size());
+        assertEquals(Integer.valueOf(2000), entries.get(1).facts.payCents);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entries.get(1)));
+        assertTrue(entries.get(1).steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT
+                && step.detail.equals("candidate_replaced")));
+        assertTrue(entries.get(0).steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT));
+        pass(900); assertEquals(1, clicks(accept));
+        assertEquals(DecisionLog.Outcome.REQUESTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void freshCountdownWithSameFactsMarksOnlyThePreviousHistoryInstance() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:45"));
+        java.util.List<DecisionLog.Entry> entries = DecisionLog.recent(app, 2);
+        assertEquals(2, entries.size());
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entries.get(1)));
+        assertEquals(DecisionLog.Outcome.PASSED, DecisionLog.outcome(entries.get(0)));
+        pass(900); assertEquals(1, clicks(accept));
+        assertEquals(DecisionLog.Outcome.REQUESTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+    }
+    @Test public void ordinaryContinuingCountdownDoesNotInventCandidateReplacement() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29")); pass(900);
+        assertEquals(1, clicks(accept));
+        assertFalse(DiagnosticLog.read(app).contains("Accept NOT_SENT"));
+    }
+    @Test public void diagnosticRuntimeFailureCannotInterruptCancellationCleanup() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(300);
+        android.content.SharedPreferences diagnostics = app.getSharedPreferences("offer_filter_diagnostics", 0);
+        diagnostics.edit().putString("off", "synthetic wrong type").commit();
+        try {
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(service, "cancelAutoAccept",
+                    org.robolectric.util.ReflectionHelpers.ClassParameter.from(boolean.class, true),
+                    org.robolectric.util.ReflectionHelpers.ClassParameter.from(String.class, "user_action"));
+            assertFalse(org.robolectric.util.ReflectionHelpers.<Boolean>getField(service, "autoAcceptWatched"));
+            AutoAccept state = org.robolectric.util.ReflectionHelpers.getField(service, "autoAccept");
+            assertNull(state.candidate());
+            assertTrue(state.blocks(new OfferSnapshot(2000, 4.0, 20, 2), SystemClock.uptimeMillis()));
+        } finally {
+            diagnostics.edit().remove("off").commit();
+        }
+        pass(1200);
+        assertEquals(0, clicks(accept));
+        assertFalse(org.robolectric.util.ReflectionHelpers.<Boolean>getField(service, "touchWatchOn"));
+    }
+    private void assertNotSent(String reason) {
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entry));
+        assertFalse(DecisionLog.accepted(entry));
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT
+                && step.detail.equals(reason)));
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("Accept NOT_SENT; reason=" + reason + "; offer left to user"));
+        assertFalse(log, log.contains("Accept REQUESTED"));
+        assertFalse(log, log.contains("Accept REFUSED"));
     }
     private void touch() {
         ShadowWindowManagerImpl windows = Shadow.extract(service.getSystemService(WindowManager.class));
