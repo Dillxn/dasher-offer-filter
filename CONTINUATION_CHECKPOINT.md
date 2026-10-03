@@ -2,6 +2,15 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## Latest continuation — October 3, 20:17 UTC
+
+- Main `8d78c86ccf48e34f78a6898414869a87bd884379` contains the durable local JVM routing fix and verified .59 release record; `codex/auto-accept-0-4-59` remains historical `bfb27c804b0c2810a78f92c205981fffa85e2714`. No Android source or signed bytes changed in this continuation.
+- Fresh personal Gmail query after 19:11 UTC returned no new matching copies. Private-repository issue query found #40/#41, created 20:15:26/20:16:05 UTC and both filed by **0.4.59**. This is field evidence that the release reached the app, not a hands-on phone/auto-accept certification. The coordinating connection succeeded; a delegated connector's 401 was not a project access blocker.
+- #40 report `0b5ffd62fcf55ac9d50b72021644a16f` and #41 report `1f0fdfd373b2726ee1ee90f0bb89d721` are one shopping-offer target, captured six milliseconds apart, filed as UNREADABLE_OFFER and USER_REPORT. No item count appears in the captured offer labels. With Pay/item enabled, compensating area mode intentionally stays REVIEW instead of inventing that contribution. Existing ItemScoreTest covers incomplete-area versus known-strict-failure behavior; source inspection establishes no new defect. Whether a visually displayed count was inaccessible remains unproven. No app change or redundant test run was made.
+- Audit through 20:17 UTC is recorded in `validation/2026-10-03-2017-diagnostics-audit.json`. Prior duplicate groups #34/#35 and #36/#37 remain; #38 and #39 remain unresolved within their documented evidence limits. No sends, deletes, raw diagnostics or private data were added to the public site.
+- Public site optional-auto-accept wording/captions are now live: source `9e9afff5afa02a50324559014e737d8d2b688075`, Pages run `37150686335` success; durable website checkpoint main `3f84464a25420c3beb01f63c33eb5c3e5efcbc75`, latest Pages run `37150853094` success. Live HTML/VTT match and rendered details show default-off, separate confirmation, delivery commitment and acceptance-rate risk. Wide embedded film/poster and clean original music remain intact. See the public site's SITE_VALIDATION.md.
+- Standing continuation instructions now identify .59 as shipped and correct the stale network-permission diagnosis. The release/phone limitations and next work below still apply.
+
 ## Current shipped release — October 3, 20:10 UTC
 
 - **0.4.59/code65 is published and live**, source `a0a417f9fc5eff4b878b26694829cbdc29c516cb`, release commit `18c1b4748a0b554ba5742a6c726bd7471a250880`. All Android build/test/package/sign work was local with the original signer. No manual-install workaround was used.

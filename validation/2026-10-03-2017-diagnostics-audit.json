@@ -1,0 +1,55 @@
+{
+  "auditCutoffUtc": "2026-10-03T20:17:00Z",
+  "previousCutoffUtc": "2026-10-03T19:11:00Z",
+  "gmailAccount": "dillon.riecke@gmail.com",
+  "gmailNewMatches": 0,
+  "gmailSearch": "after:1791054660 {\"Offer Filter\" \"dasher-offer-filter\" \"offer-report\" \"OfferFilter\"}",
+  "issuesInspected": [
+    40,
+    41
+  ],
+  "duplicateGroups": [
+    [
+      34,
+      35
+    ],
+    [
+      36,
+      37
+    ],
+    [
+      40,
+      41
+    ]
+  ],
+  "reports": [
+    {
+      "issue": 40,
+      "reportId": "0b5ffd62fcf55ac9d50b72021644a16f",
+      "appVersion": "0.4.59",
+      "kind": "UNREADABLE_OFFER"
+    },
+    {
+      "issue": 41,
+      "reportId": "1f0fdfd373b2726ee1ee90f0bb89d721",
+      "appVersion": "0.4.59",
+      "kind": "USER_REPORT"
+    }
+  ],
+  "finding": "One shopping offer with no explicit item count in captured labels. Active Pay/item plus compensating area mode correctly yields REVIEW; no parser defect demonstrated. Unknown item contribution cannot be assumed zero. Remaining question: whether Dasher displayed a count not exposed to accessibility.",
+  "sourceReview": [
+    "ItemCount.DECLARATION",
+    "OfferRule.byArea",
+    "ItemScoreTest.unreadItemsCannotCompleteAreaButKnownStrictFailureStillDeclines"
+  ],
+  "newCodeChange": false,
+  "newTestRun": false,
+  "priorUnresolvedIssues": [
+    38,
+    39
+  ],
+  "fieldEvidence": "Reports identify version0.4.59 running; no hands-on physical-phone or automatic-acceptance validation claimed.",
+  "noMessagesSent": true,
+  "noReportsDeleted": true,
+  "noRawDiagnosticsRetained": true
+}
