@@ -24,7 +24,7 @@ public final class AreaScoreTest {
     public void theSpokesPairUpInTheOrderTheyAreDrawn() {
         // Pay top-left (-150°), per mile top-right (-30°), per minute bottom-right (30°), per stop bottom-left (150°):
         // ascending, so index order is the clockwise order on the screen, 120° and 60° apart in turn.
-        assertArrayEquals(new float[] {-150, -30, 30, 150, -90}, AreaScore.ANGLES, 0f);
+        assertArrayEquals(new float[] {-150, -30, 30, 150, -90, 90}, AreaScore.ANGLES, 0f);
         List<int[]> four = AreaScore.pairs(new int[] {0, 1, 2, 3});
         assertEquals(4, four.size());
         assertArrayEquals("pay–mile", new int[] {AreaScore.PAY, AreaScore.MILE}, four.get(0));
@@ -156,8 +156,8 @@ public final class AreaScoreTest {
     public void aSpokeOnlyTheAdaptiveMinimumHasIsActiveWhileItIsOn() {
         AcceptedBest best = AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2));
         FilterSettings learnedOnly = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best);
-        assertArrayEquals(new boolean[] {false, true, true, true, false}, AreaScore.active(learnedOnly));
-        assertArrayEquals(new boolean[] {false, false, false, false, false},
+        assertArrayEquals(new boolean[] {false, true, true, true, false, false}, AreaScore.active(learnedOnly));
+        assertArrayEquals(new boolean[] {false, false, false, false, false, false},
                 AreaScore.active(new FilterSettings(true, 0, 0, 0, 0, 0, false, 0, best)));
     }
 

@@ -243,7 +243,7 @@ public class AdaptiveShapeByAreaTest extends AndroidAdapterTestBase {
             FilterSettings saved = FilterStore.load(app);
             assertTrue("a higher minimum pay: " + saved.flatCents, saved.flatCents > 1601);
             assertEquals("in $0.50 steps", 0, saved.flatCents % 50);
-            assertEquals("nothing else", Arrays.toString(new int[] {saved.flatCents, 385, 41, 475, 0}),
+            assertEquals("nothing else", Arrays.toString(new int[] {saved.flatCents, 385, 41, 475, 0, 0}),
                     Arrays.toString(saved.minimums()));
             assertEquals("what was learned stays", 1600, saved.lastAcceptedCents);
             settleSky(content);

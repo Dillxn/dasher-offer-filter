@@ -14,6 +14,7 @@ final class FilterStore {
     private static final String PER_MINUTE = "minute";
     /** Minimum pay per stop. */
     private static final String PER_STOP = "per_stop";
+    private static final String PER_ITEM = "per_item";
     /** Fixed minimum reciprocal distance from the final stop to the nearest current Dasher hotspot. */
     private static final String HOTSPOT_PROXIMITY = "hotspot_proximity_hundredths";
     /** Common scale; absent on older installs means exactly the original rules. */
@@ -75,7 +76,7 @@ final class FilterStore {
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(PER_STOP, 0), prefs.getInt(MAX_STOPS, 0),
                 prefs.getBoolean(RISING_OFFERS, false), prefs.getInt(LAST_ACCEPTED, 0), best(prefs), declined(prefs),
                 prefs.getBoolean(SCORE_BY_AREA, false), prefs.getInt(HOTSPOT_PROXIMITY, 0),
-                prefs.getInt(MINIMUM_SCALE, 100));
+                prefs.getInt(MINIMUM_SCALE, 100), prefs.getInt(PER_ITEM, 0));
     }
 
     /**
@@ -166,7 +167,7 @@ final class FilterStore {
             FilterSettings learned = new FilterSettings(settings.enabled, settings.flatCents, settings.perMileCents,
                     settings.perMinuteCents, settings.perStopCents, settings.maxStops, settings.risingOffers,
                     settings.lastAcceptedCents, settings.best, floor, true, settings.hotspotProximityHundredths,
-                    settings.minimumScalePercent);
+                    settings.minimumScalePercent, settings.perItemCents);
             AreaScore.Floors before = AreaScore.floors(settings, declinedOffer);
             AreaScore.Floors after = AreaScore.floors(learned, declinedOffer);
             changed = false;
@@ -211,6 +212,7 @@ final class FilterStore {
                 .putInt(PER_MILE, settings.perMileCents)
                 .putInt(PER_MINUTE, settings.perMinuteCents)
                 .putInt(PER_STOP, settings.perStopCents)
+                .putInt(PER_ITEM, settings.perItemCents)
                 .putInt(HOTSPOT_PROXIMITY, settings.hotspotProximityHundredths)
                 .putInt(MINIMUM_SCALE, settings.minimumScalePercent)
                 .putInt(MAX_STOPS, settings.maxStops)

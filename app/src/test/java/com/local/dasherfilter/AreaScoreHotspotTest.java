@@ -127,8 +127,8 @@ public final class AreaScoreHotspotTest {
 
     @Test
     public void drawnOrderAndSparseCenterClosureKeepImprovementsMonotone() {
-        assertArrayEquals(new int[] {0, 4, 1, 2, 3}, AreaScore.DRAW_ORDER);
-        assertArrayEquals(new float[] {-150, -30, 30, 150, -90}, AreaScore.ANGLES, 0);
+        assertArrayEquals(new int[] {0, 4, 1, 2, 5, 3}, AreaScore.DRAW_ORDER);
+        assertArrayEquals(new float[] {-150, -30, 30, 150, -90, 90}, AreaScore.ANGLES, 0);
         FilterSettings upper = new FilterSettings(true, 1000, 200, 0, 0, 0).withHotspotProximity(100);
         AreaScore.Floors f = floors(upper, 1.0);
         assertArrayEquals(new int[] {0, 4, 1}, f.activeAxes());
@@ -145,7 +145,7 @@ public final class AreaScoreHotspotTest {
 
     @Test
     public void everyActiveSubsetHasAUnitBaselineAndMonotonePayAndProximity() {
-        for (int mask = 1; mask < (1 << AreaScore.AXES); mask++) {
+        for (int mask = 1; mask < (1 << (AreaScore.HOTSPOT + 1)); mask++) {
             FilterSettings rules = new FilterSettings(true, (mask & 1) == 0 ? 0 : 1000,
                     (mask & 2) == 0 ? 0 : 200, (mask & 4) == 0 ? 0 : 50,
                     (mask & 8) == 0 ? 0 : 500, 0).withHotspotProximity((mask & 16) == 0 ? 0 : 100);

@@ -94,7 +94,7 @@ public class ScoreByAreaAdapterTest {
             tap(sky, toggle.centerX(), toggle.centerY());
             FilterSettings saved = FilterStore.load(app);
             assertTrue(saved.scoreByArea);
-            assertArrayEquals(new int[] {1300, 385, 41, 475, 0}, saved.minimums());
+            assertArrayEquals(new int[] {1300, 385, 41, 475, 0, 0}, saved.minimums());
             assertTrue(saved.enabled);
             assertEquals(3, saved.maxStops);
             assertTrue(star.byArea());
@@ -162,7 +162,7 @@ public class ScoreByAreaAdapterTest {
             assertEquals(0.4869553429377522, Math.sqrt(area(star.offerShape(1)) / area(minimums)), 0.002);
             assertEquals(121, star.emphasizedScore());
             String said = star.getContentDescription().toString();
-            assertTrue(said, said.contains("The newest offer scores 121% by area."));
+            assertTrue(said, said.contains("The newest offer scores 121% by area under the current minimums."));
             assertTrue(said, said.contains("An offer like 25 min · 6 mi · 2 stops needs $12.43 to score 100%."));
             assertTrue(star.levelWords().toString(), star.levelWords().contains("100%"));
 
@@ -171,7 +171,7 @@ public class ScoreByAreaAdapterTest {
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals(49, star.emphasizedScore());
-            assertTrue(star.getContentDescription().toString().contains("The chosen offer scores 49% by area."));
+            assertTrue(star.getContentDescription().toString().contains("The chosen offer scores 49% by area under the current minimums."));
         }
     }
 
@@ -227,7 +227,7 @@ public class ScoreByAreaAdapterTest {
             FilterSettings saved = FilterStore.load(app);
             assertTrue("a higher per-mile minimum: " + saved.perMileCents, saved.perMileCents > 385);
             assertEquals("in $0.05 steps", 0, saved.perMileCents % 5);
-            assertArrayEquals(new int[] {1300, saved.perMileCents, 41, 475, 0}, saved.minimums());
+            assertArrayEquals(new int[] {1300, saved.perMileCents, 41, 475, 0, 0}, saved.minimums());
             assertTrue(saved.scoreByArea);
             settleSky(content);
             assertEquals("settled: every minimum at one radius again", distance(star, star.knobAt(0)),

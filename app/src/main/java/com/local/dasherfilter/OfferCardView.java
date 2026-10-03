@@ -37,7 +37,8 @@ final class OfferCardView extends View {
     void show(DecisionLog.Entry entry) {
         this.entry = entry;
         setContentDescription(pay() + (needed() > 0 ? ", needed " + DecisionLog.money(needed()) : "") + ". "
-                + route() + (hasHotspotDistance() ? ". " + MinimumsStarView.hotspotSaid(entry.facts.finalStopHotspotMiles) : ""));
+                + route() + (hasItemDetails() ? ". " + MinimumsStarView.itemsLabel(entry.facts) : "")
+                + (hasHotspotDistance() ? ". " + MinimumsStarView.hotspotSaid(entry.facts.finalStopHotspotMiles) : ""));
         requestLayout();
         invalidate();
     }
@@ -49,7 +50,12 @@ final class OfferCardView extends View {
     private float barTop;
     private float routeLabelBaseline;
     private float routeY;
+    private float itemsBaseline;
     private float hotspotBaseline;
+
+    private boolean hasItemDetails() {
+        return entry != null && entry.facts.itemCountApplicable;
+    }
 
     private boolean hasHotspotDistance() {
         return entry != null && MinimumsStarView.knownHotspotDistance(entry.facts.finalStopHotspotMiles);
@@ -77,13 +83,15 @@ final class OfferCardView extends View {
         barTop = lines + ui.dp(8);
         routeLabelBaseline = barTop + ui.dp(12) + ui.dp(14) - small.ascent;
         routeY = routeLabelBaseline + small.descent + ui.dp(4) + ui.dp(11);
-        hotspotBaseline = routeY + ui.dp(13) + ui.dp(8) - small.ascent;
+        itemsBaseline = routeY + ui.dp(13) + ui.dp(8) - small.ascent;
+        hotspotBaseline = hasItemDetails() ? itemsBaseline + small.descent + ui.dp(8) - small.ascent : itemsBaseline;
+        text.setTextSize(ui.sp(13));
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         layoutLines(MeasureSpec.getSize(widthSpec));
         float bottom = hasHotspotDistance() ? hotspotBaseline + text.getFontMetrics().descent + ui.dp(2)
-                : routeY + ui.dp(13);
+                : hasItemDetails() ? itemsBaseline + text.getFontMetrics().descent + ui.dp(2) : routeY + ui.dp(13);
         setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(Math.round(bottom), heightSpec));
     }
 
@@ -183,8 +191,19 @@ final class OfferCardView extends View {
         String full = route(true);
         CharSequence label = Ui.fit(text, text.measureText(full) * 0.8f <= room ? full : route(false), room, 0.8f);
         canvas.drawText(label, 0, label.length(), width / 2, routeLabelBaseline, text);
+        if (hasItemDetails()) {
+            text.setTextAlign(Paint.Align.LEFT);
+            text.setTextSize(ui.sp(13));
+            float itemIcon = ui.dp(16);
+            Glyph.draw(canvas, Glyph.Shape.BAG, ui.inkSecondary, 0,
+                    itemsBaseline - itemIcon + ui.dp(2), itemIcon);
+            CharSequence items = Ui.fit(text, MinimumsStarView.itemsLabel(entry.facts),
+                    width - itemIcon - ui.dp(7), 0.8f);
+            canvas.drawText(items, 0, items.length(), itemIcon + ui.dp(7), itemsBaseline, text);
+        }
         if (hasHotspotDistance()) {
             text.setTextAlign(Paint.Align.LEFT);
+            text.setTextSize(ui.sp(13));
             float hotspotIcon = ui.dp(16);
             Glyph.draw(canvas, Glyph.Shape.HOTSPOT, ui.inkSecondary, 0,
                     hotspotBaseline - hotspotIcon + ui.dp(2), hotspotIcon);

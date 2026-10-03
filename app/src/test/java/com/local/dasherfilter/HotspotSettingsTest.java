@@ -30,7 +30,7 @@ public final class HotspotSettingsTest {
                 .putBoolean("enabled", true).putInt("flat", 500).apply();
         FilterSettings legacy = FilterStore.load(app);
         assertEquals(0, legacy.hotspotProximityHundredths);
-        assertArrayEquals(new int[] {500, 0, 0, 0, 0}, legacy.minimums());
+        assertArrayEquals(new int[] {500, 0, 0, 0, 0, 0}, legacy.minimums());
         assertEquals(0, new FilterSettings(true, 1, 2, 3, 4, 5, true, 6,
                 AcceptedBest.NONE, DeclinedFloor.NONE, true).hotspotProximityHundredths);
     }
@@ -41,7 +41,7 @@ public final class HotspotSettingsTest {
         FilterStore.save(app, original);
         FilterSettings saved = FilterStore.load(app);
         assertEquals(75, saved.hotspotProximityHundredths);
-        assertArrayEquals(new int[] {500, 100, 20, 200, 75}, saved.minimums());
+        assertArrayEquals(new int[] {500, 100, 20, 200, 75, 0}, saved.minimums());
         for (FilterSettings copy : new FilterSettings[] {saved.withEnabled(false), saved.withScoreByArea(true),
                 saved.withMaxStops(2), saved.withAdaptive(true), saved.withoutRisingBaseline(),
                 saved.withMinimums(new int[] {600, 110, 30, 210}), saved.adoptAdaptive()}) {

@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -19,7 +20,7 @@ final class AddOnOffer {
 
     /** Accepted route context before this add-on; fields are null when unknown. */
     final OfferSnapshot active;
-    /** Explicitly added pay, miles, minutes, and stops. */
+    /** Explicitly added pay, miles, minutes, stops and item units. */
     final OfferSnapshot incremental;
     /** The route after accepting: explicit totals, or active context plus explicit increments. */
     final OfferSnapshot combined;
@@ -49,17 +50,22 @@ final class AddOnOffer {
         OfferSnapshot active = route == null ? OfferSnapshot.UNKNOWN : route;
         if (!OfferEvidence.bounded(labels)) return new AddOnOffer(active, OfferSnapshot.UNKNOWN, OfferSnapshot.UNKNOWN);
         List<String> travelLabels = OfferParser.routeMetricLabels(labels);
+        List<String> payLabels = new ArrayList<>();
+        for (String label : labels) {
+            if (!OfferParser.isRate(OfferEvidence.normalize(label).toLowerCase(Locale.US))) payLabels.add(label);
+        }
 
-        Measure addedPay = read(labels,
+        Measure addedPay = read(payLabels,
                 DELTA + "(?:(?:pay|payout)\\s*)?\\$\\s*" + VALUE,
                 "\\$\\s*" + VALUE + "\\s*(?:additional|extra|more)\\b");
-        Measure totalPay = read(labels, "\\b(?:new\\s+)?total(?:\\s+(?:pay|payout))?\\s*[:=]?\\s*\\$\\s*" + VALUE);
+        Measure totalPay = read(payLabels, "\\b(?:new\\s+)?total(?:\\s+(?:pay|payout))?\\s*[:=]?\\s*\\$\\s*" + VALUE);
         Measure addedMiles = delta(travelLabels, "(?:mi|miles?)");
         Measure totalMiles = total(travelLabels, "(?:distance|mileage|miles?)", "(?:mi|miles?)");
         Measure addedMinutes = delta(travelLabels, "(?:min|minutes?)");
         Measure totalMinutes = total(travelLabels, "(?:time|duration)", "(?:min|minutes?)");
         Measure addedStops = delta(labels, "stops?");
         Measure totalStops = total(labels, "stops?", "stops?");
+        ItemCount itemEvidence = ItemCount.parse(labels);
 
         Integer pay = addedPay.money();
         Integer payTotal = totalPay.money();
@@ -99,9 +105,20 @@ final class AddOnOffer {
         if (minutesTotal == null && minutes != null) minutesTotal = sum(active.minutes, minutes);
         if (stopsTotal == null && stops != null) stopsTotal = sum(active.stops, stops);
 
+        // Shopping progress can change a remaining basket. Never derive an increment by subtracting old items,
+        // or treat a route with no item evidence as having zero items. An unlabeled add-on count is ambiguous.
+        Integer items = itemEvidence.addedConflict || itemEvidence.totalConflict ? null : itemEvidence.added;
+        Integer itemsTotal = itemEvidence.addedConflict || itemEvidence.totalConflict ? null : itemEvidence.total;
+        boolean itemsConflict = items != null && itemsTotal != null && active.items != null
+                && (long) active.items + items != itemsTotal;
+        if (itemsConflict) { items = null; itemsTotal = null; }
+        if (!itemsConflict && !itemEvidence.addedConflict && !itemEvidence.totalConflict
+                && itemsTotal == null && items != null) itemsTotal = sum(active.items, items);
+
         return new AddOnOffer(active,
-                new OfferSnapshot(pay, miles, minutes, stops),
-                new OfferSnapshot(payTotal, milesTotal, minutesTotal, stopsTotal));
+                new OfferSnapshot(pay, miles, minutes, stops).withItems(items, itemEvidence.applicable),
+                new OfferSnapshot(payTotal, milesTotal, minutesTotal, stopsTotal)
+                        .withItems(itemsTotal, active.itemCountApplicable || itemEvidence.applicable));
     }
 
     String summary() {

@@ -44,7 +44,7 @@ final class OfferParser {
             "(?i)(?:pick[ -]?ups?|drop[ -]?offs?)\\s*\\(\\s*\\d{1,2}\\s+stops?\\s*\\)");
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
     private static final Pattern METRIC_UNIT = Pattern.compile(
-            "(?i)(?:mi\\.?|miles?|stops?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
+            "(?i)(?:mi\\.?|miles?|stops?|items?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
     /** "+$2.00": an amount added to something else, never a total on its own. */
     private static final Pattern INCREMENT = Pattern.compile("\\+\\s*\\$");
     /** A label that is nothing but a "+$" amount, such as "+$1". */
@@ -83,7 +83,10 @@ final class OfferParser {
         Integer pay = malformed ? null : parsePay(lines);
         Integer stops = parseStops(metrics);
         Integer payAtMost = malformed || pay != null ? null : payWithPlusAmount(lines, metrics, stops);
-        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(routeLines), stops, payAtMost);
+        // Item totals do not borrow travel context or add together counts from different labels/orders.
+        ItemCount items = ItemCount.parse(distinctNormalized(metricParts, new ArrayList<>(lines)));
+        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(routeLines), stops, payAtMost)
+                .withItems(items.count, items.applicable);
     }
 
     /**
@@ -143,6 +146,11 @@ final class OfferParser {
             } else if (METRIC_UNIT.matcher(left).matches() && METRIC_NUMBER.matcher(right).matches()) {
                 metric = right + " " + left.replaceAll(TRAILING_SEPARATOR, "");
             }
+            // A separate unique/progress qualifier still belongs to its item label. Dropping it while joining
+            // siblings would turn a count of products/remaining work into a total number of item units.
+            if (metric.matches("(?i).*\\bitems?$") && ((i > 0
+                    && itemCountQualifier(siblings.get(i - 1))) || (i + 2 < siblings.size()
+                    && itemCountQualifier(siblings.get(i + 2))))) metric = "";
             if (!metric.isEmpty()) {
                 combined.add(metric);
                 if (i > 0 && TOTAL_LABEL.matcher(OfferEvidence.normalize(siblings.get(i - 1))).matches()) {
@@ -154,6 +162,12 @@ final class OfferParser {
             if (TOTAL_LABEL.matcher(left).matches() && MILES.matcher(right).find()) combined.add("Total " + right);
         }
         return combined;
+    }
+
+    private static boolean itemCountQualifier(String label) {
+        String normalized = OfferEvidence.normalize(label).toLowerCase(Locale.US);
+        return ItemCount.orderComponent(normalized) || normalized.matches(
+                ".*\\b(?:unique|distinct|remaining|found|collected|completed|of|up to|at least|about)\\b.*");
     }
 
     private static List<String> distinctNormalized(List<String> values, List<String> into) {
@@ -288,9 +302,11 @@ final class OfferParser {
         return matcher.find() ? null : amount;
     }
 
-    private static boolean isRate(String lower) {
+    /** Lowercase normalized label; shared by standalone and explicitly incremental pay readers. */
+    static boolean isRate(String lower) {
         return lower.contains("/hr") || lower.contains("per hour") || lower.contains("/mi")
-                || lower.contains("per mile") || lower.contains("/min") || lower.contains("per minute");
+                || lower.contains("per mile") || lower.contains("/min") || lower.contains("per minute")
+                || lower.matches(".*(?:/\\s*(?:items?|stops?)\\b|\\bper\\s+(?:item|stop)\\b).*");
     }
 
     /** An explicit total distance wins over leg distances; otherwise exactly one distance must be shown. */

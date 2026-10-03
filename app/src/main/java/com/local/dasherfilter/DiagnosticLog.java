@@ -481,6 +481,7 @@ final class DiagnosticLog {
                 + "; per-mile cents=" + rules.perMileCents
                 + "; per-minute cents=" + rules.perMinuteCents
                 + "; per-stop cents=" + rules.perStopCents
+                + "; per-item cents=" + rules.perItemCents
                 + "; max stops=" + rules.maxStops
                 + "; hotspot proximity hundredths/mi=" + rules.hotspotProximityHundredths
                 + "; minimum scale percent=" + rules.minimumScalePercent

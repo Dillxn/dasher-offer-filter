@@ -147,7 +147,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
             // On the level line, inside the circle but outside every offer's shape, far from the marks.
-            float[] empty = {star.skyX() + star.skyRadius() * 0.86f, star.skyY()};
+            float[] empty = emptySky(star);
             assertTrue("inside the page", empty[0] < star.getWidth() - new Ui(app).dp(8));
             for (int m = 0; m < 2; m++) assertFalse("outside shape " + m, inside(star.offerShape(m), empty));
             assertTrue(clearance(star, empty, -1) > new Ui(app).dp(30));
@@ -179,7 +179,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                     String.valueOf(star.getContentDescription()).contains("The chosen offer scores"));
 
             // A tap inside the circle off every offer, knob and button: the newest is chosen again, no ticket.
-            float[] empty = {star.skyX() + star.skyRadius() * 0.86f, star.skyY()};
+            float[] empty = emptySky(star);
             for (int m = 0; m < 2; m++) assertFalse("outside shape " + m, inside(star.offerShape(m), empty));
             assertTrue(clearance(star, empty, -1) > new Ui(app).dp(30));
             tapThrough(content, star, empty);
@@ -261,7 +261,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
             assertEquals("the knobs, max stops, toggles, then only the displayed offer",
-                    Arrays.asList(AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE, AreaScore.STOP,
+                    Arrays.asList(AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE, AreaScore.ITEM, AreaScore.STOP,
                             MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.SCORE_ID,
                             MinimumsStarView.OFFER_ID),
                     childIds(host));
@@ -456,6 +456,31 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                     Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width());
         }
         return clear;
+    }
+
+    /** A verified empty part of the circle, clear of all six knobs and the controls in their current layout. */
+    private float[] emptySky(MinimumsStarView star) {
+        Ui ui = new Ui(app);
+        float radius = star.skyRadius();
+        float[] best = null;
+        double clearest = ui.dp(30);
+        // Stay right of the mascot and above the page's lower lines; do not depend on one fixed point staying empty.
+        for (float dx = radius * 0.2f; dx <= radius * 0.95f; dx += ui.dp(4)) {
+            for (float dy = -radius * 0.85f; dy <= radius * 0.2f; dy += ui.dp(4)) {
+                if (Math.hypot(dx, dy) > radius * 0.95f) continue;
+                float[] at = {star.skyX() + dx, star.skyY() + dy};
+                if (at[0] < ui.dp(8) || at[0] >= star.getWidth() - ui.dp(8)
+                        || at[1] < ui.dp(8) || at[1] >= star.getHeight() - ui.dp(8)) continue;
+                if (inside(star.offerShape(OLDER), at) || inside(star.offerShape(NEWEST), at)) continue;
+                double clear = clearance(star, at, -1);
+                if (clear > clearest) {
+                    clearest = clear;
+                    best = at;
+                }
+            }
+        }
+        assertNotNull("empty sky clear of offers, six knobs and controls", best);
+        return best;
     }
 
     /**

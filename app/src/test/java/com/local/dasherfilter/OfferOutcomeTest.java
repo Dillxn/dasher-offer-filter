@@ -83,7 +83,8 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
                     findText(content, "Rules: decline — too many stops (4, max 3)"));
             assertNotNull(shownTextContaining(content,
                     "You touched the screen and took over; nothing more tapped · on screen"));
-            assertNotNull(findText(content, "Score reference · 124%"));
+            assertNotNull("the original score is distinguished from today's rule preview",
+                    findText(content, "Score reference · 124% at decision"));
             assertNotNull(shownTextContaining(content, "Dasher's notification 13 s earlier"));
             assertTrue(findChart(content).getContentDescription().toString().startsWith("Chart of the last 1 offers: 0 passed, 0 declined, 1 left to you, 0 need review."));
         }

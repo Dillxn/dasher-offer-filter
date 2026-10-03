@@ -397,7 +397,17 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertFalse("Dasher's map is right below: no second one", map.isShown());
             assertTrue("the constellation stands in the sky at full size", star.isShown() && !star.beside());
             assertNotSame("not in the header", iconDescribed(content, "Settings").getParent(), star.getParent());
-            assertTrue("spread across the sky: " + star.skyRadius(), star.skyRadius() >= new Ui(app).dp(120));
+            android.graphics.RectF counts = new android.graphics.RectF();
+            FilterHeroView mascot = find(content, FilterHeroView.class);
+            mascot.countsAt(counts);
+            counts.offset(mascot.getLeft(), mascot.getTop());
+            float radius = star.skyRadius();
+            float available = star.getHeight() - counts.bottom;
+            float occupied = star.backdropAbove(radius) + star.backdropBelow(radius);
+            assertTrue("both vertical spokes stay below the counts and inside the sky",
+                    star.skyY() - radius >= counts.bottom && star.skyY() + radius <= star.getHeight());
+            assertTrue("the six-spoke constellation uses the available height: " + occupied + " of " + available,
+                    occupied <= available && occupied >= available - new Ui(app).dp(12));
             assertTrue("the skyline stays", findChart(content).isShown());
             ScenePage scene = find(content, ScenePage.class);
             android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();

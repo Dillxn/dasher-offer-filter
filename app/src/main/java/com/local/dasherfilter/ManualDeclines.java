@@ -16,6 +16,8 @@ final class ManualDeclines {
     private static final String MILES = "miles_bits";
     private static final String MINUTES = "minutes";
     private static final String STOPS = "stops";
+    private static final String ITEMS = "items";
+    private static final String ITEM_APPLICABLE = "item_count_applicable";
     private static final String AT = "at";
 
     private ManualDeclines() {}
@@ -28,22 +30,37 @@ final class ManualDeclines {
         if (offer.payCents == null) return;
         // A second manual decline is itself proof the dash went on after the first.
         OfferSnapshot earlier = pending(context, now);
-        if (earlier != null && !earlier.fingerprint().equals(offer.fingerprint())) learn(context, earlier);
-        prefs(context).edit()
+        if (earlier != null && !sameOfferFacts(earlier, offer)) learn(context, earlier);
+        SharedPreferences.Editor edit = prefs(context).edit()
                 .putInt(PAY, offer.payCents)
                 .putLong(MILES, offer.miles == null ? -1 : Double.doubleToLongBits(offer.miles))
                 .putInt(MINUTES, offer.minutes == null ? -1 : offer.minutes)
                 .putInt(STOPS, offer.stops == null ? -1 : offer.stops)
-                .putLong(AT, now)
-                .apply();
+                .putLong(AT, now);
+        if (offer.items != null) edit.putInt(ITEMS, offer.items); else edit.remove(ITEMS);
+        if (offer.itemCountApplicable) edit.putBoolean(ITEM_APPLICABLE, true); else edit.remove(ITEM_APPLICABLE);
+        edit.apply();
     }
 
     /** A new offer was recorded: if it is a different offer, a held decline now counts. */
     static void offerSeen(Context context, OfferSnapshot offer, long now) {
         OfferSnapshot held = pending(context, now);
-        if (held == null || held.fingerprint().equals(offer.fingerprint())) return;
+        if (held == null || sameOfferFacts(held, offer)) return;
         forget(context);
         learn(context, held);
+    }
+
+    /**
+     * Keep the established pay/route identity. A newly unread item count is not evidence that the dash continued
+     * to a different offer; only two observed, differing counts can establish an item-only change here. This
+     * learning guard does not change the scanner's exact full-key recovery or authorize a tap.
+     */
+    private static boolean sameOfferFacts(OfferSnapshot left, OfferSnapshot right) {
+        return java.util.Objects.equals(left.payCents, right.payCents)
+                && java.util.Objects.equals(left.miles, right.miles)
+                && java.util.Objects.equals(left.minutes, right.minutes)
+                && java.util.Objects.equals(left.stops, right.stops)
+                && (left.items == null || right.items == null || left.items.equals(right.items));
     }
 
     /** The dash ended or paused: a held decline was about stopping, not the offer. */
@@ -80,7 +97,9 @@ final class ManualDeclines {
         double mileValue = miles == -1 ? Double.NaN : Double.longBitsToDouble(miles);
         return new OfferSnapshot(prefs.getInt(PAY, 0),
                 Double.isFinite(mileValue) && mileValue > 0 ? mileValue : null,
-                minutes > 0 ? minutes : null, stops > 0 ? stops : null);
+                minutes > 0 ? minutes : null, stops > 0 ? stops : null)
+                .withItems(prefs.contains(ITEMS) ? prefs.getInt(ITEMS, 0) : null,
+                        prefs.getBoolean(ITEM_APPLICABLE, false));
     }
 
     /** The held decline teaches now; its offer's history line, and the log, say what it taught. */

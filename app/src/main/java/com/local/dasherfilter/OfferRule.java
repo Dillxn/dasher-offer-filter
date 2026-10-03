@@ -1,7 +1,6 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Locale;
 
 /**
@@ -143,7 +142,9 @@ final class OfferRule {
         }
         if (!floors.readable()) return new Decision(Result.REVIEW, 0,
                 settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
-                        ? "final stop to nearest hotspot distance not found" : "an enabled value was not found", offer);
+                        ? "final stop to nearest hotspot distance not found"
+                        : floors.active[AreaScore.ITEM] && offer.items == null ? "item count not found"
+                        : "an enabled value was not found", offer);
         long required = AreaScore.requiredPay(floors, scale);
         if (!AreaScore.reaches(floors, offer.payCents, scale)) {
             return new Decision(Result.DECLINE, required, scoreReason(percent, scale), offer, percent, scale);
@@ -155,8 +156,8 @@ final class OfferRule {
     }
 
     /**
-     * The strict rules. Required pay is {@code max(flat, miles × rate, minutes × rate, stops × rate)}. The adaptive
-     * minimum raises it to one cent above the highest accepted standalone payout, and to at least the best accepted pay
+     * The strict rules. Required pay is {@code max(flat, miles × rate, minutes × rate, stops × rate, items × rate)}.
+     * The adaptive minimum raises it to one cent above the highest accepted standalone payout, and to at least the best accepted pay
      * per minute, per mile and per stop applied to this offer; each is a floor of its own, never added on top.
      * The global scale applies after each fixed or learned floor is resolved, with one final upward cent rounding
      * (a fixed mileage product stays decimal until then). Saved minimums and the learning records are not changed.
@@ -166,10 +167,13 @@ final class OfferRule {
             String reason = offer.stops + " stops exceeds maximum " + settings.maxStops;
             return new Decision(Result.DECLINE, 0, reason, offer);
         }
+        AreaScore.Floors floors = AreaScore.floors(settings, offer);
         // This spoke is independent of pay. A known failure remains a failure even when pay is unread.
-        if (failsHotspot(offer, settings)) {
+        if (floors.active[AreaScore.HOTSPOT] && floors.hotspotDenominator != null
+                && !floors.hotspotReaches(settings.minimumScalePercent)) {
             return new Decision(Result.DECLINE, 0, hotspotFailure(offer, settings), offer);
         }
+        // A configured monetary rule still needs pay on a sparse notification, even before item evidence arrives.
         boolean needsPay = settings.flatCents > 0 || settings.hasMarginalRule() || settings.risingOffers
                 || settings.hotspotProximityHundredths > 0;
         if (needsPay && offer.payCents == null && offer.payAtMostCents == null) {
@@ -177,18 +181,19 @@ final class OfferRule {
         }
 
         boolean missing = (settings.maxStops > 0 && offer.stops == null)
-                || (settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null);
+                || (settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null)
+                || (floors.active[AreaScore.ITEM] && offer.items == null);
         // A standalone order is at least a pickup and a drop-off, so fewer stops is a misread ("1 stop"). Every
         // per-stop ask treats it as not found: priced as read, it would ask half as much and let the offer pass.
         Integer stops = offer.stops != null && offer.stops >= AcceptedBest.PLAUSIBLE_STOPS ? offer.stops : null;
         int scale = settings.minimumScalePercent;
-        long required = scaledCost(Math.max(0, settings.flatCents), scale);
+        long required = floors.scaledCents(AreaScore.PAY, scale, true);
         String reason = "flat minimum";
         if (settings.perMileCents > 0) {
             if (offer.miles == null) {
                 missing = true;
             } else {
-                long byMiles = mileageCost(settings.perMileCents, offer.miles, scale);
+                long byMiles = floors.scaledCents(AreaScore.MILE, scale, true);
                 if (byMiles > required) {
                     required = byMiles;
                     reason = "dollars per mile";
@@ -199,7 +204,7 @@ final class OfferRule {
             if (offer.minutes == null) {
                 missing = true;
             } else {
-                long byMinutes = scaledCost((long) settings.perMinuteCents * offer.minutes, scale);
+                long byMinutes = floors.scaledCents(AreaScore.MINUTE, scale, true);
                 if (byMinutes > required) {
                     required = byMinutes;
                     reason = "dollars per minute";
@@ -210,19 +215,26 @@ final class OfferRule {
             if (stops == null) {
                 missing = true;
             } else {
-                long byStops = scaledCost((long) settings.perStopCents * stops, scale);
+                long byStops = floors.scaledCents(AreaScore.STOP, scale, true);
                 if (byStops > required) {
                     required = byStops;
                     reason = "dollars per stop";
                 }
             }
         }
+        if (floors.active[AreaScore.ITEM] && offer.items != null) {
+            long byItems = floors.scaledCents(AreaScore.ITEM, scale, true);
+            if (byItems > required) {
+                required = byItems;
+                reason = "dollars per item";
+            }
+        }
         // What the set rules alone ask, before the adaptive floors: all that a bound on unknown pay is judged by.
         long setRequired = required;
         String setReason = reason;
         if (settings.risingOffers && settings.lastAcceptedCents > 0
-                && scaledCost(settings.lastAcceptedCents + 1L, scale) > required) {
-            required = scaledCost(settings.lastAcceptedCents + 1L, scale);
+                && scaledCost(floors.acceptedCents[AreaScore.PAY].longValue(), scale) > required) {
+            required = scaledCost(floors.acceptedCents[AreaScore.PAY].longValue(), scale);
             reason = String.format(Locale.US, "must beat highest accepted payout $%.2f",
                     settings.lastAcceptedCents / 100.0);
         }
@@ -231,54 +243,54 @@ final class OfferRule {
             if (best.hasPerMinute()) {
                 if (offer.minutes == null) {
                     missing = true;
-                } else if (scaledCost(best.forMinutes(offer.minutes), scale) > required) {
-                    required = scaledCost(best.forMinutes(offer.minutes), scale);
+                } else if (scaledCost(floors.acceptedCents[AreaScore.MINUTE].longValue(), scale) > required) {
+                    required = scaledCost(floors.acceptedCents[AreaScore.MINUTE].longValue(), scale);
                     reason = "must match best accepted " + best.perMinuteLabel();
                 }
             }
             if (best.hasPerMile()) {
                 if (offer.miles == null) {
                     missing = true;
-                } else if (scaledCost(best.forMiles(offer.miles), scale) > required) {
-                    required = scaledCost(best.forMiles(offer.miles), scale);
+                } else if (scaledCost(floors.acceptedCents[AreaScore.MILE].longValue(), scale) > required) {
+                    required = scaledCost(floors.acceptedCents[AreaScore.MILE].longValue(), scale);
                     reason = "must match best accepted " + best.perMileLabel();
                 }
             }
             if (best.hasPerStop()) {
                 if (stops == null) {
                     missing = true;
-                } else if (scaledCost(best.forStops(stops), scale) > required) {
-                    required = scaledCost(best.forStops(stops), scale);
+                } else if (scaledCost(floors.acceptedCents[AreaScore.STOP].longValue(), scale) > required) {
+                    required = scaledCost(floors.acceptedCents[AreaScore.STOP].longValue(), scale);
                     reason = "must match best accepted " + best.perStopLabel();
                 }
             }
             // What offers declined by hand taught: each is a floor of its own, beaten by at least a cent.
             DeclinedFloor declined = settings.declined;
-            if (declined.payCents > 0 && scaledCost(declined.beatPay(), scale) > required) {
-                required = scaledCost(declined.beatPay(), scale);
+            if (declined.payCents > 0 && scaledCost(floors.declinedCents[AreaScore.PAY].longValue(), scale) > required) {
+                required = scaledCost(floors.declinedCents[AreaScore.PAY].longValue(), scale);
                 reason = "must beat declined payout " + DecisionLog.money(declined.payCents);
             }
             if (declined.rates.hasPerMinute()) {
                 if (offer.minutes == null) {
                     missing = true;
-                } else if (scaledCost(declined.beatMinutes(offer.minutes), scale) > required) {
-                    required = scaledCost(declined.beatMinutes(offer.minutes), scale);
+                } else if (scaledCost(floors.declinedCents[AreaScore.MINUTE].longValue(), scale) > required) {
+                    required = scaledCost(floors.declinedCents[AreaScore.MINUTE].longValue(), scale);
                     reason = "must beat declined " + declined.rates.perMinuteLabel();
                 }
             }
             if (declined.rates.hasPerMile()) {
                 if (offer.miles == null) {
                     missing = true;
-                } else if (scaledCost(declined.beatMiles(offer.miles), scale) > required) {
-                    required = scaledCost(declined.beatMiles(offer.miles), scale);
+                } else if (scaledCost(floors.declinedCents[AreaScore.MILE].longValue(), scale) > required) {
+                    required = scaledCost(floors.declinedCents[AreaScore.MILE].longValue(), scale);
                     reason = "must beat declined " + declined.rates.perMileLabel();
                 }
             }
             if (declined.rates.hasPerStop()) {
                 if (stops == null) {
                     missing = true;
-                } else if (scaledCost(declined.beatStops(stops), scale) > required) {
-                    required = scaledCost(declined.beatStops(stops), scale);
+                } else if (scaledCost(floors.declinedCents[AreaScore.STOP].longValue(), scale) > required) {
+                    required = scaledCost(floors.declinedCents[AreaScore.STOP].longValue(), scale);
                     reason = "must beat declined " + declined.rates.perStopLabel();
                 }
             }
@@ -303,15 +315,17 @@ final class OfferRule {
         }
         if (missing) return new Decision(Result.REVIEW, required,
                 settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
-                        ? "final stop to nearest hotspot distance not found" : "an enabled value was not found", offer);
+                        ? "final stop to nearest hotspot distance not found"
+                        : floors.active[AreaScore.ITEM] && offer.items == null ? "item count not found"
+                        : "an enabled value was not found", offer);
         return new Decision(Result.KEEP, required, scale == 100 ? "meets enabled rules"
                 : "meets enabled rules at " + scale + "% minimum scale", offer);
     }
 
     /**
      * An add-on must keep the combined route within the flat, rate, and stop limits, and its own explicit added
-     * pay must cover {@code max(added miles × rate, added minutes × rate, added stops × rate)}. Only the amounts the
-     * add-on explicitly adds count: none is worked out from route totals. Always strict, score by area or not: an
+     * pay must cover {@code max(added miles × rate, added minutes × rate, added stops × rate, added items × rate)}.
+     * Only the amounts the add-on explicitly adds count: none is worked out from route totals. Always strict, score by area or not: an
      * add-on's increment has its own meaning, which an area score of a standalone offer does not capture.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
@@ -322,22 +336,15 @@ final class OfferRule {
         }
 
         OfferSnapshot added = addOn.incremental;
-        // Any pay rule other than the flat minimum (already applied to the combined route) needs the added pay.
-        // The rising baseline never judges an add-on, but it must not let an add-on with unknown pay pass either.
+        // Incremental and combined requirements are separate constraints, both using the same fixed cost resolver.
+        AreaScore.Floors floors = AreaScore.incrementalFloors(settings, added);
         boolean missing = (settings.hasMarginalRule() || settings.risingOffers) && added.payCents == null;
         int scale = settings.minimumScalePercent;
         long marginalCost = 0;
-        if (settings.perMileCents > 0) {
-            if (added.miles == null) missing = true;
-            else marginalCost = Math.max(marginalCost, mileageCost(settings.perMileCents, added.miles, scale));
-        }
-        if (settings.perMinuteCents > 0) {
-            if (added.minutes == null) missing = true;
-            else marginalCost = Math.max(marginalCost, scaledCost((long) settings.perMinuteCents * added.minutes, scale));
-        }
-        if (settings.perStopCents > 0) {
-            if (added.stops == null) missing = true;
-            else marginalCost = Math.max(marginalCost, scaledCost((long) settings.perStopCents * added.stops, scale));
+        for (int axis : new int[] {AreaScore.MILE, AreaScore.MINUTE, AreaScore.STOP, AreaScore.ITEM}) {
+            if (!floors.active[axis]) continue;
+            if (floors.fixedCents[axis] == null) missing = true;
+            else marginalCost = Math.max(marginalCost, floors.scaledCents(axis, scale, true));
         }
 
         if (added.payCents != null && added.payCents < marginalCost) {
@@ -350,15 +357,6 @@ final class OfferRule {
         return new Decision(Result.KEEP, marginalCost, "combined route and add-on meet enabled rules", added);
     }
 
-    /** Compare d × minimum(1/d) > 1 exactly, including a real zero-distance match. */
-    private static boolean failsHotspot(OfferSnapshot offer, FilterSettings settings) {
-        return settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles != null
-                && BigDecimal.valueOf(offer.finalStopHotspotMiles)
-                        .multiply(BigDecimal.valueOf(settings.hotspotProximityHundredths))
-                        .multiply(BigDecimal.valueOf(settings.minimumScalePercent))
-                        .compareTo(BigDecimal.valueOf(10_000)) > 0;
-    }
-
     private static String hotspotFailure(OfferSnapshot offer, FilterSettings settings) {
         return "final stop is " + BigDecimal.valueOf(offer.finalStopHotspotMiles).stripTrailingZeros().toPlainString()
                 + " mi from nearest hotspot; proximity below "
@@ -368,12 +366,7 @@ final class OfferRule {
 
     /** Cents for {@code miles × rate}, rounded up; saturates rather than overflowing. */
     static long mileageCost(int rateCents, double miles) {
-        try {
-            return BigDecimal.valueOf(miles).multiply(BigDecimal.valueOf(rateCents))
-                    .setScale(0, RoundingMode.CEILING).longValueExact();
-        } catch (ArithmeticException overflow) {
-            return Long.MAX_VALUE;
-        }
+        return AreaScore.roundedCents(BigDecimal.valueOf(miles).multiply(BigDecimal.valueOf(rateCents)), 100);
     }
 
     /** Scale a resolved whole-cent floor; Long.MAX_VALUE remains the existing unreachable/saturated sentinel. */
@@ -384,17 +377,7 @@ final class OfferRule {
 
     /** Apply the scale before rounding a fixed route product, so fractions of a cent are not rounded twice. */
     private static long scaledCost(BigDecimal cents, int minimumScalePercent) {
-        try {
-            return cents.multiply(BigDecimal.valueOf(minimumScalePercent)).movePointLeft(2)
-                    .setScale(0, RoundingMode.CEILING).longValueExact();
-        } catch (ArithmeticException overflow) {
-            return Long.MAX_VALUE;
-        }
-    }
-
-    private static long mileageCost(int rateCents, double miles, int minimumScalePercent) {
-        if (minimumScalePercent == 100) return mileageCost(rateCents, miles);
-        return scaledCost(BigDecimal.valueOf(miles).multiply(BigDecimal.valueOf(rateCents)), minimumScalePercent);
+        return AreaScore.roundedCents(cents, minimumScalePercent);
     }
 
     /** A buffer may fall below the learned offer: describe its baseline without claiming it must still be beaten. */

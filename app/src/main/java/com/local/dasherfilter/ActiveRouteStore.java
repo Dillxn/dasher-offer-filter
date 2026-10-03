@@ -12,6 +12,8 @@ final class ActiveRouteStore {
     private static final String MILES = "miles";
     private static final String MINUTES = "minutes";
     private static final String STOPS = "stops";
+    private static final String ITEMS = "items";
+    private static final String ITEM_APPLICABLE = "item_count_applicable";
 
     static void save(Context context, OfferSnapshot route) {
         if (route == null) {
@@ -23,6 +25,8 @@ final class ActiveRouteStore {
         if (route.miles != null) editor.putLong(MILES, Double.doubleToLongBits(route.miles));
         if (route.minutes != null) editor.putInt(MINUTES, route.minutes);
         if (route.stops != null) editor.putInt(STOPS, route.stops);
+        if (route.items != null) editor.putInt(ITEMS, route.items);
+        if (route.itemCountApplicable) editor.putBoolean(ITEM_APPLICABLE, true);
         editor.apply();
     }
 
@@ -40,15 +44,17 @@ final class ActiveRouteStore {
                 prefs.contains(PAY) ? prefs.getInt(PAY, 0) : null,
                 prefs.contains(MILES) ? Double.longBitsToDouble(prefs.getLong(MILES, 0)) : null,
                 prefs.contains(MINUTES) ? prefs.getInt(MINUTES, 0) : null,
-                prefs.contains(STOPS) ? prefs.getInt(STOPS, 0) : null);
+                prefs.contains(STOPS) ? prefs.getInt(STOPS, 0) : null)
+                .withItems(prefs.contains(ITEMS) ? prefs.getInt(ITEMS, 0) : null,
+                        prefs.getBoolean(ITEM_APPLICABLE, false));
     }
 
-    /** Pickup or completion progress makes the stored travel and stop estimates stale; pay is kept. */
+    /** Progress makes stored travel, stop and item totals stale; pay and observed item applicability stay. */
     static void invalidateTravel(Context context) {
         SharedPreferences prefs = prefs(context);
         if (!prefs.contains(SAVED_AT)) return;
-        prefs.edit().remove(MILES).remove(MINUTES).remove(STOPS).apply();
-        DiagnosticLog.log(context, "route", "delivery progress observed; old travel/stop estimates invalidated");
+        prefs.edit().remove(MILES).remove(MINUTES).remove(STOPS).remove(ITEMS).apply();
+        DiagnosticLog.log(context, "route", "delivery progress observed; old travel/stop/item estimates invalidated");
     }
 
     static void clear(Context context) {

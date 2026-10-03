@@ -13,6 +13,8 @@ final class FilterSettings {
     final int perMinuteCents;
     /** Minimum pay per stop, a floor like per mile and per minute: an offer needs at least stops × this. */
     final int perStopCents;
+    /** Fixed pay per observed total item; only offers declaring items/shopping use it. Never learned. */
+    final int perItemCents;
     final int maxStops;
     final boolean risingOffers;
     /** The highest standalone pay accepted while learning (the adaptive pay minimum); only Reset lowers it. */
@@ -78,11 +80,20 @@ final class FilterSettings {
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
                    boolean scoreByArea, int hotspotProximityHundredths, int minimumScalePercent) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
+                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, 0);
+    }
+
+    FilterSettings(boolean enabled, int flatCents, int perMileCents,
+                   int perMinuteCents, int perStopCents, int maxStops,
+                   boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
+                   boolean scoreByArea, int hotspotProximityHundredths, int minimumScalePercent, int perItemCents) {
         this.enabled = enabled;
         this.flatCents = flatCents;
         this.perMileCents = perMileCents;
         this.perMinuteCents = perMinuteCents;
         this.perStopCents = perStopCents;
+        this.perItemCents = Math.max(0, Math.min(MOST_CENTS, perItemCents));
         this.maxStops = maxStops;
         this.risingOffers = risingOffers;
         this.lastAcceptedCents = lastAcceptedCents;
@@ -96,12 +107,12 @@ final class FilterSettings {
     /** True when at least one rule can reject or require review of an offer. */
     boolean hasAnyRule() {
         return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0
-                || hotspotProximityHundredths > 0 || maxStops > 0 || risingOffers;
+                || perItemCents > 0 || hotspotProximityHundredths > 0 || maxStops > 0 || risingOffers;
     }
 
     /** Rules whose cost scales with an add-on's own miles, minutes, or stops. */
     boolean hasMarginalRule() {
-        return perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0;
+        return perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0 || perItemCents > 0;
     }
 
     /**
@@ -116,6 +127,7 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perMinuteCents) + " per minute");
         if (perStopCents > 0) rules.add(DecisionLog.money(perStopCents) + " per stop");
+        if (perItemCents > 0) rules.add(DecisionLog.money(perItemCents) + " per item (offers declaring items or shopping)");
         if (hotspotProximityHundredths > 0) rules.add((scoreByArea ? "hotspot proximity " : "hotspot proximity at least ")
                 + proximityLabel(hotspotProximityHundredths) + " (final stop to nearest hotspot)");
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
@@ -143,6 +155,7 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
         if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perMinuteCents) + "/min");
         if (perStopCents > 0) rules.add(DecisionLog.shortMoney(perStopCents) + "/stop");
+        if (perItemCents > 0) rules.add(DecisionLog.shortMoney(perItemCents) + "/item");
         if (hotspotProximityHundredths > 0) rules.add("hotspot ≥" + proximityLabel(hotspotProximityHundredths));
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
         if (risingOffers) {
@@ -157,19 +170,19 @@ final class FilterSettings {
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
     }
 
     /** These rules decided by area score ({@code on}) or by every minimum; nothing else changes. */
     FilterSettings withScoreByArea(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, on, hotspotProximityHundredths, minimumScalePercent);
+                risingOffers, lastAcceptedCents, best, declined, on, hotspotProximityHundredths, minimumScalePercent, perItemCents);
     }
 
     /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
     FilterSettings withMaxStops(int stops) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, Math.max(0, stops),
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
     }
 
     /**
@@ -178,31 +191,39 @@ final class FilterSettings {
      */
     FilterSettings withAdaptive(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, on,
-                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent);
+                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
     }
 
-    /** The five set minimums: pay, per mile, per minute, per stop, reciprocal hotspot distance. */
+    /** The six set minimums: pay, per mile, per minute, per stop, reciprocal hotspot distance, per item. */
     int[] minimums() {
-        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents, hotspotProximityHundredths};
+        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents, hotspotProximityHundredths, perItemCents};
     }
 
-    /** Replace minimums in {@link #minimums} order; an older four-value caller leaves hotspot proximity alone. */
+    /** Replace minimums in {@link #minimums} order; older callers leave absent hotspot and item minimums alone. */
     FilterSettings withMinimums(int[] cents) {
         return new FilterSettings(enabled, cents[0], cents[1], cents[2], cents[3], maxStops, risingOffers,
                 lastAcceptedCents, best, declined, scoreByArea,
-                cents.length > 4 ? cents[4] : hotspotProximityHundredths, minimumScalePercent);
+                cents.length > 4 ? cents[4] : hotspotProximityHundredths, minimumScalePercent,
+                cents.length > 5 ? cents[5] : perItemCents);
     }
 
     /** This independent fixed minimum is never learned or altered by adopting adaptive minimums. */
     FilterSettings withHotspotProximity(int hundredths) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hundredths, minimumScalePercent);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hundredths, minimumScalePercent, perItemCents);
+    }
+
+    /** Fixed per-item minimum; no other setting or learned value changes. */
+    FilterSettings withPerItem(int cents) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths,
+                minimumScalePercent, cents);
     }
 
     /** Scale the resolved minimums together without changing any saved or learned baseline. */
     FilterSettings withMinimumScalePercent(int percent) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, percent);
+                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, percent, perItemCents);
     }
 
     /** Plain reciprocal-distance units; never formatted as money. */
@@ -286,6 +307,6 @@ final class FilterSettings {
      */
     FilterSettings withoutRisingBaseline() {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                false, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent);
+                false, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
     }
 }

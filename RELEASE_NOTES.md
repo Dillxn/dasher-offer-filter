@@ -1,3 +1,12 @@
+## 0.4.57 — pay per item and shared minimums math
+
+- Adds an optional downward Pay / item spoke for offers declaring items or shopping. Uses an observed total count; ambiguous or missing declared counts remain unknown. Selected tickets show the count and rate, with no extra Settings row.
+- Resolves fixed and learned payout requirements in one place for strict rules, area scoring, chart baselines and learning comparisons. Keeps compensating area mode, strict mode, existing learning and the global percentage buffer unchanged.
+- Distinguishes a selected offer's current-rule score from its recorded decision score. Preserves observed item facts through history, route context and decline guards; changing the item minimum cancels stale tap authority.
+- Updates the privacy notice for retained numeric item facts. Existing installs must accept the updated notice before filtering resumes.
+
+Validation: 1,756 tests across 98 suites passed on simulated Android 8/15, with zero failures, errors or skips. Lint completed with zero errors and 34 warnings; all 214 frozen inputs were unchanged. A 2,500-scenario comparison preserved all 15,000 result records with pay/item disabled. Signing and live feed publication remain pending; physical shopping-offer behavior is not yet verified on a handset. See [the validation record](VALIDATION_ITEMS_0.4.57.md).
+
 ## 0.4.56 — decline recovery timing and identity guards
 
 - Keeps Back recovery tied to the original complete offer and continuing countdown, including later retries. Changed labels or missing facts cannot reset the deadline or retry budget.

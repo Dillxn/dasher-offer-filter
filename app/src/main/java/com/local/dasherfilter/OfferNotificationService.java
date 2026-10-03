@@ -684,6 +684,15 @@ public final class OfferNotificationService extends NotificationListenerService 
         QuietCard card = offer.quietCard;
         offer.quietCard = null;
         if (offer.state.readOnScreen != null || !OfferAlerts.showing(this, alertTag)) return;
+        // Settings can change while Peek waits for quiet. Do not revive a card judged under an obsolete item
+        // floor (or any other changed decision); replay the current notification silently instead.
+        FilterSettings current = FilterStore.load(this);
+        OfferRule.Decision now = decide(card.facts, card.labels, current);
+        if (current.enabled != card.enabled || !now.summary().equals(card.decision.summary())) {
+            OfferAlerts.clear(this, alertTag);
+            reconcile();
+            return;
+        }
         DecisionLog.Action action = announce(offer.contentIntent, offer, card.facts, card.decision, card.signature,
                 false, false, offer.dasherSounded, false);
         DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION, card.addOn,

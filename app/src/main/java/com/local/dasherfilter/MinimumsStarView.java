@@ -32,13 +32,13 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The minimums as constellations in the page's sky: pay, per mile, per minute, per stop, and an upright
- * final-stop hotspot proximity spoke. The fifth measures 1 / actual final-stop distance in miles, never pay or
+ * The minimums as constellations in the page's sky: pay, per mile, per minute, per stop, an upright
+ * final-stop hotspot proximity spoke, and pay per observed total item pointing down. The fifth measures 1 / actual final-stop distance in miles, never pay or
  * the driver's current distance from a hotspot. Missing distances are not plotted and never inferred.
  * The original four spokes retain their existing learning,
  * with the minimums you set (solid, round stars) and the adaptive minimums learned from offers you accepted or
  * declined by hand (dashed, sparkles). Distance from the middle is the pay each one asks of one example offer, so
- * the four monetary spokes share a dollar scale. The fifth uses a fixed display conversion only (1 inverse mile
+ * the monetary spokes share a dollar scale when their quantities are observed. The fifth uses a fixed display conversion only (1 inverse mile
  * at the $10 radius), and its own readout states inverse miles and the equivalent maximum distance. The latest or
  * skyline-selected offer has small marks on each spoke at what its pay, per mile, per minute and per stop would pay
  * for the example (● passed, ✕ declined, ○ review): a mark outside a minimum beat
@@ -57,7 +57,7 @@ import java.util.List;
  *
  * <p>As the sky, the set minimums are knobs: each spoke's round star, ringed so it reads as something to take hold
  * of (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle: with no rule at all,
- * five of them, so the first rule is a drag), grows under a finger and can be dragged along its spoke, in steps, with a
+ * six of them, so the first rule is a drag), grows under a finger and can be dragged along its spoke, in steps, with a
  * light tick at each; pressing or focusing shows its name and value before moving it, and letting go saves it at once. A knob
  * keeps its exact value until the finger has moved it half a step along its spoke, so a wobble never snaps it to a
  * step; it is taken only by a finger moving along its spoke, so a scroll of the page or a slide across it is left to
@@ -102,11 +102,11 @@ import java.util.List;
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
     private static final String[] NAMES = {"Pay", "Per mile", "Per minute", "Per stop",
-            "Final-stop hotspot proximity"};
-    static final String[] AXIS_LABELS = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot"};
+            "Final-stop hotspot proximity", "Per item"};
+    static final String[] AXIS_LABELS = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot", "Pay / item"};
     /** Each spoke is marked with an icon; the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
-            Glyph.Shape.PIN, Glyph.Shape.HOTSPOT};
+            Glyph.Shape.PIN, Glyph.Shape.HOTSPOT, Glyph.Shape.BAG};
     private static final int ICON_DP = 18;
     /**
      * The spokes stand this many degrees above and below level: top-left, top-right, bottom-right, bottom-left. The
@@ -214,8 +214,8 @@ final class MinimumsStarView extends View {
      * cents per unit, so a knob dragged out from rest moves as it would strictly. The scale's units at the outer ring,
      * and how many rings it has. All three hold still while a knob is held.
      */
-    private final double[] unit = {1, 1, 1, 1, 1};
-    private final double[] shownUnit = {1, 1, 1, 1, 1};
+    private final double[] unit = {1, 1, 1, 1, 1, 1};
+    private final double[] shownUnit = {1, 1, 1, 1, 1, 1};
     private double outer;
     private double shownOuter;
     private int rings = 3;
@@ -296,16 +296,16 @@ final class MinimumsStarView extends View {
     }
 
     /** A knob moves in these steps of its spoke's own unit: $0.50 of pay, $0.05 a mile, $0.01 a minute, $0.25 a stop. */
-    static final int[] STEPS = {50, 5, 1, 25, 5};
+    static final int[] STEPS = {50, 5, 1, 25, 5, 5};
     /** Display conversion only: 1 inverse mile shares the $10 radius in strict mode; never used to score. */
     private static final double HOTSPOT_DISPLAY_UNIT = 10;
-    private static final String[] UNITS = {"", "/mi", "/min", "/stop", "/mi"};
+    private static final String[] UNITS = {"", "/mi", "/min", "/stop", "/mi", "/item"};
     private static final String[] KNOBS = {"Minimum pay", "Minimum per mile", "Minimum per minute",
-            "Minimum per stop", "Minimum final-stop hotspot proximity"};
+            "Minimum per stop", "Minimum final-stop hotspot proximity", "Minimum per item"};
     /** A knob takes a touch this far from its middle (a 48 dp target); where two could, the nearer one does. */
     private static final int KNOB_REACH_DP = 24;
     /**
-     * A spoke with no set minimum rests its hollow knob this far out (far enough that five hollow knobs, on a fresh
+     * A spoke with no set minimum rests its hollow knob this far out (far enough that six hollow knobs, on a fresh
      * page, stand apart); dragged back inside it, a rule is off.
      */
     static final int KNOB_REST_DP = 32;
@@ -326,7 +326,7 @@ final class MinimumsStarView extends View {
     static final long UNDO_MS = 8000;
     static final String ADOPT_SAID = "Make the learned minimums your set minimums";
     /**
-     * The screen reader's ids for the knobs (0 to 4, by spoke), then the adopt button, the score by area toggle, the
+     * The screen reader's ids for the knobs (0 to 5, by spoke), then the adopt button, the score by area toggle, the
      * adaptive minimum's toggle and the max stops badge.
      */
     static final int ADOPT_ID = NAMES.length;
@@ -361,6 +361,14 @@ final class MinimumsStarView extends View {
     private double exampleMiles = 5;
     private int exampleMinutes = 20;
     private int exampleStops = 2;
+    private OfferSnapshot exampleFacts = new OfferSnapshot(null, 5.0, 20, 2);
+    private OfferSnapshot referenceExample = exampleFacts;
+    private OfferSnapshot dragFacts = exampleFacts;
+    private FilterSettings savedRules;
+    private List<DecisionLog.Entry> shownRecent = java.util.Collections.emptyList();
+    /** Drag calibration only while no item count is known; never an offer count or plotted pay requirement. */
+    private static final int ITEM_EDIT_UNITS = 10;
+    private int dragItems = ITEM_EDIT_UNITS;
     /** ...and as they stood when the held knob was taken, which it keeps until it is let go. */
     private double dragMiles = 5;
     private int dragMinutes = 20;
@@ -394,11 +402,11 @@ final class MinimumsStarView extends View {
     private final RectF pillBox = new RectF();
     /** Some adaptive minimum asks more than its saved set one (and the saved adaptive minimum is on). */
     private boolean adoptable;
-    /** The four set minimums as saved. */
+    /** The set minimums as saved. */
     private final int[] savedRates = new int[NAMES.length];
     /** The set minimums before the learned ones were adopted, while Undo is offered; else null. */
     private int[] undoValues;
-    /** The four set minimums the adoption made: any other change to them (a knob, say) ends Undo. */
+    /** The set minimums the adoption made: any other change to them (a knob, say) ends Undo. */
     private final int[] adoptedRates = new int[NAMES.length];
     private final Runnable undoEnds = () -> {
         undoValues = null;
@@ -564,33 +572,47 @@ final class MinimumsStarView extends View {
      * @param recent recent decisions, newest first; standalone offers with pay are marked
      */
     void show(FilterSettings rules, FilterSettings saved, OfferSnapshot example, List<DecisionLog.Entry> recent) {
+        referenceExample = example;
+        savedRules = saved;
+        shownRecent = recent == null ? java.util.Collections.emptyList() : new ArrayList<>(recent);
+        // The editable route example stays stable; the item axis applies only to the offer actually displayed.
+        // Selecting shopping history after an ordinary offer must not erase its item axis, or vice versa.
+        long displayedAt = openAt >= 0 ? openAt : emphasizedAt >= 0 ? emphasizedAt
+                : shownRecent.isEmpty() ? -1 : shownRecent.get(0).at;
+        for (DecisionLog.Entry entry : shownRecent) if (entry.at == displayedAt) {
+            example = example.withItems(entry.facts.items, entry.facts.itemCountApplicable);
+            break;
+        }
         double miles = example.miles;
         int minutes = example.minutes;
         int stops = example.stops;
+        AreaScore.Floors floors = AreaScore.floors(rules, example);
         AcceptedBest best = rules.best;
         DeclinedFloor declined = rules.declined;
-        put(0, rules.flatCents > 0 ? DecisionLog.money(rules.flatCents) : null, rules.flatCents,
-                rules.lastAcceptedCents > 0 ? rules.lastAcceptedCents + 1L : 0,
+        put(0, rules.flatCents > 0 ? DecisionLog.money(rules.flatCents) : null, amount(floors.fixedCents[AreaScore.PAY]),
+                amount(floors.acceptedCents[AreaScore.PAY]),
                 "more than " + DecisionLog.money(rules.lastAcceptedCents),
-                declined.payCents > 0 ? declined.beatPay() : 0, "more than " + DecisionLog.money(declined.payCents));
+                amount(floors.declinedCents[AreaScore.PAY]), "more than " + DecisionLog.money(declined.payCents));
         put(1, rules.perMileCents > 0 ? DecisionLog.money(rules.perMileCents) : null,
-                OfferRule.mileageCost(rules.perMileCents, miles),
-                best.hasPerMile() ? best.forMiles(miles) : 0, best.hasPerMile() ? best.perMile() : null,
-                declined.rates.hasPerMile() ? declined.beatMiles(miles) : 0,
+                amount(floors.fixedCents[AreaScore.MILE]),
+                amount(floors.acceptedCents[AreaScore.MILE]), best.hasPerMile() ? best.perMile() : null,
+                amount(floors.declinedCents[AreaScore.MILE]),
                 declined.rates.hasPerMile() ? "more than " + declined.rates.perMile() : null);
         put(2, rules.perMinuteCents > 0 ? DecisionLog.money(rules.perMinuteCents) : null,
-                (long) rules.perMinuteCents * minutes,
-                best.hasPerMinute() ? best.forMinutes(minutes) : 0, best.hasPerMinute() ? best.perMinute() : null,
-                declined.rates.hasPerMinute() ? declined.beatMinutes(minutes) : 0,
+                amount(floors.fixedCents[AreaScore.MINUTE]),
+                amount(floors.acceptedCents[AreaScore.MINUTE]), best.hasPerMinute() ? best.perMinute() : null,
+                amount(floors.declinedCents[AreaScore.MINUTE]),
                 declined.rates.hasPerMinute() ? "more than " + declined.rates.perMinute() : null);
         put(3, rules.perStopCents > 0 ? DecisionLog.money(rules.perStopCents) : null,
-                (long) rules.perStopCents * stops,
-                best.hasPerStop() ? best.forStops(stops) : 0, best.hasPerStop() ? best.perStop() : null,
-                declined.rates.hasPerStop() ? declined.beatStops(stops) : 0,
+                amount(floors.fixedCents[AreaScore.STOP]),
+                amount(floors.acceptedCents[AreaScore.STOP]), best.hasPerStop() ? best.perStop() : null,
+                amount(floors.declinedCents[AreaScore.STOP]),
                 declined.rates.hasPerStop() ? "more than " + declined.rates.perStop() : null);
         put(AreaScore.HOTSPOT, rules.hotspotProximityHundredths > 0
                         ? readout(AreaScore.HOTSPOT, rules.hotspotProximityHundredths) : null,
                 (long) (rules.hotspotProximityHundredths * HOTSPOT_DISPLAY_UNIT), 0, null, 0, null);
+        put(AreaScore.ITEM, rules.perItemCents > 0 ? readout(AreaScore.ITEM, rules.perItemCents) : null,
+                amount(floors.fixedCents[AreaScore.ITEM]), 0, null, 0, null);
         adaptiveOn = rules.risingOffers;
         byArea = rules.scoreByArea;
         maxStops = Math.max(0, rules.maxStops);
@@ -600,6 +622,7 @@ final class MinimumsStarView extends View {
         exampleMiles = miles;
         exampleMinutes = minutes;
         exampleStops = stops;
+        exampleFacts = example;
         int[] kept = saved.minimums();
         for (int i = 0; i < NAMES.length; i++) savedRates[i] = Math.max(0, kept[i]);
         adoptable = saved.risingOffers && !Arrays.equals(saved.adoptAdaptive().minimums(), kept);
@@ -633,15 +656,38 @@ final class MinimumsStarView extends View {
     }
 
     /** A spoke's set minimum and its adaptive one: the higher of what accepted and declined offers taught. */
-    private void put(int axis, String setLabel, long setAsk, long acceptedCents, String acceptedLabel,
-                     long declinedCents, String declinedLabel) {
+    private void put(int axis, String setLabel, double setAsk, double acceptedCents, String acceptedLabel,
+                     double declinedCents, String declinedLabel) {
         setCents[axis] = setLabel != null && setAsk > 0 ? setAsk : Double.NaN;
         setText[axis] = setLabel;
         boolean fromDecline = declinedCents > acceptedCents;
-        long cents = fromDecline ? declinedCents : acceptedCents;
+        double cents = fromDecline ? declinedCents : acceptedCents;
         String label = fromDecline ? declinedLabel : acceptedLabel;
         learnedCents[axis] = label != null && cents > 0 && cents < Long.MAX_VALUE ? cents : Double.NaN;
         learnedText[axis] = Double.isNaN(learnedCents[axis]) ? null : label;
+    }
+
+    private static double amount(java.math.BigDecimal value) {
+        return value == null ? 0 : value.doubleValue();
+    }
+
+    private static boolean upright(int axis) {
+        return axis == AreaScore.HOTSPOT || axis == AreaScore.ITEM;
+    }
+
+    static boolean hasItems(OfferSnapshot offer) {
+        return offer != null && offer.itemCountApplicable && offer.items != null && offer.items > 0;
+    }
+
+    /** Observed quantities only. An absent count never becomes a one-item order. */
+    static String itemsLabel(OfferSnapshot offer) {
+        if (offer == null || !offer.itemCountApplicable) return "";
+        if (!hasItems(offer)) return "Item count unavailable";
+        String count = offer.items + (offer.items == 1 ? " item" : " items");
+        if (offer.payCents == null) return count;
+        boolean rounded = offer.payCents % offer.items != 0;
+        String rate = String.format(java.util.Locale.US, "$%.2f/item", offer.payCents / (100.0 * offer.items));
+        return count + " · " + (rounded ? "≈" : "") + rate;
     }
 
     /** Each recent offer's cents on each spoke for the example offer, as the strict chart places it. */
@@ -678,7 +724,8 @@ final class MinimumsStarView extends View {
                     offer.miles != null && offer.miles > 0 ? pay * example.miles / offer.miles : Double.NaN,
                     offer.minutes != null && offer.minutes > 0 ? pay * example.minutes / offer.minutes : Double.NaN,
                     offer.stops != null && offer.stops > 0 ? pay * example.stops / offer.stops : Double.NaN,
-                    hotspotDisplayValue(offer.finalStopHotspotMiles)};
+                    hotspotDisplayValue(offer.finalStopHotspotMiles),
+                    hasItems(offer) && hasItems(example) ? pay * example.items / offer.items : Double.NaN};
             strictMarks.add(cents);
             AreaScore.Floors floors = AreaScore.floors(rules, offer);
             marks.add(byArea ? AreaScore.ratios(floors, offer.payCents) : cents);
@@ -748,11 +795,11 @@ final class MinimumsStarView extends View {
      * minimum that is off only where a set one gives its spoke a scale.
      */
     private void inUnits() {
-        boolean[] active = AreaScore.active(shownRules);
+        boolean[] active = AreaScore.floors(shownRules, exampleFacts).active;
         for (int i = 0; i < NAMES.length; i++) {
             set[i] = setCents[i] / unit[i];
             learned[i] = learnedCents[i] / unit[i];
-            areaMin[i] = byArea && active[i] ? 1 : Double.NaN;
+            areaMin[i] = byArea && active[i] && (i != AreaScore.ITEM || hasItems(exampleFacts)) ? 1 : Double.NaN;
             if (byArea && !active[i]) learned[i] = Double.NaN;
         }
     }
@@ -834,13 +881,19 @@ final class MinimumsStarView extends View {
     static String needs(FilterSettings rules, OfferSnapshot example) {
         String like = "An offer like " + example.minutes + " min · " + trim(example.miles) + " mi · " + example.stops
                 + (example.stops == 1 ? " stop" : " stops");
+        if (hasItems(example)) like += " · " + example.items + (example.items == 1 ? " item" : " items");
         if (rules.maxStops > 0 && example.stops > rules.maxStops) {
             return like + " is declined: at most " + rules.maxStops + (rules.maxStops == 1 ? " stop." : " stops.");
         }
         OfferRule.Decision decision = OfferRule.evaluate(
                 new OfferSnapshot(ANY_PAY, example.miles, example.minutes, example.stops)
-                        .withFinalStopHotspotMiles(example.finalStopHotspotMiles), rules);
+                        .withFinalStopHotspotMiles(example.finalStopHotspotMiles)
+                        .withItems(example.items, example.itemCountApplicable), rules);
         if (decision.result == OfferRule.Result.DECLINE) return like + " is declined by your rules.";
+        if (decision.result == OfferRule.Result.REVIEW && rules.perItemCents > 0
+                && example.itemCountApplicable && !hasItems(example)) {
+            return like + " needs the item count before it can be filtered.";
+        }
         if (decision.result == OfferRule.Result.REVIEW && rules.hotspotProximityHundredths > 0
                 && !knownHotspotDistance(example.finalStopHotspotMiles)) {
             return like + " needs the final stop’s distance from the nearest hotspot before its hotspot rule can be checked.";
@@ -874,7 +927,7 @@ final class MinimumsStarView extends View {
     private String describe() {
         List<String> spokes = new ArrayList<>();
         for (int i : AreaScore.DRAW_ORDER) {
-            if (i == AreaScore.HOTSPOT) {
+            if (i == AreaScore.HOTSPOT || i == AreaScore.ITEM) {
                 spokes.add(knobSaid(i).replaceAll("\\.$", ""));
                 continue;
             }
@@ -892,7 +945,11 @@ final class MinimumsStarView extends View {
         int chosen = strongShape();
         if (chosen >= 0 && markScores.get(chosen) >= 0) {
             described += " " + (markTimes.get(chosen) == newestEntryAt ? "The newest offer" : "The chosen offer") + " scores "
-                    + markScores.get(chosen) + "% by area.";
+                    + markScores.get(chosen) + "% by area under the current minimums.";
+            int recorded = markEntries.get(chosen).scorePercent;
+            if (recorded >= 0 && recorded != markScores.get(chosen)) {
+                described += " At decision it scored " + recorded + "%.";
+            }
         }
         if (!byArea) described += " The hotspot spoke uses inverse miles: closer is farther out; "
                 + "its 1 per mile shares the $10 ring radius for display only.";
@@ -967,13 +1024,15 @@ final class MinimumsStarView extends View {
         return backdropAbove(radius);
     }
 
-    /** The fifth spoke points straight up, while the lower two retain the original wide layout. */
+    /** Hotspot proximity points up and pay per item points down; the original four keep their angles. */
     float backdropAbove(float radius) {
         return radius + ui.dp(ICON_GAP_DP) + backdropIcon();
     }
 
     float backdropBelow(float radius) {
-        return SIN * radius + ui.dp(ICON_GAP_DP) + backdropIcon();
+        // The lower rim already belongs to the scene. The item icon can sit just inside it, so a sixth label
+        // must not add another full icon row to a short split window or push the map off a large-font screen.
+        return radius + ui.dp(2);
     }
 
     /** As the sky, the width from the circle's middle to the outer edge of an icon at a spoke's end. */
@@ -997,15 +1056,33 @@ final class MinimumsStarView extends View {
             return true;
         }
         float[] tip = point(cx, cy, radius, axis, 1);
-        boolean right = axis == 1 || axis == 2;
-        boolean below = axis == 2 || axis == 3;
+        boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
+        boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP || axis == AreaScore.ITEM;
         float size = backdropIcon();
-        float middle = tip[0] + (axis == AreaScore.HOTSPOT ? 0 : (right ? 1 : -1) * ui.dp(ICON_OUT_DP));
+        float middle = tip[0] + (upright(axis) ? 0 : (right ? 1 : -1) * ui.dp(ICON_OUT_DP));
         for (int side = 0; side < 2; side++) {
             boolean under = below == (side == 0);
             float top = under ? tip[1] + ui.dp(ICON_GAP_DP) : tip[1] - ui.dp(ICON_GAP_DP) - size;
             out.set(middle - size / 2, top, middle + size / 2, top + size);
-            if (!underWords(out) && (side == 0 || !onMascot(out))) return true;
+            if (out.top >= ui.dp(2) && out.bottom <= getHeight() - ui.dp(2)
+                    && !underWords(out) && (side == 0 || !onMascot(out))
+                    && (axis != AreaScore.ITEM || itemIconClear(out))) return true;
+        }
+        if (axis == AreaScore.ITEM) {
+            // The bottom of a short sky can carry a setup line or the shopping offer's observed point.
+            // Keep its meaning visible beside the downward spoke, never on top of the point or its knob.
+            float preferredTop = tip[1] - ui.dp(ICON_GAP_DP) - size;
+            float across = size / 2 + ui.dp(KNOB_REACH_DP + 4);
+            for (int rise = 0; rise <= 3; rise++) {
+                for (int column : new int[] {0, 1, -1, 2, -2}) {
+                    float left = middle - size / 2 + column * across;
+                    float top = preferredTop - rise * ui.dp(24);
+                    out.set(left, top, left + size, top + size);
+                    if (out.left >= ui.dp(4) && out.right <= getWidth() - ui.dp(4) && out.top >= ui.dp(4)
+                            && out.bottom <= getHeight() - ui.dp(4) && !underWords(out) && !onMascot(out)
+                            && itemIconClear(out)) return true;
+                }
+            }
         }
         if (axis == AreaScore.STOP) {
             // The upright fifth spoke can raise the mascot over the old above-icon fallback. Keep the max-stops
@@ -1023,6 +1100,17 @@ final class MinimumsStarView extends View {
             }
         }
         return false;
+    }
+
+    private boolean itemIconClear(RectF box) {
+        if (!iconClearOfKnobs(box)) return false;
+        int chosen = strongShape();
+        if (chosen < 0) return true;
+        float[] at = markPoint(chosen, AreaScore.ITEM, Motion.settle(glideStart, GLIDE_MS));
+        if (at == null) return true;
+        float pad = ui.dp(12) * skyDetail();
+        return box.right <= at[0] - pad || box.left >= at[0] + pad
+                || box.bottom <= at[1] - pad || box.top >= at[1] + pad;
     }
 
     private boolean iconClearOfKnobs(RectF box) {
@@ -1739,7 +1827,7 @@ final class MinimumsStarView extends View {
                     at = Math.max(at, learnedFrom[i] + (learnedTo[i] - learnedFrom[i]) * glide);
                 }
             }
-            if (dragging && i == held && outer > 0) {
+            if (dragging && i == held && outer > 0 && (i != AreaScore.ITEM || hasItems(exampleFacts))) {
                 double ask = dragValue > 0 ? askCents(held, dragValue) / unit[held] : 0;
                 if (adaptiveOn && !Double.isNaN(learned[i])) ask = Math.max(ask, learned[i]);
                 on = ask > 0;
@@ -1900,6 +1988,7 @@ final class MinimumsStarView extends View {
         long at = entry == null ? -1 : entry.at;
         if (at == emphasizedAt) return;
         emphasizedAt = at;
+        refreshItemReference();
         setContentDescription(caption() + " " + describe());
         dropGoneFocus();
         invalidate();
@@ -1914,10 +2003,15 @@ final class MinimumsStarView extends View {
         long at = entry == null ? -1 : entry.at;
         if (at == openAt) return;
         openAt = at;
+        refreshItemReference();
         setContentDescription(caption() + " " + describe());
         dropGoneFocus();
         invalidate();
         nodesChanged();
+    }
+
+    private void refreshItemReference() {
+        if (savedRules != null && !dragging) show(shownRules, savedRules, referenceExample, shownRecent);
     }
 
     /**
@@ -1937,15 +2031,25 @@ final class MinimumsStarView extends View {
     private void drawScoreLabel(Canvas canvas, float cx, float cy, float radius) {
         int chosen = emphasized();
         int score = emphasizedScore();
-        if (chosen < 0 || score < 0 || !placeScoreLabel(cx, cy, radius, chosen, score + "%")) return;
+        String words = currentScoreLabel();
+        if (chosen < 0 || score < 0 || !placeScoreLabel(cx, cy, radius, chosen, words)) return;
         int color = markColor(markResults.get(chosen));
         float height = labelBox.height();
         fill.setColor(color);
         canvas.drawRoundRect(labelBox, height / 2, height / 2, fill);
         scoreText.setColor(ui.dark ? 0xFF0D1428 : Ui.onStatus(color));
         Paint.FontMetrics metrics = scoreText.getFontMetrics();
-        canvas.drawText(score + "%", labelBox.centerX(), labelBox.centerY() - (metrics.ascent + metrics.descent) / 2,
+        canvas.drawText(words, labelBox.centerX(), labelBox.centerY() - (metrics.ascent + metrics.descent) / 2,
                 scoreText);
+    }
+
+    /** The constellation uses today's rules; the skyline and ticket retain the decision's recorded score. */
+    String currentScoreLabel() {
+        int chosen = strongShape();
+        int score = emphasizedScore();
+        if (chosen < 0 || score < 0) return "";
+        int recorded = markEntries.get(chosen).scorePercent;
+        return (recorded >= 0 && recorded != score ? "Now " : "") + score + "%";
     }
 
     /**
@@ -1958,7 +2062,8 @@ final class MinimumsStarView extends View {
         float[] shown = markShown(m, glide);
         float height = Math.max(ui.dp(20), Ui.lineHeight(scoreText) + ui.dp(4));
         float width = scoreText.measureText(words) + ui.dp(12);
-        Integer[] order = {0, 1, 2, 3, AreaScore.HOTSPOT};
+        Integer[] order = new Integer[NAMES.length];
+        for (int i = 0; i < order.length; i++) order[i] = i;
         Arrays.sort(order, (a, b) -> Float.compare(shown[b], shown[a]));
         // Outside a point (the farthest first), else just inside one, else in the polygon's middle.
         float sumX = 0;
@@ -2034,7 +2139,7 @@ final class MinimumsStarView extends View {
         }
         float[][] polygonAxes = points.clone();
         for (int i = 0; i < values.length; i++) {
-            if (Double.isNaN(values[i]) && (byArea || i == AreaScore.HOTSPOT)) polygonAxes[i] = null;
+            if (Double.isNaN(values[i]) && (byArea || i == AreaScore.HOTSPOT || i == AreaScore.ITEM)) polygonAxes[i] = null;
         }
         List<float[]> outline = orderedPolygon(polygonAxes, cx, cy);
         path.reset();
@@ -2085,23 +2190,23 @@ final class MinimumsStarView extends View {
 
     /** In a header, a spoke's icon beside the circle on its side, above or below the middle as its spoke points. */
     private void drawIconBeside(Canvas canvas, int axis, float cx, float cy, float radius) {
-        boolean right = axis == 1 || axis == 2;
-        boolean below = axis == 2 || axis == 3;
+        boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
+        boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP || axis == AreaScore.ITEM;
         int size = ui.dp(ICON_DP);
-        int left = Math.round(axis == AreaScore.HOTSPOT ? cx - size / 2f
+        int left = Math.round(upright(axis) ? cx - size / 2f
                 : right ? cx + radius + ui.dp(6) : cx - radius - ui.dp(6) - size);
         int top = Math.round(axis == AreaScore.HOTSPOT ? Math.max(0, cy - radius - ui.dp(2))
-                : below ? cy + ui.dp(2) : cy - ui.dp(2) - size);
+                : axis == AreaScore.ITEM ? Math.min(getHeight() - size, cy + radius + ui.dp(2)) : below ? cy + ui.dp(2) : cy - ui.dp(2) - size);
         icons[axis].setBounds(left, top, left + size, top + size);
         icons[axis].draw(canvas);
     }
 
     /** A spoke's icon just outside the circle at its corner. */
     private void drawIcon(Canvas canvas, int axis, float cx, float cy, float window, float width, int size) {
-        boolean right = axis == 1 || axis == 2;
-        boolean below = axis == 2 || axis == 3;
+        boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
+        boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP || axis == AreaScore.ITEM;
         float[] corner = point(cx, cy, window + ui.dp(4), axis, 1);
-        int left = Math.round(axis == AreaScore.HOTSPOT ? corner[0] - size / 2f
+        int left = Math.round(upright(axis) ? corner[0] - size / 2f
                 : right ? corner[0] : corner[0] - size);
         int top = Math.round(below ? corner[1] : corner[1] - size);
         left = Math.max(0, Math.min(Math.round(width) - size, left));
@@ -2119,7 +2224,7 @@ final class MinimumsStarView extends View {
 
     /**
      * Spoke {@code axis} has a knob: its set minimum's, or a hollow one resting just outside the middle. With no rule
-     * at all the five hollow knobs are how the first one is set, by a drag.
+     * at all the six hollow knobs are how the first one is set, by a drag.
      */
     private boolean knobShown(int axis) {
         return axis >= 0 && axis < NAMES.length;
@@ -2169,13 +2274,9 @@ final class MinimumsStarView extends View {
 
     /** Pay the held knob's rate asks of the example offer (as it was when taken), as the set shape draws it. */
     private double askCents(int axis, int rate) {
-        switch (axis) {
-            case 0: return rate;
-            case 1: return OfferRule.mileageCost(rate, dragMiles);
-            case 2: return (double) rate * dragMinutes;
-            case AreaScore.HOTSPOT: return rate * HOTSPOT_DISPLAY_UNIT;
-            default: return (double) rate * dragStops;
-        }
+        if (axis == AreaScore.HOTSPOT) return rate * HOTSPOT_DISPLAY_UNIT;
+        if (axis == AreaScore.ITEM && !hasItems(dragFacts)) return (double) rate * ITEM_EDIT_UNITS;
+        return amount(AreaScore.fixedFloor(axis, rate, dragFacts));
     }
 
     /** The example offer's amount of spoke {@code axis}'s unit when the knob was taken: 1 for pay, else miles... */
@@ -2185,6 +2286,7 @@ final class MinimumsStarView extends View {
             case 1: return dragMiles;
             case 2: return dragMinutes;
             case AreaScore.HOTSPOT: return HOTSPOT_DISPLAY_UNIT;
+            case AreaScore.ITEM: return dragItems;
             default: return dragStops;
         }
     }
@@ -2429,7 +2531,7 @@ final class MinimumsStarView extends View {
                     grabOffset = grabDistance - along(on, x, y);
                     // A vertical ScrollView would intercept this upright spoke before its first MOVE reached us.
                     // Reserve only a touch starting on this knob; an off-axis motion releases the page again.
-                    if (on == AreaScore.HOTSPOT) keepTouch(true);
+                    if (upright(on)) keepTouch(true);
                 }
                 // The knobs and the buttons first; else the offer under the finger, picked out lightly.
                 int offer = on == NO_NODE ? offerAt(x, y) : -1;
@@ -2463,7 +2565,7 @@ final class MinimumsStarView extends View {
                         takeKnob();
                     } else if (held >= 0) {
                         // Across the spoke: not a drag, and no longer a tap.
-                        if (held == AreaScore.HOTSPOT) keepTouch(false);
+                        if (upright(held)) keepTouch(false);
                         held = -1;
                         invalidate();
                     }
@@ -2563,7 +2665,7 @@ final class MinimumsStarView extends View {
             invalidate();
         }
         if (dragging) letGo(lifted);
-        if (held == AreaScore.HOTSPOT) keepTouch(false);
+        if (upright(held)) keepTouch(false);
         held = -1;
     }
 
@@ -2593,6 +2695,8 @@ final class MinimumsStarView extends View {
         dragMiles = exampleMiles;
         dragMinutes = exampleMinutes;
         dragStops = exampleStops;
+        dragFacts = exampleFacts;
+        dragItems = hasItems(exampleFacts) ? exampleFacts.items : ITEM_EDIT_UNITS;
         dragValue = setRates[held];
         // A knob set so low that it rests inside the resting place turns off only when pushed a clear way further in.
         offAt = setRates[held] > 0 ? Math.min(ui.dp(KNOB_REST_DP), grabDistance - ui.dp(OFF_PUSH_DP))
@@ -2626,7 +2730,7 @@ final class MinimumsStarView extends View {
         float glide = Motion.settle(glideStart, GLIDE_MS);
         // By area, the minimums' polygon sets out from where the held knob left its spoke.
         float areaAt = Float.NaN;
-        if (byArea) {
+        if (byArea && (axis != AreaScore.ITEM || hasItems(exampleFacts))) {
             double ask = value > 0 ? askCents(axis, value) / unit[axis] : 0;
             if (adaptiveOn && !Double.isNaN(learned[axis])) ask = Math.max(ask, learned[axis]);
             areaAt = (float) Math.min(1, ask / outer);
@@ -2661,7 +2765,7 @@ final class MinimumsStarView extends View {
         System.arraycopy(set, 0, drawnSet, 0, set.length);
         System.arraycopy(setFrom, 0, drawnFrom, 0, setFrom.length);
         System.arraycopy(setTo, 0, drawnTo, 0, setTo.length);
-        if (!dragging || held < 0) return;
+        if (!dragging || held < 0 || (held == AreaScore.ITEM && !hasItems(exampleFacts))) return;
         float at = heldFraction();
         drawnSet[held] = dragValue > 0 ? askCents(held, dragValue) / unit[held] : Double.NaN;
         drawnFrom[held] = at;
@@ -3184,6 +3288,23 @@ final class MinimumsStarView extends View {
                 }
             }
         }
+        // Six spokes can occupy both traditional rows in a short split. Search the remaining open sky,
+        // retaining the same 48 dp target and every collision guard instead of hiding an existing control.
+        RectF best = null;
+        double nearest = Double.MAX_VALUE;
+        float step = ui.dp(8);
+        for (float y = ui.dp(4) + half; y <= getHeight() - ui.dp(4) - half; y += step) {
+            for (float x = ui.dp(4) + half; x <= getWidth() - ui.dp(4) - half; x += step) {
+                box.set(x - half, y - half, x + half, y + half);
+                if (!buttonFits(box, others)) continue;
+                double distance = Math.hypot(x - skyX, y - (skyY + band));
+                if (distance < nearest) {
+                    nearest = distance;
+                    best = new RectF(box);
+                }
+            }
+        }
+        if (best != null) { box.set(best); return true; }
         return false;
     }
 
@@ -3209,7 +3330,7 @@ final class MinimumsStarView extends View {
             if (!any) continue;
             float[][] axes = new float[NAMES.length][];
             for (int i = 0; i < NAMES.length; i++) {
-                if (Double.isNaN(values[shape][i]) && (byArea || i == AreaScore.HOTSPOT)) continue;
+                if (Double.isNaN(values[shape][i]) && (byArea || i == AreaScore.HOTSPOT || i == AreaScore.ITEM)) continue;
                 axes[i] = point(skyX, skyY, skyRadius, i, Double.isNaN(values[shape][i]) ? 0 : to[shape][i]);
             }
             shapes.add(orderedPolygon(axes, skyX, skyY));
@@ -3461,6 +3582,15 @@ final class MinimumsStarView extends View {
     /** "Minimum per mile, $1.50; adaptive $2.37, learned" */
     private String knobSaid(int axis) {
         int rate = setRates[axis];
+        if (axis == AreaScore.ITEM) {
+            int chosen = strongShape();
+            OfferSnapshot offer = chosen < 0 ? exampleFacts : markFacts.get(chosen);
+            String observed = itemsLabel(offer);
+            if (observed.isEmpty()) observed = "No shopping or item count shown; item rule does not apply";
+            else if (!hasItems(offer)) observed += "; review needed while this minimum is on";
+            return KNOBS[axis] + ", " + readout(axis, rate) + ". " + observed
+                    + ". Based on the observed total items, not unique products. No adaptive minimum on this spoke.";
+        }
         if (axis == AreaScore.HOTSPOT) {
             int chosen = strongShape();
             Double miles = chosen < 0 ? null : markFacts.get(chosen).finalStopHotspotMiles;
@@ -3569,7 +3699,11 @@ final class MinimumsStarView extends View {
             parts.add("rules said " + (result == OfferRule.Result.KEEP ? "pass"
                     : result == OfferRule.Result.DECLINE ? "decline" : "review"));
         }
-        if (markScores.get(m) >= 0) parts.add("scores " + markScores.get(m) + "% by area");
+        if (markScores.get(m) >= 0) {
+            parts.add("now scores " + markScores.get(m) + "% by area under the current minimums");
+            int recorded = markEntries.get(m).scorePercent;
+            if (recorded >= 0 && recorded != markScores.get(m)) parts.add("at decision scored " + recorded + "%");
+        }
         return String.join(", ", parts);
     }
 
@@ -3615,7 +3749,7 @@ final class MinimumsStarView extends View {
                 Math.round(at[1]) + reach);
     }
 
-    /** A knob (0 to 4), a button, a toggle, the badge or a marked offer that is there now. */
+    /** A knob (0 to 5), a button, a toggle, the badge or a marked offer that is there now. */
     private boolean shownNode(int id) {
         if (id >= OFFER_ID) return offersOn() && outer > 0 && displayedOffer(id - OFFER_ID);
         if (id < 0 || id > STOPS_ID || !knobsOn()) return false;
@@ -3631,7 +3765,7 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The knobs (ids 0 to 4, by spoke), the max stops badge, the adaptive minimum's toggle, the adopt button, the score
+     * The knobs (ids 0 to 5, by spoke), the max stops badge, the adaptive minimum's toggle, the adopt button, the score
      * by area toggle and then the marked offers, newest first ({@link #OFFER_ID} on), for screen readers.
      */
     private final class Nodes extends AccessibilityNodeProvider {

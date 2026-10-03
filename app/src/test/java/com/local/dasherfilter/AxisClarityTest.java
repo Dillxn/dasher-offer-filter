@@ -62,10 +62,10 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void visibleAxisNamesDoNotStealAnyOfTheFiveKnobDrags() {
+    @Test public void visibleAxisNamesDoNotStealAnyOfTheSixKnobDrags() {
         FilterStore.save(app, RULES);
         // With setup complete the lower spokes have no foreground warning over them. Such a warning deliberately
-        // owns its text area; this exercises all five visible knobs with the new labels present.
+        // owns its text area; this exercises all six visible knobs with the new labels present.
         org.robolectric.android.controller.ServiceController<OfferFilterService> service =
                 Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -102,7 +102,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void compactHeaderKeepsItsTapToExpandAndThenShowsAllFiveNames() {
+    public void compactHeaderKeepsItsTapToExpandAndThenShowsAllSixNames() {
         FilterStore.save(app, RULES);
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
@@ -130,7 +130,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     private static void assertNamedAxes(MinimumsStarView star) {
-        String[] expected = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot"};
+        String[] expected = {"Payout $", "Pay / mile", "Pay / min", "Pay / stop", "Near hotspot", "Pay / item"};
         List<RectF> labels = new ArrayList<>();
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
             assertEquals("the visible name identifies the actual metric", expected[axis], star.axisLabelText(axis));

@@ -30,6 +30,8 @@ final class RestartSuppression {
         if (offer.miles != null) edit.putLong("miles", Double.doubleToLongBits(offer.miles));
         if (offer.minutes != null) edit.putInt("minutes", offer.minutes);
         if (offer.stops != null) edit.putInt("stops", offer.stops);
+        if (offer.items != null) edit.putInt("items", offer.items);
+        if (offer.itemCountApplicable) edit.putBoolean("item_count_applicable", true);
         return edit.commit();
     }
 
@@ -49,7 +51,9 @@ final class RestartSuppression {
                     prefs.contains("pay") ? prefs.getInt("pay", 0) : null,
                     prefs.contains("miles") ? Double.longBitsToDouble(prefs.getLong("miles", 0)) : null,
                     prefs.contains("minutes") ? prefs.getInt("minutes", 0) : null,
-                    prefs.contains("stops") ? prefs.getInt("stops", 0) : null);
+                    prefs.contains("stops") ? prefs.getInt("stops", 0) : null)
+                    .withItems(prefs.contains("items") ? prefs.getInt("items", 0) : null,
+                            prefs.getBoolean("item_count_applicable", false));
             return new Saved(offer, prefs.getInt("countdown", -1), age);
         } catch (RuntimeException corrupt) {
             // Corrupt suppression data is never a reason to act on a possibly taken-over offer.

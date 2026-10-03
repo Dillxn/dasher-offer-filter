@@ -15,7 +15,11 @@ import java.util.List;
 final class DeclinedFloor {
     static final DeclinedFloor NONE = new DeclinedFloor(0, AcceptedBest.NONE);
 
-    enum Rule { PAY, MILE, MINUTE, STOP }
+    enum Rule {
+        PAY(AreaScore.PAY), MILE(AreaScore.MILE), MINUTE(AreaScore.MINUTE), STOP(AreaScore.STOP);
+        final int axis;
+        Rule(int axis) { this.axis = axis; }
+    }
 
     final int payCents;
     final AcceptedBest rates;
@@ -67,10 +71,11 @@ final class DeclinedFloor {
         Integer pay = declined.payCents;
         if (pay == null || pay <= 0 || AcceptedBest.looksMisread(declined)) return current;
         Rule closest = Rule.PAY;
-        double closeness = ask(rules, declined, Rule.PAY) / (double) pay;
+        AreaScore.Floors floors = AreaScore.floors(rules, declined);
+        double closeness = floors.wholeCents(AreaScore.PAY) / (double) pay;
         for (Rule rule : new Rule[] {Rule.MILE, Rule.MINUTE, Rule.STOP}) {
             if (!usable(declined, rule)) continue;
-            double share = ask(rules, declined, rule) / (double) pay;
+            double share = floors.wholeCents(rule.axis) / (double) pay;
             if (share > closeness) {
                 closeness = share;
                 closest = rule;
@@ -86,31 +91,6 @@ final class DeclinedFloor {
             case MINUTE: return offer.minutes != null && offer.minutes >= AcceptedBest.RATE_SETTING_MINUTES;
             case STOP: return offer.stops != null && offer.stops >= AcceptedBest.PLAUSIBLE_STOPS;
             default: return true;
-        }
-    }
-
-    /** What the rules on one measure asked of the offer, in cents: the set rule, adaptive floors, earlier declines. */
-    private static long ask(FilterSettings rules, OfferSnapshot offer, Rule rule) {
-        AcceptedBest best = rules.best;
-        DeclinedFloor declined = rules.declined;
-        switch (rule) {
-            case MILE:
-                return Math.max(OfferRule.mileageCost(rules.perMileCents, offer.miles), Math.max(
-                        rules.risingOffers && best.hasPerMile() ? best.forMiles(offer.miles) : 0,
-                        rules.risingOffers && declined.rates.hasPerMile() ? declined.beatMiles(offer.miles) : 0));
-            case MINUTE:
-                return Math.max((long) rules.perMinuteCents * offer.minutes, Math.max(
-                        rules.risingOffers && best.hasPerMinute() ? best.forMinutes(offer.minutes) : 0,
-                        rules.risingOffers && declined.rates.hasPerMinute() ? declined.beatMinutes(offer.minutes)
-                                : 0));
-            case STOP:
-                return Math.max((long) rules.perStopCents * offer.stops, Math.max(
-                        rules.risingOffers && best.hasPerStop() ? best.forStops(offer.stops) : 0,
-                        rules.risingOffers && declined.rates.hasPerStop() ? declined.beatStops(offer.stops) : 0));
-            default:
-                return Math.max(rules.flatCents, Math.max(
-                        rules.risingOffers && rules.lastAcceptedCents > 0 ? rules.lastAcceptedCents + 1L : 0,
-                        rules.risingOffers && declined.payCents > 0 ? declined.beatPay() : 0));
         }
     }
 

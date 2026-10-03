@@ -1516,8 +1516,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ticket.addView(card, cardParams);
         // The offer's area score as decided, in either mode; a reason by score already says it.
         if (entry.scorePercent >= 0 && !entry.reason.startsWith(OfferRule.SCORE_REASON)) {
+            int currentScore = AreaScore.percent(FilterStore.load(this), entry.facts);
             TextView score = ui.text("Score reference · " + AreaScore.label(entry.scorePercent)
-                    .replaceFirst("^Score ", ""), 14, ui.inkSecondary, true);
+                    .replaceFirst("^Score ", "")
+                    + (currentScore >= 0 && currentScore != entry.scorePercent ? " at decision" : ""),
+                    14, ui.inkSecondary, true);
             score.setPadding(0, ui.dp(8), 0, 0);
             ticket.addView(score);
         }

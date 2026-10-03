@@ -965,6 +965,25 @@ public class PeekTest {
     }
 
     @Test
+    public void deferredCardDoesNotReviveDecisionFromBeforeItemMinimumChanged() {
+        FilterStore.save(app, new FilterSettings(true, 0, 0, 10, 0, 0).withPerItem(50));
+        connect(app(MAPS));
+        listener.get().onNotificationPosted(notification("$25.00", "New Order: 10 items",
+                System.currentTimeMillis()), null);
+        idle();
+        NotificationManager notifications = app.getSystemService(NotificationManager.class);
+        android.service.notification.StatusBarNotification card = notifications.getActiveNotifications()[0];
+        // Initially REVIEW for unread time; the new item floor is a known failure. The queued rules callback
+        // has not run yet, so the old quiet review card must not ring when Peek is cancelled.
+        FilterStore.save(app, FilterStore.load(app).withPerItem(300));
+        int historyBefore = DecisionLog.recent(app, 200).size();
+        OfferNotificationService.peekNotTaken(card.getTag());
+        idle();
+        assertEquals("obsolete quiet card must not be announced", 0, cards());
+        assertEquals("no stale decision appended", historyBefore, DecisionLog.recent(app, 200).size());
+    }
+
+    @Test
     public void deferredCardsNeverPostAfterConsentWasRevoked() {
         connect(app(MAPS));
         post("Taco Bell");

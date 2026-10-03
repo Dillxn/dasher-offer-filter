@@ -481,6 +481,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long declineGeneration;
     /** The global minimum scale that authorized the last first-step request. */
     private int declineMinimumScale = 100;
+    /** The item floor used by the last first-step request, including when that rule was off. */
+    private int declinePerItemCents;
     /** The offer whose Decline was last tapped: only its own confirmation may be tapped. */
     private OfferSnapshot declinedOffer = OfferSnapshot.UNKNOWN;
     /** Its decision-log entry, upgraded when the confirmation is tapped too. */
@@ -2102,6 +2104,8 @@ public final class OfferFilterService extends AccessibilityService {
         NOT_TAPPED,
         /** The user's new minimum scale superseded the rules that authorized this decline. */
         MINIMUMS_CHANGED,
+        /** A changed item floor superseded the rules that authorized this decline. */
+        ITEM_MINIMUM_CHANGED,
         /** A screen-off or lock boundary invalidated the visible offer and its pending taps. */
         SCREEN_OFF,
         /** Dasher explicitly reported a failed request; no later idle frame can upgrade it optimistically. */
@@ -2123,6 +2127,7 @@ public final class OfferFilterService extends AccessibilityService {
         RestartSuppression.remember(this, declinedOffer, previousCountdown);
         takeoverGeneration = OfferNotificationService.generation();
         takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED
+                && why != HandBack.ITEM_MINIMUM_CHANGED
                 && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
@@ -2177,7 +2182,9 @@ public final class OfferFilterService extends AccessibilityService {
                 toast = AppName.NAME + " stopped tapping this offer";
                 break;
             case MINIMUMS_CHANGED:
-                DiagnosticLog.log(this, "rules", "minimum scale changed " + detail + halted);
+            case ITEM_MINIMUM_CHANGED:
+                DiagnosticLog.log(this, "rules", (why == HandBack.MINIMUMS_CHANGED
+                        ? "minimum scale changed " : "per-item minimum changed ") + detail + halted);
                 status(alreadyConfirmed
                         ? "Minimums changed after a confirmation was requested; nothing more will be tapped."
                         : "Minimums changed; this earlier decline is left to you.");
@@ -2206,6 +2213,7 @@ public final class OfferFilterService extends AccessibilityService {
                 : why == HandBack.CLICK ? "you tapped Dasher during the decline"
                 : why == HandBack.BACK_TO_OFFER ? "you went back to the offer from Dasher's question"
                 : why == HandBack.MINIMUMS_CHANGED ? "the minimum scale changed"
+                : why == HandBack.ITEM_MINIMUM_CHANGED ? "the per-item minimum changed"
                 : why == HandBack.SCREEN_OFF ? "the screen turned off or locked"
                 : why == HandBack.DASHER_ERROR ? "Dasher reported a decline error"
                 : "Dasher's question was not confirmed"));
@@ -2219,13 +2227,23 @@ public final class OfferFilterService extends AccessibilityService {
         return true;
     }
 
-    /** No initial request was made with stale minimums; judge a fresh screen with the newly saved scale. */
+    /** A new scoped item rule cannot reuse a decline authorized under a different rate. */
+    private boolean minimumRulesChanged(FilterSettings current, long now) {
+        if (minimumScaleChanged(current.minimumScalePercent, now)) return true;
+        if (current.perItemCents == declinePerItemCents
+                || (!declineState.hasPendingConfirmation(now) && !episode.active(now))) return false;
+        handBack(HandBack.ITEM_MINIMUM_CHANGED,
+                "from " + declinePerItemCents + " to " + current.perItemCents + " cents per item", now);
+        return true;
+    }
+
+    /** No initial request was made with stale minimums; judge a fresh screen with the newly saved rules. */
     private void staleMinimumScaleRead() {
         long now = SystemClock.uptimeMillis();
-        if (!minimumScaleChanged(FilterStore.load(this).minimumScalePercent, now)) {
+        if (!minimumRulesChanged(FilterStore.load(this), now)) {
             status("Minimums changed while reading; checking the offer again.");
         }
-        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "minimum scale changed"); });
+        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "minimums changed"); });
     }
 
     /**
@@ -3354,7 +3372,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A notification from here on may be a newer offer: it revokes the confirmation of a decline tapped below.
         long generation = OfferNotificationService.generation();
         FilterSettings settings = FilterStore.load(this);
-        minimumScaleChanged(settings.minimumScalePercent, now);
+        minimumRulesChanged(settings, now);
         if (rulesEnabled == null || rulesEnabled != settings.enabled) {
             DiagnosticLog.log(this, "rules", "auto-decline " + (settings.enabled ? "resumed" : "paused") + " (settings)");
             rulesEnabled = settings.enabled;
@@ -3491,8 +3509,8 @@ public final class OfferFilterService extends AccessibilityService {
         // The standalone parser deliberately ignores +$ / added-distance labels. A visible increment is still
         // offer evidence; parse without a stored route so it cannot supply figures missing from the screen.
         boolean incrementalFacts = AddOnOffer.isLikely(scan.text)
-                && anyFact(AddOnOffer.parse(null, scan.text).incremental);
-        if (!anyFact(offer) && !incrementalFacts) {
+                && actionFact(AddOnOffer.parse(null, scan.text).incremental);
+        if (!actionFact(offer) && !incrementalFacts) {
             noteLook("offer controls visible but figures are still being drawn; waiting");
             return settings.enabled;
         }
@@ -3554,7 +3572,8 @@ public final class OfferFilterService extends AccessibilityService {
                 || OfferNotificationService.generation() != attempt.generation
                 || !declineState.hasPendingConfirmation(now)) return false;
         FilterSettings current = FilterStore.load(this);
-        return current.enabled && current.minimumScalePercent == attempt.scale;
+        return current.enabled && current.minimumScalePercent == attempt.scale
+                && current.perItemCents == attempt.perItemCents;
     }
 
     /**
@@ -3658,7 +3677,7 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
         if (consumeDeclineError()) return declineError.pending();
-        if (minimumScaleChanged(FilterStore.load(this).minimumScalePercent, SystemClock.uptimeMillis())) return false;
+        if (minimumRulesChanged(FilterStore.load(this), SystemClock.uptimeMillis())) return false;
         diagnostic("confirmation", confirmation, null, null);
         declinedOfferShowing = true;
         if (!declineState.hasPendingConfirmation(now)) {
@@ -3747,9 +3766,9 @@ public final class OfferFilterService extends AccessibilityService {
         boolean readable = dasherStillReadable(target);
         if (consumeDeclineError()) return declineError.pending();
         ErrorAttempt confirmationRequest = new ErrorAttempt(declineGeneration, userActions.get(), declineMinimumScale,
-                SystemClock.uptimeMillis(), true);
+                declinePerItemCents, SystemClock.uptimeMillis(), true);
         errorAttempt = confirmationRequest;
-        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale, declinePerItemCents) : Tap.REFUSED;
         if (tap == Tap.TAPPED) confirmationRequest.accepted = true;
         else if (errorAttempt == confirmationRequest) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
@@ -3878,6 +3897,15 @@ public final class OfferFilterService extends AccessibilityService {
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
     private boolean handleOtherScreen(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
         if (consumeDeclineError()) return declineError.pending();
+        // A shopping declaration/count alone may be an offer still drawing over the idle map. It cannot
+        // authorize a tap, establish completion, clear a stored route, or become an acceptance observation.
+        if (!actionFact(offer) && AcceptedOfferTracker.itemOfferEvidence(offer, withParts(scan))) {
+            if (!scan.acceptLabel && !scan.declineLabel) {
+                if (offerTargetsEndedAt == NEVER) offerTargetsEndedAt = now;
+                acceptedTracker.afterScreen(scan.text, true, now);
+            }
+            return settings.enabled;
+        }
         if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)
                 || OfferEvidence.isDashOver(scan.text)) {
             if (episode.questionWasSeen() && !episode.wasConfirmed() && declineState.confirmationLapsed(now)
@@ -4018,7 +4046,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void noteEvidenceWithoutControls(OfferSnapshot offer) {
         String evidence = (offer.payCents != null || offer.payAtMostCents != null ? "pay " : "")
                 + (offer.miles != null ? "distance " : "") + (offer.minutes != null ? "duration " : "")
-                + (offer.stops != null ? "stops" : "");
+                + (offer.stops != null ? "stops " : "") + (offer.itemCountApplicable ? "items" : "");
         if (!evidence.isEmpty() && !evidence.equals(evidenceWithoutControls)) {
             DiagnosticLog.log(this, "screen", "offer evidence without controls: " + evidence.trim());
         }
@@ -4079,7 +4107,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (boundedOffer != null && now < boundedUntil && !newCountdown && !isAddOn
                 && offer.agreesWith(boundedOffer) && (offer.payCents == null || offer.payCents <= boundedOffer.payAtMostCents)) {
             offer = new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, boundedOffer.payAtMostCents,
-                    offer.finalStopHotspotMiles);
+                    offer.finalStopHotspotMiles, offer.items, offer.itemCountApplicable);
         }
         if (offer.payAtMostCents != null) {
             boundedOffer = offer;
@@ -4242,11 +4270,12 @@ public final class OfferFilterService extends AccessibilityService {
         // Publish identity before the Android call so a fast toast can be copied while the call is under way.
         ErrorAttempt attempt = !isAddOn && !routeStored && scene != DasherScene.ROUTE
                 && !episode.questionWasSeen() && !episode.wasConfirmed()
-                ? new ErrorAttempt(generation, userActions.get(), settings.minimumScalePercent, SystemClock.uptimeMillis(), false)
+                ? new ErrorAttempt(generation, userActions.get(), settings.minimumScalePercent,
+                        settings.perItemCents, SystemClock.uptimeMillis(), false)
                 : null;
         errorAttempt = attempt;
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
-        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent, settings.perItemCents) : Tap.REFUSED;
         if (tap != Tap.TAPPED && errorAttempt == attempt) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         long tappedAt = SystemClock.uptimeMillis();
@@ -4279,6 +4308,7 @@ public final class OfferFilterService extends AccessibilityService {
             authorityEndReason = "";
             declineGeneration = generation;
             declineMinimumScale = settings.minimumScalePercent;
+            declinePerItemCents = settings.perItemCents;
             declinedOffer = offer;
             declinedOfferShowing = true;
             if (firstTap) {
@@ -4463,8 +4493,13 @@ public final class OfferFilterService extends AccessibilityService {
         return scan;
     }
 
-    /** Whether a read showed any of an offer's facts (pay, or a bound on it, distance, time or stops). */
+    /** Partial item/shopping evidence may hold a read, but never authorizes a click by itself. */
     private static boolean anyFact(OfferSnapshot offer) {
+        return actionFact(offer) || offer.itemCountApplicable;
+    }
+
+    /** Existing offer facts required alongside both controls before a screen may be judged for a tap. */
+    private static boolean actionFact(OfferSnapshot offer) {
         return offer.payCents != null || offer.payAtMostCents != null || offer.miles != null || offer.minutes != null
                 || offer.stops != null;
     }
@@ -4481,7 +4516,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Its click event, arriving just after, is not mistaken for the user's. While a touch in split screen is being
      * judged, nothing is tapped on the offer being declined.
      */
-    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale) {
+    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale, int perItemCents) {
         // Before the touches are taken: a touch judged the user's is counted before it stops being held.
         boolean held = touchesHeld > 0;
         takeOverIfTouched();
@@ -4496,7 +4531,10 @@ public final class OfferFilterService extends AccessibilityService {
             lastRefusal = refusal;
             return Tap.REFUSED;
         }
-        if (FilterStore.load(this).minimumScalePercent != minimumScale) return Tap.RULES_CHANGED;
+        FilterSettings current = FilterStore.load(this);
+        if (current.minimumScalePercent != minimumScale || current.perItemCents != perItemCents) {
+            return Tap.RULES_CHANGED;
+        }
         if (!phoneReadable() || scannerFaulted) return Tap.REFUSED;
         ownTapAt = now;
         ownTapTarget = node;
@@ -5119,15 +5157,16 @@ public final class OfferFilterService extends AccessibilityService {
     /** What a look at the windows found, for any thread. */
     private static final class ErrorAttempt {
         final long generation, actions, at;
-        final int scale;
+        final int scale, perItemCents;
         final boolean confirmation;
         volatile boolean accepted;
         /** The first validated toast timestamp; no message or Android event is retained. */
         final AtomicLong errorAt = new AtomicLong(-1);
         /** Scanner-owned: each latched signal is applied at most once, including while a read is under way. */
         boolean errorConsumed;
-        ErrorAttempt(long generation, long actions, int scale, long at, boolean confirmation) {
+        ErrorAttempt(long generation, long actions, int scale, int perItemCents, long at, boolean confirmation) {
             this.generation = generation; this.actions = actions; this.scale = scale; this.at = at;
+            this.perItemCents = perItemCents;
             this.confirmation = confirmation;
         }
     }

@@ -213,16 +213,16 @@ final class AcceptedOfferTracker {
         return After.UNCLEAR;
     }
 
-    /** Whether these labels show any of an offer's facts: pay (or a bound on it), miles, minutes or stops. */
+    /** Whether these labels show any offer facts, including a partial item/shopping declaration. */
     static boolean showsOfferFacts(List<String> labels) {
         OfferSnapshot facts = OfferParser.parse(labels);
         return facts.payCents != null || facts.payAtMostCents != null || facts.miles != null || facts.minutes != null
-                || facts.stops != null;
+                || facts.stops != null || facts.itemCountApplicable;
     }
 
     /**
      * Whether a read of a screen without an offer's controls shows an offer being drawn: any of an offer's facts it
-     * parsed (pay or a bound on it, miles, minutes, stops), except figures the screen itself explains. On
+     * parsed (pay or a bound on it, miles, minutes, stops, items), except figures the screen itself explains. On
      * turn-by-turn navigation the distances and times are the navigation's own, so only pay or stops there are an
      * offer's; on the dash's summary between deliveries ("This dash so far", "This offer $9.00") every figure is the
      * dash's.
@@ -232,7 +232,30 @@ final class AcceptedOfferTracker {
     static boolean offerFacts(OfferSnapshot read, List<String> labels) {
         if (read == null || DasherScene.showsDashSummary(labels)) return false;
         if (read.payCents != null || read.payAtMostCents != null || read.stops != null) return true;
+        if (itemOfferEvidence(read, labels)) return true;
         return (read.miles != null || read.minutes != null) && !DasherScene.showsNavigation(labels);
+    }
+
+    /**
+     * Item text holds a partial offer open; it is never positive acceptance or tap evidence. A delivery/shopping
+     * list, navigation or dash summary can explain its own items and remains governed by its existing markers.
+     */
+    static boolean itemOfferEvidence(OfferSnapshot read, List<String> labels) {
+        if (read == null || !read.itemCountApplicable || DasherScene.showsDashSummary(labels)
+                || DasherScene.showsRoute(labels) || DasherScene.showsNavigation(labels)) return false;
+        if (DasherScene.showsNewOffer(labels)) return true;
+        if (labels != null) for (String label : labels) {
+            String words = OfferEvidence.normalize(label);
+            // These detail/list surfaces remain unknown (never positive delivery/acceptance evidence).
+            if (words.equalsIgnoreCase("Order details") || words.equalsIgnoreCase("Pick these items")) return false;
+        }
+        if (read.items != null) return true;
+        // Bare references to items also occur on unknown shopping lists/details. They remain unknown and may
+        // settle as not learned; only this explicit offer-type label holds a count that has not drawn yet.
+        if (labels != null) for (String label : labels) {
+            if (OfferEvidence.normalize(label).matches("(?i)shop\\s*(?:&|and)\\s*deliver")) return true;
+        }
+        return false;
     }
 
     /**

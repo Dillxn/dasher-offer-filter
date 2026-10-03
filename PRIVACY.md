@@ -1,12 +1,12 @@
 # Offer Filter privacy
 
-Draft of 2 October 2026. Not legal advice; have a lawyer review before public release.
+Draft of 3 October 2026. Not legal advice; have a lawyer review before public release.
 
 Offer Filter has no account, no ads, no analytics and no server that collects your data. It does not sell or rent your data. What it reads stays on your phone, except in the cases listed under What leaves the phone. [Developer's name and a privacy contact: to add before public release.]
 
 ## What it reads on the phone
 
-- Dasher's screen, through Android's accessibility service, while Dasher is on screen or in its half of a split screen: each offer's pay, miles, time and stops, and the other text Dasher shows, which can include store names, customer names and addresses.
+- Dasher's screen, through Android's accessibility service, while Dasher is on screen or in its half of a split screen: each offer's pay, miles, time, stops and displayed total item count, and the other text Dasher shows, which can include store names, customer names and addresses.
 - Dasher's notifications, through Android's notification access. Android shows the app every notification; it ignores every app but Dasher.
 - Dasher's short error messages (toasts), through accessibility, only to recognize a failed decline. Their wording is not stored or sent; recovery logs keep a fixed error category and attempt counts.
 - Peek, on by default after the current notice is accepted, can briefly bring Dasher forward to read a fresh background offer. To return you afterward, it checks Android's window information and the app identifier of the app previously in front. It does not read that app's text. It also checks screen lock, keyboard and window state, call/audio mode, and Android's available microphone/camera-in-use indicators; it does not record audio or images.
@@ -17,13 +17,16 @@ Before you accept the current first-run notice, it reads none of this and sends 
 ## What it keeps on the phone
 
 - Your rules, and what the adaptive minimum learned from offers you accepted or declined.
-- The latest 200 decisions: when, the pay, miles, minutes and stops read, the result, what the app did, and a few lines read from the offer. The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or addresses. This candidate has no automatic reader for that distance and displays it as unavailable; it does not obtain it from your location or the offer map.
+- The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, whether the offer declared items or shopping, the result, what the app did, and a few lines read from the offer. The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or addresses. This candidate has no automatic reader for that distance and displays it as unavailable; it does not obtain it from your location or the offer map.
 - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. Other screens are captured only during a dash or within ten minutes of a readable offer, and only when positively recognized as offer, confirmation, idle, delivery or navigation screens. Unrecognized/partial screens retain only a generic text-not-kept note. Each holds about what one report carries and nothing older than 24 hours. Screens recognized as payment, account or earnings pages are discarded; at most one line a minute records that a screen was not kept.
 - The offer map, if it is on and location is allowed: the square of about 2 km you were in when each offer came in. The separate place-name cache holds at most 300 rounded positions; older names are removed as others are used.
-- While you are dashing: whether a dash is on, and the current route's pay, miles, time and stops.
-- One temporary record that prevents automatic taps on a possibly taken-over offer after a restart: numeric pay, miles, minutes, stops, countdown, and device uptime/boot number. It can suppress taps for at most two minutes; the app discards it when it next checks an expired record, observes the offer ended, or you clear history. It never restores permission to tap. One scanner-error category, without the error message or screen text, is kept until the next service connection or Clear history.
+- While you are dashing: whether a dash is on, and the current route's pay, miles, time, stops and observed item count/applicability, for at most three hours since the route was observed.
+- One temporary record that prevents automatic taps on a possibly taken-over offer after a restart: numeric pay, miles, minutes, stops, observed item count/applicability, countdown, and device uptime/boot number. It can suppress taps for at most two minutes; the app discards it when it next checks an expired record, observes the offer ended, or you clear history. It never restores permission to tap. One scanner-error category, without the error message or screen text, is kept until the next service connection or Clear history.
+- A pending hand-decline observation can retain the same numeric offer facts, including observed item count/applicability, to reconcile its outcome, for at most one hour.
 - A GitHub connection, if you set one up, and the state of updates.
 - During Peek, the previous app's identifier and launcher component stay only in memory. They are cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 seconds after returning). They are never saved or sent; Peek logs describe only the kind of previous app, such as a navigation app or the home screen. Its screen text is never kept.
+
+Pay per item uses only an explicit, unambiguous total count on an offer declaring items or shopping. An unread declared count stays unknown; no quantity is inferred from product names, unique-item counts, stops or orders. These numeric item facts may appear in the same opt-in/shared reports as the other offer figures.
 
 Decision and confirmation lines take priority over repeated scan timings within the existing log limits. Reports include numeric counts of discarded log lines or queued reports, so missing evidence is visible. Atomic history writes keep a recovery copy only while replacing the same bounded history.
 

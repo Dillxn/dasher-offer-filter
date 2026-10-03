@@ -270,6 +270,8 @@ final class DecisionLog {
             if (facts.miles != null) json.put("miles", facts.miles);
             if (facts.minutes != null) json.put("minutes", facts.minutes);
             if (facts.stops != null) json.put("stops", facts.stops);
+            if (facts.items != null) json.put("items", facts.items);
+            if (facts.itemCountApplicable) json.put("itemCountApplicable", true);
             if (facts.finalStopHotspotMiles != null) json.put("finalStopHotspotMiles", facts.finalStopHotspotMiles);
             if (scorePercent >= 0) json.put("score", scorePercent);
             if (peeked) json.put("peeked", true);
@@ -311,7 +313,8 @@ final class DecisionLog {
                     json.has("minutes") ? json.getInt("minutes") : null,
                     json.has("stops") ? json.getInt("stops") : null, null,
                     json.has("finalStopHotspotMiles") && !json.isNull("finalStopHotspotMiles")
-                            ? json.optDouble("finalStopHotspotMiles", Double.NaN) : null);
+                            ? json.optDouble("finalStopHotspotMiles", Double.NaN) : null,
+                    itemCount(json.opt("items")), Boolean.TRUE.equals(json.opt("itemCountApplicable")));
             List<String> evidence = new ArrayList<>();
             JSONArray lines = json.optJSONArray("evidence");
             // Lines a version before masking kept are masked as they are read, and stored so on the next write.
@@ -323,6 +326,14 @@ final class DecisionLog {
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
                     json.optBoolean("autoDecline"), evidence).withScore(json.optInt("score", -1));
+        }
+
+        /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
+        private static Integer itemCount(Object value) {
+            if (!(value instanceof Number)) return null;
+            double count = ((Number) value).doubleValue();
+            return Double.isFinite(count) && count > 0 && count <= Integer.MAX_VALUE && count == Math.rint(count)
+                    ? (int) count : null;
         }
     }
 
@@ -796,6 +807,8 @@ final class DecisionLog {
         if (facts.miles != null) parts.add(trimZero(facts.miles) + " mi");
         if (facts.minutes != null) parts.add(facts.minutes + " min");
         if (facts.stops != null) parts.add(facts.stops + (facts.stops == 1 ? " stop" : " stops"));
+        if (facts.items != null) parts.add(facts.items + (facts.items == 1 ? " item" : " items"));
+        else if (facts.itemCountApplicable) parts.add("item count unknown");
         if (facts.finalStopHotspotMiles != null) parts.add(trimZero(facts.finalStopHotspotMiles)
                 + " mi from final stop to nearest hotspot");
         return parts.isEmpty() ? "no distance, time or stops read" : String.join(" · ", parts);

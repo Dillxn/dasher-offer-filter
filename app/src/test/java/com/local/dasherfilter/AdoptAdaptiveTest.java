@@ -46,7 +46,7 @@ public final class AdoptAdaptiveTest {
         assertArrayEquals(high.minimums(), adopted.minimums());
         FilterSettings mixed = new FilterSettings(false, 3000, 150, 100, 0, 4, true, 1420, best, declined);
         adopted = mixed.adoptAdaptive();
-        assertArrayEquals("only the lower ones rise", new int[] {3000, 237, 100, 710, 0}, adopted.minimums());
+        assertArrayEquals("only the lower ones rise", new int[] {3000, 237, 100, 710, 0, 0}, adopted.minimums());
         assertEquals("paused stays paused", false, adopted.enabled);
         assertEquals(4, adopted.maxStops);
         assertTrue("the adaptive minimum stays on", adopted.risingOffers);
@@ -70,7 +70,7 @@ public final class AdoptAdaptiveTest {
                 OfferRule.evaluateAddOn(addOn, learning).result);
 
         FilterSettings adopted = learning.adoptAdaptive();
-        assertArrayEquals(new int[] {1421, 237, 60, 710, 0}, adopted.minimums());
+        assertArrayEquals(new int[] {1421, 237, 60, 710, 0, 0}, adopted.minimums());
         OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, adopted);
         assertEquals("3.0 added miles at the adopted $2.37 ask $7.11 of the added $6.00", OfferRule.Result.DECLINE,
                 decision.result);
@@ -84,11 +84,11 @@ public final class AdoptAdaptiveTest {
         FilterSettings rules = new FilterSettings(true, 700, 150, 30, 100, 3, true, 0);
         assertArrayEquals(rules.minimums(), rules.adoptAdaptive().minimums());
         FilterSettings none = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0);
-        assertArrayEquals(new int[5], none.adoptAdaptive().minimums());
+        assertArrayEquals(new int[6], none.adoptAdaptive().minimums());
         // Only the measures something was learned on change.
         FilterSettings perMileOnly = learned(700, 0, 30, 0, 0, new AcceptedBest(0, 0, 1000, 4.0, 0, 0),
                 DeclinedFloor.NONE);
-        assertArrayEquals(new int[] {700, 250, 30, 0, 0}, perMileOnly.adoptAdaptive().minimums());
+        assertArrayEquals(new int[] {700, 250, 30, 0, 0, 0}, perMileOnly.adoptAdaptive().minimums());
     }
 
     @Test
@@ -99,10 +99,10 @@ public final class AdoptAdaptiveTest {
                         Integer.MAX_VALUE, 2)));
         assertArrayEquals("held to what Settings accepts, $1,000",
                 new int[] {FilterSettings.MOST_CENTS, FilterSettings.MOST_CENTS, FilterSettings.MOST_CENTS,
-                        FilterSettings.MOST_CENTS, 0}, huge.adoptAdaptive().minimums());
+                        FilterSettings.MOST_CENTS, 0, 0}, huge.adoptAdaptive().minimums());
         FilterSettings odd = learned(0, 0, 0, 0, 0, new AcceptedBest(0, 0, 1000, Double.POSITIVE_INFINITY, 0, 0),
                 new DeclinedFloor(0, new AcceptedBest(0, 0, 1000, Double.NaN, 0, 0)));
-        assertArrayEquals("an unusable distance teaches nothing", new int[5], odd.adoptAdaptive().minimums());
+        assertArrayEquals("an unusable distance teaches nothing", new int[6], odd.adoptAdaptive().minimums());
     }
 
     /**

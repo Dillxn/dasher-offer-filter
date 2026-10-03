@@ -78,7 +78,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals(3, FilterStore.load(app).maxStops);
             FilterSettings saved = FilterStore.load(app);
             assertTrue("still on", saved.enabled);
-            assertArrayEquals("nothing else changes", new int[] {1000, 150, 0, 0, 0}, saved.minimums());
+            assertArrayEquals("nothing else changes", new int[] {1000, 150, 0, 0, 0, 0}, saved.minimums());
             assertFalse("no page opens", settingsShown(content));
 
             // From 10 a tap turns it off again.
@@ -204,7 +204,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("what it learned is kept", 1420, saved.lastAcceptedCents);
             assertEquals("$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
             assertTrue(saved.enabled);
-            assertArrayEquals(new int[] {700, 150, 30, 100, 0}, saved.minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 100, 0, 0}, saved.minimums());
             assertEquals(3, saved.maxStops);
             assertTrue(star.lastSaid(), star.lastSaid().startsWith("Adaptive minimum off."));
             assertTrue(star.getContentDescription().toString()
@@ -248,7 +248,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("reset: the highest accepted pay forgotten", 0, saved.lastAcceptedCents);
             assertTrue("and every best rate", saved.best.isEmpty());
             assertTrue("the switch stays as it was", saved.risingOffers);
-            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 100, 0}, saved.minimums());
+            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 100, 0, 0}, saved.minimums());
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] adaptive minimum reset"));
             assertTrue(FilterStore.learningTimes(app)[2] > 0);
         }
