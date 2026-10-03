@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 
 /**
  * The first-run notice ({@link Consent}), the whole homepage until it is accepted: a strip of sky with its title and
- * the mascot, a few short points, links to the terms and the privacy text, and Not now beside I understand. It takes
+ * the mascot, a few short points, links to the terms and the privacy text, and explicit accept or Not now actions. It takes
  * every touch, so nothing behind it can be reached.
  */
 final class NoticePage {
@@ -63,7 +63,13 @@ final class NoticePage {
         LinearLayout.LayoutParams linksParams = Ui.matchWidth();
         linksParams.setMarginStart(-ui.dp(12));
         body.addView(links, linksParams);
-        ui.buttonPair(body, ui.button(Consent.NOT_NOW, false, notNow), ui.button(Consent.ACCEPT, true, accept));
+        // The explicit acknowledgement needs the whole width, especially beside Dasher or with larger text.
+        LinearLayout.LayoutParams notNowParams = Ui.matchWidth();
+        notNowParams.topMargin = ui.dp(10);
+        body.addView(ui.button(Consent.NOT_NOW, false, notNow), notNowParams);
+        LinearLayout.LayoutParams acceptParams = Ui.matchWidth();
+        acceptParams.topMargin = ui.dp(10);
+        body.addView(ui.button(Consent.ACCEPT, true, accept), acceptParams);
         page.addView(body, Ui.matchWidth());
 
         // The ground takes what the screen has left, so the page ends on the road as the others do.

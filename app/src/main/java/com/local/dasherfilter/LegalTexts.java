@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Draft of 2 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 3 October 2026. Not legal advice; have a lawyer review before public release.
 
             ## What {app} is
 
@@ -45,9 +45,17 @@ final class LegalTexts {
             DoorDash, Inc. DoorDash and Dasher are trademarks of DoorDash, Inc., named here only to say which app \
             {app} works with.
 
-            By tapping I understand on the app's first screen, or by using the app, you accept these terms. If you \
-            do not accept them, do not use the app: tap Not now, turn off its screen reading and notification \
-            access, or uninstall it.
+            By tapping I understand and accept on the app's first screen, you confirm that you understand the \
+            acceptance-rate risk below, choose to use {app} at your own risk, and accept these terms. If you do not \
+            accept them, do not use the app: tap Not now, turn off its screen reading and notification access, or \
+            uninstall it.
+
+            ## Acceptance-rate risk
+
+            Automatic declines may dramatically lower your DoorDash acceptance rate. This can affect DoorDash \
+            programs that depend on it. You must acknowledge this risk before filtering begins, including after an \
+            update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise \
+            to preserve your acceptance rate.
 
             ## What it does
 
@@ -77,7 +85,6 @@ final class LegalTexts {
             - Your Dasher account and your agreements with DoorDash are yours. Using third-party tools may break \
             DoorDash's terms, and DoorDash could limit or deactivate your account. You decide whether to use {app}, \
             and you accept that risk.
-            - Declining offers can lower your acceptance rate, which can affect DoorDash programs that depend on it.
             - Obey traffic laws. Do not handle your phone while driving; set your rules before you drive and pull \
             over to look at offers. {app} is not a safety device.
             - Check your Dasher history. {app} can misread an offer, decline an offer you wanted, or fail to \

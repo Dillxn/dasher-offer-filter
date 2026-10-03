@@ -1128,6 +1128,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         texts.setGravity(Gravity.CENTER_HORIZONTAL);
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) texts.addView(ui.link(doc.title, () -> read(doc)));
         body.addView(texts, Ui.matchWidth());
+        TextView closing = ui.text("Jesus Loves You", 12, ui.inkSecondary, false);
+        closing.setGravity(Gravity.CENTER_HORIZONTAL);
+        closing.setPadding(0, ui.dp(8), 0, 0);
+        body.addView(closing, Ui.matchWidth());
         ground(page, 170);
     }
 

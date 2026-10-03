@@ -1136,7 +1136,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (attempt != null && isDasherPackage(event.getPackageName())
                     && "android.widget.Toast".contentEquals(nonNull(event.getClassName()))
                     && event.getParcelableData() == null && event.getText().size() == 1
-                    && isErrorWord(event.getText().get(0))) {
+                    && isDeclineErrorToast(event.getText().get(0))) {
                 long eventAt = event.getEventTime();
                 long receivedAt = SystemClock.uptimeMillis();
                 // Publish before queuing: an already-running read must see the error before it can replace this
@@ -3525,6 +3525,14 @@ public final class OfferFilterService extends AccessibilityService {
         // After the offer was handled (and any decline tapped): a dash's diagnostics count its offers.
         DashDiagnostics.offerSeen(this);
         return handled;
+    }
+
+    /** Only observed exact toast wording; generic failures elsewhere do not authorize recovery. */
+    private static boolean isDeclineErrorToast(CharSequence label) {
+        return isErrorWord(label) || label != null && label.length() <= 64
+                && "something went wrong. please try again".equals(
+                        OfferEvidence.normalize(label.toString()).toLowerCase(Locale.US)
+                                .replaceAll("[.!…]+$", ""));
     }
 
     private static boolean isErrorWord(CharSequence label) {

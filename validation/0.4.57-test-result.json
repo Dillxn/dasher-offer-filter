@@ -2,9 +2,10 @@
   "result": "PASS",
   "version": "0.4.57",
   "versionCode": 63,
-  "startedUtc": "2026-10-03T01:30:33.151123+00:00",
-  "completedUtc": "2026-10-03T01:39:31.505254+00:00",
-  "command": "./gradlew -q testDebugUnitTest -PallSdks lintDebug --no-configuration-cache",
+  "baseCommit": "88f8c2a5bc209e9e179c98d622a65f2e38ce852c",
+  "startedUtc": "2026-10-03T16:48:55.647529+00:00",
+  "completedUtc": "2026-10-03T16:51:04.788510+00:00",
+  "command": "./gradlew -q testDebugUnitTest -PallSdks lintDebug --continue --no-configuration-cache",
   "executionCommand": [
     "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
     "/workspace/scratch/931021c809b3/android_env.py",
@@ -13,12 +14,13 @@
     "testDebugUnitTest",
     "-PallSdks",
     "lintDebug",
+    "--continue",
     "--no-configuration-cache"
   ],
   "exitCode": 0,
   "suiteCount": 98,
   "tests": {
-    "tests": 1756,
+    "tests": 1774,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -30,17 +32,18 @@
   "lintWarningCount": 34,
   "sourceManifest": "validation/0.4.57-test-inputs.json",
   "inputCount": 214,
-  "aggregateSha256": "b69478fa04a7bafdf0ef088fa5509fa9f16eaa01f3ce4ab8e7d3fb094c11b221",
-  "postRunAggregateSha256": "b69478fa04a7bafdf0ef088fa5509fa9f16eaa01f3ce4ab8e7d3fb094c11b221",
+  "aggregateSha256": "865e0d70a6ca9cf4fdb6065ce97e8deb80fcaf2c02083b44e8ba40e7cf10a747",
+  "postRunAggregateSha256": "865e0d70a6ca9cf4fdb6065ce97e8deb80fcaf2c02083b44e8ba40e7cf10a747",
   "changedInputFiles": [],
   "executionInputs": {
-    "android_env.py": "07ea16475e4daa002e6ecf397795528a43da14814087cfc8672e5d186e010dcf",
-    "run_dd_gate.py": "18b3c39b15937d06d81483edb3e74057470ea3b0ae490c2c7da70f8e137839ec"
+    "android_env.py": "ad90a0f33ad70d0a6f02abadbaa07d14519b7e4d89ece74435b07b6a7b42e274",
+    "run_dd_gate.py": "4df8569fbdbcdfcea0c6a3a7f3ff0edb5757f0f1f6e9eed6faa3fc73d89fcab8"
   },
   "changedExecutionInputs": [],
   "validationErrors": [],
+  "failures": [],
   "gateLog": "/workspace/scratch/931021c809b3/offer-filter-0.4.57-gate.log",
-  "gateLogSha256": "3cead8ee6feb5dd730e8e0eeb5afe5e48220308f26b20fa658c53a6ece58b773",
+  "gateLogSha256": "a9290e062bc117139566661ea4f4c3346197c631ebf87d1b5b3d9034d01469f6",
   "junitFiles": [
     "app/build/test-results/testDebugUnitTest/TEST-com.local.dasherfilter.AcceptanceEvidenceTest.xml",
     "app/build/test-results/testDebugUnitTest/TEST-com.local.dasherfilter.AcceptedOfferCloseTest.xml",
@@ -142,5 +145,5 @@
     "app/build/test-results/testDebugUnitTest/TEST-com.local.dasherfilter.UpdaterHeldReadyTest.xml"
   ],
   "lintReport": "app/build/reports/lint-results-debug.xml",
-  "evidenceBoundary": "Java/unit and simulated Android adapter tests plus static Android lint; no handset installation or physical DoorDash behavior verified."
+  "evidenceBoundary": "Pure Java and Robolectric Android 8/15 adapters plus Android lint. No handset install, live DoorDash interaction, audio/haptics, signing or publication established by this gate."
 }

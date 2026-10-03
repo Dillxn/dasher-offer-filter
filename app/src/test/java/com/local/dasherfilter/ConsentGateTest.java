@@ -10,16 +10,21 @@ import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import java.time.Duration;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowSystemClock;
@@ -33,7 +38,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * The first-run notice and its consent, through real Android adapters: until it is accepted the screen reader
- * declines nothing and the notification path posts nothing, and the homepage is only the notice; I understand is kept,
+ * declines nothing and the notification path posts nothing, and the homepage is only the notice; explicit acceptance is kept,
  * Not now closes the app, an existing install sees it once, and the bundled texts open from the notice and Settings.
  * Every other test runs with the notice accepted (ConsentedTestApp); these start from a phone that has not seen it.
  */
@@ -119,6 +124,67 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
     // ---- The homepage is only the notice ----
 
     @Test
+    public void acceptanceRateRiskIsTheFirstPointAndRequiresExplicitAcknowledgement() {
+        assertEquals("Acceptance rate.", Consent.POINTS[0][0]);
+        assertEquals("Automatic declines may dramatically lower your DoorDash acceptance rate. "
+                + "Only continue if you understand and accept that risk.", Consent.POINTS[0][1]);
+        assertEquals("I understand and accept", Consent.ACCEPT);
+        assertTrue(Consent.AGREEMENT.contains("acknowledge this acceptance-rate risk"));
+        assertTrue(Consent.AGREEMENT.contains("at your own risk"));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            TextView risk = shownTextContaining(content, Consent.POINTS[0][1]);
+            assertNotNull("the actual warning is shown, not only its heading", risk);
+            LinearLayout body = (LinearLayout) risk.getParent();
+            assertEquals("the warning precedes every other notice point", 0, body.indexOfChild(risk));
+            assertNotNull(shownTextContaining(content, Consent.AGREEMENT));
+            assertFalse("opening or reading the warning accepts nothing", Consent.accepted(app));
+            shownButton(content, "I understand and accept").performClick();
+            idle();
+            assertTrue(Consent.accepted(app));
+            assertHomepageShown(content);
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h400dp-xhdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void explicitAcknowledgementAndNotNowRemainReadableInShortLargeTextWindows() {
+        RuntimeEnvironment.setFontScale(2f);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            int width = Math.round(320 * app.getResources().getDisplayMetrics().density);
+            int height = Math.round(400 * app.getResources().getDisplayMetrics().density);
+            content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            content.layout(0, 0, width, height);
+            Button accept = shownButton(content, Consent.ACCEPT);
+            Button notNow = shownButton(content, Consent.NOT_NOW);
+            assertEquals("both actions are in the scrolling notice", accept.getParent(), notNow.getParent());
+            LinearLayout body = (LinearLayout) accept.getParent();
+            assertEquals(LinearLayout.VERTICAL, body.getOrientation());
+            assertTrue("the actions never overlap", accept.getTop() >= notNow.getBottom());
+            for (Button action : new Button[] {notNow, accept}) {
+                assertEquals("each label gets the full body width", body.getWidth() - body.getPaddingLeft()
+                        - body.getPaddingRight(), action.getWidth());
+                assertNotNull(action.getLayout());
+                for (int line = 0; line < action.getLayout().getLineCount(); line++) {
+                    assertEquals("no acknowledgement words are ellipsized", 0,
+                            action.getLayout().getEllipsisCount(line));
+                }
+                assertTrue("all lines fit vertically", action.getLayout().getHeight()
+                        <= action.getHeight() - action.getCompoundPaddingTop() - action.getCompoundPaddingBottom());
+            }
+            ScrollView scroll = (ScrollView) ((View) body.getParent()).getParent();
+            assertNotNull(scroll);
+            assertTrue("the long notice can scroll to its actions", scroll.getChildAt(0).getHeight() > scroll.getHeight());
+            assertFalse("layout and scrolling never imply consent", Consent.accepted(app));
+        } finally {
+            RuntimeEnvironment.setFontScale(1f);
+        }
+    }
+
+    @Test
     public void theHomepageShowsOnlyTheNoticeUntilIUnderstandWhichIsKept() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -152,6 +218,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             shownButton(content, Consent.NOT_NOW).performClick();
             assertTrue("Not now closes the app", activity.get().isFinishing());
             assertFalse(Consent.accepted(app));
+            assertNoAcceptanceStored();
         }
         // Back from the notice is Not now too, and it comes again each time until accepted.
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -159,6 +226,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             activity.get().onBackPressed();
             assertTrue(activity.get().isFinishing());
             assertFalse(Consent.accepted(app));
+            assertNoAcceptanceStored();
         }
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             assertNoticeShown(activity.get().findViewById(android.R.id.content));
@@ -171,9 +239,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // An acceptance of an older notice (or none, before this version) is not this one's.
+        // Version 8 disclosed numeric item history, but did not explicitly acknowledge acceptance-rate risk.
+        assertEquals(9, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, Consent.VERSION - 1).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 8).commit();
+        assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -226,6 +296,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
     }
 
     // ---- Helpers ----
+
+    private void assertNoAcceptanceStored() {
+        SharedPreferences prefs = app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE);
+        assertFalse(prefs.contains(Consent.ACCEPTED_VERSION));
+        assertFalse(prefs.contains(Consent.ACCEPTED_AT));
+    }
 
     /** The page the last tap opened is {@code doc}'s, and it shows that text with no connection. */
     private void assertOpens(LegalTexts.Doc doc) {

@@ -6,12 +6,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Switch;
+import android.widget.TextView;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -58,6 +62,45 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         iconButton(content, "Settings").performClick();
         settle();
         return content;
+    }
+
+    @Test
+    public void settingsEndsWithTheRequestedMessageAfterVersionAndLegalLinks() {
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = openSettings(activity);
+            layOut(content);
+            TextView closing = findTextView(content, "Jesus Loves You");
+            assertNotNull(closing);
+            assertTrue(closing.isShown());
+            assertEquals("Jesus Loves You", closing.getText().toString());
+            assertFalse("the closing message is plain text", closing.isClickable());
+            assertFalse(closing.isLongClickable());
+
+            List<TextView> words = new ArrayList<>();
+            settingsText(content, words);
+            assertEquals("the message is the last line of Settings text", closing, words.get(words.size() - 1));
+            TextView version = findTextView(content, AppName.NAME + " v" + Updater.version(app));
+            assertNotNull(version);
+            int previous = words.indexOf(version);
+            assertTrue(previous >= 0);
+            for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
+                TextView link = findTextView(content, doc.title);
+                assertNotNull(link);
+                int at = words.indexOf(link);
+                assertTrue("legal links follow the version", at > previous);
+                assertTrue("the message follows " + doc.title, at < words.indexOf(closing));
+                previous = at;
+            }
+        }
+    }
+
+    private static void settingsText(View view, List<TextView> words) {
+        if (!view.isShown()) return;
+        if (view instanceof TextView && ((TextView) view).getText().length() > 0) words.add((TextView) view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) settingsText(group.getChildAt(i), words);
+        }
     }
 
     @Test

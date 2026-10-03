@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 8;
+    static final int VERSION = 9;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -22,6 +22,8 @@ final class Consent {
 
     /** The notice: a few short points, each a bold lead and a line or two after it. */
     static final String[][] POINTS = {
+        {"Acceptance rate.", "Automatic declines may dramatically lower your DoorDash acceptance rate. "
+                + "Only continue if you understand and accept that risk."},
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
                 + "on offers below your minimums, never Accept. If Dasher shows an error and gets stuck during a decline, "
@@ -36,8 +38,9 @@ final class Consent {
                 + "screens are discarded. Old diagnostic logs and unsent reports are cleared by this update. Only reports you "
                 + "turn on or share leave the phone, after you accept this notice."},
     };
-    static final String AGREEMENT = "Tapping I understand means you accept the Terms.";
-    static final String ACCEPT = "I understand";
+    static final String ACCEPT = "I understand and accept";
+    static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
+            + "choose to use " + AppName.NAME + " at your own risk and accept the Terms.";
     static final String NOT_NOW = "Not now";
 
     /** Whether the current notice was accepted. Cheap enough for every read: Android keeps the prefs in memory. */
@@ -46,7 +49,7 @@ final class Consent {
     }
 
     /**
-     * The user tapped I understand: kept at once, before anything that waited for it runs, and the reminder that the
+     * The user explicitly accepted the notice: kept at once, before anything that waited for it runs, and the reminder that the
      * app is paused ({@link ConsentReminder}) goes. Reports waiting in the outbox, which sends nothing until now, go.
      */
     static void accept(Context context) {

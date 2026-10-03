@@ -30,6 +30,9 @@ public final class LegalTextsTest {
     @Test public void theTermsAndPrivacyTextSayWhatTheNoticeSays() {
         String terms = LegalTexts.Doc.TERMS.text();
         assertTrue(terms.contains("It never taps Accept."));
+        assertTrue(terms.contains("By tapping I understand and accept"));
+        assertTrue(terms.contains("Automatic declines may dramatically lower your DoorDash acceptance rate."));
+        assertTrue(terms.contains("choose to use " + AppName.NAME + " at your own risk"));
         assertTrue(terms.contains("DoorDash could limit or deactivate your account"));
         assertTrue(terms.contains("without warranties of any kind"));
         assertTrue(terms.contains("Do not handle your phone while driving"));

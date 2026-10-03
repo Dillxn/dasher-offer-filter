@@ -44,6 +44,7 @@ import static org.junit.Assert.*;
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class DeclineErrorRecoveryAdapterTest {
     private static final String DASHER = "com.doordash.driverapp";
+    private static final String OBSERVED_ERROR = "Something went wrong. Please try again.";
     private Application app;
     private ServiceController<OfferFilterService> controller;
     private OfferFilterService service;
@@ -92,6 +93,81 @@ public final class DeclineErrorRecoveryAdapterTest {
         assertEquals(2, state().declineAttempts());
         assertEquals("Back and rereads never extend original authority", deadline, state().confirmationUntil());
         assertEquals(1, DecisionLog.recent(app, 10).size());
+    }
+    @Test public void observedErrorToastRecoversOnlyWithinTheOriginalOfferBudget() throws Exception {
+        begin();
+        long deadline = state().confirmationUntil();
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", SystemClock.uptimeMillis(), false);
+        show(node("Map", false));
+        pass(600);
+        assertEquals(Arrays.asList(AccessibilityService.GLOBAL_ACTION_BACK), actions());
+        show(offer("$7.90", remaining()));
+        pass(1_500);
+        assertEquals(1, clicks(decline));
+        assertEquals(2, state().declineAttempts());
+        assertEquals(deadline, state().confirmationUntil());
+        assertFalse("toast wording is not retained", DiagnosticLog.read(app).contains(OBSERVED_ERROR));
+    }
+    @Test public void observedErrorToastAllowsOnlyCaseWhitespaceAndTerminalPunctuationNormalization() {
+        begin();
+        toast("  SOMETHING WENT WRONG. PLEASE TRY AGAIN!  ", DASHER, "android.widget.Toast",
+                SystemClock.uptimeMillis(), false);
+        show(node("Map", false));
+        pass(600);
+        assertEquals(1, actions().size());
+    }
+    @Test public void observedErrorWithoutOurDeclineRequestCannotArmRecovery() {
+        show(node("Map", false));
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", SystemClock.uptimeMillis(), false);
+        pass(600);
+        assertTrue(actions().isEmpty());
+        assertFalse(DiagnosticLog.read(app).contains("Dasher reported an error after a Decline request"));
+    }
+    @Test public void observedErrorStillRejectsOtherSourcesStaleEventsAndMisleadingText() {
+        begin();
+        show(node("Map", false));
+        pass(5_000);
+        long now = SystemClock.uptimeMillis();
+        toast(OBSERVED_ERROR, "com.example.other", "android.widget.Toast", now, false);
+        toast(OBSERVED_ERROR, DASHER, "android.app.Notification", now, false);
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", began - 1, false);
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", now - 4_001, false);
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", now + 1_000, false);
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", now, true);
+        toast(OBSERVED_ERROR + " PRIVATE_SENTINEL", DASHER, "android.widget.Toast", now, false);
+        toast("Something went wrong. Please try again later.", DASHER, "android.widget.Toast", now, false);
+        pass(600);
+        assertTrue(actions().isEmpty());
+        String log = DiagnosticLog.read(app);
+        assertFalse(log.contains("Dasher reported an error after a Decline request"));
+        assertFalse(log.contains("PRIVATE_SENTINEL"));
+    }
+    @Test public void observedErrorInInactiveSplitHalfStaysUnconfirmedWithoutGlobalBack() {
+        observedErrorInSplit(false);
+    }
+    @Test public void observedErrorInFocusedSplitHalfStillCannotAuthorizeGlobalBack() {
+        observedErrorInSplit(true);
+    }
+    private void observedErrorInSplit(boolean dasherFocused) {
+        begin();
+        AccessibilityNodeInfo map = node("Map", false);
+        show(map);
+        AccessibilityWindowInfo dasher = service.getWindows().get(0);
+        ShadowAccessibilityWindowInfo ds = Shadow.extract(dasher);
+        ds.setActive(dasherFocused); ds.setFocused(dasherFocused);
+        ds.setBoundsInScreen(new Rect(0, 1040, 1080, 2040));
+        AccessibilityNodeInfo own = node("Other", false); own.setPackageName(app.getPackageName());
+        AccessibilityWindowInfo other = window(own, 200, !dasherFocused, new Rect(0, 0, 1080, 1000));
+        AccessibilityWindowInfo divider = AccessibilityWindowInfo.obtain();
+        ((ShadowAccessibilityWindowInfo) Shadow.extract(divider)).setType(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(dasher, other, divider));
+        Shadows.shadowOf(service).setRootInActiveWindow(dasherFocused ? map : own);
+        toast(OBSERVED_ERROR, DASHER, "android.widget.Toast", SystemClock.uptimeMillis(), false);
+        pass(4_500);
+        assertTrue("Back must never target either split half", actions().isEmpty());
+        assertEquals(DecisionLog.Action.CONFIRMATION_NOT_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+        assertTrue(DiagnosticLog.read(app).contains("Dasher reported an error after a Decline request"));
+        assertFalse(DiagnosticLog.read(app).contains(OBSERVED_ERROR));
     }
     @Test public void errorAfterEightSecondHangStillRecoversWithoutDeadlineExtension() throws Exception {
         begin(); long deadline = state().confirmationUntil();
