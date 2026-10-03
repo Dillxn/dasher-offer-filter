@@ -2,6 +2,14 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## Public-site refinement and diagnostics continuation — 18:34 UTC
+
+- Re-read fresh app main and continuation state before acting. Main remains `98d410ceb29341928d7605d464ac4aee051ecf39` / live 0.4.56; tested 0.4.58 source remains `ef9ac735ab5b31497eec477ac1390389a1017eeb`, followed only by checkpoint commits. No app source, release file, issue or email was changed in this continuation.
+- Rechecked personal Gmail and the private repository after the 17:11 UTC audit. No new matching Offer Filter email, diagnostics issue or offer-report issue appeared through 18:29 UTC. Existing deduplication and dispositions for #34–39 remain current; #38 remains unresolved.
+- Advanced the separate public GitHub Pages site without copying private app material. Site source commit `1bb50ab8cb8771dc194aabc6fd8a7a01d280ca84` adds a flowing illustrative offer path, atmospheric depth, a full-screen cinematic film stage and live playback progress. Cache-busting follow-up `45b6e23424364e44d583e9bdf434205a023c619c` ensures existing visitors receive the new CSS and JavaScript.
+- GitHub Pages runs `37144371594` and `37144526020` completed successfully. The live portrait film again reached 18.5 seconds / ended, readyState 4, with no media error; the 1,363 px desktop viewport had no horizontal or vertical overflow. Download, acceptance-risk disclosure and both goodwill-tip links were rechecked without initiating a download or payment. This is a materially refined playable draft, not a claim of final pdoom-level completion.
+- Performed the single normal Render read check only. Service `srv-datkrtid0e5s73ch9egg` is not suspended and its last deployment remains live from signed GitHub commit `f9c9694f97ca179f42f28bb8b22d20f075097ebc` (0.4.56); auto-deploy is off. No signer material became available to this runtime, no deployment was triggered and signing/main merge/publication of 0.4.58 remain blocked.
+
 ## 0.4.58 pass-chime continuation — 17:29 UTC
 
 - Continued from remote `codex/pay-per-item-0-4-57` at `0cf0a32c5bb85e424fdcf2899c07bb8327df8137`; fresh remote main was still `98d410ceb29341928d7605d464ac4aee051ecf39` / live 0.4.56. The 0.4.57 source remained unshipped.
