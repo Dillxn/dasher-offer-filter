@@ -1,6 +1,8 @@
 name: Offer report fixer
 
-# Event-driven, never scheduled: each problem report the phone files as an issue starts a run.
+# Archived cloud workflow. The user's local-only build/test/sign directive removes
+# the issue trigger. Diagnostics are investigated in the agent's local workspace.
+# Manual dispatch requires a new explicit user exception to that directive.
 # Each report goes through offer-report-fix-one.yml, which splits the work by what each part may touch:
 # Claude diagnoses with a read-only token, the gate runs the proposed fix with read-only access, and only the
 # ship job, which runs no code from the fix, can push to main and close the issue.
@@ -8,8 +10,6 @@ name: Offer report fixer
 # "[offer-report]" are reports; "[diagnostics]" issues the phone files after a dash never start a fix.
 
 on:
-  issues:
-    types: [opened]
   workflow_dispatch:
 
 permissions: {}
@@ -22,8 +22,7 @@ concurrency:
 
 jobs:
   waiting:
-    # Runs for every opened issue, so a run for an unrelated issue that replaces a queued run still finds the
-    # waiting reports. The listing decides what counts as a report.
+    # A specifically authorized manual run finds all waiting reports.
     # Opt-in until its Android SDK setup is repaired (runs failed there and emailed the owner each time): set the
     # repository variable OFFER_FIXER_ENABLED to true to run it; unset or anything else skips every run.
     if: vars.OFFER_FIXER_ENABLED == 'true'

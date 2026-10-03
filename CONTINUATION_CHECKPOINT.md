@@ -2,6 +2,14 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## Latest release directive — local build/test/sign only
+
+- The user explicitly requires Android building, testing and signing in the current local workspace, with neither Render nor GitHub Actions doing that work. This supersedes the earlier remote-bridge plan below. Keep the original signer, all release gates and the existing automatic-update feeds.
+- Render Dashboard Export → Download .env successfully transferred the private environment file to the local workspace. The coordinating session is handling it privately; no secret values are recorded here. Local signing and publication are still pending at this checkpoint, so this transfer does not establish a shipped update.
+- The attempted remote build `dep-db0lfjtg1s2s73ejr080` failed after about 25 seconds at the missing `origin` fetch, before producing an APK. The old feed remained intact. Render is restored to `main`, `bash render-build.sh`, auto-deploy off; it should only mirror signed GitHub release files.
+- `RELEASE_BRIDGE.md` now leads with the local workflow. The remote signing bridge is archived and requires a new explicit user exception. Publisher, release-identity, original-signer and regression tests remain unchanged.
+- Removed the historical GitHub fixer's automatic issue trigger. Its archived manual workflow and cloud Android test workflow require an explicit exception; normal diagnostics/builds/tests/signing run in the local workspace.
+
 ## Optional auto-accept and update repair — October 3, 19:18 UTC
 
 - Latest direct user instruction requests auto-accept when current minimums are met/exceeded. This supersedes older no-auto-accept text in earlier checkpoints and recurring task templates. Implemented as a separate default-off Settings opt-in with explicit delivery commitment, notice 10, fresh complete standalone offer/countdown and quiet touch guards, one request, restart suppression and no adaptive self-training. It respects the chosen strict or compensating area rule and percentage buffer.

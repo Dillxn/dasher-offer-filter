@@ -1,10 +1,45 @@
-# Original-key release bridge
+# Local build, signing and publication
+
+The latest user instruction requires all Android building, testing and signing in
+the current local execution workspace. Do not use Render or GitHub Actions for
+those operations. Render remains the distribution mirror on `main` with
+`bash render-build.sh`; it copies already-signed GitHub release files only.
+
+The existing Render Dashboard's **Export → Download .env** transfer succeeded and
+the private environment file reached the local workspace. This establishes
+transfer only; it is not evidence of a signed APK, a published update or a phone
+installation. Load only the required original-signer values privately for
+`tools/sign-local.sh`. Never print or commit the file or its values, generate a
+replacement key, or weaken the original-certificate check.
+
+1. Freeze and commit the complete candidate source; recheck current GitHub main.
+2. Run the meaningful local dual-SDK tests and lint against immutable inputs.
+   `tools/sign-local.sh` runs the dual-SDK gate and reuses valid unchanged Gradle
+   results, then signs with the original key into `dist/`.
+3. Run `tools/publish-repo-feed.py` from that exact committed checkout. Preserve its
+   signer, package/version, size/hash, live-channel and production updater checks.
+4. Commit the generated `release/` files separately and publish the complete
+   source/release pair without force, preserving concurrent main changes.
+5. Let the normal Render mirror copy the signed feed and verify the exact live APK
+   using `tools/verify_channel.py`. Do not claim phone installation or real Dasher
+   behavior from build, simulated tests or channel verification.
+
+## Archived remote bridge — requires a new explicit exception
+
+The procedure below is retained as historical engineering work, not the routine
+release path. It must not run unless the user explicitly changes the local-only
+instruction. Its tests and the publisher/identity/signer tests remain useful and
+must stay intact. A remote attempt failed in about 25 seconds before producing an
+APK because Render's checkout had no `origin`; the old live feed remained intact.
+Render has been restored to `main`, `bash render-build.sh`, and auto-deploy off.
+
+### Historical original-key bridge
 
 This producer/receiver avoids moving Render's original signing key into a transient
 workspace. It uses the existing Render static-site build and its build-log API.
 It does not require a GitHub write token in Render or any additional service.
 
-## Review and execution
+### Archived review and execution
 
 1. Commit the reviewed application, these tools and its release notes on the
    candidate branch. Freeze that exact SHA and fresh main SHA. Preserve main's

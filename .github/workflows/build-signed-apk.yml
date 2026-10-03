@@ -1,4 +1,7 @@
-name: Manual Android tests (Render owns signing)
+name: Archived cloud Android tests (local build is default)
+
+# Do not dispatch without a new explicit exception to the user's local-only
+# build/test/sign directive. Normal releases use tools/sign-local.sh locally.
 
 on:
   workflow_dispatch:
