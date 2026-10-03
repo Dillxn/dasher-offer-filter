@@ -1,3 +1,13 @@
+## 0.4.57 — customer-name masking compatibility (unreleased)
+
+- Mask separate customer headings, the order-verification prompt and the separate "Scan customer name" heading in retained diagnostic text, while preserving list boundaries, store names and offer figures.
+- Re-mask each queued diagnostic body and pending comment, durably persisting sanitized content before any outgoing request.
+- Preserve the current unknown/payment-screen discard policy, legacy cleanup, consent, job-stop/cancellation guards, and issue/comment receipt reconciliation. An ambiguous response never permits a blind repost.
+- Preserve the current decline recovery, restart suppression, UI and release-identity protections.
+- Invented-data regressions cover recognized capture, unknown-screen discard, queued retries, receipt reconciliation and cancellation.
+
+This is a source proposal on 0.4.56, not a released app. Full Android SDK tests, lint, packaging, existing-key signing and physical-device gates remain separate. This does not remove reports already uploaded to GitHub.
+
 ## 0.4.56 — decline recovery timing and identity guards
 
 - Keeps Back recovery tied to the original complete offer and continuing countdown, including later retries. Changed labels or missing facts cannot reset the deadline or retry budget.

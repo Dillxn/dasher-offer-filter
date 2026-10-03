@@ -468,6 +468,155 @@ public class DashDiagnosticsTest {
         assertEquals("the part that failed was sent again, once it went through", 2, sent);
     }
 
+    /** Seed pending content after cleanup to test the send boundary; pre-cleanup legacy content is discarded. */
+    private java.io.File queuedNameFixture(int issue) throws IOException, JSONException {
+        java.io.File dir = new java.io.File(app.getFilesDir(), "report-outbox");
+        assertTrue(dir.isDirectory() || dir.mkdirs());
+        java.io.File file = new java.io.File(dir, "1790850000000-d.json");
+        JSONObject item = new JSONObject().put("title", "[diagnostics] Offer Filter invented pending fixture")
+                .put("body", "labels=[Delivery for, Avery Q., Fictional Market, $9.10] metricParts=[]\n"
+                        + ReportOutbox.dashMark("invented-dash-receipt"))
+                .put("token", "invented-dash-receipt")
+                .put("labels", new org.json.JSONArray().put("diagnostics"))
+                .put("comments", new org.json.JSONArray().put("Part 2 of 2 (continued)\n\n"
+                        + "labels=[Confirm you have the correct order before drop-off., Mix-ups frequently occur "
+                        + "at drop-off when there are multiple orders in a Dash., Morgan R., Fictional Market, "
+                        + "1 items, Confirm] win=split/top/ours/50"));
+        if (issue > 0) item.put("issue", issue);
+        try (OutputStream out = new java.io.FileOutputStream(file)) {
+            out.write(item.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        return file;
+    }
+
+    @Test
+    public void queuedNamesAfterCleanupAreRemaskedBeforeFallbackAndRetry() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        java.io.File file = queuedNameFixture(0);
+        on("/issues", 422, "{\"message\": \"Validation Failed\"}");
+        on("/issues", 201, "{\"number\": 7}");
+        on("/issues/7/comments", 429, "{\"message\": \"try later\"}");
+
+        assertTrue(ReportOutbox.drain(app));
+        assertEquals(1, queuedDiagnostics());
+        String kept = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        assertFalse(kept, kept.contains("Avery") || kept.contains("Morgan"));
+        assertTrue(kept, kept.contains("[name]"));
+        on("/issues/7/comments", 201, "{\"id\": 1}");
+        assertFalse(ReportOutbox.drain(app));
+        assertEquals(0, queuedDiagnostics());
+        assertEquals("only the label fallback creates another issue request", 2, requests("/issues").size());
+        for (Request request : requests("/issues")) {
+            assertEquals("labels=[Delivery for, [name], Fictional Market, $9.10] metricParts=[]\n"
+                            + ReportOutbox.dashMark("invented-dash-receipt"),
+                    request.body.getString("body"));
+        }
+        assertEquals(2, requests("/issues/7/comments").size());
+        for (Request request : requests("/issues/7/comments")) {
+            String body = request.body.getString("body");
+            assertFalse(body, body.contains("Morgan"));
+            assertTrue(body, body.contains("multiple orders in a Dash., [name], Fictional Market, 1 items, Confirm]"));
+            assertTrue(body, body.contains("win=split/top/ours/50"));
+        }
+    }
+
+    @Test
+    public void pendingCommentsAfterCleanupAreRemaskedWhenTheIssueWasAlreadyFiled() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        queuedNameFixture(19);
+        on("/issues/19/comments", 201, "{\"id\": 1}");
+
+        assertFalse(ReportOutbox.drain(app));
+        assertTrue("never files that issue again", requests("/issues").isEmpty());
+        assertEquals(1, requests("/issues/19/comments").size());
+        String body = requests("/issues/19/comments").get(0).body.getString("body");
+        assertFalse(body, body.contains("Morgan"));
+        assertTrue(body, body.contains("[name], Fictional Market, 1 items, Confirm]"));
+        assertEquals(0, queuedDiagnostics());
+    }
+
+    @Test
+    public void queuedMaskingPreservesAmbiguousCommentReceiptWithoutReposting() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        java.io.File file = queuedNameFixture(19);
+        GitHubIssues.Transport original = GitHubIssues.transport;
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<String> sent = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            GitHubIssues.transport = (method, url, token, json, max) -> {
+                if (method.equals("GET")) {
+                    if (lookups.incrementAndGet() == 1) return "[]";
+                    try { return new org.json.JSONArray().put(new JSONObject().put("body", sent.get())).toString(); }
+                    catch (JSONException error) { throw new IOException(error); }
+                }
+                assertTrue("only the existing issue's comment is posted", url.endsWith("/issues/19/comments"));
+                posts.incrementAndGet();
+                try { sent.set(new JSONObject(json).getString("body")); }
+                catch (JSONException error) { throw new IOException(error); }
+                String kept = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                assertFalse("sanitized before transport", kept.contains("Avery") || kept.contains("Morgan"));
+                throw new IOException("synthetic comment was created but its response was lost");
+            };
+            assertTrue(ReportOutbox.drain(app));
+            assertFalse(sent.get().contains("Morgan"));
+            assertTrue(sent.get().contains("<!-- offer-filter-part:invented-dash-receipt:0 -->"));
+            JSONObject receipt = new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    StandardCharsets.UTF_8));
+            assertTrue(receipt.getBoolean("comment_posted"));
+            assertEquals("invented-dash-receipt", receipt.getString("token"));
+            assertTrue("missing receipt stays pending", ReportOutbox.drain(app));
+            assertEquals(1, posts.get());
+            assertFalse("found receipt completes without another POST", ReportOutbox.drain(app));
+            assertEquals(1, posts.get());
+            assertEquals(2, lookups.get());
+            assertEquals(0, queuedDiagnostics());
+        } finally {
+            GitHubIssues.transport = original;
+        }
+    }
+
+    @Test
+    public void queuedMaskingPreservesJobStopAndResumeReceipt() throws IOException, JSONException {
+        diagnosticsOn();
+        settle();
+        java.io.File file = queuedNameFixture(0);
+        GitHubIssues.Transport original = GitHubIssues.transport;
+        java.util.concurrent.atomic.AtomicBoolean stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicInteger issues = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger comments = new java.util.concurrent.atomic.AtomicInteger();
+        try {
+            GitHubIssues.transport = (method, url, token, json, max) -> {
+                String kept = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                assertFalse("sanitized before every outgoing part", kept.contains("Avery") || kept.contains("Morgan"));
+                if (url.endsWith("/comments")) {
+                    comments.incrementAndGet();
+                    return "{\"id\":1}";
+                }
+                issues.incrementAndGet();
+                stopped.set(true);
+                return "{\"number\":77}";
+            };
+            assertTrue(ReportOutbox.drain(app, stopped::get));
+            assertEquals(1, issues.get());
+            assertEquals(0, comments.get());
+            JSONObject receipt = new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    StandardCharsets.UTF_8));
+            assertEquals(77, receipt.getInt("issue"));
+            assertEquals("invented-dash-receipt", receipt.getString("token"));
+            stopped.set(false);
+            assertFalse(ReportOutbox.drain(app, stopped::get));
+            assertEquals("resume keeps the existing issue", 1, issues.get());
+            assertEquals(1, comments.get());
+            assertEquals(0, queuedDiagnostics());
+        } finally {
+            GitHubIssues.transport = original;
+        }
+    }
+
     @Test
     public void aLabelGitHubWillNotTakeDoesNotCostTheDashItsDiagnostics() throws JSONException {
         diagnosticsOn();

@@ -639,6 +639,14 @@ final class ReportOutbox {
 
     private static int sendDiagnostics(Context context, String token, File file, JSONObject item,
                                        java.util.function.BooleanSupplier stopped) throws IOException, JSONException {
+        beforePart(context, true, stopped);
+        // Re-mask queued content without replacing receipt, cancellation or one-time cleanup protections.
+        item.put("body", PersonalText.maskLine(item.getString("body")));
+        org.json.JSONArray pending = item.optJSONArray("comments");
+        for (int i = 0; pending != null && i < pending.length(); i++) {
+            pending.put(i, PersonalText.maskLine(pending.getString(i)));
+        }
+        rewrite(file, item);
         int issue = sendIssue(context, token, file, item, true, stopped);
         org.json.JSONArray comments = item.optJSONArray("comments");
         while (comments != null && comments.length() > 0) {

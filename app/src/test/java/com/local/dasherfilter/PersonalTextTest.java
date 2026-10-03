@@ -14,6 +14,10 @@ import static org.junit.Assert.assertTrue;
  * Dasher's screens really have.
  */
 public class PersonalTextTest {
+    private static final String ORDER_CHECK = "Confirm you have the correct order before drop-off.";
+    private static final String EXPLANATION = "Mix-ups frequently occur at drop-off when there are multiple orders "
+            + "in a Dash.";
+
     /** A delivery screen as the logs write its labels. */
     private static final String DELIVERY_LINE = "[Deliver to Sam P, by 2:39 AM, Call, Message, 100 Example St, "
             + "Springfield, OH 45000, Leave it at the door, \"100 Example St ..... pls leave it at the desk\", "
@@ -51,6 +55,73 @@ public class PersonalTextTest {
                 PersonalText.mask(Arrays.asList("Customer", "Dropoff", "Pickup")));
         assertEquals("Deliver to Customer", PersonalText.mask("Deliver to Customer"));
         assertEquals("Deliver by 9:45 PM", PersonalText.mask("Deliver by 9:45 PM"));
+    }
+
+    @Test
+    public void retainedListsKeepTheContextOfASeparateCustomerHeading() {
+        for (String heading : Arrays.asList("Deliver to", "Delivery for", "Drop off for", "Dropoff for",
+                "Order for", "Customer:", "Customer name:", "Scan customer name")) {
+            for (String name : Arrays.asList("Avery Q.", "Zoë R.", "O’Neil", "Mary-Ann S.", "José")) {
+                List<String> raw = Arrays.asList(heading, name, "Example Market", "$9.10", "2 stops", "3.0 mi");
+                List<String> expected = Arrays.asList(heading, "[name]", "Example Market", "$9.10", "2 stops",
+                        "3.0 mi");
+                assertEquals(expected, PersonalText.mask(raw));
+                assertEquals(expected.toString(), PersonalText.maskLine(raw.toString()));
+                assertEquals(expected.toString(), PersonalText.maskLine(expected.toString()));
+            }
+        }
+        assertEquals("labels=[Delivery for, [name], Call] metricParts=[]",
+                PersonalText.maskLine("labels=[Delivery for, Avery Q., Call] metricParts=[]"));
+        assertEquals("[Delivery for, [name], Delivery for, [name]]",
+                PersonalText.maskLine("[Delivery for, Avery Q., Delivery for, Morgan R.]"));
+    }
+
+    @Test
+    public void orderVerificationMasksOnlyItsCustomerAndKeepsTheStoreAndFigures() {
+        List<String> raw = Arrays.asList(ORDER_CHECK, EXPLANATION, "Avery Q.", "Example Market", "1 items",
+                "Confirm", "$9.10", "3.0 mi", "15 min", "2 stops");
+        List<String> expected = Arrays.asList(ORDER_CHECK, EXPLANATION, "[name]", "Example Market", "1 items",
+                "Confirm", "$9.10", "3.0 mi", "15 min", "2 stops");
+        assertEquals(expected, PersonalText.mask(raw));
+        assertEquals(expected.toString(), PersonalText.maskLine(raw.toString()));
+        assertEquals(expected, PersonalText.mask(expected));
+        assertEquals(expected.toString(), PersonalText.maskLine(expected.toString()));
+        assertEquals("other labels=" + expected + " win=split/top/ours/50 metricParts=[]",
+                PersonalText.maskLine("other labels=" + raw + " win=split/top/ours/50 metricParts=[]"));
+        // The explanation is sometimes absent. Fixed UI words may vary in case or omit their final period.
+        List<String> shortForm = Arrays.asList("confirm you have the correct order before drop-off", "Zoë R.",
+                "Example Market");
+        assertEquals(Arrays.asList(shortForm.get(0), "[name]", "Example Market"), PersonalText.mask(shortForm));
+        assertEquals(PersonalText.mask(shortForm).toString(), PersonalText.maskLine(shortForm.toString()));
+        assertEquals(Arrays.asList(null, " " + ORDER_CHECK + " ", "[name]", null),
+                PersonalText.mask(Arrays.asList(null, " " + ORDER_CHECK + " ", " Avery Q. ", null)));
+    }
+
+    @Test
+    public void nameContextNeverJumpsListsLinesOrUnrelatedLabels() {
+        List<String> separate = Arrays.asList("Avery Q.", "Example Market", "Confirm", "Call", "$9.10");
+        assertEquals(separate, PersonalText.mask(separate));
+        for (String raw : Arrays.asList("[Delivery for], [Avery Q.]", "[Delivery for,\nAvery Q.]",
+                "[" + ORDER_CHECK + "], [Avery Q.]", "[" + ORDER_CHECK + ",\nAvery Q.]",
+                "[" + ORDER_CHECK + ", View order, Avery Q.]", "[" + EXPLANATION + ", Avery Q.]",
+                "[Delivery for, Customer, Pickup]", "[" + ORDER_CHECK + ", $9.10, Example Market]")) {
+            assertEquals(raw, PersonalText.maskLine(raw));
+        }
+        List<String> unrelated = Arrays.asList(ORDER_CHECK, "View order", "Avery Q.", "Example Market");
+        assertEquals(unrelated, PersonalText.mask(unrelated));
+        assertEquals(Arrays.asList(ORDER_CHECK, null, "Avery Q."),
+                PersonalText.mask(Arrays.asList(ORDER_CHECK, null, "Avery Q.")));
+    }
+
+    @Test(timeout = 2000)
+    public void contextualMaskingIsBoundedOnLongNonmatchingLabels() {
+        String longWord = "A" + String.join("", java.util.Collections.nCopies(20_000, "a"));
+        String raw = "labels=[" + longWord + ", Example Market] metricParts=[]";
+        assertEquals(raw, PersonalText.maskLine(raw));
+        assertEquals("[Delivery for, [name]]", PersonalText.maskLine("[Delivery for, " + longWord + "]"));
+        String spaces = String.join("", java.util.Collections.nCopies(20_000, " "));
+        String noSeparator = "[Delivery for" + spaces + "$9.10]";
+        assertEquals(noSeparator, PersonalText.maskLine(noSeparator));
     }
 
     @Test

@@ -194,8 +194,25 @@ final class PersonalText {
     private static final Pattern CUSTOMER_NAME = Pattern.compile(
             "\\b(" + CUSTOMER_HEADING + ")( +)(" + NAME_WORDS + ")");
     /** A heading that is a label of its own, with the name as the next label. */
-    private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(
-            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|customer|customer name) *:?");
+    private static final String CUSTOMER_HEADING_WORDS =
+            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|customer|customer name|scan customer name)";
+    private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(CUSTOMER_HEADING_WORDS + " *:?");
+    /** The customer's name on the order check follows this heading and, when shown, its explanation. */
+    private static final String ORDER_CHECK = "(?i:confirm you have the correct order before drop-off)\\.?";
+    private static final String ORDER_CHECK_EXPLANATION = "(?i:mix-ups frequently occur at drop-off when there are "
+            + "multiple orders in a dash)\\.?";
+    private static final Pattern ORDER_CHECK_LABEL = Pattern.compile(ORDER_CHECK);
+    private static final Pattern ORDER_CHECK_EXPLANATION_LABEL = Pattern.compile(ORDER_CHECK_EXPLANATION);
+    /** Same-label-list context for retained logs: never cross a bracket or a physical line break. */
+    private static final String ITEM_START = "(?:^|\\[|, )[ \\t]*";
+    private static final String ITEM_SEPARATOR = "[ \\t]*, [ \\t]*";
+    private static final String ITEM_END = "(?=[ \\t]*(?:, |\\]|$))";
+    private static final Pattern CUSTOMER_NAME_ITEM = Pattern.compile(
+            "(" + ITEM_START + CUSTOMER_HEADING_WORDS + "(?:[ \\t]*:)?" + ITEM_SEPARATOR + ")(" + NAME_WORDS + ")"
+                    + ITEM_END, Pattern.MULTILINE);
+    private static final Pattern ORDER_CHECK_NAME_ITEM = Pattern.compile(
+            "(" + ITEM_START + ORDER_CHECK + ITEM_SEPARATOR + "(?:" + ORDER_CHECK_EXPLANATION + ITEM_SEPARATOR
+                    + ")?)(" + NAME_WORDS + ")" + ITEM_END, Pattern.MULTILINE);
     /** "Tiaunna's order is ready". */
     private static final Pattern POSSESSIVE = Pattern.compile(
             "\\b(\\p{Lu}[\\p{L}-]*)(['’]s)( +(?i:order|orders|delivery|food|items?|groceries|package|drop[- ]?off))\\b");
@@ -313,7 +330,8 @@ final class PersonalText {
             String before = i > 0 && labels.get(i - 1) != null ? labels.get(i - 1).trim() : null;
             boolean named = (next != null && (COMPLETED.matcher(next).find() || BADGE.matcher(next).matches()
                     || DASHING_NOW.matcher(next).matches() || (sideMenu && MENU_ITEM.matcher(next).matches())))
-                    || (before != null && CUSTOMER_HEADING_LABEL.matcher(before).matches());
+                    || (before != null && CUSTOMER_HEADING_LABEL.matcher(before).matches())
+                    || followsOrderCheck(labels, i);
             if (named && isName(trimmed)) {
                 out.add(NAME);
             } else if (before != null && CARD_HEADING_LABEL.matcher(before).matches()
@@ -327,6 +345,16 @@ final class PersonalText {
             }
         }
         return out;
+    }
+
+    private static boolean followsOrderCheck(List<String> labels, int at) {
+        if (at == 0) return false;
+        String before = labels.get(at - 1);
+        if (before == null) return false;
+        if (ORDER_CHECK_LABEL.matcher(before.trim()).matches()) return true;
+        if (at < 2 || !ORDER_CHECK_EXPLANATION_LABEL.matcher(before.trim()).matches()) return false;
+        String heading = labels.get(at - 2);
+        return heading != null && ORDER_CHECK_LABEL.matcher(heading.trim()).matches();
     }
 
     /**
@@ -390,6 +418,10 @@ final class PersonalText {
             out = (wholeLabel ? NAVIGATION_STREET_LABEL : NAVIGATION_STREET_ITEM).matcher(out)
                     .replaceAll("$1$2" + Matcher.quoteReplacement(STREET));
             if (!wholeLabel) out = STREET_ALONE_ITEM.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(STREET));
+        }
+        if (!wholeLabel) {
+            out = names(CUSTOMER_NAME_ITEM, out, 2, "$1");
+            out = names(ORDER_CHECK_NAME_ITEM, out, 2, "$1");
         }
         out = names(CUSTOMER_NAME, out, 3, "$1$2");
         out = names(GREETING, out, 2, "$1");
