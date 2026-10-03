@@ -4,7 +4,7 @@
 - Corrects strict-mode learning feedback under a percentage buffer: a recorded hand-decline below a dominating fixed floor no longer claims the effective minimum rose. The learned observation is still kept.
 - Keeps observed automatic accepts out of personal adaptive learning. Existing adaptive behavior remains as chosen: learned accepted payout must be beaten by one cent at 100%, accepted rates can match, and the percentage buffer does not rewrite saved or learned values.
 - Raises the first notice to version 10 for the new optional behavior while retaining the explicit acceptance-rate and own-risk acknowledgement. Settings still ends with Jesus Loves You.
-- Adds a pinned original-signer build bridge for the existing Render environment. Only verified signed APK bytes leave it; the signing key stays there, the previous live feed remains in place until publication, and the normal GitHub/Render update verification remains intact.
+- Builds, tests and signs locally with the original key, preserving the normal GitHub/Render update verification. The local packager now generates and compiles Android resource identifiers, including the new passing-offer chime. Automatic cloud fixer triggers are retired; the remote signing bridge is archived.
 - Includes all previously unshipped 0.4.57/0.4.58 improvements below.
 
 Validation: 1,833 tests across 102 suites passed on simulated Android 8/15, with zero failures/errors/skips; lint has zero errors and 35 warnings. All 278 tracked inputs were unchanged. Original-key signing and publication are pending. See [the validation record](VALIDATION_AUTO_ACCEPT_0.4.59.md). No physical-phone result is claimed.
