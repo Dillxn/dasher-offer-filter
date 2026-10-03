@@ -2,6 +2,16 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## 0.4.58 pass-chime continuation — 17:29 UTC
+
+- Continued from remote `codex/pay-per-item-0-4-57` at `0cf0a32c5bb85e424fdcf2899c07bb8327df8137`; fresh remote main was still `98d410ceb29341928d7605d464ac4aee051ecf39` / live 0.4.56. The 0.4.57 source remained unshipped.
+- Rechecked personal Gmail and private-repository issues after the prior 16:43 UTC checkpoint. No new matching Offer Filter email, diagnostics issue or offer-report issue was present through the 17:11 UTC check. Existing deduplication and dispositions for #34–39 therefore remain current; no report, email or issue was changed.
+- Confirmed Pay/item already exists in the candidate as the sixth, downward shopping-bag spoke, with hollow-knob setup, shopping applicability, selected-history restoration and count/rate ticket detail. Its absence on the user's phone is explained by the live build remaining 0.4.56, not by a missing candidate implementation.
+- Android's notification listener cannot reliably prevent DoorDash's native first ring because its callback may arrive after Android has alerted. Implemented the approved fallback: a bundled 1.4-second three-note chime on a fresh pass-only channel (`qualifying_offers_v2`). Offer Filter remains silent for DECLINE; REVIEW keeps its separate channel. The old default-sound passing channel is retired. The decoded asset is 8,669 bytes, SHA-256 `c439a56c18f1b0cf3b3709e4114c0fe1ea132bd75ffa8cd84e786126dcd29712`.
+- Kept the current split-screen safety boundary. The exact Dasher error is recognized there, but does not authorize global Back: Android can apply Back to the active Offer Filter pane. Full-screen recovery retains the original request, same-offer identity, continuing countdown, lock, touch, focus, deadline and two-Back bounds.
+- Bumped the candidate to 0.4.58/code 64. Exact-source Android 8/15 simulation passed 1,774 tests across 98 suites with no failures, errors or skips. Lint passed with zero errors and 34 warnings. Unsigned release packaging completed and reports package `com.local.dasherfilter`, version 0.4.58/code 64; it is deliberately not a publishable APK. No physical-phone audio, DoorDash alert or recovery behavior is claimed.
+- Original-signer signing, main merge and both automatic-update feeds remain pending. The public GitHub Pages site/film were not changed in this continuation and remain the deployed playable draft described below.
+
 ## App source and release boundary
 
 - Fresh main inspected: `98d410ceb29341928d7605d464ac4aee051ecf39`, serving 0.4.56/code 62. No main or release-feed mutation was made in this continuation.

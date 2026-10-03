@@ -1,3 +1,12 @@
+## 0.4.58 — a distinct sound for offers that pass
+
+- Gives proven passing offers a short, bundled three-note Offer Filter chime on their own Android channel. Rejected offers still make no Offer Filter sound; unclear offers keep their separate review channel.
+- DoorDash may already have sounded before Android delivers a notification-listener callback, so this does not claim to suppress a native alert retroactively. The distinct pass chime is the safe fallback requested by the user.
+- Carries forward the 0.4.57 pay/item, shared minimums, explicit acceptance-rate consent, Settings closing line and exact failed-decline wording. Pay/item is already present as the sixth, downward shopping-bag spoke in this source; it is absent on the live phone because 0.4.57/0.4.58 has not yet been signed or published.
+- Keeps failed-decline Back recovery full-screen only. The exact error remains recognized in split screen, but global Back is not allowed there because Android applies it to whichever pane is active and could back out of Offer Filter instead of Dasher.
+
+Validation: the exact candidate passed 1,774 tests across 98 suites on simulated Android 8/15, with zero failures, errors or skips; lint completed with zero errors and 34 warnings. The 1.4-second Ogg/Vorbis asset decoded cleanly, and unsigned release packaging identifies 0.4.58/code 64. Original-signer signing and publication remain pending; no real DoorDash alert behavior is claimed from simulated tests. See [the pass-chime validation record](VALIDATION_PASS_CHIME_0.4.58.md).
+
 ## 0.4.57 — pay per item and shared minimums math
 
 - Adds an optional downward Pay / item spoke for offers declaring items or shopping. Uses an observed total count; ambiguous or missing declared counts remain unknown. Selected tickets show the count and rate, with no extra Settings row.

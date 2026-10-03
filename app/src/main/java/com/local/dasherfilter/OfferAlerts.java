@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
@@ -18,7 +19,9 @@ import android.service.notification.StatusBarNotification;
  * the background; it is never judged, declined or opened for you.
  */
 final class OfferAlerts {
-    static final String CHANNEL_ID = "qualifying_offers";
+    /** New id: Android keeps a channel's first sound forever, so the passing chime needs a fresh channel. */
+    static final String CHANNEL_ID = "qualifying_offers_v2";
+    private static final String RETIRED_PASSING_CHANNEL_ID = "qualifying_offers";
     static final String REVIEW_CHANNEL_ID = "offers_to_check_v2";
     /** 0.4.15 and earlier posted review cards silently here; Android cannot raise a channel's importance later. */
     private static final String RETIRED_SILENT_REVIEW_CHANNEL_ID = "unclassified_offers_v1";
@@ -34,9 +37,10 @@ final class OfferAlerts {
 
         NotificationChannel passing =
                 new NotificationChannel(CHANNEL_ID, "Offers that pass", NotificationManager.IMPORTANCE_HIGH);
-        passing.setDescription("Only offers proven to meet enabled rules. Android sound and DND settings still apply.");
+        passing.setDescription("Only offers proven to meet enabled rules. Uses the app's pass chime; Android "
+                + "sound and DND settings still apply.");
         passing.enableVibration(true);
-        passing.setSound(Settings.System.DEFAULT_NOTIFICATION_URI, new AudioAttributes.Builder()
+        passing.setSound(passingSound(context), new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
@@ -52,7 +56,13 @@ final class OfferAlerts {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
         manager.createNotificationChannel(review);
+        manager.deleteNotificationChannel(RETIRED_PASSING_CHANNEL_ID);
         manager.deleteNotificationChannel(RETIRED_SILENT_REVIEW_CHANNEL_ID);
+    }
+
+    /** A short, bundled three-note chime reserved for offers that pass. */
+    static Uri passingSound(Context context) {
+        return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.offer_pass_chime);
     }
 
     /** Readiness covers both offer channels and a notice channel the user has already blocked. */

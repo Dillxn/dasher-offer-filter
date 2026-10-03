@@ -53,6 +53,14 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         Notification alert = notifications().getNotification("keep", ALERT_NOTIFICATION_ID);
         assertEquals(app.getResources().getIdentifier("ic_notification", "drawable", app.getPackageName()),
                 alert.getSmallIcon().getResId());
+        NotificationManager manager = app.getSystemService(NotificationManager.class);
+        NotificationChannel passing = manager.getNotificationChannel(OfferAlerts.CHANNEL_ID);
+        assertEquals("passing offers use the bundled, recognizable chime", OfferAlerts.passingSound(app),
+                passing.getSound());
+        assertFalse("the pass chime is not the phone's ordinary notification sound",
+                android.provider.Settings.System.DEFAULT_NOTIFICATION_URI.equals(passing.getSound()));
+        assertNull("the old default-sound passing channel is retired",
+                manager.getNotificationChannel("qualifying_offers"));
     }
 
     @Test
