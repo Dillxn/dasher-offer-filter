@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Verify the unauthenticated channel using the production Java HTTP and metadata code."""
 import hashlib, json, os, pathlib, re, subprocess, sys, time
+from runtime_http_proxy import java_http_runtime, java_environment
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / '.channel-check'
 SIGNER = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
 BASE = 'https://dash-offer-filter-build.onrender.com'
-def run(*args):
-    return subprocess.run(args, check=True, text=True, capture_output=True).stdout
+def run(*args, env=None):
+    return subprocess.run(args, check=True, text=True, capture_output=True, env=env).stdout
 
 def main():
     OUT.mkdir(exist_ok=True)
@@ -15,12 +16,13 @@ def main():
     run('javac', '-d', str(classes), str(source / 'UpdatePolicy.java'), str(source / 'UpdateTransport.java'), str(ROOT / 'tools/UpdateChannelProbe.java'))
     java = ['java', '-cp', str(classes), 'com.local.dasherfilter.UpdateChannelProbe']
     def download(url, path, limit):
-        run(*java, 'download', url, str(path), str(limit))
+        proxy_args, runtime_env = java_http_runtime(url)
+        run(java[0], *proxy_args, *java[1:], 'download', url, str(path), str(limit), env=runtime_env)
     download(BASE + '/latest.json?t=' + str(time.time_ns()), OUT / 'latest.json', 16384)
     feed = json.loads((OUT / 'latest.json').read_text())
     if type(feed.get('versionCode')) is not int or type(feed.get('size')) is not int:
         raise ValueError('Feed version/size are not JSON integers')
-    run(*java, 'metadata', feed['packageName'], str(feed['versionCode']), feed['apkUrl'], feed['sha256'], str(feed['size']), feed.get('encoding', 'raw'), feed['versionName'])
+    run(*java, 'metadata', feed['packageName'], str(feed['versionCode']), feed['apkUrl'], feed['sha256'], str(feed['size']), feed.get('encoding', 'raw'), feed['versionName'], env=java_environment())
     if feed.get('encoding', 'raw') != 'raw': raise ValueError('Render release must be a raw APK')
     apk = OUT / 'OfferFilter.apk'; download(feed['apkUrl'], apk, feed['size'])
     if apk.stat().st_size != feed['size'] or hashlib.sha256(apk.read_bytes()).hexdigest() != feed['sha256']:

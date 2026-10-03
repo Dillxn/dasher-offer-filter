@@ -9,12 +9,17 @@ app's own policy code. It never signs, commits or pushes; commit release/ and pu
 """
 import hashlib, json, os, pathlib, re, subprocess
 from release_identity import check_channel
+from runtime_http_proxy import java_environment
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SIGNER = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
 PACKAGE = 'com.local.dasherfilter'
 REPO_APK = 'https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main'
 MAX_APK_BYTES = 20 * 1024 * 1024
-def run(*args): return subprocess.run(args, check=True, text=True, capture_output=True, cwd=ROOT).stdout
+def run(*args):
+    # The nested live-channel verifier reads current standard HTTP(S)_PROXY.
+    # Discard only stale inherited JVM routing, preserving TLS/trust-store options.
+    return subprocess.run(args, check=True, text=True, capture_output=True, cwd=ROOT,
+                          env=java_environment()).stdout
 
 def main():
     gradle = (ROOT / 'app/build.gradle').read_text()

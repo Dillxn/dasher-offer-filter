@@ -7,9 +7,11 @@
 - Builds, tests and signs locally with the original key, preserving the normal GitHub/Render update verification. The local packager now generates and compiles Android resource identifiers, including the new passing-offer chime. Automatic cloud fixer triggers are retired; the remote signing bridge is archived.
 - Includes all previously unshipped 0.4.57/0.4.58 improvements below.
 
-Validation: 1,833 tests across 102 suites passed on simulated Android 8/15, with zero failures/errors/skips; lint has zero errors and 35 warnings. All 278 tracked inputs were unchanged. Original-key signing and publication are pending. See [the validation record](VALIDATION_AUTO_ACCEPT_0.4.59.md). No physical-phone result is claimed.
+Validation: the final local signing gate passed 1,833 tests across 102 suites on simulated Android 8/15, with zero failures/errors/skips; lint has zero errors and 35 warnings. All 281 tracked inputs were unchanged. Locally signed with the original key and published to GitHub main at `18c1b4748a0b554ba5742a6c726bd7471a250880`. The live mirror serves the same 423,069-byte APK; a fresh production-updater download verified 0.4.59/code65, its package, SHA-256 and original certificate. See [publication and updater-flow validation](VALIDATION_UPDATE_FLOW_0.4.59.md) and [feature validation](VALIDATION_AUTO_ACCEPT_0.4.59.md). No physical-phone result is claimed. The earlier local JVM routing blocker is corrected in the release launcher without changing Android transport or TLS verification.
 
 ## 0.4.58 — a distinct sound for offers that pass
+
+Historical candidate evidence below; these changes shipped together in 0.4.59 on October 3. Its former signing/publication blockers are resolved.
 
 - Gives proven passing offers a short, bundled three-note Offer Filter chime on their own Android channel. Rejected offers still make no Offer Filter sound; unclear offers keep their separate review channel.
 - DoorDash may already have sounded before Android delivers a notification-listener callback, so this does not claim to suppress a native alert retroactively. The distinct pass chime is the safe fallback requested by the user.
@@ -19,6 +21,8 @@ Validation: 1,833 tests across 102 suites passed on simulated Android 8/15, with
 Validation: the exact candidate passed 1,774 tests across 98 suites on simulated Android 8/15, with zero failures, errors or skips; lint completed with zero errors and 34 warnings. The 1.4-second Ogg/Vorbis asset decoded cleanly, and unsigned release packaging identifies 0.4.58/code 64. Original-signer signing and publication remain pending; no real DoorDash alert behavior is claimed from simulated tests. See [the pass-chime validation record](VALIDATION_PASS_CHIME_0.4.58.md).
 
 ## 0.4.57 — pay per item and shared minimums math
+
+Historical candidate evidence below; these changes shipped together in 0.4.59 on October 3. Its former signing/publication blockers are resolved.
 
 - Adds an optional downward Pay / item spoke for offers declaring items or shopping. Uses an observed total count; ambiguous or missing declared counts remain unknown. Selected tickets show the count and rate, with no extra Settings row.
 - Resolves fixed and learned payout requirements in one place for strict rules, area scoring, chart baselines and learning comparisons. Keeps compensating area mode, strict mode, existing learning and the global percentage buffer unchanged.

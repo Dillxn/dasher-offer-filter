@@ -18,6 +18,9 @@ replacement key, or weaken the original-certificate check.
    results, then signs with the original key into `dist/`.
 3. Run `tools/publish-repo-feed.py` from that exact committed checkout. Preserve its
    signer, package/version, size/hash, live-channel and production updater checks.
+   Local JVM probes use the current standard HTTP(S)_PROXY and NO_PROXY values
+   through `tools/runtime_http_proxy.py`, preserving TLS/trust-store settings.
+   Do not hardcode old proxy ports or mistake stale Java routing for denied access.
 4. Commit the generated `release/` files separately and publish the complete
    source/release pair without force, preserving concurrent main changes.
 5. Let the normal Render mirror copy the signed feed and verify the exact live APK
