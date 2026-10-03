@@ -16,6 +16,7 @@ import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
+import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAlertDialog;
@@ -27,6 +28,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 @LooperMode(LooperMode.Mode.PAUSED)
 public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
     @Before public void clearWaiting() {
+        QualifyingWaitStore.wallClock = () -> 1_800_000_000_000L + android.os.SystemClock.elapsedRealtime();
         QualifyingWaitStore.flush();
         QualifyingWaitStore.clear(app);
         Appearance.choose(app, Appearance.Mode.DAY);
@@ -35,6 +37,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
     @After public void finishWaiting() {
         QualifyingWaitStore.flush();
         QualifyingWaitStore.clear(app);
+        QualifyingWaitStore.wallClock = System::currentTimeMillis;
     }
 
     private FilterSettings rules() {
@@ -50,6 +53,10 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
 
     @Test public void learningWaitIsVisibleOnlyWhenFilteringAndItsDetailsNeverPause() {
         FilterStore.save(app, rules());
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
+        service.get().onServiceConnected();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             TextView wait = shownTextContaining(content, "Learning your wait");
@@ -67,6 +74,19 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             assertFalse(FilterStore.load(app).enabled);
             assertFalse("paused filtering must not advertise a wait", wait.isShown());
             assertNotNull(shownTextContaining(content, "Paused"));
+        } finally {
+            listener.destroy();
+            service.destroy();
+        }
+    }
+
+    @Test public void setupProblemsTakePriorityOverTheWaitEstimate() {
+        FilterStore.save(app, rules());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = page(activity);
+            assertNotNull(shownTextContaining(content, "Screen reading is off"));
+            assertNull("setup instructions keep their space until filtering can observe offers",
+                    shownTextContaining(content, "Learning your wait"));
         }
     }
 

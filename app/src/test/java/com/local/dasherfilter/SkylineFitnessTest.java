@@ -209,6 +209,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
     }
 
     private void renderPage(String name, boolean dark) throws Exception {
+        Appearance.choose(app, dark ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
         FilterStore.save(app, RULES.withScoreByArea(true));
         List<DecisionLog.Entry> chronological = previewEntries();
         Collections.reverse(chronological);

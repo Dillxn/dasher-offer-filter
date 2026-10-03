@@ -706,7 +706,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout.LayoutParams waitParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         waitParams.gravity = Gravity.CENTER_HORIZONTAL;
-        lines.addView(waitEstimateLine, waitParams);
         LinearLayout problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
         screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
@@ -738,6 +737,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout body = body(page, new LeastColumn(this));
         groundParams = share(1);
         body.setLayoutParams(groundParams);
+        // Its own flow row keeps every estimate length and touch target clear of constellation points.
+        body.addView(waitEstimateLine, waitParams);
         addOffers(body);
         addAreas(body);
         // The road needs a whole screen; in a short window (beside Dasher or not) the page ends at the skyline or
@@ -1343,11 +1344,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             hero.setAction("Set up rules");
         }
         stateLine.setVisibility(saved.enabled ? View.GONE : View.VISIBLE);
-        waitEstimateLine.setVisibility(saved.enabled && saved.hasAnyRule() ? View.VISIBLE : View.GONE);
-        if (saved.enabled && saved.hasAnyRule()) {
-            String estimate = QualifyingWaitStore.estimate(this, saved).label();
-            if (!estimate.contentEquals(waitEstimateLine.getText())) waitEstimateLine.setText(estimate);
-        }
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
             String label = DasherSplit.label(this);
@@ -1357,6 +1353,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
 
         boolean readerConnected = OfferFilterService.isConnected();
+        // Setup prompts take precedence over optional timing, especially at large font sizes in a short window.
+        boolean showWait = saved.enabled && saved.hasAnyRule() && readerConnected
+                && OfferNotificationService.isConnected() && alertsAllowed.get();
+        waitEstimateLine.setVisibility(showWait ? View.VISIBLE : View.GONE);
+        if (showWait) {
+            String estimate = QualifyingWaitStore.estimate(this, saved).label();
+            if (!estimate.contentEquals(waitEstimateLine.getText())) waitEstimateLine.setText(estimate);
+        }
         screenReading.problem(screenReadingEnabled.get() ? "Screen reading stopped"
                 : restrictedSettingsHint ? "Screen reading is off · switch greyed out?" : "Screen reading is off");
         screenReading.update(readerConnected);

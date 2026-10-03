@@ -9,6 +9,7 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -37,6 +38,11 @@ import static org.junit.Assert.assertTrue;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AdaptiveShapeByAreaTest extends AndroidAdapterTestBase {
+    @Before public void useDeterministicDayPalette() {
+        // These paint-color assertions compare against the day-configured Application fixture, not local sunset.
+        Appearance.choose(app, Appearance.Mode.DAY);
+    }
+
     private static final FilterSettings USER = new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0)
             .withScoreByArea(true);
 

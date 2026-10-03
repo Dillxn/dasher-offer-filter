@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -31,6 +32,10 @@ import org.robolectric.annotation.LooperMode;
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ItemConstellationTest extends AndroidAdapterTestBase {
+    @Before public void useDeterministicDayPalette() {
+        Appearance.choose(app, Appearance.Mode.DAY);
+    }
+
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 50, 500, 3)
             .withHotspotProximity(50).withPerItem(50).withScoreByArea(true);
 
@@ -200,6 +205,33 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
     @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void shortSplitExportsSixSpokePreviewWithClearLabelsAndControls() throws Exception {
         preview(true, "split");
+    }
+
+    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void readyWaitEstimateKeepsTheSplitItemVertexSelectable() throws Exception {
+        seedWaitHistory(false);
+        assertEquals("Next match: about 12 min", QualifyingWaitStore.estimate(app, RULES).label());
+        preview(true, "split-ready-wait");
+    }
+
+    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void unreadableWaitEstimateKeepsTheSplitItemVertexSelectable() throws Exception {
+        seedWaitHistory(true);
+        assertEquals("Wait estimate needs readable offers", QualifyingWaitStore.estimate(app, RULES).label());
+        preview(true, "split-unreadable-wait");
+    }
+
+    private void seedWaitHistory(boolean unreadable) {
+        long now = System.currentTimeMillis();
+        java.util.ArrayList<QualifyingWait.Sample> samples = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            samples.add(new QualifyingWait.Sample(now - i * 12 * 60000L, 12 * 60000L,
+                    unreadable ? offer(null, true) : offer(20, true)));
+        }
+        QualifyingWaitStore.flush();
+        app.getSharedPreferences("qualifying-wait", android.content.Context.MODE_PRIVATE).edit()
+                .putString("numeric-history-v1", QualifyingWaitStore.encode(samples)).commit();
+        QualifyingWaitStore.forgetCache();
     }
 
     @Test @Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
