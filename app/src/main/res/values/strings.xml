@@ -7,5 +7,5 @@
 <resources>
     <string name="app_name">&app;</string>
     <string name="listener_name">&app; background offers</string>
-    <string name="service_description">Reads Dasher offer details and declines offers below your saved payout rules.</string>
+    <string name="service_description">Reads Dasher offers and declines those below your rules. Optional auto-accept can accept matching offers if you enable it.</string>
 </resources>

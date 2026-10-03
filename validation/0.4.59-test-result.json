@@ -1,0 +1,55 @@
+{
+  "adapterSdkCases": {
+    "AccessibilityAdapterTest": {
+      "26": 55,
+      "35": 55
+    },
+    "AdaptiveMinimumLifecycleTest": {
+      "26": 8,
+      "35": 8
+    },
+    "AndroidAdapterAlertsAndSettingsTest": {
+      "26": 30,
+      "35": 30
+    },
+    "AndroidAdapterChartTest": {
+      "26": 22,
+      "35": 22
+    },
+    "AndroidAdapterHomepageTest": {
+      "26": 17,
+      "35": 17
+    },
+    "AndroidAdapterReportsAndUpdatesTest": {
+      "26": 17,
+      "35": 17
+    },
+    "AutoAcceptAdapterTest": {
+      "26": 16,
+      "35": 16
+    },
+    "AutoAcceptSettingsTest": {
+      "26": 2,
+      "35": 2
+    },
+    "ConsentGateTest": {
+      "26": 9,
+      "35": 9
+    }
+  },
+  "androidAdapterRuntime": "Robolectric API 26 and 35; simulation only",
+  "deviceInstallVerified": false,
+  "inputCount": 278,
+  "inputSha256": "7a9ee530f500bad4bd5f18ab364359ba8e4b8e3cf367abd078faa65d73161e0b",
+  "junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1833
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 35
+  },
+  "suites": 102
+}

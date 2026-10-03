@@ -1,12 +1,12 @@
 # Offer Filter
 
-A local Android assistant for reviewing and declining DoorDash delivery offers. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.
+A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.
 
 ## Risks
 
 - **DoorDash's terms and your account.** Using a third-party tool with the Dasher app may break DoorDash's terms, and DoorDash could limit or deactivate your account. Declining offers can also lower your acceptance rate.
 - **Not affiliated with DoorDash.** Offer Filter is independent software. DoorDash and Dasher are trademarks of DoorDash, Inc., named only to say which app it works with.
-- **It can be wrong, and there is no warranty.** It can misread an offer, decline one you wanted or fail to decline one; a tap is only a request to Dasher. Check your Dasher history. It is provided as is, without warranty ([TERMS.md](TERMS.md), [LICENSE](LICENSE)).
+- **It can be wrong, and there is no warranty.** It can misread an offer, accept or decline one you did not want it to, or fail to act; a tap is only a request to Dasher. Check your Dasher history. It is provided as is, without warranty ([TERMS.md](TERMS.md), [LICENSE](LICENSE)).
 - **Not while driving.** Don't handle your phone while driving: set your rules before you drive and pull over to look at offers. It is not a safety device.
 - **Your data.** What it reads, keeps and sends, and when, is in [PRIVACY.md](PRIVACY.md).
 
@@ -30,9 +30,15 @@ In the background, a notification containing sufficient explicit offer data can 
 
 If a known-failing background offer exposes a DoorDash-owned Decline action that opens no screen, the app can request it. Otherwise it can hide the notification only. **Hiding a notification does not decline the order**; it may remain pending until acted on or expired.
 
+## Optional auto-accept
+
+**Auto-accept matching offers** starts off in Settings, including on existing installs. Enabling it requires a separate confirmation because it can commit you to a delivery. It uses the same current saved/adaptive floors and whole-minimum percentage as filtering, and your selected strict or compensating area mode. Add-ons, incomplete offers and offers with an unclear or nearly expired countdown stay yours. A fresh reread and a working touch watch must establish at least 0.7 seconds without touch before a single node-targeted Accept request. Touch, lock, changing rules or losing the verified Dasher window cancels the attempt. It never retries an uncertain Accept with Back. A request is not server confirmation.
+
+Automatic accepts do not teach your adaptive minimums: only supported evidence of your own choices does. The existing learned payout behavior remains intentional: a learned accepted payout must be beaten by one cent; learned rates can be matched. Learned values persist when learning is switched off until Reset, or can be adopted as saved minimums.
+
 ## Peek at background offers
 
-**Peek at background offers** is on by default in Settings, after you accept the current notice. A fresh background notification can briefly bring Dasher forward so the normal filter can read the actual offer. It never taps Accept. A store name alone still proves no payout, distance or result.
+**Peek at background offers** is on by default in Settings, after you accept the current notice. A fresh background notification can briefly bring Dasher forward so the normal filter can read the actual offer. Accept is only requested if you separately enabled auto-accept and the freshly read offer passes all its guards. A store name alone still proves no payout, distance or result.
 
 The phone must be unlocked and quiet for about 0.7 seconds, with no touch or keyboard; if that quiet does not arrive within three seconds, the usual card is used. Peek skips when its checks find a call, microphone/camera use, screen pinning, split or floating windows, a system picker, an unknown app, a recent acceptance, a takeover or an update being installed. Its touch watch must be available. Old notifications, reconnects and ordinary updates do not start it.
 

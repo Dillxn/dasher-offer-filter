@@ -2,6 +2,15 @@
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.
 
+## Optional auto-accept and update repair — October 3, 19:18 UTC
+
+- Latest direct user instruction requests auto-accept when current minimums are met/exceeded. This supersedes older no-auto-accept text in earlier checkpoints and recurring task templates. Implemented as a separate default-off Settings opt-in with explicit delivery commitment, notice 10, fresh complete standalone offer/countdown and quiet touch guards, one request, restart suppression and no adaptive self-training. It respects the chosen strict or compensating area rule and percentage buffer.
+- Restored exact candidate `2db692039b38e6017e7517925d6029cc473d0b75`; fresh main moved to `a8a60e6182403bfcbccf1e4ec33a601aca5c4823` only for shorter temporary CI artifact retention. That concurrent change is preserved. This candidate is 0.4.59/code65 and includes the unshipped .57/.58 features.
+- Full local gate: 1,833 tests / 102 suites, no failures/errors/skips, simulated API26/35; lint 0 errors / 35 warnings, 278 frozen tracked inputs unchanged. See VALIDATION_AUTO_ACCEPT_0.4.59.md and validation/0.4.59-*.json. Sixteen adaptive lifecycle cases pass. A strict buffered-learning feedback bug was corrected without altering stored lessons or decisions.
+- Updater diagnosis: a fresh production UpdateTransport download still verifies .56/code62 with the original signature. The newer candidate was never signed/published, so existing phones cannot see its changes. A pinned existing-Render signing bridge is implemented/tested; it keeps the signer in place, transfers only the verified APK through bounded log records, preserves the previous live feed, and then uses the existing publisher. At this checkpoint no new APK is signed or live yet.
+- Diagnostics audit through 19:11 UTC: personal Gmail confirmed; no new matching email since 18:29, and no GitHub issues updated since that checkpoint. No new report IDs or duplicates; #34/#35 and #36/#37 pairs unchanged. #38 remains unresolved and #39/split screenshot still lack time-aligned action authority. No raw reports retained, sent or deleted.
+- User's site follow-up: remove the extra monochrome filter logo, embed the landscape film directly with visible poster, and remove the disliked breathing-like audio. Work is in the separate public website repository; app privacy and release data must stay private. Existing film/site remain a playable draft, not a finished visual-polish claim.
+
 ## Public-site refinement and diagnostics continuation — 18:34 UTC
 
 - Re-read fresh app main and continuation state before acting. Main remains `98d410ceb29341928d7605d464ac4aee051ecf39` / live 0.4.56; tested 0.4.58 source remains `ef9ac735ab5b31497eec477ac1390389a1017eeb`, followed only by checkpoint commits. No app source, release file, issue or email was changed in this continuation.

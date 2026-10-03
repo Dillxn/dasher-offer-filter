@@ -59,6 +59,8 @@ final class FilterStore {
     private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
     /** Peek at background offers ({@link Peek}); on unless turned off. */
     private static final String PEEK = "peek_background_offers";
+    /** Accepting a delivery is a separate, explicit opt-in; upgrades never enable it. */
+    private static final String AUTO_ACCEPT = "auto_accept_matching_offers";
     /** When learning last turned on and off, and when the adaptive minimums were last reset (wall clock). */
     private static final String LEARNING_ON_SINCE = "learning_on_since";
     private static final String LEARNING_OFF_AT = "learning_off_at";
@@ -159,26 +161,23 @@ final class FilterStore {
         if (!settings.enabled || !settings.risingOffers) return DeclineLesson.SWITCHES_OFF;
         DeclinedFloor floor = DeclinedFloor.raisedBy(settings, declinedOffer);
         if (floor == settings.declined) return DeclineLesson.NOTHING_NEW;
-        // Area mode can pass an offer with one weak spoke. Learning on that spoke may still sit below its set
-        // minimum, so do not claim a floor rose when this offer's effective shape did not change. Keep the learned
+        // Area compensation or a percentage buffer can pass an offer below a fixed floor. Do not claim
+        // a floor rose when the learned value still leaves this offer's effective shape unchanged. Keep the learned
         // values exactly as before (including their persistence if the user later changes the set minimum).
-        boolean changed = true;
-        if (settings.scoreByArea) {
-            FilterSettings learned = new FilterSettings(settings.enabled, settings.flatCents, settings.perMileCents,
-                    settings.perMinuteCents, settings.perStopCents, settings.maxStops, settings.risingOffers,
-                    settings.lastAcceptedCents, settings.best, floor, true, settings.hotspotProximityHundredths,
-                    settings.minimumScalePercent, settings.perItemCents);
-            AreaScore.Floors before = AreaScore.floors(settings, declinedOffer);
-            AreaScore.Floors after = AreaScore.floors(learned, declinedOffer);
-            changed = false;
-            for (int axis = 0; axis < AreaScore.AXES; axis++) {
-                if (before.active[axis] != after.active[axis]
-                        || (before.cents[axis] == null) != (after.cents[axis] == null)
-                        || (before.cents[axis] != null && after.cents[axis] != null
-                            && before.cents[axis].compareTo(after.cents[axis]) != 0)) {
-                    changed = true;
-                    break;
-                }
+        FilterSettings learned = new FilterSettings(settings.enabled, settings.flatCents, settings.perMileCents,
+                settings.perMinuteCents, settings.perStopCents, settings.maxStops, settings.risingOffers,
+                settings.lastAcceptedCents, settings.best, floor, settings.scoreByArea, settings.hotspotProximityHundredths,
+                settings.minimumScalePercent, settings.perItemCents);
+        AreaScore.Floors before = AreaScore.floors(settings, declinedOffer);
+        AreaScore.Floors after = AreaScore.floors(learned, declinedOffer);
+        boolean changed = false;
+        for (int axis = 0; axis < AreaScore.AXES; axis++) {
+            if (before.active[axis] != after.active[axis]
+                    || (before.cents[axis] == null) != (after.cents[axis] == null)
+                    || (before.cents[axis] != null && after.cents[axis] != null
+                        && before.cents[axis].compareTo(after.cents[axis]) != 0)) {
+                changed = true;
+                break;
             }
         }
         prefs(context).edit()
@@ -347,6 +346,14 @@ final class FilterStore {
 
     static void setPeek(Context context, boolean on) {
         prefs(context).edit().putBoolean(PEEK, on).apply();
+    }
+
+    static boolean autoAcceptEnabled(Context context) {
+        return prefs(context).getBoolean(AUTO_ACCEPT, false);
+    }
+
+    static void setAutoAcceptEnabled(Context context, boolean on) {
+        prefs(context).edit().putBoolean(AUTO_ACCEPT, on).apply();
     }
 
     private static SharedPreferences prefs(Context context) {

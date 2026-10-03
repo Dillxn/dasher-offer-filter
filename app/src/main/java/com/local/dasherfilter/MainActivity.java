@@ -1057,7 +1057,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
-     * the homepage), the three switches, updates, GitHub, reports and a tip, then the version and the bundled texts.
+     * the homepage), behavior switches, updates, GitHub, reports and a tip, then the version and the bundled texts.
      * The rules are all on the homepage's constellation.
      */
     private void buildSettings(LinearLayout page) {
@@ -1082,6 +1082,32 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (on == FilterStore.peek(this)) return;
             FilterStore.setPeek(this, on);
             DiagnosticLog.log(this, "peek", "turned " + (on ? "on" : "off") + " in Settings");
+        });
+        Switch autoAccept = ui.toggle(switches, "Auto-accept matching offers", FilterStore.autoAcceptEnabled(this));
+        autoAccept.setOnCheckedChangeListener((view, on) -> {
+            if (on == FilterStore.autoAcceptEnabled(this)) return;
+            if (!on) {
+                FilterStore.setAutoAcceptEnabled(this, false);
+                DiagnosticLog.log(this, "auto-accept", "turned off in Settings");
+                return;
+            }
+            // The switch stays off until the separate commitment is explicitly confirmed.
+            autoAccept.setChecked(false);
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
+                    .setTitle("Auto-accept matching offers?")
+                    .setMessage("This can commit you to a delivery without another tap. It uses your current saved "
+                            + "and adaptive minimums, your minimums percentage, and your chosen strict or area-score "
+                            + "rule. Area scoring can compensate for a weaker metric.\n\n"
+                            + "Only complete, matching standalone offers are eligible while the filter is on and "
+                            + "your phone is unlocked. Add-ons and unclear offers stay yours. Your touch stops the "
+                            + "current attempt. Automatic accepts do not train your adaptive minimums.\n\n"
+                            + "The app can misread an offer. Enable this only if you accept that risk.")
+                    .setNegativeButton("Not now", null)
+                    .setPositiveButton("Enable auto-accept", (dialog, which) -> {
+                        FilterStore.setAutoAcceptEnabled(this, true);
+                        autoAccept.setChecked(true);
+                        DiagnosticLog.log(this, "auto-accept", "explicitly enabled in Settings");
+                    }));
         });
         areasToggle = ui.toggle(switches, "Offer map", AreaMap.enabled(this));
         areasToggle.setOnCheckedChangeListener((view, on) -> {
@@ -1822,6 +1848,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     AreaMap.forget(this);
                     Places.forget(this);
                     RestartSuppression.clear(this);
+                    AutoAcceptMemory.clear(this);
                     ScannerFailure.clear(this);
                     pickedArea = false;
                     areaMap.select(null);

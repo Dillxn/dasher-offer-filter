@@ -239,10 +239,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 8 disclosed numeric item history, but did not explicitly acknowledge acceptance-rate risk.
-        assertEquals(9, Consent.VERSION);
+        // Version 9 acknowledged acceptance-rate risk, but did not disclose optional automatic acceptance.
+        assertEquals(10, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 8).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 9).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -313,7 +313,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             View shown = page.get().findViewById(android.R.id.content);
             assertNotNull(findText(shown, doc.title));
             assertNotNull(shownTextContaining(shown, "Not legal advice; have a lawyer review before public release."));
-            String line = doc == LegalTexts.Doc.TERMS ? "It never taps Accept."
+            String line = doc == LegalTexts.Doc.TERMS ? "Auto-accept starts off."
                     : doc == LegalTexts.Doc.PRIVACY ? "positions rounded to about half a kilometre"
                     : "All rights reserved.";
             assertNotNull(doc.title + ": " + line, shownTextContaining(shown, line));

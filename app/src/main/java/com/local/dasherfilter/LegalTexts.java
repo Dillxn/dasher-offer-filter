@@ -62,7 +62,10 @@ final class LegalTexts {
             - It reads the Dasher app's screen and notifications on your phone, through Android's accessibility \
             service and notification access, which you turn on yourself.
             - It compares each offer with the minimums you set. When an offer is below them, it can tap Decline, \
-            and then Dasher's confirmation, for you. It never taps Accept.
+            and then Dasher's confirmation, for you. Auto-accept starts off. If you separately enable it in \
+            Settings, it can tap Accept on a complete standalone offer that passes your current rules, committing \
+            you to that delivery. It respects your selected strict or compensating area mode and minimums \
+            percentage. Add-ons and unclear offers are left to you.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -87,8 +90,9 @@ final class LegalTexts {
             and you accept that risk.
             - Obey traffic laws. Do not handle your phone while driving; set your rules before you drive and pull \
             over to look at offers. {app} is not a safety device.
-            - Check your Dasher history. {app} can misread an offer, decline an offer you wanted, or fail to \
-            decline one.
+            - Check your Dasher history. {app} can misread an offer, decline an offer you wanted, accept an offer \
+            you did not want, or fail to act. An automatic Accept request does not prove DoorDash accepted it; \
+            check the actual delivery state.
             - You must be 18 or older to use {app}.
 
             ## No warranty
@@ -112,12 +116,12 @@ final class LegalTexts {
             ## Changes
 
             These terms may change. When they change in substance, the app shows its notice again before it reads \
-            or declines anything more.
+            or acts on anything more.
 
             ## Stopping
 
-            You can stop at any time: pause auto-decline, turn off the app's screen reading and notification access \
-            in Android's settings, or uninstall it.
+            You can stop at any time: pause the filter, disable auto-accept, turn off the app's screen reading and \
+            notification access in Android's settings, or uninstall it.
             """;
 
     private static final String PRIVACY_TEXT = """
@@ -149,7 +153,8 @@ final class LegalTexts {
 
             ## What it keeps on the phone
 
-            - Your rules, and what the adaptive minimum learned from offers you accepted or declined.
+            - Your rules, your separate auto-accept choice (off by default), and what the adaptive minimum learned \
+            from your own accepted or declined offers. Automatic accept requests do not train it.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, whether the \
             offer declared items or shopping, the result, what the app did, and a few lines read from the offer. \
             The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or \
@@ -166,12 +171,15 @@ final class LegalTexts {
             removed as others are used.
             - While you are dashing: whether a dash is on, and the current route's pay, miles, time, stops and \
             observed item count/applicability, for at most three hours since the route was observed.
-            - One temporary record that prevents automatic taps on a possibly taken-over offer after a restart: \
-            numeric pay, miles, minutes, stops, observed item count/applicability, countdown, and device \
-            uptime/boot number. It can suppress taps for at most two minutes; the app discards it when it next \
-            checks an expired record, observes the offer ended, or you clear history. It never restores permission \
-            to tap. One scanner-error category, without the error message or screen text, is kept until the next \
-            service connection or Clear history.
+            - One temporary record that prevents automatic taps on a possibly taken-over or automatically accepted \
+            offer after a restart: numeric pay, miles, minutes, stops, observed item count/applicability, \
+            countdown, and device uptime/boot number. It can suppress taps for at most two minutes; the app \
+            discards it when it next checks an expired record, observes the offer ended, or you clear history. It \
+            never restores permission to tap. One scanner-error category, without the error message or screen text, \
+            is kept until the next service connection or Clear history.
+            - A separate temporary automatic-Accept request record keeps only numeric offer facts and device \
+            uptime/boot number, for up to two minutes. It only prevents an automatic choice from training personal \
+            minimums; it never proves acceptance or restores tap authority. Clear history removes it.
             - A pending hand-decline observation can retain the same numeric offer facts, including observed item \
             count/applicability, to reconcile its outcome, for at most one hour.
             - A GitHub connection, if you set one up, and the state of updates.
@@ -238,9 +246,9 @@ final class LegalTexts {
             - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for \
             them and counts nothing.
 
-            Reports in the repository are read by the developer and by an AI system (Anthropic's Claude) that the \
-            developer uses to find and fix problems. GitHub, Render, Google and Anthropic handle what reaches them \
-            under their own terms and privacy policies.
+            Reports in the repository are read by the developer and by AI systems (Anthropic's Claude and OpenAI's \
+            ChatGPT/Codex) that the developer uses to find and fix problems. GitHub, Render, Google and Anthropic \
+            handle what reaches them under their own terms and privacy policies.
 
             ## What it never collects
 

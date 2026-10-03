@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds and signs the app in a Claude session with the same cloud key Render signs with, for the user to install
-# by hand when Render cannot build. The key comes only from the environment (OFFER_FILTER_KEYSTORE_B64 and
-# OFFER_FILTER_SIGNING_PASSWORD, set in the session's environment settings, never in chat or source). It is
-# decoded into a private temporary directory that is removed on exit, and signing is refused unless its
-# certificate is the one installed phones trust. Nothing is published: the APK lands in dist/.
+# Builds/signs with the original cloud key from this environment. The resulting dist/ APK is an input to
+# tools/publish-repo-feed.py, not an alternate phone installation path. Render may run it in place through
+# render-sign-bridge.sh when a transient workspace has no signer. No key is generated or exported.
+# Signing material is decoded only into a private temporary directory removed on exit; its certificate must
+# match the one installed phones trust. Nothing in this script publishes the result.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 KEY_FINGERPRINT="553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703"
