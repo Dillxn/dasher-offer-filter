@@ -1,3 +1,5 @@
+> October 3, 21:53 UTC: .61/code67 is locally tested/signed and live-verified on both update feeds. It closes the #42 pre-dispatch status/diagnostic gap without changing automatic-action guards. The historical cause of that cancellation and physical acceptance/map/audio questions remain open. New #43 retains one item but unknown pay; REVIEW is correct and no parser defect is established. See VALIDATION_ACCEPT_NOT_SENT_0.4.61.md and the 21:41 diagnostics audit.
+
 > October 3 continuation: the owner explicitly requested optional auto-accept, superseding the earlier no-auto-accept product boundary. See VALIDATION_AUTO_ACCEPT_0.4.59.md for guarded behavior and adaptive verification. Physical-device gaps in this closeout remain open; simulated tests do not close them.
 
 # Original eleven investigations: finding-by-finding closeout

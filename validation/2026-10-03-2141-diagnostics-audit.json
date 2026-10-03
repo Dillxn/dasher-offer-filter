@@ -1,0 +1,30 @@
+{
+  "recordedAt": "2026-10-03T21:41:26.630Z",
+  "since": "2026-10-03T21:25:00Z",
+  "gmail": {
+    "account": "personal",
+    "matchingMessageIds": []
+  },
+  "issues": [
+    {
+      "number": 43,
+      "createdAt": "2026-10-03T21:28:40Z",
+      "version": "0.4.59",
+      "reportId": "7a580bc051c02010e4bef51209a3b397",
+      "target": {
+        "payKnown": false,
+        "miles": 10.7,
+        "minutes": 38,
+        "stops": 2,
+        "items": 1,
+        "itemCountApplicable": true,
+        "result": "REVIEW"
+      },
+      "finding": "One observed item was retained; pay was unavailable. REVIEW is appropriate. The privacy-rejected unknown screen supplies no safe labels establishing a parser defect. Historical recent entries overlap #40/#41/#42; do not count them as new independent reports.",
+      "nextWork": "Observe a fresh privacy-safe trace if this repeats. Do not guess pay or relax screen retention."
+    }
+  ],
+  "sent": false,
+  "deleted": false,
+  "rawReportsPersisted": false
+}

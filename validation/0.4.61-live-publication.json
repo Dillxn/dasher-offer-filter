@@ -1,0 +1,26 @@
+{
+  "result": "PASS",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 67,
+  "versionName": "0.4.61",
+  "sourceCommit": "8c357f11973a08e9f5b81b3d2657f050274405c9",
+  "sha256": "d536d43b5a4e9268bd2947c9097f99f862250eb93f288830b89ffeef72cd0f09",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "bytes": 435357,
+  "verifiedAt": "2026-10-03T21:53:55.795094+00:00",
+  "releaseCommit": "277a5636f35e19bf5ff1d58e6cd978274ad4b206",
+  "renderDeployId": "dep-db0nhp6gekts73ag6h00",
+  "renderLiveAt": "2026-10-03T21:52:04.398653Z",
+  "repositoryApkBlob": "47c3f7e3fff536a31035715450355e7bad193c83",
+  "repositoryManifestBlob": "31e8f747c4815e9ee5ad4712f79370094a5d27c5",
+  "buildTestPackageSignLocation": "local execution workspace",
+  "physicalPhoneVerified": false,
+  "initialMirrorFailure": {
+    "deployment": "dep-db0ngkad0e5s73cdi30g",
+    "cause": "Render private-repository clone authentication unavailable; existing account still listed repository access; one normal retry succeeded without credential/permission changes"
+  },
+  "initialPostDeployCheck": {
+    "result": "rejected safely",
+    "cause": "Fresh .61 manifest paired with still-cached .60 APK; subsequent unchanged production check verified .61 after propagation"
+  }
+}

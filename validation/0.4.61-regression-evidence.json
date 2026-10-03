@@ -1,0 +1,59 @@
+{
+  "base": "10b90c5b6344c3cb1ce98a1cfb7731ada29a311b",
+  "change": "Predispatch automatic Accept cancellation is NOT_SENT/left-to-user with fixed refusal category; guards and action timing unchanged",
+  "targetedGreen": {
+    "tests": 56,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "adapterApis": [
+      26,
+      35
+    ],
+    "log": "local focused run (temporary log; not a shipped artifact)"
+  },
+  "oldServiceRed": {
+    "tests": 3,
+    "failures": 3,
+    "assertions": [
+      {
+        "name": "eventArrivingInsideFinalMetadataInvalidatesSameWindowNode",
+        "message": "java.lang.AssertionError: expected:<YOURS> but was:<PASSED>"
+      },
+      {
+        "name": "targetWindowHiddenAtFinalGuardIsNotSentAndExplained",
+        "message": "java.lang.AssertionError: expected:<YOURS> but was:<PASSED>"
+      },
+      {
+        "name": "settingsChangedDuringFinalMetadataCannotTap",
+        "message": "java.lang.AssertionError: expected:<YOURS> but was:<PASSED>"
+      }
+    ]
+  },
+  "physicalDeviceVerified": false,
+  "fieldIssue": 42,
+  "fieldFinding": "No automatic Accept was dispatched; exact guard cause absent from .59 report. This update makes future cause and outcome visible.",
+  "reviewEdgeGreen": [
+    {
+      "name": "com.local.dasherfilter.AutoAcceptAdapterTest",
+      "tests": "56",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.DecisionLogStepsTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "reviewEdgeCases": [
+    "Changed numeric candidate A marked NOT_SENT before B write",
+    "Same numeric fresh countdown marks prior A only",
+    "Continuing countdown not falsely replaced",
+    "Diagnostic RuntimeException cannot interrupt suppression/timer/watch cleanup"
+  ],
+  "sourceCommit": "8c357f11973a08e9f5b81b3d2657f050274405c9"
+}
