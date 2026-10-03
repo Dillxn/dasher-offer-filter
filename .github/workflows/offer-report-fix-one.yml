@@ -95,7 +95,7 @@ jobs:
         with:
           name: fixer-${{ inputs.issue }}-diagnosis
           path: ${{ runner.temp }}/outcome
-          retention-days: 14
+          retention-days: 1
 
   gate:
     needs: diagnose
@@ -167,7 +167,7 @@ jobs:
         with:
           name: fixer-${{ inputs.issue }}-gate
           path: ${{ runner.temp }}/gate.log
-          retention-days: 14
+          retention-days: 1
 
   ship:
     needs: [diagnose, gate]
