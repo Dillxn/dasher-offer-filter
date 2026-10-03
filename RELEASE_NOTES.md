@@ -1,3 +1,10 @@
+## 0.4.62 — the shared closing emblem
+
+- Replaces Settings' final plain-text signature with the requested stacked Jesus Loves You emblem, the complete passage "We love each other because He loves us first." and 1 John 4:19.
+- Bundles the same transparent artwork used on the website and film, keeps its proportions, and uses darker ink on the day palette. The full wording is available as one screen-reader description. No new control, permission, consent notice or filtering behavior is introduced.
+
+Validation and publication are pending. No physical-phone or live-update result is claimed for this candidate.
+
 ## 0.4.61 — distinguish an automatic Accept that was never sent
 
 **Published October 3, 2026:** locally signed with the original key and verified on both automatic-update feeds. 1,959 tests /107 suites passed, lint zero errors /34 warnings. See [release validation](VALIDATION_ACCEPT_NOT_SENT_0.4.61.md). No physical-phone result is claimed.

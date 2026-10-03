@@ -8,6 +8,7 @@ import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
 import java.io.File;
@@ -65,20 +66,26 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void settingsEndsWithTheRequestedMessageAfterVersionAndLegalLinks() {
+    public void settingsEndsWithTheRequestedEmblemAndAccessiblePassageAfterLegalLinks() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
             layOut(content);
-            TextView closing = findTextView(content, "Jesus Loves You");
+            ImageView closing = (ImageView) shownIcon(content,
+                    "Jesus Loves You. We love each other because He loves us first. 1 John 4:19.");
             assertNotNull(closing);
             assertTrue(closing.isShown());
-            assertEquals("Jesus Loves You", closing.getText().toString());
-            assertFalse("the closing message is plain text", closing.isClickable());
+            assertNotNull("the bundled emblem is available offline", closing.getDrawable());
+            assertEquals(ImageView.ScaleType.FIT_CENTER, closing.getScaleType());
+            assertFalse("the signature adds no control", closing.isClickable());
             assertFalse(closing.isLongClickable());
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, closing.getImportantForAccessibility());
+            ViewGroup body = (ViewGroup) closing.getParent();
+            assertEquals("the signature closes Settings", closing, body.getChildAt(body.getChildCount() - 1));
+            assertTrue("the emblem fits the available body width", closing.getWidth() <= body.getWidth());
+            assertTrue(closing.getHeight() > 0);
 
             List<TextView> words = new ArrayList<>();
             settingsText(content, words);
-            assertEquals("the message is the last line of Settings text", closing, words.get(words.size() - 1));
             TextView version = findTextView(content, AppName.NAME + " v" + Updater.version(app));
             assertNotNull(version);
             int previous = words.indexOf(version);
@@ -88,7 +95,10 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
                 assertNotNull(link);
                 int at = words.indexOf(link);
                 assertTrue("legal links follow the version", at > previous);
-                assertTrue("the message follows " + doc.title, at < words.indexOf(closing));
+                View ancestor = link;
+                while (ancestor.getParent() != body) ancestor = (View) ancestor.getParent();
+                assertTrue("the signature follows " + doc.title,
+                        body.indexOfChild(ancestor) < body.indexOfChild(closing));
                 previous = at;
             }
         }

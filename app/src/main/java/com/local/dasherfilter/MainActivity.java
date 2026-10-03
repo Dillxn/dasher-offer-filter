@@ -29,6 +29,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -1193,10 +1194,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
         texts.setGravity(Gravity.CENTER_HORIZONTAL);
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) texts.addView(ui.link(doc.title, () -> read(doc)));
         body.addView(texts, Ui.matchWidth());
-        TextView closing = ui.text("Jesus Loves You", 12, ui.inkSecondary, false);
-        closing.setGravity(Gravity.CENTER_HORIZONTAL);
-        closing.setPadding(0, ui.dp(8), 0, 0);
-        body.addView(closing, Ui.matchWidth());
+        ImageView closing = new ImageView(this);
+        closing.setImageResource(R.drawable.jesus_loves_you_emblem);
+        closing.setContentDescription("Jesus Loves You. We love each other because He loves us first. 1 John 4:19.");
+        closing.setAdjustViewBounds(true);
+        closing.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        closing.setMaxWidth(ui.dp(340));
+        closing.setMaxHeight(ui.dp(350));
+        // The same single-color emblem has a darker ink on the light page.
+        if (!ui.dark) closing.setColorFilter(0xFF776550);
+        closing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        LinearLayout.LayoutParams signature = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        signature.gravity = Gravity.CENTER_HORIZONTAL;
+        signature.topMargin = ui.dp(28);
+        signature.bottomMargin = ui.dp(12);
+        body.addView(closing, signature);
         ground(page, 170);
     }
 
