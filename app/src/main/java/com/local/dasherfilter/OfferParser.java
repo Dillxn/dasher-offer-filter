@@ -24,8 +24,6 @@ final class OfferParser {
     private static final Pattern TOTAL_MILES = Pattern.compile(
             "(?i)(?:total(?: trip)?(?: distance| mileage)?\\s*[:=]?\\s*)" + MILE_VALUE);
     private static final Pattern MILES_TOTAL = Pattern.compile("(?i)" + MILE_VALUE + "\\s*(?:in\\s+)?total\\b");
-    private static final Pattern MILE_RANGE = Pattern.compile(
-            "(?i)\\d+(?:\\.\\d+)?\\s*[-–—]\\s*\\d+(?:\\.\\d+)?\\s*(?:mi|miles?)\\b");
     /** Hours alone are a duration too; the enclosing metric-line guard excludes waits and hourly rates. */
     private static final Pattern MINUTES = Pattern.compile(
             "(?i)(?<![\\d.,+\\-])\\b(?:(\\d{1,2})\\s*(?:hr|hour)s?(?:\\s*(\\d{1,3})\\s*(?:min|minute)s?)?"
@@ -34,8 +32,6 @@ final class OfferParser {
     private static final Pattern STOPS = Pattern.compile("(?i)(?<![\\d.,+\\-])\\b(\\d{1,2})\\s+stops?\\b");
     private static final Pattern STOPS_FIRST = Pattern.compile(
             "(?i)\\b(?:total\\s+)?stops?\\s*[:=]\\s*(\\d{1,2})\\b(?![.,]\\d)");
-    private static final Pattern STOP_RANGE = Pattern.compile(
-            "(?i)(?:\\d+\\s*[-–—]\\s*\\d+\\s+stops?\\b|\\bstops?\\s*[:=]\\s*\\d+\\s*[-–—]\\s*\\d+)");
     private static final Pattern ROUTE_COUNTS = Pattern.compile(
             "(?i)^(\\d{1,2})\\s+pick[ -]?ups?\\s*(?:[,•·+&/|]|and)\\s*"
                     + "(\\d{1,2})\\s+(?:customer\\s+)?drop[ -]?offs?$");
@@ -65,6 +61,10 @@ final class OfferParser {
             + "|/\\s*(?:order|delivery|deliveries|stop|drop[ -]?off|pick[ -]?up)s?\\b|×|\\b\\d+\\s*x\\b|\\bx\\s*\\d");
     private static final Pattern TOTAL_LABEL = Pattern.compile("(?i)total(?: distance| mileage)?[:=]?");
     private static final String TRAILING_SEPARATOR = "[:=]$";
+    /** Whitespace and common unit abbreviations do not turn a rate into an offer's total payout. */
+    private static final Pattern PAY_RATE = Pattern.compile(
+            "(?i)(?:/\\s*|\\bper\\s+)(?:h|hrs?|hours?|mi|miles?|mins?|minutes?|items?|stops?"
+                    + "|orders?|deliver(?:y|ies)|pick[ -]?ups?|drop[ -]?offs?)\\b");
 
     static OfferSnapshot parse(List<String> visibleText) {
         return parse(visibleText, Collections.emptyList());
@@ -154,11 +154,11 @@ final class OfferParser {
             } else if (METRIC_UNIT.matcher(left).matches() && METRIC_NUMBER.matcher(right).matches()) {
                 metric = right + " " + left.replaceAll(TRAILING_SEPARATOR, "");
             }
-            // A separate unique/progress qualifier still belongs to its item label. Dropping it while joining
-            // siblings would turn a count of products/remaining work into a total number of item units.
+            // Separate qualifiers/signs still belong to an item label. Dropping them while joining would turn
+            // a bound, estimate, increment, product count or progress reading into an exact offer total.
             if (metric.matches("(?i).*\\bitems?$") && ((i > 0
-                    && itemCountQualifier(siblings.get(i - 1))) || (i + 2 < siblings.size()
-                    && itemCountQualifier(siblings.get(i + 2))))) metric = "";
+                    && itemCountQualifier(siblings, i - 1, -1)) || (i + 2 < siblings.size()
+                    && itemCountQualifier(siblings, i + 2, 1)))) metric = "";
             if (!metric.isEmpty()) {
                 combined.add(metric);
                 if (i > 0 && TOTAL_LABEL.matcher(OfferEvidence.normalize(siblings.get(i - 1))).matches()) {
@@ -172,10 +172,25 @@ final class OfferParser {
         return combined;
     }
 
-    private static boolean itemCountQualifier(String label) {
-        String normalized = OfferEvidence.normalize(label).toLowerCase(Locale.US);
+    private static boolean itemCountQualifier(List<String> siblings, int at, int outside) {
+        String normalized = OfferEvidence.normalize(siblings.get(at)).toLowerCase(Locale.US);
+        // "30 min" belongs to duration, not a "min" item bound. Likewise, a separate travel number retains
+        // its own adjacent unit: [12, items, 4.2, mi] is not an ambiguous [12, items, 4.2] basket count.
+        if (MINUTES.matcher(normalized).matches()) return false;
+        int unitAt = at + outside;
+        if (METRIC_NUMBER.matcher(normalized).matches() && unitAt >= 0 && unitAt < siblings.size()
+                && adjacentMetricUnit(siblings.get(unitAt))) return false;
         return ItemCount.orderComponent(normalized) || normalized.matches(
-                ".*\\b(?:unique|distinct|remaining|found|collected|completed|of|up to|at least|about)\\b.*");
+                ".*\\b(?:unique|distinct|remaining|found|collected|completed|of|to|up to|at least|at most"
+                        + "|over|under|about|around|approx(?:imately)?|est(?:imate[ds]?)?|min(?:imum)?|max(?:imum)?|more than|less than|fewer than|per|each"
+                        + "|adds?|added|additional|extra|more)\\b.*")
+                || normalized.matches("[<>≤≥0-9\\s.,+\\-–—~≈/]+");
+    }
+
+    private static boolean adjacentMetricUnit(String label) {
+        String unit = OfferEvidence.normalize(label).toLowerCase(Locale.US);
+        return METRIC_UNIT.matcher(unit).matches()
+                || unit.matches("(?:mins?|minutes?|hrs?|hours?)[:=]?");
     }
 
     private static List<String> distinctNormalized(List<String> values, List<String> into) {
@@ -355,9 +370,7 @@ final class OfferParser {
 
     /** Lowercase normalized label; shared by standalone and explicitly incremental pay readers. */
     static boolean isRate(String lower) {
-        return lower.contains("/hr") || lower.contains("per hour") || lower.contains("/mi")
-                || lower.contains("per mile") || lower.contains("/min") || lower.contains("per minute")
-                || lower.matches(".*(?:/\\s*(?:items?|stops?)\\b|\\bper\\s+(?:item|stop)\\b).*");
+        return PAY_RATE.matcher(lower).find();
     }
 
     /** An explicit total distance wins over leg distances; otherwise exactly one distance must be shown. */
@@ -366,7 +379,7 @@ final class OfferParser {
         Set<Double> totals = new HashSet<>();
         for (String line : lines) {
             if (HOTSPOT.matcher(line).find()) continue;
-            if (MILE_RANGE.matcher(line).find()) return null;
+            if (OfferEvidence.distanceRange(line)) return null;
             collectDoubles(MILES.matcher(line), found);
             collectDoubles(TOTAL_MILES.matcher(line), totals);
             collectDoubles(MILES_TOTAL.matcher(line), totals);
@@ -406,7 +419,7 @@ final class OfferParser {
     private static Integer parseStops(List<String> lines) {
         Set<Integer> found = new HashSet<>();
         for (String line : lines) {
-            if (STOP_RANGE.matcher(line).find()) return null;
+            if (OfferEvidence.stopRange(line)) return null;
             if (STOP_BREAKDOWN.matcher(line).find()) continue;
             collectIntegers(STOPS.matcher(line), found);
             collectIntegers(STOPS_FIRST.matcher(line), found);

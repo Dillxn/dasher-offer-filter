@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -85,13 +86,16 @@ final class AddOnOffer {
             if (payTotal == null && pay != null) payTotal = sum(active.payCents, pay);
         }
 
-        boolean milesConflict = addedMiles.conflict || totalMiles.conflict;
+        boolean milesConflict = addedMiles.conflict || totalMiles.conflict
+                || anyRange(travelLabels, OfferEvidence::distanceRange);
         Double miles = milesConflict ? null : addedMiles.number();
         Double milesTotal = milesConflict ? null : totalMiles.number();
-        boolean minutesConflict = addedMinutes.conflict || totalMinutes.conflict || anyTimeRange(travelLabels);
+        boolean minutesConflict = addedMinutes.conflict || totalMinutes.conflict
+                || anyRange(travelLabels, OfferEvidence::timeRange);
         Integer minutes = minutesConflict ? null : addedMinutes.integer();
         Integer minutesTotal = minutesConflict ? null : totalMinutes.integer();
-        boolean stopsConflict = addedStops.conflict || totalStops.conflict;
+        boolean stopsConflict = addedStops.conflict || totalStops.conflict
+                || anyRange(labels, OfferEvidence::stopRange);
         Integer stops = stopsConflict ? null : addedStops.integer();
         Integer stopsTotal = stopsConflict ? null : totalStops.integer();
         if (stops != null && stopsTotal != null && active.stops != null && (long) active.stops + stops != stopsTotal) {
@@ -125,9 +129,9 @@ final class AddOnOffer {
         return "add-on explicit increment {" + incremental.summary() + "}; route context {" + combined.summary() + "}";
     }
 
-    private static boolean anyTimeRange(List<String> labels) {
+    private static boolean anyRange(List<String> labels, Predicate<String> range) {
         for (String label : labels) {
-            if (OfferEvidence.timeRange(label)) return true;
+            if (range.test(label)) return true;
         }
         return false;
     }

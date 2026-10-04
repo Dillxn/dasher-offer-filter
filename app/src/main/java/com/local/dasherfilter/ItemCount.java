@@ -7,7 +7,8 @@ import java.util.regex.Pattern;
 
 /** Explicit item units only. Repeated accessibility labels never add up into an invented basket size. */
 final class ItemCount {
-    private static final String NUMBER = "([+\\-]?\\d+(?:[.,]\\d+)*(?:\\s*(?:[-–—]|to|of)\\s*[+\\-]?\\d+(?:[.,]\\d+)*)?\\s*\\+?)";
+    // A bounded label can still contain thousands of separators. Possessive groups avoid a regex stack overflow.
+    private static final String NUMBER = "([+\\-]?\\d++(?:[.,]\\d++)*+(?:\\s*(?:[-–—]|to|of)\\s*[+\\-]?\\d++(?:[.,]\\d++)*+)?\\s*\\+?)";
     private static final Pattern AFTER = Pattern.compile("(?i)(?<![\\p{Alnum}.,+\\-–—])" + NUMBER
             + "\\s+(?:(unique|distinct|total|additional|extra|more)\\s+)?items?\\b");
     private static final Pattern BEFORE = Pattern.compile("(?i)\\b((?:new\\s+)?total\\s+|additional\\s+|extra\\s+|added\\s+)?"
@@ -16,8 +17,8 @@ final class ItemCount {
     private static final Pattern DECLARATION = Pattern.compile("(?i)\\b(?:items?|shopping)\\b"
             + "|\\bshop\\s*(?:&|and)\\s*deliver\\b|\\bshop\\s+for\\b");
     private static final Pattern INEXACT_PREFIX = Pattern.compile("(?i)(?:\\b(?:up to|at least|at most|over|under|about"
-            + "|around|approximately|more than|less than|of|per|each|remaining|found|collected|completed)"
-            + "\\s*[:=]?|[~≈/\\d.,+\\-–—])\\s*$");
+            + "|around|approx(?:imately)?|est(?:imate[ds]?)?|min(?:imum)?|max(?:imum)?|more than|less than|fewer than|of|per|each|remaining|found|collected|completed)"
+            + "\\s*[:=]?|[<>≤≥~≈/\\d.,+\\-–—])\\s*$");
     private static final Pattern UNIQUE_PREFIX = Pattern.compile("(?i)\\b(?:unique|distinct)\\s*$");
     private static final Pattern TOTAL_PREFIX = Pattern.compile("(?i)\\b(?:new\\s+)?total\\s*[:=]?\\s*$");
     private static final Pattern ADDED_PREFIX = Pattern.compile("(?i)(?:\\b(?:add|adds|added|additional|extra|more)|\\+)\\s*$");
@@ -64,7 +65,7 @@ final class ItemCount {
                 String suffix = label.substring(after.end());
                 String qualifier = after.group(2);
                 if ("unique".equals(qualifier) || "distinct".equals(qualifier)
-                        || UNIQUE_PREFIX.matcher(prefix).find()) continue;
+                        || uniquePrefix(prefix)) continue;
                 boolean isAdded = after.group(1).trim().startsWith("+")
                         || ADDED_PREFIX.matcher(prefix).find() || ADDED_SUFFIX.matcher(suffix).find()
                         || "additional".equals(qualifier) || "extra".equals(qualifier) || "more".equals(qualifier);
@@ -78,7 +79,7 @@ final class ItemCount {
             }
             Matcher before = BEFORE.matcher(label);
             while (before.find()) {
-                if (UNIQUE_PREFIX.matcher(label.substring(0, before.start())).find()) continue;
+                if (uniquePrefix(label.substring(0, before.start()))) continue;
                 String qualifier = before.group(1) == null ? "" : before.group(1);
                 if (!qualifier.contains("total") && orderComponent(label)) {
                     components = true;
@@ -90,6 +91,7 @@ final class ItemCount {
             }
             Matcher totalBefore = TOTAL_BEFORE.matcher(label);
             while (totalBefore.find()) {
+                if (uniquePrefix(label.substring(0, totalBefore.start()))) continue;
                 observe(totalBefore.group(1), label.substring(0, totalBefore.start()), label.substring(totalBefore.end()),
                         false, true, count, added, total);
             }
@@ -105,13 +107,21 @@ final class ItemCount {
         return ORDER_COMPONENT.matcher(NEW_OFFER_PREFIX.matcher(label).replaceFirst("")).find();
     }
 
+    private static boolean uniquePrefix(String prefix) {
+        return UNIQUE_PREFIX.matcher(TOTAL_PREFIX.matcher(prefix).replaceFirst("")).find();
+    }
+
     private static void observe(String number, String prefix, String suffix, boolean isAdded, boolean isTotal,
                                 Count count, Count added, Count total) {
         String digits = number.trim();
         if (isAdded && digits.startsWith("+")) digits = digits.substring(1).trim();
         String exactPrefix = isAdded ? ADDED_PREFIX.matcher(prefix).replaceFirst("") : prefix;
-        boolean exact = digits.matches("[0-9]{1,4}") && !INEXACT_PREFIX.matcher(exactPrefix).find()
-                && EXACT_SUFFIX.matcher(suffix).find() && !INEXACT_SUFFIX.matcher(suffix).find();
+        if (isTotal) exactPrefix = TOTAL_PREFIX.matcher(exactPrefix).replaceFirst("");
+        String exactSuffix = isTotal ? TOTAL_SUFFIX.matcher(suffix).replaceFirst("") : suffix;
+        if (isAdded) exactSuffix = ADDED_SUFFIX.matcher(exactSuffix).replaceFirst("");
+        boolean exact = !(isAdded && isTotal) && digits.matches("[0-9]{1,4}")
+                && !INEXACT_PREFIX.matcher(exactPrefix).find()
+                && EXACT_SUFFIX.matcher(exactSuffix).find() && !INEXACT_SUFFIX.matcher(exactSuffix).find();
         Integer value = exact ? Integer.valueOf(digits) : null;
         if (value != null && value <= 0) value = null;
         // An explicit increment is not the standalone offer's total. Its add-on parser owns that meaning.

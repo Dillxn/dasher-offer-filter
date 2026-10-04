@@ -25,12 +25,15 @@ final class UpdateTransport {
 
     /** @throws IOException unless the address is a plain HTTPS URL on {@code channel}'s origin with a canonical path */
     static void validateAddress(UpdatePolicy.Channel channel, String address) throws IOException {
+        if (channel == null || address == null) throw new IOException("Missing update address");
         try {
             URI uri = URI.create(address);
             String path = uri.getRawPath();
             if (!"https".equals(uri.getScheme()) || !UpdatePolicy.trustedAddress(channel, uri)
                     || uri.getRawUserInfo() != null || uri.getPort() != -1 || uri.getRawFragment() != null
                     || path == null || !uri.normalize().getRawPath().equals(path)
+                    // URI.normalize() leaves unresolved parents at the root ("/../file") unchanged.
+                    || path.contains("/../") || path.endsWith("/..")
                     || path.contains("%") || path.contains("\\")) {
                 throw new IOException("Untrusted update address");
             }

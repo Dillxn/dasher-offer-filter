@@ -44,6 +44,7 @@ final class UpdatePolicy {
      * repository's {@code release/} folder (so the user's token is only ever sent there).
      */
     static boolean trustedAddress(Channel channel, URI uri) {
+        if (channel == null || uri == null) return false;
         if (channel == Channel.RENDER) return trustedDownloadHost(uri.getHost());
         String path = uri.getRawPath();
         return GITHUB_API_HOST.equals(uri.getHost()) && path != null && path.startsWith(REPO_RELEASE_PATH);
@@ -77,7 +78,7 @@ final class UpdatePolicy {
      *     Render feed cannot point into the repository, nor the repository's feed at Render or anywhere else
      */
     static void validate(Channel channel, String pkg, long code, String url, String sha, long bytes, String encoding) {
-        if (url == null || sha == null) throw new IllegalArgumentException("Missing update metadata");
+        if (channel == null || url == null || sha == null) throw new IllegalArgumentException("Missing update metadata");
         boolean releaseUrl = channel == Channel.RENDER ? renderApk(url) : REPO_APK.equals(url);
         if (!PACKAGE.equals(pkg) || code <= 0 || code > Integer.MAX_VALUE || !"raw".equals(encoding) || !releaseUrl
                 || !SHA256.matcher(sha).matches() || bytes <= 0 || bytes > MAX_APK_BYTES) {

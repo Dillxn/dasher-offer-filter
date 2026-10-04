@@ -1,0 +1,11 @@
+FAIL rates: 525/970 failed; [standalone $2/h: expected=null actual=200, labeled rate $2/h: expected=null actual=200, real payout beside rate $2/h: expected=1200 actual=200, rate is not an increment $2/h: expected=null actual=200, rate cannot compose route payout $2/h: expected=null actual=1400, rate is not a total $2/h: expected=null actual=200]
+FAIL item-fragments: 167/472 failed; [qualified fragments [to, 12, items]: expected=null actual=12, qualified fragments [12, items, to]: expected=null actual=12, qualified fragments [to, Items:, 12]: expected=null actual=12, qualified fragments [Items:, 12, to]: expected=null actual=12, qualified fragments [at most, 12, items]: expected=null actual=12, qualified fragments [12, items, at most]: expected=null actual=12]
+FAIL item-meaning: 27/231 failed; [ambiguous total Estimated 12 items: expected=null actual=12, ambiguous total Estimate: 12 items: expected=null actual=12, ambiguous total Max 12 items: expected=null actual=12, ambiguous total Minimum 12 items: expected=null actual=12, ambiguous total Fewer than 12 items: expected=null actual=12, ambiguous total <12 items: expected=null actual=12]
+FAIL malformed-items: 24/89 failed; [regex stack overflow, label length=808, regex stack overflow, label length=807, regex stack overflow, label length=813, regex stack overflow, label length=808, regex stack overflow, label length=807, regex stack overflow, label length=813]
+FAIL ranges: 54/108 failed; [ranged total cannot be composed 3-5 miles: expected=null actual=2.0, ranged total cannot be composed 3-5 combined miles: expected=null actual=6.0, ranged total cannot be composed 3-5 stops: expected=null actual=2, ranged total cannot be composed 3-5 combined stops: expected=null actual=4, ranged increment 3–5 miles: expected=null actual=5.0, ranged increment 3–5 combined miles: expected=null actual=9.0]
+PASS unchanged-evidence: 19 checks
+RESULT groups=6 failed_groups=5 passed_checks=19
+PASS decline-recovery: 30 checks
+FAIL update-metadata: java.lang.AssertionError: missing channel was accepted
+FAIL update-origins: java.lang.AssertionError: untrusted address was accepted: https://dash-offer-filter-build.onrender.com/../OfferFilter.apk
+RESULT groups=3 failed_groups=2 passed_checks=30

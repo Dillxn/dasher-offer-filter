@@ -15,10 +15,14 @@ final class OfferEvidence {
 
     private static final Pattern CASH = Pattern.compile("\\$\\s*([+\\-]?[\\d.,]+)");
     private static final Pattern WELL_FORMED_CASH = Pattern.compile("\\d{1,4}(?:[.,]\\d{1,2})?");
-    private static final Pattern CASH_RANGE = Pattern.compile("\\$\\s*[\\d.,]+\\s*[-–—]\\s*\\$?\\s*\\d");
+    private static final Pattern CASH_RANGE = Pattern.compile("(?i)\\$\\s*[\\d.,]+\\s*(?:[-–—]|to)\\s*\\$?\\s*\\d");
     private static final Pattern DASH_BEFORE_CASH = Pattern.compile(".*[-–—]\\s*\\$.*");
     private static final Pattern TIME_RANGE = Pattern.compile(
-            "(?i)\\d+(?:\\.\\d+)?\\s*[-–—]\\s*\\d+(?:\\.\\d+)?\\s*(?:min|minutes?|hr|hours?)\\b");
+            "(?i)\\d+(?:\\.\\d+)?\\s*(?:[-–—]|to)\\s*\\d+(?:\\.\\d+)?\\s*(?:min|minutes?|hr|hours?)\\b");
+    private static final Pattern MILE_RANGE = Pattern.compile(
+            "(?i)\\d+(?:\\.\\d+)?\\s*(?:[-–—]|to)\\s*\\d+(?:\\.\\d+)?\\s*(?:mi|miles?)\\b");
+    private static final Pattern STOP_RANGE = Pattern.compile(
+            "(?i)(?:\\d+\\s*(?:[-–—]|to)\\s*\\d+\\s+stops?\\b|\\bstops?\\s*[:=]\\s*\\d+\\s*(?:[-–—]|to)\\s*\\d+)");
     private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[.!…]+$");
     private static final Pattern COUNTDOWN = Pattern.compile("(\\d):([0-5]\\d)");
 
@@ -67,6 +71,14 @@ final class OfferEvidence {
 
     static boolean timeRange(String line) {
         return TIME_RANGE.matcher(normalize(line)).find();
+    }
+
+    static boolean distanceRange(String line) {
+        return MILE_RANGE.matcher(normalize(line)).find();
+    }
+
+    static boolean stopRange(String line) {
+        return STOP_RANGE.matcher(normalize(line)).find();
     }
 
     /**
