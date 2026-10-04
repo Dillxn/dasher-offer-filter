@@ -47,6 +47,7 @@
     "candidate": "0.4.66/code72",
     "branch": "codex/unknown-item-bound-0-4-66",
     "sourceCommit": "668ab818d272e7d1c774fc5d6d4c43ff21f7e43c",
+    "remoteSourceCommit": "83e75a7b0f838551eebe9b13d5bec41db800a1af",
     "sourceTree": "4103c5e785ea03280fc208f741f2b331db23243f",
     "changes": [
       "When shopping item count is unknown, decline only if the mathematically best valid case of one item still fails the active area cutoff or strict pay lower bound.",

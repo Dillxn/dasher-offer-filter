@@ -1,6 +1,6 @@
 # 0.4.66 unknown-item bound candidate
 
-Exact candidate source `668ab818d272e7d1c774fc5d6d4c43ff21f7e43c`, tree `4103c5e785ea03280fc208f741f2b331db23243f`, on `codex/unknown-item-bound-0-4-66`.
+Exact locally tested source `668ab818d272e7d1c774fc5d6d4c43ff21f7e43c`, tree `4103c5e785ea03280fc208f741f2b331db23243f`. The private remote branch `codex/unknown-item-bound-0-4-66` preserves that identical source tree at commit `83e75a7b0f838551eebe9b13d5bec41db800a1af`; the commit ID differs because the connected Git data API recreated the already-tested tree on its existing remote parent.
 
 ## Behavior
 
