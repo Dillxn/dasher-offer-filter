@@ -256,3 +256,10 @@ No raw report bodies, payment information, precise locations or old fixtures wer
 4. Continue visual refinement of the public film/site without claiming the current draft meets the final ambition. Preserve optional auto-accept off by default with separate confirmation, accurate metrics, no fabricated automatic hotspot data and optional goodwill-only tips.
 
 Website verification checkpoint: `09c181e563e75be754d998b7baccbe9f75f9b635` (documentation/receipts only, skip CI). Live film product remains `e9d95ee34a9d0fc04f54dc24090c5391d73dca53`.
+## 0.4.69 privacy candidate — October 4, 08:23 UTC
+
+- Fresh 0.4.68 live main was `1d57ad96d05f6d9fec1070dccbf708091627e93b`; its exact shipped source/release evidence remains unchanged.
+- Candidate 0.4.69/code75 source `c6a4a3d0a02c9b81c3d6a45aff6d53083264944d`, tree `1f857230a7b401ccb47d671b85681baa14549abc`, carries only the four-file pickup-heading privacy repair plus version/docs. It masks same/split/serialized `Verify items for` recipients and remasks old queued diagnostics at the final issue/comment send boundary. No action, scoring, learning, consent or report-receipt behavior changes.
+- Complete LOCAL gate passed 2,263 tests/121 suites on simulated API26/35, zero failures/errors/skips; lint zero errors/37 warnings; all403 frozen tracked inputs unchanged, aggregate `923accd36a01823b11f86fdb18df11b13150b080996c39486212b8c8e3c1a06b`. See `VALIDATION_PRIVACY_HEADING_0.4.69.md` and structured receipts. No physical-phone claim.
+- Diagnostics audit through08:20UTC inspected new issue#62 (0.4.67, dash `584ff99a1eeb2e5ee962649d6be232aa`); it adds updater/status evidence but no new action/learning failure or observed privacy exposure. Personal Gmail had no new matching copy. No raw report text or private data was retained; see `validation/2026-10-04-0820-diagnostics-audit.json`.
+- Candidate is not yet signed or published at this checkpoint. Use the normal original-signer local flow and every existing publisher/updater verification; never publish inherited 0.4.68 release files as 0.4.69.

@@ -1,0 +1,31 @@
+{
+  "checkedAfter": "2026-10-04T07:22:10Z",
+  "checkedThrough": "2026-10-04T08:20:00Z",
+  "repository": "Dillxn/dasher-offer-filter",
+  "issuesInspected": [
+    62
+  ],
+  "reports": [
+    {
+      "issue": 62,
+      "appVersion": "0.4.67",
+      "dashToken": "584ff99a1eeb2e5ee962649d6be232aa",
+      "finding": "Distinct diagnostic dash; updater/status evidence only. No automatic-accept or learning event and no new actionable offer failure. Retained text was already masked; no pickup-recipient exposure observed."
+    }
+  ],
+  "gmail": {
+    "account": "dillon.riecke@gmail.com",
+    "newMatchingMessages": 0
+  },
+  "deduplication": "Issue #62 is a new dash token; repeated history was not counted as new evidence.",
+  "privacy": "No raw report text, recipient name, payment detail, email body, token or credential is retained here.",
+  "releaseState": {
+    "live": "0.4.68/code74",
+    "candidate": "0.4.69/code75",
+    "candidateSource": "c6a4a3d0a02c9b81c3d6a45aff6d53083264944d"
+  },
+  "remaining": [
+    "Physical-phone pickup verification and three-app navigation behavior remain unverified.",
+    "Already-filed remote issues were not edited or deleted."
+  ]
+}
