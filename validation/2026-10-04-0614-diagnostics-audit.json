@@ -1,0 +1,90 @@
+{
+  "auditedThrough": "2026-10-04T06:14:22Z",
+  "previousCutoff": "2026-10-04T05:25:00Z",
+  "freshMain": "a0c6ecd567c1733a45ed1243be863fd5895836c5",
+  "reports": [
+    {
+      "issue": 59,
+      "reportToken": "15357763a5b5c4fa44c5e814633860c4",
+      "version": "0.4.66",
+      "offerAt": "2026-10-04T05:59:56.322Z",
+      "miles": 11.3,
+      "minutes": 49,
+      "stops": 3,
+      "outcome": "REVIEW",
+      "reasonCategory": "PAY_NOT_FOUND"
+    },
+    {
+      "issue": 58,
+      "reportToken": "ca31bce19e8f0266eac655e85aea84b9",
+      "version": "0.4.66",
+      "offerAt": "2026-10-04T05:45:02.582Z",
+      "miles": 7.6,
+      "minutes": 34,
+      "stops": 3,
+      "outcome": "REVIEW",
+      "reasonCategory": "PAY_NOT_FOUND"
+    },
+    {
+      "issue": 57,
+      "reportToken": "6dc5a56112f42ece8b404f99ece29f38",
+      "version": "0.4.66",
+      "offerAt": "2026-10-04T05:42:01.716Z",
+      "miles": 8.4,
+      "minutes": 42,
+      "stops": 3,
+      "outcome": "REVIEW",
+      "reasonCategory": "PAY_NOT_FOUND"
+    }
+  ],
+  "duplicateAssessment": "Three distinct target offers/timestamps/tokens; repeated historical entries are not independent new outcomes. No accepted outcome in inspected recent history.",
+  "gmail": {
+    "account": "dillon.riecke@gmail.com",
+    "query": "after:1791091500 (\"Offer Filter\" OR \"offer-report\" OR \"dasher-offer-filter\")",
+    "messageIds": []
+  },
+  "findings": [
+    "All three targets have bare bonus money beside readable stacked-offer facts. The direct user thread already owns this implementation.",
+    "Issue57 retains explicit two-order/two-dropoff labels. Issue58 and59 evidence preserves multiple dropoffs but does not establish their full pickup-order labels; do not claim these partial reports alone prove a supported bound.",
+    "A repeated historical confirmation-not-tapped result lacks detailed action/timing evidence; no independent failed-decline cause established.",
+    "No new confirmed adaptive-learning failure or actual-map-arrival signal established."
+  ],
+  "concurrency": {
+    "activeWorktree": "/tmp/offer-filter-stacked-bonus",
+    "provisionalVersion": "0.4.67/code73",
+    "owner": "direct user thread",
+    "observedUncommittedFiles": [
+      "OfferParser",
+      "OfferSnapshot",
+      "OfferFilterService",
+      "SkyStage",
+      "stacked-bonus and mascot tests"
+    ],
+    "privacyBranch": "codex/privacy-pickup-heading",
+    "privacyCheckpoint": "df9e7ddbf53636333f937e4381dcb08f1167db79",
+    "versionCollision": "Both candidates currently label themselves .67/code73. Integrator must combine and revalidate or give privacy the next unused version; do not publish two different APKs with the same version code.",
+    "thisRun": "Read-only diagnosis and sanitized checkpoint; no Android edits, builds, tests, signing, main or site writes."
+  },
+  "releaseEvidence": {
+    "version": "0.4.66",
+    "source": "ff4878144792dc7b9dd27458e58f4452ac75e677",
+    "release": "6169c3101db899e8520cfc64367ec3aa0f3b14ca",
+    "liveReceipt": "validation/0.4.66-live-publication.json",
+    "readFresh": true,
+    "independentNewDownload": false,
+    "physicalPhoneEvidence": "New reports identify .66, demonstrating report-generation use; no controlled end-to-end phone test."
+  },
+  "siteEvidence": {
+    "main": "7375a837f75ea50afb7c3c293227b04cde627036",
+    "product": "4b6e946e883e4250605330a87c63b46f6426fda7",
+    "narrationLive": true,
+    "finalSpokenLine": "Free.",
+    "license": "unchanged proprietary",
+    "readReceipt": "SITE_VALIDATION.md",
+    "newRenderingOrLivePlayback": false
+  },
+  "privacy": {
+    "rawReportsSaved": false,
+    "existingReportsModifiedOrDeleted": false
+  }
+}
