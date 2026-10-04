@@ -2767,9 +2767,7 @@ public final class OfferFilterService extends AccessibilityService {
             peekOver(interrupted);
             return;
         }
-        boolean noOffer = peek.phase() == Peek.Phase.UP && !peek.sawOffer()
-                && peek.recognisedAt() != Long.MIN_VALUE && now - peek.recognisedAt() >= Peek.NO_OFFER_MS;
-        if (noOffer) {
+        if (peek.noOfferWaited(now)) {
             if (queued.get() != QUEUED_NONE) {
                 // A read Dasher's events asked for is waiting: it reads first, and this comes back after it.
                 scanner.postDelayed(peekTick, CONFIRM_POLL_MS);
@@ -2777,7 +2775,9 @@ public final class OfferFilterService extends AccessibilityService {
             }
             if (checkOffer("peek", SystemClock.uptimeMillis(), MAX_SCAN_NODES)) scheduleRecheck();
             watchWindows();
-            if (peek.phase() == Peek.Phase.UP && !peek.sawOffer() && peek.lastRecognised()) {
+            // The fresh read can restart the empty-screen interval or follow a new offer. Only that
+            // post-read state can authorize returning; the deadline checked before the read is stale.
+            if (peek.noOfferWaited(Peek.now())) {
                 peekBack("no offer showed within " + Peek.NO_OFFER_MS / 1000 + " s of Dasher's screen", false, null);
                 return;
             }
@@ -3077,6 +3077,10 @@ public final class OfferFilterService extends AccessibilityService {
     private void peekBackNow(String because, boolean dasherInFront, Runnable then) {
         if (peekReturning) return;
         long now = Peek.now();
+        if (now - peek.openedAt() >= Peek.MAX_MS) {
+            peekOver("ended because " + Peek.MAX_MS / 1000 + " s passed");
+            return;
+        }
         String interrupted = peekInterrupted();
         if (interrupted != null) {
             peekOver(interrupted);
@@ -3119,6 +3123,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         long returningActions = peek.actions();
         long returningGeneration = OfferNotificationService.generation();
+        long returningDeadline = peek.openedAt() + Peek.MAX_MS;
         Peek.Front front = peek.front();
         // Everything of the decline put away first: nothing of it is left over the app the user goes back to.
         endAuthority("peek return", false);
@@ -3141,11 +3146,11 @@ public final class OfferFilterService extends AccessibilityService {
         // checks means neither a slow scanner cleanup nor a window lookup can make a user's touch disappear.
         // No other main-loop callback can run between removing the watch and requesting the return.
         onMainFirst(() -> returnPeekOnMain(front, because, then, returningActions, returningGeneration,
-                returningWindows));
+                returningWindows, returningDeadline));
     }
 
     private void returnPeekOnMain(Peek.Front front, String because, Runnable then, long actions, long generation,
-                                  long windows) {
+                                  long windows, long deadline) {
         if (!peekReturning) return;
         boolean done = false;
         String cancelled = null;
@@ -3153,13 +3158,17 @@ public final class OfferFilterService extends AccessibilityService {
             List<AccessibilityWindowInfo> fresh = windowSource.get();
             if (stopped || peekActions.get() != actions || OfferNotificationService.generation() != generation
                     || !Consent.accepted(this) || !FilterStore.peek(this) || !FilterStore.load(this).enabled
-                    || phoneRefusal() != null || fresh == null || windowsSignature(fresh) != windows) {
-                cancelled = "the user, phone, settings, windows or offer changed";
+                    || phoneRefusal() != null || fresh == null || windowsSignature(fresh) != windows
+                    || Peek.now() >= deadline) {
+                cancelled = "the user, phone, settings, windows or offer changed, or the peek deadline passed";
             } else {
                 touchWatch.stop();
                 watchState = WATCH_DOWN;
                 peekWatched = false;
-                switch (front.back) {
+                // Removing the overlay can also block: the original budget still governs dispatch itself.
+                if (Peek.now() >= deadline) {
+                    cancelled = "the peek deadline passed";
+                } else switch (front.back) {
                     case HOME:
                         done = globalActionHere(GLOBAL_ACTION_HOME);
                         break;
@@ -3372,6 +3381,8 @@ public final class OfferFilterService extends AccessibilityService {
             return checkReadableOffer();
         } catch (RuntimeException error) {
             acceptanceObservationEligible = false;
+            // A failed read cannot keep an earlier empty screen's authority to return from Peek.
+            if (peek.active()) peek.screen(false, Peek.now());
             cancelAutoAccept(true, "read_failed");
             endAuthority("screen read failed: " + error.getClass().getSimpleName(), true);
             DiagnosticLog.log(this, "accessibility",
@@ -3546,6 +3557,7 @@ public final class OfferFilterService extends AccessibilityService {
         Look look = look();
         if (consumeDeclineError()) return declineError.pending();
         if (!look.activeKnown) {
+            if (peek.active()) peek.screen(false, Peek.now());
             cancelAutoAccept(true, "foreground_unknown");
             declineError.notBlank();
             readSkipped = true;
@@ -3591,6 +3603,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (consumeDeclineError()) return declineError.pending();
         scan.where = look.split ? "Dasher's half of the split screen" : "the active window";
         if (scan.abandoned) {
+            if (peek.active()) peek.screen(false, Peek.now());
             cancelAutoAccept(true, "read_interrupted");
             declineError.notBlank();
             cutReads++;
@@ -3603,6 +3616,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean pending = declineState.hasPendingConfirmation(now);
         boolean lookForQuestion = pending || episode.active(now);
         if (scan.truncated && readCap < MAX_SCAN_NODES) {
+            if (peek.active()) peek.screen(false, Peek.now());
             cancelAutoAccept(true, "read_incomplete");
             declineError.notBlank();
             // A poll for Dasher's question reads a window only so far: a bigger one is left to the full reads. The
@@ -4096,6 +4110,8 @@ public final class OfferFilterService extends AccessibilityService {
         // A shopping declaration/count alone may be an offer still drawing over the idle map. It cannot
         // authorize a tap, establish completion, clear a stored route, or become an acceptance observation.
         if (!actionFact(offer) && AcceptedOfferTracker.itemOfferEvidence(offer, withParts(scan))) {
+            // Item-only drawing frames interrupt an empty-screen interval even before controls or pay appear.
+            if (peek.active()) peek.screen(false, Peek.now());
             if (!scan.acceptLabel && !scan.declineLabel) {
                 if (offerTargetsEndedAt == NEVER) offerTargetsEndedAt = now;
                 acceptedTracker.afterScreen(scan.text, true, now);

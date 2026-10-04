@@ -378,11 +378,13 @@ final class Peek {
 
     /**
      * What this read of Dasher made of its screen while no offer was read: one Dasher's words explain (the wait for
-     * offers, idle, the dash over, a delivery) or not. The wait for an offer starts at the first explained one.
+     * offers, idle, the dash over, a delivery) or not. Only consecutive explained reads count as an empty-screen
+     * interval: a loading or unknown screen restarts that interval without extending the whole peek's deadline.
      */
     void screen(boolean recognised, long now) {
         lastRecognised = recognised;
-        if (recognised && recognisedAt == NEVER && phase == Phase.UP) recognisedAt = now;
+        if (!recognised) recognisedAt = NEVER;
+        else if (recognisedAt == NEVER && phase == Phase.UP) recognisedAt = now;
     }
 
     boolean lastRecognised() {
@@ -391,6 +393,12 @@ final class Peek {
 
     long recognisedAt() {
         return recognisedAt;
+    }
+
+    /** A full uninterrupted interval of recognised screens with no offer, checked again after a fresh read. */
+    boolean noOfferWaited(long now) {
+        return phase == Phase.UP && !offerSign && lastRecognised && recognisedAt != NEVER
+                && now - recognisedAt >= NO_OFFER_MS;
     }
 
     /** A newer offer's notification came: the peek follows whatever Dasher shows next. */

@@ -66,6 +66,24 @@ public class PeekStateTest {
         peek.screen(false, 7_000);
         assertFalse(peek.lastRecognised());
     }
+    @Test public void unrecognisedScreenRestartsTheNoOfferInterval() {
+        Peek peek = armed(0);
+        peek.opened(700, 1, 0);
+        peek.up(900);
+        peek.screen(true, 1_000);
+        peek.screen(false, 4_000);
+        assertEquals("loading time is not a recognised empty screen", Long.MIN_VALUE, peek.recognisedAt());
+        assertFalse(peek.noOfferWaited(6_000));
+        peek.screen(true, 6_500);
+        assertEquals("the complete empty-screen interval starts afresh", 6_500, peek.recognisedAt());
+        peek.screen(true, 7_000);
+        assertEquals("consecutive recognised reads keep the same interval", 6_500, peek.recognisedAt());
+        assertFalse(peek.noOfferWaited(10_499));
+        assertTrue(peek.noOfferWaited(10_500));
+        assertEquals("resetting the empty interval does not extend the whole peek", 700, peek.openedAt());
+        assertTrue(peek.mayFollow(20_699));
+        assertFalse(peek.mayFollow(20_700));
+    }
     @Test public void anAddonCanCompleteWithoutAQuestionButAStandaloneCannot() {
         Peek peek = armed(0);
         peek.opened(700, 1, 0);
