@@ -423,6 +423,13 @@ public final class OfferFilterService extends AccessibilityService {
     /** Which offer's aftermath the screens log is keeping, and how many of its screens it kept. */
     private long aftermathOf = -1;
     private int aftermathLines;
+    /** A complete read lost the offer controls without a fresh offer/question/countdown. Observation only. */
+    private boolean acceptanceObservationEligible;
+    private static final long ACCEPTANCE_OBSERVATION_MS = 1_000;
+    private long outcomeEvidenceKey = -1;
+    private int outcomeEvidenceLines;
+    private String lastOutcomeEvidence = "";
+
     private OfferSilencer silencer;
     private long recheckUntil;
     private boolean recheckPending;
@@ -822,6 +829,38 @@ public final class OfferFilterService extends AccessibilityService {
         }
     };
 
+    /**
+     * Dasher can replace a partial post-offer frame without emitting another accessibility event. The window watch
+     * deliberately avoids content reads while numeric remnants look like an offer, so observe that one existing
+     * outcome watch at most once a second. Queued offer reads always win; every read uses the normal fresh authority
+     * checks. No new acceptance evidence, tap authority or deadline is created by this timer.
+     */
+    private final Runnable acceptanceObservation = new Runnable() {
+        @Override public void run() {
+            if (stopped || scannerFaulted || !acceptanceObservationEligible || !Consent.accepted(OfferFilterService.this)) {
+                return;
+            }
+            if (!phoneReadable()) { suspendScreenReading(); return; }
+            long now = SystemClock.uptimeMillis();
+            if (acceptedTracker.outcomeObservationDeadline() <= now) return;
+            if (queued.get() != QUEUED_NONE || recheckPending || declineUnderWay(now) || peekReturning
+                    || now - lastScanEndAt < ACCEPTANCE_OBSERVATION_MS) {
+                scheduleAcceptanceObservation();
+                return;
+            }
+            // A newly readable offer hands back to the usual guarded scanner/recheck path.
+            scanNow(now, "acceptance observation");
+        }
+    };
+
+    private void scheduleAcceptanceObservation() {
+        scanner.removeCallbacks(acceptanceObservation);
+        if (stopped || scannerFaulted || !acceptanceObservationEligible) return;
+        long now = SystemClock.uptimeMillis();
+        long due = Math.max(now + ACCEPTANCE_OBSERVATION_MS, lastScanEndAt + ACCEPTANCE_OBSERVATION_MS);
+        if (due < acceptedTracker.outcomeObservationDeadline()) scanner.postAtTime(acceptanceObservation, due);
+    }
+
     static boolean isConnected() {
         return active != null && !active.scannerFaulted;
     }
@@ -858,6 +897,29 @@ public final class OfferFilterService extends AccessibilityService {
             return service.knownDasherVisible(-1, true);
         } catch (RuntimeException unavailable) {
             return false;
+        }
+    }
+
+    /** Fresh card placement only: no app roots, no cached UI grace, and unknown is an ordinary launcher request. */
+    static SplitWindows.CardPlacement cardSplitPlacementNow() {
+        OfferFilterService service = active;
+        if (service == null || service.stopped || service.scannerFaulted || !Consent.accepted(service)) {
+            return SplitWindows.CardPlacement.UNKNOWN;
+        }
+        try {
+            if (!service.phoneReadable()) return SplitWindows.CardPlacement.UNKNOWN;
+            PowerManager power = service.getSystemService(PowerManager.class);
+            if (power != null && !power.isInteractive()) return SplitWindows.CardPlacement.UNKNOWN;
+            return SplitWindows.cardPlacement(service.windowSource.get(), window -> {
+                int id = window.getId();
+                if (!realWindowId(id)) return null;
+                if (service.dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
+                if (service.ownWindows.contains(id)) return SplitWindows.Owner.OURS;
+                if (service.otherWindows.contains(id)) return SplitWindows.Owner.OTHER;
+                return null;
+            });
+        } catch (RuntimeException unavailable) {
+            return SplitWindows.CardPlacement.UNKNOWN;
         }
     }
 
@@ -1273,6 +1335,8 @@ public final class OfferFilterService extends AccessibilityService {
             endAuthority("accessibility interrupted", true);
             acceptedTracker.reset();
             scanner.removeCallbacks(aftermathTick);
+            scanner.removeCallbacks(acceptanceObservation);
+            acceptanceObservationEligible = false;
             syncAutomation();
             status("Accessibility interrupted; waiting for a new readable offer.");
         });
@@ -1474,6 +1538,8 @@ public final class OfferFilterService extends AccessibilityService {
         scanner.removeCallbacks(watchHoldOver);
         scanner.removeCallbacks(episodeCheck);
         scanner.removeCallbacks(aftermathTick);
+        scanner.removeCallbacks(acceptanceObservation);
+        acceptanceObservationEligible = false;
         heldConfirmation = null;
         endAuthority("screen off", true);
         episode.end();
@@ -3262,6 +3328,8 @@ public final class OfferFilterService extends AccessibilityService {
      * @return true when another check should follow shortly
      */
     private boolean checkOffer(String trigger, long eventAt, int maxNodes) {
+        acceptanceObservationEligible = false;
+        scanner.removeCallbacks(acceptanceObservation);
         if (scannerFaulted) return false;
         if (!phoneReadable()) { suspendScreenReading(); return false; }
         // A guarded return is already queued on main; no new read/tap may cross that boundary.
@@ -3298,6 +3366,7 @@ public final class OfferFilterService extends AccessibilityService {
         try {
             return checkReadableOffer();
         } catch (RuntimeException error) {
+            acceptanceObservationEligible = false;
             cancelAutoAccept(true, "read_failed");
             endAuthority("screen read failed: " + error.getClass().getSimpleName(), true);
             DiagnosticLog.log(this, "accessibility",
@@ -3325,6 +3394,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (!quietTakenOver && (offerOnScreen || offerEvidence)) offerSeenAt = lastScanEndAt;
             syncAutomation();
             syncOverlay();
+            scheduleAcceptanceObservation();
             noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt,
                     hotAtStart || busy(lastScanEndAt));
         }
@@ -3493,7 +3563,11 @@ public final class OfferFilterService extends AccessibilityService {
         // own window, perhaps): the read for that change, first in the queue, reads the new window at once. A few in a
         // row at most, so a stream of window changes cannot keep every read from finishing.
         BooleanSupplier stop = null;
-        if (awaitingConfirmation(now) && cutReads < MAX_CUT_READS) {
+        if ("acceptance observation".equals(readTrigger)) {
+            long events = lastReadEvents;
+            long changes = readWindowChanges;
+            stop = () -> dasherEvents.get() != events || windowChanges.get() != changes;
+        } else if (awaitingConfirmation(now) && cutReads < MAX_CUT_READS) {
             long changes = readWindowChanges;
             stop = () -> windowChanges.get() != changes;
         } else if (!busyPublished && cutReads < MAX_CUT_READS) {
@@ -3501,6 +3575,14 @@ public final class OfferFilterService extends AccessibilityService {
             stop = () -> dasherEvents.get() != events && queued.get() == QUEUED_FRONT;
         }
         Scan scan = read(root, readCap, stop);
+        if ("acceptance observation".equals(readTrigger) && (stopped || !Consent.accepted(this)
+                || dasherEvents.get() != lastReadEvents || windowChanges.get() != readWindowChanges
+                || !knownDasherVisible(root.getWindowId()))) {
+            // A change during the final child fetch has no next loop iteration at which the stop supplier runs.
+            // Do not classify that stale snapshot or learn after visibility/consent was lost during a slow read.
+            scan.abandoned = true;
+            scan.truncated = true;
+        }
         if (consumeDeclineError()) return declineError.pending();
         scan.where = look.split ? "Dasher's half of the split screen" : "the active window";
         if (scan.abandoned) {
@@ -4002,12 +4084,17 @@ public final class OfferFilterService extends AccessibilityService {
     /** A Dasher screen without both offer controls: delivery progress, idle, or an offer still loading. */
     private boolean handleOtherScreen(Scan scan, OfferSnapshot offer, FilterSettings settings, long now) {
         if (consumeDeclineError()) return declineError.pending();
+        boolean controlsGone = scan.accept == null && scan.decline == null && !scan.acceptLabel && !scan.declineLabel;
+        acceptanceObservationEligible = controlsGone && !DasherScene.showsNewOffer(scan.text)
+                && !DeclineConfirmation.isSurface(scan.text) && OfferEvidence.secondsLeft(scan.text) < 0;
+        noteOutcomeEvidence(scan, offer);
         // A shopping declaration/count alone may be an offer still drawing over the idle map. It cannot
         // authorize a tap, establish completion, clear a stored route, or become an acceptance observation.
         if (!actionFact(offer) && AcceptedOfferTracker.itemOfferEvidence(offer, withParts(scan))) {
             if (!scan.acceptLabel && !scan.declineLabel) {
                 if (offerTargetsEndedAt == NEVER) offerTargetsEndedAt = now;
                 acceptedTracker.afterScreen(scan.text, true, now);
+                applyNotes();
             }
             return settings.enabled;
         }
@@ -4154,6 +4241,34 @@ public final class OfferFilterService extends AccessibilityService {
         String summary = PersonalText.recognizedDashScreen(withParts(scan)) ? offer.summary() + "\n" : "";
         status(summary + "Both offer controls are not yet readable; no action.");
         return settings.enabled;
+    }
+
+    /** At most eight changed fixed-category lines for an existing acceptance watch; no screen text or values. */
+    private void noteOutcomeEvidence(Scan scan, OfferSnapshot offer) {
+        long key = acceptedTracker.outcomeObservationKey();
+        if (key < 0) return;
+        if (key != outcomeEvidenceKey) {
+            outcomeEvidenceKey = key;
+            outcomeEvidenceLines = 0;
+            lastOutcomeEvidence = "";
+        }
+        if (outcomeEvidenceLines >= 8) return;
+        String categories = "read=complete; controls=" + (scan.acceptLabel || scan.declineLabel ? "partial" : "none")
+                + "; progress=" + AcceptedOfferTracker.isDeliveryScreen(scan.text)
+                + "; route=" + DasherScene.showsRoute(scan.text)
+                + "; waiting=" + DasherScene.showsWaiting(scan.text)
+                + "; new_offer=" + DasherScene.showsNewOffer(scan.text)
+                + "; countdown=" + (OfferEvidence.secondsLeft(scan.text) >= 0)
+                + "; facts=" + (offer.payCents != null || offer.payAtMostCents != null ? "pay," : "")
+                + (offer.miles != null ? "distance," : "") + (offer.minutes != null ? "duration," : "")
+                + (offer.stops != null ? "stops," : "") + (offer.itemCountApplicable ? "items," : "")
+                + "; outcome=" + AcceptedOfferTracker.classify(scan.text,
+                        AcceptedOfferTracker.offerFacts(offer, withParts(scan)))
+                + "; observation=" + (acceptanceObservationEligible ? "eligible" : "blocked");
+        if (categories.equals(lastOutcomeEvidence)) return;
+        lastOutcomeEvidence = categories;
+        outcomeEvidenceLines++;
+        DiagnosticLog.log(this, "accept", "outcome evidence: " + categories);
     }
 
     /** Fixed vocabulary only; never raw labels or numerical values from an unclassified screen. */
@@ -4567,7 +4682,9 @@ public final class OfferFilterService extends AccessibilityService {
             return true;
         }
         // Commit suppression before Android sees any request. A reconnect can only leave this offer to the user.
-        if (!RestartSuppression.remember(this, offer, secondsLeft) || !AutoAcceptMemory.remember(this, offer)) {
+        AutoAcceptMemory.Prepared provenance = RestartSuppression.remember(this, offer, secondsLeft)
+                ? AutoAcceptMemory.prepare(this, offer) : null;
+        if (provenance == null) {
             cancelAutoAccept(true, "persistence_failed");
             status("Could not preserve this offer's restart guard; no automatic acceptance.");
             return true;
@@ -4583,6 +4700,9 @@ public final class OfferFilterService extends AccessibilityService {
         reason = !visible ? "target_window_hidden" : keyboard ? "keyboard" : call ? "call"
                 : autoAcceptRefusal(offer, key, current, now);
         if (reason != null) {
+            // This exact prepared record never reached Android. Restore any earlier request provenance, while
+            // keeping the independent restart/tap suppression and every genuine/ambiguous request suppressive.
+            AutoAcceptMemory.discardUnsent(this, provenance);
             cancelAutoAccept(true, reason);
             return true;
         }

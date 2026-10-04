@@ -895,6 +895,21 @@ final class AcceptedOfferTracker {
         return automaticDue < 0 ? due : Math.min(due, automaticDue);
     }
 
+    /**
+     * Read-only outcome observation shares the existing deadlines. It cannot extend a watch, recreate one after
+     * restart, or restore action authority. A pending tap and a no-tap watch may overlap; each retains its own guard.
+     */
+    long outcomeObservationDeadline() {
+        long due = pending == null ? -1 : clickedAt + MAX_CLICK_TO_PROGRESS_MS;
+        if (watch != null && watch.leftAt >= 0) due = Math.max(due, watch.leftAt + AFTER_MS);
+        return due;
+    }
+
+    /** In-process observation identity for bounded fixed-category diagnostics; never persisted. */
+    long outcomeObservationKey() {
+        return watch != null ? watch.firstAt : pending != null ? clickedAt : -1;
+    }
+
     /** How long ago the offer watched left the screen, or -1 while it shows or none is watched. */
     long leftFor(long now) {
         Watch w = watch;

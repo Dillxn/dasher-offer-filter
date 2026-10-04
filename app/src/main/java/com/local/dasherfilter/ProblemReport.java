@@ -161,7 +161,8 @@ final class ProblemReport {
                 .put("bestAccepted", new JSONObject()
                         .put("minutePay", rules.best.minutePay).put("minutes", rules.best.minutes)
                         .put("milePay", rules.best.milePay).put("miles", rules.best.miles)
-                        .put("stopPay", rules.best.stopPay).put("stops", rules.best.stops));
+                        .put("stopPay", rules.best.stopPay).put("stops", rules.best.stops)
+                        .put("itemPay", rules.best.itemPay).put("items", rules.best.items));
     }
 
     private static JSONObject errorJson(Throwable error) throws JSONException {

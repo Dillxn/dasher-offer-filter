@@ -1,0 +1,124 @@
+{
+  "recorded_at_utc": "2026-10-04T01:35:54.315207+00:00",
+  "base_commit": "ea52147fdd86838794216cfd3231254549b7d189",
+  "scope": "Three-app card launch placement candidate. No version bump, full integrated gate, signing, publication, phone installation or physical map restoration claim.",
+  "source_and_test_sha256": {
+    "app/src/main/java/com/local/dasherfilter/DasherSplit.java": "de1aa3ecd2007860760ad3f89b6ae6e1bf9870ec5feaea79bcfecef9f3bd4431",
+    "app/src/main/java/com/local/dasherfilter/OpenDasherActivity.java": "3491cc2cf2b5fd56c6009b9bb5cb47314d8395f563cf693725ce74b7ebc8fd75",
+    "app/src/main/java/com/local/dasherfilter/OfferFilterService.java": "66e8b5345ddef010aea5591fb2a981f866b89f86bfc2dd7517bf15033197cab0",
+    "app/src/main/java/com/local/dasherfilter/SplitWindows.java": "826936739f842291914d68a6b03c22488dbd8e0c6da809b89e6244edcc438735",
+    "app/src/test/java/com/local/dasherfilter/CardTapAdapterTest.java": "3127df357c9059e779ca12e716a8e46eacd0f1401fe4ee1d54cc9f82be2d22e9"
+  },
+  "source_and_test_manifest_aggregate_sha256": "365a8cea24f7b4c5bd04bb2aaf4f82c1c36627d29eee43184bbe0ecd84e37c45",
+  "new_source": {
+    "command": "./gradlew -q testDebugUnitTest -PallSdks -Pforks=1 --max-workers=1 --tests *CardTapAdapterTest --tests *DasherSplitWindowTest --tests *SplitWindowsTest --tests *SplitJourneyTest --tests *PeekTest",
+    "simulated_sdks": [
+      26,
+      35
+    ],
+    "totals": {
+      "tests": 157,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "suite": "com.local.dasherfilter.CardTapAdapterTest",
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.DasherSplitWindowTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.PeekTest",
+        "tests": 98,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.SplitJourneyTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.SplitWindowsTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "old_source": {
+    "production_commit": "ea52147fdd86838794216cfd3231254549b7d189",
+    "changed_file": "Only the candidate CardTapAdapterTest.java copied into the detached old-source checkout; production unchanged.",
+    "simulated_sdks": [
+      35
+    ],
+    "expected_result": "The seven selected regressions compile and fail on the original implementation.",
+    "totals": {
+      "tests": 7,
+      "failures": 7,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "suite": "com.local.dasherfilter.CardTapAdapterTest",
+        "tests": 7,
+        "failures": 7,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "anUnidentifiedPaneNeverGuessesThatDasherIsAbsent",
+            "failed": true
+          },
+          {
+            "name": "obstructedOrIncompleteWindowPairsUseOnlyTheOrdinaryLauncher",
+            "failed": true
+          },
+          {
+            "name": "aStaleBesideSightingDoesNotDescribeTheCurrentMapsPair",
+            "failed": true
+          },
+          {
+            "name": "aFloatingCardActivityDoesNotLaunchIntoAnotherSplitPane",
+            "failed": true
+          },
+          {
+            "name": "aPictureInPictureCardActivityDoesNotRequestAnotherPane",
+            "failed": true
+          },
+          {
+            "name": "withDasherAlreadyBesideTheTapBringsDasherForwardInItsOwnHalf",
+            "failed": true
+          },
+          {
+            "name": "missingFreshWindowsNeverGuessesAnAdjacentTask",
+            "failed": true
+          }
+        ]
+      }
+    ]
+  },
+  "limits": [
+    "No actual Samsung task placement, route restoration, audio routing, physical touch or GPS voice/UI reproduction.",
+    "Existing touch/lock/consent/foreground/Peek/decline/acceptance guards unchanged.",
+    "No other-app root/text retrieval or destination data added."
+  ],
+  "test_setup_corrections": [
+    "Initial test compilation used an unavailable ShadowActivity/ShadowAccessibilityWindowInfo setter and attempted to subclass final OpenDasherActivity; corrected using supported Activity/Shadow APIs and existing window-manager injection. These incomplete runs are not passing gates."
+  ]
+}

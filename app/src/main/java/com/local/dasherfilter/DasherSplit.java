@@ -117,7 +117,7 @@ final class DasherSplit {
     }
 
     /** Android's multi-window flag includes floating windows and PiP. Only reject shapes we can distinguish. */
-    private static boolean inSplit(Activity activity) {
+    static boolean inSplit(Activity activity) {
         return activity.isInMultiWindowMode() && !floating(activity);
     }
 

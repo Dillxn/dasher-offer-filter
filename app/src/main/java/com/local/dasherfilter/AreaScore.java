@@ -9,7 +9,7 @@ import java.util.List;
  * An offer's constellation against the minimums' constellation. The monetary spokes have ratios pay / the
  * cents each floor asks of this offer, including the existing adaptive floors. Hotspot proximity is independent of
  * pay: (1 / final-stop distance in miles) / (minimum reciprocal miles), or 100 / (hundredths × miles). It is never a
- * fabricated pay floor. Pay per item adds a fixed monetary spoke; the original learned floors are unchanged.
+ * fabricated pay floor. Pay per item is a monetary spoke with fixed and accepted-rate floors; original learned floors are unchanged.
  *
  * <p>Spokes retain their original angles, with hotspot proximity between pay and per mile. Neighboring active points
  * are joined in {@link #DRAW_ORDER}. An empty clockwise sector of at least 180 degrees closes through the center,
@@ -131,7 +131,7 @@ final class AreaScore {
                 rules.perMileCents > 0 || (adaptive && (best.hasPerMile() || declined.hasPerMile())),
                 rules.perMinuteCents > 0 || (adaptive && (best.hasPerMinute() || declined.hasPerMinute())),
                 rules.perStopCents > 0 || (adaptive && (best.hasPerStop() || declined.hasPerStop())),
-                rules.hotspotProximityHundredths > 0, rules.perItemCents > 0};
+                rules.hotspotProximityHundredths > 0, rules.perItemCents > 0 || (adaptive && best.hasPerItem())};
     }
 
     /**
@@ -194,6 +194,9 @@ final class AreaScore {
             if (showLearned && declined.rates.hasPerStop()) {
                 floors.declinedCents[STOP] = BigDecimal.valueOf(declined.beatStops(stops));
             }
+        }
+        if (showLearned && best.hasPerItem() && offer.itemCountApplicable && offer.items != null) {
+            floors.acceptedCents[ITEM] = BigDecimal.valueOf(best.forItems(offer.items));
         }
         for (int axis = 0; axis < AXES; axis++) {
             if (!active[axis] || axis == HOTSPOT) continue;

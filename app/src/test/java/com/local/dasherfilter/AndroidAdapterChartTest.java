@@ -91,7 +91,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     + "No adaptive minimum on this spoke. "
                     + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
                     + "Minimum per item, off. Item rule not applicable: no shopping or items shown. "
-                    + "Based on the observed total items, not unique products. No adaptive minimum on this spoke. "
+                    + "Based on the observed total items, not unique products; no learned item minimum yet. "
                     + "Per stop: set $1.00, adaptive $7.10. "
                     + "The hotspot spoke uses inverse miles: closer is farther out; "
                     + "its 1 per mile shares the $10 ring radius for display only. "

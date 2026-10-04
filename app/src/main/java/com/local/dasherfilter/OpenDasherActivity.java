@@ -48,15 +48,17 @@ public final class OpenDasherActivity extends Activity {
         OfferFilterService.cardTapped();
         Intent tap = getIntent();
         // Dasher already in one half of a split screen: its plain launch intent brings its task forward there. Only
-        // when this screen is itself in one half and Dasher is not beside it does Dasher open into the other half.
-        boolean beside = OfferFilterService.dasherBeside();
-        boolean adjacent = !beside && isInMultiWindowMode();
+        // when fresh metadata identifies a real pair without Dasher does it open into the other half. The old UI
+        // sighting cannot choose a task to replace; uncertain placement uses a normal launcher request.
+        SplitWindows.CardPlacement placement = OfferFilterService.cardSplitPlacementNow();
+        boolean beside = placement == SplitWindows.CardPlacement.DASHER_PRESENT;
+        boolean adjacent = placement == SplitWindows.CardPlacement.OTHER_PAIR && DasherSplit.inSplit(this);
         Intent dasher = adjacent ? DasherSplit.dasher(this) : DasherSplit.launcher(this);
         String opened = null;
         if (dasher != null) {
             try {
                 startActivity(dasher);
-                opened = beside ? "in its own half" : adjacent ? "in the other half" : "full";
+                opened = beside ? "in its own half" : adjacent ? "in the other half" : "launcher";
             } catch (ActivityNotFoundException | SecurityException refused) {
                 opened = null;
             }

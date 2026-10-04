@@ -1,3 +1,12 @@
+## 0.4.64 — catch quiet pickup transitions and learn item rates
+
+- Rereads an existing post-offer outcome watch at a bounded cadence so a partial loading screen can become a readable pickup screen even without another accessibility event. The existing acceptance deadlines, screen/consent/foreground guards and conservative evidence rules remain. Fixed diagnostic categories help identify which evidence was available without retaining unknown screen text.
+- Removes only the provisional automatic-accept provenance from an attempt canceled before dispatch, so it cannot suppress a later genuine manual lesson. Actual or uncertain automatic requests retain their learning exclusion and restart guard.
+- Learns the best exact Pay/item rate from confirmed manual standalone accepts with an observed total item count. It persists, pauses, resets and adopts with the other learned minimums; strict and area rules share the same floors and buffer. Unknown counts and automatic accepts never teach it. Purple and on-demand numeric details now include the learned item rate.
+- Moves the filter mascot toward the upper left and reduces its size, retaining its accessible filtering control.
+- Notification-card placement uses fresh split-window evidence and excludes floating/PiP placement instead of trusting an old split hint. This does not recreate a lost map route or guarantee Samsung split persistence.
+- Local regression, signed publication and physical-phone evidence are recorded separately. The historical #45 screen/event provenance remains unknown; its old offer is not retroactively marked accepted or learned.
+
 ## 0.4.63 — clearer learning and steadier split launches
 
 - Uses Dasher’s actual launcher entry consistently for cards, Peek and split setup, and avoids opening it again when fresh window metadata already shows it beside Offer Filter.

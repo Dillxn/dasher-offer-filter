@@ -142,6 +142,77 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void learnedItemUsesObservedCountWithNoSavedItemRuleAndExplainsItsRate() throws Exception {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best).withScoreByArea(true);
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            MinimumsStarView star = show(activity.get(), rules, offer(2, true));
+            assertTrue(Double.isNaN(star.setAsks(AreaScore.ITEM)));
+            assertEquals(600, star.learnedAsks(AreaScore.ITEM), 0);
+            assertNotNull(star.markAt(0, AreaScore.ITEM));
+            String spoken = node(star, AreaScore.ITEM).getContentDescription().toString();
+            assertTrue(spoken, spoken.contains("adaptive $3.00/item, learned"));
+            assertFalse(spoken, spoken.contains("No adaptive minimum on this spoke"));
+            assertTrue(act(star, AreaScore.ITEM, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS));
+            java.lang.reflect.Method readout = MinimumsStarView.class.getDeclaredMethod("focusedReadout");
+            readout.setAccessible(true);
+            assertTrue(readout.invoke(star).toString().contains("Learned $3.00/item"));
+            assertNotNull("learned item rate can be adopted", star.adoptBox());
+        }
+    }
+
+    @Test public void learnedItemHasNoVertexForMissingOrInapplicableCounts() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best).withScoreByArea(true);
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            MinimumsStarView star = show(activity.get(), rules, offer(null, true));
+            assertTrue(Double.isNaN(star.learnedAsks(AreaScore.ITEM)));
+            assertNull(star.markAt(0, AreaScore.ITEM));
+            assertTrue(star.caption(), star.caption().contains("needs the item count"));
+            OfferSnapshot ordinary = offer(null, false);
+            star.show(rules, ordinary, Collections.singletonList(entry(ordinary, rules)));
+            assertTrue(Double.isNaN(star.learnedAsks(AreaScore.ITEM)));
+            assertNull(star.markAt(0, AreaScore.ITEM));
+            assertTrue(node(star, AreaScore.ITEM).getContentDescription().toString().contains("not applicable"));
+        }
+    }
+
+    @Test public void adaptiveOffKeepsLearnedItemVisibleButDoesNotActivateItsFloor() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, false, 0, best);
+        OfferSnapshot facts = offer(2, true);
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            MinimumsStarView star = show(activity.get(), rules, facts);
+            assertEquals(600, star.learnedAsks(AreaScore.ITEM), 0);
+            assertFalse(AreaScore.floors(rules, facts).active[AreaScore.ITEM]);
+            String spoken = node(star, AreaScore.ITEM).getContentDescription().toString();
+            assertTrue(spoken, spoken.contains("adaptive $3.00/item, learned, not applied"));
+        }
+    }
+
+    @Test public void selectingShoppingHistoryUsesItsCountForTheLearnedItemPoint() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best).withScoreByArea(true);
+        OfferSnapshot shopping = offer(2, true), ordinary = offer(null, false);
+        DecisionLog.Entry past = new DecisionLog.Entry(System.currentTimeMillis() - 60_000,
+                DecisionLog.Source.SCREEN, false, shopping, 1000, OfferRule.Result.KEEP, "meets enabled rules",
+                DecisionLog.Action.PASSES, true, Collections.emptyList());
+        DecisionLog.Entry latest = entry(ordinary, rules);
+        try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class)
+                .setup()) {
+            MinimumsStarView star = show(activity.get(), rules, ordinary);
+            star.show(rules, ordinary, Arrays.asList(latest, past));
+            assertTrue(Double.isNaN(star.learnedAsks(AreaScore.ITEM)));
+            star.emphasize(past);
+            assertEquals(600, star.learnedAsks(AreaScore.ITEM), 0);
+            star.emphasize(null);
+            assertTrue(Double.isNaN(star.learnedAsks(AreaScore.ITEM)));
+        }
+    }
+
     @Test public void cardDistinguishesCountRateUnknownAndNotApplicable() {
         OfferCardView card = new OfferCardView(app, new Ui(app));
         card.show(entry(offer(20, true), RULES));

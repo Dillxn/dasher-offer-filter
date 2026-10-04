@@ -1,0 +1,120 @@
+{
+  "base": "ea52147fdd86838794216cfd3231254549b7d189",
+  "scope": "adaptive accepted item ratio, persistence/reset/adopt, shared floors and UI; no release proof",
+  "local": true,
+  "after": {
+    "suites": [
+      {
+        "suite": "com.local.dasherfilter.AdoptAdaptiveTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.AdaptiveItemsTest",
+        "tests": 22,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.ItemConstellationTest",
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.MinimumsDetailsTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.ItemSettingsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.AdaptiveMinimumLifecycleTest",
+        "tests": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.AutoAcceptAdapterTest",
+        "tests": 58,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.ItemScoreTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.local.dasherfilter.AcceptanceEvidenceTest",
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "totals": {
+      "tests": 161,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "before": {
+    "suite": "com.local.dasherfilter.AdaptiveItemsTest",
+    "tests": 9,
+    "failures": [
+      {
+        "test": "learnedItemBoundarySharesStrictAndAreaBufferWithoutChangingSavedKnob",
+        "failure": "java.lang.AssertionError: expected:<DECLINE> but was:<KEEP>"
+      },
+      {
+        "test": "areaCompensationStillDiffersFromStrictWithLearnedItemAndMaxStopsStillHard",
+        "failure": "java.lang.AssertionError: expected:<DECLINE> but was:<KEEP>"
+      },
+      {
+        "test": "independentExactRatioRaisesOnlyForStrictlyHigherRate",
+        "failure": "java.lang.AssertionError: expected:<1335> but was:<null>"
+      },
+      {
+        "test": "adoptCopiesExactAcceptedItemRateUpwardAndResetKeepsIt",
+        "failure": "java.lang.AssertionError: expected:<334> but was:<100>"
+      },
+      {
+        "test": "itemEvidenceAloneCannotTurnMisreadOffersIntoNewBestAndCannotUsePayBound",
+        "failure": "java.lang.AssertionError"
+      },
+      {
+        "test": "learningOffRetainsItemBestAndResetPreservesKnobBufferAndStops",
+        "failure": "java.lang.AssertionError: expected:<2940> but was:<null>"
+      },
+      {
+        "test": "confirmedObservedItemRatePersistsDespiteStaleRuleSaveAndUnknownLaterCounts",
+        "failure": "java.lang.AssertionError: expected:<2940> but was:<null>"
+      },
+      {
+        "test": "missingDeclaredItemsReviewButInapplicableAndSwitchedOffStayUnchanged",
+        "failure": "java.lang.AssertionError: expected:<REVIEW> but was:<KEEP>"
+      }
+    ]
+  },
+  "ui_before": [
+    "/tmp/offer-item-details-ui-before.xml",
+    "/tmp/offer-item-constellation-ui-before.xml"
+  ]
+}

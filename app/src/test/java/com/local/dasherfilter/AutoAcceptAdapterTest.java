@@ -183,6 +183,21 @@ public final class AutoAcceptAdapterTest {
         assertTrue(FilterStore.load(app).best.isEmpty());
         assertTrue(DiagnosticLog.read(app).contains("automatic choices never raise your learned minimums"));
     }
+    @Test public void automaticShoppingAcceptanceNeverTeachesAnObservedItemRate() {
+        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0).withAdaptive(true));
+        show(node("Finding offers", false));
+        AccessibilityNodeInfo shopping = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
+        Shadows.shadowOf(shopping).addChild(node("Shop and deliver", false));
+        Shadows.shadowOf(shopping).addChild(node("2 items", false));
+        show(shopping); pass(900); assertEquals(1, clicks(accept));
+        click(accept); show(node("Arrived at store", true));
+        assertNotNull(ActiveRouteStore.load(app));
+        assertEquals(Integer.valueOf(2), ActiveRouteStore.load(app).items);
+        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertFalse(FilterStore.load(app).best.hasPerItem());
+        assertTrue(DiagnosticLog.read(app).contains("automatic choices never raise your learned minimums"));
+    }
     @Test public void serviceRestartSuppressesRepeatAndRetainsAutomaticLearningProvenance() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900); assertEquals(1, clicks(accept));
         controller.destroy(); connect();

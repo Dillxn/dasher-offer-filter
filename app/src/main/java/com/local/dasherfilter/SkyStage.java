@@ -31,8 +31,9 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
     /** The least radius the constellation is drawn at in the sky, for working out the least room the sky needs. */
     private static final int LEAST_RADIUS_DP = 56;
     /** The mascot's ring, outer edge, from its middle: at most, and at least however tight the sky. */
-    private static final int MASCOT_MOST_DP = 58;
-    private static final int MASCOT_LEAST_DP = 36;
+    private static final int MASCOT_MOST_DP = 44;
+    private static final int MASCOT_LEAST_DP = 28;
+    private static final int MASCOT_RAISE_DP = 48;
     /** Room kept between a spoke and the mascot's ring, and between its ring and the page's left edge. */
     private static final int SPOKE_CLEAR_DP = 12;
     private static final int MASCOT_EDGE_DP = 6;
@@ -183,8 +184,8 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
      * The largest circle whose spokes, points and icons stand inside the page, below the header and the counts and
      * inside the sky, with room for the mascot above the lines; its rim may run past the page's edges. It stands clear
      * of the lines too where there is room, and otherwise as high as the counts allow, the lines crossing its lower
-     * part. Then the mascot on its left, as large as the room between the two left spokes and the page's edge allows,
-     * level with the circle's middle, or raised between the spokes to stay above the lines.
+     * part. The smaller mascot stays near the left edge and rises into the upper-left space, while keeping its
+     * ring clear of both left spokes, the counts and the lines.
      */
     private void compose(int width, int height, int headerHeight, int linesHeight) {
         float top = Math.max(headerHeight, counts.bottom) + ui.dp(4);
@@ -218,9 +219,12 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
             mascotRadius = Math.max(least, mascotRadius - ui.dp(1));
             reach = mascotReach(skyX, skyY, mascotRadius, top, linesTop);
         }
-        if (Float.isNaN(reach)) reach = (mascotRadius + clear) / SIN;
-        mascotX = Math.min(skyX - reach, Math.max(mascotRadius + edge, skyX - skyRadius));
-        mascotY = Math.max(top + mascotRadius, Math.min(skyY, raisedTo(linesTop, mascotRadius)));
+        // Give the plotted offer and atlas a calmer hierarchy: the control sits at the left edge rather than
+        // floating into the graph. Rise only as far as the upper spoke's existing clearance allows.
+        mascotX = mascotRadius + edge;
+        float availableRise = ((skyX - mascotX) * SIN - mascotRadius - clear) / COS;
+        float rise = Math.min(ui.dp(MASCOT_RAISE_DP), Math.max(0, availableRise));
+        mascotY = Math.max(top + mascotRadius, Math.min(skyY - rise, raisedTo(linesTop, mascotRadius)));
 
         heroBox.set(Math.min(counts.left, mascotX - mascotRadius), Math.min(counts.top, mascotY - mascotRadius),
                 Math.max(counts.right, mascotX + mascotRadius), Math.max(counts.bottom, mascotY + mascotRadius));

@@ -44,7 +44,7 @@ public final class MinimumsDetailsTest {
         assertTrue(text.contains("Pay/mile — Saved unavailable · Learned unavailable · Used unavailable"));
         assertTrue(text.contains("Pay/min — Saved off · Learned unavailable · Used unavailable"));
         assertTrue(text.contains("Pay/stop — Saved unavailable · Learned unavailable · Used unavailable"));
-        assertTrue(text.contains("Pay/item — Saved unavailable · Learned none (fixed only) · Used unavailable"));
+        assertTrue(text.contains("Pay/item — Saved unavailable · Learned off · Used unavailable"));
         assertTrue(text.contains("Hotspot — distance unavailable"));
         assertTrue(text.contains("actual distance from this offer's final stop"));
     }
@@ -62,10 +62,33 @@ public final class MinimumsDetailsTest {
     @Test public void itemRequirementUsesOnlyObservedItemsAndTheGlobalScale() {
         FilterSettings rules = learned().withPerItem(75).withMinimumScalePercent(97);
         String text = MinimumsDetails.describe(rules, offer().withItems(4, true));
-        assertTrue(text.contains("Pay/item — Saved $3.00 · Learned none (fixed only) · Used $2.91"));
+        assertTrue(text.contains("Pay/item — Saved $3.00 · Learned off · Used $2.91"));
         assertTrue(text.contains("Only confirmed manual choices train Payout, Pay/mile, Pay/min and Pay/stop"));
         assertTrue(MinimumsDetails.describe(rules, offer())
-                .contains("Pay/item — Saved not applicable · Learned none (fixed only) · Used not applicable"));
+                .contains("Pay/item — Saved not applicable · Learned off · Used not applicable"));
+    }
+
+    @Test public void learnedItemUsesTheActualCountAndTheSameBufferedFloorAsDecisions() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer().withItems(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best)
+                .withPerItem(75).withMinimumScalePercent(97);
+        String text = MinimumsDetails.describe(rules, offer().withItems(2, true));
+        assertTrue(text, text.contains("Pay/item — Saved $1.50 · Learned $8.00 · Used $7.76"));
+        assertTrue(text, text.contains("Pay/item learns from confirmed manual accepts with an observed total count"));
+        assertFalse(text, text.contains("Pay/item is fixed only"));
+        String disabled = MinimumsDetails.describe(rules.withAdaptive(false), offer().withItems(2, true));
+        assertTrue(disabled, disabled.contains("Pay/item — Saved $1.50 · Learned $8.00 (not applied) · Used ≈$1.46"));
+    }
+
+    @Test public void learnedItemNeedsTheCurrentOfferCountEvenWhenTheSavedItemFloorIsOff() {
+        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer().withItems(4, true));
+        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best);
+        String unknown = MinimumsDetails.describe(rules, offer().withItems(null, true));
+        assertTrue(unknown, unknown.contains("Pay/item — Saved off · Learned unavailable · Used unavailable"));
+        String inapplicable = MinimumsDetails.describe(rules, offer());
+        assertTrue(inapplicable, inapplicable.contains("Pay/item — Saved off · Learned not applicable · Used not applicable"));
+        String disabled = MinimumsDetails.describe(rules.withAdaptive(false), offer().withItems(null, true));
+        assertTrue(disabled, disabled.contains("Pay/item — Saved off · Learned unavailable (not applied) · Used off"));
     }
 
     @Test public void scaleIsSeparateAndFractionalCentDisplayDoesNotRoundBeforeScaling() {

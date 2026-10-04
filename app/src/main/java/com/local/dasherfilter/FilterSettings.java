@@ -13,13 +13,13 @@ final class FilterSettings {
     final int perMinuteCents;
     /** Minimum pay per stop, a floor like per mile and per minute: an offer needs at least stops × this. */
     final int perStopCents;
-    /** Fixed pay per observed total item; only offers declaring items/shopping use it. Never learned. */
+    /** Saved pay per observed total item; only offers declaring items/shopping use it. */
     final int perItemCents;
     final int maxStops;
     final boolean risingOffers;
     /** The highest standalone pay accepted while learning (the adaptive pay minimum); only Reset lowers it. */
     final int lastAcceptedCents;
-    /** Best accepted pay per minute, mile and stop; floors while the adaptive minimum is on. */
+    /** Best accepted pay per minute, mile, stop and observed item; floors while the adaptive minimum is on. */
     final AcceptedBest best;
     /** What offers declined by hand taught the adaptive minimum: values later offers must beat. */
     final DeclinedFloor declined;
@@ -234,7 +234,7 @@ final class FilterSettings {
     /**
      * These rules with each set minimum raised to what the adaptive minimum on the same measure asks, so the set
      * minimums alone are never looser than the adaptive ones, for an offer of any length. Pay: one cent above the
-     * highest accepted payout and above the payout declined by hand. Per mile, minute and stop: the smallest whole-cent
+     * highest accepted payout and above the payout declined by hand. Per mile, minute, stop and item: the smallest whole-cent
      * rate that asks at least as much as the best accepted rate (which an offer must match, rounded up), so
      * {@code ceil(pay ÷ amount)}, and more than the declined rate (which an offer must beat), so
      * {@code floor(pay ÷ amount) + 1}. Worked exactly, never in floating point.
@@ -262,8 +262,10 @@ final class FilterSettings {
         if (declined.rates.hasPerStop()) {
             stop = Math.max(stop, beaten(declined.rates.stopPay, BigDecimal.valueOf(declined.rates.stops)));
         }
+        long item = best.hasPerItem() ? matched(best.itemPay, BigDecimal.valueOf(best.items)) : 0;
         return withMinimums(new int[] {raised(flatCents, pay), raised(perMileCents, mile),
-                raised(perMinuteCents, minute), raised(perStopCents, stop)});
+                raised(perMinuteCents, minute), raised(perStopCents, stop), hotspotProximityHundredths,
+                raised(perItemCents, item)});
     }
 
     /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */

@@ -38,6 +38,8 @@ final class FilterStore {
     private static final String BEST_MILES = "best_miles_bits";
     private static final String BEST_STOP_PAY = "best_stop_pay";
     private static final String BEST_STOPS = "best_stops";
+    private static final String BEST_ITEM_PAY = "best_item_pay";
+    private static final String BEST_ITEMS = "best_items";
     private static final String DECLINED_PAY = "declined_pay";
     private static final String DECLINED_MINUTE_PAY = "declined_minute_pay";
     private static final String DECLINED_MINUTES = "declined_minutes";
@@ -130,7 +132,8 @@ final class FilterStore {
         double miles = Double.longBitsToDouble(prefs.getLong(BEST_MILES, 0));
         return new AcceptedBest(positive(prefs.getInt(BEST_MINUTE_PAY, 0)), positive(prefs.getInt(BEST_MINUTES, 0)),
                 positive(prefs.getInt(BEST_MILE_PAY, 0)), Double.isFinite(miles) && miles > 0 ? miles : 0,
-                positive(prefs.getInt(BEST_STOP_PAY, 0)), positive(prefs.getInt(BEST_STOPS, 0)));
+                positive(prefs.getInt(BEST_STOP_PAY, 0)), positive(prefs.getInt(BEST_STOPS, 0)),
+                positive(prefs.getInt(BEST_ITEM_PAY, 0)), positive(prefs.getInt(BEST_ITEMS, 0)));
     }
 
     /** The decline floors, sanitized like the bests. */
@@ -256,12 +259,14 @@ final class FilterStore {
         boolean recorded = highest != before.lastAcceptedCents
                 || best.minutePay != previous.minutePay || best.minutes != previous.minutes
                 || best.milePay != previous.milePay || Double.compare(best.miles, previous.miles) != 0
-                || best.stopPay != previous.stopPay || best.stops != previous.stops;
+                || best.stopPay != previous.stopPay || best.stops != previous.stops
+                || best.itemPay != previous.itemPay || best.items != previous.items;
         prefs.edit()
                 .putInt(LAST_ACCEPTED, highest)
                 .putInt(BEST_MINUTE_PAY, best.minutePay).putInt(BEST_MINUTES, best.minutes)
                 .putInt(BEST_MILE_PAY, best.milePay).putLong(BEST_MILES, Double.doubleToLongBits(best.miles))
                 .putInt(BEST_STOP_PAY, best.stopPay).putInt(BEST_STOPS, best.stops)
+                .putInt(BEST_ITEM_PAY, best.itemPay).putInt(BEST_ITEMS, best.items)
                 .apply();
         if (!recorded) return AcceptedLesson.NOTHING_NEW;
         // Report the same exact resolved costs the rules use. A new personal best may still sit below
@@ -287,6 +292,7 @@ final class FilterStore {
         prefs(context).edit().putLong(ADAPTIVE_RESET_AT, System.currentTimeMillis())
                 .remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
                 .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS)
+                .remove(BEST_ITEM_PAY).remove(BEST_ITEMS)
                 .remove(DECLINED_PAY).remove(DECLINED_MINUTE_PAY).remove(DECLINED_MINUTES)
                 .remove(DECLINED_MILE_PAY).remove(DECLINED_MILES).remove(DECLINED_STOP_PAY).remove(DECLINED_STOPS)
                 .apply();

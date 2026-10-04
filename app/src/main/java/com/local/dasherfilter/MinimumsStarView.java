@@ -35,9 +35,9 @@ import java.util.List;
  * The minimums as constellations in the page's sky: pay, per mile, per minute, per stop, an upright
  * final-stop hotspot proximity spoke, and pay per observed total item pointing down. The fifth measures 1 / actual final-stop distance in miles, never pay or
  * the driver's current distance from a hotspot. Missing distances are not plotted and never inferred.
- * The original four spokes retain their existing learning,
- * with the minimums you set (solid, round stars) and the adaptive minimums learned from offers you accepted or
- * declined by hand (dashed, sparkles). Distance from the middle is the pay each one asks of one example offer, so
+ * The original four spokes retain their existing learning; pay/item also learns from confirmed manual accepts
+ * with an observed total count. Set minimums are solid with round stars; learned minimums are dashed with sparkles.
+ * Distance from the middle is the pay each one asks of one example offer, so
  * the monetary spokes share a dollar scale when their quantities are observed. The fifth uses a fixed display conversion only (1 inverse mile
  * at the $10 radius), and its own readout states inverse miles and the equivalent maximum distance. The latest or
  * skyline-selected offer has small marks on each spoke at what its pay, per mile, per minute and per stop would pay
@@ -618,7 +618,8 @@ final class MinimumsStarView extends View {
                         ? readout(AreaScore.HOTSPOT, rules.hotspotProximityHundredths) : null,
                 (long) (rules.hotspotProximityHundredths * HOTSPOT_DISPLAY_UNIT), 0, null, 0, null);
         put(AreaScore.ITEM, rules.perItemCents > 0 ? readout(AreaScore.ITEM, rules.perItemCents) : null,
-                amount(floors.fixedCents[AreaScore.ITEM]), 0, null, 0, null);
+                amount(floors.fixedCents[AreaScore.ITEM]), amount(floors.acceptedCents[AreaScore.ITEM]),
+                best.hasPerItem() ? best.perItem() : null, 0, null);
         adaptiveOn = rules.risingOffers;
         byArea = rules.scoreByArea;
         maxStops = Math.max(0, rules.maxStops);
@@ -910,7 +911,8 @@ final class MinimumsStarView extends View {
                         .withFinalStopHotspotMiles(example.finalStopHotspotMiles)
                         .withItems(example.items, example.itemCountApplicable), rules);
         if (decision.result == OfferRule.Result.DECLINE) return like + " is declined by your rules.";
-        if (decision.result == OfferRule.Result.REVIEW && rules.perItemCents > 0
+        if (decision.result == OfferRule.Result.REVIEW
+                && (rules.perItemCents > 0 || rules.risingOffers && rules.best.hasPerItem())
                 && example.itemCountApplicable && !hasItems(example)) {
             return like + " needs the item count before it can be filtered.";
         }
@@ -2897,7 +2899,10 @@ final class MinimumsStarView extends View {
         if (axis == AreaScore.ITEM) {
             String observed = itemsLabel(selectedFacts());
             if (observed.isEmpty()) observed = "not applicable";
-            return "Min " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]) + " · " + observed;
+            String saved = "Min " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]);
+            String learned = shownRules.best.hasPerItem() ? " · Learned " + shownRules.best.perItemLabel()
+                    + (adaptiveOn ? "" : " (off)") : "";
+            return saved + learned + " · " + observed;
         }
         String name = AXIS_LABELS[axis];
         return name + " · " + readout(axis, dragging && axis == held ? dragValue : setRates[axis]);
@@ -3641,11 +3646,15 @@ final class MinimumsStarView extends View {
         if (axis == AreaScore.ITEM) {
             OfferSnapshot offer = selectedFacts();
             String observed = itemState(offer);
-            if (offer != null && offer.itemCountApplicable && !hasItems(offer)) {
-                observed += "; review needed while this minimum is on";
+            boolean hasLearned = shownRules.best.hasPerItem();
+            if (offer != null && offer.itemCountApplicable && !hasItems(offer)
+                    && (rate > 0 || adaptiveOn && hasLearned)) {
+                observed += "; review needed for the active minimum";
             }
+            String learned = hasLearned ? "; adaptive " + shownRules.best.perItemLabel()
+                    + (adaptiveOn ? ", learned" : ", learned, not applied") : "; no learned item minimum yet";
             return KNOBS[axis] + ", " + readout(axis, rate) + ". " + observed
-                    + ". Based on the observed total items, not unique products. No adaptive minimum on this spoke.";
+                    + ". Based on the observed total items, not unique products" + learned + ".";
         }
         if (axis == AreaScore.HOTSPOT) {
             int chosen = strongShape();

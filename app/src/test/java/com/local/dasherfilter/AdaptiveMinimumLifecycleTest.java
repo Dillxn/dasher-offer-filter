@@ -129,10 +129,10 @@ public class AdaptiveMinimumLifecycleTest {
                     new OfferSnapshot(4000, null, null, null).withItems(null, true), rules).result);
             assertBoundary(rules, 2425, 2426, null, null, null, null, false);
         }
-        assertEquals("acceptance and manual-decline learning add no learned item rate", 300, learned.perItemCents);
+        assertEquals("saved item knob is unchanged by learning", 300, learned.perItemCents);
     }
 
-    @Test public void adoptThenResetRetainsTheLearnedProtectionInBothModesAndLeavesItemRuleAlone() {
+    @Test public void adoptThenResetRetainsTheLearnedProtectionIncludingObservedItemsInBothModes() {
         FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3)
                 .withAdaptive(true).withPerItem(100).withMinimumScalePercent(97));
         FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2).withItems(10, true));
@@ -141,7 +141,7 @@ public class AdaptiveMinimumLifecycleTest {
         FilterStore.save(app, learned.adoptAdaptive());
         FilterStore.resetAccepted(app);
         FilterSettings adopted = reload();
-        assertArrayEquals(new int[] {1501, 237, 60, 710, 0, 100}, adopted.minimums());
+        assertArrayEquals(new int[] {1501, 237, 60, 710, 0, 142}, adopted.minimums());
         assertTrue(adopted.best.isEmpty() && adopted.declined.isEmpty());
         assertEquals(0, adopted.lastAcceptedCents);
         assertEquals(97, adopted.minimumScalePercent);

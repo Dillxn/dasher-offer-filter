@@ -9,9 +9,20 @@ import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Insets;
+import android.graphics.Rect;
 import android.os.Looper;
 import android.service.notification.StatusBarNotification;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
+import android.view.accessibility.AccessibilityWindowInfo;
+import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,6 +38,9 @@ import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowNotificationManager;
 import org.robolectric.shadows.ShadowPendingIntent;
 import org.robolectric.shadows.ShadowSystemClock;
+import org.robolectric.shadows.ShadowAccessibilityWindowInfo;
+import org.robolectric.shadow.api.Shadow;
+import org.robolectric.util.ReflectionHelpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -134,6 +148,33 @@ public class CardTapAdapterTest {
         return controller.setup();
     }
 
+    /** Already observed app identities, followed by fresh metadata only at the notification tap. */
+    private ServiceController<OfferFilterService> splitWindows(boolean dasher) {
+        ServiceController<OfferFilterService> controller = Robolectric.buildService(OfferFilterService.class).create();
+        OfferFilterService service = controller.get();
+        service.onServiceConnected();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        Set<Integer> ours = ReflectionHelpers.getField(service, "ownWindows");
+        Set<Integer> sibling = ReflectionHelpers.getField(service, dasher ? "dasherWindowIds" : "otherWindows");
+        ours.add(101);
+        sibling.add(102);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(101, AccessibilityWindowInfo.TYPE_APPLICATION, true, new Rect(0, 0, 1080, 1000)),
+                window(103, AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, false, new Rect(0, 1000, 1080, 1040)),
+                window(102, AccessibilityWindowInfo.TYPE_APPLICATION, false, new Rect(0, 1040, 1080, 2040))));
+        return controller;
+    }
+
+    private static AccessibilityWindowInfo window(int id, int type, boolean active, Rect bounds) {
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setId(id);
+        shadow.setType(type);
+        shadow.setActive(active);
+        shadow.setBoundsInScreen(bounds);
+        return window;
+    }
+
     @Test
     public void splitAndCardLaunchUseTheActualLauncherWithoutAPackageBoundTaskIntent() throws Exception {
         dasherInstalled();
@@ -176,13 +217,15 @@ public class CardTapAdapterTest {
         assertTrue("the tap screen is gone at once", tapped.get().isFinishing());
         assertNull("nothing else is opened", Shadows.shadowOf(app).getNextStartedActivity());
         String log = DiagnosticLog.read(app);
-        assertTrue(log, log.contains("[alert] card tapped → opened Dasher (full)"));
+        assertTrue(log, log.contains("[alert] card tapped → opened Dasher (launcher)"));
         tapped.destroy();
     }
 
     @Test
     public void inSplitScreenWithoutDasherTheTapOpensDasherInTheOtherHalf() throws Exception {
         dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        try {
         ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", dashersOwnIntent())), true);
         Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
         assertNotNull(opened);
@@ -193,15 +236,14 @@ public class CardTapAdapterTest {
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("[alert] card tapped → opened Dasher (in the other half)"));
         tapped.destroy();
+        } finally { reading.destroy(); }
     }
 
     @Test
     public void withDasherAlreadyBesideTheTapBringsDasherForwardInItsOwnHalf() throws Exception {
         dasherInstalled();
-        ServiceController<OfferFilterService> screenReading = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferFilterService> screenReading = splitWindows(true);
         try {
-            screenReading.get().onServiceConnected();
-            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
             ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
             // The tap screen opened in one half of the split, beside Dasher: before, it sent Dasher "adjacent" to
             // itself, which could move Dasher's task rather than bring it forward where it is.
@@ -223,6 +265,121 @@ public class CardTapAdapterTest {
             screenReading.destroy();
         }
     }
+
+    @Test public void aStaleBesideSightingDoesNotDescribeTheCurrentMapsPair() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        try {
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            assertTrue(OfferFilterService.dasherBeside());
+            try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
+                Intent launch = Shadows.shadowOf(app).getNextStartedActivity();
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, launch.getFlags());
+                assertEquals("only the user-requested launch", 0, launch.getFlags() & CLEARS_OR_RESETS);
+            }
+        } finally { reading.destroy(); }
+    }
+
+    @Test public void missingFreshWindowsNeverGuessesAnAdjacentTask() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        try {
+            reading.get().windowSource = () -> null;
+            try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+                assertEquals("the card was still handled", 0, notifications().size());
+            }
+        } finally { reading.destroy(); }
+    }
+
+    @Test public void anUnidentifiedPaneNeverGuessesThatDasherIsAbsent() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        try {
+            Set<Integer> known = ReflectionHelpers.getField(reading.get(), "otherWindows");
+            known.clear();
+            try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+            }
+        } finally { reading.destroy(); }
+    }
+
+    @Test public void obstructedOrIncompleteWindowPairsUseOnlyTheOrdinaryLauncher() throws Exception {
+        dasherInstalled();
+        for (String state : new String[] {"no divider", "no active pane", "overlap", "empty bounds",
+                "keyboard", "shade", "third app", "picture in picture", "metadata exception"}) {
+            ServiceController<OfferFilterService> reading = splitWindows(false);
+            try {
+                List<AccessibilityWindowInfo> windows = new ArrayList<>(reading.get().windowSource.get());
+                ShadowAccessibilityWindowInfo first = Shadow.extract(windows.get(0));
+                ShadowAccessibilityWindowInfo last = Shadow.extract(windows.get(2));
+                switch (state) {
+                    case "no divider": windows.remove(1); break;
+                    case "no active pane": first.setActive(false); break;
+                    case "overlap": last.setBoundsInScreen(new Rect(0, 0, 1080, 2040)); break;
+                    case "empty bounds": last.setBoundsInScreen(new Rect()); break;
+                    case "keyboard": windows.add(window(104, AccessibilityWindowInfo.TYPE_INPUT_METHOD, false,
+                            new Rect(0, 1700, 1080, 2040))); break;
+                    case "shade": windows.add(window(104, AccessibilityWindowInfo.TYPE_SYSTEM, true,
+                            new Rect(0, 0, 1080, 2040))); break;
+                    case "third app": windows.add(window(104, AccessibilityWindowInfo.TYPE_APPLICATION, false,
+                            new Rect(100, 200, 900, 1400))); break;
+                    case "picture in picture": last.setPictureInPicture(true); break;
+                    default: break;
+                }
+                reading.get().windowSource = () -> {
+                    if (state.equals("metadata exception")) throw new IllegalStateException("unavailable");
+                    return windows;
+                };
+                try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store " + state, null)), true)) {
+                    assertEquals(state, Intent.FLAG_ACTIVITY_NEW_TASK,
+                            Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+                    assertNull(state + " must not cause a retry", Shadows.shadowOf(app).getNextStartedActivity());
+                }
+            } finally { reading.destroy(); }
+        }
+    }
+
+    @Test @Config(sdk = 35)
+    public void aFloatingCardActivityDoesNotLaunchIntoAnotherSplitPane() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        try (ActivityController<? extends Activity> tapped = Robolectric.buildActivity(
+                Class.forName(TAP_SCREEN).asSubclass(Activity.class), tapScreenOf(cardFor("Store A", null)))) {
+            Shadows.shadowOf(tapped.get()).setInMultiWindowMode(true);
+            floatingWindow(tapped.get());
+            tapped.setup();
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+        } finally { reading.destroy(); }
+    }
+
+    @Test public void aPictureInPictureCardActivityDoesNotRequestAnotherPane() throws Exception {
+        dasherInstalled();
+        ServiceController<OfferFilterService> reading = splitWindows(false);
+        ActivityController<? extends Activity> tapped = Robolectric.buildActivity(
+                Class.forName(TAP_SCREEN).asSubclass(Activity.class), tapScreenOf(cardFor("Store A", null)));
+        try {
+            Shadows.shadowOf(tapped.get()).setInMultiWindowMode(true);
+            tapped.get().enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build());
+            tapped.setup();
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+        } finally { tapped.destroy(); reading.destroy(); }
+    }
+
+    private static void floatingWindow(Activity activity) {
+            WindowManager original = activity.getWindowManager();
+            WindowManager floating = (WindowManager) Proxy.newProxyInstance(WindowManager.class.getClassLoader(),
+                    new Class<?>[] {WindowManager.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("getCurrentWindowMetrics")) return metrics(new Rect(100, 200, 900, 1400));
+                        if (method.getName().equals("getMaximumWindowMetrics")) return metrics(new Rect(0, 0, 1080, 2040));
+                        return method.invoke(original, args);
+                    });
+            ReflectionHelpers.setField(activity, "mWindowManager", floating);
+    }
+        private static WindowMetrics metrics(Rect bounds) {
+            return new WindowMetrics(bounds, new WindowInsets.Builder()
+                    .setInsetsIgnoringVisibility(WindowInsets.Type.systemBars(), Insets.NONE).build());
+        }
 
     @Test
     public void whenDasherCannotBeOpenedAtTheTapDashersOwnIntentIsSent() throws Exception {

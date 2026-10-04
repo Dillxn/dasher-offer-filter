@@ -41,11 +41,11 @@ public class TicketLearningAndCorrectionTest extends AndroidAdapterTestBase {
             openTicket(content);
             View key = shownTextContaining(content, "Minimums · blue saved");
             assertNotNull(key);
-            assertNull(shownTextContaining(content, "Pay/item is fixed"));
+            assertNull(shownTextContaining(content, "Pay/item learns from confirmed manual accepts"));
             key.performClick();
-            assertNotNull(shownTextContaining(content, "Pay/item is fixed"));
+            assertNotNull(shownTextContaining(content, "Pay/item learns from confirmed manual accepts"));
             key.performClick();
-            assertNull(shownTextContaining(content, "Pay/item is fixed"));
+            assertNull(shownTextContaining(content, "Pay/item learns from confirmed manual accepts"));
         }
     }
 

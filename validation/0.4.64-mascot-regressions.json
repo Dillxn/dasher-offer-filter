@@ -1,0 +1,22 @@
+{
+  "completedAt": "2026-10-04T01:26:46.935082+00:00",
+  "base": "ea52147fdd86838794216cfd3231254549b7d189",
+  "tests": 47,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "simulatedSdk": 35,
+  "nativePreviews": [
+    "phone",
+    "split",
+    "narrow",
+    "large-font"
+  ],
+  "mascotRadiusDp": {
+    "maxBefore": 58,
+    "maxAfter": 44,
+    "minAfter": 28
+  },
+  "coordinateTapVerified": true,
+  "physicalPhone": false
+}

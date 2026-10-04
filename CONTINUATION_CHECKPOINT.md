@@ -1,3 +1,12 @@
+## October 4 .64 integration — not yet published at this source checkpoint
+
+- Direct user asked to fix missed acceptance learning and the fixed-only Pay/item gap, then requested a smaller upper-left app mascot and an end-to-end review with Maps/Waze, gas stops and suggested earning areas. The item request supersedes the older fixed-only constraint; other learning/action boundaries remain.
+- Candidate 0.4.64/code70 combines bounded post-offer rereads within the existing deadlines, rollback only of proven-unsent provisional automatic provenance, exact independent accepted Pay/item learning, mascot spacing and fresh notification-card split placement. Old report #45 is not backfilled as accepted. The observed accessibility content and event sequence behind that historical event remain unknown.
+- Focused and counterfactual evidence is retained in the .64 validation records. Full integrated local gates, original signing and production publication evidence must be read from a subsequent checkpoint; this entry alone does not establish release or phone behavior.
+- Latest email `1a10479b43e4b3ac`, generated Oct3 21:13:57 Eastern, repeats #45 and contains no new offer. It adds handset diagnostic evidence that .63 installed at20:17:09 Eastern and subsequent updater checks saw .63. This is not a hands-on acceptance/navigation test. No updated GitHub issues since00:43:33UTC at audit01:29:09UTC. See `validation/2026-10-04-0129-diagnostics-audit.json`.
+- Homepage product `c4b4e57a5e6627d863a8c87bcbf64bc867173471`, public checkpoint `5892b598f515a0c795510c733a8461e354b655a3`: 144px forest-green day / white night closing signature, transparent, complete passage. Pages37167356971 succeeded; live520px width/contrast/nooverflow and exactHTML/CSS bytes verified. No film/audio/app emblem change. Public SITE_VALIDATION holds proof; app repo stays private.
+- The three-app audit is in `E2E_FLOW_REVIEW_0.4.64.md`. External map trip purpose/destination is not tracked, and relaunching Maps does not establish route restoration. No speculative gas/delivery switching or global Back is added. User/map remains destination authority; real Samsung split/navigation/Peek flow verification remains open.
+
 # Offer Filter continuation — October 3, 2026
 
 Sanitized working checkpoint. This private app repository must remain private while its old issue history may contain payment details. The public website is a separate clean repository. Do not copy reports, credentials or this checkpoint into the website repository.

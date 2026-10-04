@@ -1,0 +1,33 @@
+{
+  "tests": 96,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": 2,
+  "sdk": [
+    26,
+    35
+  ],
+  "time": "2026-10-04T01:34:16.773433+00:00",
+  "source_sha256": {
+    "app/src/main/java/com/local/dasherfilter/AutoAcceptMemory.java": "befda9ca7216dd9fe2ce135af938e09331eb7ff011717924aa3a020de06cd5f2",
+    "app/src/main/java/com/local/dasherfilter/OfferFilterService.java": "15c6e7df420f442fc7ccf4b63b0306501349519f2157b9475fb0a313067e8fbe",
+    "app/src/test/java/com/local/dasherfilter/AcceptanceObservationTest.java": "d841e4028172b1eb6ab25ecd73c81cab693fdff0bf9b7648125e4d60c481230e"
+  },
+  "counterfactual": {
+    "counterfactual": "Original predispatch provenance behavior from ea52147 with the separately verified observation patch retained",
+    "cases": [
+      {
+        "name": "provenUnsentRollbackRestoresDifferentEarlierRequestInsteadOfErasingIt",
+        "failed": true,
+        "assertion": "java.lang.AssertionError"
+      },
+      {
+        "name": "provenUnsentAfterPersistenceDoesNotSuppressLaterManualLearning",
+        "failed": true,
+        "assertion": "java.lang.AssertionError: expected:<1675> but was:<0>"
+      }
+    ]
+  },
+  "patch_sha256": "dfdd774e77009cd60cc86cea234dd29d68dc7b7eee59cdde38427cb7fef30504"
+}

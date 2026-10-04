@@ -14,6 +14,52 @@ final class SplitWindows {
     /** Whose a listed application window is, as far as is known. */
     enum Owner { DASHER, OURS, OTHER }
 
+    /** Placement for a user-tapped card, never authority to read or act on an offer. */
+    enum CardPlacement { DASHER_PRESENT, OTHER_PAIR, UNKNOWN }
+
+    /**
+     * Two identified, unobscured panes and a divider establish the current pair. An old beside sighting cannot.
+     * A missing identity, transient window, keyboard or unavailable list falls back to an ordinary launch rather
+     * than guessing which task an adjacent launch would replace. This asks no application for its root or text.
+     * The owner function returns null for a window whose package has not already been observed by the scanner.
+     */
+    static CardPlacement cardPlacement(List<AccessibilityWindowInfo> windows,
+                                       Function<AccessibilityWindowInfo, Owner> owner) {
+        if (windows == null) return CardPlacement.UNKNOWN;
+        boolean divider = false;
+        AccessibilityWindowInfo first = null, second = null;
+        boolean hasDasher = false;
+        boolean active = false;
+        Rect bounds = new Rect();
+        for (AccessibilityWindowInfo window : windows) {
+            int type = window.getType();
+            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) {
+                window.getBoundsInScreen(bounds);
+                divider |= !bounds.isEmpty();
+            }
+            if (type == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+                    || (type == AccessibilityWindowInfo.TYPE_SYSTEM && window.isActive())) {
+                return CardPlacement.UNKNOWN;
+            }
+            if (type != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            Owner known = owner.apply(window);
+            window.getBoundsInScreen(bounds);
+            if (known == null || bounds.isEmpty() || window.isInPictureInPictureMode()) {
+                return CardPlacement.UNKNOWN;
+            }
+            if (first == null) first = window;
+            else if (second == null) second = window;
+            else return CardPlacement.UNKNOWN;
+            hasDasher |= known == Owner.DASHER;
+            active |= window.isActive();
+        }
+        if (!divider || !active || first == null || second == null
+                || covered(windows, first, second) != null || covered(windows, second, first) != null) {
+            return CardPlacement.UNKNOWN;
+        }
+        return hasDasher ? CardPlacement.DASHER_PRESENT : CardPlacement.OTHER_PAIR;
+    }
+
     /**
      * A system window (the shade, the power menu, a system dialog) over this share of Dasher's half or more hides it.
      * The status and navigation bars, a volume panel or a notification popping up over its edge cover far less.

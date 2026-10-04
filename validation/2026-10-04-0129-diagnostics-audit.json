@@ -1,0 +1,22 @@
+{
+  "auditedAt": "2026-10-04T01:29:09.593Z",
+  "since": "2026-10-04T00:43:33Z",
+  "githubIssueUpdates": [],
+  "gmailMessageIds": [
+    "1a10479b43e4b3ac"
+  ],
+  "emailGeneratedAt": "2026-10-03T21:13:57-04:00",
+  "emailInstalledVersion": "0.4.63",
+  "deduplication": {
+    "history": "Repeats #45's 19:35:57 shopping offer and pre-dispatch cancellation; not an independent missed-learning event.",
+    "issue45Dash": "1fbfb1f839fbcc90d1d661d1d84dfb54",
+    "newReportToken": null
+  },
+  "findings": [
+    "Email provides physical-handset diagnostic evidence of update to 0.4.63 at 20:17:09 Eastern, followed by installed-version feed checks; not a hands-on flow verification.",
+    "No retained new offer after #45. New tail records split loss, update/reconnect, screen-off and other-app visibility only; no fresh acceptance/navigation authority evidence."
+  ],
+  "rawRetained": false,
+  "sends": false,
+  "deletions": false
+}

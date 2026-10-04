@@ -20,7 +20,7 @@ final class MinimumsDetails {
         for (int axis : MONEY_AXES) {
             text.append(NAMES[axis]).append(" — Saved ")
                     .append(saved(axis, minimums[axis], facts, floors))
-                    .append(" · Learned ").append(learned(axis, rules, floors))
+                    .append(" · Learned ").append(learned(axis, rules, facts, floors))
                     .append(" · Used ").append(used(axis, rules, facts, floors)).append('\n');
         }
         text.append("\nBlue is Saved; purple is Learned. Values are payout-dollar requirements for this offer, "
@@ -34,7 +34,8 @@ final class MinimumsDetails {
             text.append("In strict mode, every active Used amount must be met; the area score is only a reference. ");
         }
         text.append("Only confirmed manual choices train Payout, Pay/mile, Pay/min and Pay/stop. "
-                + "Automatic accepts do not. Pay/item is fixed only.\n\n");
+                + "Pay/item learns from confirmed manual accepts with an observed total count. "
+                + "Automatic accepts do not train minimums.\n\n");
         appendHotspot(text, rules, facts);
         return text.toString();
     }
@@ -45,9 +46,9 @@ final class MinimumsDetails {
         return amount(floors.fixedCents[axis]);
     }
 
-    private static String learned(int axis, FilterSettings rules, AreaScore.Floors floors) {
-        if (axis == AreaScore.ITEM) return "none (fixed only)";
+    private static String learned(int axis, FilterSettings rules, OfferSnapshot offer, AreaScore.Floors floors) {
         if (!hasLearned(axis, rules)) return "off";
+        if (axis == AreaScore.ITEM && !offer.itemCountApplicable) return "not applicable";
         BigDecimal accepted = floors.acceptedCents[axis];
         BigDecimal declined = floors.declinedCents[axis];
         BigDecimal higher = accepted == null ? declined : declined == null ? accepted : accepted.max(declined);
@@ -55,7 +56,8 @@ final class MinimumsDetails {
     }
 
     private static String used(int axis, FilterSettings rules, OfferSnapshot offer, AreaScore.Floors floors) {
-        if (axis == AreaScore.ITEM && rules.perItemCents > 0 && !offer.itemCountApplicable) {
+        if (axis == AreaScore.ITEM && (rules.perItemCents > 0 || rules.risingOffers && rules.best.hasPerItem())
+                && !offer.itemCountApplicable) {
             return "not applicable";
         }
         if (!floors.active[axis]) return "off";
@@ -74,6 +76,7 @@ final class MinimumsDetails {
             case AreaScore.MILE: return rules.best.hasPerMile() || rules.declined.rates.hasPerMile();
             case AreaScore.MINUTE: return rules.best.hasPerMinute() || rules.declined.rates.hasPerMinute();
             case AreaScore.STOP: return rules.best.hasPerStop() || rules.declined.rates.hasPerStop();
+            case AreaScore.ITEM: return rules.best.hasPerItem();
             default: return false;
         }
     }

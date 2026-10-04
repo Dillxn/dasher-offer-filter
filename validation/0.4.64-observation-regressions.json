@@ -1,0 +1,50 @@
+{
+  "tests": 230,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": 6,
+  "sdk": [
+    26,
+    35
+  ],
+  "base": "ea52147fdd86838794216cfd3231254549b7d189",
+  "time": "2026-10-04T01:25:12.434167+00:00",
+  "scope": "Local simulated Android only; exact report #45 accessibility event/tree cause unproven",
+  "source_sha256": {
+    "app/src/main/java/com/local/dasherfilter/AcceptedOfferTracker.java": "abaab908b8c1d951493edfd6c08be81e55fe9467e564aee765b3a01912387434",
+    "app/src/main/java/com/local/dasherfilter/OfferFilterService.java": "9294f17781d5709e18e219451fa09674fb88a9a3f0d9439f8cbff9c44740edcf",
+    "app/src/test/java/com/local/dasherfilter/AcceptanceObservationTest.java": "be59b3043cf2924adb8581aefd37d197d53f9d6f2d1a172236d2ec300d8c848d"
+  },
+  "counterfactual": {
+    "base": "ea52147fdd86838794216cfd3231254549b7d189",
+    "cases": [
+      {
+        "name": "qualifyingShoppingOfferUpdatesSupportedIndependentBestsAfterEventlessPickup",
+        "failed": true,
+        "assertion": "java.lang.AssertionError: expected:<1470> but was:<940>"
+      },
+      {
+        "name": "observedAcceptFollowedByEventlessExplicitPickupIsLearned",
+        "failed": true,
+        "assertion": "java.lang.AssertionError: expected:<1675> but was:<0>"
+      },
+      {
+        "name": "automaticRequestObservedWithoutAnotherEventConfirmsButNeverTeaches",
+        "failed": true,
+        "assertion": "java.lang.AssertionError"
+      },
+      {
+        "name": "deliveryWithoutAnotherEventAfterPartialFactsIsObservedAndLearned",
+        "failed": true,
+        "assertion": "java.lang.AssertionError: expected:<1675> but was:<0>"
+      },
+      {
+        "name": "itemOnlyPartialFrameStillExpiresWithinTheExistingMinute",
+        "failed": true,
+        "assertion": "java.lang.AssertionError: Not learned: in:\n2026-10-04 10:21:05 | screen | KEEP | pay $16.75 | needed $15.02 | score 123% | 3.9 mi \u00b7 30 min \u00b7 3 stops | meets enabled rules | No action: passes your rules | outcome PASSED\n    read: [$16.75, incl. tips, 3 stops (3.9 mi) \u2022 30 min]\n"
+      }
+    ]
+  },
+  "patch_sha256": "c9b39719a4b2e0b4e17a5a90d22789993c42135a981aaaf5e57b811aa3d8b0b9"
+}

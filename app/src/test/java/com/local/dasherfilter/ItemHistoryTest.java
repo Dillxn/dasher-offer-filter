@@ -128,7 +128,7 @@ public final class ItemHistoryTest {
         assertTrue(DecisionLog.report(app, 1).contains("12 items"));
     }
 
-    @Test public void reportsCarryNumericItemsAndCurrentFixedRuleWithoutLearningThem() throws Exception {
+    @Test public void reportsCarryNumericItemsAndAnEmptyBestWithoutLearningFromHistory() throws Exception {
         FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0).withPerItem(150);
         FilterStore.save(app, rules);
         DecisionLog.Entry original = entry(1000, offer(12, true), 137);
@@ -141,7 +141,9 @@ public final class ItemHistoryTest {
         assertTrue(json.getJSONObject("entry").getBoolean("itemCountApplicable"));
         assertEquals(137, json.getJSONObject("entry").getInt("score"));
         assertEquals(12, json.getJSONArray("recent").getJSONObject(0).getInt("items"));
-        assertFalse(json.getJSONObject("rules").getJSONObject("bestAccepted").has("items"));
+        assertEquals(0, json.getJSONObject("rules").getJSONObject("bestAccepted").getInt("items"));
+        assertEquals(0, json.getJSONObject("rules").getJSONObject("bestAccepted").getInt("itemPay"));
+        assertFalse(FilterStore.load(app).best.hasPerItem());
         assertFalse(json.getJSONObject("rules").getJSONObject("declinedByHand").has("items"));
         assertTrue(report.body.contains("12 items"));
         String shared = DiagnosticLog.fullReport(app);

@@ -264,6 +264,14 @@ final class OfferRule {
                     reason = "must match best accepted " + best.perStopLabel();
                 }
             }
+            if (best.hasPerItem() && offer.itemCountApplicable) {
+                if (offer.items == null) {
+                    missing = true;
+                } else if (scaledCost(floors.acceptedCents[AreaScore.ITEM].longValue(), scale) > required) {
+                    required = scaledCost(floors.acceptedCents[AreaScore.ITEM].longValue(), scale);
+                    reason = "must match best accepted " + best.perItemLabel();
+                }
+            }
             // What offers declined by hand taught: each is a floor of its own, beaten by at least a cent.
             DeclinedFloor declined = settings.declined;
             if (declined.payCents > 0 && scaledCost(floors.declinedCents[AreaScore.PAY].longValue(), scale) > required) {

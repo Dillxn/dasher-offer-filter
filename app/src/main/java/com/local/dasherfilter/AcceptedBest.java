@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The best pay per minute, per mile and per stop among standalone offers the user accepted. Each is kept as the
- * accepted pay and the amount it covered, so "at least as good as your best" stays exact: an offer needs
+ * The best pay per minute, per mile, per stop and per observed total item among standalone offers the user accepted.
+ * Each is kept as the accepted pay and the amount it covered, so "at least as good as your best" stays exact: an offer needs
  * {@code bestPay × itsAmount ÷ bestAmount}, rounded up to the cent.
  */
 final class AcceptedBest {
@@ -34,14 +34,23 @@ final class AcceptedBest {
     final double miles;
     final int stopPay;
     final int stops;
+    final int itemPay;
+    final int items;
 
     AcceptedBest(int minutePay, int minutes, int milePay, double miles, int stopPay, int stops) {
+        this(minutePay, minutes, milePay, miles, stopPay, stops, 0, 0);
+    }
+
+    AcceptedBest(int minutePay, int minutes, int milePay, double miles, int stopPay, int stops,
+                 int itemPay, int items) {
         this.minutePay = minutePay;
         this.minutes = minutes;
         this.milePay = milePay;
         this.miles = miles;
         this.stopPay = stopPay;
         this.stops = stops;
+        this.itemPay = itemPay;
+        this.items = items;
     }
 
     boolean hasPerMinute() {
@@ -56,8 +65,12 @@ final class AcceptedBest {
         return stopPay > 0 && stops > 0;
     }
 
+    boolean hasPerItem() {
+        return itemPay > 0 && items > 0;
+    }
+
     boolean isEmpty() {
-        return !hasPerMinute() && !hasPerMile() && !hasPerStop();
+        return !hasPerMinute() && !hasPerMile() && !hasPerStop() && !hasPerItem();
     }
 
     /**
@@ -73,6 +86,8 @@ final class AcceptedBest {
         double newMiles = miles;
         int newStopPay = stopPay;
         int newStops = stops;
+        int newItemPay = itemPay;
+        int newItems = items;
         // a/b beats c/d exactly when a×d > c×b; no division, so no rounding decides a tie.
         if (accepted.minutes != null && accepted.minutes >= RATE_SETTING_MINUTES
                 && (!hasPerMinute() || (long) pay * minutes > (long) minutePay * accepted.minutes)) {
@@ -90,7 +105,14 @@ final class AcceptedBest {
             newStopPay = pay;
             newStops = accepted.stops;
         }
-        return new AcceptedBest(newMinutePay, newMinutes, newMilePay, newMiles, newStopPay, newStops);
+        // A total item count is independent of route length. Unknown/inapplicable counts retain the old best.
+        if (accepted.itemCountApplicable && accepted.items != null
+                && (!hasPerItem() || (long) pay * items > (long) itemPay * accepted.items)) {
+            newItemPay = pay;
+            newItems = accepted.items;
+        }
+        return new AcceptedBest(newMinutePay, newMinutes, newMilePay, newMiles, newStopPay, newStops,
+                newItemPay, newItems);
     }
 
     static boolean looksMisread(OfferSnapshot offer) {
@@ -119,6 +141,11 @@ final class AcceptedBest {
         return ceilDivide((long) stopPay * offerStops, stops);
     }
 
+    /** Pay matching the exact accepted total-item rate, rounded up like the existing accepted rates. */
+    long forItems(int offerItems) {
+        return ceilDivide((long) itemPay * offerItems, items);
+    }
+
     /** "$0.59/min" */
     String perMinuteLabel() {
         return perMinute() + "/min";
@@ -134,6 +161,10 @@ final class AcceptedBest {
         return perStop() + "/stop";
     }
 
+    String perItemLabel() {
+        return perItem() + "/item";
+    }
+
     /** "$0.59": the best pay per minute without its unit, rounded as in the labels. */
     String perMinute() {
         return rate(minutePay, BigDecimal.valueOf(minutes));
@@ -145,6 +176,10 @@ final class AcceptedBest {
 
     String perStop() {
         return rate(stopPay, BigDecimal.valueOf(stops));
+    }
+
+    String perItem() {
+        return rate(itemPay, BigDecimal.valueOf(items));
     }
 
     /** The best pay per minute in cents, for drawing only; decisions use the exact pay and amount. */
@@ -160,12 +195,17 @@ final class AcceptedBest {
         return (double) stopPay / stops;
     }
 
-    /** "$0.59/min, $2.37/mi, $7.10/stop", or empty when nothing has been accepted yet. */
+    double perItemCents() {
+        return (double) itemPay / items;
+    }
+
+    /** "$0.59/min, $2.37/mi, $7.10/stop, $1.42/item", or empty when nothing has been accepted yet. */
     String summary() {
         List<String> rates = new ArrayList<>();
         if (hasPerMinute()) rates.add(perMinuteLabel());
         if (hasPerMile()) rates.add(perMileLabel());
         if (hasPerStop()) rates.add(perStopLabel());
+        if (hasPerItem()) rates.add(perItemLabel());
         return String.join(", ", rates);
     }
 
