@@ -1,0 +1,53 @@
+{
+  "bytes": 1209595,
+  "result": "PASS",
+  "sha256": "46a82459574db34f5d0bd3a603064d833894f26438a74148db517cd5c056b279",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "sourceCommit": "67fcdb9da3e300655a6c48f2d54079494938f787",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 69,
+  "versionName": "0.4.63",
+  "releaseCommit": "27025c1b149892f4feff76b6f83529b9ec3ae1b9",
+  "sourceTree": "b4e4c69c8e5275af78f6a1e9ef224244581b1cb9",
+  "feed": {
+    "packageName": "com.local.dasherfilter",
+    "versionCode": 69,
+    "versionName": "0.4.63",
+    "apkUrl": "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main",
+    "sha256": "46a82459574db34f5d0bd3a603064d833894f26438a74148db517cd5c056b279",
+    "size": 1209595,
+    "encoding": "raw",
+    "sourceCommit": "67fcdb9da3e300655a6c48f2d54079494938f787"
+  },
+  "githubFiles": [
+    {
+      "path": "release/OfferFilter.apk",
+      "sha": "3d8cb8a652e7821e4f157a0dda05b5338cd273ae",
+      "size": 1209595
+    },
+    {
+      "path": "release/latest.json",
+      "sha": "377fbef064fbf096d7d063430c33a847cccfd365",
+      "size": 389
+    }
+  ],
+  "deploy": {
+    "commit": {
+      "createdAt": "2026-10-04T00:07:47Z",
+      "id": "27025c1b149892f4feff76b6f83529b9ec3ae1b9",
+      "message": "Publish locally signed Offer Filter 0.4.63"
+    },
+    "createdAt": "2026-10-04T00:08:36.728948Z",
+    "finishedAt": "2026-10-04T00:09:07.576369Z",
+    "id": "dep-db0pi15g1s2s73f4v8jg",
+    "startedAt": "2026-10-04T00:08:36.727066Z",
+    "status": "live",
+    "trigger": "api",
+    "updatedAt": "2026-10-04T00:09:07.57653Z"
+  },
+  "verifiedAt": "2026-10-04T00:11:49.877Z",
+  "diagnosticsAuditAt": "2026-10-04T00:06:05.982Z",
+  "siteSource": "ceecaddee9f5de2e9fc5788ac685146eb6f9ce0d",
+  "siteCheckpoint": "0578626721dbd8e71055d506fa1befd756b407da",
+  "physicalHandsetVerified": false
+}

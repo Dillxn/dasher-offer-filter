@@ -1,0 +1,66 @@
+{
+  "completedAt": "2026-10-04T00:04:28.098411+00:00",
+  "baseCommit": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+  "sourceTree": "b4e4c69c8e5275af78f6a1e9ef224244581b1cb9",
+  "command": "./gradlew -q testDebugUnitTest lintDebug -PallSdks -Pforks=2 --max-workers=2 -Dorg.gradle.jvmargs='-Xmx1536m -XX:+UseParallelGC -Dfile.encoding=UTF-8'",
+  "exitCode": 0,
+  "testSuites": 108,
+  "tests": {
+    "tests": 1988,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "simulatedSdks": [
+    26,
+    35
+  ],
+  "lint": {
+    "Error": 0,
+    "Warning": 32,
+    "Fatal": 0,
+    "Information": 0
+  },
+  "trackedInputs": 323,
+  "inputsAggregate": "9dd7b752a9101d9e848a3edc8e66610ad7fa11c07e489ced7a788d58f56ecdc7",
+  "changedInputs": [],
+  "initialCombinedAttempt": {
+    "result": "validation/0.4.63-initial-combined-result.json",
+    "inputs": "validation/0.4.63-initial-combined-inputs.json",
+    "failures": 12,
+    "correction": "Updated contradictory old diagnostic end fixture; retained privacy assertions and added explicit mixed-end no-report/route/hold regression. Production guard not weakened."
+  },
+  "emblemSha256": "9af7a75273865629d33a690622040b11ec9d1078f9bd9d2dcec7c540b5ab1a23",
+  "visualReview": {
+    "type": "native Android API35 simulation",
+    "widthDp": 360,
+    "themes": [
+      "day",
+      "night"
+    ],
+    "maximumSignatureWidthDp": 220,
+    "maximumSignatureHeightDp": 190,
+    "lightInk": "#776550",
+    "lightBackground": "#F1F0EC",
+    "lightContrast": 4.8955,
+    "nightGold": "preserved .62 asset color",
+    "whiteTint": false,
+    "backingAdded": false,
+    "passageTranscription": "Jesus Loves You. We love each other because He loves us first. 1 John 4:19.",
+    "images": [
+      "/tmp/offer-063-settings-previews/day.png",
+      "/tmp/offer-063-settings-previews/night.png"
+    ],
+    "scope": "Settings footer only; complete split layout and physical device not claimed"
+  },
+  "signed": true,
+  "published": true,
+  "sourceCommit": "67fcdb9da3e300655a6c48f2d54079494938f787",
+  "releaseCommit": "27025c1b149892f4feff76b6f83529b9ec3ae1b9",
+  "apk": {
+    "bytes": 1209595,
+    "sha256": "46a82459574db34f5d0bd3a603064d833894f26438a74148db517cd5c056b279",
+    "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703"
+  },
+  "physicalHandsetVerified": false
+}

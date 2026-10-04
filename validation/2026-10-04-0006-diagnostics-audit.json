@@ -1,0 +1,40 @@
+{
+  "auditCompletedAt": "2026-10-04T00:06:05.982Z",
+  "queriesSince": "2026-10-03T23:19:24Z",
+  "priorAuditAt": "2026-10-03T22:17:30Z",
+  "priorGapAlsoChecked": true,
+  "newIssueIds": [],
+  "newGmailMessageIds": [],
+  "newCopiesToDeduplicate": [],
+  "lastInspectedIssue": 44,
+  "previousDuplicatePairs": [
+    [
+      34,
+      35
+    ],
+    [
+      36,
+      37
+    ],
+    [
+      40,
+      41
+    ]
+  ],
+  "repeatedHistory": [
+    42,
+    43,
+    44
+  ],
+  "unresolved": [
+    "38: missing offer/Peek lacks fresh authority evidence",
+    "39: lacks time-aligned authority evidence",
+    "October 3 direct report: Dasher visually waiting while GPS speech continues; private navigation state not observed",
+    "October 3 adaptive screenshot: manual acceptance/learning cause not established from still image"
+  ],
+  "sourceCommit": "67fcdb9da3e300655a6c48f2d54079494938f787",
+  "releaseCommit": "27025c1b149892f4feff76b6f83529b9ec3ae1b9",
+  "noRawDiagnosticsStored": true,
+  "noMessagesSent": true,
+  "noReportsDeleted": true
+}
