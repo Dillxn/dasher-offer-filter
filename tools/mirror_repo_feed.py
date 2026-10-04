@@ -115,17 +115,47 @@ def main(out=ROOT / 'public', live=None, check_live=True):
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{name} {html.escape(version)}</title>
 <body style="font-family:sans-serif;max-width:38em;margin:2em auto;padding:0 1em;line-height:1.5">
 <h1>{name} {html.escape(version)}</h1>
-<p>Not made by, endorsed by or affiliated with DoorDash. Using it may break DoorDash's terms; use at your own risk.</p>
+<p><strong>Experimental beta.</strong> Installation, updates, touch, audio and split-screen behavior still need
+independent real-phone checks. Not made by, endorsed by or affiliated with DoorDash.</p>
+<p>Automatic declines may dramatically lower your acceptance rate. Using this app may break DoorDash's terms;
+DoorDash could limit or deactivate your account. It can misread, accept or decline an offer you did not want it to.
+Use at your own risk, with no warranty. Don't handle your phone while driving.</p>
+<p>No GitHub account is needed to download, use or receive updates from this server. Connecting GitHub is optional
+and requires access to the private app repository; skip it for normal setup.</p>
 <p><a href="/OfferFilter.apk" download="OfferFilter-{html.escape(version)}.apk">Download {name} {html.escape(version)}</a></p>
+<h2>First install</h2>
 <ol>
 <li>Open the downloaded file. If Android asks, allow your browser to install unknown apps. Play Protect may warn about
-an app from outside the Play Store.</li>
-<li>Open {name} and read the notice; tap <b>I understand</b> to start.</li>
-<li>Turn on screen reading and notification access from the rows on its main page. On Android 13 and later, if a
-switch is greyed out: open App info for {name}, tap the ⋮ menu, choose <b>Allow restricted settings</b>, then try
-again.</li>
+an app from outside the Play Store. Keep Play Protect enabled. If Android blocks installation or you are unsure
+about a warning, stop and review it; this page is not an instruction to bypass a security warning.</li>
+<li>Open {name} and read the notice and linked terms. Tap <b>I understand and accept</b> only if you agree;
+<b>Not now</b> closes the app without accepting.</li>
+<li>The homepage has separate <b>Fix</b> rows for three Android accesses. Enable the ones needed for the features you use:
+<ul>
+<li><b>Screen reading is off</b>: Accessibility access for on-screen filtering.</li>
+<li><b>Background offers are off</b>: notification access for background offers and Peek.</li>
+<li><b>Alerts are blocked</b>: {name}'s notification permission for its passing/review alerts and notices.</li>
+</ul>
+On Android 13 and later, if Android blocks a switch, open App info for {name}, tap the ⋮ menu and choose
+<b>Allow restricted settings</b> only if you understand and accept that access, then return to that access setting.
+Menus vary by phone.</li>
+<li>Drag a knob on the constellation to set a minimum, then tap the mascot to resume filtering. The mascot also pauses
+it. <b>Peek is on by default</b> and can briefly open Dasher for background offers; turn it off in Settings if unwanted.
+<b>Auto-accept is off by default</b> and needs its own explicit confirmation. Optional location is only for the offer map;
+it is not needed for filtering.</li>
 </ol>
-<p>Already installed? Install over it; don't uninstall. It also updates itself.</p>
+<h2>Updates</h2>
+<p>Already installed? Install over the existing cloud-signed 0.4.x app; don't uninstall for a normal update.
+The retired 0.3.1 signing chain is different.</p>
+<p>In {name}'s Settings, tap <b>Fix</b> beside <b>Updates can't install</b> and enable <b>Allow from this source</b>
+if you want in-app updates. This is separate from your browser's first-install permission. Tap <b>Updates</b> to check
+now. Android may request installation confirmation; review its prompt. Automatic installation waits for an observed
+dash end, while a manual check can update mid-dash when Dasher is not on screen.</p>
+<p><a href="https://dillxn.github.io/offer-filter-site/#help">Help and setup</a> ·
+<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/TERMS.md">Terms of use</a> ·
+<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/PRIVACY.md">Privacy</a> ·
+<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/LICENSE">MIT License</a>.
+The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>
 <p><a href="/verification.json">Verification</a> · <a href="/signing-receipt.txt">Signing receipt</a></p>
 </body></html>
 ''', encoding='utf-8')
