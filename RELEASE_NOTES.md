@@ -1,3 +1,18 @@
+## 0.4.70 — accurate notices and public beta setup (candidate)
+
+- Includes the unshipped .69 pickup-heading masking and queued-diagnostics remasking repair below.
+- Corrects privacy disclosures: diagnostic logs, decision history and queued reports have different retention; Clear history does not erase queued or already-sent reports; report notes are not masked and deterministic masking can miss details. Discloses user-opened map transfers and developer/AI report review without guaranteeing a fix.
+- Raises the first-run notice to Consent 13 for these substantive factual corrections. Filtering, learning, action guards, data flows and the original signing identity are unchanged. Terms/Privacy remain drafts awaiting review; the private contact and sent-report retention practice are not invented.
+- Updates public setup/help wording without requiring GitHub for downloads or automatic updates. The already-published download-page improvement does not change the live .68 APK.
+- Local validation, signing, publication and physical-phone results remain separate. This candidate is not a shipped release.
+
+## 0.4.69 — mask pickup-verification recipients (candidate)
+
+- Masks a recipient name in same-label and split-label `Verify items for …` pickup-verification headings before the text is retained or shared.
+- Reapplies the current mask to the issue body and every comment of an older queued diagnostics report immediately before sending, so a report queued by an earlier release receives the repaired protection too.
+- Filtering, classification, learning, consent, action authority and report receipts are unchanged. Existing remote issues are not edited or deleted.
+- Local validation, original-signer publication and physical-phone evidence are recorded separately; this entry alone is not a release claim.
+
 ## 0.4.67 — readable stacked offers and a higher mascot
 
 - A readable stacked offer beside one bare bonus amount can now be declined when even its highest supported payout fails the fixed rules. An explicit order count and matching dropoff/route breakdown are required; the ceiling allows the bonus on every order. The reported $13 plus $1 two-order shape is checked at $15, while its exact pay remains unknown.

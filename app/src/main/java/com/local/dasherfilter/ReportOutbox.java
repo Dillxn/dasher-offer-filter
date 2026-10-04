@@ -599,7 +599,8 @@ final class ReportOutbox {
             item.put(KEY_TOKEN, receipt);
         }
         String marker = diagnostics ? dashMark(receipt) : "<!-- " + PROBLEM_MARK + receipt + " -->";
-        String body = item.getString("body");
+        // Reapply current masking to diagnostics queued by an older app before this first send.
+        String body = diagnostics ? PersonalText.maskLine(item.getString("body")) : item.getString("body");
         if (!body.contains(marker)) { body += "\n" + marker; item.put("body", body); }
         java.util.List<String> labels = new java.util.ArrayList<>();
         org.json.JSONArray named = item.optJSONArray("labels");
@@ -654,7 +655,7 @@ final class ReportOutbox {
                 rewrite(file, item);
                 try {
                     beforeAttempt(context, true, stopped, file, item, KEY_COMMENT_POSTED);
-                    GitHubIssues.comment(token, issue, comments.getString(0) + "\n" + marker);
+                    GitHubIssues.comment(token, issue, PersonalText.maskLine(comments.getString(0)) + "\n" + marker);
                 } catch (GitHubIssues.Rejected rejected) {
                     clearRejectedAttempt(file, item, KEY_COMMENT_POSTED, rejected);
                     throw rejected;

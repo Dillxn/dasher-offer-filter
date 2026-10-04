@@ -189,13 +189,13 @@ final class PersonalText {
     private static final String NAVIGATION_TAG = " [navigation] ";
 
     /** "Deliver to Sam P", "Delivery for Sam", "Drop off for Noel G.", "Customer: Sam P". */
-    private static final String CUSTOMER_HEADING = "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for)"
+    private static final String CUSTOMER_HEADING = "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|verify items for)"
             + ":?|(?i:customer(?: name)?):";
     private static final Pattern CUSTOMER_NAME = Pattern.compile(
-            "\\b(" + CUSTOMER_HEADING + ")( +)(" + NAME_WORDS + ")");
+            "\\b(" + CUSTOMER_HEADING + ")( +|, +)(" + NAME_WORDS + ")");
     /** A heading that is a label of its own, with the name as the next label. */
     private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(
-            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|customer|customer name) *:?");
+            "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|verify items for|customer|customer name) *:?");
     /** "Tiaunna's order is ready". */
     private static final Pattern POSSESSIVE = Pattern.compile(
             "\\b(\\p{Lu}[\\p{L}-]*)(['’]s)( +(?i:order|orders|delivery|food|items?|groceries|package|drop[- ]?off))\\b");
