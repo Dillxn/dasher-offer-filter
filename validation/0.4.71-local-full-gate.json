@@ -1,0 +1,46 @@
+{
+  "startedAt": "2026-10-04T09:56:52.872618+00:00",
+  "localCommit": "6d3f1c7e1b8e4387f7310f31d8927703f0183361",
+  "sourceTree": "48941456cc3d35f5c40ad177fa51a06fbbf80796",
+  "command": [
+    "/tmp/offer-android-env/gradle-8.13/bin/gradle",
+    "--offline",
+    "--max-workers=2",
+    "-q",
+    "-PallSdks",
+    "-Pforks=2",
+    "testDebugUnitTest",
+    "lintDebug",
+    "assembleRelease"
+  ],
+  "simulatedSdk": [
+    26,
+    35
+  ],
+  "signingAttempted": false,
+  "published": false,
+  "exitCode": 0,
+  "finishedAt": "2026-10-04T09:58:48.452925+00:00",
+  "inputs": {
+    "count": 420,
+    "changed": [],
+    "manifestSha256": "336015c5218b5bc3f990962b0aad3a9afaf23e6d09690cd7673d7d865d04cd61"
+  },
+  "tests": {
+    "suites": 121,
+    "tests": 2282,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "Warning": 37
+  },
+  "unsignedBuild": {
+    "path": "app/build/outputs/apk/release/app-release-unsigned.apk",
+    "bytes": 1205284,
+    "sha256": "6e6800f8172a6ee97aeb8945c97cb68fa5dbcb53a0498e00094d5fef03dfe358"
+  },
+  "remoteSourceCommit": "dfc444fca1ffe8e1db217cc2abfa293531ffa9c2",
+  "remoteSourceTreeMatchesLocal": true
+}

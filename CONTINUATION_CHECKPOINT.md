@@ -1,3 +1,10 @@
+## October 4 — .71 Peek candidate, signing access blocked
+
+- Source `dfc444fca1ffe8e1db217cc2abfa293531ffa9c2` / tree `48941456cc3d35f5c40ad177fa51a06fbbf80796` on `codex/peek-loading-0-4-71` incorporates the pending .70 privacy candidate and fixes reproduced premature Peek returns across loading, item-only and unavailable reads, plus returns after the original20-second deadline. Exact local source `6d3f1c7e1b8e4387f7310f31d8927703f0183361`. See `VALIDATION_PEEK_0.4.71.md`.
+- Final local gate: 2282 tests/121 suites, API26/35, no failures/errors/skips; lint0errors/37warnings; 420 unchanged tracked inputs. Unsigned release build succeeded. First disk-exhausted attempt retained separately; unchanged source passed after stale test-temp cleanup.
+- **UNSIGNED/UNPUBLISHED.** Live/inherited feed remains .68/code74. Original-key Environment-page access received an automatic approval rejection; retrieved earlier approval was not accepted as current-transcript authorization. No key accessed or workaround attempted. Ask explicit permission to retrieve the existing Render signer privately, sign locally, remove temporary copies and finish the existing update route. This supersedes the09:33 browser-timeout-only status below.
+- #65's05:38 notification lacks retained screen facts; exact phone incident unproved. Screenshot's05:22 $10.55 pay miss remains unproved; no speculative pay parser relaxation. Until installation, user can disable Peek at background offers. No physical-phone success or remote report modification claimed.
+
 ## October 4, 09:33 UTC — signing authorization resolved; browser transport blocked
 
 - The user explicitly answered **yes** to retrieving the existing original signing key from Render, using it only for local signing, and removing the temporary copy afterward. This supersedes the 09:18 authorization stop below. Do not ask again for this same scoped operation or treat the earlier rejection as current. No alternate credential route, new signer, remote Android build or verification bypass is authorized.
