@@ -54,7 +54,7 @@ final class AreaScore {
         private boolean adaptive;
 
         /** A resolved cost before global scaling. No floor and an unread floor both project to zero here. */
-        private BigDecimal effectiveCents(int axis) {
+        BigDecimal effectiveCents(int axis) {
             BigDecimal result = BigDecimal.ZERO;
             if (fixedCents[axis] != null) result = result.max(fixedCents[axis]);
             if (adaptive && acceptedCents[axis] != null) result = result.max(acceptedCents[axis]);

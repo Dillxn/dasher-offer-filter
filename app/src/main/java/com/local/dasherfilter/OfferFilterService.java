@@ -850,6 +850,17 @@ public final class OfferFilterService extends AccessibilityService {
         return active != null && at != 0 && screenOnTime(SystemClock.uptimeMillis()) - at < BESIDE_MS;
     }
 
+    /** Fresh metadata only, never the twenty-second UI grace: avoid relaunching an already paired Dasher task. */
+    static boolean dasherBesideNow() {
+        OfferFilterService service = active;
+        if (service == null || service.stopped || !Consent.accepted(service)) return false;
+        try {
+            return service.knownDasherVisible(-1, true);
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     /** Uptime less the time the screen was off: what a sighting of Dasher beside ages by. */
     static long screenOnTime(long uptime) {
         long offSince = screenOffSince;
@@ -2596,19 +2607,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** An app's launcher activity, as its launch intent names it; null when it has none. */
     private ComponentName launcher(String pkg) {
-        try {
-            Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg);
-            List<ResolveInfo> choices = getPackageManager().queryIntentActivities(launch, 0);
-            if (choices != null) for (ResolveInfo choice : choices) {
-                ActivityInfo info = choice.activityInfo;
-                if (info != null && info.enabled && info.exported && pkg.equals(info.packageName)) {
-                    return new ComponentName(info.packageName, info.name);
-                }
-            }
-            return null;
-        } catch (RuntimeException unavailable) {
-            return null;
-        }
+        Intent launch = DasherSplit.launcher(this, pkg);
+        return launch == null ? null : launch.getComponent();
     }
 
     /**
@@ -4045,7 +4045,13 @@ public final class OfferFilterService extends AccessibilityService {
         }
         // The wait for offers, the dash's end or its home, with no sign of a delivery: a stored route is over (it
         // would otherwise hold the guide, the tab, update installs and what an acceptance needs, for hours).
-        if (AcceptedOfferTracker.showsNoRoute(scan.text)) {
+        boolean noRoute = AcceptedOfferTracker.showsNoRoute(scan.text);
+        if (noRoute) {
+            if (ActiveRouteStore.load(this) != null) {
+                String end = OfferEvidence.isDashOver(scan.text) ? "dash_over"
+                        : OfferEvidence.isPreDashHome(scan.text) ? "dash_home" : "waiting";
+                DiagnosticLog.log(this, "route", "stored route cleared: " + end + "; no delivery marker");
+            }
             ActiveRouteStore.clear(this);
             // Back to the wait for offers (or the dash's end): the decline is over, and the same offer again is new.
             episode.end();
@@ -4080,22 +4086,23 @@ public final class OfferFilterService extends AccessibilityService {
             captureOtherScreen(scan, now, OfferEvidence.isPaused(scan.text) ? "dash paused" : "idle");
         }
         // Diagnostics after a dash (the user's opt-in) are filed when Dasher shows it ended; a cheap check when off.
-        DashDiagnostics.screen(this, scan.text);
-        if (OfferEvidence.isDashOver(scan.text)) {
+        // A stale wait/home label drawn with pickup/delivery evidence is contradictory, not route completion.
+        // Use the same no-route guard for lifecycle effects as for clearing the stored route above.
+        if (noRoute) DashDiagnostics.screen(this, scan.text);
+        if (noRoute && OfferEvidence.isDashOver(scan.text)) {
             onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
-        } else if (OfferEvidence.isPaused(scan.text)) {
+        } else if (noRoute && OfferEvidence.isPaused(scan.text)) {
             Dashing.paused(this);
         } else if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
             Dashing.seen(this);
-        } else if (OfferEvidence.isPreDashHome(scan.text)) {
+        } else if (noRoute && OfferEvidence.isPreDashHome(scan.text)) {
             // Dasher's home before a dash (its "Dash" button): a decline held until the dash goes on was about
             // stopping. Whether a dash is on is left to the screens that say so.
             onMain(() -> ManualDeclines.dashEnded(this));
         }
-        if (OfferEvidence.isIdle(scan.text)) {
+        if (noRoute && OfferEvidence.isIdle(scan.text)) {
             boolean pending = declineState.hasPendingConfirmation(now);
-            ActiveRouteStore.clear(this);
             recoverLateCompletion(now, "wait for offers");
             endAuthority("idle", true);
             episode.end();
@@ -4188,9 +4195,13 @@ public final class OfferFilterService extends AccessibilityService {
             taught = "";
             DiagnosticLog.log(this, "accept", "Accepted an add-on: the standalone minimums do not learn from it");
         } else if (accepted.acceptedOffer.payCents != null) {
-            boolean learned = FilterStore.recordAccepted(this, accepted.acceptedOffer);
-            kind = learned ? DecisionLog.StepKind.ACCEPTED_LEARNED : DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
-            taught = learned ? "" : "; auto-decline or the adaptive minimum was off";
+            FilterStore.AcceptedLesson lesson = FilterStore.recordAcceptedLesson(this, accepted.acceptedOffer);
+            boolean learned = lesson == FilterStore.AcceptedLesson.RAISED;
+            kind = learned ? DecisionLog.StepKind.ACCEPTED_LEARNED
+                    : lesson == FilterStore.AcceptedLesson.RECORDED ? DecisionLog.StepKind.ACCEPTED_BEST_SAVED
+                    : lesson == FilterStore.AcceptedLesson.NOTHING_NEW
+                            ? DecisionLog.StepKind.ACCEPTED_MINIMUMS_UNCHANGED : DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
+            taught = "; " + lesson.reason;
             if (!accepted.tapSeen) {
                 DiagnosticLog.log(this, "accept", "Accepted without a seen tap: " + accepted.acceptedOffer.summary()
                         + "; " + how);
@@ -4198,7 +4209,7 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "accept", learned
                     ? "Learned from accepted " + accepted.acceptedOffer.summary()
                     : "Accepted " + accepted.acceptedOffer.summary()
-                            + " but not learned: auto-decline or Adaptive minimum was off");
+                            + (lesson.considered() ? "; " : " but not learned: ") + lesson.reason);
         } else {
             kind = DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
             taught = "; its pay was not read";
@@ -4211,7 +4222,9 @@ public final class OfferFilterService extends AccessibilityService {
                 ? "Add-on route updated; standalone baseline unchanged."
                 : kind == DecisionLog.StepKind.ACCEPTED_LEARNED
                         ? "Standalone minimums learned from this offer."
-                        : "Standalone minimums unchanged."));
+                        : kind == DecisionLog.StepKind.ACCEPTED_BEST_SAVED
+                                ? "New accepted best saved; this offer's requirement stays the same."
+                                : "Standalone minimums unchanged."));
     }
 
     /** A readable offer with distinct Accept and Decline targets. Only a known failure is declined, at once. */
@@ -4868,6 +4881,10 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Window metadata only: never asks an app's UI thread for a root, including on the notification main thread. */
     private boolean knownDasherVisible(int targetId) {
+        return knownDasherVisible(targetId, false);
+    }
+
+    private boolean knownDasherVisible(int targetId, boolean requireSplit) {
         if (!phoneReadable() || scannerFaulted) return false;
         android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
         if (power != null && !power.isInteractive()) return false;
@@ -4881,6 +4898,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (window.isActive() && window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) activeApp = window;
             if (window.isActive() && window.getType() == AccessibilityWindowInfo.TYPE_SYSTEM) return false;
         }
+        if (requireSplit && !split) return false;
         for (AccessibilityWindowInfo window : windows) {
             if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
             boolean known = dasherWindowIds.contains(window.getId())

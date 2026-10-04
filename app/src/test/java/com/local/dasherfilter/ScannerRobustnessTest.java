@@ -185,6 +185,38 @@ public final class ScannerRobustnessTest {
         assertFalse(DiagnosticLog.read(app).contains("PRIVATE_ACCOUNT_SENTINEL"));
     }
 
+    @Test public void mixedWaitingAndDeliveryDoesNotEraseTheRouteOrSayFindingOffers() {
+        OfferSnapshot route = new OfferSnapshot(2400, 5.0, 20, 2);
+        ActiveRouteStore.save(app, route);
+        Dashing.seen(app);
+        AccessibilityNodeInfo mixed = node("Looking for offers", false);
+        Shadows.shadowOf(mixed).addChild(node("Pick up by 7:52 PM", false));
+        Shadows.shadowOf(mixed).addChild(node("Arrived at store", false));
+        show(mixed);
+        assertNotNull("a contradictory waiting label must not erase known delivery context", ActiveRouteStore.load(app));
+        assertTrue(Dashing.awaitingEnd(app));
+        assertFalse(FilterStore.lastStatus(app).contains("Dasher is finding offers"));
+        assertFalse(DiagnosticLog.read(app).contains("stored route cleared"));
+        pass(1_100);
+        show(node("Looking for offers", false));
+        assertNull("a later unambiguous wait still completes the route", ActiveRouteStore.load(app));
+        assertTrue(DiagnosticLog.read(app).contains("stored route cleared: waiting; no delivery marker"));
+    }
+
+    @Test public void mixedDashHomeAndDeliveryDoesNotReleaseTheAutomaticUpdateHold() {
+        ActiveRouteStore.save(app, new OfferSnapshot(2400, 5.0, 20, 2));
+        Dashing.seen(app);
+        AccessibilityNodeInfo mixed = node("Dash now", false);
+        Shadows.shadowOf(mixed).addChild(node("Arrived at store", false));
+        show(mixed);
+        assertNotNull(ActiveRouteStore.load(app));
+        assertTrue("conflicting route evidence is not a completed dash", Dashing.awaitingEnd(app));
+        pass(1_100);
+        show(node("Dash now", false));
+        assertNull(ActiveRouteStore.load(app));
+        assertFalse(Dashing.awaitingEnd(app));
+    }
+
     @Test public void pausedScreenIsCapturedTruthfullyAndDoesNotReleaseTheUpdateHold() {
         show(node("Finding offers", false));
         pass(1_100);

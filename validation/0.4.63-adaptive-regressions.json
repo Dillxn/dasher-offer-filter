@@ -1,0 +1,62 @@
+{
+  "base": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+  "patch_sha256": "cbf8f41da41f1ad09e1778cc50694d8e36c70fc7201f2006a6038662bf5c6103",
+  "suites": [
+    {
+      "name": "com.local.dasherfilter.ConstellationControlsTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.AccessibilityAdapterTest",
+      "tests": "60",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.MinimumsDetailsTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.AdaptiveMinimumLifecycleTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.AdaptiveShapeByAreaTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "com.local.dasherfilter.TicketLearningAndCorrectionTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "tests": 92,
+  "failures": 0,
+  "errors": 0,
+  "sdk": "API35 simulation, focused; rootwillfullgate API26/35",
+  "before_regression": {
+    "base": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+    "tests": 1,
+    "failures": 1,
+    "message": "Old history claimed adaptive minimum learned when all recorded bests were unchanged."
+  },
+  "preview": [
+    "/tmp/offer-adaptive-previews/DAY.png",
+    "/tmp/offer-adaptive-previews/NIGHT.png"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "bytes": 1205499,
+  "result": "PASS",
+  "sha256": "493289d2ee45a8b9c0c65f474ccca34a03602500717b58b4b172079f0d25d570",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "sourceCommit": "d152d6958374306b6d2140562a197755b8aab9d5",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 68,
+  "versionName": "0.4.62",
+  "releaseCommit": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+  "deployId": "dep-db0ou51srm7s738iejug",
+  "renderLiveAt": "2026-10-03T23:26:43.206366Z",
+  "physicalHandsetVerified": false
+}

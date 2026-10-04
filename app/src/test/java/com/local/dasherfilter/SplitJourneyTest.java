@@ -230,6 +230,35 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test
+    public void aPendingSplitDoesNotLaunchAgainAfterAndroidAlreadyPairedDasher() {
+        dasherInstalled();
+        DasherSplit.forget();
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            splitWithDasherBelow(service.get());
+            java.util.List<AccessibilityWindowInfo> windows = service.get().getWindows();
+            int id = 901;
+            for (AccessibilityWindowInfo window : windows) {
+                ((ShadowAccessibilityWindowInfo) Shadow.extract(window)).setId(id++);
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root != null) Shadows.shadowOf(root).setAccessibilityWindowInfo(window);
+            }
+            OfferFilterService.lookSoon(null);
+            idle();
+            assertTrue(OfferFilterService.dasherBeside());
+            enterSplit(activity);
+            assertNull("already paired: no redundant launcher/onNewIntent into Dasher", Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+            pass(DasherSplit.VERIFY_MS + 50);
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+            contains(DiagnosticLog.read(app), "Dasher already visible beside");
+        } finally {
+            service.destroy();
+        }
+    }
+
     // ---- P5: split without Dasher beside ----
 
     @Test

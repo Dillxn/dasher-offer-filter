@@ -1,0 +1,88 @@
+{
+  "completedAt": "2026-10-03T23:58:29.940009+00:00",
+  "baseCommit": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+  "sourceTree": "ec0dbe279a091483246d488438cfb66286547779",
+  "exitCode": 1,
+  "testSuites": 108,
+  "tests": {
+    "tests": 1986,
+    "failures": 12,
+    "errors": 0,
+    "skipped": 0
+  },
+  "simulatedSdks": [
+    26,
+    35
+  ],
+  "lint": {
+    "Error": 0,
+    "Warning": 32,
+    "Fatal": 0
+  },
+  "trackedInputs": 320,
+  "inputsAggregate": "71ca6c4ab20f171a0719dc3ad32f4b7cf82a26bc08a260aad7dd5b5088a63338",
+  "changedInputs": [],
+  "failures": [
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "disconnectingOrTurningReportsOffTurnsItOffAndDiscardsWhatWaits[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "aDashsEndFilesExactlyOneIssueInPartsThroughTheConnection[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "rateLimitedPartsWaitAndARetryNeverFilesTheDashTwice[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "turningReportsThroughTheConnectionOffTurnsItOffAndDiscardsWhatWaits[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "turningTheSwitchOffDiscardsUnsentDiagnosticsAndNothingIsSent[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "aLabelGitHubWillNotTakeDoesNotCostTheDashItsDiagnostics[26]",
+      "message": "java.lang.AssertionError: expected:<2> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "disconnectingOrTurningReportsOffTurnsItOffAndDiscardsWhatWaits",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "aDashsEndFilesExactlyOneIssueInPartsThroughTheConnection",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "rateLimitedPartsWaitAndARetryNeverFilesTheDashTwice",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "turningReportsThroughTheConnectionOffTurnsItOffAndDiscardsWhatWaits",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "turningTheSwitchOffDiscardsUnsentDiagnosticsAndNothingIsSent",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    {
+      "suite": "com.local.dasherfilter.DashDiagnosticsTest",
+      "test": "aLabelGitHubWillNotTakeDoesNotCostTheDashItsDiagnostics",
+      "message": "java.lang.AssertionError: expected:<2> but was:<0>"
+    }
+  ],
+  "published": false
+}

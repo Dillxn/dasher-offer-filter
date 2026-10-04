@@ -77,7 +77,9 @@ public class CardTapAdapterTest {
     /** Dasher installed on the simulated phone, with its launcher activity. */
     private void dasherInstalled() {
         org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
-        packages.addActivityIfNotPresent(DASHER_HOME);
+        android.content.pm.ActivityInfo entry = packages.addActivityIfNotPresent(DASHER_HOME);
+        entry.enabled = true;
+        entry.exported = true;
         IntentFilter launcher = new IntentFilter(Intent.ACTION_MAIN);
         launcher.addCategory(Intent.CATEGORY_LAUNCHER);
         packages.addIntentFilterForActivity(DASHER_HOME, launcher);
@@ -130,6 +132,30 @@ public class CardTapAdapterTest {
                 Class.forName(TAP_SCREEN).asSubclass(Activity.class), screen);
         Shadows.shadowOf(controller.get()).setInMultiWindowMode(splitScreen);
         return controller.setup();
+    }
+
+    @Test
+    public void splitAndCardLaunchUseTheActualLauncherWithoutAPackageBoundTaskIntent() throws Exception {
+        dasherInstalled();
+        ComponentName info = new ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Info");
+        org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
+        android.content.pm.ActivityInfo details = packages.addActivityIfNotPresent(info);
+        details.enabled = true;
+        details.exported = true;
+        IntentFilter information = new IntentFilter(Intent.ACTION_MAIN);
+        information.addCategory(Intent.CATEGORY_INFO);
+        packages.addIntentFilterForActivity(info, information);
+        Intent launch = DasherSplit.launcher(app);
+        assertEquals("the launcher entry, never the package-information front door", DASHER_HOME, launch.getComponent());
+        assertNull("a package-bound intent can create another start screen on older Android", launch.getPackage());
+        assertTrue(launch.hasCategory(Intent.CATEGORY_LAUNCHER));
+        assertEquals(0, launch.getFlags() & CLEARS_OR_RESETS);
+        Intent adjacent = DasherSplit.dasher(app);
+        assertEquals(DASHER_HOME, adjacent.getComponent());
+        assertNull(adjacent.getPackage());
+        ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), false);
+        assertEquals(DASHER_HOME, Shadows.shadowOf(app).getNextStartedActivity().getComponent());
+        tapped.destroy();
     }
 
     @Test

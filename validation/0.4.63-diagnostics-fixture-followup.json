@@ -1,0 +1,34 @@
+{
+  "finished_at_utc": "2026-10-04T00:00:36.819144+00:00",
+  "tests": 54,
+  "suites": [
+    {
+      "name": "com.local.dasherfilter.DashDiagnosticsTest",
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.local.dasherfilter.ScannerRobustnessTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "scope": "test fixture and new contradictory-end adapter regression only; no production change",
+  "fixture_rationale": "Old dashUntilItEnds helper combined Dash ended with Deliver to recipient, now intentionally ambiguous. The true end fixture drops that contradictory route prefix; original prior offer still supplies recipient masking coverage.",
+  "incremental_patch_sha256": "ddbddd6114aea89d9ca7ce6e6e4a321b1c4e7514802091dc99683daa7a2e66a5",
+  "counterfactual": {
+    "base_commit": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+    "sdk": 35,
+    "tests": 1,
+    "failures": [
+      {
+        "test": "mixedEndAndDeliveryDoesNotFileOrReleaseTheHoldBeforeAnUnambiguousEnd",
+        "assertion": "java.lang.AssertionError: delivery and end at once are not completion evidence expected:<0> but was:<1>"
+      }
+    ]
+  }
+}

@@ -82,6 +82,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             ViewGroup body = (ViewGroup) closing.getParent();
             assertEquals("the signature closes Settings", closing, body.getChildAt(body.getChildCount() - 1));
             assertTrue("the emblem fits the available body width", closing.getWidth() <= body.getWidth());
+            assertTrue("the emblem stays a small closing signature", closing.getWidth() <= new Ui(activity.get()).dp(220));
             assertTrue(closing.getHeight() > 0);
 
             List<TextView> words = new ArrayList<>();

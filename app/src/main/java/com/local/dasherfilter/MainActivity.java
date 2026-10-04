@@ -1199,15 +1199,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         closing.setContentDescription("Jesus Loves You. We love each other because He loves us first. 1 John 4:19.");
         closing.setAdjustViewBounds(true);
         closing.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        closing.setMaxWidth(ui.dp(340));
-        closing.setMaxHeight(ui.dp(350));
-        // The same single-color emblem has a darker ink on the light page.
+        closing.setMaxWidth(ui.dp(220));
+        closing.setMaxHeight(ui.dp(190));
+        // Keep the gold emblem at night and the same darker ink on the light page.
         if (!ui.dark) closing.setColorFilter(0xFF776550);
         closing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         LinearLayout.LayoutParams signature = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         signature.gravity = Gravity.CENTER_HORIZONTAL;
-        signature.topMargin = ui.dp(28);
+        signature.topMargin = ui.dp(16);
         signature.bottomMargin = ui.dp(12);
         body.addView(closing, signature);
         ground(page, 170);
@@ -1664,6 +1664,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
             learned.setPadding(0, ui.dp(6), 0, 0);
             ticket.addView(learned);
         }
+        TextView minimumDetails = ui.text(entry.addOn
+                ? "Add-ons use their fixed route and incremental rules. Learned standalone minimums do not apply."
+                : MinimumsDetails.describe(FilterStore.load(this), entry.facts), 13, ui.inkSecondary, false);
+        minimumDetails.setPadding(0, ui.dp(6), 0, 0);
+        minimumDetails.setVisibility(View.GONE);
+        Button minimumKey = ui.addButton(ticket, "Minimums · blue saved / purple learned", false, () -> {});
+        minimumKey.setContentDescription("Show current saved, learned and used minimums for this offer");
+        minimumKey.setOnClickListener(clicked -> {
+            boolean expanded = minimumDetails.getVisibility() != View.VISIBLE;
+            minimumDetails.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            minimumKey.setContentDescription((expanded ? "Hide" : "Show")
+                    + " current saved, learned and used minimums for this offer");
+        });
+        ticket.addView(minimumDetails);
         if (entry.notification != null) {
             // Dasher's notification of this same offer, folded into its line.
             TextView notice = ui.text("Dasher's notification " + DecisionLog.noticeWhen(entry) + ": "

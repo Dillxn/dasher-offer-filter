@@ -940,6 +940,43 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
+    public void aConfirmedAcceptanceBelowExistingBestsDoesNotClaimMinimumsRose() {
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0)
+                .withMinimumScalePercent(75));
+        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 7.2, 21, 2));
+        show(offer("$25.00"));
+        userTaps("Accept");
+        show(node("Arrived at store", false));
+        assertEquals(3000, FilterStore.load(app).lastAcceptedCents);
+        StringBuilder learnedSteps = new StringBuilder();
+        for (DecisionLog.Step step : DecisionLog.recent(app, 1).get(0).steps) learnedSteps.append(step.text());
+        String history = learnedSteps.toString();
+        assertTrue(history, history.contains("no new accepted best; your existing minimums stay unchanged"));
+        assertFalse(history, history.contains("the adaptive minimum learned from it"));
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        assertTrue("confirmed acceptance still counts after reload",
+                DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+    }
+
+    @Test
+    public void aNewBestBelowSavedFloorsIsReportedAsSavedAndSurvivesHistoryReload() {
+        FilterStore.save(app, new FilterSettings(true, 3000, 1000, 1000, 3000, 0, true, 0)
+                .withMinimumScalePercent(10));
+        FilterStore.recordAccepted(app, new OfferSnapshot(2000, 7.2, 21, 2));
+        show(offer("$25.00"));
+        userTaps("Accept");
+        show(node("Arrived at store", false));
+        assertEquals(2500, FilterStore.load(app).lastAcceptedCents);
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        DecisionLog.Entry accepted = DecisionLog.recent(app, 1).get(0);
+        assertTrue(DecisionLog.accepted(accepted));
+        assertTrue(accepted.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_BEST_SAVED));
+        assertFalse(accepted.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_NOT_LEARNED));
+    }
+
+    @Test
     public void anAcceptanceThatCannotTeachSaysWhyInTheLog() {
         // Adaptive minimum off: accepted, but not learned.
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, false, 0));

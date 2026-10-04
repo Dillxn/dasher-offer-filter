@@ -1,9 +1,18 @@
+## 0.4.63 — clearer learning and steadier split launches
+
+- Uses Dasher’s actual launcher entry consistently for cards, Peek and split setup, and avoids opening it again when fresh window metadata already shows it beside Offer Filter.
+- Keeps an active route and the during-dash update hold when a screen contradicts itself with both waiting/home and pickup/delivery markers. A genuine no-route transition records a brief reason without screen text.
+- Names the purple control Learned with its On/Off state. The selected offer’s detail can explain Saved, Learned and Used minimums, the percentage buffer, and why the area chart can rescale without the purple shape expanding. Pay/item remains a fixed rule; automatic hotspot measurement is still unavailable.
+- Distinguishes a raised active minimum, a saved best whose current requirement is unchanged, and an acceptance that sets no new record. The existing learning model and acceptance/action guards are unchanged.
+- Keeps the complete Jesus Loves You emblem as a small final Settings signature, with its existing gold night color and darker day ink.
+- Local simulated regression and publication evidence is recorded separately. Dasher’s audible-navigation/idle-only visual mismatch and Samsung split retention still need time-aligned phone evidence; this release does not claim to reproduce or repair Dasher’s private navigation state.
+
 ## 0.4.62 — the shared closing emblem
 
 - Replaces Settings' final plain-text signature with the requested stacked Jesus Loves You emblem, the complete passage "We love each other because He loves us first." and 1 John 4:19.
 - Bundles the same transparent artwork used on the website and film, keeps its proportions, and uses darker ink on the day palette. The full wording is available as one screen-reader description. No new control, permission, consent notice or filtering behavior is introduced.
 
-Validation and publication are pending. No physical-phone or live-update result is claimed for this candidate.
+Published October 3 through the original-signer automatic-update feeds. Local gate: 1,959 tests /107 suites, zero failures/errors/skips; lint zero errors /32 warnings. No physical-phone result is claimed. The subsequent owner correction requests a smaller app signature with its gold color retained and is addressed in .63.
 
 ## 0.4.61 — distinguish an automatic Accept that was never sent
 

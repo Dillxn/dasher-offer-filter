@@ -1,0 +1,62 @@
+{
+  "base_commit": "9504d9e36f73ba2afcbcd607963505b3ae0dd60f",
+  "patch_sha256": "b2db3bf6682c47a1e7e2da43094e96d7d0a645ec357746ef65c17d2c629081fe",
+  "finished_at_utc": "2026-10-03T23:53:07.843800+00:00",
+  "simulation_only": true,
+  "command": "./gradlew -q testDebugUnitTest -PallSdks -Pforks=2 --max-workers=2 -Dorg.gradle.jvmargs='-Xmx1536m -XX:+UseParallelGC -Dfile.encoding=UTF-8' --tests '*CardTapAdapterTest' --tests '*ScannerRobustnessTest' --tests '*SplitJourneyTest' --tests '*DasherSplitWindowTest' --tests '*PeekTest'",
+  "tests": 158,
+  "suites": [
+    {
+      "name": "com.local.dasherfilter.CardTapAdapterTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.local.dasherfilter.DasherSplitWindowTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.local.dasherfilter.PeekTest",
+      "tests": 98,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.local.dasherfilter.ScannerRobustnessTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.local.dasherfilter.SplitJourneyTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "counterfactual": {
+    "base_source": "0.4.62",
+    "sdk": 35,
+    "tests": 4,
+    "failures": 4,
+    "assertions": [
+      "INFO front door selected instead of actual MAIN/LAUNCHER",
+      "extra adjacent launch after Android already paired Dasher",
+      "stored route erased by mixed waiting and delivery markers",
+      "mixed dash home and pickup releases route/update hold"
+    ]
+  },
+  "limits": [
+    "Not a physical Samsung/Dasher task or navigation verification",
+    "Pure visible idle while GPS voice continues cannot establish underlying delivery state",
+    "No new Back, retry, split restoration automation, audio access or task-clearing flags"
+  ]
+}

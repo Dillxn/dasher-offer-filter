@@ -226,20 +226,57 @@ final class FilterStore {
      * forgets them but Reset. Nothing is learned while either is off, so turning it on never applies highs gathered
      * meanwhile. (The stored key keeps its old name, "last accepted".)
      */
-    /** @return whether it was learned (both switches on and the pay known) */
+    /** What a confirmed manual acceptance changed, without changing the stored learning model. */
+    enum AcceptedLesson {
+        RAISED("at least one active minimum rose"),
+        RECORDED("a new accepted best was saved; this offer’s current dollar requirements did not change"),
+        NOTHING_NEW("no new accepted best; your existing minimums stay unchanged"),
+        SWITCHES_OFF("auto-decline or Adaptive minimum was off"),
+        PAY_UNKNOWN("its pay was not read");
+
+        final String reason;
+        AcceptedLesson(String reason) { this.reason = reason; }
+        boolean considered() { return this != SWITCHES_OFF && this != PAY_UNKNOWN; }
+    }
+
+    /** Compatibility result: whether this acceptance could be considered, not whether a minimum rose. */
     static boolean recordAccepted(Context context, OfferSnapshot accepted) {
-        if (accepted.payCents == null) return false;
+        return recordAcceptedLesson(context, accepted).considered();
+    }
+
+    static AcceptedLesson recordAcceptedLesson(Context context, OfferSnapshot accepted) {
+        if (accepted.payCents == null) return AcceptedLesson.PAY_UNKNOWN;
         SharedPreferences prefs = prefs(context);
         boolean learning = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
-        if (!learning) return false;
-        AcceptedBest best = best(prefs).raisedBy(accepted);
+        if (!learning) return AcceptedLesson.SWITCHES_OFF;
+        FilterSettings before = load(context);
+        AcceptedBest previous = best(prefs);
+        AcceptedBest best = previous.raisedBy(accepted);
+        int highest = Math.max(prefs.getInt(LAST_ACCEPTED, 0), accepted.payCents);
+        boolean recorded = highest != before.lastAcceptedCents
+                || best.minutePay != previous.minutePay || best.minutes != previous.minutes
+                || best.milePay != previous.milePay || Double.compare(best.miles, previous.miles) != 0
+                || best.stopPay != previous.stopPay || best.stops != previous.stops;
         prefs.edit()
-                .putInt(LAST_ACCEPTED, Math.max(prefs.getInt(LAST_ACCEPTED, 0), accepted.payCents))
+                .putInt(LAST_ACCEPTED, highest)
                 .putInt(BEST_MINUTE_PAY, best.minutePay).putInt(BEST_MINUTES, best.minutes)
                 .putInt(BEST_MILE_PAY, best.milePay).putLong(BEST_MILES, Double.doubleToLongBits(best.miles))
                 .putInt(BEST_STOP_PAY, best.stopPay).putInt(BEST_STOPS, best.stops)
                 .apply();
-        return true;
+        if (!recorded) return AcceptedLesson.NOTHING_NEW;
+        // Report the same exact resolved costs the rules use. A new personal best may still sit below
+        // a stronger saved or manually-declined floor, and must not be described as raising that floor.
+        AreaScore.Floors oldFloors = AreaScore.floors(before, accepted);
+        AreaScore.Floors newFloors = AreaScore.floors(load(context), accepted);
+        for (int axis = 0; axis < AreaScore.AXES; axis++) {
+            if (oldFloors.active[axis] != newFloors.active[axis]
+                    || (oldFloors.cents[axis] == null) != (newFloors.cents[axis] == null)
+                    || (oldFloors.cents[axis] != null && newFloors.cents[axis] != null
+                        && newFloors.cents[axis].compareTo(oldFloors.cents[axis]) > 0)) {
+                return AcceptedLesson.RAISED;
+            }
+        }
+        return AcceptedLesson.RECORDED;
     }
 
     /**

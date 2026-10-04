@@ -317,7 +317,9 @@ abstract class AndroidAdapterTestBase {
         android.content.ComponentName dasher =
                 new android.content.ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home");
         org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
-        packages.addActivityIfNotPresent(dasher);
+        android.content.pm.ActivityInfo entry = packages.addActivityIfNotPresent(dasher);
+        entry.enabled = true;
+        entry.exported = true;
         android.content.IntentFilter launcher = new android.content.IntentFilter(Intent.ACTION_MAIN);
         launcher.addCategory(Intent.CATEGORY_LAUNCHER);
         packages.addIntentFilterForActivity(dasher, launcher);

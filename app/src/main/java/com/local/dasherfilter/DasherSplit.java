@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.pm.ActivityInfo;
+import android.content.pm.ResolveInfo;
+import java.util.List;
 import android.graphics.Insets;
 import android.graphics.Rect;
 import android.os.Build;
@@ -66,9 +70,28 @@ final class DasherSplit {
      * was showing, such as an offer. Nothing in it is cleared or reset. Null when Dasher is not installed.
      */
     static Intent launcher(Context context) {
-        Intent launch = context.getPackageManager().getLaunchIntentForPackage(DASHER_PACKAGE);
-        if (launch == null) return null;
-        return launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return launcher(context, DASHER_PACKAGE);
+    }
+
+    /** Resolve the actual launcher entry, not an INFO front door, and preserve the existing task. */
+    static Intent launcher(Context context, String pkg) {
+        try {
+            Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg);
+            List<ResolveInfo> choices = context.getPackageManager().queryIntentActivities(query, 0);
+            if (choices != null) for (ResolveInfo choice : choices) {
+                ActivityInfo info = choice.activityInfo;
+                if (info != null && info.enabled && info.exported && pkg.equals(info.packageName)) {
+                    // A package-bearing launch can create another start screen on older Android. Keep only the
+                    // real launcher component/category; no task reset/clear, and no invented category on INFO.
+                    return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                            .setComponent(new ComponentName(info.packageName, info.name))
+                            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                }
+            }
+        } catch (RuntimeException unavailable) {
+            // Refuse rather than guess a different activity or reset its task.
+        }
+        return null;
     }
 
     /**
@@ -149,6 +172,10 @@ final class DasherSplit {
         }
         if (activity.isInMultiWindowMode()) {
             requestedAt = 0;
+            if (OfferFilterService.dasherBesideNow()) {
+                log(activity, "tap in split screen: Dasher already visible beside; no launch requested");
+                return null;
+            }
             log(activity, "tap in split screen: Dasher's launch intent into the other half");
             return open(activity, dasher);
         }
@@ -281,6 +308,10 @@ final class DasherSplit {
             return;
         }
         if (dasher == null) return;
+        if (OfferFilterService.dasherBesideNow()) {
+            log(activity, "split " + after + " ms after the tap: Dasher already visible beside; no launch requested");
+            return;
+        }
         log(activity, "split " + after + " ms after the tap: Dasher's launch intent into the other half");
         String failed = open(activity, dasher);
         if (failed != null) log(activity, "Dasher could not be opened");

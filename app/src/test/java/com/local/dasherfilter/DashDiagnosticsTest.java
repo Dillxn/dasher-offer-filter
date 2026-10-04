@@ -250,9 +250,9 @@ public class DashDiagnosticsTest {
         show(screen("Deliver to Sam P", "$7.90", "2 stops (7.2 mi) • 21 min", "100 Example St", "Accept", "Decline"));
         show(screen("Finding offers", "End dash"));
         settle();
-        show(screen("Dash ended", "Deliver to Sam P", "Total earned $84.20"));
+        show(screen("Dash ended", "Total earned $84.20"));
         // Dasher's last screen is read again and again: still one dash.
-        show(screen("Dash ended", "Deliver to Sam P", "Total earned $84.20"));
+        show(screen("Dash ended", "Total earned $84.20"));
         settle();
     }
 
@@ -386,6 +386,30 @@ public class DashDiagnosticsTest {
     }
 
     // ---- A dash's end ----
+
+    @Test
+    public void mixedEndAndDeliveryDoesNotFileOrReleaseTheHoldBeforeAnUnambiguousEnd() {
+        diagnosticsOn();
+        DashDiagnostics.offerSeen(app);
+        settle();
+        ActiveRouteStore.save(app, new OfferSnapshot(2400, 5.0, 20, 2));
+        Dashing.seen(app);
+        // Contradictory delivery text can remain during task/window transitions. Neither the route, the update
+        // hold nor this dash's automatic report may complete from that one mixed screen.
+        show(screen("Dash ended", "Deliver to Sam P", "Total earned $84.20"));
+        settle();
+        assertEquals("delivery and end at once are not completion evidence", 0, queuedDiagnostics());
+        assertTrue(Dashing.awaitingEnd(app));
+        assertTrue(ActiveRouteStore.load(app) != null);
+        show(screen("Dash ended", "Total earned $84.20"));
+        settle();
+        assertEquals("a clear completed end still files exactly once", 1, queuedDiagnostics());
+        assertFalse(Dashing.awaitingEnd(app));
+        assertNull(ActiveRouteStore.load(app));
+        show(screen("Dash ended", "Total earned $84.20"));
+        settle();
+        assertEquals(1, queuedDiagnostics());
+    }
 
     @Test
     public void aDashsEndFilesExactlyOneIssueInPartsThroughTheConnection() throws JSONException {

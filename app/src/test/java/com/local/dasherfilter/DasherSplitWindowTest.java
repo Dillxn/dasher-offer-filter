@@ -80,6 +80,24 @@ public class DasherSplitWindowTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void aStaleBesideSightingCannotSuppressTheUsersRestorationTap() {
+        dasherInstalled();
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        try (ActivityController<WindowActivity> activity = Robolectric.buildActivity(WindowActivity.class).setup()) {
+            service.get().onServiceConnected();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            activity.get().bounds = new Rect(0, 40, 1080, 950);
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            OfferFilterService.sawDasherBeside(SystemClock.uptimeMillis());
+            Shadows.shadowOf(service.get()).setWindows(java.util.Collections.emptyList());
+            assertTrue("the UI grace alone still says beside", OfferFilterService.dasherBeside());
+            assertNull(DasherSplit.start(activity.get(), ignored -> {}));
+            assertNotNull("only fresh split window metadata suppresses the launch", Shadows.shadowOf(app).getNextStartedActivity());
+        } finally {
+            service.destroy();
+        }
+    }
+
     @Test public void aConfirmedExitDiscardsTheOldTwentySecondBesideSighting() {
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         try (ActivityController<WindowActivity> activity = Robolectric.buildActivity(WindowActivity.class).setup()) {

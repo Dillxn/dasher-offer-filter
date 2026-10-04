@@ -214,6 +214,33 @@ public class AdaptiveMinimumLifecycleTest {
                 reload().lastAcceptedCents);
     }
 
+    @Test public void acceptedLessonSeparatesNewRecordsFromActualResolvedMinimumChanges() {
+        FilterStore.save(app, new FilterSettings(true, 3000, 2000, 1000, 3000, 3).withAdaptive(true));
+        OfferSnapshot first = new OfferSnapshot(1500, 4.0, 20, 2);
+        assertEquals(FilterStore.AcceptedLesson.RECORDED, FilterStore.recordAcceptedLesson(app, first));
+        assertEquals("new best is still kept below stronger fixed floors", 1500, reload().lastAcceptedCents);
+        assertEquals(FilterStore.AcceptedLesson.NOTHING_NEW, FilterStore.recordAcceptedLesson(app, first));
+        assertEquals(FilterStore.AcceptedLesson.NOTHING_NEW,
+                FilterStore.recordAcceptedLesson(app, new OfferSnapshot(1400, 4.0, 20, 2)));
+        assertEquals(FilterStore.AcceptedLesson.RAISED,
+                FilterStore.recordAcceptedLesson(app, new OfferSnapshot(4000, 4.0, 20, 2)));
+        FilterStore.save(app, reload().withAdaptive(false));
+        assertEquals(FilterStore.AcceptedLesson.SWITCHES_OFF,
+                FilterStore.recordAcceptedLesson(app, new OfferSnapshot(9000, 4.0, 20, 2)));
+        assertEquals(FilterStore.AcceptedLesson.PAY_UNKNOWN,
+                FilterStore.recordAcceptedLesson(app, new OfferSnapshot(null, 4.0, 20, 2)));
+    }
+
+    @Test public void anImprovedRateHiddenByThisOffersCentRoundingIsStillSavedHonestly() {
+        FilterStore.save(app, new FilterSettings(true, 0, 0, 0, 0, 0).withAdaptive(true));
+        FilterStore.recordAccepted(app, new OfferSnapshot(1000, 3.0, null, null));
+        assertEquals(FilterStore.AcceptedLesson.RECORDED,
+                FilterStore.recordAcceptedLesson(app, new OfferSnapshot(1000, 2.999, null, null)));
+        assertEquals(2.999, reload().best.miles, 0);
+        assertTrue(FilterStore.AcceptedLesson.RECORDED.reason.contains("this offer’s current dollar requirements"));
+        assertFalse(FilterStore.AcceptedLesson.RECORDED.reason.contains("stronger"));
+    }
+
     private FilterSettings reload() {
         Context fresh = app.createConfigurationContext(app.getResources().getConfiguration());
         return FilterStore.load(fresh);

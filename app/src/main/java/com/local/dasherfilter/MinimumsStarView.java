@@ -457,6 +457,7 @@ final class MinimumsStarView extends View {
     private int maxStops;
     private final RectF stopsBox = new RectF();
     private final TextPaint badgeText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint adaptiveText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private boolean stopsPressed;
     private boolean stopsDragging;
     private int stopsValue;
@@ -531,6 +532,8 @@ final class MinimumsStarView extends View {
         scaleText.setTypeface(levelText.getTypeface());
         scaleText.setTextAlign(Paint.Align.CENTER);
         undoGlyph = new Glyph(Glyph.Shape.UNDO, ui.ink, ui.dp(24));
+        adaptiveText.setTypeface(levelText.getTypeface());
+        adaptiveText.setTextAlign(Paint.Align.CENTER);
         badgeText.setTypeface(levelText.getTypeface());
         badgeText.setTextSize(Math.min(ui.sp(14), ui.dp(18)));
         badgeText.setTextAlign(Paint.Align.CENTER);
@@ -3208,14 +3211,25 @@ final class MinimumsStarView extends View {
             line.setStrokeWidth(Math.max(1, ui.dp(1)));
         }
         canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
+        // Keep the existing 48 dp control and gestures; name the purple shape without adding a legend row.
+        adaptiveText.setColor(adaptiveOn ? learned : ui.inkSecondary);
+        adaptiveText.setTextSize(Math.min(ui.sp(10), ui.dp(11)));
+        float labelWidth = adaptiveText.measureText("Learned");
+        if (labelWidth > radius * 1.65f) adaptiveText.setTextSize(adaptiveText.getTextSize()
+                * radius * 1.65f / labelWidth);
+        canvas.drawText("Learned", x, y - ui.dp(3), adaptiveText);
+        String state = adaptiveOn ? "On" : "Off";
+        float stateWidth = adaptiveText.measureText(state);
+        float iconX = x - stateWidth / 2 - ui.dp(4);
         if (adaptiveOn) {
             fill.setColor(learned);
-            drawSparkle(canvas, x, y, ui.dp(10), fill);
+            drawSparkle(canvas, iconX, y + ui.dp(7), ui.dp(3), fill);
         } else {
             line.setColor(ui.inkSecondary);
-            line.setStrokeWidth(ui.dp(1.6f));
-            drawSparkle(canvas, x, y, ui.dp(10), line);
+            line.setStrokeWidth(ui.dp(1));
+            drawSparkle(canvas, iconX, y + ui.dp(7), ui.dp(3), line);
         }
+        canvas.drawText(state, x + ui.dp(4), y + ui.dp(11), adaptiveText);
     }
 
     /** The toggle: the adaptive minimum on or off, saved at once (what it learned is kept), and said. */
@@ -3223,7 +3237,7 @@ final class MinimumsStarView extends View {
         if (changes == null) return;
         boolean on = !adaptiveOn;
         changes.setAdaptive(on);
-        say(on ? ADAPTIVE_SAID + " on. It rises with offers you accept, and ones you decline by hand."
+        say(on ? ADAPTIVE_SAID + " on. It learns from confirmed manual acceptances and declines. Automatic accepts do not raise it."
                 : ADAPTIVE_SAID + " off. What it learned is kept.");
         dropGoneFocus();
         invalidate();

@@ -102,6 +102,8 @@ final class DecisionLog {
         ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
         ACCEPTED_LEARNED("Accepted; the adaptive minimum learned from it"),
         ACCEPTED_NOT_LEARNED("Accepted; nothing learned"),
+        ACCEPTED_BEST_SAVED("Accepted; new best saved"),
+        ACCEPTED_MINIMUMS_UNCHANGED("Accepted; minimums unchanged"),
         ACCEPTED_ADD_ON("Accepted add-on; the standalone minimums never learn from add-ons"),
         NOT_ACCEPTED("Not accepted"),
         NOT_LEARNED("Not learned"),
@@ -422,6 +424,8 @@ final class DecisionLog {
             switch (step.kind) {
                 case ACCEPTED_LEARNED:
                 case ACCEPTED_NOT_LEARNED:
+                case ACCEPTED_BEST_SAVED:
+                case ACCEPTED_MINIMUMS_UNCHANGED:
                 case ACCEPTED_ADD_ON:
                 case ACCEPTED_OBSERVED:
                     return true;

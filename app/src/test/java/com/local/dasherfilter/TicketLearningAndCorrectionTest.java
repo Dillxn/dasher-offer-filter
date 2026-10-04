@@ -33,6 +33,22 @@ public class TicketLearningAndCorrectionTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void numericMinimumsKeyStaysCollapsedInsideTheSelectedTicket() {
+        DecisionLog.record(app, declinedEntry());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull(shownTextContaining(content, "Minimums · blue saved"));
+            openTicket(content);
+            View key = shownTextContaining(content, "Minimums · blue saved");
+            assertNotNull(key);
+            assertNull(shownTextContaining(content, "Pay/item is fixed"));
+            key.performClick();
+            assertNotNull(shownTextContaining(content, "Pay/item is fixed"));
+            key.performClick();
+            assertNull(shownTextContaining(content, "Pay/item is fixed"));
+        }
+    }
+
     @Test public void laterEvidenceCorrectsTheSameFreshOffersAnimation() {
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
