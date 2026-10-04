@@ -1,0 +1,64 @@
+{
+  "auditThrough": "2026-10-04T02:10:46Z",
+  "since": "2026-10-04T01:29:09.593Z",
+  "appMainInspected": "054337e38309e5055fe08c698d3c9e1de55941d0",
+  "siteMainInspected": "50f39994cdca8eae0cb6e4095688220c5f3259b6",
+  "github": {
+    "query": "repo:Dillxn/dasher-offer-filter is:issue updated:>2026-10-04T01:29:09Z",
+    "issueUpdates": [],
+    "paginationComplete": true
+  },
+  "gmail": {
+    "account": "dillon.riecke@gmail.com",
+    "query": "after:1791077349 (\"Offer Filter\" OR \"dasher-offer-filter\")",
+    "messageIds": [],
+    "nextPageToken": null
+  },
+  "lastInspectedIssue": 45,
+  "lastInspectedEmail": "1a10479b43e4b3ac",
+  "knownDuplicateIssueGroups": [
+    [
+      34,
+      35
+    ],
+    [
+      36,
+      37
+    ],
+    [
+      40,
+      41
+    ]
+  ],
+  "findings": [
+    "No new diagnostics or email copies; no fresh field evidence explaining the newly reported .64 purple-versus-green shape.",
+    "No Android code, build, test, signer, release or website product changed by this audit.",
+    "Existing .64 release and its exact validation remain authoritative; no fresh live-channel or physical-phone test claimed."
+  ],
+  "concurrentWorkPreserved": {
+    "settings": "Uncommitted .65/code71 candidate in existing emblem checkout: 55% Settings signature, white dark-theme ink and additional headline/passage spacing. Not signed/published by this audit.",
+    "adaptive": "Existing separate .64-base adaptive polygon investigation was actively adding AdaptiveAcceptedPolygonProbeTest.java during read-only review. Do not duplicate, revert, or claim its result before the owner finishes.",
+    "video": "Direct latest request asks for improved final-frame composition; the published charcoal layout remains current until a subsequent verified product commit."
+  },
+  "directUserDecisions": [
+    "Settings emblem 55% of .64 size, white on the dark page, increased headline/passage gap. This supersedes prior app gold request for that screen; preserve legible light-page contrast.",
+    "User still observes purple below a recent accepted green polygon on .64; investigation remains open, not dismissed as normalization.",
+    "Improve arrangement/composition of video ending, while retaining a small closing signature and full passage."
+  ],
+  "sourceReviewLimits": [
+    "AcceptedBest has established plausibility and short-trip rate-learning thresholds; automatic accepts remain excluded. A green KEEP decision color alone is not acceptance/learning evidence.",
+    "Area normalization alone is not proof of why an eligible fully learned axis would fall below the same offer. The active polygon probe should establish whether model, evidence, or display differs.",
+    "No new field tree/provenance or historical acceptance is fabricated."
+  ],
+  "nextWork": [
+    "Read fresh main and active candidate records before integrating .65, preserving latest direct requests.",
+    "Use the active polygon probe and actual new diagnostics to distinguish storage/eligibility/chart behavior; no guard weakening or invented lessons.",
+    "Finish visual candidate and video composition under their existing owner, run meaningful local gates and publish via original-signer automatic channel when complete."
+  ],
+  "privacy": {
+    "rawDiagnosticsStored": false,
+    "messagesSent": false,
+    "reportsDeleted": false,
+    "privateRepoRemainsPrivate": true
+  }
+}
