@@ -210,9 +210,15 @@ final class ProblemReport {
         return shape.toString();
     }
 
-    /** An entry as a report carries it: masked lines, and none of the learning steps kept on the phone. */
+    /**
+     * An entry as a report carries it: masked lines and one fixed outcome category, but none of the detailed
+     * learning/action steps kept on the phone. The category distinguishes a rule PASS from an Accept request,
+     * a confirmed acceptance, or an offer left to the user without exporting step timing or detail.
+     */
     private static JSONObject redacted(DecisionLog.Entry entry) throws JSONException {
-        JSONObject json = entry.toJson().put("evidence", new JSONArray(redact(entry.evidence)));
+        JSONObject json = entry.toJson()
+                .put("evidence", new JSONArray(redact(entry.evidence)))
+                .put("outcome", DecisionLog.outcome(entry).name());
         json.remove("steps");
         return json;
     }

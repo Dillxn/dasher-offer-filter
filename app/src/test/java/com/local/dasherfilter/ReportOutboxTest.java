@@ -166,6 +166,22 @@ public class ReportOutboxTest {
         assertEquals("Guaranteed pay", labels.getString(0));
         assertEquals("Decline", labels.getString(3));
         assertEquals("pay not found", data.getJSONObject("entry").getString("reason"));
+        assertEquals("REVIEW", data.getJSONObject("entry").getString("outcome"));
+    }
+
+    @Test
+    public void reportKeepsOnlyTheFixedOutcomeCategoryNotPrivateStepDetail() throws JSONException {
+        DecisionLog.Entry passing = new DecisionLog.Entry(1000, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(2345, 15.7, 32, 2), 2161, OfferRule.Result.KEEP,
+                "score 109% (needs 100%)", DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList()).withStep(new DecisionLog.Step(
+                        DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, 1100, "content_changed"));
+        ProblemReport report = ProblemReport.build(ProblemReport.Kind.USER_REPORT, "0.4.66", RULES, passing,
+                Collections.<String>emptyList(), null, "not accepted", Collections.<DecisionLog.Entry>emptyList());
+        JSONObject entry = data(report).getJSONObject("entry");
+        assertEquals("YOURS", entry.getString("outcome"));
+        assertFalse(entry.has("steps"));
+        assertFalse(report.body.contains("content_changed"));
     }
 
     @Test

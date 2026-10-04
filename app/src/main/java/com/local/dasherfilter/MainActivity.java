@@ -170,7 +170,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private LinearLayout mainHeader;
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
-    private View sunButton;
+    private AppearanceButton sunButton;
     private long appearanceCheckedAt = -1;
     private boolean changingAppearance;
     /**
@@ -543,11 +543,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
             header.addView(splitButton, splitParams);
-            // The existing sun/moon opens the four theme modes; no duplicate Settings row.
-            View sun = new View(this);
-            sun.setContentDescription(Appearance.resolve(this).description());
-            sun.setBackground(ui.pressable(28));
-            sun.setOnClickListener(tapped -> chooseAppearance());
+            // The existing sun/moon cycles modes directly; no chooser or duplicate Settings row.
+            AppearanceButton sun = new AppearanceButton(this, ui);
+            sun.show(Appearance.resolve(this));
+            sun.setOnClickListener(tapped -> cycleAppearance());
             LinearLayout.LayoutParams sunParams = new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56));
             sunParams.setMarginEnd(ui.dp(10));
             header.addView(sun, sunParams);
@@ -1195,14 +1194,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) texts.addView(ui.link(doc.title, () -> read(doc)));
         body.addView(texts, Ui.matchWidth());
         ImageView closing = new ImageView(this);
-        closing.setImageResource(R.drawable.jesus_loves_you_emblem);
+        closing.setImageDrawable(new SettingsSignatureDrawable(getResources()));
         closing.setContentDescription("Jesus Loves You. We love each other because He loves us first. 1 John 4:19.");
         closing.setAdjustViewBounds(true);
         closing.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        closing.setMaxWidth(ui.dp(220));
-        closing.setMaxHeight(ui.dp(190));
-        // Keep the gold emblem at night and the same darker ink on the light page.
-        if (!ui.dark) closing.setColorFilter(0xFF776550);
+        closing.setMaxWidth(ui.dp(121)); // 55% of the previous 220 dp signature.
+        closing.setMaxHeight(ui.dp(113)); // Scaled height plus breathing room before the passage.
+        closing.setColorFilter(ui.dark ? android.graphics.Color.WHITE : 0xFF776550);
         closing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         LinearLayout.LayoutParams signature = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1298,23 +1296,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- State ----
 
-    private void chooseAppearance() {
-        Appearance.Mode[] modes = Appearance.Mode.values();
-        String[] labels = new String[modes.length];
-        for (int i = 0; i < modes.length; i++) labels[i] = modes[i].label;
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Theme")
-                .setSingleChoiceItems(labels, Appearance.mode(this).ordinal(), (dialog, which) -> {
-                    if (Appearance.choose(this, modes[which])) {
-                        dialog.dismiss();
-                        changingAppearance = true;
-                        recreate();
-                    } else toast("Theme could not be saved. Please try again.");
-                })
-                .setNeutralButton("About Auto", (dialog, which) -> OwnWindowTouches.show(
-                        new AlertDialog.Builder(this).setTitle("Auto theme")
-                                .setMessage(Appearance.explanation(this)).setPositiveButton("OK", null)))
-                .setNegativeButton("Cancel", null));
+    private void cycleAppearance() {
+        if (changingAppearance) return;
+        if (!Appearance.choose(this, Appearance.mode(this).next())) {
+            toast("Theme could not be saved. Please try again.");
+            return;
+        }
+        appearanceCheckedAt = -1;
+        refreshAppearance();
+        Appearance.State state = Appearance.resolve(this);
+        toast(state.mode.label + (state.mode == Appearance.Mode.AUTO && state.clockFallback
+                ? " · 6 am–6 pm local-clock fallback" : ""));
     }
 
     /** A visible page follows sunrise/sunset within a minute; no timer or location read while stopped. */
@@ -1324,7 +1316,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (appearanceCheckedAt >= 0 && now >= appearanceCheckedAt && now - appearanceCheckedAt < 60_000) return false;
         appearanceCheckedAt = now;
         Appearance.State appearance = Appearance.resolve(this);
-        if (sunButton != null) sunButton.setContentDescription(appearance.description());
+        if (sunButton != null) sunButton.show(appearance);
         if (appearance.night == ui.dark) return false;
         changingAppearance = true;
         recreate();
