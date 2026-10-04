@@ -124,6 +124,21 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
     // ---- The homepage is only the notice ----
 
     @Test
+    public void dataNoticeDistinguishesLongerLivedCopiesAndNamesReportRecipients() {
+        String data = null;
+        for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
+        assertNotNull(data);
+        for (String fact : new String[] {"rolling 24-hour window", "latest 200 offer decisions",
+                "no age-based expiry", "Up to 30 queued reports", "notes you type in reports are not masked",
+                "developer's private GitHub repository", "Anthropic's Claude", "OpenAI's ChatGPT/Codex",
+                "does not erase sent copies"}) {
+            assertTrue(fact, data.contains(fact));
+        }
+        assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
+        assertFalse(data.contains("cleared by this update"));
+    }
+
+    @Test
     public void acceptanceRateRiskIsTheFirstPointAndRequiresExplicitAcknowledgement() {
         assertEquals("Acceptance rate.", Consent.POINTS[0][0]);
         assertEquals("Automatic declines may dramatically lower your DoorDash acceptance rate. "
@@ -239,10 +254,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 11 disclosed the data flows, but still bundled the former proprietary terms.
-        assertEquals(12, Consent.VERSION);
+        // Version 12 did not distinguish outbox/history retention or fully explain report recipients.
+        assertEquals(13, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 11).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 12).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

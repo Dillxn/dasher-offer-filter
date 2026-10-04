@@ -69,6 +69,8 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
 
     @Test
     public void anOfferTheUserTookOverIsStampedYoursAndKeepsTheRulesVerdictAsALine() {
+        // This fixture checks the day palette; Auto legitimately changes after 6 pm on the test machine.
+        assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
         FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
         recordTakenOver();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -78,7 +80,8 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             // Before, "DECLINED" in red: the rules' verdict, not what became of the offer.
             assertEquals("YOURS", stamp.word());
             assertEquals("Left to you", stamp.getContentDescription().toString());
-            assertEquals("a neutral ink", new Ui(app).inkSecondary, stamp.color());
+            assertFalse("the Activity uses the selected day palette", new Ui(activity.get()).dark);
+            assertEquals("a neutral ink", new Ui(activity.get()).inkSecondary, stamp.color());
             assertNotNull("the rules' verdict stays in view",
                     findText(content, "Rules: decline — too many stops (4, max 3)"));
             assertNotNull(shownTextContaining(content,
@@ -92,6 +95,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
 
     @Test
     public void anOfferAcceptedLaterIsStampedAcceptedInGreen() {
+        assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
         FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
         recordTakenOver();
         // The user's Accept tap was seen and Dasher showed a delivery screen: the acceptance tracker's step.
@@ -103,6 +107,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             Decor.Stamp stamp = find(content, Decor.Stamp.class);
             assertEquals("ACCEPTED", stamp.word());
             assertEquals("Accepted", stamp.getContentDescription().toString());
+            assertFalse("the Activity uses the selected day palette", new Ui(activity.get()).dark);
             assertEquals("green", 0xFF0E8A0E, stamp.color());
             assertNotNull(findText(content, "Rules: decline — too many stops (4, max 3)"));
             assertTrue(findChart(content).getContentDescription().toString().startsWith("Chart of the last 1 offers: 0 passed, 1 accepted, 0 declined, 0 need review."));
@@ -147,6 +152,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
 
     @Test
     public void onlyADeclineThatWentThroughIsStampedDeclined() {
+        assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
         FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
         DecisionLog.record(app, reported(System.currentTimeMillis(), DecisionLog.Action.DECLINE_TAPPED, true));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -155,6 +161,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             Decor.Stamp stamp = find(content, Decor.Stamp.class);
             assertEquals("DECLINED", stamp.word());
             assertEquals("Declined", stamp.getContentDescription().toString());
+            assertFalse("the Activity uses the selected day palette", new Ui(activity.get()).dark);
             assertEquals("red", 0xFFC62828, stamp.color());
             assertNotNull("the stamp says the verdict, so the reason stands alone",
                     findText(content, "Too many stops (4, max 3)"));
@@ -186,6 +193,44 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
                 DecisionLog.Action.NEEDS_REVIEW)));
         assertEquals("Pay not readable", MainActivity.reasonLine(line(OfferRule.Result.REVIEW, "pay not found",
                 DecisionLog.Action.NEEDS_REVIEW)));
+    }
+
+    @Test
+    public void nightTicketsKeepTheObservedOutcomeWithReadableNightInks() {
+        assertTrue(Appearance.choose(app, Appearance.Mode.NIGHT));
+        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
+        long now = System.currentTimeMillis();
+        DecisionLog.Entry takenOver = reported(now, DecisionLog.Action.USER_TOOK_OVER, true);
+        DecisionLog.Entry[] entries = {
+            takenOver,
+            step(takenOver, DecisionLog.StepKind.ACCEPTED_NOT_LEARNED,
+                    "you tapped Accept, and Dasher showed a delivery screen"),
+            reported(now, DecisionLog.Action.CONFIRMATION_TAPPED, true)
+        };
+        String[] words = {"YOURS", "ACCEPTED", "DECLINED"};
+        String[] descriptions = {"Left to you", "Accepted", "Declined"};
+        int[] colors = {0xFFC3C2B7, 0xFF53C953, 0xFFFF6B6B};
+        for (int i = 0; i < entries.length; i++) {
+            DecisionLog.clear(app);
+            DecisionLog.record(app, entries[i]);
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                View content = activity.get().findViewById(android.R.id.content);
+                openTicket(content);
+                Decor.Stamp stamp = find(content, Decor.Stamp.class);
+                assertTrue("the Activity uses the selected night palette", new Ui(activity.get()).dark);
+                assertTrue("the outcome stamp is visible", stamp.isShown());
+                assertEquals(words[i], stamp.word());
+                assertEquals(descriptions[i], stamp.getContentDescription().toString());
+                assertEquals(words[i] + " night ink", colors[i], stamp.color());
+                if (i < 2) {
+                    assertNotNull("the rules do not overwrite a takeover or later acceptance",
+                            shownTextContaining(content, "Rules: decline — too many stops (4, max 3)"));
+                } else {
+                    assertNotNull(shownTextContaining(content, "Too many stops (4, max 3)"));
+                    assertNull(shownTextContaining(content, "Rules:"));
+                }
+            }
+        }
     }
 
     @Test

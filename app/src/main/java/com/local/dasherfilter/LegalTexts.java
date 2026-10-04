@@ -37,7 +37,8 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
+            review is claimed.
 
             ## What {app} is
 
@@ -105,8 +106,7 @@ final class LegalTexts {
 
             To the extent the law allows, the author of {app} is not liable for any loss or damage arising from \
             your use of it or your inability to use it, including lost earnings, missed, accepted or declined \
-            offers, limits on or deactivation of your Dasher account, fines, or lost data. [Liability cap and \
-            governing law: for a lawyer to set.]
+            offers, limits on or deactivation of your Dasher account, fines, or lost data.
 
             ## Licence
 
@@ -129,11 +129,13 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Draft of 3 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
+            review is claimed; a private privacy contact is not yet configured.
 
-            {app} has no account, no ads, no analytics and no server that collects your data. It does not sell or \
-            rent your data. What it reads stays on your phone, except in the cases listed under What leaves the \
-            phone. [Developer's name and a privacy contact: to add before public release.]
+            {app} does not require an {app} account and has no ads or analytics. It does not sell or rent your \
+            data. Offer reading and decisions happen on your phone. Update requests, optional reports, place-name \
+            lookups and links you choose to open can send information to the services described under What leaves \
+            the phone. The developer's public project identity is Dillxn.
 
             ## What it reads on the phone
 
@@ -160,28 +162,33 @@ final class LegalTexts {
             - Your rules, your separate auto-accept choice (off by default), and what the adaptive minimum learned \
             from your own accepted or declined offers. Automatic accept requests do not train it.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, whether the \
-            offer declared items or shopping, the result, what the app did, and a few lines read from the offer. \
-            The decision format also supports a numeric final-stop-to-hotspot distance, without coordinates or \
-            addresses. This candidate has no automatic reader for that distance and displays it as unavailable; it \
-            does not obtain it from your location or the offer map.
-            - Up to 200 numeric wait-estimate records, never older than 24 hours: the observation time, positively \
-            observed waiting duration and any observed offer's pay, miles, minutes, stops, item count/applicability \
-            and numeric hotspot distance if ever available. These separate records contain no merchant names, \
-            screen text, addresses or coordinates and are never included in reports or uploaded. Only visible, \
-            unlocked, eligible waiting is measured; rejected-offer handling counts only after a later recognized \
-            wait or standalone offer confirms it continued. Hidden, unknown, delivery, locked, paused and \
-            stopped-service time is excluded. A restart does not resume an old waiting timer. The estimate rechecks \
-            these numeric offers against your current rules and stays unavailable until enough readable \
-            observations exist; old decision timestamps alone are not treated as waiting time.
+            offer declared items or shopping, the result, what the app did, and a few masked lines read from the \
+            offer. This history has no age-based expiry: entries remain until newer decisions replace them or you \
+            clear history or uninstall. Aggregate outcome counts are kept separately until you clear history or \
+            uninstall. The decision format also supports a numeric final-stop-to-hotspot distance, without \
+            coordinates or addresses. This candidate has no automatic reader for that distance and displays it as \
+            unavailable; it does not obtain it from your location or the offer map.
+            - Up to 200 numeric wait-estimate records in a rolling 24-hour window, pruned when used: the \
+            observation time, positively observed waiting duration and any observed offer's pay, miles, minutes, \
+            stops, item count/applicability and numeric hotspot distance if ever available. These separate records \
+            contain no merchant names, screen text, addresses or coordinates and are never included in reports or \
+            uploaded. Only visible, unlocked, eligible waiting is measured; rejected-offer handling counts only \
+            after a later recognized wait or standalone offer confirms it continued. Hidden, unknown, delivery, \
+            locked, paused and stopped-service time is excluded. A restart does not resume an old waiting timer. \
+            The estimate rechecks these numeric offers against your current rules and stays unavailable until \
+            enough readable observations exist; old decision timestamps alone are not treated as waiting time.
             - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. \
             Other screens are captured only during a dash or within ten minutes of a readable offer, and only when \
             positively recognized as offer, confirmation, idle, delivery or navigation screens. \
             Unrecognized/partial screens retain only a generic text-not-kept note. Each holds about what one report \
-            carries and nothing older than 24 hours. Screens recognized as payment, account or earnings pages are \
-            discarded; at most one line a minute records that a screen was not kept.
-            - The offer map, if it is on and location is allowed: the square of about 2 km you were in when each \
-            offer came in. The separate place-name cache holds at most 300 rounded positions; older names are \
-            removed as others are used.
+            carries, with a 24-hour retention window. Older entries are pruned during app use and when the logs are \
+            read; files can remain while the app is stopped or a storage operation fails. Screens recognized as \
+            payment, account or earnings pages are discarded; at most one line a minute records that a screen was \
+            not kept.
+            - The offer map, if it is on and location is allowed: up to 300 historical squares of about 2 km where \
+            offers came in, with no age-based expiry. The separate place-name cache holds at most 300 rounded \
+            positions, also without age-based expiry; older names are removed as others are used. Clear history or \
+            uninstalling removes both.
             - While you are dashing: whether a dash is on, and the current route's pay, miles, time, stops and \
             observed item count/applicability, for at most three hours since the route was observed.
             - One temporary record that prevents automatic taps on a possibly taken-over or automatically accepted \
@@ -196,6 +203,12 @@ final class LegalTexts {
             - A pending hand-decline observation can retain the same numeric offer facts, including observed item \
             count/applicability, to reconcile its outcome, for at most one hour.
             - A GitHub connection, if you set one up, and the state of updates.
+            - Up to 30 queued reports, if reporting is enabled. A queued report is a separate copy of the report as \
+            built, including any history, diagnostic text or note it contains. Queued reports have no age-based \
+            expiry and can remain pending after an outage, a permission failure or an uncertain send. They are \
+            removed when delivery finishes, when the app drops an invalid report, or when you turn the \
+            corresponding reporting option off, disconnect GitHub or uninstall. The logs' 24-hour window does not \
+            expire these copies.
             - Your Day, Night, System or Auto theme choice. Auto is the default for new choices; it calculates the \
             local sun cycle using only an existing permitted approximate location, without a network request or a \
             separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
@@ -221,9 +234,15 @@ final class LegalTexts {
             stay. Offers are judged from what is on screen; only what is kept is masked. Click diagnostics retain \
             the control shape and action category, never its text labels.
 
-            This update clears both old diagnostic logs and all unsent reports once. If that cleanup cannot finish, \
-            diagnostic reads, writes and report sending remain paused until it succeeds. It cannot remove reports \
-            already sent to GitHub or another app.
+            Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee of anonymity or removal \
+            of every personal detail. Review a report before sharing it. Notes you type with Report this offer are \
+            not masked; do not include customer, payment or account details. Queued diagnostic bodies and comments \
+            are masked again with the current rules immediately before sending.
+
+            A one-time privacy cleanup clears older diagnostic logs and unsent reports if it has not already \
+            completed on this installation. It does not run again merely because this notice changes. If that \
+            cleanup cannot finish, diagnostic reads, writes and report sending remain paused until it succeeds. It \
+            cannot remove reports already sent to GitHub or another app.
 
             Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
 
@@ -260,12 +279,19 @@ final class LegalTexts {
             servers on most phones) about positions rounded to about half a kilometre, once while a position \
             remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes \
             with them.
+            - Navigation, only when you tap it. Opening an offer area hands that historical area's center \
+            coordinates to your chosen Maps or Waze app, or to Google Maps in a browser. Gas and gas-price choices \
+            hand a search phrase to the map provider. The receiving app or website handles the request under its \
+            own privacy practices; these actions do not upload your offer history or establish your arrival.
             - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for \
             them and counts nothing.
 
-            Reports in the repository are read by the developer and by AI systems (Anthropic's Claude and OpenAI's \
-            ChatGPT/Codex) that the developer uses to find and fix problems. GitHub, Render, Google and Anthropic \
-            handle what reaches them under their own terms and privacy policies.
+            Reports in the repository may be read by the developer and by AI systems (Anthropic's Claude and \
+            OpenAI's ChatGPT/Codex) that the developer uses to investigate problems. A report does not guarantee \
+            review or a fix. GitHub, Render, Google, Anthropic and OpenAI handle what reaches them under their own \
+            terms and privacy policies. Copies already sent to GitHub, an AI service or another app are not \
+            governed by the phone's 24-hour log window and are not automatically erased by {app}. A \
+            developer-managed retention and deletion schedule for those copies has not yet been confirmed.
 
             ## What it never collects
 
@@ -282,11 +308,28 @@ final class LegalTexts {
             depend on what Android exposes; they are not a safety guarantee.
             - Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map \
             and cached place names, plus the temporary restart/error records above. Lookups and wait-record writes \
-            already in progress cannot restore cleared history.
-            - Turning Send problem reports off, or disconnecting GitHub, stops reports and discards reports not yet \
-            sent.
+            already in progress cannot restore cleared history. It does not remove queued reports or copies already \
+            sent. Your rules and learned minimums remain; Reset clears the learned minimums separately.
+            - Turning Send problem reports off, or disconnecting GitHub, stops further reports and discards reports \
+            not yet sent. Turning Share diagnostics after each dash off discards unsent diagnostics, but not other \
+            queued problem reports. A request already in flight may still arrive; these choices do not delete \
+            reports already delivered.
             - Disconnecting GitHub (Settings) removes the GitHub token.
-            - Uninstalling the app removes everything it kept.
+            - Uninstalling removes the app's local data, including queued reports. It does not remove reports or \
+            other copies already shared with GitHub, AI services or another app.
+
+            ## Help and privacy contact
+
+            Non-sensitive questions and bug descriptions can be posted to the project's public issue tracker: \
+            https://github.com/Dillxn/offer-filter-site/issues. Posts there are public. Do not attach diagnostic \
+            reports, customer details, payment or account information, addresses, screenshots containing personal \
+            information, or tokens.
+
+            A private contact for privacy, deletion and security requests is not yet configured and needs the \
+            developer's confirmation before public launch. The public issue tracker is not a private reporting \
+            channel. The app's optional GitHub reporting uses the developer's private repository and requires \
+            access to that repository; it is not a general public support inbox. Public update downloads do not \
+            require a GitHub connection.
 
             ## Children
 

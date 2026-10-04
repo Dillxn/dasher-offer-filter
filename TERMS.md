@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Draft of 4 October 2026. Not legal advice; have a lawyer review before public release.
+Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed.
 
 ## What Offer Filter is
 
@@ -35,7 +35,7 @@ Offer Filter is provided "as is" and "as available", without warranties of any k
 
 ## Limitation of liability
 
-To the extent the law allows, the author of Offer Filter is not liable for any loss or damage arising from your use of it or your inability to use it, including lost earnings, missed, accepted or declined offers, limits on or deactivation of your Dasher account, fines, or lost data. [Liability cap and governing law: for a lawyer to set.]
+To the extent the law allows, the author of Offer Filter is not liable for any loss or damage arising from your use of it or your inability to use it, including lost earnings, missed, accepted or declined offers, limits on or deactivation of your Dasher account, fines, or lost data.
 
 ## Licence
 

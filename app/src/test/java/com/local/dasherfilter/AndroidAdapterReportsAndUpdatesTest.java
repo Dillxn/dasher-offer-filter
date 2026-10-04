@@ -172,6 +172,15 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             shownButton(content, "Report this offer").performClick();
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            CharSequence warning = ((TextView) dialog.findViewById(android.R.id.message)).getText();
+            assertTrue(warning.toString().contains("developer's private GitHub repository"));
+            assertTrue(warning.toString().contains("Anthropic's Claude or OpenAI's ChatGPT/Codex"));
+            assertTrue(warning.toString().contains("review or a fix is not guaranteed"));
+            assertTrue(warning.toString().contains("Your note is sent without masking"));
+            assertTrue(warning.toString().contains("Do not include customer, payment or account details"));
+            assertFalse(warning.toString().contains("your private repository"));
+            assertFalse(warning.toString().contains("names and streets stay here"));
+            assertEquals("reading the warning queues nothing", 0, ReportOutbox.queued(app));
             findEditText(dialog.getWindow().getDecorView()).setText("It paid $12, not $7.90");
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
@@ -194,7 +203,9 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         try {
             GitHubConnect.clientId = "";
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-                assertNull(findTextContaining(activity.get().findViewById(android.R.id.content), "GitHub"));
+                assertNull(findButton(activity.get().findViewById(android.R.id.content), "Connect GitHub"));
+                assertNull("no visible GitHub connection control; the hidden notice still names report recipients",
+                        shownTextContaining(activity.get().findViewById(android.R.id.content), "GitHub"));
             }
 
             GitHubConnect.clientId = "Iv1.test";

@@ -2109,8 +2109,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         frame.addView(note, Ui.matchWidth());
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Report this offer?")
-                .setMessage("Sends what the app read (other words masked, so names and streets stay here), your "
-                        + "rules and recent decisions to your private repository, where Claude diagnoses it.")
+                .setMessage("Sends masked offer text, your rules and recent decisions to the developer's private "
+                        + "GitHub repository. The developer may review it with Anthropic's Claude or OpenAI's ChatGPT/Codex; "
+                        + "review or a fix is not guaranteed.\n\n"
+                        + "Masking can miss details. Your note is sent without masking. Do not include customer, payment "
+                        + "or account details.")
                 .setView(frame)
                 .setPositiveButton("Send", (dialog, which) -> {
                     boolean queued = ReportOutbox.fileByUser(this, entry, note.getText().toString());

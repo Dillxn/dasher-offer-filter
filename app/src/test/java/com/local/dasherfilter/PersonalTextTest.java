@@ -54,6 +54,24 @@ public class PersonalTextTest {
     }
 
     @Test
+    public void pickupVerificationMasksRecipientInLabelsAndPreviouslyStoredLines() {
+        List<String> labels = Arrays.asList("Verify items for Alex Q", "Do not open sealed bags",
+                "1 ×", "Example Sandwich", "Confirm pickup", "Continue");
+        List<String> masked = Arrays.asList("Verify items for [name]", "Do not open sealed bags",
+                "1 ×", "Example Sandwich", "Confirm pickup", "Continue");
+        assertEquals(masked, PersonalText.mask(labels));
+        assertEquals(masked.toString(), PersonalText.maskLine(labels.toString()));
+        assertEquals(masked, PersonalText.mask(masked));
+        assertEquals(masked.toString(), PersonalText.maskLine(masked.toString()));
+        assertEquals("verify items for: [name]", PersonalText.mask("verify items for: Taylor R."));
+        assertEquals(Arrays.asList("Verify items for", "[name]", "Confirm pickup"),
+                PersonalText.mask(Arrays.asList("Verify items for", "Alex Q", "Confirm pickup")));
+        assertEquals("[Verify items for, [name], Confirm pickup]",
+                PersonalText.maskLine("[Verify items for, Alex Q, Confirm pickup]"));
+        assertEquals("Verify correct order", PersonalText.mask("Verify correct order"));
+    }
+
+    @Test
     public void aNotificationNamingTheCustomerKeepsTheStore() {
         assertEquals("Delivery Update: [name]'s order is ready for pickup at Speedway",
                 PersonalText.mask("Delivery Update: Tiaunna's order is ready for pickup at Speedway"));

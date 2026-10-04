@@ -1,0 +1,41 @@
+{
+  "startedAt": "2026-10-04T09:09:36.103379+00:00",
+  "completedAt": "2026-10-04T09:11:27.902886+00:00",
+  "sourceCommit": "45b1d3b736562138b0775684836ed49a3e3098d5",
+  "sourceTree": "eb8a09f0909ff177ac9c69a92eb9660bfafd50b4",
+  "command": [
+    "/tmp/offer-android-env/gradle-8.13/bin/gradle",
+    "testDebugUnitTest",
+    "lintDebug",
+    "-PallSdks",
+    "--offline",
+    "--max-workers=2",
+    "-Dorg.gradle.jvmargs=-Xmx1536m -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+  ],
+  "exitCode": 1,
+  "testSuites": 121,
+  "tests": {
+    "tests": 2268,
+    "failures": 6,
+    "errors": 0,
+    "skipped": 0
+  },
+  "simulatedSdks": [
+    26,
+    35
+  ],
+  "lintReportPresent": false,
+  "lintStatus": "Not completed; the original zero counters below were defaults, not a successful lint result.",
+  "lint": {
+    "Error": 0,
+    "Warning": 0,
+    "Fatal": 0,
+    "Information": 0
+  },
+  "trackedInputs": 408,
+  "inputsAggregate": "6877587bc643ee23ab534c43a8fd7127b371680b820b6d1787ecfb4cd5025182",
+  "changedInputs": [],
+  "signed": false,
+  "published": false,
+  "physicalHandsetVerified": false
+}
