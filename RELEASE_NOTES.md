@@ -1,3 +1,9 @@
+## 0.4.67 — mask pickup-verification recipients (candidate)
+
+- Masks the recipient following Dasher's pickup-verification heading, including split labels and older stored diagnostic lines.
+- Reapplies current masking to queued diagnostic issue/comment text before its first send. Existing receipt markers, retry limits and report consent remain intact; already-published reports are not modified.
+- This privacy correction does not change offer reading, decisions or acceptance evidence. Local validation and release status are recorded separately.
+
 ## 0.4.66 — unknown shopping counts no longer hide guaranteed failures (candidate)
 
 - A shopping offer whose total item count cannot be read still never passes automatically. When the offer would
