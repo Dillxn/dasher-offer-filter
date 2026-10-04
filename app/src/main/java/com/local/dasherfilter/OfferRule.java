@@ -140,11 +140,26 @@ final class OfferRule {
             }
             return new Decision(Result.REVIEW, AreaScore.requiredPay(floors, scale), "pay unclear beside a +$ amount", offer);
         }
-        if (!floors.readable()) return new Decision(Result.REVIEW, 0,
-                settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
-                        ? "final stop to nearest hotspot distance not found"
-                        : floors.active[AreaScore.ITEM] && offer.items == null ? "item count not found"
-                        : "an enabled value was not found", offer);
+        if (!floors.readable()) {
+            // A declared shopping order has at least one item. Substituting exactly one is therefore an upper
+            // bound on its area score: every larger real count only lengthens the item floor and lowers that spoke.
+            // Use the bound only to prove a decline. It must never produce a pass, a learned observation or a
+            // plotted score for the still-unknown count.
+            if (floors.active[AreaScore.ITEM] && offer.items == null && offer.payCents != null) {
+                AreaScore.Floors oneItem = AreaScore.floors(settings, offer.withItems(1, true));
+                if (oneItem.readable() && !AreaScore.reaches(oneItem, offer.payCents, scale)) {
+                    int upper = AreaScore.percent(oneItem, offer.payCents, scale);
+                    return new Decision(Result.DECLINE, AreaScore.requiredPay(oneItem, scale),
+                            "item count not found; even 1 item scores " + upper + "% (needs " + scale + "%)",
+                            offer, -1, scale);
+                }
+            }
+            return new Decision(Result.REVIEW, 0,
+                    settings.hotspotProximityHundredths > 0 && offer.finalStopHotspotMiles == null
+                            ? "final stop to nearest hotspot distance not found"
+                            : floors.active[AreaScore.ITEM] && offer.items == null ? "item count not found"
+                            : "an enabled value was not found", offer);
+        }
         long required = AreaScore.requiredPay(floors, scale);
         if (!AreaScore.reaches(floors, offer.payCents, scale)) {
             return new Decision(Result.DECLINE, required, scoreReason(percent, scale), offer, percent, scale);
@@ -222,11 +237,15 @@ final class OfferRule {
                 }
             }
         }
-        if (floors.active[AreaScore.ITEM] && offer.items != null) {
-            long byItems = floors.scaledCents(AreaScore.ITEM, scale, true);
+        AreaScore.Floors oneItem = floors.active[AreaScore.ITEM] && offer.items == null
+                ? AreaScore.floors(settings, offer.withItems(1, true)) : null;
+        if (floors.active[AreaScore.ITEM] && (offer.items != null
+                || oneItem != null && oneItem.fixedCents[AreaScore.ITEM] != null)) {
+            long byItems = (oneItem == null ? floors : oneItem)
+                    .scaledCents(AreaScore.ITEM, scale, true);
             if (byItems > required) {
                 required = byItems;
-                reason = "dollars per item";
+                reason = offer.items == null ? "dollars per item (at least 1 item)" : "dollars per item";
             }
         }
         // What the set rules alone ask, before the adaptive floors: all that a bound on unknown pay is judged by.
@@ -267,6 +286,13 @@ final class OfferRule {
             if (best.hasPerItem() && offer.itemCountApplicable) {
                 if (offer.items == null) {
                     missing = true;
+                    long byItems = oneItem == null ? 0
+                            : oneItem.scaledCents(AreaScore.ITEM, scale, false);
+                    if (byItems > required) {
+                        required = byItems;
+                        reason = "must match best accepted " + best.perItemLabel()
+                                + " for at least 1 item";
+                    }
                 } else if (scaledCost(floors.acceptedCents[AreaScore.ITEM].longValue(), scale) > required) {
                     required = scaledCost(floors.acceptedCents[AreaScore.ITEM].longValue(), scale);
                     reason = "must match best accepted " + best.perItemLabel();

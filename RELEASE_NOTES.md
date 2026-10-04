@@ -1,3 +1,18 @@
+## 0.4.66 — unknown shopping counts no longer hide guaranteed failures (candidate)
+
+- A shopping offer whose total item count cannot be read still never passes automatically. When the offer would
+  fail even at the mathematical best case of one item, however, both strict and compensating-area modes now decline
+  that proven failure instead of sending it to Review. Every real shopping order has at least one item, and larger
+  counts can only increase the per-item floor, so this does not guess a count or loosen a minimum.
+- An unread count remains unplotted, is never learned, and remains Review whenever one item could pass or any other
+  active score input is unreadable. Optional Auto-accept still requires the actual positive item count.
+- Reports #46–50 reproduce the old blind spot and all fail below 100% even at one item under their recorded rules.
+  Report #53 separately records a passing offer that the user says was not actually accepted, but does not establish
+  whether Auto-accept was enabled or which final action guard applied. Future shared offer reports now include only
+  the fixed outcome category (for example, passed, Accept requested, accepted, or left to you), while still omitting
+  private step details and timing. No acceptance guard was weakened.
+- Candidate only: no signing, publication or physical-phone success is claimed.
+
 ## 0.4.65 — smaller signature and direct theme cycling (candidate)
 
 - Scales the Settings emblem to 55% of its previous width and matching lettering size, makes it white on the dark page, and adds about 8 dp of space before the passage. The original bundled lettering and complete accessible wording are retained. The light page keeps its contrasting dark ink.
