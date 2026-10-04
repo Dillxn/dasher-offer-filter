@@ -1,0 +1,36 @@
+{
+  "inspectedAt": "2026-10-04T00:43:33.591460Z",
+  "cutoffAfter": "2026-10-04T00:06:05.982Z",
+  "appMain": "5fe1f90abb01b4f84e61efc493ffc8910396eac9",
+  "releaseUnchanged": "0.4.63/code69",
+  "newIssues": [
+    45
+  ],
+  "dashTokens": {
+    "45": "1fbfb1f839fbcc90d1d661d1d84dfb54"
+  },
+  "reportVersion": "0.4.62",
+  "reportGeneratedAt": "2026-10-04T00:06:29Z",
+  "comments": 0,
+  "newMatchingGmailCopies": [],
+  "knownDuplicatePairs": [
+    [
+      34,
+      35
+    ],
+    [
+      36,
+      37
+    ],
+    [
+      40,
+      41
+    ]
+  ],
+  "newEvidence": "19:35 Eastern matching shopping offer was not learned: no delivery/wait classification within 60 seconds; automatic acceptance canceled before dispatch.",
+  "historicalRepeats": "Older history repeats prior reports and is not independent evidence.",
+  "exactCauseEstablished": false,
+  "rawReportsRetained": false,
+  "outboundMessagesOrDeletions": false,
+  "codeOrReleaseChanged": false
+}
