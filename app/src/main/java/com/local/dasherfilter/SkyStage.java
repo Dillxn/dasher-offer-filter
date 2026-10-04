@@ -133,7 +133,8 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
             int mascot = bottom + Math.round(2 * ui.dp(MASCOT_LEAST_DP) + ui.dp(8));
             least = fixed + Math.max(circle, mascot);
         } else {
-            hero.measure(across, any);
+            // The collapsed sky keeps the full count row; spare mascot padding yields to offer details below.
+            hero.measure(across, MeasureSpec.makeMeasureSpec(Math.round(hero.countsHeight()), MeasureSpec.AT_MOST));
             fixed = top + bottom;
             least = fixed + hero.getMeasuredHeight();
         }

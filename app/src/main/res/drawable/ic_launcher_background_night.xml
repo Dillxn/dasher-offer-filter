@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same landscape and mascot as the day icon, with the existing scene's night sky and moon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="54" android:startY="0"
+                android:endX="54" android:endY="82">
+                <item android:offset="0" android:color="#FF080E1A" />
+                <item android:offset="0.55" android:color="#FF17233D" />
+                <item android:offset="1" android:color="#FF282640" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#FFF3E7BB"
+        android:pathData="M79,17A10,10 0 1,0 87,32A10,10 0 0,1 79,17Z" />
+    <path android:fillColor="#BFD7E6FA"
+        android:pathData="M24,24a0.8,0.8 0 1,0 1.6,0a0.8,0.8 0 1,0 -1.6,0ZM44,17a0.6,0.6 0 1,0 1.2,0a0.6,0.6 0 1,0 -1.2,0ZM94,45a0.7,0.7 0 1,0 1.4,0a0.7,0.7 0 1,0 -1.4,0ZM17,53a0.6,0.6 0 1,0 1.2,0a0.6,0.6 0 1,0 -1.2,0Z" />
+    <path android:fillColor="#FF24332C"
+        android:pathData="M0,74C16,66 32,68 48,72C64,76 84,64 108,69L108,108L0,108Z" />
+    <path android:fillColor="#FF16231E"
+        android:pathData="M0,85C20,79 40,83 58,85C76,87 92,79 108,81L108,108L0,108Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FF65706E"
+        android:strokeWidth="5" android:strokeLineCap="round"
+        android:pathData="M-4,99C28,93 70,101 112,94" />
+</vector>

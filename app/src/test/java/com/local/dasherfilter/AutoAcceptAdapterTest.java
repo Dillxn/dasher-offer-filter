@@ -144,7 +144,7 @@ public final class AutoAcceptAdapterTest {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(3500);
         assertEquals(0, clicks(accept));
     }
-    @Test public void eventArrivingInsideFinalMetadataInvalidatesSameWindowNode() {
+    @Test public void contentEventInvalidatesOldNodeAndRequiresAFreshCompleteReadBeforeAccept() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30"));
         boolean[] injected = {false};
         service.windowSource = () -> {
@@ -159,11 +159,15 @@ public final class AutoAcceptAdapterTest {
                 delivery.start();
                 try { delivery.join(5000); } catch (InterruptedException e) { throw new AssertionError(e); }
                 assertFalse(delivery.isAlive()); if (failure.get() != null) throw new AssertionError(failure.get());
+                assertEquals("The stale read cannot dispatch", 0, clicks(accept));
             }
             return service.getWindows();
         };
-        pass(1000); assertTrue(injected[0]); assertEquals(0, clicks(accept));
-        assertNotSent("content_changed");
+        pass(1500); assertTrue(injected[0]);
+        assertEquals(DiagnosticLog.read(app), 1, clicks(accept));
+        assertTrue(DiagnosticLog.read(app).contains("Accept verification reread"));
+        assertFalse(DiagnosticLog.read(app).contains("Accept NOT_SENT"));
+        pass(2000); assertEquals(1, clicks(accept));
     }
     @Test public void refusedClickNeverRetriesOrClaimsAccepted() {
         AccessibilityNodeInfo root = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
@@ -171,6 +175,38 @@ public final class AutoAcceptAdapterTest {
         show(root); pass(900); assertEquals(1, clicks(accept));
         show(root); pass(900); assertEquals(1, clicks(accept)); assertNull(ActiveRouteStore.load(app));
         assertTrue(DiagnosticLog.read(app).contains("Accept REFUSED"));
+    }
+
+    @Test public void repeatedFinalContentEventsExhaustRereadsWithoutAnyTap() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30"));
+        int[] changes = {0};
+        service.windowSource = () -> {
+            if (calledFrom("dasherStillReadable") && changes[0] < 3) {
+                changes[0]++;
+                contentEventOnMainCallback();
+            }
+            return service.getWindows();
+        };
+        pass(2500);
+        assertEquals(3, changes[0]);
+        assertEquals(0, clicks(accept));
+        assertNotSent("content_changed");
+        pass(2000); assertEquals(0, clicks(accept));
+    }
+
+    @Test public void postPersistenceContentEventStillPermanentlyStopsTheOffer() {
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30"));
+        int[] checks = {0};
+        service.windowSource = () -> {
+            if (calledFrom("dasherStillReadable") && ++checks[0] == 2) contentEventOnMainCallback();
+            return service.getWindows();
+        };
+        pass(1500);
+        assertEquals(0, clicks(accept));
+        assertNotSent("content_changed");
+        assertTrue(DiagnosticLog.read(app).contains("phase=after_persistence"));
+        show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29"));
+        pass(1500); assertEquals(0, clicks(accept));
     }
     @Test public void observedDeliveryUpdatesRouteAndOutcomeWithoutTeachingAdaptiveMinimums() {
         FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 1500));
@@ -364,6 +400,18 @@ public final class AutoAcceptAdapterTest {
         assertTrue(log, log.contains("Accept NOT_SENT; reason=" + reason + "; offer left to user"));
         assertFalse(log, log.contains("Accept REQUESTED"));
         assertFalse(log, log.contains("Accept REFUSED"));
+    }
+    private void contentEventOnMainCallback() {
+        AccessibilityEvent changed = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        changed.setPackageName("com.doordash.driverapp"); changed.setEventTime(SystemClock.uptimeMillis());
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread delivery = new Thread(() -> {
+            try { service.onAccessibilityEvent(changed); } catch (Throwable error) { failure.set(error); }
+        });
+        delivery.start();
+        try { delivery.join(5000); } catch (InterruptedException e) { throw new AssertionError(e); }
+        assertFalse(delivery.isAlive());
+        if (failure.get() != null) throw new AssertionError(failure.get());
     }
     private void touch() {
         ShadowWindowManagerImpl windows = Shadow.extract(service.getSystemService(WindowManager.class));

@@ -567,7 +567,7 @@ public class SameOfferAdapterTest {
      * audibly for it ({@code alertedAt}, 0 for never); before that only the post's interruption filter, importance
      * and channel can be read.
      */
-    private static NotificationListenerService.RankingMap ranking(StatusBarNotification source,
+    static NotificationListenerService.RankingMap ranking(StatusBarNotification source,
             NotificationChannel channel, int importance, boolean matchesFilter, long alertedAt) throws Exception {
         String key = source.getKey();
         if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -631,6 +631,54 @@ public class SameOfferAdapterTest {
         post(doorDashOffer("New Delivery! 0:45 left", STORE_A, System.currentTimeMillis()));
         assertEquals(1, notifications().size());
         assertFalse("Android already sounded for this offer", rings(notifications().getAllNotifications().get(0)));
+    }
+
+    @Test
+    public void aPassingCardDoesNotAddASecondChimeAfterTheNativeAlert() throws Exception {
+        Notification payload = new Notification.Builder(app, "source")
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle("New Delivery!")
+                .setStyle(new Notification.InboxStyle().addLine("$25.00").addLine("2 stops (7.2 mi) • 21 min"))
+                .build();
+        StatusBarNotification source = new StatusBarNotification("com.doordash.driverapp",
+                "com.doordash.driverapp", 3, "NEW_ORDER", 10001, 0, 0, payload,
+                android.os.Process.myUserHandle(), System.currentTimeMillis());
+        postSounded(source);
+        Notification card = notifications().getAllNotifications().get(0);
+        assertEquals(OfferAlerts.CHANNEL_ID, card.getChannelId());
+        assertFalse("one offer already sounded; no additional passing chime", rings(card));
+        assertEquals(DecisionLog.Action.DASHER_SOUNDS, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    @Test
+    public void aPassingPeekReturnDoesNotChimeAfterTheNativeAlert() throws Exception {
+        listener.get().onListenerConnected();
+        postSounded(doorDashOffer(STORE_A));
+        String tag = app.getSystemService(NotificationManager.class).getActiveNotifications()[0].getTag();
+        OfferSnapshot read = new OfferSnapshot(2500, 7.2, 21, 2);
+        OfferNotificationService.readOnScreen(tag, read);
+        OfferNotificationService.peekCard(app, read, OfferRule.Result.KEEP, "$25.00 passes");
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(1, notifications().size());
+        assertFalse("the navigation return is the same already-announced offer",
+                rings(notifications().getAllNotifications().get(0)));
+    }
+
+    @Test
+    public void nativeSoundOnAnUnchangedUpdateConsumesTheQuietCardsRingBudget() throws Exception {
+        StatusBarNotification source = doorDashOffer(STORE_A);
+        ShadowNotificationListenerService nativeAlerts = Shadow.extract(listener.get());
+        nativeAlerts.addActiveNotification(source);
+        listener.get().onListenerConnected(); // A quiet replay card has no own audible alert yet.
+        assertFalse(rings(notifications().getAllNotifications().get(0)));
+        postSounded(source); // Same content, but Android now confirms its native audible alert.
+        String tag = app.getSystemService(NotificationManager.class).getActiveNotifications()[0].getTag();
+        OfferSnapshot read = new OfferSnapshot(2500, 7.2, 21, 2);
+        OfferNotificationService.readOnScreen(tag, read);
+        OfferNotificationService.peekCard(app, read, OfferRule.Result.KEEP, "$25.00 passes");
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertFalse("an unchanged update still carries relevant native sound evidence",
+                rings(notifications().getAllNotifications().get(0)));
     }
 
     @Test

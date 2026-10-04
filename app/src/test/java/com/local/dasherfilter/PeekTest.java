@@ -251,6 +251,71 @@ public class PeekTest {
         idle();
     }
 
+    private StatusBarNotification postTappableNative(boolean sounded) throws Exception {
+        StatusBarNotification source = offerNotification("Taco Bell");
+        source.getNotification().contentIntent = android.app.PendingIntent.getActivity(app, 7,
+                new Intent().setComponent(DASHER_HOME), android.app.PendingIntent.FLAG_IMMUTABLE);
+        ShadowNotificationListenerService nativeAlerts = Shadow.extract(listener.get());
+        nativeAlerts.addActiveNotification(source);
+        listener.get().onNotificationPosted(source, sounded ? SameOfferAdapterTest.ranking(source,
+                new android.app.NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_HIGH),
+                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime()) : null);
+        idle();
+        return source;
+    }
+
+    @Test public void aTappableNativeAlertCanPeekWithoutADuplicateQuietCard() throws Exception {
+        connect(app(MAPS));
+        postTappableNative(false);
+        assertEquals("the native alert provides the tap while Peek waits", 0, cards());
+        dasherOpened();
+        assertEquals("the native alert was never dismissed", 1, listener.get().getActiveNotifications().length);
+    }
+
+    @Test public void skippedQuietPeekStillRingsOnceWhenNativeWasSilent() throws Exception {
+        connect(app(MAPS));
+        postTappableNative(false);
+        assertEquals(0, cards());
+        for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
+        pass(600);
+        assertNull(started());
+        assertEquals("silent native cannot consume the app's necessary fallback bell", 1, cards());
+        assertEquals(1, listener.get().getActiveNotifications().length);
+    }
+
+    @Test public void skippedQuietPeekDoesNotDuplicateAnAlreadyHeardNativeAlert() throws Exception {
+        connect(app(MAPS));
+        postTappableNative(true);
+        for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
+        pass(600);
+        assertNull(started());
+        assertEquals(0, cards());
+        assertEquals(1, listener.get().getActiveNotifications().length);
+    }
+
+    @Test
+    @Config(shadows = NotificationConsolidationTest.NativeNotifications.class)
+    public void skippedQuietPeekKeepsItsSilentNativeFallbackWhenListingBecomesUnknown() throws Exception {
+        connect(app(MAPS));
+        postTappableNative(false);
+        NotificationConsolidationTest.NativeNotifications nativeAlerts = Shadow.extract(listener.get());
+        nativeAlerts.failList = true;
+        for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
+        pass(600);
+        assertNull(started());
+        assertEquals("unknown listing is not proof that the offer disappeared", 1, cards());
+        assertEquals(0, nativeAlerts.cancellations);
+    }
+
+    @Test public void aRemovedNativeCoveredOfferCannotReviveItsFallback() throws Exception {
+        connect(app(MAPS));
+        StatusBarNotification source = postTappableNative(false);
+        listener.get().onNotificationRemoved(source);
+        pass(3_000);
+        assertNull(started());
+        assertEquals(0, cards());
+    }
+
     private static void idle() {
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
@@ -388,6 +453,7 @@ public class PeekTest {
 
     @Test
     public void fromOfferFiltersOwnScreenItGoesBackToOfferFilter() {
+        Appearance.choose(app, Appearance.Mode.NIGHT);
         connect(app(OURS));
         post("Taco Bell");
         dasherOpened();
@@ -397,7 +463,7 @@ public class PeekTest {
 
         Intent back = started();
         assertNotNull(back);
-        assertEquals(MainActivity.class.getName(), back.getComponent().getClassName());
+        assertEquals(LauncherAppearance.NIGHT, back.getComponent().getClassName());
         assertEquals(Intent.ACTION_MAIN, back.getAction());
         assertTrue(back.hasCategory(Intent.CATEGORY_LAUNCHER));
         assertEquals(AS_A_LAUNCHER_DOES, back.getFlags());
@@ -841,11 +907,25 @@ public class PeekTest {
 
     @Test
     public void ownExistingTaskReturnsByMoveToFrontWithoutCreatingAnActivity() {
+        ownExistingTaskReturns(new ComponentName(app, MainActivity.class));
+    }
+
+    @Test public void ownDayAliasTaskReturnsWithoutStackingAnotherActivity() {
+        Appearance.choose(app, Appearance.Mode.DAY);
+        ownExistingTaskReturns(new ComponentName(app, LauncherAppearance.DAY));
+    }
+
+    @Test public void ownNightAliasTaskReturnsWithoutStackingAnotherActivity() {
+        Appearance.choose(app, Appearance.Mode.NIGHT);
+        ownExistingTaskReturns(new ComponentName(app, LauncherAppearance.NIGHT));
+    }
+
+    private void ownExistingTaskReturns(ComponentName base) {
         connect(app(OURS));
         ActivityManager.AppTask task = ShadowAppTask.newInstance();
         ShadowAppTask taskShadow = Shadow.extract(task);
         ActivityManager.RecentTaskInfo info = new ActivityManager.RecentTaskInfo();
-        info.baseActivity = new ComponentName(app, MainActivity.class);
+        info.baseActivity = base;
         taskShadow.setTaskInfo(info);
         Shadows.shadowOf(app.getSystemService(ActivityManager.class)).setAppTasks(Collections.singletonList(task));
         post("Taco Bell");

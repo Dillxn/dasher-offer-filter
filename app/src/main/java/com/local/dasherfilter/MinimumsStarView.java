@@ -3472,7 +3472,7 @@ final class MinimumsStarView extends View {
         int color = byArea ? setColor() : ui.inkSecondary;
         scaleText.setTextSize(Math.min(ui.sp(9), ui.dp(10)));
         scaleText.setColor(color);
-        canvas.drawText("Mins", x, y - ui.dp(6), scaleText);
+        canvas.drawText(byArea ? "Area" : "Each", x, y - ui.dp(6), scaleText);
         scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
         scaleText.setColor(color);
         canvas.drawText(shownScalePercent() + "%", x, y + ui.dp(13), scaleText);

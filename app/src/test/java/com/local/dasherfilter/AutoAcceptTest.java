@@ -70,4 +70,50 @@ public final class AutoAcceptTest {
                 new AcceptedBest(2000, 20, 2000, 4.00002, 2000, 2));
         assertNotEquals(AutoAccept.rulesKey(a), AutoAccept.rulesKey(b));
     }
+
+    @Test public void exactLearnedItemRatesArePartOfAuthorityEvenWhenBothOffersPass() {
+        FilterSettings a = new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0,
+                new AcceptedBest(0, 0, 0, 0, 0, 0, 100, 2));
+        FilterSettings b = new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0,
+                new AcceptedBest(0, 0, 0, 0, 0, 0, 101, 2));
+        assertNotEquals(AutoAccept.rulesKey(a), AutoAccept.rulesKey(b));
+    }
+
+    @Test public void contentRereadsKeepOriginalDeadlineAndHaveABoundedBudget() {
+        AutoAccept a = new AutoAccept();
+        a.observe(offer, "same", rules, 5, 1, 1000, false);
+        assertTrue(a.rereadAfterContent(1800));
+        assertEquals(AutoAccept.State.READY, a.observe(offer, "same", rules, 4, 1, 1950, false));
+        assertTrue(a.rereadAfterContent(1950));
+        assertEquals(AutoAccept.State.READY, a.observe(offer, "same", rules, 4, 1, 2100, false));
+        assertFalse(a.rereadAfterContent(2100));
+        assertFalse(a.current(offer, "same", rules, 1, 3000));
+    }
+
+    @Test public void contentRereadCannotInheritAuthorityForChangedIdentityRulesOrGeneration() {
+        for (int change = 0; change < 6; change++) {
+            AutoAccept a = new AutoAccept();
+            OfferSnapshot original = offer.withItems(2, true);
+            a.observe(original, "same", rules, 30, 1, 1000, false);
+            assertTrue(a.rereadAfterContent(1800));
+            assertEquals(AutoAccept.State.BLOCKED, a.observe(
+                    change == 0 ? original.withItems(3, true) : change == 1 ? OfferSnapshot.UNKNOWN : original,
+                    change == 2 ? "different" : "same", change == 3 ? rules.withPerItem(10) : rules,
+                    29, change == 4 ? 2 : 1, 1950, change == 5));
+            assertFalse(a.rereadAfterContent(2000));
+            assertFalse(a.current(original, "same", rules, 1, 2000));
+        }
+    }
+
+    @Test public void contentRereadCannotRestartExpiredOrCanceledCandidate() {
+        AutoAccept a = new AutoAccept();
+        a.observe(offer, "same", rules, 5, 1, 1000, false);
+        assertFalse(a.rereadAfterContent(3000));
+        a.clear();
+        a.observe(offer, "same", rules, 30, 1, 4000, false);
+        assertTrue(a.rereadAfterContent(4800));
+        a.block(4801);
+        assertFalse(a.rereadAfterContent(4900));
+        assertEquals(AutoAccept.State.BLOCKED, a.observe(offer, "same", rules, 29, 1, 5000, false));
+    }
 }

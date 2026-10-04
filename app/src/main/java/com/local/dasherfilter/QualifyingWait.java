@@ -197,6 +197,11 @@ final class QualifyingWait {
     long revision() { return revision; }
     boolean active() { return phase != Phase.NONE; }
 
+    /** Display-only: an offer-handling phase is not positive evidence that the user is still waiting. */
+    boolean observingWaiting(long elapsed, long wallNow) {
+        return phase == Phase.WAITING && continuous(elapsed, wallNow);
+    }
+
     private boolean continuous(long elapsed, long wallNow) {
         return phase != Phase.NONE && elapsed >= heartbeat && elapsed - heartbeat <= MAX_COVERAGE_GAP_MS
                 && elapsed >= started && elapsed - started <= RETAIN_MS

@@ -512,7 +512,11 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             List<Button> buttons = new ArrayList<>();
             collectButtons(content, buttons);
             assertTrue(buttons.size() >= 10);
-            for (Button button : buttons) assertFalse("unlabeled button", button.getText().toString().trim().isEmpty());
+            for (Button button : buttons) {
+                CharSequence description = button.getContentDescription();
+                assertTrue("unlabeled button", !button.getText().toString().trim().isEmpty()
+                        || description != null && !description.toString().trim().isEmpty());
+            }
             // The round icon buttons have no text, so they must say what they do.
             assertNotNull(iconButton(content, "Settings"));
             assertNotNull(iconButton(content, "Back"));

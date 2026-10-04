@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Draft of 3 October 2026. Not legal advice; have a lawyer review before public release.
+            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release.
 
             ## What {app} is
 
@@ -110,8 +110,10 @@ final class LegalTexts {
 
             ## Licence
 
-            {app} is licensed to you, not sold, under its LICENSE: all rights reserved. Tips are optional gifts to \
-            the author and buy nothing.
+            {app} is free and open-source software under the MIT License in LICENSE. That license grants the rights \
+            to use, copy, modify and distribute the software, subject to its copyright and permission notice. These \
+            terms do not limit the rights granted by the MIT License. Tips are optional gifts to the author and buy \
+            nothing.
 
             ## Changes
 
@@ -297,25 +299,27 @@ final class LegalTexts {
             """;
 
     private static final String LICENSE_TEXT = """
-            {app} licence
+            MIT License
 
-            Draft of 1 October 2026. Not legal advice; have a lawyer review before public release.
+            Copyright (c) 2026 Dillxn
 
-            Copyright (c) 2026 Dillxn, the author of {app}. All rights reserved.
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
 
-            No licence is granted to copy, modify, publish, distribute, sublicense or sell this software or its \
-            source code, in whole or in part, except with the copyright holder's written permission. You may \
-            install and use the app as the copyright holder distributes it, on your own devices, under its terms of \
-            use.
+            The above copyright notice and this permission notice shall be included in
+            all copies or substantial portions of the Software.
 
-            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT \
-            LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN \
-            NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, \
-            WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE \
-            SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-            DoorDash and Dasher are trademarks of DoorDash, Inc. This software is not made by, endorsed by or \
-            affiliated with DoorDash.
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+            THE SOFTWARE.
             """;
 
     private LegalTexts() {}

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * What the user did with an offer, so the adaptive minimum can learn from it. Nothing here taps anything, and nothing
@@ -87,6 +88,16 @@ final class AcceptedOfferTracker {
     private static final List<String> PROGRESS_LABELS = Arrays.asList(
             "arrived at store", "arrived at pickup", "arrived at customer", "arrived at drop-off",
             "confirm pickup", "confirm pick up", "complete pickup", "complete delivery", "slide to confirm pickup");
+    private static final Pattern BARE_RETAINED_PAY = Pattern.compile("\\$\\s*\\d{1,4}(?:[.,]\\d{1,2})?");
+    private static final Pattern RETAINED_PAY_QUALIFIER = Pattern.compile("(?i)\\b(?:per|each|every|apiece"
+            + "|up\\s+to|at\\s+least|at\\s+most|about|approximately|estimated?|bonus(?:es)?|tips?"
+            + "|base\\s+pay|peak\\s+pay|guaranteed|total\\s+pay)\\b|×|\\b\\d+\\s*x\\b|\\bx\\s*\\d");
+    private static final Pattern ROUTE_UNIT = Pattern.compile(
+            "(?i)\\b(?:mi|miles?|mins?|minutes?|hrs?|hours?|stops?|ft|feet|yards?|yds?|mph|kph"
+                    + "|km|kilomet(?:er|re)s?|meters?|metres?)\\b");
+    private static final Pattern ROUTE_COUNT = Pattern.compile(
+            "(?i)\\b\\d+\\s+(?:orders?|pick[ -]?ups?|drop[ -]?offs?)\\b");
+    private static final Pattern BARE_COUNTDOWN = Pattern.compile("\\d{1,2}:[0-5]\\d");
 
     static final class Acceptance {
         final OfferSnapshot acceptedOffer;
@@ -276,6 +287,78 @@ final class AcceptedOfferTracker {
             if (PROGRESS_LABELS.contains(progressKey(label))) return true;
         }
         return false;
+    }
+
+    /** Fixed vocabulary for the existing bounded outcome diagnostics; never an arbitrary screen label. */
+    static String progressKind(List<String> labels) {
+        String kind = "none";
+        if (labels != null) for (String label : labels) {
+            String key = progressKey(label);
+            if (!PROGRESS_LABELS.contains(key)) continue;
+            String next = key.replace(' ', '_').replace('-', '_');
+            if (!kind.equals("none") && !kind.equals(next)) return "multiple";
+            kind = next;
+        }
+        return kind;
+    }
+
+    /** Relation to the watched original offer, without logging either amount or retaining new screen text. */
+    String retainedPayRelation(OfferSnapshot read, List<String> labels) {
+        OfferSnapshot original = watch != null ? watch.learn : pending != null ? pending.offer : null;
+        return retainedPayRelation(read, labels, original);
+    }
+
+    private static String retainedPayRelation(OfferSnapshot read, List<String> labels, OfferSnapshot original) {
+        if (!OfferEvidence.bounded(labels)) return "ambiguous";
+        boolean money = false;
+        boolean qualified = false;
+        for (String raw : labels) {
+            String label = OfferEvidence.normalize(raw);
+            qualified |= RETAINED_PAY_QUALIFIER.matcher(label).find();
+            if (!label.contains("$")) continue;
+            money = true;
+            // Labeled totals can win over other money in the general offer parser. This exception cannot:
+            // every money label must be an unqualified amount, and the parser must find one consistent value.
+            if (!BARE_RETAINED_PAY.matcher(label).matches()) return "ambiguous";
+        }
+        if (!money) return "none";
+        if (qualified || read == null || read.payCents == null || read.payAtMostCents != null
+                || OfferEvidence.malformedMoney(labels)) return "ambiguous";
+        return original != null && original.payCents != null && original.payCents.equals(read.payCents)
+                ? "matched" : "other";
+    }
+
+    /**
+     * Acceptance only: a complete pickup/delivery read can retain the exact watched payout and item count.
+     * Shared classification stays conservative for Peek, decline completion, and every unrelated screen. Only
+     * the original full standalone offer can teach; none of this read's figures replace its observed facts.
+     */
+    private static After acceptanceScreen(List<String> labels, boolean offerFacts, OfferSnapshot read,
+                                          boolean completeWithoutControls, OfferSnapshot original) {
+        After shown = classify(labels, offerFacts);
+        // Malformed or conflicting money can disappear from the general parser's facts entirely. For this
+        // complete acceptance read it remains competing evidence, not a route with no monetary evidence.
+        if (shown == After.ROUTE && original != null && read != null
+                && retainedPayRelation(read, labels, original).equals("ambiguous")) return After.OFFER_FACTS;
+        if (shown != After.OFFER_FACTS || !completeWithoutControls || original == null
+                || original.payCents == null || original.payCents <= 0 || original.payAtMostCents != null
+                || original.miles == null || original.minutes == null || original.stops == null
+                || original.stops < 2 || original.itemCountApplicable && original.items == null
+                || read == null || read.miles != null || read.minutes != null || read.stops != null
+                || read.finalStopHotspotMiles != null || !isDeliveryScreen(labels)
+                || !retainedPayRelation(read, labels, original).equals("matched")
+                || read.itemCountApplicable && (read.items == null || !read.items.equals(original.items))
+                || DasherScene.showsNewOffer(labels) || DasherScene.showsWaiting(labels)
+                || OfferEvidence.isDashOver(labels) || OfferEvidence.isPreDashHome(labels)
+                || DasherScene.showsEndDashQuestion(labels) || DeclineConfirmation.isSurface(labels)
+                || DasherScene.showsNavigation(labels) || AddOnOffer.isLikely(labels)) return shown;
+        for (String raw : labels) {
+            String label = OfferEvidence.normalize(raw);
+            if (OfferControls.isButton(label, "accept") || OfferControls.isButton(label, "decline")
+                    || BARE_COUNTDOWN.matcher(label).matches() || ROUTE_UNIT.matcher(label).find()
+                    || ROUTE_COUNT.matcher(label).find()) return shown;
+        }
+        return After.ROUTE;
     }
 
     /** A label as the progress list has it: normalized, lower case, without trailing punctuation. */
@@ -543,12 +626,21 @@ final class AcceptedOfferTracker {
      * @param offerFacts the read found an offer's facts: an offer being drawn, never a delivery screen
      */
     Acceptance observeOtherScreen(List<String> labels, boolean offerFacts, long now) {
+        return observeOtherScreen(labels, offerFacts, null, false, now);
+    }
+
+    /** A complete screen read may explain matching retained pay only for an existing manual tap. */
+    Acceptance observeOtherScreen(List<String> labels, boolean offerFacts, OfferSnapshot read,
+                                  boolean completeWithoutControls, long now) {
         if (pending == null || now - clickedAt > MAX_CLICK_TO_PROGRESS_MS) {
             unconfirmedAutomatic("no explicit pickup or delivery progress within 15 s");
             clearPending();
             return null;
         }
-        After shown = classify(labels, offerFacts);
+        OfferSnapshot original = pending.automaticRequest || pending.addOn
+                || notLearnedWithTap(pending.deliveryBefore, pending.secondsLeft, pending.countdownAt,
+                        pending.goneAt < 0 ? now : pending.goneAt) != null ? null : pending.offer;
+        After shown = acceptanceScreen(labels, offerFacts, read, completeWithoutControls, original);
         if (pending.automaticRequest && (shown == After.WAITING || shown == After.DASH_OVER
                 || shown == After.NEW_OFFER || DeclineConfirmation.hasPrompt(labels))) {
             unconfirmedAutomatic("Dasher returned to waiting, ended the dash, or showed another offer/decline question");
@@ -746,10 +838,19 @@ final class AcceptedOfferTracker {
      * @param offerFacts the read found an offer's facts, which its words alone may not show
      */
     void afterScreen(List<String> labels, boolean offerFacts, long now) {
-        After shown = endOfDash(labels, classify(labels, offerFacts), now);
+        afterScreen(labels, offerFacts, null, false, now);
+    }
+
+    /** A complete screen read may explain matching retained pay only within the current manual offer watch. */
+    void afterScreen(List<String> labels, boolean offerFacts, OfferSnapshot read,
+                     boolean completeWithoutControls, long now) {
+        Watch w = watch;
+        OfferSnapshot original = w == null || w.addOn || w.leftAt >= 0 && now - w.leftAt >= AFTER_MS
+                || notAcceptedBecause(w, w.leftAt < 0 ? now : w.leftAt) != null ? null : w.learn;
+        After shown = endOfDash(labels,
+                acceptanceScreen(labels, offerFacts, read, completeWithoutControls, original), now);
         if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) lastClear = shown;
         if (shown != After.EMPTY && shown != After.NEW_OFFER && shown != After.OFFER_FACTS) screenSinceOffer = true;
-        Watch w = watch;
         if (w == null) {
             // A wait read before an unrelated/unclear screen is not proof the user was waiting when the next offer
             // arrived. With a watched offer the existing settling path makes this decision instead.
@@ -1020,16 +1121,21 @@ final class AcceptedOfferTracker {
 
     /** Why a delivery screen after this offer does not show it was accepted; null when it does. */
     private static String notAcceptedBecause(Watch w) {
+        return notAcceptedBecause(w, w.leftAt);
+    }
+
+    /** The same eligibility before the first complete no-controls read has recorded its disappearance time. */
+    private static String notAcceptedBecause(Watch w, long goneAt) {
         if (w.declineBegun()) return BEGAN_TO_DECLINE;
         if (w.declinedElsewhere) return DECLINED_THROUGH_NOTIFICATION;
         // Pay is what an acceptance teaches, and a route is kept only with it: none was read, so nothing is.
         if (w.learn == null || w.learn.payCents == null) return PAY_NOT_READ;
         if (w.addOn) return w.acceptTapped ? null : ADD_ON_NEEDS_TAP;
-        if (w.acceptTapped) return notLearnedWithTap(w.deliveryBefore, w.secondsLeft, w.countdownAt, w.leftAt);
+        if (w.acceptTapped) return notLearnedWithTap(w.deliveryBefore, w.secondsLeft, w.countdownAt, goneAt);
         if (w.deliveryBefore) return DELIVERY_UNDER_WAY;
         if (!w.waitingBefore) return WAIT_NOT_SEEN;
         if (w.secondsLeft < 0) return NO_COUNTDOWN;
-        return ranOut(w.secondsLeft, w.countdownAt, w.leftAt);
+        return ranOut(w.secondsLeft, w.countdownAt, goneAt);
     }
 
     /**

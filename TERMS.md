@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Draft of 3 October 2026. Not legal advice; have a lawyer review before public release.
+Draft of 4 October 2026. Not legal advice; have a lawyer review before public release.
 
 ## What Offer Filter is
 
@@ -39,7 +39,7 @@ To the extent the law allows, the author of Offer Filter is not liable for any l
 
 ## Licence
 
-Offer Filter is licensed to you, not sold, under its LICENSE: all rights reserved. Tips are optional gifts to the author and buy nothing.
+Offer Filter is free and open-source software under the MIT License in LICENSE. That license grants the rights to use, copy, modify and distribute the software, subject to its copyright and permission notice. These terms do not limit the rights granted by the MIT License. Tips are optional gifts to the author and buy nothing.
 
 ## Changes
 

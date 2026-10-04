@@ -239,10 +239,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 10 disclosed auto-accept but not prospective waiting history or the solar theme.
-        assertEquals(11, Consent.VERSION);
+        // Version 11 disclosed the data flows, but still bundled the former proprietary terms.
+        assertEquals(12, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 10).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 11).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -312,10 +312,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         try (ActivityController<LegalActivity> page = Robolectric.buildActivity(LegalActivity.class, started).setup()) {
             View shown = page.get().findViewById(android.R.id.content);
             assertNotNull(findText(shown, doc.title));
-            assertNotNull(shownTextContaining(shown, "Not legal advice; have a lawyer review before public release."));
+            if (doc != LegalTexts.Doc.LICENSE) {
+                assertNotNull(shownTextContaining(shown, "Not legal advice; have a lawyer review before public release."));
+            }
             String line = doc == LegalTexts.Doc.TERMS ? "Auto-accept starts off."
                     : doc == LegalTexts.Doc.PRIVACY ? "positions rounded to about half a kilometre"
-                    : "All rights reserved.";
+                    : "Permission is hereby granted, free of charge";
             assertNotNull(doc.title + ": " + line, shownTextContaining(shown, line));
             iconButton(shown, "Back").performClick();
             assertTrue("Back closes it", page.get().isFinishing());

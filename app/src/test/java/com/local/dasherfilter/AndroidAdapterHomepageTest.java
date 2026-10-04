@@ -359,7 +359,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(star.beside());
             assertTrue(findChart(content).isShown());
             AreaMapView map = find(content, AreaMapView.class);
-            assertTrue(map.isShown() && map.getHeight() >= new Ui(app).dp(96));
+            assertTrue("the compact map keeps its configured readable minimum",
+                    map.isShown() && map.getHeight() >= new Ui(app).dp(84));
             DecisionChartView chart = findChart(content);
             assertEquals("the skyline keeps a fixed height rather than being squeezed", new Ui(app).dp(56),
                     chart.getHeight());
@@ -568,16 +569,18 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void theMascotIsTheOneButtonOnTheMainPage() {
+    public void theMascotAloneOwnsThePauseActionOnTheMainPage() {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
-            assertTrue(mascot.isClickable());
-            assertTrue(mascot.isFocusable());
-            // Screen readers hear a button that says what a tap does, with the state and the day's counts.
-            android.view.accessibility.AccessibilityNodeInfo node = mascot.createAccessibilityNodeInfo();
+            assertFalse("the drawn container is not an extra action", mascot.isClickable());
+            assertFalse(mascot.isFocusable());
+            // Screen readers reach a native button precisely over the mascot, separate from the counts.
+            assertTrue(mascot.mascotControl().isClickable());
+            assertTrue(mascot.mascotControl().isFocusable());
+            android.view.accessibility.AccessibilityNodeInfo node = mascot.mascotControl().createAccessibilityNodeInfo();
             assertEquals(Button.class.getName(), node.getClassName().toString());
             boolean labeled = false;
             for (android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction action : node.getActionList()) {

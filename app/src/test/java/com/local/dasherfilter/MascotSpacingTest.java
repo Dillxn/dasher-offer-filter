@@ -101,6 +101,16 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             try (FileOutputStream stream = new FileOutputStream(new File(out, name + ".png"))) {
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
             } finally { bitmap.recycle(); }
+            for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
+                android.widget.Button control = hero.countControl(tally);
+                assertTrue("native count target stays at least 48dp wide", control.getWidth() >= ui.dp(48));
+                assertTrue("native count target stays at least 48dp tall", control.getHeight() >= ui.dp(48));
+            }
+            tap((android.view.ViewGroup) star.getParent(), counts.centerX() - hero.countsAt(new RectF()),
+                    counts.centerY());
+            assertTrue("inspecting a count never pauses", FilterStore.load(app).enabled);
+            assertNotNull("the count opens its existing offer ticket", find(content, OfferCardView.class));
+            activity.get().onBackPressed();
             tap((android.view.ViewGroup) star.getParent(), x, y);
             assertFalse("tap still pauses filtering", FilterStore.load(app).enabled);
         } finally {

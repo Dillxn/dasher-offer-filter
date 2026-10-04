@@ -26,6 +26,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -122,7 +123,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: the mascot.
     private TextView stateLine;
+    private TextView offerCaption;
     private TextView waitEstimateLine;
+    private boolean readyForOffers;
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
@@ -142,7 +145,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private LinearLayout ticket;
     private Decor.Ticket ticketShape;
     private Button reportSelected;
-    private TextView noOffers;
     private long shownHistoryVersion = -1;
     /** The newest offer the page has seen (when it was recorded), so the mascot plays out each new one once. */
     private long seenOfferAt = -1;
@@ -158,6 +160,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private boolean followNewest = true;
     /** The chosen offer's ticket is folded away until its line or a building is tapped. */
     private boolean ticketOpen;
+    /** A retained count result older than the visible skyline; no plotted selection is implied. */
+    private DecisionLog.Entry countTicket;
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
@@ -539,6 +543,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!back) {
             mainHeader = header;
             mainTitle = name;
+            header.addView(iconButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
             splitButton = iconButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
@@ -682,7 +687,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         // The mascot is the button: a tap pauses, resumes, or with no rule yet points to the knobs.
         hero = new FilterHeroView(this, ui);
-        hero.setOnClickListener(tapped -> toggleAutoDecline());
+        hero.setOnMascotClickListener(tapped -> toggleAutoDecline());
+        hero.setOnCountClickListener(this::openLatestCountedOffer);
         // Words only when something needs the user: paused, or no rules yet. On, the picture says it all.
         LinearLayout lines = ui.column();
         lines.setPadding(ui.dp(16), 0, ui.dp(16), 0);
@@ -696,7 +702,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         stateParams.gravity = Gravity.CENTER_HORIZONTAL;
         lines.addView(stateLine, stateParams);
+        offerCaption = ui.text("", 13, ui.ink, true);
+        offerCaption.setGravity(Gravity.CENTER);
+        offerCaption.setMinHeight(ui.dp(48));
+        offerCaption.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
+        offerCaption.setOnClickListener(tapped -> {
+            if (chart.selectedEntry() != null) setTicketOpen(true);
+        });
         waitEstimateLine = ui.text("", 13, ui.inkSecondary, false);
+        waitEstimateLine.setMinHeight(ui.dp(48));
         waitEstimateLine.setGravity(Gravity.CENTER_HORIZONTAL);
         waitEstimateLine.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
         waitEstimateLine.setOnClickListener(tapped -> OwnWindowTouches.show(new AlertDialog.Builder(this)
@@ -737,28 +751,38 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout body = body(page, new LeastColumn(this));
         groundParams = share(1);
         body.setLayoutParams(groundParams);
-        // Its own flow row keeps every estimate length and touch target clear of constellation points.
+        // A stable target identifies the displayed shape and opens its ticket, clear of the minimum knobs.
+        body.addView(offerCaption, Ui.matchWidth());
         body.addView(waitEstimateLine, waitParams);
         addOffers(body);
         addAreas(body);
         // The road needs a whole screen; in a short window (beside Dasher or not) the page ends at the skyline or
         // the map, and a window changing size builds the page again.
         View road = ground(page, 78);
-        road.setVisibility(compact ? View.GONE : View.VISIBLE);
+        road.setVisibility(compact || getResources().getConfiguration().fontScale >= 1.5f
+                ? View.GONE : View.VISIBLE);
         // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
         mainTitle.setId(View.generateViewId());
         minimums.setAccessibilityTraversalAfter(mainTitle.getId());
         if (compact) {
             // Half a screen holds the whole picture only if each part settles for a little less.
             chart.setLeastDp(52);
+            chartParams.topMargin = 0;
             areaMap.setLeastDp(84);
             areaLine.setMinHeight(ui.dp(32));
             body.setPadding(body.getPaddingLeft(), 0, body.getPaddingRight(), ui.dp(4));
-            mainHeader.setPadding(mainHeader.getPaddingLeft(), ui.dp(4), mainHeader.getPaddingRight(), 0);
+            // Keep every shortcut reachable even with the constellation beside another app's short pane.
+            mainHeader.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), 0);
+            for (int i = 0; i < mainHeader.getChildCount(); i++) {
+                View child = mainHeader.getChildAt(i);
+                if (child == mainTitle || child == sunButton) continue;
+                child.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+            }
+            sunButton.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)));
         }
         arrangeForSplit();
         // The skyline's street (12 dp above the chart's bottom) is the horizon.
-        scene.setHorizon(chart, ui.dp(11), noOffers);
+        scene.setHorizon(chart, ui.dp(11), offerCaption);
         // The scene's stars, clouds and signpost keep out from under the sky's words and icons.
         scene.setOver(sky, sky);
     }
@@ -819,19 +843,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         minimums.setBeside(inHeader);
         if (inHeader) {
             // Clear of the split screen's handle at the middle of the top edge.
+            int size = getResources().getConfiguration().screenWidthDp < 344 ? 56 : HEADER_STAR_DP;
             mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
-                    ui.dp(MinimumsStarView.besideWidthDp(HEADER_STAR_DP)), ui.dp(HEADER_STAR_DP)));
+                    ui.dp(MinimumsStarView.besideWidthDp(size)), ui.dp(size)));
         } else {
             sky.holdStar();
         }
     }
 
     private void addOffers(LinearLayout body) {
-        noOffers = ui.note("No offers yet.");
-        noOffers.setGravity(Gravity.CENTER_HORIZONTAL);
-        body.addView(noOffers);
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
+            countTicket = null;
             followNewest = !recentEntries.isEmpty() && entry == recentEntries.get(0);
             // By area, the constellation picks out the chosen offer's polygon and score.
             if (minimums != null) minimums.emphasize(followNewest ? null : entry);
@@ -852,6 +875,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Unfolds or folds the chosen offer's ticket. */
     private void setTicketOpen(boolean open) {
+        countTicket = null;
         ticketOpen = open;
         if (chart.selectedEntry() != null) showSelection(chart.selectedEntry());
         else if (minimums != null) minimums.showTicket(null);
@@ -1316,6 +1340,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (appearanceCheckedAt >= 0 && now >= appearanceCheckedAt && now - appearanceCheckedAt < 60_000) return false;
         appearanceCheckedAt = now;
         Appearance.State appearance = Appearance.resolve(this);
+        LauncherAppearance.sync(this, appearance);
         if (sunButton != null) sunButton.show(appearance);
         if (appearance.night == ui.dark) return false;
         changingAppearance = true;
@@ -1359,12 +1384,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         boolean readerConnected = OfferFilterService.isConnected();
         // Setup prompts take precedence over optional timing, especially at large font sizes in a short window.
-        boolean showWait = saved.enabled && saved.hasAnyRule() && readerConnected
+        readyForOffers = saved.enabled && saved.hasAnyRule() && readerConnected
                 && OfferNotificationService.isConnected() && alertsAllowed.get();
+        QualifyingWait.Estimate estimate = QualifyingWaitStore.estimate(this, saved);
+        boolean showWait = readyForOffers && estimate.status == QualifyingWait.Status.READY
+                && QualifyingWaitStore.observingWaiting(this);
         waitEstimateLine.setVisibility(showWait ? View.VISIBLE : View.GONE);
-        if (showWait) {
-            String estimate = QualifyingWaitStore.estimate(this, saved).label();
-            if (!estimate.contentEquals(waitEstimateLine.getText())) waitEstimateLine.setText(estimate);
+        if (showWait && !estimate.label().contentEquals(waitEstimateLine.getText())) {
+            waitEstimateLine.setText(estimate.label());
         }
         screenReading.problem(screenReadingEnabled.get() ? "Screen reading stopped"
                 : restrictedSettingsHint ? "Screen reading is off · switch greyed out?" : "Screen reading is off");
@@ -1377,6 +1404,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (route != null) routeNote.setText("On a route: " + route.summary());
 
         refreshHistory();
+        refreshOfferCaption(chart.selectedEntry());
         refreshLive();
         // Rules saved elsewhere, and an accepted order (or a declined one that taught) changing the adaptive minimums
         // without a new offer in the history: the star follows them as well.
@@ -1504,23 +1532,59 @@ public final class MainActivity extends Activity implements Updater.Busy {
         noteNewOffer(recent);
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
-        noOffers.setVisibility(empty ? View.VISIBLE : View.GONE);
         chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         if (empty) {
+            countTicket = null;
             ticketOpen = false;
             ticket.setVisibility(View.GONE);
             if (sheet != null) sheet.setVisibility(View.GONE);
             if (minimums != null) minimums.showTicket(null);
         }
         if (!empty) {
+            if (countTicket != null) {
+                long selectedAt = countTicket.at;
+                countTicket = null;
+                for (DecisionLog.Entry entry : recent) if (entry.at == selectedAt) countTicket = entry;
+            }
             DecisionLog.Entry selected = chart.selectedEntry();
-            if (followNewest || selected == null) {
+            if (countTicket != null) {
+                if (followNewest || selected == null) {
+                    // Keep the skyline current without replacing the older count ticket being inspected.
+                    DecisionLog.Entry inspected = countTicket;
+                    chart.select(Math.min(DecisionChartView.SLOTS, recent.size()) - 1);
+                    countTicket = inspected;
+                }
+                showSelection(countTicket);
+            } else if (followNewest || selected == null) {
                 chart.select(Math.min(DecisionChartView.SLOTS, recent.size()) - 1);
             } else {
                 showSelection(selected);
             }
         }
         updateMeter();
+    }
+
+    /** The header counts inspect history; they never change auto-decline. */
+    private void openLatestCountedOffer(DecisionLog.Tally tally) {
+        refreshHistory();
+        List<DecisionLog.Entry> recent = DecisionLog.recent(this, DecisionLog.MAX_ENTRIES);
+        for (int i = 0; i < recent.size(); i++) {
+            DecisionLog.Entry entry = recent.get(i);
+            if (DecisionLog.tally(entry) != tally) continue;
+            if (i < DecisionChartView.SLOTS) {
+                openOffer(entry);
+            } else {
+                // Retained history outlives the visible skyline. Its ticket can still explain this count.
+                countTicket = entry;
+                ticketOpen = true;
+                showSelection(entry);
+                openSheet(ticket);
+            }
+            return;
+        }
+        String kind = tally == DecisionLog.Tally.PASSED ? "passed offers"
+                : tally == DecisionLog.Tally.FILTERED ? "filtered offers" : "offers left to review";
+        toast("No recent " + kind + " in history.");
     }
 
     /**
@@ -1599,6 +1663,44 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return new OfferSnapshot(null, 5.0, 20, 2);
     }
 
+    private void refreshOfferCaption(DecisionLog.Entry entry) {
+        if (entry == null) {
+            String empty = readyForOffers ? "Waiting for offers" : "No offers yet.";
+            if (!empty.contentEquals(offerCaption.getText())) offerCaption.setText(empty);
+            offerCaption.setContentDescription(null);
+            offerCaption.setClickable(false);
+            return;
+        }
+        boolean latest = !recentEntries.isEmpty() && recentEntries.get(0).at == entry.at;
+        String label = (latest ? "Latest" : "Selected") + " · "
+                + (entry.facts.payCents == null ? "Pay unread" : DecisionLog.money(entry.facts.payCents))
+                + " · " + captionOutcome(entry);
+        if (!label.contentEquals(offerCaption.getText())) offerCaption.setText(label);
+        String description = label + ". " + when(entry.at) + ". Open offer details";
+        if (!description.contentEquals(String.valueOf(offerCaption.getContentDescription()))) {
+            offerCaption.setContentDescription(description);
+        }
+        offerCaption.setClickable(true);
+    }
+
+    /** Qualify acceptance only when the stored observation distinguishes its source. */
+    private static String captionOutcome(DecisionLog.Entry entry) {
+        if (DecisionLog.outcome(entry) != DecisionLog.Outcome.ACCEPTED) return DecisionLog.outcome(entry).said;
+        for (int i = entry.steps.size() - 1; i >= 0; i--) {
+            DecisionLog.Step step = entry.steps.get(i);
+            if (step.kind == DecisionLog.StepKind.ACCEPTED_NOT_LEARNED) {
+                return step.detail.startsWith("automatic Accept was requested, and Dasher showed a delivery screen")
+                        ? "Automatically accepted" : DecisionLog.Outcome.ACCEPTED.said;
+            }
+            if (step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED) return DecisionLog.Outcome.ACCEPTED.said;
+            if (step.kind == DecisionLog.StepKind.ACCEPTED_LEARNED
+                    || step.kind == DecisionLog.StepKind.ACCEPTED_BEST_SAVED
+                    || step.kind == DecisionLog.StepKind.ACCEPTED_MINIMUMS_UNCHANGED
+                    || step.kind == DecisionLog.StepKind.ACCEPTED_ADD_ON) return "Accepted by you";
+        }
+        return DecisionLog.Outcome.ACCEPTED.said;
+    }
+
     /**
      * The chosen offer (a tapped building in the skyline), unfolded as a ticket: its outcome stamped on the stub with
      * the time ({@link DecisionLog#outcome}: what became of it, not only what the rules said), then the drawn offer (pay
@@ -1606,8 +1708,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * did, and the exact lines read.
      */
     private void showSelection(DecisionLog.Entry entry) {
+        refreshOfferCaption(countTicket == null ? entry : chart.selectedEntry());
         // The constellation picks out the offer whose ticket is open.
-        if (minimums != null) minimums.showTicket(ticketOpen ? entry : null);
+        if (minimums != null) minimums.showTicket(ticketOpen && countTicket == null ? entry : null);
         ticket.removeAllViews();
         ticket.setVisibility(ticketOpen ? View.VISIBLE : View.GONE);
         if (!ticketOpen) {
@@ -1625,6 +1728,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 ticketShape.setStub(bottom));
         ticket.addView(stub, Ui.matchWidth());
 
+        DecisionLog.Step learningStatus = latestLearningStatus(entry);
+        if (learningStatus != null) {
+            TextView learned = ui.text(learningStatus.text(), 14, ui.ink, true);
+            learned.setPadding(0, ui.dp(12), 0, 0);
+            ticket.addView(learned);
+        }
         OfferCardView card = new OfferCardView(this, ui);
         card.show(entry);
         LinearLayout.LayoutParams cardParams = Ui.matchWidth();
@@ -1651,10 +1760,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ticket.addView(action);
         if (!entry.steps.isEmpty()) {
             List<String> learning = new java.util.ArrayList<>();
-            for (DecisionLog.Step step : entry.steps) learning.add(step.text());
-            TextView learned = ui.text(String.join("\n", learning), 13, ui.inkSecondary, false);
-            learned.setPadding(0, ui.dp(6), 0, 0);
-            ticket.addView(learned);
+            for (DecisionLog.Step step : entry.steps) {
+                if (step != learningStatus) learning.add(step.text());
+            }
+            if (!learning.isEmpty()) {
+                TextView learned = ui.text(String.join("\n", learning), 13, ui.inkSecondary, false);
+                learned.setPadding(0, ui.dp(6), 0, 0);
+                ticket.addView(learned);
+            }
         }
         TextView minimumDetails = ui.text(entry.addOn
                 ? "Add-ons use their fixed route and incremental rules. Learned standalone minimums do not apply."
@@ -1686,6 +1799,35 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         reportSelected = ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
         reportSelected.setVisibility(ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
+    }
+
+    /** Keep the most recent observed learning result prominent, without inventing a lesson from a passed rule. */
+    private static DecisionLog.Step latestLearningStatus(DecisionLog.Entry entry) {
+        for (int i = entry.steps.size() - 1; i >= 0; i--) {
+            DecisionLog.Step step = entry.steps.get(i);
+            switch (step.kind) {
+                case ACCEPTED_OBSERVED:
+                case ACCEPTED_LEARNED:
+                case ACCEPTED_NOT_LEARNED:
+                case ACCEPTED_BEST_SAVED:
+                case ACCEPTED_MINIMUMS_UNCHANGED:
+                case ACCEPTED_ADD_ON:
+                case NOT_LEARNED:
+                case DECLINE_TAUGHT:
+                case DECLINE_NOT_TAUGHT:
+                    return step;
+                default: break;
+            }
+        }
+        // A canceled or still-unconfirmed automatic request must be easy to find too.
+        for (int i = entry.steps.size() - 1; i >= 0; i--) {
+            DecisionLog.Step step = entry.steps.get(i);
+            if (step.kind == DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT
+                    || step.kind == DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED
+                    || step.kind == DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED
+                    || step.kind == DecisionLog.StepKind.ACCEPT_UNCONFIRMED) return step;
+        }
+        return null;
     }
 
     /**
@@ -1861,6 +2003,49 @@ public final class MainActivity extends Activity implements Updater.Busy {
         open(new Intent(Intent.ACTION_VIEW, Uri.parse(String.format(Locale.US,
                 "geo:%.4f,%.4f?q=%.4f,%.4f(Offer area)", cell.latitude(), cell.longitude(), cell.latitude(),
                 cell.longitude()))));
+    }
+
+    /** Always available in the header, including when the Atlas is hidden beside Dasher. */
+    private void chooseNavigation() {
+        boolean areasOn = AreaMap.enabled(this);
+        AreaMap.Cell best = areasOn ? NavigationShortcuts.best(AreaMap.cells(this)) : null;
+        String bestDetail = !areasOn ? "Offer map is off" : best == null
+                ? "Needs 3 offers with readable miles in an area"
+                : best.perMile() + " · " + best.mileOffers
+                        + " offers\nApproximate historical area, not a live hotspot";
+        String[] choices = {"Best offer area\n" + bestDetail,
+                "Nearby gas\nChoose a station in your map app",
+                "Compare gas prices\nChoose from prices listed in your map app"};
+        ArrayAdapter<String> rows = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, choices) {
+            @Override public boolean areAllItemsEnabled() { return best != null; }
+            @Override public boolean isEnabled(int position) { return position != 0 || best != null; }
+            @Override public View getView(int position, View reused, ViewGroup parent) {
+                TextView row = (TextView) super.getView(position, reused, parent);
+                row.setLayoutParams(new android.widget.AbsListView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                row.setMinHeight(ui.dp(48));
+                row.setPadding(ui.dp(20), ui.dp(10), ui.dp(20), ui.dp(10));
+                row.setTextSize(16);
+                row.setTextColor(isEnabled(position) ? ui.ink : ui.inkMuted);
+                android.text.SpannableString words = new android.text.SpannableString(choices[position]);
+                words.setSpan(new android.text.style.RelativeSizeSpan(13f / 16f),
+                        choices[position].indexOf('\n') + 1, words.length(),
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                row.setText(words);
+                return row;
+            }
+        };
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Navigate")
+                .setAdapter(rows, (dialog, which) -> {
+                    if (which == 0 && best == null) return;
+                    NavigationShortcuts.Destination destination = which == 0
+                            ? NavigationShortcuts.area(best) : NavigationShortcuts.gas(which == 2);
+                    if (!NavigationShortcuts.open(this, destination)) {
+                        toast("No map app or browser could open this search.");
+                    }
+                })
+                .setNegativeButton("Cancel", null));
     }
 
     // ---- Actions ----

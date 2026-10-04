@@ -26,6 +26,22 @@ public class QualifyingWaitTest {
         assertTrue(model.snapshot(WALL).isEmpty());
         assertEquals(QualifyingWait.Status.LEARNING, model.estimate(rules(1000), WALL).status);
     }
+    @Test public void waitingDisplayEvidenceExpiresAndNeverSurvivesAnOfferStopOrRestart() {
+        QualifyingWait model = new QualifyingWait();
+        assertFalse(model.observingWaiting(0, WALL));
+        model.waiting(0, WALL);
+        assertTrue(model.observingWaiting(1000, WALL + 1000));
+        assertFalse(model.observingWaiting(10_001, WALL + 10_001));
+        model.offer(2000, WALL + 2000, offer(1200), false);
+        assertFalse(model.observingWaiting(2000, WALL + 2000));
+        model.waiting(3000, WALL + 3000);
+        assertTrue(model.observingWaiting(3000, WALL + 3000));
+        model.stop();
+        assertFalse(model.observingWaiting(3000, WALL + 3000));
+        QualifyingWait restarted = new QualifyingWait(model.snapshot(WALL + 3000), WALL + 3000);
+        assertFalse(restarted.observingWaiting(3000, WALL + 3000));
+    }
+
     @Test public void currentMinimumsRescoreTheSameNumericalHistory() {
         assertEquals(3, QualifyingWait.estimate(history(), rules(1000)).qualifying);
         assertEquals(5, QualifyingWait.estimate(history(), rules(500)).qualifying);

@@ -68,6 +68,14 @@ final class QualifyingWaitStore {
         }
     }
 
+    /** No restored timer or cached estimate can make the homepage claim current waiting. */
+    static boolean observingWaiting(Context context) {
+        synchronized (LOCK) {
+            return Consent.accepted(context) && history != null
+                    && history.observingWaiting(SystemClock.elapsedRealtime(), wallClock.getAsLong());
+        }
+    }
+
     static void clear(Context context) {
         synchronized (LOCK) {
             history = new QualifyingWait();

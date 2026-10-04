@@ -51,7 +51,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         return content;
     }
 
-    @Test public void learningWaitIsVisibleOnlyWhenFilteringAndItsDetailsNeverPause() {
+    @Test public void emptyHistoryHasOneShortWaitingStateWithoutAnUnavailableEstimate() {
         FilterStore.save(app, rules());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
@@ -59,21 +59,54 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            TextView wait = shownTextContaining(content, "Learning your wait");
-            assertNotNull("cold history says learning instead of inventing a delay", wait);
-            assertTrue(wait.performClick());
-            AlertDialog explanation = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals("Time until a matching offer", Shadows.shadowOf(explanation).getTitle().toString());
-            assertNotNull(findTextContaining(explanation.getWindow().getDecorView(), "5 monitored minutes"));
-            assertTrue("the estimate has its own tap, not the mascot's pause action", FilterStore.load(app).enabled);
-            explanation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-
+            TextView waiting = shownTextContaining(content, "Waiting for offers");
+            assertNotNull(waiting);
+            assertFalse("there is no offer ticket to open yet", waiting.isClickable());
+            assertNull(shownTextContaining(content, "Learning your wait"));
+            assertNull(shownTextContaining(content, "Wait estimate needs"));
+            assertNull(shownTextContaining(content, "No offers yet"));
             find(content, FilterHeroView.class).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertFalse(FilterStore.load(app).enabled);
-            assertFalse("paused filtering must not advertise a wait", wait.isShown());
+            assertNull(shownTextContaining(content, "Waiting for offers"));
             assertNotNull(shownTextContaining(content, "Paused"));
+        } finally {
+            listener.destroy();
+            service.destroy();
+        }
+    }
+
+    @Test public void usableWaitAppearsOnlyDuringObservedWaitingAndKeepsItsOwnDetails() {
+        FilterStore.save(app, rules());
+        java.util.List<QualifyingWait.Sample> samples = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) samples.add(new QualifyingWait.Sample(
+                QualifyingWaitStore.wallClock.getAsLong(), 120_000, new OfferSnapshot(1200, 3.0, 15, 2)));
+        app.getSharedPreferences("qualifying-wait", 0).edit()
+                .putString("numeric-history-v1", QualifyingWaitStore.encode(samples)).commit();
+        QualifyingWaitStore.forgetCache();
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
+        service.get().onServiceConnected();
+        listener.get().onListenerConnected();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = page(activity);
+            assertEquals(QualifyingWait.Status.READY, QualifyingWaitStore.estimate(app, rules()).status);
+            assertNull("restored numeric history is not a live waiting state", shownTextContaining(content, "Next match:"));
+            QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            layOut(content);
+            TextView wait = shownTextContaining(content, "Next match:");
+            assertNotNull(wait);
+            assertTrue(wait.getHeight() >= new Ui(app).dp(48));
+            assertTrue(wait.performClick());
+            AlertDialog explanation = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(findTextContaining(explanation.getWindow().getDecorView(), "not a countdown or promise"));
+            assertTrue(FilterStore.load(app).enabled);
+            explanation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            QualifyingWaitStore.screen(app, true, DasherScene.OFFER,
+                    new OfferSnapshot(1200, 3.0, 15, 2), false, true);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull("offer handling is not a positively observed wait", shownTextContaining(content, "Next match:"));
         } finally {
             listener.destroy();
             service.destroy();

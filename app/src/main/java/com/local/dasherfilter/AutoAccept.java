@@ -15,6 +15,8 @@ final class AutoAccept {
     private long began, deadline, generation;
     private OfferSnapshot blocked;
     private long blockedUntil;
+    private int contentRechecks;
+    private boolean needsSameRead;
 
     static boolean eligible(OfferSnapshot offer, FilterSettings settings, boolean enabled, boolean addOn,
                             boolean routeStored, int countdown) {
@@ -30,6 +32,15 @@ final class AutoAccept {
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,
                   long notificationGeneration, long now, boolean freshInstance) {
+        // A stale final node can only be replaced by the same complete offer. This never resets its original
+        // deadline or quiet interval, nor authorizes a changed offer using the old candidate's verification.
+        if (needsSameRead) {
+            needsSameRead = false;
+            if (freshInstance || !current(offer, offerKey, settings, notificationGeneration, now)) {
+                block(now);
+                return State.BLOCKED;
+            }
+        }
         newOffer(offer, now, freshInstance);
         if (blocks(offer, now)) { clearCandidate(); return State.BLOCKED; }
         String currentRules = rulesKey(settings);
@@ -66,6 +77,14 @@ final class AutoAccept {
     OfferSnapshot candidate() { return candidate; }
     long due() { return began + QUIET_MS; }
 
+    /** Before persistence/dispatch only: discard a stale node and allow at most two complete rereads. */
+    boolean rereadAfterContent(long now) {
+        if (candidate == null || now >= deadline || contentRechecks >= 2) return false;
+        contentRechecks++;
+        needsSameRead = true;
+        return true;
+    }
+
     boolean current(OfferSnapshot offer, String offerKey, FilterSettings settings, long notificationGeneration,
                     long now) {
         return candidate != null && now >= began + QUIET_MS && now < deadline
@@ -77,7 +96,10 @@ final class AutoAccept {
         if (candidate != null) { blocked = candidate; blockedUntil = now + SUPPRESS_MS; }
         clearCandidate();
     }
-    void clearCandidate() { candidate = null; key = ""; rules = ""; }
+    void clearCandidate() {
+        candidate = null; key = ""; rules = "";
+        contentRechecks = 0; needsSameRead = false;
+    }
     void clear() { clearCandidate(); blocked = null; }
 
     /** Exact rule provenance, including learned floors; no formatted/rounded label decides authority. */
@@ -88,6 +110,7 @@ final class AutoAccept {
                 + ":" + s.minimumScalePercent;
     }
     private static String bestKey(AcceptedBest b) {
-        return b.minutePay + ":" + b.minutes + ":" + b.milePay + ":" + b.miles + ":" + b.stopPay + ":" + b.stops;
+        return b.minutePay + ":" + b.minutes + ":" + b.milePay + ":" + b.miles + ":" + b.stopPay + ":" + b.stops
+                + ":" + b.itemPay + ":" + b.items;
     }
 }

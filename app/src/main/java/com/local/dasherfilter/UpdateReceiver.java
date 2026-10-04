@@ -15,6 +15,7 @@ public final class UpdateReceiver extends BroadcastReceiver {
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             updated(context);
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
+            LauncherAppearance.sync(context, Appearance.resolve(context));
             OfferSilencer.restore(context);
             Updater.schedule(context);
         } else if (INSTALL_RESULT.equals(action)) {
@@ -40,6 +41,7 @@ public final class UpdateReceiver extends BroadcastReceiver {
     }
 
     private static void updated(Context context) {
+        LauncherAppearance.sync(context, Appearance.resolve(context));
         // What an older version kept of Dasher's screens is cleaned up once, as soon as the update is in.
         DiagnosticLog.cleanUpSoon(context);
         OfferSilencer.restore(context);

@@ -119,6 +119,10 @@ final class DecisionChartView extends View {
         risingSince.putAll(next);
         entries = ordered;
         selected = previous == null ? -1 : ordered.indexOf(previous);
+        // An observed outcome replaces the immutable entry, but it is still the same selected offer.
+        for (int i = 0; selected < 0 && previous != null && i < ordered.size(); i++) {
+            if (ordered.get(i).at == previous.at) selected = i;
+        }
         setContentDescription(describe(ordered));
         invalidate();
     }

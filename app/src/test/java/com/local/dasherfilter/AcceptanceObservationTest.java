@@ -331,6 +331,63 @@ public class AcceptanceObservationTest {
         contains(DiagnosticLog.read(app), "outcome=OFFER_FACTS");
     }
 
+    @Test public void explicitPickupRetainingTheExactWatchedPayAndItemsLearnsOriginalFacts() {
+        show(waiting());
+        AccessibilityNodeInfo shopping = passing("0:35");
+        Shadows.shadowOf(shopping).addChild(node("2 items", false));
+        show(shopping);
+        later(1_000);
+        show(screen("$16.75", "2 items"));
+        replaceWithoutEvent(screen("Pick up by 7:52 PM", "Arrived at store", "$16.75", "2 items"));
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
+        FilterSettings learned = FilterStore.load(app);
+        assertEquals(1675, learned.lastAcceptedCents);
+        assertEquals(1675, learned.best.itemPay);
+        assertEquals(2, learned.best.items);
+        assertEquals("the retained screen cannot replace the original route", Double.valueOf(3.9),
+                ActiveRouteStore.load(app).miles);
+        contains(history(), "Accepted; the adaptive minimum learned from it");
+        String diagnostics = DiagnosticLog.read(app);
+        contains(diagnostics, "progress_kind=arrived_at_store; pay_relation=matched; money_malformed=false");
+        for (String line : diagnostics.split("\\n")) if (line.contains("outcome evidence:")) {
+            assertFalse("categorical evidence has no amount", line.contains("$") || line.contains("16.75"));
+        }
+    }
+
+    @Test public void uncertainAutomaticProvenanceStillExcludesRetainedPayFromLearning() {
+        OfferSnapshot original = new OfferSnapshot(1675, 3.9, 30, 3).withItems(2, true);
+        assertTrue(AutoAcceptMemory.remember(app, original));
+        show(waiting());
+        AccessibilityNodeInfo shopping = passing("0:35");
+        Shadows.shadowOf(shopping).addChild(node("2 items", false));
+        show(shopping);
+        later(1_000);
+        show(screen("Arrived at store", "$16.75", "2 items"));
+        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertTrue(FilterStore.load(app).best.isEmpty());
+        assertTrue(AutoAcceptMemory.covers(app, original));
+    }
+
+    @Test public void provenUnsentCancellationAllowsLaterManualLearningWithMatchingRetainedPay() {
+        finalGuardRefusal(null);
+        clicked(accept);
+        show(screen("Arrived at store", "$16.75"));
+        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
+        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+    }
+
+    @Test public void malformedMoneyAndCountdownCannotTurnAPartialOfferIntoAnAcceptance() {
+        show(waiting());
+        show(passing("0:35"));
+        later(1_000);
+        show(screen("Arrived at store", "$16.750", "0:30"));
+        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        contains(DiagnosticLog.read(app), "pay_relation=ambiguous; money_malformed=true");
+    }
+
     @Test public void deadlineIsNotExtendedByRepeatedObservation() {
         show(waiting());
         show(passing("0:35"));

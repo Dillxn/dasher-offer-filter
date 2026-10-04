@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ComponentName;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import java.util.List;
 import android.graphics.Insets;
@@ -80,7 +81,8 @@ final class DasherSplit {
             List<ResolveInfo> choices = context.getPackageManager().queryIntentActivities(query, 0);
             if (choices != null) for (ResolveInfo choice : choices) {
                 ActivityInfo info = choice.activityInfo;
-                if (info != null && info.enabled && info.exported && pkg.equals(info.packageName)) {
+                if (info != null && info.exported && pkg.equals(info.packageName)
+                        && launcherEnabled(context, info)) {
                     // A package-bearing launch can create another start screen on older Android. Keep only the
                     // real launcher component/category; no task reset/clear, and no invented category on INFO.
                     return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -92,6 +94,13 @@ final class DasherSplit {
             // Refuse rather than guess a different activity or reset its task.
         }
         return null;
+    }
+
+    /** An enabled alias can override android:enabled="false" without changing its manifest ActivityInfo. */
+    private static boolean launcherEnabled(Context context, ActivityInfo info) {
+        int state = context.getPackageManager().getComponentEnabledSetting(new ComponentName(info.packageName, info.name));
+        return state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                || (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && info.enabled);
     }
 
     /**

@@ -1226,6 +1226,8 @@ public final class OfferFilterService extends AccessibilityService {
             scanner.postAtFrontOfQueue(this::suspendScreenReading);
             return;
         }
+        // Follow clock/system changes on existing events, without a separate timer or wakeup.
+        LauncherAppearance.syncIfDue(this);
         int type = event.getEventType();
         if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             // Toasts have no source node. Classify while Android owns the event; keep no raw message or event.
@@ -3211,7 +3213,7 @@ public final class OfferFilterService extends AccessibilityService {
                 for (ActivityManager.AppTask task : activities.getAppTasks()) {
                     ActivityManager.RecentTaskInfo info = task.getTaskInfo();
                     ComponentName base = info == null ? null : info.baseActivity;
-                    if (base == null || MainActivity.class.getName().equals(base.getClassName())) {
+                    if (base == null || LauncherAppearance.ourHome(this, base)) {
                         task.moveToFront();
                         return true;
                     }
@@ -3220,7 +3222,8 @@ public final class OfferFilterService extends AccessibilityService {
         } catch (RuntimeException refused) {
             // Started as a launcher would, below.
         }
-        return startHere(launcherIntent(new ComponentName(this, MainActivity.class)));
+        Intent launch = DasherSplit.launcher(this, getPackageName());
+        return launch != null && startHere(launch.addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION));
     }
 
     /**
@@ -4151,7 +4154,9 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "accept", () -> "Not learned: no delivery screen recognized within 15 s after "
                     + "Accept on " + missed.summary() + "; screen now: " + PersonalText.kept(shown));
         }
-        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text, facts || !offerGone, now);
+        long outcomeAt = SystemClock.uptimeMillis();
+        AcceptedOfferTracker.Acceptance accepted = acceptedTracker.observeOtherScreen(scan.text,
+                facts || !offerGone, offer, acceptanceObservationEligible, outcomeAt);
         if (accepted != null) {
             recordAcceptance(accepted, "you tapped Accept, and Dasher showed a delivery screen");
             applyNotes();
@@ -4168,7 +4173,7 @@ public final class OfferFilterService extends AccessibilityService {
                 aftermathLines = 0;
             }
             noteNotificationDecline();
-            acceptedTracker.afterScreen(scan.text, facts, now);
+            acceptedTracker.afterScreen(scan.text, facts, offer, acceptanceObservationEligible, outcomeAt);
         }
         applyNotes();
         if (OfferEvidence.isIdle(scan.text) || OfferEvidence.isDashOver(scan.text)) {
@@ -4266,7 +4271,10 @@ public final class OfferFilterService extends AccessibilityService {
                 + (offer.stops != null ? "stops," : "") + (offer.itemCountApplicable ? "items," : "")
                 + "; outcome=" + AcceptedOfferTracker.classify(scan.text,
                         AcceptedOfferTracker.offerFacts(offer, withParts(scan)))
-                + "; observation=" + (acceptanceObservationEligible ? "eligible" : "blocked");
+                + "; observation=" + (acceptanceObservationEligible ? "eligible" : "blocked")
+                + "; progress_kind=" + AcceptedOfferTracker.progressKind(scan.text)
+                + "; pay_relation=" + acceptedTracker.retainedPayRelation(offer, withParts(scan))
+                + "; money_malformed=" + OfferEvidence.malformedMoney(withParts(scan));
         if (categories.equals(lastOutcomeEvidence)) return;
         lastOutcomeEvidence = categories;
         outcomeEvidenceLines++;
@@ -4721,6 +4729,17 @@ public final class OfferFilterService extends AccessibilityService {
         String reason = !visible ? "target_window_hidden" : refusal != null ? "target_unusable"
                 : keyboard ? "keyboard" : call ? "call" : autoAcceptRefusal(offer, key, current, now);
         if (reason != null) {
+            if ("content_changed".equals(reason)
+                    && autoAcceptRefusal(offer, key, current, now, false) == null
+                    && autoAccept.rereadAfterContent(now)) {
+                // A countdown/content event invalidates this node, not necessarily the offer. No tap or
+                // persistence has happened. Re-read the same full offer under its unchanged original deadline.
+                scanner.removeCallbacks(autoAcceptCheck);
+                scanner.postAtTime(autoAcceptCheck, now + 150);
+                DiagnosticLog.log(this, "auto-accept",
+                        "Accept verification reread; reason=content_changed; phase=before_persistence");
+                return true;
+            }
             cancelAutoAccept(true, reason);
             status("Automatic acceptance cancelled because the offer or phone state changed; left to you.");
             return true;
@@ -4747,6 +4766,8 @@ public final class OfferFilterService extends AccessibilityService {
             // This exact prepared record never reached Android. Restore any earlier request provenance, while
             // keeping the independent restart/tap suppression and every genuine/ambiguous request suppressive.
             AutoAcceptMemory.discardUnsent(this, provenance);
+            if ("content_changed".equals(reason)) DiagnosticLog.log(this, "auto-accept",
+                    "Accept verification stopped; reason=content_changed; phase=after_persistence");
             cancelAutoAccept(true, reason);
             return true;
         }
@@ -4782,6 +4803,11 @@ public final class OfferFilterService extends AccessibilityService {
      * a fixed category explains refusal without another platform query or any raw node/event text.
      */
     private String autoAcceptRefusal(OfferSnapshot offer, String key, FilterSettings current, long now) {
+        return autoAcceptRefusal(offer, key, current, now, true);
+    }
+
+    private String autoAcceptRefusal(OfferSnapshot offer, String key, FilterSettings current, long now,
+                                     boolean requireCurrentContent) {
         if (stopped) return "service_stopped";
         if (scannerFaulted) return "scanner_fault";
         if (!Consent.accepted(this)) return "notice_required";
@@ -4791,7 +4817,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (autoAcceptActions.get() != autoAcceptActionBaseline) return "user_action";
         if (watchState != WATCH_UP) return "touch_monitor_unavailable";
         if (windowChanges.get() != readWindowChanges) return "window_changed";
-        if (dasherEvents.get() != lastReadEvents) return "content_changed";
+        if (requireCurrentContent && dasherEvents.get() != lastReadEvents) return "content_changed";
         if (now - currentReadStartedAt > 2_000) return "read_too_old";
         if (isTakenOver(offer, now)) return "user_takeover";
         if (declineUnderWay(now)) return "decline_pending";

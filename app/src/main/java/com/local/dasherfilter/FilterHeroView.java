@@ -10,15 +10,16 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import java.util.Locale;
+import java.util.function.Consumer;
 
 /**
  * The mascot, a funnel standing upright in a brush-drawn ring, with the last 24 hours in three quiet counts below:
- * passed, filtered and left to review. It is also the screen's one button: a tap pauses or resumes auto-decline (or,
+ * passed, filtered and left to review. The mascot alone pauses or resumes auto-decline (or,
  * with no rule yet, points to the knobs), and it squishes a little while pressed. The ring says the state: nearly closed
  * while on, two-thirds and amber while paused, a faint dotted circle while off; it draws itself when the state
  * changes. On, the mascot breathes, blinks, now and then waves, and has its sieve; each offer decided while the page
@@ -31,7 +32,7 @@ import java.util.Locale;
  * theirs; anywhere else in this view it goes on to the constellation below.
  */
 @SuppressLint("ViewConstructor")
-final class FilterHeroView extends View {
+final class FilterHeroView extends FrameLayout {
     enum State { ON, PAUSED, OFF }
 
     /** The drawing's own size; narrower screens scale it down whole. */
@@ -97,6 +98,10 @@ final class FilterHeroView extends View {
     private float countsSpacing;
     /** Where the counts are drawn this frame, which the twinkling stars keep out of. */
     private final RectF countsDrawn = new RectF();
+    // Real controls over the drawing keep touch, keyboard and accessibility boundaries identical.
+    private final Button mascotControl;
+    private final Button[] countControls = new Button[3];
+    private Consumer<DecisionLog.Tally> onCount;
 
     FilterHeroView(Context context, Ui ui) {
         super(context);
@@ -107,19 +112,84 @@ final class FilterHeroView extends View {
         text.setTextAlign(Paint.Align.CENTER);
         pausedDash = new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0);
         dotted = new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, 0);
-        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
-        setClickable(true);
-        setFocusable(true);
-        setAccessibilityDelegate(new AccessibilityDelegate() {
+        setWillNotDraw(false);
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        mascotControl = control();
+        mascotControl.setAccessibilityDelegate(new AccessibilityDelegate() {
             @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
                 super.onInitializeAccessibilityNodeInfo(host, info);
-                info.setClassName(Button.class.getName());
-                if (action != null) {
-                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
-                            action));
-                }
+                if (action != null) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+                        AccessibilityNodeInfo.ACTION_CLICK, action));
             }
         });
+        for (int i = 0; i < countControls.length; i++) {
+            final DecisionLog.Tally tally = DecisionLog.Tally.values()[i];
+            countControls[i] = control();
+            countControls[i].setOnClickListener(tapped -> {
+                if (onCount != null) onCount.accept(tally);
+            });
+        }
+        describe();
+    }
+
+    private Button control() {
+        Button button = new Button(getContext());
+        button.setBackground(ui.pressable(12));
+        button.setPadding(0, 0, 0, 0);
+        button.setMinWidth(0);
+        button.setMinHeight(0);
+        button.setMinimumWidth(0);
+        button.setMinimumHeight(0);
+        button.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+        addView(button);
+        return button;
+    }
+
+    void setOnMascotClickListener(OnClickListener listener) {
+        mascotControl.setOnClickListener(listener);
+    }
+
+    void setOnCountClickListener(Consumer<DecisionLog.Tally> listener) {
+        onCount = listener;
+    }
+
+    /** Programmatic mascot activation remains the same as its own native button. */
+    @Override public boolean performClick() { return mascotControl.performClick(); }
+
+    Button mascotControl() { return mascotControl; }
+    Button countControl(DecisionLog.Tally tally) { return countControls[tally.ordinal()]; }
+
+    @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        layoutControls();
+    }
+
+    private void layoutControls() {
+        if (getWidth() <= 0 || getHeight() <= 0) return;
+        float scale = scale();
+        float art = ui.dp(ART_HEIGHT_DP) * scale;
+        float x = placed ? mascotX : sideBySide() ? art / 2f : getWidth() / 2f;
+        float y = placed ? mascotY : (sideBySide() ? (getHeight() - art) / 2f : artTop(scale))
+                + ui.dp(RING_MIDDLE_DP) * scale;
+        float radius = placed ? mascotRadius : ui.dp(RING_OUTER_DP) * scale;
+        float reach = Math.max(ui.dp(24), radius);
+        layoutControl(mascotControl, new RectF(x - reach, y - reach, x + reach, y + reach));
+        RectF counts = new RectF();
+        float spacing = countsAt(counts);
+        // Midpoints between the drawn columns divide the targets, including their totals.
+        for (int i = 0; i < countControls.length; i++) {
+            float left = i == 0 ? counts.left : counts.centerX() + (i - 1.5f) * spacing;
+            float right = i == 2 ? counts.right : counts.centerX() + (i - 0.5f) * spacing;
+            layoutControl(countControls[i], new RectF(left, counts.top, right, counts.bottom));
+        }
+    }
+
+    private void layoutControl(View control, RectF box) {
+        int left = Math.max(0, Math.round(box.left)), top = Math.max(0, Math.round(box.top));
+        int right = Math.min(getWidth(), Math.round(box.right));
+        int bottom = Math.min(getHeight(), Math.round(box.bottom));
+        control.measure(MeasureSpec.makeMeasureSpec(Math.max(0, right - left), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(Math.max(0, bottom - top), MeasureSpec.EXACTLY));
+        control.layout(left, top, right, bottom);
     }
 
     State state() {
@@ -139,13 +209,17 @@ final class FilterHeroView extends View {
         mascotRadius = radius;
         countsBox.set(counts);
         countsSpacing = spacing;
-        if (moved) invalidate();
+        if (moved) {
+            layoutControls();
+            invalidate();
+        }
     }
 
     /** Back to drawing the mascot with its counts beside or under it, filling the view. */
     void unplace() {
         if (!placed) return;
         placed = false;
+        layoutControls();
         invalidate();
     }
 
@@ -182,32 +256,10 @@ final class FilterHeroView extends View {
         return 2 * spacing + ui.dp(64);
     }
 
-    /** Placed, only the mascot and the counts take a touch; the rest of the view is the sky behind them. */
-    private boolean reaches(float x, float y) {
-        float dx = x - mascotX;
-        float dy = y - mascotY;
-        float reach = mascotRadius + ui.dp(6);
-        return dx * dx + dy * dy <= reach * reach || countsBox.contains(x, y);
-    }
-
-    @Override public boolean dispatchTouchEvent(MotionEvent event) {
-        if (placed && event.getActionMasked() == MotionEvent.ACTION_DOWN && !reaches(event.getX(), event.getY())) {
-            return false;
-        }
-        return super.dispatchTouchEvent(event);
-    }
-
-    @Override public boolean dispatchHoverEvent(MotionEvent event) {
-        if (placed && event.getActionMasked() != MotionEvent.ACTION_HOVER_EXIT
-                && !reaches(event.getX(), event.getY())) {
-            return false;
-        }
-        return super.dispatchHoverEvent(event);
-    }
-
     /** What a tap does, in words for screen readers. */
     void setAction(String action) {
         this.action = action;
+        describe();
     }
 
     String action() {
@@ -253,6 +305,15 @@ final class FilterHeroView extends View {
                 "%s%s. %s: %d offers, %d passed, %d filtered, %d to review. In all: %d passed, %d filtered, %d to review.",
                 mode, watching ? ", watching for offers" : "", dashLabel, passed + filtered + review, passed, filtered,
                 review, totals[0], totals[1], totals[2]));
+        mascotControl.setContentDescription(mode + (watching ? ", watching for offers" : "") + ". "
+                + (action == null ? "" : action + "."));
+        int[] counts = {passed, filtered, review};
+        String[] names = {"passed offers", "filtered offers", "offers left to review"};
+        String[] actions = {"Show latest passed offer", "Show latest filtered offer", "Show latest offer left to review"};
+        for (int i = 0; i < countControls.length; i++) {
+            countControls[i].setContentDescription(dashLabel + ": " + counts[i] + " " + names[i]
+                    + ". " + totals[i] + " total. " + actions[i] + ".");
+        }
     }
 
     private float designWidth(float width) {
@@ -573,7 +634,7 @@ final class FilterHeroView extends View {
         boolean off = state == State.OFF;
         float breathe = off ? 0 : Motion.wave(4.5f, 0);
         // Pressed, the mascot squishes down a little, like a button.
-        float squish = isPressed() ? 0.93f : 1f;
+        float squish = mascotControl.isPressed() ? 0.93f : 1f;
         float rimY = ui.dp(72);
         float half = ui.dp(62);
         float neckY = ui.dp(146);

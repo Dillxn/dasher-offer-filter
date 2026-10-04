@@ -50,6 +50,7 @@ final class DecisionLog {
         SEEN_ON_SCREEN("No card: the screen had already read this offer", 0),
         NEEDS_REVIEW("No action: needs your review", 0),
         REPLAY("Re-checked after a reconnect or rule change; no action", 0),
+        NATIVE_ALERT("Dasher notification kept; duplicate card omitted", 1),
         SILENT_CARD("Review card posted without sound", 1),
         /** Posted silently while Peek opens Dasher to read the offer; it rings once only if the peek does not happen. */
         PEEK_CARD("Card posted without sound while Peek checks whether it can open Dasher", 1),

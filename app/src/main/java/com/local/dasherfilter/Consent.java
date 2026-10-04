@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 11;
+    static final int VERSION = 12;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

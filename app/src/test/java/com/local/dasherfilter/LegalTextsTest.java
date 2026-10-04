@@ -19,8 +19,8 @@ public final class LegalTextsTest {
         }
     }
 
-    @Test public void eachSaysItIsADraftForALawyerToReview() {
-        for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
+    @Test public void theTermsAndPrivacyRemainDraftsAndTheLicenseIsStandardMIT() {
+        for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
             assertTrue(doc.file, doc.text().contains("Not legal advice; have a lawyer review before public release."));
             assertFalse(doc.file, doc.text().contains("{app}"));
             assertTrue(doc.file, doc.text().contains(AppName.NAME));
@@ -45,7 +45,13 @@ public final class LegalTextsTest {
                 "rounded to about half a kilometre", "masked"}) {
             assertTrue(flow, privacy.contains(flow));
         }
-        assertTrue(LegalTexts.Doc.LICENSE.text().contains("All rights reserved."));
+        assertTrue(terms.contains("free and open-source software under the MIT License"));
+        String license = LegalTexts.Doc.LICENSE.text();
+        assertTrue(license.startsWith("MIT License\n"));
+        assertTrue(license.contains("Copyright (c) 2026 Dillxn"));
+        assertTrue(license.contains("Permission is hereby granted, free of charge"));
+        assertFalse(license.contains("All rights reserved"));
+        assertFalse(license.contains("No licence is granted"));
         assertTrue(LegalTexts.Doc.LICENSE.text().contains("WITHOUT WARRANTY OF ANY KIND"));
     }
 
