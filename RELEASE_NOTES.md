@@ -1,6 +1,7 @@
-## 0.4.65 — smaller white Settings signature (candidate)
+## 0.4.65 — smaller signature and direct theme cycling (candidate)
 
 - Scales the Settings emblem to 55% of its previous width and matching lettering size, makes it white on the dark page, and adds about 8 dp of space before the passage. The original bundled lettering and complete accessible wording are retained. The light page keeps its contrasting dark ink.
+- The sun/moon button cycles Day → Night → System → Auto directly. Small S/A indicators identify the automatic modes. Existing Auto/location/consent behavior is preserved, with no menu or extra Settings row.
 - This candidate does not claim a fix for the reported purple learned-minimums shape. Direct 0.4.64 chart replays with a confirmed eligible manual acceptance did not reproduce a lower purple shape; a fresh affected-offer report is still needed to distinguish a missed lesson from an existing exclusion.
 - Local gate, signing and publication status are recorded separately. Do not treat this candidate as a published automatic update.
 

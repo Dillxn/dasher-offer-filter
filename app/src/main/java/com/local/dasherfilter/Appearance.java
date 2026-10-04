@@ -18,6 +18,15 @@ final class Appearance {
 
         final String label;
         Mode(String label) { this.label = label; }
+
+        Mode next() {
+            switch (this) {
+                case DAY: return NIGHT;
+                case NIGHT: return SYSTEM;
+                case SYSTEM: return AUTO;
+                default: return DAY;
+            }
+        }
     }
 
     /** Fresh/default installs use Auto; preserve an explicit day/night choice made in older versions. */
@@ -63,7 +72,8 @@ final class Appearance {
         String description() {
             String basis = mode == Mode.AUTO ? (clockFallback ? "local clock fallback, day 6 am to 6 pm"
                     : "estimated local sunrise and sunset") : mode == Mode.SYSTEM ? "follows Android" : "fixed";
-            return "Theme: " + mode.label + ", " + (night ? "night" : "day") + ", " + basis + ". Change theme";
+            return "Theme: " + mode.label + ", " + (night ? "night" : "day") + ", " + basis
+                    + ". Tap for " + mode.next().label + ".";
         }
     }
 

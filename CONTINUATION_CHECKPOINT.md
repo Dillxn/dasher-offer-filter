@@ -1,3 +1,10 @@
+## October 3 late evening .65 theme + site follow-up — still candidate
+
+- Integrated direct Day -> Night -> System -> Auto sun/moon cycling with small S/A badges. No menu, extra Settings row, permission or theme-resolution change. Isolated 100-test API26/35 gate passed; final combined gate passed2,081tests/112suites, no failures/errors/skips, lint0errors34warnings. All360tracked inputs unchanged. Candidate remains unsigned/unpublished.
+- New .64 reports #46-48 do not contain a newly accepted learning trace. Learned payout remains $9.40 and learned item rate empty. Their separate unknown-item REVIEW complaint is not silently fixed by this visual candidate.
+- Site candidate includes supplied Your Time Matters(1).mp3 narration, verified local speech captions, recomposed end card, mascot favicon and View source on GitHub button. Public app-source branch in Dillxn/offer-filter-site at23c4a86cabcce2bd59b739d824b29af33f2584ec contains121reviewedproduction/build/licensefiles corresponding to live .64/0aed95a. Originalproprietary license preserved; no logs/diagnostics/signingmaterial/history/workflows. Anonymous raw README byte-match verified. Narration says open source, so licensing/wording remains an explicit pre-publication choice. No private reports/keys/history belong in public source.
+- App signing still requires approval for original-key download after automatic review rejection. Website main/Pages workflow remains held under the no-Actions instruction. Candidate branches are source/artifact storage, not live deployment.
+
 ## October 3 evening .65 signature candidate — not published
 
 - User requests: Settings emblem at55% of .64 size, white here, more gap above passage; investigate purple adaptive line below accepted green offer; improve video final-frame composition.
