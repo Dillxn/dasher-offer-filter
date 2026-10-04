@@ -1,0 +1,88 @@
+{
+  "auditedThrough": "2026-10-04T07:22:10Z",
+  "previousCutoff": "2026-10-04T06:14:22Z",
+  "freshMain": "d9d047d260a14f70cc439c7ef736220751ab380e",
+  "issues": [
+    {
+      "number": 60,
+      "version": "0.4.66",
+      "dashToken": "e7eb3c23784e2042458c27168649179d",
+      "updatedAt": "2026-10-04T06:32:23Z",
+      "commentsInspected": 1,
+      "findings": {
+        "target": {
+          "at": "2026-10-04T06:02:58Z",
+          "payCents": 1835,
+          "miles": 16.3,
+          "minutes": 35,
+          "stops": 2,
+          "items": 1,
+          "outcome": "YOURS"
+        },
+        "autoAccept": "Pre-dispatch NOT_SENT, fixed reason content_changed at 06:03:00.280Z.",
+        "learning": "At 06:03:18.087Z complete read, no controls, progress/route true, pay/items facts; OFFER_FACTS classification. At 06:03:35.765Z not learned due settled unclear next screen.",
+        "scope": "Direct thread already owns retained-pay classification and bounded pre-dispatch reread fixes. No retrospective acceptance/learning or new action authority granted here."
+      }
+    },
+    {
+      "number": 61,
+      "version": "0.4.67",
+      "reportToken": "07d3068a62c7254be70a4bf21c7f8f4a",
+      "updatedAt": "2026-10-04T06:56:24Z",
+      "target": {
+        "at": "2026-10-04T06:56:22.797Z",
+        "miles": 17,
+        "minutes": 37,
+        "stops": 3,
+        "pay": "unknown",
+        "outcome": "REVIEW"
+      },
+      "finding": "Target evidence empty; unknown screen text not retained. No numerical payout or parser root cause established. Do not guess a bonus/count/bound.",
+      "history": "Repeats the 1835-cent target from #60 and older entries; not new accepted-learning evidence."
+    }
+  ],
+  "gmail": {
+    "account": "dillon.riecke@gmail.com",
+    "sinceEpoch": 1791094462,
+    "newMessageIds": []
+  },
+  "release": {
+    "version": "0.4.67",
+    "code": 73,
+    "source": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+    "releaseCommit": "2edab42467aaec90dfd0d54e3bedfc1c6ae65d95",
+    "evidenceRead": "validation/0.4.67-live-publication.json",
+    "liveMirror": "dep-db0uvc6gekts73bdfqcg",
+    "phoneEvidence": "Issue61 identifies .67. No controlled handset flow or live download was performed in this audit."
+  },
+  "activeOwner": {
+    "thread": "direct user thread",
+    "integration": "/tmp/offer-filter-ux-068",
+    "branch": "codex/ux-learning-navigation-0-4-68",
+    "status": "Uncommitted code74 work on autoaccept, retained-pay acceptance, navigation shortcuts, launcher appearance, count/history actions, visual status and background notification consolidation.",
+    "otherWorktrees": [
+      "/tmp/offer-filter-acceptance-068",
+      "/tmp/offer-filter-background-068",
+      "/tmp/offer-filter-navigation-shortcuts",
+      "/tmp/offer-filter-counts-review",
+      "/tmp/offer-filter-visual-ux-068"
+    ],
+    "arrival": "No verified current-trip arrival signal; do not infer from time/stopped movement."
+  },
+  "pendingPrivacy": {
+    "branch": "codex/privacy-pickup-heading",
+    "testedSource": "df7e8aacfa39add2688772ef71f3360515aca3a5",
+    "status": "Unpublished; its provisional .67/code73 is obsolete because a different release now owns that version. Integrate its four source/test files into the active .68 owner or later unused version, revalidate combined source, never publish the old candidate as code73.",
+    "files": [
+      "PersonalText.java",
+      "ReportOutbox.java",
+      "PersonalTextTest.java",
+      "DashDiagnosticsTest.java"
+    ]
+  },
+  "changesThisRun": "Sanitized diagnostics/checkpoint only. No code, tests, build, signing, release, main or website writes.",
+  "privacy": {
+    "rawReportsSaved": false,
+    "existingReportsModifiedOrDeleted": false
+  }
+}
