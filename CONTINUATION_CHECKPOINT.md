@@ -1,3 +1,11 @@
+## October 3 evening .65 signature candidate — not published
+
+- User requests: Settings emblem at55% of .64 size, white here, more gap above passage; investigate purple adaptive line below accepted green offer; improve video final-frame composition.
+- Candidate .65/code71 implements only the Settings visual correction. Native previews and frozen local gate: 2,077 tests/API26+35, no failures/skips/errors, lint0errors33warnings, unchanged351inputs. See VALIDATION_SIGNATURE_0.4.65.md.
+- Purple issue remains unresolved; separate .64 focused/native chart replay passed52tests with eligible synthetic confirmed acceptance. No post-.64 affected-offer report was available. Do not claim fixed or reinterpret the user's real observation as a reproduced success.
+- Signing blocked by automatic approval review of normal original-key Render Export -> Download.env retrieval. No secret accessed, no settings/deploy changed, no alternate signer. Request explicit permission to retrieve existing signing inputs privately and finish normal updater publication; all build/test/signing remain local.
+- Film composition is a separate isolated site candidate, prepared locally. Do not push its main if that invokes the GitHub Pages Actions pipeline without the user's explicit CI exception.
+
 ## Latest verified release — October 4, 01:49 UTC
 
 **0.4.64/code70 is SHIPPED and live-verified.** Exact source `0aed95aa3a50f8ee40594de595827e6f6155e52e`, tree `48608ef840dc35e3f3364f351f4137bc6b24dfcc`, release `f5b62b3e4a66a95ebaf8ec1d7f3b4481d9bfe0aa`. APK1,213,691 bytes, SHA256 `fe8d7c395dabd3569475397379da4695e41a30d03b55f85a093953efb6d97af4`, original signer `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703`. All Android build/test/package/sign work was local. This supersedes the candidate-only entry below; do not rebuild unchanged .64.

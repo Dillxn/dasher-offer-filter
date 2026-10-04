@@ -1,0 +1,122 @@
+package com.local.dasherfilter;
+
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.view.View;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.LooperMode;
+import static org.junit.Assert.*;
+
+/** Investigation replay: observed offer values are a fixture, acceptance below is explicitly synthetic. */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@LooperMode(LooperMode.Mode.PAUSED)
+public class AdaptiveAcceptedPolygonProbeTest extends AndroidAdapterTestBase {
+    private static final OfferSnapshot SHOP = new OfferSnapshot(1470, 6.8, 33, 2).withItems(2, true);
+    private static final class Capture extends Canvas {
+        final List<float[]> learned = new ArrayList<>();
+        final int purple;
+        Capture(MinimumsStarView star, Ui ui) {
+            super(Bitmap.createBitmap(star.getWidth(), star.getHeight(), Bitmap.Config.ARGB_8888));
+            purple = ui.learned & 0xFFFFFF;
+        }
+        @Override public void drawPath(Path path, Paint paint) {
+            if (paint.getStyle() == Paint.Style.STROKE && paint.getPathEffect() != null
+                    && (paint.getColor() & 0xFFFFFF) == purple && paint.getAlpha() == 255) {
+                float[] values = path.approximate(0.1f);
+                for (int i = 0; i + 2 < values.length; i += 3)
+                    learned.add(new float[] {values[i + 1], values[i + 2]});
+            }
+            super.drawPath(path, paint);
+        }
+    }
+    private static DecisionLog.Entry offer(OfferSnapshot facts, FilterSettings rules) {
+        return DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, OfferRule.evaluate(facts, rules),
+                DecisionLog.Action.PASSES, true, Collections.emptyList());
+    }
+    private void accepted(OfferSnapshot facts) {
+        FilterStore.recordAcceptedLesson(app, facts);
+        assertTrue(DecisionLog.markStep(app, facts, DecisionLog.StepKind.ACCEPTED_LEARNED,
+                "synthetic confirmed manual acceptance for chart replay", 120000));
+    }
+    private static void encloses(MinimumsStarView star, Ui ui) {
+        Capture canvas = new Capture(star, ui);
+        star.draw(canvas);
+        assertFalse("actual purple dashed stroke exists", canvas.learned.isEmpty());
+        int checked = 0;
+        for (float[] point : star.offerShape(0)) {
+            double vx = point[0] - star.skyX(), vy = point[1] - star.skyY();
+            double radius = Math.hypot(vx, vy), farthest = -1;
+            if (radius < 1) continue;
+            for (float[] learned : canvas.learned) {
+                double lx = learned[0] - star.skyX(), ly = learned[1] - star.skyY();
+                double along = (lx * vx + ly * vy) / radius;
+                double across = Math.abs(lx * vy - ly * vx) / radius;
+                if (across <= 0.75 && along > 0) farthest = Math.max(farthest, along);
+            }
+            assertTrue("purple radius " + farthest + " must cover accepted offer radius " + radius,
+                    farthest + 0.75 >= radius);
+            checked++;
+        }
+        assertEquals("pay, mile, minute, item, stop", 5, checked);
+    }
+    @Test public void visibleChartRefreshesAfterConfirmedAcceptanceWithoutAnotherOffer() {
+        Appearance.choose(app, Appearance.Mode.DAY);
+        for (boolean area : new boolean[] {false, true}) for (boolean saved : new boolean[] {false, true}) {
+            DecisionLog.clear(app);
+            FilterStore.resetAccepted(app);
+            FilterSettings rules = new FilterSettings(true, saved ? 1950 : 0, saved ? 409 : 0,
+                    saved ? 59 : 0, saved ? 470 : 0, 3).withPerItem(saved ? 275 : 0)
+                    .withAdaptive(true).withScoreByArea(area);
+            FilterStore.save(app, rules);
+            DecisionLog.record(app, offer(SHOP, rules));
+            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+                View content = activity.get().findViewById(android.R.id.content);
+                settleSky(content);
+                accepted(SHOP);
+                settleSky(content);
+                DecisionChartView history = find(content, DecisionChartView.class);
+                assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(history.selectedEntry()));
+                MinimumsStarView star = find(content, MinimumsStarView.class);
+                assertEquals(1471, star.learnedAsks(AreaScore.PAY), 0);
+                assertEquals(1470, star.learnedAsks(AreaScore.ITEM), 0);
+                encloses(star, new Ui(app));
+            }
+        }
+    }
+    @Test public void selectedAcceptedHistoryUsesItsOwnRatesAfterTheExampleAndItemCountChange() {
+        Appearance.choose(app, Appearance.Mode.DAY);
+        for (boolean area : new boolean[] {false, true}) {
+            DecisionLog.clear(app);
+            FilterStore.resetAccepted(app);
+            FilterSettings rules = new FilterSettings(true, 1950, 409, 59, 470, 3)
+                    .withPerItem(275).withAdaptive(true).withScoreByArea(area);
+            FilterStore.save(app, rules);
+            DecisionLog.record(app, offer(SHOP, rules));
+            accepted(SHOP);
+            DecisionLog.Entry learned = DecisionLog.recent(app, 1).get(0);
+            OfferSnapshot next = new OfferSnapshot(1000, 4.7, 21, 3);
+            FilterSettings now = FilterStore.load(app);
+            try (ActivityController<android.app.Activity> activity = Robolectric.buildActivity(android.app.Activity.class).setup()) {
+                LoneSky sky = new LoneSky(activity.get(), now);
+                // Put the accepted historical sample first so offerShape(0) targets it while the route example differs.
+                sky.star.show(now, next, Collections.singletonList(learned));
+                settleSky(sky.scroll);
+                assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(learned));
+                encloses(sky.star, new Ui(app));
+            }
+        }
+    }
+}

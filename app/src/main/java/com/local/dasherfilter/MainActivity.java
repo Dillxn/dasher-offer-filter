@@ -1195,14 +1195,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) texts.addView(ui.link(doc.title, () -> read(doc)));
         body.addView(texts, Ui.matchWidth());
         ImageView closing = new ImageView(this);
-        closing.setImageResource(R.drawable.jesus_loves_you_emblem);
+        closing.setImageDrawable(new SettingsSignatureDrawable(getResources()));
         closing.setContentDescription("Jesus Loves You. We love each other because He loves us first. 1 John 4:19.");
         closing.setAdjustViewBounds(true);
         closing.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        closing.setMaxWidth(ui.dp(220));
-        closing.setMaxHeight(ui.dp(190));
-        // Keep the gold emblem at night and the same darker ink on the light page.
-        if (!ui.dark) closing.setColorFilter(0xFF776550);
+        closing.setMaxWidth(ui.dp(121)); // 55% of the previous 220 dp signature.
+        closing.setMaxHeight(ui.dp(113)); // Scaled height plus breathing room before the passage.
+        closing.setColorFilter(ui.dark ? android.graphics.Color.WHITE : 0xFF776550);
         closing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         LinearLayout.LayoutParams signature = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
