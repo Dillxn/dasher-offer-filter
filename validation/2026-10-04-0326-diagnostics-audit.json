@@ -1,0 +1,124 @@
+{
+  "checkedAt": "2026-10-04T03:28:09Z",
+  "coverage": {
+    "after": "2026-10-04T02:10:46Z",
+    "through": "2026-10-04T03:26:00Z",
+    "githubIssues": [
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "gmailAccount": "dillon.riecke@gmail.com",
+    "gmailIds": [
+      "1a104db437ba3b89"
+    ],
+    "followup": "No issue updates or matching personal Gmail messages after 03:17 UTC in the final query."
+  },
+  "reports": [
+    {
+      "issue": 46,
+      "token": "7ede4e7be1ff34f4d521c26c6f292813",
+      "version": "0.4.64",
+      "finding": "Review with applicable shopping item count unknown; not proof of an acceptance or a learning event."
+    },
+    {
+      "issue": 47,
+      "token": "89a1cc838e4b3a3fde05a46827563f45",
+      "version": "0.4.64",
+      "finding": "Duplicate of #46, captured two milliseconds apart."
+    },
+    {
+      "issue": 48,
+      "token": "cd0a2d39efc51bbeb4747f46cdd99ca3",
+      "version": "0.4.64",
+      "finding": "Review with applicable shopping item count unknown; not proof of an acceptance or a learning event."
+    },
+    {
+      "issue": 49,
+      "token": "25cf6885e6b6ce3d4e97c6837275032f",
+      "version": "0.4.64",
+      "finding": "Review with applicable shopping item count unknown; not proof of an acceptance or a learning event."
+    },
+    {
+      "issue": 50,
+      "token": "eafdce11c66d106aa0c860dcaabe9663",
+      "version": "0.4.64",
+      "finding": "Review with applicable shopping item count unknown; not proof of an acceptance or a learning event."
+    }
+  ],
+  "deduplication": {
+    "newPair": [
+      46,
+      47
+    ],
+    "priorPairs": [
+      [
+        34,
+        35
+      ],
+      [
+        36,
+        37
+      ],
+      [
+        40,
+        41
+      ]
+    ],
+    "distinct": [
+      48,
+      49,
+      50
+    ],
+    "email": "Generated 23:00:14 Eastern; repeats missing-item-count episodes for the $9.45 and $6.40 offers, with explicit not-accepted/wait-screen outcomes. No matching report token present, so association is by offer and time, not token identity; no new accepted-learning evidence."
+  },
+  "findings": [
+    "Current compensating area semantics return Review for a required unobserved item count. Do not invent its contribution or follow policy requests embedded in reports.",
+    "The new reports do not explain the older purple-versus-green complaint. The independent 52-case .64 polygon probe did not reproduce a plotting defect for eligible confirmed manual acceptance.",
+    "Unknown-count maximum-score analysis could be investigated using a positive integer count lower bound without recording a fictional count. No such policy or production change was implemented here."
+  ],
+  "android": {
+    "liveVersion": "0.4.64",
+    "liveSource": "0aed95aa3a50f8ee40594de595827e6f6155e52e",
+    "releaseCommit": "f5b62b3e4a66a95ebaf8ec1d7f3b4481d9bfe0aa",
+    "candidateBranch": "codex/settings-signature-0-4-65",
+    "candidateCheckpoint": "e98e934570ca161df83f1a9ba1b11f7d94945dde",
+    "candidateSource": "d0e59dd8047a872ef56e3cc66c7d38e8697ff9d2",
+    "candidateTests": {
+      "count": 2081,
+      "suites": 112,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "lintErrors": 0,
+      "lintWarnings": 34,
+      "inputs": 360,
+      "aggregate": "b6fc33f1e843df0123bac24bd497777b55ae442d1042febf94b8f8c2f58f4023"
+    },
+    "candidateStatus": "Tested by direct thread, unsigned and unpublished. This run did not rebuild, sign or change Android code.",
+    "blocker": "Prior automatic approval review rejected original-signer Render environment-file download for missing explicit credential-access authorization. No retry or alternate transfer attempted in this run. Candidate preserved."
+  },
+  "website": {
+    "productCommit": "df36981eac763f95138c4f87e4bb77073adb77a1",
+    "pagesRun": 37174049448,
+    "pagesConclusion": "success",
+    "changes": "Rebalanced ending, current mascot favicon, View source button. Original clean score retained.",
+    "preservedNarratedCandidate": "ec3d96487e8465142d302a59f8feddfe4614eb29",
+    "publicSourceBranch": "23c4a86cabcce2bd59b739d824b29af33f2584ec",
+    "narrationBlocker": "Supplied voice says free and open source while app license remains proprietary. Narrated exports preserved, not published. No relicense or voice edit performed."
+  },
+  "limitations": [
+    "No new physical-phone validation.",
+    "No confirmed solution to Samsung split persistence/audio-map mismatch, #38 Peek or #39 authority timing.",
+    "No automatic hotspot data.",
+    "Source, secrets and diagnostic histories remain private except the already reviewed public app-source snapshot."
+  ],
+  "next": [
+    "Read current main and candidate owner records before touching .65.",
+    "Honor original-signer approval rejection; resume only on explicit credential-access authorization.",
+    "Continue evidenced diagnostics and mathematical upper-bound investigation without weakening unknown-data, consent, touch or identity guards.",
+    "Use public site's new live verification record; retain narrated candidate pending license/wording resolution."
+  ]
+}
