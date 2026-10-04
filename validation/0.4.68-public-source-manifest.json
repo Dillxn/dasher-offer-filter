@@ -1,0 +1,982 @@
+{
+  "sha": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+  "sha_confirmed_for_release": true,
+  "release_live_verified": true,
+  "paths": [
+    ".gitignore",
+    "LICENSE",
+    "PRIVACY.md",
+    "README.md",
+    "TERMS.md",
+    "app/build.gradle",
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/java/com/local/dasherfilter/AcceptedBest.java",
+    "app/src/main/java/com/local/dasherfilter/AcceptedOfferTracker.java",
+    "app/src/main/java/com/local/dasherfilter/ActiveRouteStore.java",
+    "app/src/main/java/com/local/dasherfilter/AddOnOffer.java",
+    "app/src/main/java/com/local/dasherfilter/AppName.java",
+    "app/src/main/java/com/local/dasherfilter/Appearance.java",
+    "app/src/main/java/com/local/dasherfilter/AppearanceButton.java",
+    "app/src/main/java/com/local/dasherfilter/AreaMap.java",
+    "app/src/main/java/com/local/dasherfilter/AreaMapView.java",
+    "app/src/main/java/com/local/dasherfilter/AreaScore.java",
+    "app/src/main/java/com/local/dasherfilter/AutoAccept.java",
+    "app/src/main/java/com/local/dasherfilter/AutoAcceptMemory.java",
+    "app/src/main/java/com/local/dasherfilter/ClickEvidence.java",
+    "app/src/main/java/com/local/dasherfilter/Consent.java",
+    "app/src/main/java/com/local/dasherfilter/ConsentReminder.java",
+    "app/src/main/java/com/local/dasherfilter/DashDiagnostics.java",
+    "app/src/main/java/com/local/dasherfilter/DasherGuide.java",
+    "app/src/main/java/com/local/dasherfilter/DasherOverlay.java",
+    "app/src/main/java/com/local/dasherfilter/DasherScene.java",
+    "app/src/main/java/com/local/dasherfilter/DasherSplit.java",
+    "app/src/main/java/com/local/dasherfilter/DasherTab.java",
+    "app/src/main/java/com/local/dasherfilter/Dashing.java",
+    "app/src/main/java/com/local/dasherfilter/DecisionChartView.java",
+    "app/src/main/java/com/local/dasherfilter/DecisionLog.java",
+    "app/src/main/java/com/local/dasherfilter/DeclineConfirmation.java",
+    "app/src/main/java/com/local/dasherfilter/DeclineEpisode.java",
+    "app/src/main/java/com/local/dasherfilter/DeclineErrorRecovery.java",
+    "app/src/main/java/com/local/dasherfilter/DeclineState.java",
+    "app/src/main/java/com/local/dasherfilter/DeclinedFloor.java",
+    "app/src/main/java/com/local/dasherfilter/Decor.java",
+    "app/src/main/java/com/local/dasherfilter/DiagnosticLog.java",
+    "app/src/main/java/com/local/dasherfilter/DrawerCard.java",
+    "app/src/main/java/com/local/dasherfilter/Enso.java",
+    "app/src/main/java/com/local/dasherfilter/FilterHeroView.java",
+    "app/src/main/java/com/local/dasherfilter/FilterSettings.java",
+    "app/src/main/java/com/local/dasherfilter/FilterStore.java",
+    "app/src/main/java/com/local/dasherfilter/GitHubConnect.java",
+    "app/src/main/java/com/local/dasherfilter/GitHubIssues.java",
+    "app/src/main/java/com/local/dasherfilter/Glyph.java",
+    "app/src/main/java/com/local/dasherfilter/ItemCount.java",
+    "app/src/main/java/com/local/dasherfilter/LauncherAppearance.java",
+    "app/src/main/java/com/local/dasherfilter/LeastColumn.java",
+    "app/src/main/java/com/local/dasherfilter/LegalActivity.java",
+    "app/src/main/java/com/local/dasherfilter/LegalTexts.java",
+    "app/src/main/java/com/local/dasherfilter/MainActivity.java",
+    "app/src/main/java/com/local/dasherfilter/ManualDeclines.java",
+    "app/src/main/java/com/local/dasherfilter/Mascot.java",
+    "app/src/main/java/com/local/dasherfilter/MinimumsDetails.java",
+    "app/src/main/java/com/local/dasherfilter/MinimumsStarView.java",
+    "app/src/main/java/com/local/dasherfilter/Motion.java",
+    "app/src/main/java/com/local/dasherfilter/NavigationShortcuts.java",
+    "app/src/main/java/com/local/dasherfilter/NoticePage.java",
+    "app/src/main/java/com/local/dasherfilter/NotificationOffer.java",
+    "app/src/main/java/com/local/dasherfilter/OfferAlertState.java",
+    "app/src/main/java/com/local/dasherfilter/OfferAlerts.java",
+    "app/src/main/java/com/local/dasherfilter/OfferCardView.java",
+    "app/src/main/java/com/local/dasherfilter/OfferControls.java",
+    "app/src/main/java/com/local/dasherfilter/OfferEvidence.java",
+    "app/src/main/java/com/local/dasherfilter/OfferFilterService.java",
+    "app/src/main/java/com/local/dasherfilter/OfferNotificationService.java",
+    "app/src/main/java/com/local/dasherfilter/OfferPairing.java",
+    "app/src/main/java/com/local/dasherfilter/OfferParser.java",
+    "app/src/main/java/com/local/dasherfilter/OfferRule.java",
+    "app/src/main/java/com/local/dasherfilter/OfferSilencer.java",
+    "app/src/main/java/com/local/dasherfilter/OfferSnapshot.java",
+    "app/src/main/java/com/local/dasherfilter/OpenDasherActivity.java",
+    "app/src/main/java/com/local/dasherfilter/OutcomeBadge.java",
+    "app/src/main/java/com/local/dasherfilter/OwnTaps.java",
+    "app/src/main/java/com/local/dasherfilter/OwnWindowTouches.java",
+    "app/src/main/java/com/local/dasherfilter/Peek.java",
+    "app/src/main/java/com/local/dasherfilter/PersonalText.java",
+    "app/src/main/java/com/local/dasherfilter/Places.java",
+    "app/src/main/java/com/local/dasherfilter/ProblemReport.java",
+    "app/src/main/java/com/local/dasherfilter/QualifyingWait.java",
+    "app/src/main/java/com/local/dasherfilter/QualifyingWaitStore.java",
+    "app/src/main/java/com/local/dasherfilter/ReportJobService.java",
+    "app/src/main/java/com/local/dasherfilter/ReportOutbox.java",
+    "app/src/main/java/com/local/dasherfilter/ReportShare.java",
+    "app/src/main/java/com/local/dasherfilter/RestartSuppression.java",
+    "app/src/main/java/com/local/dasherfilter/ScannerFailure.java",
+    "app/src/main/java/com/local/dasherfilter/ScenePage.java",
+    "app/src/main/java/com/local/dasherfilter/Scenery.java",
+    "app/src/main/java/com/local/dasherfilter/ScreenAwake.java",
+    "app/src/main/java/com/local/dasherfilter/SettingsSignatureDrawable.java",
+    "app/src/main/java/com/local/dasherfilter/SkyStage.java",
+    "app/src/main/java/com/local/dasherfilter/SolarCycle.java",
+    "app/src/main/java/com/local/dasherfilter/SplitWindows.java",
+    "app/src/main/java/com/local/dasherfilter/Support.java",
+    "app/src/main/java/com/local/dasherfilter/Tilt.java",
+    "app/src/main/java/com/local/dasherfilter/TouchWatch.java",
+    "app/src/main/java/com/local/dasherfilter/Ui.java",
+    "app/src/main/java/com/local/dasherfilter/UpdateCadence.java",
+    "app/src/main/java/com/local/dasherfilter/UpdateJobService.java",
+    "app/src/main/java/com/local/dasherfilter/UpdatePolicy.java",
+    "app/src/main/java/com/local/dasherfilter/UpdateReceiver.java",
+    "app/src/main/java/com/local/dasherfilter/UpdateTransport.java",
+    "app/src/main/java/com/local/dasherfilter/Updater.java",
+    "app/src/main/java/com/local/dasherfilter/UpdatingView.java",
+    "app/src/main/res/drawable-nodpi/jesus_loves_you_emblem.png",
+    "app/src/main/res/drawable/ic_launcher_background.xml",
+    "app/src/main/res/drawable/ic_launcher_background_night.xml",
+    "app/src/main/res/drawable/ic_launcher_foreground.xml",
+    "app/src/main/res/drawable/ic_launcher_monochrome.xml",
+    "app/src/main/res/drawable/ic_notification.xml",
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher_night.xml",
+    "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+    "app/src/main/res/raw/offer_pass_chime.ogg",
+    "app/src/main/res/values-night/styles.xml",
+    "app/src/main/res/values/strings.xml",
+    "app/src/main/res/values/styles.xml",
+    "app/src/main/res/xml/accessibility_service_config.xml",
+    "build.gradle",
+    "gradle.properties",
+    "gradle/wrapper/gradle-wrapper.jar",
+    "gradle/wrapper/gradle-wrapper.properties",
+    "gradlew",
+    "gradlew.bat",
+    "settings.gradle",
+    "tools/legal_texts.py"
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 117,
+      "sha256": "fa3435881b8281e13d50ae01f4526426fbbfa887a475956452b916ae9075b6d5",
+      "mode": "100644"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1063,
+      "sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+      "mode": "100644"
+    },
+    {
+      "path": "PRIVACY.md",
+      "bytes": 12220,
+      "sha256": "e340f4664875704d1262dda55ca47e0a2c7ed96272d8b390e654d0f43738d9d6",
+      "mode": "100644"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2999,
+      "sha256": "98916099183581c698b3c9bf2e8d3fafe5db6fa4c92926b0e7c2b74fdac910dc",
+      "mode": "100644"
+    },
+    {
+      "path": "TERMS.md",
+      "bytes": 5035,
+      "sha256": "5feb88f255bde8cace481d3d8673c8df91cbd700bde4ec59c9378523ef22abb0",
+      "mode": "100644"
+    },
+    {
+      "path": "app/build.gradle",
+      "bytes": 1509,
+      "sha256": "8e849ce64c31764b92bcc407d03d0897b1426c2b3d180b4aa9b16d7324918afe",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "bytes": 5523,
+      "sha256": "496058370c9c4842db942fd64c4407ad43ccef6ce6eaf3e4a30a07b460821782",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AcceptedBest.java",
+      "bytes": 8077,
+      "sha256": "e70d9e3c19aae35b509e8b954cfdf5e63cfe62d877d5b117d204f8f7625d30d1",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AcceptedOfferTracker.java",
+      "bytes": 62596,
+      "sha256": "add300d3a247b4be97ccd81810413d5b69f4045761e12d23369f10b18d6241f1",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ActiveRouteStore.java",
+      "bytes": 3252,
+      "sha256": "9ccf61d2b1561c8662b48f92659cd0bdc6d466c468fba5449a2315871369d31f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AddOnOffer.java",
+      "bytes": 9496,
+      "sha256": "98c79d7c160c1bb39f4abb784012558f27c63d509e53633a2fe63f7528552659",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AppName.java",
+      "bytes": 597,
+      "sha256": "f6dfa958ebbafc950bd0630b5d334e0300a1b52c9e539224f1a6cf2aab7fcf4b",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Appearance.java",
+      "bytes": 5656,
+      "sha256": "98cb82bbb53af886dbd6943e4d60556e38b84e29a6f8763a4d5699b67a450600",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AppearanceButton.java",
+      "bytes": 2099,
+      "sha256": "3db522be24a3446a3f61b77b9b217fed786affad76b45818a562da9be7a67d55",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AreaMap.java",
+      "bytes": 14965,
+      "sha256": "85de6193d58b03ba448e9454866cc4c9f08e2d553dc6f5624dd7103d2caf737c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AreaMapView.java",
+      "bytes": 35893,
+      "sha256": "1334a201a22141b7467fd425af3eaddff8106f8deedc50e70ade056806e7d63c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AreaScore.java",
+      "bytes": 22904,
+      "sha256": "036db622edc01501720268fdcd3f501ef8636443dcb61092a0f3efe318873c04",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AutoAccept.java",
+      "bytes": 5551,
+      "sha256": "f6cd61147dd993f5a3ed02a0a3e6b0eb13d7cb103dcea917a9276b6eb51c0df5",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/AutoAcceptMemory.java",
+      "bytes": 5201,
+      "sha256": "befda9ca7216dd9fe2ce135af938e09331eb7ff011717924aa3a020de06cd5f2",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ClickEvidence.java",
+      "bytes": 7067,
+      "sha256": "9bf84a76b155d376fe66a7bee44e4c0fc47360bf799fa694a6c6806f30c00fe1",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Consent.java",
+      "bytes": 4646,
+      "sha256": "c954e01d236c885eb0ffe0d466b692a8de43e0bdf94f6f8ed15596eaa1ebfe0c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ConsentReminder.java",
+      "bytes": 6530,
+      "sha256": "29e6b56f5702b603b9f6cbf1723fafce2313151022ff08cb5f8978f4cc58607f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DashDiagnostics.java",
+      "bytes": 17600,
+      "sha256": "c5869067e96883109766bd7a9890467da9c61d7756ee612e1587cabf325cbb9f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DasherGuide.java",
+      "bytes": 4576,
+      "sha256": "811393014d7c433270dbd51b82dc0ac288c57a2633e1d6274ec4f966b028a0ec",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DasherOverlay.java",
+      "bytes": 20537,
+      "sha256": "65f9931f52cf4ae3cdae154d78184771dec95a00b645e6194a2e8dd4c4e086b6",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DasherScene.java",
+      "bytes": 8062,
+      "sha256": "9f7819944d29262bab9c5d3591e5b20feeebbeca6c400923a19f72f9a3531871",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DasherSplit.java",
+      "bytes": 17873,
+      "sha256": "864ce61ea47d49e56bbada56ff87f1a53a7893ec911b6d7e419752057ce1cf89",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DasherTab.java",
+      "bytes": 12060,
+      "sha256": "790497b6cea56444937684f3f53c23f11bc09a70963e93cdbc15d05d1fd1d7b1",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Dashing.java",
+      "bytes": 5123,
+      "sha256": "4deb566c3daadde87c5053b916ee34da4b21430e158b9535db7d5c83f8c97c11",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DecisionChartView.java",
+      "bytes": 31155,
+      "sha256": "7ac01eb8c9d9e632b5a66d809c78a24025b8ae59fd165c2fd9acf14753d5f917",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DecisionLog.java",
+      "bytes": 48690,
+      "sha256": "db5069da5ef0b935b698eb9a523c909b78ac9e9a77ea9a5ffd8103c3ecd0bf55",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DeclineConfirmation.java",
+      "bytes": 2314,
+      "sha256": "6847f004dcd65762f4323dbb00b0eacebbc5498fec48becd6261cd64e4185610",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DeclineEpisode.java",
+      "bytes": 6794,
+      "sha256": "29c582d6b5746e6dfd2e28d19e8b3a8a47737d059d29e5b67f57a9a61f96167f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DeclineErrorRecovery.java",
+      "bytes": 2075,
+      "sha256": "68930dec1d2f617a74ac156c703589091fae8a05efb6e877dc0dd9ce6d41a939",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DeclineState.java",
+      "bytes": 6992,
+      "sha256": "30fa99db70ad4efb790b0db19e9058a50507b1dd1168210e54716cd300465f88",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DeclinedFloor.java",
+      "bytes": 5258,
+      "sha256": "5c3c0171d1f0708521bfad0a0d93bf5045f366c96dc73d77787337b12b3d84d4",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Decor.java",
+      "bytes": 9215,
+      "sha256": "c64a7b1551c97fe4170311e7311f6eb46cb9583b75ca5cae6da083195fbec28a",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DiagnosticLog.java",
+      "bytes": 38636,
+      "sha256": "4c5e259b750e8c5bfda05b9a3f33c2d3512cbe11158ba2e2a0263d0c795bcfec",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DrawerCard.java",
+      "bytes": 6760,
+      "sha256": "4aaf6620b81bee8bde1c9afb971bbc4e2131057a00fc59488ad52eddf7a87cb1",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Enso.java",
+      "bytes": 4846,
+      "sha256": "689f6dfa0ba608a04f7ed50fc5c9c15ca59be712b4dd277b54d88b193dcbd254",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/FilterHeroView.java",
+      "bytes": 40071,
+      "sha256": "e1025c88ebcc3525c2cae1a99cef257d872e7a1ab426f2cd8e39f7fe5b1e8979",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/FilterSettings.java",
+      "bytes": 18209,
+      "sha256": "c36dac4b3bf665c1fd616fa79cb4d3b339d9d32a929cf9832b6f4a713153b87c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/FilterStore.java",
+      "bytes": 22851,
+      "sha256": "7f1ec40bf8ad13b30f0051414c2d5c62d89082aa9f0f63be6cf3dacbf2bb3d12",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/GitHubConnect.java",
+      "bytes": 24144,
+      "sha256": "9ccb4336b0243e1c5b2749ee030387ca6cf68de81486ba34d29978441e07a4fb",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/GitHubIssues.java",
+      "bytes": 10871,
+      "sha256": "6ddf0cd047fb3dacc889f533ce127aecf6104bdf9b3b6e97c394569a6c63fe50",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Glyph.java",
+      "bytes": 12737,
+      "sha256": "912ea8a2db9347f2524784d038fac691c53e5bca39db9fe64573330533d5dc8b",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ItemCount.java",
+      "bytes": 7797,
+      "sha256": "e431f85ebe437ca4a2db11cc96bd8b77cbb8e403c33f5e2923a74929cbb1a050",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/LauncherAppearance.java",
+      "bytes": 4320,
+      "sha256": "6f5b2b5017ceadc01c5a8b45d866cd4d0c4e7aa002fb6873aeb34ead556d1222",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/LeastColumn.java",
+      "bytes": 5185,
+      "sha256": "fe4638815b05d69f200726f175331b89352fe34b23d5f5588f4a7b465a85265f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/LegalActivity.java",
+      "bytes": 5819,
+      "sha256": "4a7270c5df2d50be088427cdbe702eb1bdbc61bade634008440ad3f41a47e608",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/LegalTexts.java",
+      "bytes": 22856,
+      "sha256": "97826e900570a19744e05f3b91f50ed1e4be7c2796dfcc1e192ac82ccba73f23",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/MainActivity.java",
+      "bytes": 118155,
+      "sha256": "422199c7d41c23a07eef13fc962b9960d3a3a893b7b93ec6063364b0c306b99c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ManualDeclines.java",
+      "bytes": 6583,
+      "sha256": "fe46394da1af18080763e0bbe554f8488e0bb8dffd3fbfeb74a991eaeb4e51b6",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Mascot.java",
+      "bytes": 4936,
+      "sha256": "623af877f29e15b45c08b44eff4b15f55fa7a9789f72678c8bf1ff03f9f5e38a",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/MinimumsDetails.java",
+      "bytes": 6602,
+      "sha256": "5ac8c19abd63d9386d76235704110be7a52be94d6901b52795f80ad449f5270a",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/MinimumsStarView.java",
+      "bytes": 208974,
+      "sha256": "3f701bc140a7f537e809d92c1f805c4d8f475a931a2fa10ee946ee3f8936aabc",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Motion.java",
+      "bytes": 3079,
+      "sha256": "b2e15653fbd5a5143843e948fb6b6d9d595eb46526e574a827d90b40ce389b5c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/NavigationShortcuts.java",
+      "bytes": 3934,
+      "sha256": "373c05e1ce19a0b71ab2051d4e51556a8b080895491661b7d5573824b5a29ebc",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/NoticePage.java",
+      "bytes": 5735,
+      "sha256": "b8f0cb9a66f537c17a8b4bb89c1e00cd79374df1b5e3ed7e8f4d30691115524d",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/NotificationOffer.java",
+      "bytes": 1885,
+      "sha256": "312887cfc156baba4dcf4bb234e8f5c23db62872df3bb384e7d63f1e50f109ec",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferAlertState.java",
+      "bytes": 5456,
+      "sha256": "85f58d412f6f24e40d37e2a886452b618c03055715aeb91d9d2e2fc417fb02aa",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferAlerts.java",
+      "bytes": 11607,
+      "sha256": "dac41d97c7fe9ccaaf2760411ac80f6ea7c436c2d8e1bdd79f72f53e3a53e2f8",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferCardView.java",
+      "bytes": 9935,
+      "sha256": "293e0a7315be22408b38223ab466544c3fa64a09bb4d52979d072fdb00a0b46b",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferControls.java",
+      "bytes": 1349,
+      "sha256": "f6927a442710ef11a4593906c6bef232f54814b8a4981be582c78b96817a6578",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferEvidence.java",
+      "bytes": 6995,
+      "sha256": "5a6017ac06a943b41368255f6112436c19cf10de60db5751e4d56620210b2a6f",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferFilterService.java",
+      "bytes": 313475,
+      "sha256": "9948669c4579616833117cb89bf37969c6b31d1304a137ad58c3bc020c8c4b73",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferNotificationService.java",
+      "bytes": 52968,
+      "sha256": "f1adfa4df453ef4fe8662c04041016bbed7aab2147cec80ea8e65e5e0386dd3e",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferPairing.java",
+      "bytes": 6399,
+      "sha256": "222360870e9e895511d6771c493ac891b16b4a503e5dbc7c47444938574c65c8",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferParser.java",
+      "bytes": 24557,
+      "sha256": "fa3565309c98557fe2e6f192330360c9c78d4bd4c01687c6cd5c00c1e2aa7e68",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferRule.java",
+      "bytes": 25059,
+      "sha256": "a3098e56e0faa24bf00921a9b3fc4f46d2f148c9388303f15d9506e6382670e0",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferSilencer.java",
+      "bytes": 15206,
+      "sha256": "b5232fef75750747ac634ab7cf2f04d4dc3af02a93b0bf95ad1226ee68684957",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferSnapshot.java",
+      "bytes": 5706,
+      "sha256": "876aafcc1952d22192806a4a0c2e594cab3b1af210829eeaa9dd0f7c8a3f8a40",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OpenDasherActivity.java",
+      "bytes": 5668,
+      "sha256": "3491cc2cf2b5fd56c6009b9bb5cb47314d8395f563cf693725ce74b7ebc8fd75",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OutcomeBadge.java",
+      "bytes": 4255,
+      "sha256": "6c6963dc0419742bf793479e1b67c3b1f8bcc1a3e3b87352036c0c140792c212",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OwnTaps.java",
+      "bytes": 5227,
+      "sha256": "f8adb6ae769325c2d55af49ac4dc50a91cf9bc6806b6127acb0a0c0bfde551b4",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OwnWindowTouches.java",
+      "bytes": 6036,
+      "sha256": "6ea426201028674dff765a84ce699387424638b319acebf678cd227f59484df0",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Peek.java",
+      "bytes": 25302,
+      "sha256": "d9e455a8427aaf730b2fc5c9b594c5f74e90594b1548d8e058db87f19f38e689",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/PersonalText.java",
+      "bytes": 28692,
+      "sha256": "a8d1a0cf504afdf2a2b602051837f06c6d8e2493a1bf983a3d0a10e1e03bbbe4",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Places.java",
+      "bytes": 8407,
+      "sha256": "c3e3ab8dab3ad8ea01aace96b67d7a1a82ef9f9bd9e90de1ac692c96df011cc5",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ProblemReport.java",
+      "bytes": 15388,
+      "sha256": "d4cc15218c757eab90518c28768d67452e286ad4f623429a5da9bd9563acca3c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/QualifyingWait.java",
+      "bytes": 12750,
+      "sha256": "b13daa0898d450425e576ae40e1a0dd2857f7cc8dc32ec5253457866ccf2e0a2",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/QualifyingWaitStore.java",
+      "bytes": 8285,
+      "sha256": "5264a236c02b8d423509610a98420ae6f0a2a3918b23a020fb05978f803d7603",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ReportJobService.java",
+      "bytes": 4575,
+      "sha256": "2be3c169d4e63de51e20b5dbd20c12419d151318dc0b241de2a5b0f82daecd9c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ReportOutbox.java",
+      "bytes": 40004,
+      "sha256": "c130778ef65f335a5bd8468df7e1d5cbe09f5c194bb845a8b51a0e97c945ecfe",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ReportShare.java",
+      "bytes": 2393,
+      "sha256": "d397f5bd1dc461ab34afbb8379990deeabede070ef563b3024cc31b311824d0e",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/RestartSuppression.java",
+      "bytes": 3624,
+      "sha256": "bfb0912920989ae2a20b7e19065ae479dbe1b32aa3f1cc97e7ee35599de2a1ef",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ScannerFailure.java",
+      "bytes": 1094,
+      "sha256": "fb835cc132654faadf5a65d8fe17cfce8754c457ce1c656317576e70d30beb69",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ScenePage.java",
+      "bytes": 20872,
+      "sha256": "34c5c5c0ee8c7c75950a72a996aaea1ee28223f6c2dbbd86a72b41ececc7d7fe",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Scenery.java",
+      "bytes": 15398,
+      "sha256": "33f4d0656ac90c8914f458479273f4f03b914fba8c4770d4066cbced3b4c1004",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ScreenAwake.java",
+      "bytes": 5438,
+      "sha256": "8fee169d13fddf34a33a4348139c1f9058436a496daedb18cbdce5241c1ff199",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/SettingsSignatureDrawable.java",
+      "bytes": 2139,
+      "sha256": "3eb931443a3fa3db444347985b8f5eeb2e776fdf185b775612fd11f16f0e75c6",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/SkyStage.java",
+      "bytes": 20091,
+      "sha256": "8efd85edc4dc9910f84dbb9e260f6d70f179dba7c3dad9c29aa31c5e1fb9149a",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/SolarCycle.java",
+      "bytes": 2565,
+      "sha256": "af464816c270c7f4759fb6a5df6ce987594376eeb9e7cd0c241d4ed197ceacfb",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/SplitWindows.java",
+      "bytes": 8878,
+      "sha256": "826936739f842291914d68a6b03c22488dbd8e0c6da809b89e6244edcc438735",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Support.java",
+      "bytes": 3158,
+      "sha256": "859857a9d253956152e29cd96bbea265eebb5d7cdc86cc65a8d07f31c78ed197",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Tilt.java",
+      "bytes": 4866,
+      "sha256": "f7c26cd9e9fbfef785c71cd22ae24160b65f285d37bd768b4434b43a86a60a20",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/TouchWatch.java",
+      "bytes": 3403,
+      "sha256": "e7173839b85f8b60350f1a2ba24da8ea5066b5b9a8bb02bc3657f4418dd3f4a7",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Ui.java",
+      "bytes": 14144,
+      "sha256": "94abc620dc8b117f9bab7b5a98bc7858862e0409b2e8fede447bd45b87fbb25c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdateCadence.java",
+      "bytes": 2774,
+      "sha256": "40c69d2a913a28186bbb0a7c969eeaa5570ee7f921618e32a39534bfbe91c692",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdateJobService.java",
+      "bytes": 1549,
+      "sha256": "4e824662cefe5bce23722a365f09f89c8d9c50244536b249818805b17ce90cab",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdatePolicy.java",
+      "bytes": 4961,
+      "sha256": "e731609fdf5bf9e142b1858606a0830cc21a6d33557185dc725c8fed8af27cf9",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdateReceiver.java",
+      "bytes": 2689,
+      "sha256": "b58c01a02dd9b0b66b6b8e01457975741f4ff60cf1817ebb6a0e3c210164739b",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdateTransport.java",
+      "bytes": 6219,
+      "sha256": "89c514ff1db055e970fbbd42796f4fc82c123d67cb3b570af6ef4850ad9391b4",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Updater.java",
+      "bytes": 42924,
+      "sha256": "dd6e1268c8126d16ecc7a1f8d816d8bb77b5ae7b0f03c68ef3e6262221daa3bd",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/UpdatingView.java",
+      "bytes": 2019,
+      "sha256": "2e88bf3fdf35b395294491bfcdda87d2c76b96fb4712eae50f024bcdf0f1e6ce",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/jesus_loves_you_emblem.png",
+      "bytes": 818026,
+      "sha256": "9af7a75273865629d33a690622040b11ec9d1078f9bd9d2dcec7c540b5ab1a23",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_background.xml",
+      "bytes": 1980,
+      "sha256": "6efa200faeacd8e21a877d86a61cfa1563886fa0c8980a5a1f837906efff8cc0",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_background_night.xml",
+      "bytes": 1702,
+      "sha256": "ed9832aa82dd9bf1f429d5c54df70bc5ee0d2f8cfc2d50f48d7f88597b2f391b",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "bytes": 4314,
+      "sha256": "64e12006defe77a846921727daf8eb6c6ed663346865a8dc48c8ca1df8bd0c93",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_monochrome.xml",
+      "bytes": 1419,
+      "sha256": "5fe6f6f1453222c085d2dcffdf4b8216e34b2fa1e19ab7209b110d95498bd513",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_notification.xml",
+      "bytes": 550,
+      "sha256": "7f7febca8322772fe72bcae152c26a0099469203d2c88d93f991c678ad8a07fc",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "bytes": 344,
+      "sha256": "ada31da9e23f4520f3753e71ca23799a107431473daa3774b6cecac26847260c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher_night.xml",
+      "bytes": 350,
+      "sha256": "119d3a18c7fc9ab6cc708f4be2f0ec5f55e92ddde8d600c687e797a153885ce8",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "bytes": 344,
+      "sha256": "ada31da9e23f4520f3753e71ca23799a107431473daa3774b6cecac26847260c",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/raw/offer_pass_chime.ogg",
+      "bytes": 8669,
+      "sha256": "c439a56c18f1b0cf3b3709e4114c0fe1ea132bd75ffa8cd84e786126dcd29712",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values-night/styles.xml",
+      "bytes": 382,
+      "sha256": "fd6cc57414311d9e42609776db2af6630fef44d5d557585be8b066472afa8862",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values/strings.xml",
+      "bytes": 623,
+      "sha256": "a896a70238deaa877ec8906c216489af17a03a14e6eabbc58f95b6390f6066b9",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values/styles.xml",
+      "bytes": 760,
+      "sha256": "5b55876cbc8be96e83428fbb2bcf047824f3697f4871053b3a031c06bcbc92f0",
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/xml/accessibility_service_config.xml",
+      "bytes": 674,
+      "sha256": "c64a641f5dc22d282d857079628495df9b13b6a05b8c95bf741786bde80f5497",
+      "mode": "100644"
+    },
+    {
+      "path": "build.gradle",
+      "bytes": 75,
+      "sha256": "3086fb02dafde737ff89e3f69dad6d23a5e8ed517f000d864f77294b9448c028",
+      "mode": "100644"
+    },
+    {
+      "path": "gradle.properties",
+      "bytes": 288,
+      "sha256": "abeacd9fecf12a550d2148e35782e04d430f6168233f682847e9424802295c5f",
+      "mode": "100644"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.jar",
+      "bytes": 43705,
+      "sha256": "81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f",
+      "mode": "100644"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.properties",
+      "bytes": 251,
+      "sha256": "cdab1ffb439219b1db125e3c99a86cf2424f8762b9b3faa404ed061e3635ecde",
+      "mode": "100644"
+    },
+    {
+      "path": "gradlew",
+      "bytes": 8752,
+      "sha256": "734b3879d3501dce471cf0522d3bcbafe76873d9fc5129345b67fb43bd15e933",
+      "mode": "100755"
+    },
+    {
+      "path": "gradlew.bat",
+      "bytes": 2966,
+      "sha256": "57931b17dd228e5c24dac90e815d0bf82477e831a4618dfab4136f5446b42a9f",
+      "mode": "100644"
+    },
+    {
+      "path": "settings.gradle",
+      "bytes": 335,
+      "sha256": "25f8cd39d2f3dff603a5790ae0a6f1c063da94e4d7caa070d3abc2ea67f93003",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/legal_texts.py",
+      "bytes": 3844,
+      "sha256": "540849d0422def04d78d527c6fba37f5c87731a82908faea5d2651c748bcf321",
+      "mode": "100644"
+    }
+  ],
+  "total_bytes": 2721157,
+  "tree_digest_sha256": "82ed133f725bbcdce6f1db18be5121ac9bffcd82dfde12fe64e15e4f14bc2ac9",
+  "scan_hits": [],
+  "prior_source_sha": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+  "expected_public_parent": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+  "license": "MIT",
+  "license_matches_frozen_source": true,
+  "license_sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+  "git_tree_sha": "4a7ada6b41338271696631b3540b8aed19239897",
+  "verification": {
+    "commands": [
+      ":app:compileDebugJavaWithJavac",
+      ":app:lintDebug"
+    ],
+    "mode": "local offline",
+    "result": "PASS",
+    "lint_severity_counts": {
+      "Warning": 37
+    },
+    "apk_artifacts_created": 0,
+    "log": "/tmp/offer-filter-public-source-068-build.log",
+    "version": "0.4.68",
+    "version_code": 74,
+    "upstream_files_byte_exact": 125,
+    "license": "MIT; byte-exact frozen source"
+  },
+  "candidate": {
+    "sha": "ebba04f28f617b8512b6128e92f555c6a65cd8cd",
+    "tree": "4a7ada6b41338271696631b3540b8aed19239897",
+    "parent": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+    "remote_ref_advanced": true
+  },
+  "publication": {
+    "checked_at": "2026-10-04T08:01:02.315355+00:00",
+    "repository": "Dillxn/offer-filter-site",
+    "branch": "app-source",
+    "sha": "ebba04f28f617b8512b6128e92f555c6a65cd8cd",
+    "parent": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+    "tree": "4a7ada6b41338271696631b3540b8aed19239897",
+    "source_sha": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+    "version": "0.4.68",
+    "version_code": 74,
+    "allowlisted_files": 127,
+    "total_bytes": 2721157,
+    "content_digest_sha256": "82ed133f725bbcdce6f1db18be5121ac9bffcd82dfde12fe64e15e4f14bc2ac9",
+    "nonforce": true,
+    "remote_ref_verified": true,
+    "remote_tree_all_files_match": true,
+    "anonymous_byte_checks": [
+      {
+        "path": "LICENSE",
+        "status": 200,
+        "bytes": 1063,
+        "sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+        "anonymous_exact": true
+      },
+      {
+        "path": "README.md",
+        "status": 200,
+        "bytes": 2999,
+        "sha256": "98916099183581c698b3c9bf2e8d3fafe5db6fa4c92926b0e7c2b74fdac910dc",
+        "anonymous_exact": true
+      },
+      {
+        "path": "app/build.gradle",
+        "status": 200,
+        "bytes": 1509,
+        "sha256": "8e849ce64c31764b92bcc407d03d0897b1426c2b3d180b4aa9b16d7324918afe",
+        "anonymous_exact": true
+      }
+    ],
+    "local_clean": true,
+    "license": "MIT",
+    "license_matches_frozen_source": true,
+    "license_sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+    "credential_scan_matches": 0,
+    "website_main_not_modified_by_this_task": true,
+    "release_live_authorization_from_root": {
+      "version": "0.4.68",
+      "source_sha": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+      "apk_sha256": "e60228dd5bbed190add3d9ac97283229fbd13ad1cfb3aad9b0809b5a56e687be",
+      "apk_bytes": 1226254
+    }
+  }
+}

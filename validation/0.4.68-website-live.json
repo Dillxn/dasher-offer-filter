@@ -1,0 +1,312 @@
+{
+  "checkedAt": "2026-10-04T08:01:52.093931+00:00",
+  "sourceCommit": "e9d95ee34a9d0fc04f54dc24090c5391d73dca53",
+  "sourceTree": "85fe4bd5d1dd38fb150386872a0aa57aa3dddc48",
+  "pagesRun": 37187542659,
+  "pagesConclusion": "success",
+  "url": "https://dillxn.github.io/offer-filter-site/",
+  "assets": [
+    {
+      "file": "LICENSE",
+      "bytes": 1063,
+      "sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "README.md",
+      "bytes": 4350,
+      "sha256": "f13676d9ab2cf3524981ce58bb17f0ddf35c6e38a97643da1ae9ba65ec429fbd",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "SITE_VALIDATION.md",
+      "bytes": 34190,
+      "sha256": "fd4a7cfe56c5003e6bcbfdec6a3ba90d5d0114b27337c8608fcd05a835ad5e71",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "THIRD_PARTY_NOTICES.md",
+      "bytes": 965,
+      "sha256": "8823e391970bd3cb1595af81e745d86c1bc92db733903e2b4e1423875484660f",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/film-captions.vtt",
+      "bytes": 623,
+      "sha256": "aab4206c939e1829710c405e45ec1b44e6249dc538bbff939f1e5edb8bc554a7",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/film-poster-wide.jpg",
+      "bytes": 70226,
+      "sha256": "e59379cb4034058ebbc2675b4c266ec18e80c58a09275dea7790124101d94273",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/film-poster.jpg",
+      "bytes": 72052,
+      "sha256": "7df0c0372f3f842cab5afc1cfeb08f38267fa7c27cba1025942fb59b0651a12b",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/offer-filter-landscape.mp4",
+      "bytes": 3291950,
+      "sha256": "13555d43d13c140835c1ee8cf922014dd7dbf0de372fcb679c8537355bca71ab",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/offer-filter-portrait.mp4",
+      "bytes": 3227582,
+      "sha256": "f8f7c71e20ef5d557476303afcff8517be21d9d1aaf17f6c1eb3f0141917aaf3",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/offer-filter-portrait.webm",
+      "bytes": 2479718,
+      "sha256": "57de82358f8a9aa40938be0dafb1c980625137cc770e66bce2e68d4694b6318c",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/offer-filter-square.mp4",
+      "bytes": 2695124,
+      "sha256": "4f67d8f7df8edceb6a36baca701e2279719808b7b4558407e1f99cd9ddac3a40",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "index.html",
+      "bytes": 7684,
+      "sha256": "6a8d8aaefa9b3f19ae25ab7072bcb02ff59a5866c705f3f99d349b88d0ad36ea",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "tools/assemble-movie-credits.py",
+      "bytes": 5720,
+      "sha256": "e4a20cd5b0fe3382907022fc4c7c10658da1b37eb9f03ae25b6b40cf22ae73b2",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "tools/render-movie-credits.cjs",
+      "bytes": 3777,
+      "sha256": "06467b056b4673322025d9e0544933f1d40d559d94641c7e9c4ef941a9c57032",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/film-movie-credits-20261004.json",
+      "bytes": 13964,
+      "sha256": "efc8e17bc20a00a6ee05dc497155abb0e4f790955fe5ec7ca8e95ee1d6a2ad83",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/film-movie-credits-browser-20261004.json",
+      "bytes": 2840,
+      "sha256": "93d5b1f35ab077c916f70254f45597fa3efa44b5023ec2c1d40b43ac0f0d46cc",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/movie-credits-audio-qa-20261004.json",
+      "bytes": 7534,
+      "sha256": "381563acc74ed44caef1a177145b087b90705e6b0635bd8ceeb7f3e46b61e152",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/movie-credits-levels-20261004.json",
+      "bytes": 543,
+      "sha256": "dbfa9220459b3aac441fd7b91240fd43a7b65bc248997b4317e110650f492db4",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/movie-credits/playback-ended-1280.jpg",
+      "bytes": 113454,
+      "sha256": "f4783592e50e8cf5f2e007459b495998f137882165acb979311cbf1790b90558",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "validation/movie-credits/poster-400.jpg",
+      "bytes": 64283,
+      "sha256": "8b1285759b5163b0fff067c61e1cd5c4028f477813943b4d7ea16a6613aaccd4",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "style.css",
+      "bytes": 12661,
+      "sha256": "168d567139683305c11a40e417b4632bc35412ac2a1fc64476cff7a712f90558",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/favicon.svg",
+      "bytes": 84118,
+      "sha256": "47b4cda4bcbc1e907c7b568a15b8fc24db8bf590001226dc5ca6975f4d2467e0",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/favicon-16.png",
+      "bytes": 657,
+      "sha256": "14fe754761b5f33364151f9ea210c08726939a16980f9012291e0080fb1249b8",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/favicon-32.png",
+      "bytes": 1567,
+      "sha256": "cfb0e3ebb1b1f1bfcb0609b9b59df5ad00ad9deeb788b73876f5f1164e3b5247",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/apple-touch-icon.png",
+      "bytes": 12762,
+      "sha256": "9a978d0f819af474139fdf72686864ef295e5c716b2ef7c0dfd192a7ee50ebd8",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "assets/brand.js",
+      "bytes": 23001,
+      "sha256": "fa212b91ade9cfc7cbbae80e44412d9efd239f5873217c83ca931561e6c67281",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "page.js",
+      "bytes": 2466,
+      "sha256": "a68449faa1421040afb621ad6af4f16ff5c5589bbd51cc12683c499f985d0881",
+      "httpStatus": 200,
+      "matches": true
+    },
+    {
+      "file": "scene.js",
+      "bytes": 5308,
+      "sha256": "823ace44db86c34e5fab0cad51f43f7e4cfb6193b1e49bd65a95508709eb45fb",
+      "httpStatus": 200,
+      "matches": true
+    }
+  ],
+  "browser": {
+    "checkedAt": "2026-10-04T08:02:07.022Z",
+    "scope": "Actual live website playback in Chromium153 at1280px, then responsive400px viewport; not a physical phone run or subjective ear assessment",
+    "url": "https://dillxn.github.io/offer-filter-site/?verify=e9d95ee",
+    "productCommit": "e9d95ee34a9d0fc04f54dc24090c5391d73dca53",
+    "playback": {
+      "duration": 24,
+      "currentTime": 24,
+      "ended": true,
+      "readyState": 4,
+      "error": null,
+      "muted": false,
+      "volume": 1,
+      "viewport": 1280,
+      "overflow": false,
+      "src": "https://dillxn.github.io/offer-filter-site/assets/offer-filter-landscape.mp4?v=movie-credits-20261004"
+    },
+    "phone": {
+      "width": 400,
+      "overflow": false,
+      "sourceLink": "https://github.com/Dillxn/offer-filter-site/tree/app-source",
+      "favicons": [
+        "https://dillxn.github.io/offer-filter-site/assets/favicon-32.png?v=mascot-20261004",
+        "https://dillxn.github.io/offer-filter-site/assets/favicon-16.png?v=mascot-20261004",
+        "https://dillxn.github.io/offer-filter-site/assets/favicon.svg?v=mascot-20261004"
+      ]
+    },
+    "licenseLink": "https://github.com/Dillxn/offer-filter-site/blob/app-source/LICENSE",
+    "cues": [
+      {
+        "start": 0,
+        "end": 1.28,
+        "text": "Your time matters."
+      },
+      {
+        "start": 1.78,
+        "end": 3.74,
+        "text": "Set your minimums."
+      },
+      {
+        "start": 3.74,
+        "end": 6.32,
+        "text": "Offer Filter declines the offers below them."
+      },
+      {
+        "start": 7.12,
+        "end": 8.5,
+        "text": "You choose the good ones."
+      },
+      {
+        "start": 9.14,
+        "end": 10.98,
+        "text": "See every offer in perspective."
+      },
+      {
+        "start": 11.62,
+        "end": 13.06,
+        "text": "Find your next move."
+      },
+      {
+        "start": 13.94,
+        "end": 15.92,
+        "text": "Free and open source."
+      },
+      {
+        "start": 15.92,
+        "end": 22.13,
+        "text": "[Instrumental music]"
+      },
+      {
+        "start": 22.13,
+        "end": 22.93,
+        "text": "[Music fades]"
+      }
+    ],
+    "errors": []
+  },
+  "publicAppSource": {
+    "commit": "ebba04f28f617b8512b6128e92f555c6a65cd8cd",
+    "version": "0.4.68",
+    "versionCode": 74,
+    "license": "MIT",
+    "licenseSha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+    "verifiedBy": "coordinator and public_source agent; fresh ref and anonymous byte checks"
+  },
+  "workflowSteps": {
+    "build": [
+      "Set up job",
+      "Checkout",
+      "Upload artifact",
+      "Post Checkout",
+      "Complete job"
+    ],
+    "deploy": [
+      "Set up job",
+      "Deploy to GitHub Pages",
+      "Complete job"
+    ],
+    "report-build-status": [
+      "Set up job",
+      "Report Build Status",
+      "Complete job"
+    ]
+  },
+  "workflowScope": "Static checkout, artifact upload and Pages deployment only. No software build, video rendering or tests ran in CI.",
+  "screenshotReview": "1280px and 400px live ended frames visually reviewed; centered credits preserved and no page overflow. Embedded 16:9 credits are naturally small on phones; native fullscreen remains available."
+}

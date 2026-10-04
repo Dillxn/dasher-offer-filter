@@ -1,0 +1,52 @@
+{
+  "checked_at": "2026-10-04T08:01:02.315355+00:00",
+  "repository": "Dillxn/offer-filter-site",
+  "branch": "app-source",
+  "sha": "ebba04f28f617b8512b6128e92f555c6a65cd8cd",
+  "parent": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+  "tree": "4a7ada6b41338271696631b3540b8aed19239897",
+  "source_sha": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+  "version": "0.4.68",
+  "version_code": 74,
+  "allowlisted_files": 127,
+  "total_bytes": 2721157,
+  "content_digest_sha256": "82ed133f725bbcdce6f1db18be5121ac9bffcd82dfde12fe64e15e4f14bc2ac9",
+  "nonforce": true,
+  "remote_ref_verified": true,
+  "remote_tree_all_files_match": true,
+  "anonymous_byte_checks": [
+    {
+      "path": "LICENSE",
+      "status": 200,
+      "bytes": 1063,
+      "sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+      "anonymous_exact": true
+    },
+    {
+      "path": "README.md",
+      "status": 200,
+      "bytes": 2999,
+      "sha256": "98916099183581c698b3c9bf2e8d3fafe5db6fa4c92926b0e7c2b74fdac910dc",
+      "anonymous_exact": true
+    },
+    {
+      "path": "app/build.gradle",
+      "status": 200,
+      "bytes": 1509,
+      "sha256": "8e849ce64c31764b92bcc407d03d0897b1426c2b3d180b4aa9b16d7324918afe",
+      "anonymous_exact": true
+    }
+  ],
+  "local_clean": true,
+  "license": "MIT",
+  "license_matches_frozen_source": true,
+  "license_sha256": "bfc596093890f687c936cec40a3cadd3b4d11898f2b6fa27675b4ba98fc41c36",
+  "credential_scan_matches": 0,
+  "website_main_not_modified_by_this_task": true,
+  "release_live_authorization_from_root": {
+    "version": "0.4.68",
+    "source_sha": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+    "apk_sha256": "e60228dd5bbed190add3d9ac97283229fbd13ad1cfb3aad9b0809b5a56e687be",
+    "apk_bytes": 1226254
+  }
+}

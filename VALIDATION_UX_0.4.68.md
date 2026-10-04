@@ -2,6 +2,18 @@
 
 Version 0.4.68 / code 74 is the combined UX, acceptance, launcher and background-alert update. The development base was the verified 0.4.67 checkpoint. Final release receipts will identify the exact committed inputs, APK, original signing certificate, and both live update channels.
 
+## Verified live release
+
+- Exact source: `7cfd79acadd8456d9ef58d564b4cc51b027755f3`; release commit: `66b27eb11f99bca416c101cae85bf1b67120c732`.
+- Local gate and exact-source signer gate: **2,260 tests in 121 suites**, simulated API 26 and 35, no failures/errors/skips. Lint: no errors, 37 warnings. No tracked source inputs changed while signing.
+- APK: 1,226,254 bytes, SHA-256 `e60228dd5bbed190add3d9ac97283229fbd13ad1cfb3aad9b0809b5a56e687be`; original certificate `553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703`.
+- Both update feeds advertise 0.4.68/code 74 and the exact source above. Render deploy `dep-db10dmegekts73bjv6mg` became live at 2026-10-04 07:57:47 UTC and only mirrored finished artifacts. A fresh download through production `UpdateTransport` verified the live package, version, bytes, hash and signer.
+- The authorized temporary signing export was removed after local signing. No key was generated, logged, committed or published. No Android build, test, signing or video rendering ran remotely.
+
+## Public source
+
+The MIT-licensed `app-source` branch is `ebba04f28f617b8512b6128e92f555c6a65cd8cd`, tree `4a7ada6b41338271696631b3540b8aed19239897`. All 127 reviewed paths/modes/blob hashes match the prepared snapshot; 125 upstream files match the frozen app source exactly. Anonymous LICENSE, README and build configuration downloads are byte-exact. Private reports, diagnostics, history, credentials, signing inputs and workflows remain excluded. The exported source compiles and lints locally with no errors.
+
 ## Scope and evidence
 
 - Auto-accept: reproduced a pre-dispatch content-event cancellation and an omitted learned-item rule identity on the old implementation. The final code permits at most two fresh complete reads before persistence, preserving the same offer, rules, generation, quiet interval and original deadline. Post-persistence cancellation, restart suppression, user takeover and automatic-learning exclusions remain intact.
@@ -23,3 +35,9 @@ Native simulated renders cover phone, split, narrow, large text and compact map 
 ## Explicit remaining limitation
 
 Automatic return from Maps after arrival remains open: there is no verified arrival signal or active navigation destination. Elapsed time, stopped movement, Maps foreground and generic Directions controls do not establish arrival. No speculative automatic Back or route clearing was added.
+
+## Matching website release
+
+Website product commit `e9d95ee34a9d0fc04f54dc24090c5391d73dca53` is live through successful static Pages run `37187542659` (checkout/upload/deploy only). All 28 checked public files match, including four 24-second exports, posters, full restored captions, MIT notices and existing favicon assets. Actual unmuted live playback reached the end without errors; all nine caption cues and 1280/400 layouts passed. The original full “Free and open source.” speech remains intact; only its speech-free musical tail was extended for the credits.
+
+Website verification checkpoint: `09c181e563e75be754d998b7baccbe9f75f9b635` (documentation/receipts only, skip CI). Live film product remains `e9d95ee34a9d0fc04f54dc24090c5391d73dca53`.

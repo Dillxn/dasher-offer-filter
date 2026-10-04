@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "transport": "production UpdateTransport.java",
+  "versionCode": 74,
+  "versionName": "0.4.68",
+  "sourceCommit": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+  "sha256": "e60228dd5bbed190add3d9ac97283229fbd13ad1cfb3aad9b0809b5a56e687be",
+  "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "bytes": 1226254
+}
