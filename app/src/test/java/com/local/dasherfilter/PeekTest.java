@@ -486,6 +486,115 @@ public class PeekTest {
         contains(log(app), "[peek] returned to a navigation app: no offer showed within 4 s of Dasher's screen");
     }
 
+    @Test
+    public void aLoadingScreenRestartsTheEmptyWaitBeforeALateOffer() {
+        connect(app(OTHER));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        pass(3_000);
+        dasherShows(node(DASHER, null, false));
+        pass(800);
+        dasherShows(finding());
+        pass(400);
+        assertNull("the interrupted empty interval cannot return over a late-loading offer", started());
+
+        dasherShows(offer("$25.00"));
+        pass(4_500);
+        assertNull("the late passing offer stays visible to the user", started());
+        assertTrue(globalActions().isEmpty());
+        contains(log(app), "[peek] left Dasher up because the offer passes your rules");
+    }
+
+    @Test
+    public void anItemOnlyOfferRestartsTheEmptyWait() {
+        connect(app(OTHER));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        pass(3_000);
+        AccessibilityNodeInfo partial = finding();
+        Shadows.shadowOf(partial).addChild(node(DASHER, "3 items", false));
+        dasherShows(partial);
+        pass(1_200);
+        assertNull("a partial shopping offer is not an empty screen", started());
+
+        dasherShows(finding());
+        pass(3_800);
+        assertNull("the full empty interval must start again after the partial offer", started());
+        pass(400);
+        assertNotNull("a later complete empty interval still permits returning", started());
+    }
+
+    @Test
+    public void anUnavailableFinalReadCannotReuseAnEarlierEmptyScreen() {
+        OfferFilterService service = connect(app(OTHER));
+        post("Taco Bell");
+        dasherOpened();
+        AccessibilityNodeInfo readable = finding();
+        dasherShows(readable);
+        java.util.function.Supplier<List<AccessibilityWindowInfo>> windows = service.windowSource;
+        java.util.concurrent.atomic.AtomicBoolean unavailable = new java.util.concurrent.atomic.AtomicBoolean();
+        service.windowSource = () -> {
+            List<AccessibilityWindowInfo> listed = windows.get();
+            boolean finalRead = Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals("peekStep"))
+                    && Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals("checkReadableOffer"));
+            if (finalRead && unavailable.compareAndSet(false, true)) {
+                // Android briefly cannot supply the active root during the deadline's required fresh read.
+                for (AccessibilityWindowInfo window : listed) Shadows.shadowOf(window).setRoot(null);
+                Shadows.shadowOf(service).setRootInActiveWindow(null);
+            } else if (unavailable.get()) {
+                // Metadata and the root recover before the old code's return guards look again.
+                for (AccessibilityWindowInfo window : listed) Shadows.shadowOf(window).setRoot(readable);
+                Shadows.shadowOf(service).setRootInActiveWindow(readable);
+            }
+            return listed;
+        };
+        pass(4_200);
+        assertTrue("the deadline performed its fresh read", unavailable.get());
+        assertNull("an unavailable final read cannot authorize a return from stale empty evidence", started());
+        service.windowSource = windows;
+        dasherShows(offer("$25.00"));
+        assertNull("the later readable passing offer remains visible", started());
+        assertTrue(globalActions().isEmpty());
+    }
+
+    @Test
+    public void aSlowFinalReadCannotReturnAfterThePeekDeadline() {
+        assertSlowPeekReturnStopsAtDeadline("checkReadableOffer");
+    }
+
+    @Test
+    public void aSlowFinalReturnCheckCannotOutliveThePeekDeadline() {
+        assertSlowPeekReturnStopsAtDeadline("returnPeekOnMain");
+    }
+
+    private void assertSlowPeekReturnStopsAtDeadline(String delayedMethod) {
+        OfferFilterService service = connect(app(OTHER));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        java.util.function.Supplier<List<AccessibilityWindowInfo>> windows = service.windowSource;
+        java.util.concurrent.atomic.AtomicBoolean delayed = new java.util.concurrent.atomic.AtomicBoolean();
+        service.windowSource = () -> {
+            boolean returnPath = Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals("peekStep"))
+                    && Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals(delayedMethod));
+            if (returnPath && delayed.compareAndSet(false, true)) {
+                // A platform window/root query can finish after the original whole-peek deadline.
+                ShadowSystemClock.advanceBy(Duration.ofMillis(Peek.MAX_MS));
+            }
+            return windows.get();
+        };
+        pass(4_200);
+        assertTrue("the final return path crossed the deadline", delayed.get());
+        assertNull("late platform work must leave Dasher visible after the whole-peek deadline", started());
+        assertTrue(globalActions().isEmpty());
+    }
+
     // ---- What leaves Dasher up ----
 
     @Test

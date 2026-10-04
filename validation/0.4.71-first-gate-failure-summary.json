@@ -1,0 +1,24 @@
+{
+  "counts": {
+    "no_space": 1176,
+    "java.lang.AssertionError: expected:<1> but was:<0>": 1,
+    "java.lang.ExceptionInInitializerError": 3
+  },
+  "examples": {
+    "no_space": {
+      "file": "TEST-com.local.dasherfilter.MinimumScaleIntegrationTest.xml",
+      "test": "accessibleScaleRefreshesBothChartLinesAndSurvivesActivityRecreation[26]",
+      "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-MinimumScaleIntegrationTest_accessibleScaleRefreshesBothChartLinesAndSurvivesActivityRecreation15007131506890934528: No space left on device"
+    },
+    "java.lang.AssertionError: expected:<1> but was:<0>": {
+      "file": "TEST-com.local.dasherfilter.AutoAcceptAdapterTest.xml",
+      "test": "timeoutAndSameOfferRereadsNeverRecreateManualInferenceOrRetry[26]",
+      "message": "java.lang.AssertionError: expected:<1> but was:<0>"
+    },
+    "java.lang.ExceptionInInitializerError": {
+      "file": "TEST-com.local.dasherfilter.SkylineFitnessTest.xml",
+      "test": "phoneRendersRecordedTreesAndBothReferences",
+      "message": "java.lang.ExceptionInInitializerError"
+    }
+  }
+}

@@ -1,5 +1,7 @@
 # Offer Filter development
 
+- .71 Peek: only an uninterrupted interval of positively recognized empty Dasher screens can permit a no-offer return. Loading, item-only offer evidence, unavailable foreground and failed/incomplete reads reset that interval. Recheck it after the final fresh read, and preserve the original 20-second Peek deadline through final return dispatch. Never infer the reported handset incident was reproduced from synthetic tests alone.
+
 - .70 factual-disclosure correction supersedes older blanket retention/cleanup prose below: logs use a rolling 24-hour window pruned during use; latest 200 decisions and up to 30 queued reports have no age-based expiry. Clear history does not clear the outbox or sent copies; notes are unmasked and deterministic masking is not an anonymity guarantee. Consent 13 must disclose actual behavior and existing external recipients. No new data flow or action authority is authorized. Keep Terms/Privacy marked drafts, and do not invent a private contact or sent-report deletion practice. The .69 pickup-heading/queued-diagnostics privacy repair is incorporated; no old remote report was edited/deleted.
 
 - The user explicitly requested a free and open-source app. From 0.4.68, LICENSE is the standard MIT License with the author's copyright; TERMS and bundled LegalTexts must agree. This supersedes the old all-rights-reserved draft. Preserve the full original "Free and open source" narration. Consent.VERSION is 12 for the substantive Terms change.

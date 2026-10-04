@@ -1,3 +1,10 @@
+## 0.4.71 — keep Peek from returning during offer loading (candidate)
+
+- Restarts Peek's four-second empty-screen wait when Dasher is loading, drawing only part of an offer, or cannot be read completely. A final fresh read must still confirm that the full empty-screen interval elapsed before returning to the previous app.
+- Keeps Peek's original 20-second limit through slow reads and final return dispatch. An expired Peek leaves Dasher open.
+- Includes the pending .69/.70 privacy repairs and Consent 13 disclosures. Existing offer decisions, manual takeover and launcher task behavior are preserved.
+- Local regressions reproduce premature returns; the exact reported handset incident and the screenshot's unreadable-pay result remain unconfirmed. Candidate signing, publication and phone validation are tracked separately.
+
 ## 0.4.70 — accurate notices and public beta setup (candidate)
 
 - Includes the unshipped .69 pickup-heading masking and queued-diagnostics remasking repair below.

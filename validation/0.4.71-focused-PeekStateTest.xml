@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.local.dasherfilter.PeekStateTest" tests="26" skipped="0" failures="0" errors="0" timestamp="2026-10-04T09:53:34.141Z" hostname="adafc7538049" time="0.554">
+  <properties/>
+  <testcase name="unrecognisedScreensNeverStartTheNoOfferClock[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.02"/>
+  <testcase name="chainingIsCappedAtSixAndOlderStartsExpire[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.02"/>
+  <testcase name="touchRestartsQuietAndTheWaitHasABound[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.021"/>
+  <testcase name="unknownScreenAtTheDeadlineDoesNotHoldAReusedNotificationKey[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.021"/>
+  <testcase name="gapStartsWhenThePeekEndsAndNotWhenItOpened[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.022"/>
+  <testcase name="anAddonCanCompleteWithoutAQuestionButAStandaloneCannot[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.022"/>
+  <testcase name="navigationCardShowsOnlyObservedFiguresAndUnclearIsExplicit[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.021"/>
+  <testcase name="stalePostsAndReplaysCannotTriggerAnOpening[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.019"/>
+  <testcase name="clockAdvancesWhileTheDeviceSleeps[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.023"/>
+  <testcase name="unrecognisedScreenRestartsTheNoOfferInterval[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.019"/>
+  <testcase name="failedLaunchDoesNotHoldTheNotificationAndTwoFailuresPause[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.018"/>
+  <testcase name="privateFrontPackageIsNotInItsPrintableKindAndCanBeForgotten[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.014"/>
+  <testcase name="chainedOfferCannotExtendTheAbsoluteOpeningDeadline[26]" classname="com.local.dasherfilter.PeekStateTest" time="0.018"/>
+  <testcase name="unrecognisedScreensNeverStartTheNoOfferClock" classname="com.local.dasherfilter.PeekStateTest" time="0.034"/>
+  <testcase name="chainingIsCappedAtSixAndOlderStartsExpire" classname="com.local.dasherfilter.PeekStateTest" time="0.021"/>
+  <testcase name="touchRestartsQuietAndTheWaitHasABound" classname="com.local.dasherfilter.PeekStateTest" time="0.018"/>
+  <testcase name="unknownScreenAtTheDeadlineDoesNotHoldAReusedNotificationKey" classname="com.local.dasherfilter.PeekStateTest" time="0.016"/>
+  <testcase name="gapStartsWhenThePeekEndsAndNotWhenItOpened" classname="com.local.dasherfilter.PeekStateTest" time="0.017"/>
+  <testcase name="anAddonCanCompleteWithoutAQuestionButAStandaloneCannot" classname="com.local.dasherfilter.PeekStateTest" time="0.015"/>
+  <testcase name="navigationCardShowsOnlyObservedFiguresAndUnclearIsExplicit" classname="com.local.dasherfilter.PeekStateTest" time="0.015"/>
+  <testcase name="stalePostsAndReplaysCannotTriggerAnOpening" classname="com.local.dasherfilter.PeekStateTest" time="0.018"/>
+  <testcase name="clockAdvancesWhileTheDeviceSleeps" classname="com.local.dasherfilter.PeekStateTest" time="0.022"/>
+  <testcase name="unrecognisedScreenRestartsTheNoOfferInterval" classname="com.local.dasherfilter.PeekStateTest" time="0.022"/>
+  <testcase name="failedLaunchDoesNotHoldTheNotificationAndTwoFailuresPause" classname="com.local.dasherfilter.PeekStateTest" time="0.043"/>
+  <testcase name="privateFrontPackageIsNotInItsPrintableKindAndCanBeForgotten" classname="com.local.dasherfilter.PeekStateTest" time="0.024"/>
+  <testcase name="chainedOfferCannotExtendTheAbsoluteOpeningDeadline" classname="com.local.dasherfilter.PeekStateTest" time="0.024"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

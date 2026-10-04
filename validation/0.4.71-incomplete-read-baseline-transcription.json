@@ -1,0 +1,22 @@
+{
+  "evidence_kind": "Accurately labelled transcription of observed tool output; original failure XML was overwritten by later runs",
+  "stage": "Pending Peek interval/predicate fix present; five service early-return invalidations not yet applied",
+  "working_directory": "/workspace/scratch/abb34f30659b/dasher-offer-filter",
+  "command": "source /tmp/offer-android-env/env.sh\nJAVA_TOOL_OPTIONS='' gradle --offline -I /tmp/offer-android-env/google-download-host.init.gradle -q testDebugUnitTest --tests 'com.local.dasherfilter.PeekTest.anItemOnlyOfferRestartsTheEmptyWait' --tests 'com.local.dasherfilter.PeekTest.anUnavailableFinalReadCannotReuseAnEarlierEmptyScreen'",
+  "sdk": 35,
+  "exit_code": 1,
+  "tests": 2,
+  "failures": 2,
+  "gradle_output_excerpt": "2 tests completed, 2 failed\nBUILD FAILED in 15s",
+  "failure_xml_messages_transcribed": [
+    {
+      "test": "anItemOnlyOfferRestartsTheEmptyWait",
+      "message": "java.lang.AssertionError: a partial shopping offer is not an empty screen expected null, but was:<Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10040000 cmp=com.example.reader/.Main }>"
+    },
+    {
+      "test": "anUnavailableFinalReadCannotReuseAnEarlierEmptyScreen",
+      "message": "java.lang.AssertionError: an unavailable final read cannot authorize a return from stale empty evidence expected null, but was:<Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10040000 cmp=com.example.reader/.Main }>"
+    }
+  ],
+  "provenance": "Root subagent bug_evidence, tool process95248; result inspection chunk4d584e; no source reconstruction or rerun used for this record"
+}

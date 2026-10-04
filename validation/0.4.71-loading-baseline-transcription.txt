@@ -1,0 +1,14 @@
+Baseline source: Offer Filter 80f7e8a, before Peek.java or OfferFilterService.java edits.
+Captured from local Gradle/tool output before the succeeding focused gate replaced its XML.
+
+Command:
+JAVA_HOME=/tmp/offer-android-env/jdk-17.0.20.1+1 ANDROID_HOME=/tmp/offer-android-env/sdk ANDROID_SDK_ROOT=/tmp/offer-android-env/sdk GRADLE_USER_HOME=/tmp/offer-android-env/gradle-cache /tmp/offer-android-env/gradle-8.13/bin/gradle --offline -q testDebugUnitTest -Pforks=1 --tests 'com.local.dasherfilter.PeekStateTest.unrecognisedScreenRestartsTheNoOfferInterval' --tests 'com.local.dasherfilter.PeekTest.aLoadingScreenRestartsTheEmptyWaitBeforeALateOffer'
+
+2 tests completed, 2 failed
+BUILD FAILED in 11s
+
+Failure messages read from the baseline XML:
+aLoadingScreenRestartsTheEmptyWaitBeforeALateOffer java.lang.AssertionError: the interrupted empty interval cannot return over a late-loading offer expected null, but was:<Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10040000 cmp=com.example.reader/.Main }>
+unrecognisedScreenRestartsTheNoOfferInterval java.lang.AssertionError: loading time is not a recognised empty screen expected:<-9223372036854775808> but was:<1000>
+
+The baseline tests used only methods existing in 80f7e8a. Assertions calling the new noOfferWaited helper were added only after both behavioral failures above were observed.
