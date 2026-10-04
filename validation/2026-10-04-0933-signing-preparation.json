@@ -1,0 +1,66 @@
+{
+  "recorded_at": "2026-10-04T09:33:00Z",
+  "authorization": {
+    "resolved": true,
+    "user_response": "yes",
+    "scope": "Normal private Render export of the existing original signer, local signing, removal of temporary copy",
+    "supersedes": "2026-10-04 09:18 authorization stop",
+    "alternate_credential_path_authorized": false,
+    "remote_android_build_authorized": false
+  },
+  "attempt": {
+    "route": "Render Dashboard environment page; normal Export > Download .env intended",
+    "export_dispatched": false,
+    "credential_read": false,
+    "credential_transferred": false,
+    "settings_changed": false,
+    "temporary_signer_files_created": false,
+    "result": "Transient browser controller timeouts on attach/state/DOM/screenshot; screenshot timeout reset controller",
+    "login_or_permission_failure_observed": false
+  },
+  "prepared_source": {
+    "branch": "codex/release-0-4-70",
+    "remote_commit": "b06f87ee68e98eb0ae207df18ff87804a11e3831",
+    "local_commit": "7601346f1156ce3a6d3e82f1537d9ae719cd7104",
+    "tree": "2fc94dc9716f3f9c4dfbe83d046ad4933e7de0c3",
+    "parents": [
+      "80f7e8a2f47b02f049a8092808859efa96f31ffa",
+      "6bf85193dc53150058ce8fbd27276e81f38b3679"
+    ],
+    "app_tools_build_inputs_equal_to_tested_source": "fe1b529f61d8f72af5905e2ba46ca753eabee0aa"
+  },
+  "candidate": {
+    "version": "0.4.70",
+    "version_code": 76,
+    "signed": false,
+    "published": false,
+    "prior_local_gate": {
+      "tests": 2270,
+      "suites": 121,
+      "simulated_sdks": [
+        26,
+        35
+      ],
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "lint_errors": 0,
+      "lint_warnings": 37,
+      "rerun_this_attempt": false
+    }
+  },
+  "current_live": {
+    "version": "0.4.68",
+    "version_code": 74,
+    "changed_this_attempt": false,
+    "live_probe_this_attempt": false
+  },
+  "safety": {
+    "publisher_invoked": false,
+    "new_build": false,
+    "new_tests": false,
+    "physical_phone_result": false,
+    "domain_or_site_changed": false
+  },
+  "next": "Once browser control works, use same authorized normal export and exact committed-source local signing/publisher workflow; no alternate secret route or gate bypass."
+}
