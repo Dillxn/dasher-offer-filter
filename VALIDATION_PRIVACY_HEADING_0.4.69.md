@@ -19,3 +19,5 @@ Validated candidate: `0.4.69` / code `75`, exact source `c6a4a3d0a02c9b81c3d6a45
 ## Limits
 
 This is local simulated regression evidence. It is not physical-phone proof, signing evidence, publication evidence or evidence that old remote issue history was removed. Signing and automatic-update publication remain separate gates.
+
+Remote preservation: source tree `1f857230a7b401ccb47d671b85681baa14549abc` is commit `8fb3e6b1f93169ac9a6145b222e5065d7fc7ce8a` on `codex/privacy-heading-0-4-69`; the first validation checkpoint is `e9d007e9cf8cac3eb12f008910e86f0b30b8d99d`.
