@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-10-04T04:30:12Z",
+  "previousCutoff": "2026-10-04T03:26:00Z",
+  "privacy": {
+    "rawDiagnosticsStored": false,
+    "paymentDetailsStored": false,
+    "messagesSent": false,
+    "reportsDeleted": false
+  },
+  "personalGmail": {
+    "newMatchingMessages": 0,
+    "finding": "No new matching Offer Filter diagnostics email after the prior cutoff."
+  },
+  "repositoryIssues": {
+    "inspected": [51, 52, 53, 54],
+    "reports": [
+      {
+        "issue": 51,
+        "reportToken": "9857e018e72e66ff80cf96c005d5038d",
+        "release": "0.4.64",
+        "finding": "Shopping offer retained route facts and known pay context, but exact item count was unavailable. Existing behavior returned REVIEW."
+      },
+      {
+        "issue": 52,
+        "reportToken": "a92a2f0a289ace7847c48cb62d169ea0",
+        "release": "0.4.64",
+        "finding": "Same offer target as issue 53. One read passed at 109 percent; a following read became pay-unclear."
+      },
+      {
+        "issue": 53,
+        "reportToken": "23ba07dab6d72d22ccc6cfd515102b5d",
+        "release": "0.4.64",
+        "finding": "User states the qualifying offer was not actually accepted. The shared report preserved PASS but intentionally omitted detailed history steps, so it cannot establish whether Auto-accept was enabled, dispatched, refused or canceled."
+      },
+      {
+        "issue": 54,
+        "reportToken": "5a0d34e13cbbceeb34a032f8a09fe0e8",
+        "release": "0.4.64",
+        "finding": "Shopping offer had unknown exact item count and remained REVIEW."
+      }
+    ],
+    "deduplication": [
+      "Issues 52 and 53 describe the same offer target and are not independent offers."
+    ]
+  },
+  "implementation": {
+    "candidate": "0.4.66/code72",
+    "branch": "codex/unknown-item-bound-0-4-66",
+    "sourceCommit": "668ab818d272e7d1c774fc5d6d4c43ff21f7e43c",
+    "sourceTree": "4103c5e785ea03280fc208f741f2b331db23243f",
+    "changes": [
+      "When shopping item count is unknown, decline only if the mathematically best valid case of one item still fails the active area cutoff or strict pay lower bound.",
+      "Never use the one-item bound to keep or automatically accept an offer, never invent an observed item count, and keep the plotted score unknown.",
+      "Future shared reports include only a fixed coarse outcome category while still excluding private event steps and raw accessibility text."
+    ],
+    "fieldScope": "Reports 46, 48, 49 and 50 are guaranteed failures even at one item under their recorded rules; issue 52 can pass and therefore remains unresolved by the bound."
+  },
+  "verification": {
+    "testSuites": 113,
+    "tests": 2087,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "simulatedSdks": [26, 35],
+    "lintErrors": 0,
+    "lintWarnings": 34,
+    "trackedInputs": 363,
+    "inputsAggregate": "2177f57501dbbb92a0da56a54957c10ece2b5280ed9d2758d8a54dda1a0d3d37"
+  },
+  "release": {
+    "signed": false,
+    "published": false,
+    "physicalHandsetVerified": false,
+    "blocker": "Original-signer credential retrieval remains paused after automatic authorization review rejected it. No retry, alternate credential path or replacement signer was used."
+  },
+  "remaining": [
+    "Issue 53 needs a future report with the new coarse outcome category to distinguish PASS from a requested, confirmed or user-owned acceptance outcome.",
+    "The field report that purple learned minimums remained below a recent accepted green offer is not reproduced or resolved by this candidate.",
+    "Exact item count remains unavailable when the Dasher accessibility surface omits it; the new bound only resolves guaranteed failures.",
+    "The narrated film candidate remains unpublished because its open-source narration conflicts with the repository's current proprietary license."
+  ]
+}
