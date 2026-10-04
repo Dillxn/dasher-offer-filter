@@ -1,0 +1,36 @@
+{
+  "version": "0.4.67",
+  "versionCode": 73,
+  "sourceCommit": "1d916c2ac106955c3995a4816b18cb548e858a65",
+  "sourceTree": "ac2106b71d3e00785ef246d76b493e5e50c0276d",
+  "remoteSourceCommit": "df7e8aacfa39add2688772ef71f3360515aca3a5",
+  "sourceTreeMatchesRemote": true,
+  "startedAt": "2026-10-04T05:21:42.570261+00:00",
+  "finishedBy": "2026-10-04T05:24:16Z",
+  "command": "gradle -q testDebugUnitTest lintDebug -PallSdks -Pforks=2 --offline --max-workers=2 -Dorg.gradle.jvmargs='-Xmx1536m -XX:+UseParallelGC -Dfile.encoding=UTF-8'",
+  "exitCode": 0,
+  "tests": {
+    "suites": 113,
+    "tests": 2090,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "apiLevels": [
+      26,
+      35
+    ],
+    "simulated": true
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 34
+  },
+  "frozenInputs": {
+    "count": 368,
+    "aggregate": "8ecc65a789149f9b4556d8f432ec7a39ef9163d4fbad30f6b5b4f4b5aee6821b",
+    "changed": []
+  },
+  "signed": false,
+  "published": false,
+  "physicalPhoneVerified": false
+}

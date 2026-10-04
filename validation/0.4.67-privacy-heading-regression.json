@@ -1,0 +1,8 @@
+{
+  "exitCode": 1,
+  "tests": 2,
+  "failures": 2,
+  "errors": 0,
+  "baseline": "ff4878144792dc7b9dd27458e58f4452ac75e677",
+  "fixtures": "invented recipient names only"
+}

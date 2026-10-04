@@ -1,0 +1,42 @@
+{
+  "cutoff": "2026-10-04T04:30:12Z",
+  "auditedThrough": "2026-10-04T05:25:00Z",
+  "repository": "Dillxn/dasher-offer-filter",
+  "freshMain": "6169c3101db899e8520cfc64367ec3aa0f3b14ca",
+  "newIssueUpdates": [
+    56
+  ],
+  "backfilledInspection": [
+    55
+  ],
+  "issues": [
+    {
+      "number": 55,
+      "version": "0.4.64",
+      "dashToken": "b9f1a49158f5f1cd7504b161ca8741af",
+      "createdAt": "2026-10-04T04:17:40Z",
+      "commentsInspected": 1
+    },
+    {
+      "number": 56,
+      "version": "0.4.64",
+      "dashToken": "0212b4d1febbc3bfe7cbd13acfaabeb3",
+      "createdAt": "2026-10-04T04:32:26Z",
+      "commentsInspected": 1
+    }
+  ],
+  "deduplication": "Distinct dash tokens; older offer/history episodes repeated across both reports are not independent acceptance evidence.",
+  "gmail": {
+    "account": "dillon.riecke@gmail.com",
+    "query": "after:1791088212 (\"Offer Filter\" OR \"offer-report\" OR \"dasher-offer-filter\")",
+    "newMessageIds": []
+  },
+  "finding": "Pickup verification headings retained recipient names. Reproduced with invented names only; candidate masks same/split/serialized headings and remasks already-queued diagnostic issue/comment bodies before sending.",
+  "learningFinding": "No new confirmed accepted-learning evidence established. Historical timeout and cancellation remain repeated old evidence.",
+  "candidateSource": "df7e8aacfa39add2688772ef71f3360515aca3a5",
+  "candidateVersion": "0.4.67",
+  "candidateSigned": false,
+  "reportsModifiedOrDeleted": false,
+  "rawReportsSaved": false,
+  "concurrency": "Direct thread is publishing .66 and updating narration; this run owns only codex/privacy-pickup-heading. No main/release/site modifications."
+}
