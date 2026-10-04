@@ -1,0 +1,16 @@
+{
+  "checkedAfter": "2026-10-04T08:20:00Z",
+  "checkedThrough": "2026-10-04T09:17:56Z",
+  "repository": "Dillxn/dasher-offer-filter",
+  "issuesInspected": [63, 64],
+  "reports": [
+    {"issue": 63, "appVersion": "0.4.68", "reportToken": "90df95b7b1141e6c2749b1051a2ce49d", "targetAt": "2026-10-04T08:31:11.066Z", "finding": "Unknown-pay REVIEW. Other route facts were observed; target text was privacy-rejected and no raw labels were retained. No actionable parser cause is established."},
+    {"issue": 64, "appVersion": "0.4.68", "reportToken": "1fde346db03430ac331b5818d65fe814", "targetAt": "2026-10-04T08:31:11.071Z", "finding": "User reports an incorrect background opening for the same target as #63. Notification fallback is NATIVE_ALERT; no detailed Peek refusal/launch trace is retained. This does not establish that Peek launched or identify the foreground/authority cause."}
+  ],
+  "deduplication": "63/64 share offer facts and target timestamps five milliseconds apart. Count as one offer, not two failures. Repeated recent history is not independent new evidence.",
+  "gmail": {"account": "dillon.riecke@gmail.com", "newMatchingMessages": 0},
+  "mutations": "No messages, issue edits or report deletions. No speculative app-switching or parsing change.",
+  "privacy": "No raw diagnostic bodies, recipient names, payment details or credentials retained.",
+  "releaseState": {"live": "0.4.68/code74", "candidate": "0.4.70/code76 combining .69 privacy with factual notice corrections; not signed or shipped"},
+  "nextEvidence": "Aligned sanitized launch/refusal category and actual phone flow; preserve unknown-pay REVIEW and all foreground/touch/lock/privacy guards."
+}

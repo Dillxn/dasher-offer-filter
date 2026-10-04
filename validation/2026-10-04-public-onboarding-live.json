@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-04T09:07:00Z",
+  "toolingCommit": "0b24e9c42ca299efa77d559c45b4357e7b965058",
+  "toolingTree": "e1e28ecc4a5df143c57629fc9f29b9a0ff3faa29",
+  "scope": "Public download/setup HTML and local regression tests only; no Android build/signing or APK/feed change.",
+  "tests": {"focusedPython": 29, "failures": 0, "newOnboardingTests": 6, "oldLandingFailureAssertions": 25, "oldLandingFailureCases": 5},
+  "mirror": {"deployment": "dep-db11ckegekts73bo0s7g", "liveAt": "2026-10-04T09:03:45.372687Z", "androidBuiltRemotely": false, "autoDeploy": false},
+  "landingChecks": {"noGitHubRequired": true, "keepPlayProtectEnabled": true, "exactConsentCaption": true, "helpLink": true, "privacyLink": true},
+  "productionUpdateTransport": {
+    "result": "PASS",
+    "versionName": "0.4.68",
+    "versionCode": 74,
+    "sourceCommit": "7cfd79acadd8456d9ef58d564b4cc51b027755f3",
+    "bytes": 1226254,
+    "sha256": "e60228dd5bbed190add3d9ac97283229fbd13ad1cfb3aad9b0809b5a56e687be",
+    "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+    "method": "Fresh unauthenticated download with production UpdateTransport/UpdatePolicy, exact size/hash, apksigner and embedded package/version. Normal system Java17 trust; current proxy handling unchanged."
+  },
+  "physicalDevice": {"connectedDevices": 0, "installationVerified": false, "dasherFlowVerified": false},
+  "limits": "A successful download is not a handset upgrade. See PUBLIC_BETA_PHONE_GATE.md."
+}
