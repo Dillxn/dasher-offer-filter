@@ -493,6 +493,28 @@ public class DashDiagnosticsTest {
     }
 
     @Test
+    public void oldQueuedDiagnosticsMaskPickupRecipientsBeforeIssueAndCommentSend() throws JSONException {
+        diagnosticsOn();
+        String marker = ReportOutbox.newDashToken();
+        assertTrue(ReportOutbox.submitDiagnostics(app, "[diagnostics] synthetic legacy report",
+                Arrays.asList(ReportOutbox.dashMark(marker) + "\nlabels=[Verify items for Alex Q, Confirm pickup]",
+                        "labels=[Verify items for, Taylor R, Confirm pickup]"), marker));
+        ReportOutbox.flush();
+        on("/issues", 201, "{\"number\": 75}");
+        on("/issues/75/comments", 201, "{\"id\": 1}");
+        assertFalse(ReportOutbox.drain(app));
+        String issue = requests("/issues").get(0).body.getString("body");
+        String comment = requests("/issues/75/comments").get(0).body.getString("body");
+        assertTrue(issue.contains("Verify items for [name]"));
+        assertTrue(comment.contains("Verify items for, [name]"));
+        assertFalse(issue.contains("Alex Q"));
+        assertFalse(comment.contains("Taylor R"));
+        assertTrue(issue.contains(ReportOutbox.dashMark(marker)));
+        assertTrue(comment.contains("offer-filter-part:" + marker + ":0"));
+        assertEquals(0, queuedDiagnostics());
+    }
+
+    @Test
     public void aLabelGitHubWillNotTakeDoesNotCostTheDashItsDiagnostics() throws JSONException {
         diagnosticsOn();
         dashUntilItEnds();

@@ -1,3 +1,10 @@
+## 0.4.69 — mask pickup-verification recipients (candidate)
+
+- Masks a recipient name in same-label and split-label `Verify items for …` pickup-verification headings before the text is retained or shared.
+- Reapplies the current mask to the issue body and every comment of an older queued diagnostics report immediately before sending, so a report queued by an earlier release receives the repaired protection too.
+- Filtering, classification, learning, consent, action authority and report receipts are unchanged. Existing remote issues are not edited or deleted.
+- Local validation, original-signer publication and physical-phone evidence are recorded separately; this entry alone is not a release claim.
+
 ## 0.4.67 — readable stacked offers and a higher mascot
 
 - A readable stacked offer beside one bare bonus amount can now be declined when even its highest supported payout fails the fixed rules. An explicit order count and matching dropoff/route breakdown are required; the ceiling allows the bonus on every order. The reported $13 plus $1 two-order shape is checked at $15, while its exact pay remains unknown.
