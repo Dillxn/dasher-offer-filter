@@ -112,4 +112,29 @@ public final class OfferParserTest {
     @Test public void stopBreakdownAloneIsNotTheTotal() {
         assertNull(OfferParser.parse(Arrays.asList("$9.75", "Multiple dropoffs (2 stops)")).stops);
     }
+
+    @Test public void singlePickupBundleCountsNormalizeButNeverBecomeItemFacts() {
+        OfferSnapshot offer = OfferParser.parse(Arrays.asList("Very busy", "+$1", "Decline", "$13.00 incl. tips",
+                "3 stops (7.0 mi) • 33 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)",
+                "Pick up 2 orders", "Multiple dropoffs (2 stops)", "Accept", "0:24"));
+        assertEquals(Integer.valueOf(1500), offer.payAtMostCents);
+        assertNull(offer.payCents);
+        assertNull(offer.items);
+        assertFalse(offer.itemCountApplicable);
+        OfferSnapshot normalized = OfferParser.parse(Arrays.asList("+$1", "$13.00",
+                "3 stops (7.0 mi) • 33 min", "  PICK-UP   2   ORDERS ", "Multiple drop-offs ( 2 stops )"));
+        assertEquals(Integer.valueOf(1500), normalized.payAtMostCents);
+    }
+
+    @Test public void aBundleCountCannotRelaxMoneyOrAdjacencyGuards() {
+        for (String[] prefix : new String[][] {
+                {"+$1", "incl. tips", "$13.00"}, {"+$1 Peak Pay", "$13.00"},
+                {"+$1", "$13.00", "+$2"}, {"+$1", "$13.00", "$14.00"},
+                {"+$1", "$13.001"}, {"+$1", "$13.00", "$2/mi"},
+                {"+$1", "$13.00", "up to"}, {"+$1", "$13.00", "2x"}}) {
+            java.util.List<String> labels = new java.util.ArrayList<>(Arrays.asList(prefix));
+            labels.addAll(Arrays.asList("3 stops (7.0 mi) • 33 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)"));
+            assertNull(Arrays.toString(prefix), OfferParser.parse(labels).payAtMostCents);
+        }
+    }
 }

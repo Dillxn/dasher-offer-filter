@@ -233,9 +233,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("the mascot and its counts float over the constellation", mascot.placed());
             float middleX = star.skyX();
             float middleY = star.skyY();
-            assertTrue("the circle's middle is inside the mascot's own box, so the tap must pass through it",
-                    middleX >= mascot.getLeft() && middleX <= mascot.getRight()
-                            && middleY >= mascot.getTop() && middleY <= mascot.getBottom());
+            assertTrue("the upper-left mascot leaves the plot center clear",
+                    Math.hypot(middleX - mascot.getLeft() - mascot.mascotX(),
+                            middleY - mascot.getTop() - mascot.mascotY()) > mascot.mascotRadius());
 
             tap(sky, mascot.getLeft() + mascot.mascotX(), mascot.getTop() + mascot.mascotY());
             assertFalse("a tap on the mascot pauses", FilterStore.load(app).enabled);
@@ -383,11 +383,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             counts.offset(mascot.getLeft(), mascot.getTop());
             assertTrue("and stays below the counts", mascotY - mascot.mascotRadius() >= counts.bottom);
             assertTrue("inside the page", mascotX - mascot.mascotRadius() >= 0);
-            // Between the two left spokes, clear of the upper one it rose towards.
+            // Above and left of the plot, clear of the finite upper spoke actually drawn. Its extension beyond
+            // the outer ring no longer forces the mascot back down beside the graph's center.
             double spread = Math.toRadians(MinimumsStarView.SPREAD);
-            double dx = star.skyX() - mascotX;
-            double dy = star.skyY() - mascotY;
-            double fromUpperSpoke = dx * Math.sin(spread) - dy * Math.cos(spread);
+            double dx = -star.skyRadius() * Math.cos(spread);
+            double dy = -star.skyRadius() * Math.sin(spread);
+            double projection = Math.max(0, Math.min(1,
+                    ((mascotX - star.skyX()) * dx + (mascotY - star.skyY()) * dy) / (dx * dx + dy * dy)));
+            double fromUpperSpoke = Math.hypot(mascotX - star.skyX() - projection * dx,
+                    mascotY - star.skyY() - projection * dy);
             assertTrue("clear of the upper left spoke: " + fromUpperSpoke,
                     fromUpperSpoke >= mascot.mascotRadius() + ui.dp(8));
         } finally {

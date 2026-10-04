@@ -36,14 +36,16 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void splitLeavesTheAxesAndControlsClear() throws Exception { check(true, "split"); }
 
+    @Test @Config(qualifiers = "w360dp-h396dp-xhdpi")
+    public void smallSamsungSplitAnchorsTheMascotBelowTheCounts() throws Exception { check(true, "samsung-split"); }
+
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
     public void narrowPhoneKeepsAUsableControl() throws Exception { check(false, "narrow"); }
 
     @Test public void largeFontKeepsLabelsClear() throws Exception {
-        android.content.res.Configuration config = new android.content.res.Configuration(app.getResources().getConfiguration());
-        config.fontScale = 2f;
-        app.getResources().updateConfiguration(config, app.getResources().getDisplayMetrics());
-        check(false, "large-font");
+        org.robolectric.RuntimeEnvironment.setFontScale(2f);
+        try { check(false, "large-font"); }
+        finally { org.robolectric.RuntimeEnvironment.setFontScale(1f); }
     }
 
     private void check(boolean split, String name) throws Exception {
@@ -69,7 +71,7 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             assertTrue(hero.placed());
             float x = hero.getLeft() + hero.mascotX(), y = hero.getTop() + hero.mascotY();
             float r = hero.mascotRadius();
-            assertTrue("smaller drawing", r <= ui.dp(44));
+            assertTrue("smaller drawing", r <= ui.dp(36));
             assertTrue("at least a 44dp control", r * 2 >= ui.dp(44));
             assertTrue("near the left edge", x - r >= 0 && x - r <= ui.dp(7));
             assertTrue("raised above the plot center", y < star.skyY() - ui.dp(12));
@@ -77,6 +79,8 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             hero.countsAt(counts);
             counts.offset(hero.getLeft(), hero.getTop());
             assertTrue("below the counts", y - r >= counts.bottom);
+            assertTrue("at the top below the counters, not beside the plot center",
+                    y - r <= counts.bottom + ui.dp(20));
             List<RectF> obstacles = new ArrayList<>();
             star.iconsAt(obstacles);
             for (int i = 0; i < AreaScore.AXES; i++) obstacles.add(star.axisLabelBox(i));

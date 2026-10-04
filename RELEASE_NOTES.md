@@ -1,3 +1,10 @@
+## 0.4.67 — readable stacked offers and a higher mascot
+
+- A readable stacked offer beside one bare bonus amount can now be declined when even its highest supported payout fails the fixed rules. An explicit order count and matching dropoff/route breakdown are required; the ceiling allows the bonus on every order. The reported $13 plus $1 two-order shape is checked at $15, while its exact pay remains unknown.
+- A changed bonus or order count cannot inherit an older, smaller ceiling. New ambiguous wording removes the inherited ceiling and keeps pay unknown while the same offer continues.
+- Moves the smaller mascot to the upper-left space immediately below the counters, making the requested placement visible in split screen while keeping the chart and controls clear.
+- Exact pay, passing eligibility, optional Auto-accept and learning remain conservative. Local validation, signed publication and physical-phone evidence are recorded separately. Arrival-based return from a navigation map is not implemented without a verified arrival signal.
+
 ## 0.4.66 — unknown shopping counts no longer hide guaranteed failures (candidate)
 
 - A shopping offer whose total item count cannot be read still never passes automatically. When the offer would

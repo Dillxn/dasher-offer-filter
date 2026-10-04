@@ -21,8 +21,8 @@ final class OfferSnapshot {
      */
     final Double finalStopHotspotMiles;
     /**
-     * Set only while pay is unknown because a total sits beside one bare "+$" amount: their sum, the most the offer
-     * can pay under any reading of that amount. Never pay; never learned, stored or compared.
+     * Decline-only ceiling while a total beside one bare "+$" amount leaves pay unknown. A corroborated stack
+     * allows that bonus on every observed order. Never observed pay; never learned, stored or used as identity.
      */
     final Integer payAtMostCents;
 

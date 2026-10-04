@@ -179,6 +179,85 @@ public class ConfirmationLeftToYouTest {
     }
 
     @Test
+    public void aLargerFreshBonusNeverInheritsTheSmallerCeiling() throws Exception {
+        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        OfferFilterService service = service();
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
+        show(service, bonusOffer("+$2", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34"));
+        assertEquals(Integer.valueOf(900), currentOffer(service).payAtMostCents);
+    }
+
+    @Test
+    public void newQualifierInvalidatesTheOldCeilingEvenAfterItDisappears() throws Exception {
+        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        OfferFilterService service = service();
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34", "per delivery"));
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        show(service, bonusOffer(null, "$7.00", "2 stops (7.2 mi) • 21 min", "0:33"));
+        assertEquals(null, currentOffer(service).payCents);
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:32"));
+        assertEquals("a vanished qualifier cannot restore the ceiling", null, currentOffer(service).payAtMostCents);
+        show(service, bonusOffer(null, "$9.00", "2 stops (7.2 mi) • 21 min", "0:31"));
+        assertEquals("a discredited ceiling cannot establish a new offer", null, currentOffer(service).payCents);
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        show(service, bonusOffer(null, "$7.00", "", "0:30"));
+        assertEquals("missing route figures cannot erase prior uncertainty", null, currentOffer(service).payCents);
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        assertEquals(DecisionLog.Action.NEEDS_REVIEW, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    @Test
+    public void aSecondBonusInvalidatesTheOldCeiling() throws Exception {
+        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        OfferFilterService service = service();
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
+        show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34", "+$2"));
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        assertEquals(null, currentOffer(service).payCents);
+    }
+
+    @Test
+    public void changedStackCountCannotReuseTheOldBoundOrBecomeExactPay() throws Exception {
+        FilterStore.save(app, new FilterSettings(true, 1500, 0, 0, 0, 0));
+        OfferFilterService service = service();
+        show(service, bonusOffer("+$1", "$13.00", "3 stops (7.0 mi) • 33 min", "0:35",
+                "Pick up 2 orders", "Multiple dropoffs (2 stops)"));
+        show(service, bonusOffer("+$1", "$13.00", "3 stops (7.0 mi) • 33 min", "0:34",
+                "Pick up 3 orders", "Multiple dropoffs (2 stops)"));
+        assertEquals(Integer.valueOf(1600), currentOffer(service).payAtMostCents);
+        show(service, bonusOffer(null, "$13.00", "3 stops (7.0 mi) • 33 min", "0:33",
+                "Pick up 4 orders", "Multiple dropoffs (2 stops)"));
+        assertEquals(null, currentOffer(service).payCents);
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        show(service, bonusOffer(null, "$13.00", "3 stops (7.0 mi) • 33 min", "0:32"));
+        assertEquals(null, currentOffer(service).payCents);
+        assertEquals(null, currentOffer(service).payAtMostCents);
+        assertEquals(DecisionLog.Action.NEEDS_REVIEW, DecisionLog.recent(app, 1).get(0).action);
+    }
+
+    private static OfferSnapshot currentOffer(OfferFilterService service) throws Exception {
+        java.lang.reflect.Field field = OfferFilterService.class.getDeclaredField("waitReadOffer");
+        field.setAccessible(true);
+        return (OfferSnapshot) field.get(service);
+    }
+
+    private AccessibilityNodeInfo bonusOffer(String bonus, String pay, String route, String countdown,
+                                             String... details) {
+        AccessibilityNodeInfo root = node(null, false);
+        if (bonus != null) Shadows.shadowOf(root).addChild(node(bonus, false));
+        Shadows.shadowOf(root).addChild(button("Decline"));
+        Shadows.shadowOf(root).addChild(node(pay, false));
+        Shadows.shadowOf(root).addChild(node("incl. tips", false));
+        Shadows.shadowOf(root).addChild(node(route, false));
+        for (String detail : details) Shadows.shadowOf(root).addChild(node(detail, false));
+        Shadows.shadowOf(root).addChild(button("Accept"));
+        Shadows.shadowOf(root).addChild(node(countdown, false));
+        return root;
+    }
+
+    @Test
     public void foregroundNoticePairsByTimeOrStoreButNeverByContradictingFigures() {
         OfferSnapshot facts = new OfferSnapshot(790, 7.2, 21, 2);
         List<String> screen = java.util.Arrays.asList("New Order: Go to Balance Bowls", "$7.90", "7.2 mi", "21 min", "2 stops");

@@ -526,6 +526,8 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean declinedDuringRoute;
     private OfferSnapshot boundedOffer;
     private long boundedUntil;
+    private Set<String> boundedLabels = Collections.emptySet();
+    private boolean inheritedBoundAllowed;
     private volatile ReadIdentity readIdentity;
     private Boolean rulesEnabled;
     private String evidenceWithoutControls = "";
@@ -4195,7 +4197,7 @@ public final class OfferFilterService extends AccessibilityService {
             episode.end();
             forgetTakeover("idle");
             readIdentity = null;
-            boundedOffer = null;
+            clearPayBound();
             RestartSuppression.clear(this);
             autoAccept.clear();
             autoRequestedOffer = null;
@@ -4217,7 +4219,7 @@ public final class OfferFilterService extends AccessibilityService {
             episode.end();
             forgetTakeover("delivery");
             readIdentity = null;
-            boundedOffer = null;
+            clearPayBound();
             RestartSuppression.clear(this);
         }
         if (scan.accept == null && scan.decline == null) {
@@ -4342,6 +4344,28 @@ public final class OfferFilterService extends AccessibilityService {
                                 : "Standalone minimums unchanged."));
     }
 
+    private static Set<String> payBoundLabels(List<String> lines) {
+        Set<String> labels = new java.util.HashSet<>();
+        for (String line : lines) {
+            String label = OfferControls.normalize(line);
+            if (!label.isEmpty() && !label.matches("\\d{1,2}:[0-5]\\d")
+                    && !label.equals("incl. tips") && !label.equals("incl tips")) labels.add(label);
+        }
+        return labels;
+    }
+
+    private void clearPayBound() {
+        boundedOffer = null;
+        boundedUntil = 0;
+        boundedLabels = Collections.emptySet();
+        inheritedBoundAllowed = false;
+    }
+
+    private static OfferSnapshot withUnknownPay(OfferSnapshot offer, Integer ceiling) {
+        return new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, ceiling,
+                offer.finalStopHotspotMiles, offer.items, offer.itemCountApplicable);
+    }
+
     /** A readable offer with distinct Accept and Decline targets. Only a known failure is declined, at once. */
     private boolean handleOffer(Scan scan, OfferSnapshot offer, FilterSettings settings, long now, long generation) {
         if (consumeDeclineError()) return declineError.pending();
@@ -4350,15 +4374,35 @@ public final class OfferFilterService extends AccessibilityService {
                 && readCountdown * 1000L > previousCountdown * 1000L - (now - previousCountdownAt) + 3_000;
         autoAccept.newOffer(offer, now, newCountdown);
         boolean isAddOn = AddOnOffer.isLikely(scan.text);
-        if (boundedOffer != null && now < boundedUntil && !newCountdown && !isAddOn
-                && offer.agreesWith(boundedOffer) && (offer.payCents == null || offer.payCents <= boundedOffer.payAtMostCents)) {
-            offer = new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, boundedOffer.payAtMostCents,
-                    offer.finalStopHotspotMiles, offer.items, offer.itemCountApplicable);
+        boolean continuingBound = boundedOffer != null && now < boundedUntil && !newCountdown && !isAddOn
+                && !offer.contradicts(boundedOffer)
+                && (!inheritedBoundAllowed || offer.payCents == null || offer.payCents <= boundedOffer.payAtMostCents);
+        if (!continuingBound) {
+            clearPayBound();
         }
-        if (offer.payAtMostCents != null) {
+        if (continuingBound && (!inheritedBoundAllowed || !offer.agreesWith(boundedOffer))) {
+            // A previously seen conflict may itself flicker away. A later partial-looking read cannot erase it;
+            // retain unknown pay without any ceiling until the original offer's identity/deadline ends.
+            inheritedBoundAllowed = false;
+            offer = withUnknownPay(offer, null);
+        } else if (offer.payAtMostCents != null) {
+            // A larger fresh bonus/order count must never inherit an older, smaller ceiling. While this is still
+            // the same uncertain offer, retaining the larger ceiling also cannot turn a possible pass into failure.
+            if (continuingBound && boundedOffer.payAtMostCents > offer.payAtMostCents) {
+                offer = withUnknownPay(offer, boundedOffer.payAtMostCents);
+            }
             boundedOffer = offer;
+            boundedLabels = payBoundLabels(scan.text);
+            inheritedBoundAllowed = true;
             if (boundedUntil <= now) boundedUntil = now + (readCountdown >= 0 ? readCountdown * 1000L + 3_000 : 30_000);
-        } else { boundedOffer = null; boundedUntil = 0; }
+        } else if (continuingBound) {
+            // Only disappearing labels may retain a ceiling. A new count, qualifier, malformed amount or other
+            // wording invalidates it for this offer. Keep the ambiguity
+            // itself through the original deadline: losing that new wording must not manufacture exact pay.
+            inheritedBoundAllowed &= offer.payCents != null
+                    && boundedLabels.containsAll(payBoundLabels(scan.text));
+            offer = withUnknownPay(offer, inheritedBoundAllowed ? boundedOffer.payAtMostCents : null);
+        }
         if (newCountdown) newScreenInstancePending = true;
         if (newCountdown && ((takeover != Takeover.NONE && offer.agreesWith(takeover.offer))
                 || offer.agreesWith(declinedOffer))) {

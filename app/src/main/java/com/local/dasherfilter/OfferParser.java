@@ -42,6 +42,14 @@ final class OfferParser {
     /** "Multiple dropoffs (2 stops)": a count of one kind of stop, not the route's total. */
     private static final Pattern STOP_BREAKDOWN = Pattern.compile(
             "(?i)(?:pick[ -]?ups?|drop[ -]?offs?)\\s*\\(\\s*\\d{1,2}\\s+stops?\\s*\\)");
+    /** These complete labels establish all orders at one pickup, not shopping item quantities. */
+    private static final Pattern PICKUP_ORDERS = Pattern.compile(
+            "(?i)^pick[ -]?up\\s+([1-9]\\d?)\\s+orders?$");
+    private static final Pattern DROPOFF_STOPS = Pattern.compile(
+            "(?i)^(?:multiple\\s+)?(?:customer\\s+)?drop[ -]?offs?\\s*\\(\\s*([1-9]\\d?)\\s+stops?\\s*\\)$");
+    private static final Pattern ORDER_WORD = Pattern.compile("(?i)\\borders?\\b");
+    private static final Pattern PICKUP_WORD = Pattern.compile("(?i)\\bpick[ -]?ups?\\b");
+    private static final Pattern DROPOFF_WORD = Pattern.compile("(?i)\\bdrop[ -]?offs?\\b");
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
     private static final Pattern METRIC_UNIT = Pattern.compile(
             "(?i)(?:mi\\.?|miles?|stops?|items?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
@@ -218,20 +226,21 @@ final class OfferParser {
     /**
      * The most an offer can pay when its pay is unknown only because one bare "+$X" label sits directly beside its
      * one unlabeled total "$Y" (only the offer's Decline or Accept control, a countdown or the busy badge may come
-     * between them, as on Dasher's screen: "Very busy, +$1, Decline, $5.75"): Y + X. Whether the total already includes the amount, the amount comes on top, or
-     * the offer is an add-on paying the amount, pay is at most that sum, so this bounds pay from above and is never
-     * pay. Null unless the screen has exactly that shape on a single order (2 stops, so no "+$" per delivery), with
-     * no add-on wording, added travel, stop breakdown, rate, pay label on an amount, or a word that could make the
-     * amount count more than once.
+     * between them, as on Dasher's screen: "Very busy, +$1, Decline, $5.75"). A legacy two-stop offer without order
+     * counts uses Y + X. An explicitly counted single-pickup bundle uses Y + N*X: the bonus might apply to every
+     * observed order. Orders sharing a dropoff still count separately. Either amount is only a decline ceiling,
+     * never exact pay, a passing score, or evidence of an add-on's incremental economics. Explicit add-ons, added
+     * travel, partial/conflicting counts, rates, labeled pay or multiplier qualifiers have no such ceiling.
      */
     private static Integer payWithPlusAmount(List<String> lines, List<String> metrics, Integer stops) {
-        if (stops == null || stops != 2 || AddOnOffer.isLikely(lines)) return null;
+        if (stops == null || AddOnOffer.isLikely(lines)) return null;
         for (String line : metrics) {
-            if (ADDED_TRAVEL.matcher(line).find() || QUALIFIER.matcher(line).find()
-                    || STOP_BREAKDOWN.matcher(line).find()) {
+            if (ADDED_TRAVEL.matcher(line).find() || QUALIFIER.matcher(line).find()) {
                 return null;
             }
         }
+        Integer orders = bonusOrderCeiling(metrics, stops);
+        if (orders == null) return null;
         Integer plus = null;
         Integer total = null;
         int plusAt = -1;
@@ -258,7 +267,49 @@ final class OfferParser {
             } while (money.find());
         }
         if (plus == null || total == null || !besideEachOther(lines, plusAt, totalAt)) return null;
-        return total + plus;
+        long ceiling = (long) total + (long) plus * orders;
+        return ceiling <= Integer.MAX_VALUE ? (int) ceiling : null;
+    }
+
+    /**
+     * The total route must have exactly one pickup: S total stops = D observed dropoffs + 1. Its explicit pickup
+     * count N includes all orders there, with D <= N because several orders may share a dropoff. Stops alone cannot
+     * upper-bound per-order bonuses. Any partial/new count evidence also blocks the old two-stop fallback.
+     */
+    private static Integer bonusOrderCeiling(List<String> labels, int stops) {
+        Set<Integer> orders = new HashSet<>();
+        Set<Integer> dropoffs = new HashSet<>();
+        boolean countEvidence = false;
+        boolean separatePickup = false;
+        for (String label : labels) {
+            Matcher pickup = PICKUP_ORDERS.matcher(label);
+            Matcher dropoff = DROPOFF_STOPS.matcher(label);
+            if (pickup.matches()) {
+                countEvidence = true;
+                orders.add(Integer.parseInt(pickup.group(1)));
+            } else if (dropoff.matches()) {
+                countEvidence = true;
+                dropoffs.add(Integer.parseInt(dropoff.group(1)));
+            } else {
+                boolean pickupWord = PICKUP_WORD.matcher(label).find();
+                boolean dropoffWord = DROPOFF_WORD.matcher(label).find();
+                // Unknown/ranged/spelled-out quantities cannot quietly become a single-order fallback. Ordinary
+                // "Customer dropoff" or "Pick up" labels remain unchanged for the legacy two-stop shape.
+                String lower = label.toLowerCase(Locale.US);
+                if (ORDER_WORD.matcher(label).find()
+                        || pickupWord && !lower.matches("pick[ -]?up")
+                        || dropoffWord && !lower.matches("(?:customer\\s+)?drop[ -]?off")) return null;
+                // A second generic pickup label cannot establish that this is the only pickup of a bundle.
+                if (pickupWord) separatePickup = true;
+            }
+        }
+        if (!countEvidence) return stops == 2 ? 1 : null;
+        if (separatePickup) return null;
+        Integer orderCount = onlyValue(orders);
+        Integer dropoffCount = onlyValue(dropoffs);
+        if (orderCount == null || dropoffCount == null || stops != dropoffCount + 1
+                || dropoffCount > orderCount) return null;
+        return orderCount;
     }
 
     /** A countdown as Dasher shows it beside an offer ("0:35"). */
