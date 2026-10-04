@@ -1,0 +1,43 @@
+{
+  "checked_at": "2026-10-04T06:21:37.829082+00:00",
+  "repository": "Dillxn/offer-filter-site",
+  "branch": "app-source",
+  "sha": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+  "parent": "ec7ab5b25867a79f654dbca4a476f144faa841c8",
+  "tree": "643e1828e0ec0e05f1aa3112371d7a8b28311e92",
+  "source_sha": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+  "version": "0.4.67",
+  "version_code": 73,
+  "allowlisted_files": 123,
+  "total_bytes": 2680485,
+  "content_digest_sha256": "75c47a7463a685677042dd6ac5374b5422f74f1bf2dc439cb15aca8d718a28e6",
+  "nonforce": true,
+  "remote_ref_verified": true,
+  "remote_tree_all_files_match": true,
+  "anonymous_byte_checks": [
+    {
+      "path": "README.md",
+      "status": 200,
+      "bytes": 3121,
+      "sha256": "521dcec8a9071e65942e571e5c135e0f551b8b8f7218ccfcea3490f3c9edea60",
+      "anonymous_exact": true
+    },
+    {
+      "path": "app/build.gradle",
+      "status": 200,
+      "bytes": 1509,
+      "sha256": "fd51a4f1eac07f40994f818754922a0459d022d702fe9bbc52747c8fe0bbee49",
+      "anonymous_exact": true
+    }
+  ],
+  "local_clean": true,
+  "license_unchanged": true,
+  "credential_scan_matches": 0,
+  "website_main_not_modified_by_this_task": true,
+  "release_live_authorization_from_root": {
+    "version": "0.4.67",
+    "source_sha": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+    "apk_sha256": "dd39e9b5442ab186475ab36944513ad462614b5d91939517fd9c3a9af607bc2d",
+    "apk_bytes": 1213691
+  }
+}

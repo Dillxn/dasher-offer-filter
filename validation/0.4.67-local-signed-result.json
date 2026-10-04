@@ -1,0 +1,37 @@
+{
+  "startedAt": "2026-10-04T06:15:49.623737+00:00",
+  "completedAt": "2026-10-04T06:16:09.923726+00:00",
+  "sourceCommit": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+  "sourceTree": "49a8fe648a874d6cfa371f8ee96f1c6c5321da11",
+  "signingCommand": "bash tools/sign-local.sh",
+  "signingExitCode": 0,
+  "lintExitCode": 0,
+  "testSuites": 114,
+  "tests": {
+    "tests": 2105,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "simulatedSdks": [
+    26,
+    35
+  ],
+  "lint": {
+    "Error": 0,
+    "Warning": 34,
+    "Fatal": 0,
+    "Information": 0
+  },
+  "trackedInputs": 374,
+  "inputsAggregate": "097b8cc2604ae785c2ce65bdfb8ca3986b3fb9b71bed5218d2672fe1fa915f94",
+  "changedInputs": [],
+  "signed": true,
+  "versionName": "0.4.67",
+  "versionCode": 73,
+  "size": 1213691,
+  "sha256": "dd39e9b5442ab186475ab36944513ad462614b5d91939517fd9c3a9af607bc2d",
+  "signer": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+  "published": false,
+  "physicalHandsetVerified": false
+}

@@ -1,0 +1,42 @@
+{
+  "verifiedAt": "2026-10-04T06:20:38.576306+00:00",
+  "sourceCommit": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+  "releaseCommit": "2edab42467aaec90dfd0d54e3bedfc1c6ae65d95",
+  "render": {
+    "serviceId": "srv-datkrtid0e5s73ch9egg",
+    "deployId": "dep-db0uvc6gekts73bdfqcg",
+    "status": "live",
+    "finishedAt": "2026-10-04T06:18:56.94712Z",
+    "operation": "mirror finished locally signed files",
+    "buildCommand": "bash render-build.sh",
+    "autoDeploy": "no",
+    "mirroredAt": "2026-10-04T06:18:54.209923082Z"
+  },
+  "productionDownload": {
+    "result": "PASS",
+    "transport": "production UpdateTransport.java",
+    "versionCode": 73,
+    "versionName": "0.4.67",
+    "sourceCommit": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+    "sha256": "dd39e9b5442ab186475ab36944513ad462614b5d91939517fd9c3a9af607bc2d",
+    "signerSha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+    "bytes": 1213691
+  },
+  "githubFeedMatches": true,
+  "temporarySigningFilesRemoved": true,
+  "physicalHandsetVerified": false,
+  "review": {
+    "sourceCommit": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+    "allReportedBlockersResolved": true
+  },
+  "publicSource": {
+    "branch": "app-source",
+    "commit": "caaec51611abd2ffb0602cca087bf59250bd54e7",
+    "tree": "643e1828e0ec0e05f1aa3112371d7a8b28311e92",
+    "fileCount": 123,
+    "upstreamSource": "4e27eecf081d17e1d708e84e5dd4c21b41c84bdd",
+    "licenseUnchanged": true,
+    "remoteFileHashesMatch": true,
+    "anonymousReadmeAndBuildBytesMatch": true
+  }
+}

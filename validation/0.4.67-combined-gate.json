@@ -1,0 +1,19 @@
+{
+  "completedAt": "2026-10-04T06:14:43.768768+00:00",
+  "command": "./gradlew -q testDebugUnitTest -PallSdks -Pforks=2 lintDebug",
+  "simulatedSdks": [
+    26,
+    35
+  ],
+  "suites": 114,
+  "tests": {
+    "tests": 2105,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "Warning": 34
+  },
+  "physicalHandsetVerified": false
+}
