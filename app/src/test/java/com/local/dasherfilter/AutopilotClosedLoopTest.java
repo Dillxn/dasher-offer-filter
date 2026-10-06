@@ -19,7 +19,9 @@ import static org.junit.Assert.assertTrue;
  * {@link Autopilot#plan} (again after each offer and every five minutes) and commits with {@link Autopilot#step};
  * every offer is decided by {@link OfferRule#evaluate} at the committed bar. The Dasher takes a passing offer with a
  * given probability; an accepted trip lasts 1.15 × Dasher's minutes; DoorDash's acceptance rate is the accepted share of
- * the last 100 offers, and Dasher's question shows it (before that decline counts) whenever the app declines.
+ * the last 100 offers, and Dasher's question shows it (before that decline counts, naming the declined offer) whenever
+ * the app declines and the question is read: every time, or only for a share of declines (the rest go through Dasher's
+ * notification, which asks nothing).
  *
  * <p>The market model is floating point, as a simulation may be; every decision inside it is the engine's exact
  * arithmetic. Seeds are fixed, so every figure is deterministic; the thresholds sit well inside what the seeds show.
@@ -89,17 +91,25 @@ public final class AutopilotClosedLoopTest {
         double hoursToGoal = -1;
         int maxExtra;
         int maxExtraBeforeGoal;
+        /** The stall correction when the dash ended. */
+        int finalExtra;
         int plans;
 
         @Override
         public String toString() {
             return String.format(Locale.US, "$%.2f/h, AR %d (mean %.1f, least %d), bar %d, %d commits (≤%d an hour, "
-                            + "reversal ≥%s min), goal after %s offers (%.1f h), extra ≤%d (≤%d before the goal), "
-                            + "%d plans", dollarsPerHour, finalAr, meanAr, minAr, finalBar, commits,
+                            + "reversal ≥%s min), goal after %s offers (%.1f h), extra ≤%d (≤%d before the goal, %d at "
+                            + "the end), %d plans", dollarsPerHour, finalAr, meanAr, minAr, finalBar, commits,
                     maxCommitsPerHour, minReversalGapMs == Long.MAX_VALUE ? "-" : String.valueOf(minReversalGapMs / MIN),
                     offersToGoal == Integer.MAX_VALUE ? "-" : String.valueOf(offersToGoal), hoursToGoal, maxExtra,
-                    maxExtraBeforeGoal, plans);
+                    maxExtraBeforeGoal, finalExtra, plans);
         }
+    }
+
+    /** {@link #dash(int, double, double, int, boolean, double, boolean, long, int, int)}, every question read. */
+    private static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
+                             long seed, int offers, int warmup) {
+        return dash(goal, offersPerHour, takeRate, startAr, correction, 1.0, false, seed, offers, warmup);
     }
 
     /**
@@ -107,13 +117,16 @@ public final class AutopilotClosedLoopTest {
      * is Autopilot's goal or {@link #OFF}; offers come at {@code offersPerHour} per hour of waiting; the Dasher takes a
      * passing offer with probability {@code takeRate}; DoorDash's window starts with {@code startAr} of 100 accepted.
      * Without {@code correction} the stall correction is held off (no checkpoint, no extra), as if it did not exist.
+     * Dasher's question is read for a share {@code questionShare} of the app's declines (the rest go through Dasher's
+     * notification); with {@code readingAtStart} it was read once as the dash began, showing {@code startAr}.
      */
     private static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
-                             long seed, int offers, int warmup) {
+                             double questionShare, boolean readingAtStart, long seed, int offers, int warmup) {
         Market market = new Market(seed);
         Random arrivals = new Random(seed * 1_000_003L + 1);
         Random user = new Random(seed * 1_000_033L + 2);
         Random shuffle = new Random(seed * 1_000_037L + 3);
+        Random questions = new Random(seed * 1_000_039L + 4);
         boolean autopilot = goal != OFF;
         FilterSettings rules = autopilot ? new FilterSettings(true, 400, 100, 25, 0, true, goal, 100)
                 : FilterSettings.of(true, 400, 100, 25, 0);
@@ -133,11 +146,11 @@ public final class AutopilotClosedLoopTest {
 
         Deque<Autopilot.OfferRecord> history = new ArrayDeque<>();
         Deque<QualifyingWait.Sample> waits = new ArrayDeque<>();
-        Autopilot.Reading reading = null;
+        Autopilot.Reading reading = readingAtStart ? new Autopilot.Reading(startAr, START) : null;
         boolean recovering = false;
         int extra = 0;
         long checkpointAt = Autopilot.NEVER;
-        int checkpointReading = -1;
+        int checkpointAr = -1;
         long raisedAt = Autopilot.NEVER;
         int bar = Autopilot.BAR_OFF;
         long t = START;
@@ -168,7 +181,7 @@ public final class AutopilotClosedLoopTest {
                     List<QualifyingWait.Sample> snapshot = new ArrayList<>(waits);
                     if (tick > waitStart) snapshot.add(new QualifyingWait.Sample(tick, tick - waitStart, null));
                     Autopilot.State state = new Autopilot.State(recovering, correction ? extra : 0,
-                            correction ? checkpointAt : Autopilot.NEVER, correction ? checkpointReading : -1,
+                            correction ? checkpointAt : Autopilot.NEVER, correction ? checkpointAr : -1,
                             raisedAt, bar, null);
                     plan = Autopilot.plan(new Autopilot.Inputs(rules.withMinimumScalePercent(bar),
                             new ArrayList<>(history), snapshot, reading, state, tick, 1));
@@ -179,7 +192,7 @@ public final class AutopilotClosedLoopTest {
                     if (correction) {
                         extra = plan.extra;
                         checkpointAt = plan.checkpointAt;
-                        checkpointReading = plan.checkpointReading;
+                        checkpointAr = plan.checkpointAr;
                     }
                     dash.maxExtra = Math.max(dash.maxExtra, extra);
                     if (dash.offersToGoal == Integer.MAX_VALUE) {
@@ -213,7 +226,9 @@ public final class AutopilotClosedLoopTest {
             long decidedAt = t;
             boolean took = false;
             if (decision.result == OfferRule.Result.DECLINE) {
-                reading = new Autopilot.Reading(accepted, t + 1_000L);
+                if (questions.nextDouble() < questionShare) {
+                    reading = new Autopilot.Reading(accepted, t + 1_000L, offer.fingerprint());
+                }
                 t += 10_000L;
                 waits.addLast(new QualifyingWait.Sample(t, 10_000L, null));
             } else if (takeDraw < takeRate) {
@@ -251,6 +266,7 @@ public final class AutopilotClosedLoopTest {
         dash.finalAr = accepted;
         dash.meanAr = arCount == 0 ? accepted : arSum / arCount;
         dash.finalBar = bar;
+        dash.finalExtra = extra;
         for (int from = 0, to = 0; to < commitTimes.size(); to++) {
             while (commitTimes.get(to) - commitTimes.get(from) >= HOUR) from++;
             dash.maxCommitsPerHour = Math.max(dash.maxCommitsPerHour, to - from + 1);
@@ -327,6 +343,38 @@ public final class AutopilotClosedLoopTest {
             assertTrue(what + ": at least a point above the stalled rate", with.meanAr >= without.meanAr + 1);
             assertTrue(what + ": for little pay", with.dollarsPerHour >= without.dollarsPerHour - 0.50);
             assertCalm(what, with);
+        }
+    }
+
+    @Test
+    public void aRecoveryWithFewDeclinesNeverTripsTheStallCorrection() {
+        // Taking everything that passes at 12 offers an hour from 40%: almost nothing is declined, so Dasher's last
+        // reading is often hours old. The rate it carries forward still rises, so nothing is added.
+        for (long seed = 1; seed <= 3; seed++) {
+            Dash dash = dash(FilterSettings.GOAL_TOP_TIER, MODERATE, 1.0, 40, true, 1.0, true, seed, 600, 0);
+            String what = "seed " + seed + ": " + dash;
+            assertTrue(what + ": the goal is reached", dash.offersToGoal <= 200);
+            assertEquals(what + ": nothing added on the way", 0, dash.maxExtraBeforeGoal);
+            assertEquals(what + ": nothing left at the end", 0, dash.finalExtra);
+            assertCalm(what, dash);
+        }
+    }
+
+    @Test
+    public void readingOnlySomeQuestionsNeverWindsTheCorrectionUp() {
+        // Recovering from the owner's 9% while Dasher's question is read for all, a fifth, a tenth or none of the
+        // declines (the rest through Dasher's notification): the correction stays off on the way, and is off once the
+        // rate is well above the goal, whatever the app's own count or Dasher's last reading says.
+        for (double share : new double[] {1.0, 0.2, 0.1, 0.0}) {
+            for (long seed = 1; seed <= 2; seed++) {
+                Dash dash = dash(FilterSettings.GOAL_TOP_TIER, MODERATE, 1.0, 9, true, share, true, seed, 1_200, 200);
+                String what = "questions read " + share + ", seed " + seed + ": " + dash;
+                assertTrue(what + ": the goal is reached", dash.offersToGoal <= 150);
+                assertEquals(what + ": nothing added on the way", 0, dash.maxExtraBeforeGoal);
+                assertEquals(what + ": nothing left at the end", 0, dash.finalExtra);
+                assertTrue(what + ": the goal holds", dash.meanAr >= 70);
+                assertCalm(what, dash);
+            }
         }
     }
 

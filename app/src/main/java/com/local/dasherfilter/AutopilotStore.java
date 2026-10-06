@@ -11,7 +11,8 @@ import android.content.SharedPreferences;
  *       clock) and the numeric fingerprint of the offer it was shown for; only the latest is kept, and a reading older
  *       than {@link #AR_MAX_AGE_MS} is discarded when read;</li>
  *   <li>the planner's acceptance-rate state: recovering, the stall correction ({@code extra}, 0–{@link #EXTRA_MAX})
- *       and its checkpoint;</li>
+ *       and its checkpoint (when, and the acceptance rate carried forward from Dasher's reading then, in hundredths of
+ *       a percent, when there was one);</li>
  *   <li>a pending user-change cause (the "jump") for the next commit;</li>
  *   <li>a note of the last bar change (time, old and new bar, a fixed reason name), when the bar last rose, and when
  *       the exemption valve was last logged.</li>
@@ -36,7 +37,10 @@ final class AutopilotStore {
     private static final String RECOVERING = "recovering";
     private static final String EXTRA = "extra";
     private static final String CP_AT = "cp_at";
-    private static final String CP_READING = "cp_reading";
+    /** The carried-forward acceptance rate at the checkpoint, hundredths of a percent (0.5.0 never kept a raw one). */
+    private static final String CP_AR = "cp_ar";
+    /** An earlier development build's raw-percent checkpoint; removed with the checkpoint, never read. */
+    private static final String RETIRED_CP_READING = "cp_reading";
     private static final String JUMP = "jump";
     private static final String CHANGED_AT = "changed_at";
     private static final String CHANGED_FROM = "changed_from";
@@ -142,37 +146,44 @@ final class AutopilotStore {
         return prefs(context).getLong(CP_AT, 0);
     }
 
-    /** Dasher's reading at the checkpoint (whole percent), -1 when there is none. */
-    static int checkpointReading(Context context) {
-        return prefs(context).getInt(CP_READING, -1);
+    /**
+     * The acceptance rate carried forward from Dasher's reading at the checkpoint, in hundredths of a percent; -1 when
+     * there is no checkpoint, or its rate was not from a Dasher reading (the app's own estimate, or none).
+     */
+    static int checkpointAr(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.getLong(CP_AT, 0) <= 0) return -1;
+        int ar = prefs.getInt(CP_AR, -1);
+        return ar < 0 || ar > 10_000 ? -1 : ar;
     }
 
     /**
-     * The stall correction and its checkpoint; {@code checkpointAt} 0 (or a {@code checkpointReading} below 0) clears
-     * the checkpoint. {@code extra} is held to 0–{@link #EXTRA_MAX}.
+     * The stall correction and its checkpoint; {@code checkpointAt} 0 clears the checkpoint, and a
+     * {@code checkpointAr} below 0 keeps a checkpoint without a Dasher rate. {@code extra} is held to
+     * 0–{@link #EXTRA_MAX}.
      */
-    static void setCorrection(Context context, int extra, long checkpointAt, int checkpointReading) {
+    static void setCorrection(Context context, int extra, long checkpointAt, int checkpointAr) {
         synchronized (AutopilotStore.class) {
-            correction(prefs(context).edit(), extra, checkpointAt, checkpointReading).apply();
+            correction(prefs(context).edit(), extra, checkpointAt, checkpointAr).apply();
             version++;
         }
     }
 
     /** What one plan changed of the acceptance-rate state, in one write. */
-    static void savePlanState(Context context, boolean recovering, int extra, long checkpointAt,
-                              int checkpointReading) {
+    static void savePlanState(Context context, boolean recovering, int extra, long checkpointAt, int checkpointAr) {
         synchronized (AutopilotStore.class) {
-            correction(prefs(context).edit().putBoolean(RECOVERING, recovering), extra, checkpointAt,
-                    checkpointReading).apply();
+            correction(prefs(context).edit().putBoolean(RECOVERING, recovering), extra, checkpointAt, checkpointAr)
+                    .apply();
             version++;
         }
     }
 
     private static SharedPreferences.Editor correction(SharedPreferences.Editor edit, int extra, long checkpointAt,
-                                                       int checkpointReading) {
-        edit.putInt(EXTRA, Math.max(0, Math.min(EXTRA_MAX, extra)));
-        if (checkpointAt <= 0 || checkpointReading < 0) return edit.remove(CP_AT).remove(CP_READING);
-        return edit.putLong(CP_AT, checkpointAt).putInt(CP_READING, Math.min(100, checkpointReading));
+                                                       int checkpointAr) {
+        edit.putInt(EXTRA, Math.max(0, Math.min(EXTRA_MAX, extra))).remove(RETIRED_CP_READING);
+        if (checkpointAt <= 0) return edit.remove(CP_AT).remove(CP_AR);
+        edit.putLong(CP_AT, checkpointAt);
+        return checkpointAr < 0 ? edit.remove(CP_AR) : edit.putInt(CP_AR, Math.min(10_000, checkpointAr));
     }
 
     /**
@@ -181,7 +192,8 @@ final class AutopilotStore {
      */
     static void resetGoalState(Context context) {
         synchronized (AutopilotStore.class) {
-            prefs(context).edit().remove(RECOVERING).remove(EXTRA).remove(CP_AT).remove(CP_READING).apply();
+            prefs(context).edit().remove(RECOVERING).remove(EXTRA).remove(CP_AT).remove(CP_AR)
+                    .remove(RETIRED_CP_READING).apply();
             version++;
         }
     }
@@ -205,6 +217,24 @@ final class AutopilotStore {
 
     static void clearJump(Context context) {
         setJump(context, null);
+    }
+
+    /**
+     * Clears the pending cause only while it is still {@code cause} (compare-and-clear), so a commit that used one
+     * cause never swallows another the user set meanwhile; null clears only when none is pending (nothing to do).
+     *
+     * @return whether no cause other than {@code cause} was pending (and none is now)
+     */
+    static boolean clearJumpIf(Context context, String cause) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            String pending = prefs.getString(JUMP, null);
+            if (pending == null || pending.isEmpty()) return true;
+            if (cause == null || !cause.equals(pending)) return false;
+            prefs.edit().remove(JUMP).apply();
+            version++;
+            return true;
+        }
     }
 
     /** The last bar change: when (wall clock), from and to which bar, and its fixed reason name. */

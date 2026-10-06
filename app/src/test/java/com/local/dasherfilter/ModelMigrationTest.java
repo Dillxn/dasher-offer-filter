@@ -525,6 +525,43 @@ public class ModelMigrationTest {
         assertEquals(100, FilterStore.load(app).minimumScalePercent);
     }
 
+    @Test public void anExtraStopFeeFromBeforePerStopIsRetiredInWordsTrueToTheseRules() {
+        // A phone that last ran a version from before per stop, updating straight to 0.5.0 (the feed allows it).
+        prefs().edit().putBoolean("enabled", true).putInt("flat", 700).putInt("mile", 150).putInt("stop", 200)
+                .putInt("max_stops", 3).commit();
+        FilterSettings rules = FilterStore.load(app);
+        assertArrayEquals("the fee is read as no rule", new int[] {700, 150, 0, 0, 0, 0}, rules.minimums());
+        assertEquals(3, rules.maxStops);
+        assertTrue(rules.enabled);
+        assertFalse(prefs().contains("stop"));
+        String notice = FilterStore.takeStopFeeNotice(app);
+        assertEquals("Your $2.00 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders.", notice);
+        assertFalse("0.5.0 has no per-stop minimum to set", notice.contains("Per stop"));
+        assertNull("shown once", FilterStore.takeStopFeeNotice(app));
+        assertNull("the rules' meaning did not change: no model notice", FilterStore.peekModelNotice(app));
+        assertEquals(1, count(log(), "the old extra-stop fee of $2.00 was retired; it is not a rule any more (max "
+                + "stops limits stacked orders)"));
+        assertFalse(log().contains("per stop is now a minimum"));
+
+        // The fee was the only rule: auto-decline pauses in the same edit, and both texts say so.
+        prefs().edit().clear().commit();
+        DiagnosticLog.clear(app);
+        prefs().edit().putBoolean("enabled", true).putInt("stop", 300).commit();
+        assertFalse(FilterStore.load(app).enabled);
+        assertEquals("Your $3.00 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders. It was your only rule, so auto-decline is paused.",
+                FilterStore.takeStopFeeNotice(app));
+        assertTrue(log().contains("the old extra-stop fee of $3.00 was retired; it is not a rule any more (max stops "
+                + "limits stacked orders); no rule was left, so auto-decline was paused"));
+
+        // A fee of 0 was never a rule: it goes without a word.
+        prefs().edit().clear().commit();
+        prefs().edit().putBoolean("enabled", true).putInt("flat", 500).putInt("stop", 0).commit();
+        assertTrue(FilterStore.load(app).enabled);
+        assertNull(FilterStore.takeStopFeeNotice(app));
+    }
+
     @Test public void theRetiredLearningIsInert() {
         FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         OfferSnapshot offer = new OfferSnapshot(2500, 7.2, 21, 2);

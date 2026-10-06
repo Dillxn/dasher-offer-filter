@@ -239,6 +239,25 @@ public class DecisionLogStepsTest {
         assertArrayEquals(before, DecisionLog.totals(app));
     }
 
+    @Test public void whatFollowedNotCountingItNeverContradictsASeenAcceptTap() {
+        // After the user's seen Accept tap a delivery screen came, but a delivery was already under way: the screen
+        // proves nothing, the tap still counts the offer as accepted. The step's words say only what followed.
+        long now = System.currentTimeMillis();
+        DecisionLog.Step delivery = new DecisionLog.Step(DecisionLog.StepKind.NOT_LEARNED, now + 2,
+                AcceptedOfferTracker.DELIVERY_UNDER_WAY);
+        DecisionLog.Entry tapped = passing(now).withStep(new DecisionLog.Step(DecisionLog.StepKind.ACCEPT_TAPPED,
+                now + 1, "waiting for a delivery screen")).withStep(delivery);
+        assertTrue(DecisionLog.accepted(tapped));
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(tapped));
+        assertEquals("Not counted from what followed: a delivery was already under way when it came, so the delivery "
+                + "screen after it proves nothing", delivery.text());
+        // Without the tap the same step leaves it uncounted, and the same words hold.
+        DecisionLog.Entry untapped = passing(now).withStep(delivery);
+        assertFalse(DecisionLog.accepted(untapped));
+        assertEquals(DecisionLog.Outcome.PASSED, DecisionLog.outcome(untapped));
+        assertFalse(DecisionLog.StepKind.NOT_LEARNED.label.contains("accepted"));
+    }
+
     @Test public void everyKindAnOlderVersionWroteStillParsesWithNeutralWords() throws Exception {
         long now = System.currentTimeMillis();
         DecisionLog.record(app, passing(now));
@@ -259,8 +278,8 @@ public class DecisionLogStepsTest {
         DecisionLog.forgetCache();
         List<DecisionLog.Step> loaded = DecisionLog.recent(app, 1).get(0).steps;
         assertEquals(retired.length, loaded.size());
-        String[] said = {"Accepted", "Accepted", "Accepted", "Accepted", "Accepted add-on", "Not counted as accepted",
-                "Your Decline (older version)", "Your Decline (older version)"};
+        String[] said = {"Accepted", "Accepted", "Accepted", "Accepted", "Accepted add-on",
+                "Not counted from what followed", "Your Decline (older version)", "Your Decline (older version)"};
         for (int i = 0; i < retired.length; i++) {
             assertEquals(retired[i], loaded.get(i).kind.name());
             assertEquals(retired[i], said[i], loaded.get(i).kind.label);

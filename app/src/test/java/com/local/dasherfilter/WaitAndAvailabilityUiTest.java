@@ -158,8 +158,11 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
     }
 
     @Test public void clearHistoryErasesWaitDataAfterConfirmationAndPreservesRules() {
-        FilterSettings original = rules().withPerItem(125);
+        // Per item is retired (0.5.0), and the 97% bar is Autopilot's to set: it set it between offers.
+        FilterSettings original = rules();
         FilterStore.save(app, original);
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, original.minimumScalePercent));
         QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
         ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
         QualifyingWaitStore.screen(app, true, DasherScene.OFFER,

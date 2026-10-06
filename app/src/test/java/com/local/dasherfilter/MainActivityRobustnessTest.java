@@ -123,7 +123,8 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         app.getSharedPreferences("places", 0).edit()
                 .putString("name:" + Places.key(40, -87), "Synthetic area")
                 .putString("recent_names", Places.key(40, -87)).commit();
-        FilterSettings rules = new FilterSettings(true, 2000, 150, 30, 100, 3);
+        // Per stop is retired (0.5.0): its $1.00 folds into minimum pay as max($20.00, 2 × $1.00).
+        FilterSettings rules = FilterSettings.of(true, Math.max(2000, 2 * 100), 150, 30, 3);
         FilterStore.save(app, rules);
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

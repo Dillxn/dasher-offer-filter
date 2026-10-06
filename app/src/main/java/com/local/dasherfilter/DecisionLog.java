@@ -117,8 +117,12 @@ final class DecisionLog {
         ACCEPTED_MINIMUMS_UNCHANGED("Accepted"),
         ACCEPTED_ADD_ON("Accepted add-on"),
         NOT_ACCEPTED("Not accepted"),
-        /** Not counted as accepted, and why (the evidence was not enough). */
-        NOT_LEARNED("Not counted as accepted"),
+        /**
+         * What followed the offer did not count it as accepted, and why (the evidence was not enough). Not a verdict on
+         * the line: a seen Accept tap before it still counts it when a delivery screen followed
+         * ({@link DecisionLog#accepted}), so the words name only what followed.
+         */
+        NOT_LEARNED("Not counted from what followed"),
         DECLINE_TAPPED("You tapped Decline on it"),
         DECLINE_QUESTION("Dasher asked to confirm declining it; " + AppName.NAME + " did not decline it"),
         DECLINE_COUNTED("Counted as your Decline"),

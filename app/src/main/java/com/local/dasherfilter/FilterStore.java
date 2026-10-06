@@ -82,9 +82,10 @@ final class FilterStore {
     static final String RETIRED_MANUAL_DECLINES = "offer_filter_manual_declines";
 
     /**
-     * Where older versions kept the extra-stop fee, added on top of the other minimums for each stop after two. Per
-     * stop became a minimum of its own (itself retired in 0.5.0), so the old fee is retired, never read as one: that
-     * would silently change which offers are declined. Its handling below is unchanged.
+     * Where older versions kept the extra-stop fee, added on top of the other minimums for each stop after two. It is
+     * retired, never read as a rule: per stop, which replaced it, is itself retired in 0.5.0, and reading the fee as
+     * anything would silently change which offers are declined. Its handling below is unchanged; only its words say
+     * what 0.5.0 offers instead (max stops).
      */
     private static final String RETIRED_EXTRA_STOP_FEE = "stop";
     /** What the homepage says once when a set extra-stop fee was retired. */
@@ -137,10 +138,11 @@ final class FilterStore {
     }
 
     /**
-     * Removes an extra-stop fee saved by an older version, once. Per stop is left off (0) rather than taking the
-     * fee's value, which meant something else. A fee that was set is noted in the diagnostic log and the status, and
-     * the homepage says so once; if it was the only rule, auto-decline is paused in the same edit, so the page never
-     * shows an active filter that filters nothing. A fee of 0 was never a rule and goes silently.
+     * Removes an extra-stop fee saved by an older version, once; nothing takes its value, which meant something no
+     * rule of 0.5.0 means (max stops is what limits stacked orders now). A fee that was set is noted in the diagnostic
+     * log and the status, and the homepage says so once; if it was the only rule, auto-decline is paused in the same
+     * edit, so the page never shows an active filter that filters nothing. A fee of 0 was never a rule and goes
+     * silently.
      */
     private static void retireExtraStopFee(Context context, SharedPreferences prefs) {
         if (!prefs.contains(RETIRED_EXTRA_STOP_FEE)) return;
@@ -154,8 +156,8 @@ final class FilterStore {
                 FilterSettings left = read(prefs);
                 paused = left.enabled && !left.hasAnyRule();
                 if (paused) edit.putBoolean(ENABLED, false);
-                String notice = "Your " + DecisionLog.money((Integer) saved) + " extra-stop fee was removed: Per stop "
-                        + "is now a minimum. Set one if you want it."
+                String notice = "Your " + DecisionLog.money((Integer) saved) + " extra-stop fee was removed; it is "
+                        + "not a rule any more. Use Max stops to limit stacked orders."
                         + (paused ? " It was your only rule, so auto-decline is paused." : "");
                 edit.putString(STOP_FEE_NOTICE, notice).putString(LAST_STATUS, stamped(notice));
             }
@@ -163,7 +165,7 @@ final class FilterStore {
         }
         if (!(saved instanceof Integer) || (Integer) saved <= 0) return;
         DiagnosticLog.log(context, "rules", "the old extra-stop fee of " + DecisionLog.money((Integer) saved)
-                + " was retired; per stop is now a minimum like per mile and per minute, and starts off"
+                + " was retired; it is not a rule any more (max stops limits stacked orders)"
                 + (paused ? "; no rule was left, so auto-decline was paused" : ""));
     }
 

@@ -199,7 +199,11 @@ final class Autopilot {
 
     /** One decision-history line as Autopilot counts it. */
     static final class OfferRecord {
-        /** The offer's facts; unknown when the line kept none. */
+        /**
+         * The offer's facts, never with a "+$" bound on unread pay; unknown when the line kept none. A stored line
+         * keeps no bound, so a line still in memory must not count one either: unread pay passes at every bar, and
+         * the same history plans the same before and after a restart.
+         */
         final OfferSnapshot facts;
         /** When it was decided (wall clock). */
         final long at;
@@ -213,7 +217,7 @@ final class Autopilot {
 
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt) {
-            this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts;
+            this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
             this.at = at;
             this.addOn = addOn;
             this.replay = replay;
@@ -236,15 +240,25 @@ final class Autopilot {
         }
     }
 
-    /** Dasher's acceptance rate as its decline question showed it: a whole percent, and when (wall clock). */
+    /**
+     * Dasher's acceptance rate as its decline question showed it: a whole percent, when (wall clock), and the numeric
+     * fingerprint of the offer the question was about ({@link OfferSnapshot#fingerprint}; "" when not known). The
+     * percent is the rate before that offer's decline counts: the question comes before the decline is final.
+     */
     static final class Reading {
         final int percent;
         final long at;
+        final String fingerprint;
 
         Reading(int percent, long at) {
+            this(percent, at, "");
+        }
+
+        Reading(int percent, long at, String fingerprint) {
             if (percent < 0 || percent > 100 || at < 0) throw new IllegalArgumentException("acceptance-rate reading");
             this.percent = percent;
             this.at = at;
+            this.fingerprint = fingerprint == null ? "" : fingerprint;
         }
     }
 
@@ -257,9 +271,12 @@ final class Autopilot {
         final boolean recovering;
         /** The stall correction, 0–10 extra points of need. */
         final int extra;
-        /** The stall correction's checkpoint (wall clock; {@link #NEVER} for none) and the reading it saw (-1). */
+        /**
+         * The stall correction's checkpoint (wall clock; {@link #NEVER} for none) and the acceptance rate carried
+         * forward from Dasher's reading then, in hundredths of a percent (-1: none, or not from a Dasher reading).
+         */
         final long checkpointAt;
-        final int checkpointReading;
+        final int checkpointAr;
         /** The last raise (wall clock); {@link #NEVER} before the first. */
         final long raisedAt;
         /** The committed bar. */
@@ -267,13 +284,13 @@ final class Autopilot {
         /** A user's change still waiting for its commit (a {@link Reason#jump} reason), or null. */
         final Reason jumpCause;
 
-        State(boolean recovering, int extra, long checkpointAt, int checkpointReading, long raisedAt, int current,
+        State(boolean recovering, int extra, long checkpointAt, int checkpointAr, long raisedAt, int current,
               Reason jumpCause) {
             if (jumpCause != null && !jumpCause.jump) throw new IllegalArgumentException("not a jump cause");
             this.recovering = recovering;
             this.extra = Math.max(0, Math.min(EXTRA_MAX, extra));
             this.checkpointAt = checkpointAt;
-            this.checkpointReading = checkpointAt == NEVER ? -1 : Math.max(-1, Math.min(100, checkpointReading));
+            this.checkpointAr = checkpointAt == NEVER ? -1 : Math.max(-1, Math.min(10_000, checkpointAr));
             this.raisedAt = raisedAt;
             this.current = current;
             this.jumpCause = jumpCause;
@@ -340,16 +357,19 @@ final class Autopilot {
         }
     }
 
-    /** The stall correction after a plan: its extra points and its checkpoint. */
+    /**
+     * The stall correction after a plan: its extra points and its checkpoint (when, and the carried-forward rate then
+     * in hundredths, -1 when it was not from a Dasher reading).
+     */
     static final class Correction {
         final int extra;
         final long checkpointAt;
-        final int checkpointReading;
+        final int checkpointAr;
 
-        Correction(int extra, long checkpointAt, int checkpointReading) {
+        Correction(int extra, long checkpointAt, int checkpointAr) {
             this.extra = extra;
             this.checkpointAt = checkpointAt;
-            this.checkpointReading = checkpointReading;
+            this.checkpointAr = checkpointAr;
         }
     }
 
@@ -551,7 +571,8 @@ final class Autopilot {
         final boolean recovering;
         final int extra;
         final long checkpointAt;
-        final int checkpointReading;
+        /** The carried-forward rate at the checkpoint, hundredths of a percent; -1 when none from a Dasher reading. */
+        final int checkpointAr;
 
         /** Display only: watched waiting and arrivals over the last two hours. */
         final long recentWaitMs;
@@ -595,7 +616,7 @@ final class Autopilot {
             this.recovering = d.recovering;
             this.extra = d.extra;
             this.checkpointAt = d.checkpointAt;
-            this.checkpointReading = d.checkpointReading;
+            this.checkpointAr = d.checkpointAr;
             this.recentWaitMs = d.recentWaitMs;
             this.recentArrivals = d.recentArrivals;
             this.windowThetas = d.windowThetas;
@@ -658,7 +679,7 @@ final class Autopilot {
         boolean recovering;
         int extra;
         long checkpointAt;
-        int checkpointReading;
+        int checkpointAr;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
@@ -702,7 +723,7 @@ final class Autopilot {
             recovering = state.recovering;
             extra = state.extra;
             checkpointAt = state.checkpointAt;
-            checkpointReading = state.checkpointReading;
+            checkpointAr = state.checkpointAr;
         }
 
         /** Autopilot holds the bar at exactly the minimums; the state is unchanged. */
@@ -731,11 +752,12 @@ final class Autopilot {
         FilterSettings rules = in.rules;
         State state = in.state;
         int goal = rules.autopilotGoalPercent;
-        List<OfferRecord> window = countedWindow(in.newestFirst);
+        List<OfferRecord> counted = countedLines(in.newestFirst);
+        List<OfferRecord> window = firstOf(counted, WINDOW);
         int[] thetas = new int[window.size()];
         for (int i = 0; i < thetas.length; i++) thetas[i] = AreaScore.passThreshold(rules, window.get(i).facts);
         boolean ignoreExempt = exemptionsIgnored(window);
-        ArNow ar = arNow(in.reading, window, ignoreExempt, in.wallNow);
+        ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt);
@@ -744,12 +766,12 @@ final class Autopilot {
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
         if (thetas.length < MIN_WINDOW) return draft.gated(Mode.LEARNING);
 
-        Correction correction = correction(goal, state, in.reading, window, ignoreExempt, in.wallNow);
+        Correction correction = correction(goal, state, ar, accounting(counted, ignoreExempt), in.wallNow);
         Need need = need(goal, ar.hundredths, state.recovering, correction.extra);
         ShareBar share = shareBar(thetas, need.need);
         draft.extra = correction.extra;
         draft.checkpointAt = correction.checkpointAt;
-        draft.checkpointReading = correction.checkpointReading;
+        draft.checkpointAr = correction.checkpointAr;
         draft.recovering = need.recovering;
         draft.need = need.need;
         draft.barShare = share.bar;
@@ -773,15 +795,23 @@ final class Autopilot {
     // ---- (a) The counted window ----
 
     /**
-     * The counted window W: newest first, skipping add-ons, replays, misread offers ({@link OfferSanity#looksMisread})
-     * and any line whose facts repeat a kept line's fingerprint within {@link #DEDUP_MS}; at most {@link #WINDOW}.
+     * The counted window W: the newest {@link #WINDOW} {@link #countedLines counted lines}. Its offers make the pass
+     * share and the value; the acceptance rate counts {@link #accounting}, which may reach further back.
      */
     static List<OfferRecord> countedWindow(List<OfferRecord> newestFirst) {
+        return firstOf(countedLines(newestFirst), WINDOW);
+    }
+
+    /**
+     * Every counted line of the history, newest first: skipping add-ons, replays, misread offers
+     * ({@link OfferSanity#looksMisread}) and any line whose facts repeat a kept line's fingerprint within
+     * {@link #DEDUP_MS}.
+     */
+    static List<OfferRecord> countedLines(List<OfferRecord> newestFirst) {
         List<OfferRecord> kept = new ArrayList<>();
         if (newestFirst == null) return kept;
         Map<String, List<Long>> keptAt = new HashMap<>();
         for (OfferRecord record : newestFirst) {
-            if (kept.size() >= WINDOW) break;
             if (record == null || record.addOn || record.replay || OfferSanity.looksMisread(record.facts)) continue;
             String fingerprint = record.facts.fingerprint();
             List<Long> times = keptAt.get(fingerprint);
@@ -795,6 +825,12 @@ final class Autopilot {
             kept.add(record);
         }
         return Collections.unmodifiableList(kept);
+    }
+
+    /** The first {@code count} of {@code lines} (all of them when fewer), unmodifiable. */
+    private static List<OfferRecord> firstOf(List<OfferRecord> lines, int count) {
+        if (lines.size() <= count) return lines;
+        return Collections.unmodifiableList(new ArrayList<>(lines.subList(0, count)));
     }
 
     private static boolean within(List<Long> times, long at) {
@@ -820,34 +856,50 @@ final class Autopilot {
         return declined >= EXEMPT_VALVE_MIN_DECLINES && 2 * exempt > declined;
     }
 
-    /** The accounting set A: the window without exempt lines, unless the valve ignores the marks. */
-    static List<OfferRecord> accounting(List<OfferRecord> window, boolean ignoreExempt) {
-        if (ignoreExempt) return window;
-        List<OfferRecord> counted = new ArrayList<>();
-        for (OfferRecord record : window) if (!record.arExempt) counted.add(record);
-        return counted;
+    /**
+     * The accounting set A, newest first: DoorDash's window as far as the history shows it, the newest
+     * {@link #WINDOW} of {@code counted} (the {@link #countedLines counted lines}, or the counted window) without the
+     * exempt-marked ones, so it reaches past the counted window by as many exempt lines as sit in it. When the valve
+     * ignores the marks it is the newest {@link #WINDOW} counted lines, exempt ones included: the counted window.
+     */
+    static List<OfferRecord> accounting(List<OfferRecord> counted, boolean ignoreExempt) {
+        List<OfferRecord> accounted = new ArrayList<>();
+        if (counted == null) return accounted;
+        for (OfferRecord record : counted) {
+            if (accounted.size() >= WINDOW) break;
+            if (ignoreExempt || !record.arExempt) accounted.add(record);
+        }
+        return accounted;
     }
 
     /**
-     * The acceptance rate now. With a fresh Dasher reading r (at most 7 days old, and fewer than 100 accounted offers
-     * since), {@code clamp(100·r + 100·k_s − r·n_s, 0, 10000)} hundredths over the {@code n_s} offers since, {@code k_s}
-     * of them accepted: the offers rolling out of DoorDash's window are taken as accepted at rate r. Otherwise, with at
-     * least 20 accepted or declined offers, {@code ⌊10000·a ÷ (a + d)⌋} (unknown outcomes left out). Otherwise unknown.
+     * The acceptance rate now, over the accounting set A of {@code counted} ({@link #accounting}). With a fresh Dasher
+     * reading r (at most 7 days old, and fewer than 100 accounted offers since it: DoorDash's window has not yet
+     * turned over), {@code clamp(100·r + 100·k_s − r·n_s, 0, 10000)} hundredths over the {@code n_s} offers since,
+     * {@code k_s} of them accepted: the offers rolling out of DoorDash's window are taken as accepted at rate r. The
+     * offer whose decline question showed r counts among the offers since ({@link #ownLine}): r is the rate before its
+     * decline counts. Otherwise, with at least 20 accepted or declined offers, {@code ⌊10000·a ÷ (a + d)⌋} (unknown
+     * outcomes left out). Otherwise unknown.
      */
-    static ArNow arNow(Reading reading, List<OfferRecord> window, boolean ignoreExempt, long wallNow) {
-        List<OfferRecord> counted = accounting(window, ignoreExempt);
-        int since = offersSinceFresh(reading, counted, wallNow);
-        if (since >= 0) {
+    static ArNow arNow(Reading reading, List<OfferRecord> counted, boolean ignoreExempt, long wallNow) {
+        List<OfferRecord> accounted = accounting(counted, ignoreExempt);
+        if (reading != null && wallNow - reading.at <= AR_MAX_AGE_MS) {
+            OfferRecord own = ownLine(reading, accounted);
+            int since = 0;
             int acceptedSince = 0;
-            for (OfferRecord record : counted) {
-                if (record.at > reading.at && record.countsAccepted()) acceptedSince++;
+            for (OfferRecord record : accounted) {
+                if (record.at <= reading.at && record != own) continue;
+                since++;
+                if (record.countsAccepted()) acceptedSince++;
             }
-            long hundredths = 100L * reading.percent + 100L * acceptedSince - (long) reading.percent * since;
-            return new ArNow((int) Math.max(0, Math.min(10_000, hundredths)), ArSource.DASHER, since, -1);
+            if (since < AR_STALE_OFFERS) {
+                long hundredths = 100L * reading.percent + 100L * acceptedSince - (long) reading.percent * since;
+                return new ArNow((int) Math.max(0, Math.min(10_000, hundredths)), ArSource.DASHER, since, -1);
+            }
         }
         int accepted = 0;
         int declined = 0;
-        for (OfferRecord record : counted) {
+        for (OfferRecord record : accounted) {
             if (record.countsAccepted()) accepted++;
             else if (record.countsDeclined()) declined++;
         }
@@ -858,12 +910,20 @@ final class Autopilot {
         return ArNow.UNKNOWN;
     }
 
-    /** {@code n_s} when {@code reading} is fresh for these accounted offers; -1 when absent or stale. */
-    private static int offersSinceFresh(Reading reading, List<OfferRecord> counted, long wallNow) {
-        if (reading == null || wallNow - reading.at > AR_MAX_AGE_MS) return -1;
-        int since = 0;
-        for (OfferRecord record : counted) if (record.at > reading.at) since++;
-        return since < AR_STALE_OFFERS ? since : -1;
+    /**
+     * The accounted line of the offer whose decline question showed {@code reading}: the one with its fingerprint
+     * within {@link #DEDUP_MS} of the reading (the counted lines hold at most one), when it was recorded at or before
+     * the reading (a question follows its offer). Null when there is none, when the reading names no offer, or when
+     * that line is stamped after the reading and so already counts among the offers since.
+     */
+    private static OfferRecord ownLine(Reading reading, List<OfferRecord> accounted) {
+        if (reading.fingerprint.isEmpty()) return null;
+        for (OfferRecord record : accounted) {
+            if (Math.abs(reading.at - record.at) > DEDUP_MS) continue;
+            if (!reading.fingerprint.equals(record.facts.fingerprint())) continue;
+            return record.at <= reading.at ? record : null;
+        }
+        return null;
     }
 
     /** About how many more accepts reach the goal: {@code ⌈(100·goal − AR) ÷ 100⌉} below it; 0 otherwise. */
@@ -891,27 +951,33 @@ final class Autopilot {
     // ---- (f) The stall correction ----
 
     /**
-     * The stall correction (anti-windup). It runs only with a goal, a fresh Dasher reading r, and at least 25 accounted
-     * offers since the checkpoint (since ever, without one). Without a checkpoint it sets one (now, r) and changes
-     * nothing. Otherwise: r below the goal and no higher than at the checkpoint adds 2 (at most 10); r at least the goal
-     * + 5 takes 2 off (at least 0); then the checkpoint moves to (now, r). A real recovery raises the reading between
-     * checkpoints, so it never adds anything.
+     * The stall correction (anti-windup), on the acceptance rate now ({@code ar}, the carried-forward AR_h), never on
+     * Dasher's raw reading: AR_h credits every accept since the reading, so a reading that is merely old (the user
+     * declines few offers, or declines through Dasher's notification, which shows no question) reads as the recovery
+     * it is, not as a stall. It runs only with a goal, at least 25 accounted offers since the checkpoint (since ever,
+     * without one). Without a checkpoint it sets one and changes nothing. Otherwise: AR_h from a fresh Dasher reading,
+     * below the goal and no higher than at the checkpoint (when that was from a Dasher reading too) adds 2 (at most
+     * 10); AR_h known from any source (Dasher's or the app's own estimate) at least the goal + 5 takes 2 off (at least
+     * 0), so the correction never stays latched once the rate is well above the goal; then the checkpoint moves to now,
+     * keeping AR_h when it is Dasher's (-1 otherwise).
+     *
+     * @param accounted the accounting set A ({@link #accounting}), newest first
      */
-    static Correction correction(int goal, State state, Reading reading, List<OfferRecord> window,
-                                 boolean ignoreExempt, long wallNow) {
-        Correction unchanged = new Correction(state.extra, state.checkpointAt, state.checkpointReading);
+    static Correction correction(int goal, State state, ArNow ar, List<OfferRecord> accounted, long wallNow) {
+        Correction unchanged = new Correction(state.extra, state.checkpointAt, state.checkpointAr);
         if (goal <= 0) return unchanged;
-        List<OfferRecord> counted = accounting(window, ignoreExempt);
-        if (offersSinceFresh(reading, counted, wallNow) < 0) return unchanged;
         int sinceCheckpoint = 0;
-        for (OfferRecord record : counted) if (record.at > state.checkpointAt) sinceCheckpoint++;
+        for (OfferRecord record : accounted) if (record.at > state.checkpointAt) sinceCheckpoint++;
         if (sinceCheckpoint < CHECK_EVERY) return unchanged;
-        int r = reading.percent;
-        if (state.checkpointAt == NEVER) return new Correction(state.extra, wallNow, r);
+        int carried = ar.source == ArSource.DASHER ? ar.hundredths : -1;
+        if (state.checkpointAt == NEVER) return new Correction(state.extra, wallNow, carried);
         int extra = state.extra;
-        if (r < goal && r <= state.checkpointReading) extra = Math.min(EXTRA_MAX, extra + EXTRA_STEP);
-        else if (r >= goal + RELEASE_MARGIN) extra = Math.max(0, extra - EXTRA_STEP);
-        return new Correction(extra, wallNow, r);
+        if (carried >= 0 && state.checkpointAr >= 0 && carried < 100 * goal && carried <= state.checkpointAr) {
+            extra = Math.min(EXTRA_MAX, extra + EXTRA_STEP);
+        } else if (ar.hundredths >= 0 && ar.hundredths >= 100 * (goal + RELEASE_MARGIN)) {
+            extra = Math.max(0, extra - EXTRA_STEP);
+        }
+        return new Correction(extra, wallNow, carried);
     }
 
     // ---- (g) The offer rate ----

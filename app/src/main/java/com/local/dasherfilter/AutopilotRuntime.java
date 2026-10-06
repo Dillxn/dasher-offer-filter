@@ -34,9 +34,10 @@ import java.util.function.LongSupplier;
  * offers, nothing in flight): the runtime never references the service, which registers the requester and decides the
  * safe point. A commit discards a plan that is stale (history cleared since, older than 15 minutes, other rules, or a
  * bar that moved since), moves the bar one limited {@link Autopilot#step} by compare-and-set
- * ({@link FilterStore#commitAutopilotBar}), keeps a note of the change and logs it. A user's change (Autopilot turned
- * on, another goal, other minimums, history cleared) is a "jump": the next commit goes straight to the target, still
- * only at a safe point.
+ * ({@link FilterStore#commitAutopilotBar}), keeps a note of the change and logs it. Its last checks and its writes
+ * happen under the runtime's lock, which a user's change and Clear history take too, so neither can land between
+ * them. A user's change (Autopilot turned on, another goal, other minimums, history cleared) is a "jump": the next
+ * commit goes straight to the target, still only at a safe point.
  *
  * <p><b>Dasher's acceptance rate</b> comes only from its decline question ({@link #confirmationSeen}): the labels are
  * parsed here, off the screen reader's thread, one number is kept (no text), and an offer Dasher says is free to
@@ -132,12 +133,18 @@ final class AutopilotRuntime {
     private static final AtomicBoolean pending = new AtomicBoolean();
     /** Clear history moves it on: anything worked out from before is dropped. */
     private static final AtomicLong generation = new AtomicLong();
+    /**
+     * Turning Autopilot on or off and choosing another goal move it on (under {@link #LOCK}): they forget the
+     * goal-relative state, so a plan worked out from the state before them is dropped and never writes it back.
+     */
+    private static final AtomicLong goalEpoch = new AtomicLong();
     private static volatile Runnable commitRequester;
     private static final List<Listener> listeners = new CopyOnWriteArrayList<>();
     /**
-     * Publishing a plan's state and resetting it for a user's change or Clear history happen under this lock, so a
-     * plan worked out before such a change can never write its stale state back. Taken before AutopilotStore's and
-     * FilterStore's own locks, never the other way.
+     * Publishing a plan (and its state), a commit's last checks and writes, and resetting for a user's change or
+     * Clear history happen under this lock, so a plan worked out before such a change can never write its stale state
+     * back, and a commit never lands its bar, change note or jump clearing across one. Taken before FilterStore's and
+     * AutopilotStore's own locks (in that order), never the other way; nothing under it waits on another thread.
      */
     private static final Object LOCK = new Object();
 
@@ -249,6 +256,8 @@ final class AutopilotRuntime {
         try {
             if (!Consent.accepted(app)) return;
             long planned = generation.get();
+            // Before the state is read: a user's change from here on drops this plan instead of meeting its state.
+            long epoch = goalEpoch.get();
             FilterSettings rules = FilterStore.load(app);
             if (!rules.autopilot) return;
             long wall = wallClock.getAsLong();
@@ -260,7 +269,7 @@ final class AutopilotRuntime {
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
                     planned));
-            String dropped = publish(app, plan, state);
+            String dropped = publish(app, plan, state, epoch);
             if (dropped != null) {
                 log(app, dropped);
                 return;
@@ -276,20 +285,22 @@ final class AutopilotRuntime {
     }
 
     /**
-     * Keeps what the plan changed of the acceptance-rate state and publishes it, unless Clear history or a change of
-     * rules came while it was worked out.
+     * Keeps what the plan changed of the acceptance-rate state and publishes it, unless Clear history, a change of
+     * rules, or Autopilot turned off or on or another goal (which forget that state) came while it was worked out.
      *
+     * @param epoch {@link #goalEpoch} as the plan began, before it read the state
      * @return null when published; otherwise the log line saying why it was dropped
      */
-    private static String publish(Context app, Autopilot.Plan plan, Autopilot.State before) {
+    private static String publish(Context app, Autopilot.Plan plan, Autopilot.State before, long epoch) {
         synchronized (LOCK) {
             if (plan.generation != generation.get()) return AutopilotText.DISCARD_CLEARED;
             if (!plan.rulesKey.equals(FilterStore.load(app).rulesKey())) return AutopilotText.DISCARD_RULES;
+            if (epoch != goalEpoch.get()) return AutopilotText.DISCARD_AUTOPILOT_CHANGED;
             if (plan.recovering != before.recovering || plan.extra != before.extra
-                    || plan.checkpointAt != before.checkpointAt || plan.checkpointReading != before.checkpointReading) {
+                    || plan.checkpointAt != before.checkpointAt || plan.checkpointAr != before.checkpointAr) {
                 boolean checkpoint = plan.checkpointAt != Autopilot.NEVER && plan.checkpointAt > 0;
                 AutopilotStore.savePlanState(app, plan.recovering, plan.extra, checkpoint ? plan.checkpointAt : 0,
-                        checkpoint ? plan.checkpointReading : -1);
+                        checkpoint ? plan.checkpointAr : -1);
             }
             latest.set(plan);
             return null;
@@ -299,25 +310,26 @@ final class AutopilotRuntime {
     /** What the planner keeps between plans, as stored; the bar is the stored one. */
     private static Autopilot.State state(Context app, FilterSettings rules) {
         long checkpointAt = AutopilotStore.checkpointAt(app);
-        int checkpointReading = AutopilotStore.checkpointReading(app);
-        boolean checkpoint = checkpointAt > 0 && checkpointReading >= 0;
+        boolean checkpoint = checkpointAt > 0;
         long raisedAt = AutopilotStore.raisedAt(app);
         return new Autopilot.State(AutopilotStore.recovering(app), AutopilotStore.extra(app),
-                checkpoint ? checkpointAt : Autopilot.NEVER, checkpoint ? checkpointReading : -1,
+                checkpoint ? checkpointAt : Autopilot.NEVER, checkpoint ? AutopilotStore.checkpointAr(app) : -1,
                 raisedAt > 0 ? raisedAt : Autopilot.NEVER, rules.minimumScalePercent, jumpCause(app));
     }
 
+    /** The stored reading as Autopilot counts it, with the fingerprint of the offer its question was about. */
     private static Autopilot.Reading reading(AutopilotStore.Reading stored) {
         if (stored == null) return null;
         try {
-            return new Autopilot.Reading(stored.percent, stored.at);
+            return new Autopilot.Reading(stored.percent, stored.at, stored.fingerprint);
         } catch (IllegalArgumentException notAReading) {
             return null;
         }
     }
 
     /**
-     * The decision history as Autopilot counts it, newest first: each line's facts and time, add-on and replay,
+     * The decision history as Autopilot counts it, newest first: each line's facts (never a "+$" bound on unread pay,
+     * which a stored line does not keep either: {@link Autopilot.OfferRecord#facts}) and time, add-on and replay,
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
      * as your Decline" step, or a hidden notification of a failing offer), and Dasher's "does not lower acceptance
      * rate" mark.
@@ -350,6 +362,11 @@ final class AutopilotRuntime {
      * history, older than 15 minutes, for other rules, or made at another bar is discarded and a new one asked for.
      * A pending user change jumps straight to the target; otherwise {@link Autopilot#step} limits the move. The bar
      * is written by compare-and-set and nothing else is: no rule save, no replay.
+     *
+     * <p>The step is worked out first; then, under {@link #LOCK} (which Clear history, a user's change and a new plan
+     * take too), the plan must still be the latest one, for the same generation, rules and pending jump, before the
+     * bar, the change note and the jump's clearing are written. A jump is cleared only while it is still the one this
+     * commit used, so one the user set meanwhile is never lost.
      */
     static Commit commitIfDue(Context context) {
         if (context == null) return Commit.NO_PLAN;
@@ -366,34 +383,54 @@ final class AutopilotRuntime {
             long wall = wallClock.getAsLong();
             String stale = staleness(plan, rules, wall);
             int current = rules.minimumScalePercent;
-            if (stale != null || plan.current != current) {
-                latest.compareAndSet(plan, null);
-                // A bar that moved since the plan (its own last commit) is no news: only real staleness is logged.
-                if (stale != null) log(app, stale);
-                requestPlan(app, Trigger.COMMIT);
-                return Commit.DISCARDED;
-            }
+            if (stale != null || plan.current != current) return discard(app, plan, stale);
             Autopilot.Reason jump = jumpCause(app);
             long elapsed = elapsedClock.getAsLong();
             Autopilot.Step step = step(plan, jump, elapsed);
-            if (step.next == current) {
-                // A user's change that needs no move is done: it must not make a later move a jump.
-                if (jump != null) AutopilotStore.clearJump(app);
-                return Commit.HELD;
+            if (step.next == current && jump == null) return Commit.HELD;
+            if (step.next != current) {
+                Runnable hook = beforeWriteForTests;
+                if (hook != null) hook.run();
             }
-            Runnable hook = beforeWriteForTests;
-            if (hook != null) hook.run();
-            if (!FilterStore.commitAutopilotBar(app, current, step.next)) {
-                latest.compareAndSet(plan, null);
+            Autopilot.Reason reason = null;
+            Commit outcome;
+            synchronized (LOCK) {
+                // A newer plan replaced this one, or a user's change or Clear history dropped it: the commit is
+                // theirs to ask for now (they did), not this plan's.
+                if (latest.get() != plan) return Commit.DISCARDED;
+                FilterSettings now = FilterStore.load(app);
+                if (!now.autopilot) {
+                    latest.compareAndSet(plan, null);
+                    return Commit.NO_PLAN;
+                }
+                stale = staleness(plan, now, wall);
+                if (stale != null || jumpCause(app) != jump) {
+                    // Stale since the checks above, or the user's pending change is another one now.
+                    latest.compareAndSet(plan, null);
+                    outcome = Commit.DISCARDED;
+                } else if (step.next == current) {
+                    // A user's change that needs no move is done: it must not make a later move a jump.
+                    AutopilotStore.clearJumpIf(app, jump.name());
+                    return Commit.HELD;
+                } else if (!FilterStore.commitAutopilotBar(app, current, step.next)) {
+                    // The stored bar was not the one expected: nothing is written.
+                    latest.compareAndSet(plan, null);
+                    outcome = Commit.CONFLICT;
+                } else {
+                    reason = Autopilot.commitReason(plan, current, step.next, jump);
+                    boolean raised = step.next > current;
+                    AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised);
+                    lastCommitElapsed = elapsed;
+                    if (raised) lastRaiseElapsed = elapsed;
+                    if (jump != null) AutopilotStore.clearJumpIf(app, jump.name());
+                    outcome = Commit.COMMITTED;
+                }
+            }
+            if (outcome != Commit.COMMITTED) {
+                if (stale != null) log(app, stale);
                 requestPlan(app, Trigger.COMMIT);
-                return Commit.CONFLICT;
+                return outcome;
             }
-            Autopilot.Reason reason = Autopilot.commitReason(plan, current, step.next, jump);
-            boolean raised = step.next > current;
-            AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised);
-            lastCommitElapsed = elapsed;
-            if (raised) lastRaiseElapsed = elapsed;
-            if (jump != null) AutopilotStore.clearJump(app);
             log(app, AutopilotText.logCommit(current, step.next, reason));
             notifyListeners();
             // The next step works from a plan made at the new bar.
@@ -403,6 +440,17 @@ final class AutopilotRuntime {
             log(app, AutopilotText.logCommitFailed(failure));
             return Commit.FAILED;
         }
+    }
+
+    /**
+     * Drops a plan that can no longer be committed from and asks for a new one; {@code stale} is its log line, null
+     * when the plan is only behind the bar (its own last commit moved it), which is no news.
+     */
+    private static Commit discard(Context app, Autopilot.Plan plan, String stale) {
+        latest.compareAndSet(plan, null);
+        if (stale != null) log(app, stale);
+        requestPlan(app, Trigger.COMMIT);
+        return Commit.DISCARDED;
     }
 
     /**
@@ -499,19 +547,23 @@ final class AutopilotRuntime {
 
     /**
      * A change the user made, already saved. Turning Autopilot on, choosing another goal and turning it off forget the
-     * goal-relative state (recovering, the stall correction and its checkpoint). Every change but turning off makes
-     * the next commit a jump straight to the new plan's target (at a safe point, like every commit); turning off
-     * drops the plan, as the bar is already exactly 100. Then a plan is asked for. It writes no log line of its own:
-     * {@link #setAutopilot} does.
+     * goal-relative state (recovering, the stall correction and its checkpoint) and the plan: a plan worked out
+     * before (or still being worked out) is never published or committed from, so it cannot write that state back.
+     * Every change but turning off makes the next commit a jump straight to the new plan's target (at a safe point,
+     * like every commit); turning off needs no commit, as the bar is already exactly 100. Then a plan is asked for. It
+     * writes no log line of its own: {@link #setAutopilot} does.
      */
     static void userChanged(Context context, UserChange change) {
         if (context == null || change == null) return;
         Context app = app(context);
         synchronized (LOCK) {
-            if (change != UserChange.RULES_CHANGED) AutopilotStore.resetGoalState(app);
+            if (change != UserChange.RULES_CHANGED) {
+                goalEpoch.incrementAndGet();
+                latest.set(null);
+                AutopilotStore.resetGoalState(app);
+            }
             if (change == UserChange.TURNED_OFF) {
                 AutopilotStore.clearJump(app);
-                latest.set(null);
             } else if (FilterStore.load(app).autopilot) {
                 AutopilotStore.setJump(app, change.jump.name());
             }
@@ -521,9 +573,12 @@ final class AutopilotRuntime {
     }
 
     /**
-     * Clear history: a new generation (anything worked out before is dropped), no plan, prefs "autopilot" emptied (the
-     * reading, the acceptance-rate state, the change note), and, with Autopilot on, a jump so the bar goes back to
-     * exactly 100 at the next safe point (an empty history is learning).
+     * Clear history: a new generation (anything worked out before is dropped, and a commit under way writes nothing),
+     * no plan, prefs "autopilot" emptied (the reading, the acceptance-rate state, the change note), and, with
+     * Autopilot on, a jump so the bar goes back to exactly 100 at the next safe point (an empty history is learning).
+     *
+     * <p>Call it after the decision history ({@link DecisionLog#clear}) and the watched waiting are cleared: the plan
+     * it asks for reads them, and its CLEARED jump goes to that plan's target, which must be worked out from nothing.
      */
     static void cleared(Context context) {
         if (context == null) return;

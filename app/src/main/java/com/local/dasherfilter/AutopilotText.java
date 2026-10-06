@@ -70,6 +70,8 @@ final class AutopilotText {
     static final String DISCARD_RULES = "plan discarded: rules changed";
     static final String DISCARD_OLD = "plan discarded: older than " + Autopilot.PLAN_MAX_AGE_MS / 60_000 + " min";
     static final String DISCARD_CLEARED = "plan discarded: history cleared";
+    /** A plan worked out across turning Autopilot off and on, or another goal, whose state that change forgot. */
+    static final String DISCARD_AUTOPILOT_CHANGED = "plan discarded: Autopilot or its goal changed";
 
     /**
      * What Autopilot is doing, as the homepage, the chip, the button, the details and the reports describe it. Pure:

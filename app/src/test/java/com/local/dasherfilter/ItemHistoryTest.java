@@ -61,9 +61,10 @@ public final class ItemHistoryTest {
         assertTrue(json.getBoolean("itemCountApplicable"));
         HashSet<String> keys = new HashSet<>();
         for (java.util.Iterator<String> it = json.keys(); it.hasNext();) keys.add(it.next());
+        // A line decided now (rules model 2) also keeps the bar it used, whether Autopilot set it, and its model.
         assertEquals(new HashSet<>(Arrays.asList("at", "source", "addOn", "required", "result", "reason",
                 "action", "autoDecline", "evidence", "pay", "miles", "minutes", "stops", "items",
-                "itemCountApplicable", "score")), keys);
+                "itemCountApplicable", "score", "bar", "auto", "model")), keys);
         DecisionLog.Entry loaded = DecisionLog.Entry.fromJson(json);
         assertEquals(Integer.valueOf(12), loaded.facts.items);
         assertTrue(loaded.facts.itemCountApplicable);

@@ -102,18 +102,25 @@ public class AutopilotStoreTest {
         assertFalse(AutopilotStore.recovering(app));
         assertEquals(0, AutopilotStore.extra(app));
         assertEquals(0, AutopilotStore.checkpointAt(app));
-        assertEquals(-1, AutopilotStore.checkpointReading(app));
+        assertEquals(-1, AutopilotStore.checkpointAr(app));
 
-        AutopilotStore.savePlanState(app, true, 14, NOW, 68);
+        AutopilotStore.savePlanState(app, true, 14, NOW, 6_850);
         assertTrue(AutopilotStore.recovering(app));
         assertEquals("held to 10", AutopilotStore.EXTRA_MAX, AutopilotStore.extra(app));
         assertEquals(NOW, AutopilotStore.checkpointAt(app));
-        assertEquals(68, AutopilotStore.checkpointReading(app));
-        AutopilotStore.setCorrection(app, -3, 0, 68);
+        assertEquals("the carried-forward rate, in hundredths", 6_850, AutopilotStore.checkpointAr(app));
+        AutopilotStore.setCorrection(app, -3, 0, 6_850);
         assertEquals(0, AutopilotStore.extra(app));
         assertEquals("no time is no checkpoint", 0, AutopilotStore.checkpointAt(app));
-        assertEquals(-1, AutopilotStore.checkpointReading(app));
-        AutopilotStore.setCorrection(app, 2, NOW + 1, 70);
+        assertEquals(-1, AutopilotStore.checkpointAr(app));
+        AutopilotStore.setCorrection(app, 2, NOW, -1);
+        assertEquals("a checkpoint without a Dasher rate is still a checkpoint", NOW, AutopilotStore.checkpointAt(app));
+        assertEquals(-1, AutopilotStore.checkpointAr(app));
+        AutopilotStore.setCorrection(app, 2, NOW, 12_000);
+        assertEquals("held to 100%", 10_000, AutopilotStore.checkpointAr(app));
+        prefs().edit().putInt("cp_reading", 68).commit();
+        AutopilotStore.setCorrection(app, 2, NOW + 1, 7_000);
+        assertFalse("an earlier build's raw-percent checkpoint goes", prefs().contains("cp_reading"));
         AutopilotStore.setRecovering(app, false);
         assertFalse(AutopilotStore.recovering(app));
         assertEquals(2, AutopilotStore.extra(app));
@@ -126,7 +133,7 @@ public class AutopilotStoreTest {
         assertFalse(AutopilotStore.recovering(app));
         assertEquals(0, AutopilotStore.extra(app));
         assertEquals(0, AutopilotStore.checkpointAt(app));
-        assertEquals(-1, AutopilotStore.checkpointReading(app));
+        assertEquals(-1, AutopilotStore.checkpointAr(app));
         assertNotNull("the reading is not goal state", AutopilotStore.reading(app, NOW));
         assertEquals("GOAL_CHANGED", AutopilotStore.jump(app));
         assertNotNull(AutopilotStore.lastChange(app));
@@ -140,6 +147,15 @@ public class AutopilotStoreTest {
         assertNull(AutopilotStore.jump(app));
         AutopilotStore.setJump(app, "CLEARED");
         AutopilotStore.setJump(app, null);
+        assertNull(AutopilotStore.jump(app));
+
+        // Compare-and-clear: a commit clears only the cause it used, never one set meanwhile.
+        assertTrue("nothing pending: nothing to clear", AutopilotStore.clearJumpIf(app, "TURNED_ON"));
+        AutopilotStore.setJump(app, "RULES_CHANGED");
+        assertFalse(AutopilotStore.clearJumpIf(app, "TURNED_ON"));
+        assertFalse(AutopilotStore.clearJumpIf(app, null));
+        assertEquals("another cause stays", "RULES_CHANGED", AutopilotStore.jump(app));
+        assertTrue(AutopilotStore.clearJumpIf(app, "RULES_CHANGED"));
         assertNull(AutopilotStore.jump(app));
 
         assertNull(AutopilotStore.lastChange(app));
@@ -187,7 +203,7 @@ public class AutopilotStoreTest {
 
     @Test public void nothingButNumbersAndFixedNamesIsStored() {
         AutopilotStore.recordReading(app, 9, OFFER, NOW);
-        AutopilotStore.savePlanState(app, true, 2, NOW, 9);
+        AutopilotStore.savePlanState(app, true, 2, NOW, 891);
         AutopilotStore.setJump(app, "TURNED_ON");
         AutopilotStore.recordChange(app, 100, 80, "RECOVERY", NOW, false);
         for (Object value : prefs().getAll().values()) {

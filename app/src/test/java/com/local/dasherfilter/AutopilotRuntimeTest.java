@@ -567,6 +567,131 @@ public class AutopilotRuntimeTest {
     }
 
     @Test
+    public void clearHistoryLandingJustBeforeACommitsWriteLeavesNothingOfThatCommit() {
+        // Autopilot just turned on with the owner's minimums and 9%: the plan pins the bar at 50 and the next safe
+        // point jumps there. Clear history lands just before that write.
+        minimums(2040, 400, 48);
+        history(20);
+        reading(9, 1);
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        assertEquals(50, AutopilotRuntime.latest().target);
+        AutopilotRuntime.beforeWriteForTests = () -> {
+            AutopilotRuntime.beforeWriteForTests = null;
+            DecisionLog.clear(app);
+            AutopilotRuntime.cleared(app);
+            assertEquals("CLEARED", AutopilotStore.jump(app));
+        };
+        assertEquals(AutopilotRuntime.Commit.DISCARDED, AutopilotRuntime.commitIfDue(app));
+        assertEquals("the bar never left exactly the minimums", 100, bar());
+        assertNull("no change note survives Clear history", AutopilotStore.lastChange(app));
+        assertEquals("the CLEARED jump is still pending", "CLEARED", AutopilotStore.jump(app));
+        assertEquals(0, logged("commit 100% -> 50%"));
+        Autopilot.Plan learning = AutopilotRuntime.latest();
+        assertEquals(Autopilot.Mode.LEARNING, learning.mode);
+        assertEquals(100, learning.target);
+
+        // The next safe point finds the bar where the empty history wants it: the jump is done with.
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertNull(AutopilotStore.jump(app));
+        for (int minute = 1; minute <= 10; minute++) {
+            elapsed += MIN;
+            wall += MIN;
+            AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+            AutopilotRuntime.commitIfDue(app);
+            assertEquals(100, bar());
+        }
+    }
+
+    @Test
+    public void aUsersChangeLandingJustBeforeACommitsWriteIsNeverSwallowed() {
+        minimums(2040, 400, 48);
+        history(20);
+        reading(9, 1);
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        // Another goal just before the jump's write: that commit writes nothing and the new goal's jump stays.
+        AutopilotRuntime.beforeWriteForTests = () -> {
+            AutopilotRuntime.beforeWriteForTests = null;
+            AutopilotRuntime.setAutopilot(app, true, 50);
+        };
+        assertEquals(AutopilotRuntime.Commit.DISCARDED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(100, bar());
+        assertNull(AutopilotStore.lastChange(app));
+        assertEquals("GOAL_CHANGED", AutopilotStore.jump(app));
+        assertEquals(50, AutopilotRuntime.latest().goal);
+
+        // The same minimums saved again just before the write: the plan stands, but the new jump is the user's.
+        AutopilotRuntime.beforeWriteForTests = () -> {
+            AutopilotRuntime.beforeWriteForTests = null;
+            AutopilotStore.setJump(app, "RULES_CHANGED");
+        };
+        assertEquals(AutopilotRuntime.Commit.DISCARDED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(100, bar());
+        assertEquals("RULES_CHANGED", AutopilotStore.jump(app));
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(50, bar());
+        assertEquals("commit 100% -> 50% (you changed your minimums)", last(autopilotLog()));
+        assertNull("the jump it used is cleared", AutopilotStore.jump(app));
+    }
+
+    @Test
+    public void turningAutopilotOffAndOnWhileAPlanIsWorkedOutNeverWritesItsStateBack() {
+        minimums(400, 100, 25);
+        history(20);
+        FilterSettings rules = FilterStore.load(app);
+        for (int k = 0; k < 20; k++) line(new OfferSnapshot(3000 + k, 5.0, 22, 2), wall - (70 + 3L * k) * MIN, rules);
+        reading(9, 1);
+        FilterStore.setAutopilot(app, true, 70);
+        // A stalled checkpoint: 9% then and now, with 40 accounted offers since. A plan from this state adds 2.
+        AutopilotStore.savePlanState(app, true, 0, wall - 300 * MIN, 900);
+        // One planner thread, as in the app: the user's own plan waits behind the one under way.
+        List<Runnable> queued = new ArrayList<>();
+        AutopilotRuntime.executorForTests = queued::add;
+        AutopilotRuntime.afterInputsForTests = () -> {
+            AutopilotRuntime.afterInputsForTests = null;
+            AutopilotRuntime.setAutopilot(app, false, 70);
+            AutopilotRuntime.setAutopilot(app, true, 70);
+            assertEquals(0, AutopilotStore.extra(app));
+            assertEquals(0, AutopilotStore.checkpointAt(app));
+            assertFalse(AutopilotStore.recovering(app));
+        };
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
+        while (!queued.isEmpty()) queued.remove(0).run();
+
+        assertEquals(1, logged("plan discarded: Autopilot or its goal changed"));
+        assertEquals("the user's reset stands", 0, AutopilotStore.extra(app));
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(0, plan.extra);
+        assertEquals("the user's own plan set a checkpoint of its own", wall, AutopilotStore.checkpointAt(app));
+        assertEquals(900, AutopilotStore.checkpointAr(app));
+        assertEquals("TURNED_ON", AutopilotStore.jump(app));
+    }
+
+    @Test
+    public void aLineWithAPlusAmountsCeilingPlansTheSameBeforeAndAfterARestart() {
+        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterStore.save(app, rules);
+        history(19);
+        // The "+$" shape: $5.59 at most for 6.6 mi and 27 min. Its ceiling decides the offer (θ 82), but the history
+        // keeps no ceiling, so Autopilot counts the line as unread pay, in memory as after a restart.
+        OfferSnapshot bounded = new OfferSnapshot(null, 6.6, 27, 2, 559);
+        assertEquals(82, AreaScore.passThreshold(rules, bounded));
+        line(bounded, wall - MIN, rules);
+        FilterStore.setAutopilot(app, true, 70);
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
+        Autopilot.Plan before = AutopilotRuntime.latest();
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        assertNull("the stored line keeps no ceiling", DecisionLog.recent(app, 1).get(0).facts.payAtMostCents);
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
+        Autopilot.Plan after = AutopilotRuntime.latest();
+        assertEquals(20, before.counted);
+        for (int bar = Autopilot.BAR_MIN; bar <= Autopilot.BAR_MAX; bar++) {
+            assertEquals("bar " + bar, after.passAt(bar), before.passAt(bar));
+        }
+        assertEquals(before.target, after.target);
+    }
+
+    @Test
     public void aDeferredCommitIsLoggedAtMostOnceAMinute() {
         AutopilotRuntime.commitDeferred(app);
         AutopilotRuntime.commitDeferred(app);
@@ -736,7 +861,10 @@ public class AutopilotRuntimeTest {
         assertEquals(Autopilot.Mode.RECOVERY, AutopilotRuntime.latest().mode);
         AutopilotRuntime.confirmationSeen(app, Arrays.asList(QUESTION, "Your acceptance rate", "74%"),
                 new OfferSnapshot(PAY[0], MILES[0], MINUTES[0], 2));
-        assertEquals(7_400, AutopilotRuntime.latest().arHundredths);
+        // 74% is the rate before that offer's decline counts: its line (two minutes before the question, the newest)
+        // is one offer since, not accepted: 7,400 − 74.
+        assertEquals(7_326, AutopilotRuntime.latest().arHundredths);
+        assertEquals(1, AutopilotRuntime.latest().arOffersSince);
         assertEquals(Autopilot.Mode.VALUE, AutopilotRuntime.latest().mode);
         assertEquals(1, logged("ar reading 74% (exempt no)"));
     }
@@ -790,6 +918,10 @@ public class AutopilotRuntimeTest {
         DecisionLog.Entry kept = entry(facts, at, OfferRule.evaluate(facts, rules));
         Autopilot.OfferRecord plain = AutopilotRuntime.record(kept);
         assertSame(facts, plain.facts);
+        OfferSnapshot bounded = new OfferSnapshot(null, 6.6, 27, 2, 559);
+        Autopilot.OfferRecord unread = AutopilotRuntime.record(entry(bounded, at, OfferRule.evaluate(bounded, rules)));
+        assertNull("a \"+$\" ceiling is not kept: unread pay", unread.facts.payAtMostCents);
+        assertEquals(bounded.fingerprint(), unread.facts.fingerprint());
         assertEquals(at, plain.at);
         assertFalse(plain.addOn || plain.replay || plain.accepted || plain.declined || plain.arExempt);
 

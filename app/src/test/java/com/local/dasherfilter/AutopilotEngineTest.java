@@ -540,6 +540,92 @@ public final class AutopilotEngineTest {
     }
 
     @Test
+    public void theOfferWhoseQuestionShowedTheRateCountsAmongTheOffersSince() {
+        // Dasher's question shows the rate before its own offer's decline counts: that offer is one offer since.
+        OfferSnapshot declined = offer(1100, 5.1, 23);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 10; i++) lines.add(outcome(1 + i, i < 8, i >= 8, false));
+        lines.add(new Autopilot.OfferRecord(declined, NOW - 15 * MIN - 2_000, false, false, false, true, false));
+        for (int i = 0; i < 30; i++) lines.add(outcome(20 + i, false, true, false));
+        List<Autopilot.OfferRecord> window = Autopilot.countedWindow(lines);
+        Autopilot.Reading seventy = new Autopilot.Reading(70, NOW - 15 * MIN, declined.fingerprint());
+        Autopilot.ArNow ar = Autopilot.arNow(seventy, window, false, NOW);
+        assertEquals("7,000 + 800 − 70 × 11", 7_030, ar.hundredths);
+        assertEquals(11, ar.offersSince);
+        assertEquals("without the offer named, as before", 7_100,
+                Autopilot.arNow(new Autopilot.Reading(70, NOW - 15 * MIN), window, false, NOW).hundredths);
+
+        // The user went back to it from the question and took it: it counts as accepted.
+        List<Autopilot.OfferRecord> taken = new ArrayList<>(lines);
+        taken.set(10, new Autopilot.OfferRecord(declined, NOW - 15 * MIN - 2_000, false, false, true, false, false));
+        assertEquals("7,000 + 900 − 70 × 11", 7_130,
+                Autopilot.arNow(seventy, Autopilot.countedWindow(taken), false, NOW).hundredths);
+
+        // Stamped after the question (the history took it a moment late): already among the offers since, once.
+        List<Autopilot.OfferRecord> late = new ArrayList<>(lines);
+        late.set(10, new Autopilot.OfferRecord(declined, NOW - 15 * MIN + 500, false, false, false, true, false));
+        assertEquals(11, Autopilot.arNow(seventy, Autopilot.countedWindow(late), false, NOW).offersSince);
+
+        // The same facts more than two minutes before the question are another offer.
+        List<Autopilot.OfferRecord> older = new ArrayList<>(lines);
+        older.set(10, new Autopilot.OfferRecord(declined, NOW - 15 * MIN - Autopilot.DEDUP_MS - 1, false, false, false,
+                true, false));
+        assertEquals(10, Autopilot.arNow(seventy, Autopilot.countedWindow(older), false, NOW).offersSince);
+
+        // Dasher said declining it does not lower the rate: it is not in the accounting, so not counted either.
+        List<Autopilot.OfferRecord> free = new ArrayList<>(lines);
+        free.set(10, new Autopilot.OfferRecord(declined, NOW - 15 * MIN - 2_000, false, false, false, true, true));
+        assertEquals(10, Autopilot.arNow(seventy, Autopilot.countedWindow(free), false, NOW).offersSince);
+    }
+
+    @Test
+    public void aReadingIsStaleOnceDashersWindowTurnedOverEvenWithExemptLinesInTheCountedWindow() {
+        // 130 offers since Dasher showed 9%, three of the newest declines marked free: DoorDash's last 100 offers are
+        // all after the reading, so it is stale, though the counted window's 100 lines hold only 97 accounted ones.
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 130; i++) {
+            boolean accepted = i % 5 != 0;
+            lines.add(new Autopilot.OfferRecord(offer(1500 + i, 5.0, 20), NOW - (i + 1) * 2 * MIN, false, false,
+                    accepted, !accepted, i == 0 || i == 5 || i == 10));
+        }
+        Autopilot.Reading nine = new Autopilot.Reading(9, NOW - 131 * 2 * MIN);
+        Autopilot.ArNow ar = Autopilot.arNow(nine, Autopilot.countedLines(lines), false, NOW);
+        assertEquals(Autopilot.ArSource.ESTIMATE, ar.source);
+        assertEquals("DoorDash's last 100 offers without the 3 free declines: 82 accepted", 8_200, ar.hundredths);
+        assertEquals(100, ar.counted);
+        assertEquals("the accounting reaches 3 lines past the counted window", 100,
+                Autopilot.accounting(Autopilot.countedLines(lines), false).size());
+        Autopilot.Plan plan = plan(starters(70), lines, busy(), nine, true, 100);
+        assertEquals(Autopilot.ArSource.ESTIMATE, plan.arSource);
+        assertEquals(8_200, plan.arHundredths);
+        assertEquals("the pass share is still the counted window", 100, plan.counted);
+    }
+
+    @Test
+    public void aPlusAmountsCeilingOnALineCountsAsUnreadPayBeforeAndAfterARestart() {
+        // A "+$" ceiling is never stored on a history line: in memory it must not count either, or the same history
+        // would plan otherwise before and after a restart. Unread pay passes at every bar.
+        FilterSettings rules = starters(70);
+        OfferSnapshot ceiling = new OfferSnapshot(null, 6.6, 27, 2, 559);
+        assertEquals("the rule itself still uses it", 82, AreaScore.passThreshold(rules, ceiling));
+        Autopilot.OfferRecord record = new Autopilot.OfferRecord(ceiling, NOW - MIN, false, false, false, false,
+                false);
+        assertEquals(null, record.facts.payAtMostCents);
+        assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(rules, record.facts));
+        Autopilot.OfferRecord stored = new Autopilot.OfferRecord(new OfferSnapshot(null, 6.6, 27, 2), NOW - MIN,
+                false, false, false, false, false);
+        List<Autopilot.OfferRecord> inMemory = new ArrayList<>(window());
+        inMemory.set(0, record);
+        List<Autopilot.OfferRecord> reloaded = new ArrayList<>(window());
+        reloaded.set(0, stored);
+        Autopilot.Plan before = plan(rules, inMemory, busy(), dasher(74), false, 100);
+        Autopilot.Plan after = plan(rules, reloaded, busy(), dasher(74), false, 100);
+        assertEquals(after.passAt(150), before.passAt(150));
+        assertEquals(after.target, before.target);
+        assertEquals(after.barShare, before.barShare);
+    }
+
+    @Test
     public void withoutAFreshReadingTheAppCountsTwentyKnownOutcomes() {
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
         for (int i = 0; i < 31; i++) lines.add(outcome(1 + i, i < 7, i >= 7 && i < 19, false));
@@ -631,79 +717,141 @@ public final class AutopilotEngineTest {
         return lines;
     }
 
-    private static Autopilot.State checkpoint(int extra, long minutesAgo, int reading) {
-        return new Autopilot.State(true, extra, NOW - minutesAgo * MIN, reading, Autopilot.NEVER, 100, null);
+    /** A checkpoint {@code minutesAgo} old with {@code extra} points and the carried-forward rate {@code ar} then. */
+    private static Autopilot.State checkpoint(int extra, long minutesAgo, int ar) {
+        return new Autopilot.State(true, extra, NOW - minutesAgo * MIN, ar, Autopilot.NEVER, 100, null);
+    }
+
+    /** The rate carried forward from a fresh Dasher reading, in hundredths. */
+    private static Autopilot.ArNow carried(int hundredths) {
+        return new Autopilot.ArNow(hundredths, Autopilot.ArSource.DASHER, 3, -1);
+    }
+
+    /** The app's own estimate, in hundredths, with no fresh Dasher reading. */
+    private static Autopilot.ArNow estimated(int hundredths) {
+        return new Autopilot.ArNow(hundredths, Autopilot.ArSource.ESTIMATE, -1, 25);
     }
 
     @Test
     public void theFirstCheckpointWaitsForTwentyFiveAccountedOffersAndChangesNothing() {
-        Autopilot.Reading reading = new Autopilot.Reading(60, NOW - MIN / 2);
-        Autopilot.Correction few = Autopilot.correction(70, Autopilot.State.INITIAL, reading, accounted(24, 1), false,
+        Autopilot.Correction few = Autopilot.correction(70, Autopilot.State.INITIAL, carried(6_000), accounted(24, 1),
                 NOW);
         assertEquals(Autopilot.NEVER, few.checkpointAt);
-        Autopilot.Correction set = Autopilot.correction(70, Autopilot.State.INITIAL, reading, accounted(25, 1), false,
+        Autopilot.Correction set = Autopilot.correction(70, Autopilot.State.INITIAL, carried(6_000), accounted(25, 1),
                 NOW);
         assertEquals(NOW, set.checkpointAt);
-        assertEquals(60, set.checkpointReading);
+        assertEquals("the carried-forward rate, in hundredths", 6_000, set.checkpointAr);
         assertEquals(0, set.extra);
+        Autopilot.Correction estimate = Autopilot.correction(70, Autopilot.State.INITIAL, estimated(6_000),
+                accounted(25, 1), NOW);
+        assertEquals("a checkpoint is set without a Dasher reading too", NOW, estimate.checkpointAt);
+        assertEquals("but keeps no rate to compare with", -1, estimate.checkpointAr);
     }
 
     @Test
-    public void aStalledReadingAddsTwoAndARisingOneNeverDoes() {
+    public void aStalledRateAddsTwoAndARisingOneNeverDoes() {
         List<Autopilot.OfferRecord> since = accounted(25, 1);
-        Autopilot.Correction stalled = Autopilot.correction(70, checkpoint(0, 100, 68),
-                new Autopilot.Reading(68, NOW - MIN / 2), since, false, NOW);
-        assertEquals("68 ≤ checkpoint 68, below the goal", 2, stalled.extra);
+        Autopilot.Correction stalled = Autopilot.correction(70, checkpoint(0, 100, 6_800), carried(6_800), since, NOW);
+        assertEquals("6,800 ≤ checkpoint 6,800, below the goal", 2, stalled.extra);
         assertEquals(NOW, stalled.checkpointAt);
-        assertEquals(68, stalled.checkpointReading);
-        Autopilot.Correction fell = Autopilot.correction(70, checkpoint(2, 100, 68),
-                new Autopilot.Reading(61, NOW - MIN / 2), since, false, NOW);
+        assertEquals(6_800, stalled.checkpointAr);
+        Autopilot.Correction fell = Autopilot.correction(70, checkpoint(2, 100, 6_800), carried(6_100), since, NOW);
         assertEquals(4, fell.extra);
-        Autopilot.Correction rising = Autopilot.correction(70, checkpoint(0, 100, 60),
-                new Autopilot.Reading(64, NOW - MIN / 2), since, false, NOW);
-        assertEquals("a recovery raises the reading: nothing added", 0, rising.extra);
-        assertEquals("the checkpoint still moves", 64, rising.checkpointReading);
-        Autopilot.Correction capped = Autopilot.correction(70, checkpoint(10, 100, 50),
-                new Autopilot.Reading(40, NOW - MIN / 2), since, false, NOW);
+        Autopilot.Correction rising = Autopilot.correction(70, checkpoint(0, 100, 6_000), carried(6_001), since, NOW);
+        assertEquals("a recovery raises the rate: nothing added", 0, rising.extra);
+        assertEquals("the checkpoint still moves", 6_001, rising.checkpointAr);
+        Autopilot.Correction capped = Autopilot.correction(70, checkpoint(10, 100, 5_000), carried(4_000), since, NOW);
         assertEquals(10, capped.extra);
-        Autopilot.Correction notYet = Autopilot.correction(70, checkpoint(0, 100, 68),
-                new Autopilot.Reading(68, NOW - MIN / 2), accounted(24, 1), false, NOW);
+        Autopilot.Correction notYet = Autopilot.correction(70, checkpoint(0, 100, 6_800), carried(6_800),
+                accounted(24, 1), NOW);
         assertEquals("only 24 accounted offers since the checkpoint", 0, notYet.extra);
         assertEquals(NOW - 100 * MIN, notYet.checkpointAt);
+        assertEquals(6_800, notYet.checkpointAr);
+
+        // Only a rate carried forward from Dasher's reading, against one that was too, can say the rate stalled.
+        Autopilot.Correction estimate = Autopilot.correction(70, checkpoint(0, 100, 6_800), estimated(6_000), since,
+                NOW);
+        assertEquals("the app's own estimate never adds", 0, estimate.extra);
+        assertEquals(NOW, estimate.checkpointAt);
+        assertEquals(-1, estimate.checkpointAr);
+        Autopilot.Correction noRateThen = Autopilot.correction(70, checkpoint(0, 100, -1), carried(6_000), since, NOW);
+        assertEquals("nothing to compare with at the checkpoint", 0, noRateThen.extra);
+        assertEquals(6_000, noRateThen.checkpointAr);
+        Autopilot.Correction unknown = Autopilot.correction(70, checkpoint(4, 100, 6_800), Autopilot.ArNow.UNKNOWN,
+                since, NOW);
+        assertEquals("an unknown rate changes nothing", 4, unknown.extra);
+        assertEquals(-1, unknown.checkpointAr);
     }
 
     @Test
-    public void aReadingAtTheGoalPlusFiveReleasesTwo() {
+    public void aRateAtTheGoalPlusFiveReleasesTwoFromAnySource() {
         List<Autopilot.OfferRecord> since = accounted(25, 1);
-        assertEquals(2, Autopilot.correction(70, checkpoint(4, 100, 70), new Autopilot.Reading(75, NOW - 1), since,
-                false, NOW).extra);
-        assertEquals(0, Autopilot.correction(70, checkpoint(0, 100, 70), new Autopilot.Reading(80, NOW - 1), since,
-                false, NOW).extra);
-        assertEquals("between the goal and the goal + 5: unchanged", 4, Autopilot.correction(70,
-                checkpoint(4, 100, 70), new Autopilot.Reading(74, NOW - 1), since, false, NOW).extra);
+        assertEquals(2, Autopilot.correction(70, checkpoint(4, 100, 7_000), carried(7_500), since, NOW).extra);
+        assertEquals(0, Autopilot.correction(70, checkpoint(0, 100, 7_000), carried(8_000), since, NOW).extra);
+        assertEquals("between the goal and the goal + 5: unchanged", 4,
+                Autopilot.correction(70, checkpoint(4, 100, 7_000), carried(7_499), since, NOW).extra);
+        // With no fresh reading (the user declines through Dasher's notification, which asks nothing), the app's own
+        // count still releases it: the correction never stays latched at a rate well above the goal.
+        assertEquals(2, Autopilot.correction(70, checkpoint(4, 100, -1), estimated(8_500), since, NOW).extra);
+        assertEquals(4, Autopilot.correction(70, checkpoint(4, 100, -1), estimated(7_400), since, NOW).extra);
     }
 
     @Test
-    public void theCorrectionNeedsAGoalAndAFreshReading() {
+    public void theCorrectionNeedsAGoal() {
         List<Autopilot.OfferRecord> since = accounted(30, 1);
-        Autopilot.State state = checkpoint(4, 100, 68);
-        assertEquals("pay first", 4, Autopilot.correction(0, state, new Autopilot.Reading(50, NOW - 1), since, false,
-                NOW).extra);
-        assertEquals("no reading", NOW - 100 * MIN, Autopilot.correction(70, state, null, since, false, NOW)
-                .checkpointAt);
-        Autopilot.Reading old = new Autopilot.Reading(50, NOW - 8L * 24 * 60 * MIN);
-        assertEquals("a reading eight days old", 4, Autopilot.correction(70, state, old, since, false, NOW).extra);
+        Autopilot.State state = checkpoint(4, 100, 6_800);
+        Autopilot.Correction payFirst = Autopilot.correction(0, state, carried(5_000), since, NOW);
+        assertEquals("pay first", 4, payFirst.extra);
+        assertEquals("pay first moves no checkpoint", NOW - 100 * MIN, payFirst.checkpointAt);
+    }
+
+    @Test
+    public void anOldReadingWithAcceptsSinceIsARecoveryNotAStall() {
+        // Dasher showed 40% five hours ago, before the checkpoint, and nothing was declined since: 30 accepted offers.
+        // The reading never moved, but the rate it carries forward did: 4,000 + 3,000 − 1,200 = 5,800.
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 30; i++) lines.add(new Autopilot.OfferRecord(offer(1500, 5.0, 20), NOW - (i + 1) * 5 * MIN,
+                false, false, true, false, false));
+        Autopilot.Reading forty = new Autopilot.Reading(40, NOW - 300 * MIN);
+        for (int extra : new int[] {0, 2, 8}) {
+            Autopilot.State state = new Autopilot.State(true, extra, NOW - 200 * MIN, 4_000, Autopilot.NEVER, 100,
+                    null);
+            Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(starters(70), lines, busy(), forty, state, NOW,
+                    1));
+            assertEquals(5_800, plan.arHundredths);
+            assertEquals(Autopilot.ArSource.DASHER, plan.arSource);
+            assertEquals("extra " + extra + " stays: the rate rose from 4,000 to 5,800", extra, plan.extra);
+            assertEquals(NOW, plan.checkpointAt);
+            assertEquals(5_800, plan.checkpointAr);
+        }
+    }
+
+    @Test
+    public void withoutAFreshReadingTheAppsOwnCountReleasesTheCorrection() {
+        // Recovering from 9% with every decline sent through Dasher's notification: no question, no reading. The
+        // window turned over long ago; the app's own count shows 85% and the correction comes off, two at a time.
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 100; i++) lines.add(outcome(1 + i, i % 20 >= 3, i % 20 < 3, false));
+        Autopilot.Reading nine = new Autopilot.Reading(9, NOW - 300 * MIN);
+        Autopilot.State latched = new Autopilot.State(false, 4, NOW - 150 * MIN, -1, Autopilot.NEVER, 100, null);
+        Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(starters(70), lines, busy(), nine, latched, NOW, 1));
+        assertEquals(Autopilot.ArSource.ESTIMATE, plan.arSource);
+        assertEquals(8_500, plan.arHundredths);
+        assertEquals(2, plan.extra);
+        Autopilot.State next = new Autopilot.State(false, plan.extra, NOW - 150 * MIN, plan.checkpointAr,
+                Autopilot.NEVER, 100, null);
+        assertEquals(0, Autopilot.plan(new Autopilot.Inputs(starters(70), lines, busy(), nine, next, NOW, 1)).extra);
     }
 
     @Test
     public void aPlanCarriesTheCorrectionIntoItsNeed() {
         List<Autopilot.OfferRecord> lines = accounted(30, 5);
-        Autopilot.State stalled = new Autopilot.State(false, 4, NOW - 200 * MIN, 74, Autopilot.NEVER, 100, null);
+        Autopilot.State stalled = new Autopilot.State(false, 4, NOW - 200 * MIN, 7_400, Autopilot.NEVER, 100, null);
         Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(starters(70), lines, busy(), dasher(74), stalled,
                 NOW, 3));
         assertEquals("74 is not below the goal: unchanged, checkpoint moved", 4, plan.extra);
         assertEquals(NOW, plan.checkpointAt);
-        assertEquals(74, plan.checkpointReading);
+        assertEquals(7_400, plan.checkpointAr);
         assertEquals("75 + 4", 79, plan.need);
         Autopilot.Plan twenty = Autopilot.plan(new Autopilot.Inputs(starters(70), accounted(20, 5), busy(),
                 dasher(74), stalled, NOW, 3));
