@@ -505,6 +505,60 @@ public class PeekRecoveryTest {
         contains(log, "[peek] cost: ");
         contains(log, " Dasher events");
         assertEquals("never tapped again", 1, ownTaps.size());
+        contains(DecisionLog.report(app, 1), "| screen (peeked) |");
+    }
+
+    @Test
+    public void theFieldsLatenciesNeverSendTheUserBackBeforeTheOfferDraws() {
+        // The 0.4.72 report's timing: Dasher up 2.6 s after its launch on its wait for offers, the offer 3.6 s later.
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        pass(2_600);
+        dasherShows(finding());
+        long up = peekState().upAt();
+        passTo(up + 3_600);
+        assertNull(started());
+        declined(offer("$7.90"));
+        dasherShows(finding());
+        Intent back = started();
+        assertNotNull("back after the decline: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+        contains(log(app), "[peek] Dasher up 2.6 s after it was opened");
+        contains(log(app), "after Dasher's notification tap)");
+    }
+
+    @Test
+    public void aWholePeekWithOnlyAControlOfTheOfferDrawnLeavesACardThatSaysSo() {
+        connect(app(OTHER));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        // Dasher draws the offer's Accept and nothing else of it, the whole time.
+        dasherShows(dasherScreen("Accept"));
+        pass(Peek.MAX_MS);
+        assertTrue("never over a sign of the offer", ownTaps.isEmpty());
+        contains(log(app), "[peek] ended because 20 s passed");
+        contains(log(app), "[peek] the offer's card after 20 s: silent");
+        assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
+        assertNull(started());
+    }
+
+    @Test
+    public void dashersAnimatedFindingOffersIsOneScreenInTheScreensLog() {
+        Dashing.seen(app);
+        connect(dasherScreen("Finding offers."));
+        dasherEvent();
+        for (String dots : new String[] {"Finding offers..", "Finding offers...", "Finding offers.", "Finding offers…"}) {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(1_500));
+            dasherShows(dasherScreen(dots));
+        }
+        String screens = DiagnosticLog.readScreens(app);
+        assertEquals("its dots are one screen, not a line every second: " + screens, 1,
+                count(screens, "Finding offers"));
+        // Another screen still gets its line.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(1_500));
+        dasherShows(dasherScreen("Pick up by 2:20 AM", "Taco Place", "Directions"));
+        contains(DiagnosticLog.readScreens(app), "Pick up by 2:20 AM");
     }
 
     @Test

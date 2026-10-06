@@ -556,6 +556,8 @@ public final class OfferFilterService extends AccessibilityService {
     private int readCap = MAX_SCAN_NODES;
     /** What the last look at the windows found, as {@link #windowsSignature}. */
     private long lastLookWindows;
+    /** The last look found Dasher's own window, known by its ID, the active one, outside split screen. */
+    private boolean lastLookDasherKnown;
     /** When a read last showed an offer or confirmation, or a decline was under way (uptime). */
     private long offerSeenAt = Long.MIN_VALUE / 2;
     /** When a read last found a readable offer, its Accept and Decline both (uptime); on the scanner. */
@@ -776,8 +778,16 @@ public final class OfferFilterService extends AccessibilityService {
                 watchWindows(now + WINDOW_WATCH_MS);
                 return;
             }
-            if (dasherStillInFront()) {
-                // Android's list of windows is as the last look found it, with a window of Dasher's active: Dasher
+            long events = dasherEvents.get();
+            Boolean still = dasherStillInFront(() -> dasherEvents.get() != events);
+            if (still == null) {
+                // Dasher sent an event meanwhile: the read it asked for looks anyway.
+                syncWaitHeartbeat();
+                watchWindows();
+                return;
+            }
+            if (still) {
+                // Android's list of windows is as the last look found it, with Dasher's own window active: Dasher
                 // is still in front, and its root (a call into Dasher's UI thread, busy drawing its map) is not asked.
                 lastLookAt = now;
                 DashSummary.window(OfferFilterService.this, readWin);
@@ -792,24 +802,24 @@ public final class OfferFilterService extends AccessibilityService {
     };
 
     /**
-     * Whether Android's list of windows is unchanged since the last look and its active application window is one of
-     * Dasher's (known by ID from earlier reads), as Dasher readable in front: asks Android only, never Dasher.
+     * Whether Dasher is still in front as the last look found it: that look found Dasher's own window (known by its ID)
+     * the active one outside split screen, and Android's list of windows is unchanged since (the same windows, IDs,
+     * layers, bounds and active one). Asks Android only, never Dasher, and only after such a look; null when
+     * {@code stop} (Dasher's next event) came first, at any window of the list.
      */
-    private boolean dasherStillInFront() {
+    private Boolean dasherStillInFront(BooleanSupplier stop) {
         // In split screen the look also renews the sighting of Dasher beside: it is not skipped there.
         Screen seen = screen;
-        if (!seen.dasherReadable || seen.split) return false;
+        if (!lastLookDasherKnown || !seen.dasherReadable || seen.split) return false;
         try {
             List<AccessibilityWindowInfo> listed = windowSource.get();
-            if (listed == null || windowsSignature(listed) != lastLookWindows) return false;
-            for (AccessibilityWindowInfo window : listed) {
-                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || !window.isActive()) continue;
-                return realWindowId(window.getId()) && dasherWindowIds.contains(window.getId());
-            }
+            if (listed == null) return false;
+            Long signature = windowsSignature(listed, stop);
+            if (signature == null) return null;
+            return signature == lastLookWindows;
         } catch (RuntimeException unreadable) {
             return false;
         }
-        return false;
     }
     /** The notification path saw Dasher gone before the scanner did: look now, so the tab and the snapshot follow. */
     private final Runnable lookAgain = new Runnable() {
@@ -1870,9 +1880,15 @@ public final class OfferFilterService extends AccessibilityService {
      * out, and so are overlays (ours, the touch watch).
      */
     private long windowsSignature(List<AccessibilityWindowInfo> listed) {
+        return windowsSignature(listed, null);
+    }
+
+    /** As {@link #windowsSignature(List)}; null once {@code stop} (when given) says so before a window is looked at. */
+    private Long windowsSignature(List<AccessibilityWindowInfo> listed, BooleanSupplier stop) {
         long signature = 17;
         Rect bounds = new Rect();
         for (AccessibilityWindowInfo window : listed) {
+            if (stop != null && stop.getAsBoolean()) return null;
             int type = window.getType();
             if (type != AccessibilityWindowInfo.TYPE_APPLICATION && type != AccessibilityWindowInfo.TYPE_SYSTEM
                     && type != AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) {
@@ -3208,8 +3224,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The whole peek's time ran out: Dasher stays as it is. Only an offer withdrawn (its notification gone, Dasher's
-     * empty screen read, nothing of an offer seen) counts as empty; with the offer's notification still posted and
-     * the offer never read, its card says Dasher did not show it.
+     * empty screen read, nothing of an offer seen) counts as empty; with the offer's notification still posted, its
+     * card says Dasher did not show it (none when the screen read the offer: the card path refuses then).
      */
     private void peekTimedOut() {
         Peek.Request request = peek.request();
@@ -3219,8 +3235,9 @@ public final class OfferFilterService extends AccessibilityService {
         if (unread) noteNoOffer(Peek.now(), posted);
         peekOver("ended because " + Peek.MAX_MS / 1000 + " s passed",
                 withdrawn ? Peek.Outcome.WITHDRAWN : Peek.Outcome.TIMEOUT);
-        // Nothing of the offer ever showed while its notification is still up: never a stale, silent card.
-        if (unread && posted == OfferNotificationService.Posted.POSTED && request != null) {
+        // The offer's notification still up and the offer never read in full (none, or only signs of it drawing, as
+        // controls without figures): never a stale, silent card.
+        if (posted == OfferNotificationService.Posted.POSTED && request != null) {
             OfferNotificationService.peekUnshown(request.alertTag,
                     card -> Peek.log(this, "the offer's card after " + Peek.MAX_MS / 1000 + " s: " + card));
         }
@@ -6307,6 +6324,8 @@ public final class OfferFilterService extends AccessibilityService {
         for (java.util.Map.Entry<AccessibilityWindowInfo, AccessibilityNodeInfo> listed : seen.roots.entrySet()) {
             if (isDasher(listed.getValue())) rememberDasher(listed.getKey().getId());
         }
+        lastLookDasherKnown = seen.dasherActive && !seen.split && seen.activeApp != null
+                && realWindowId(seen.activeApp.getId()) && dasherWindowIds.contains(seen.activeApp.getId());
         Rect area = null;
         if (seen.dasherWindow != null) {
             Rect bounds = new Rect();
