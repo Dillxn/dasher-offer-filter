@@ -5,7 +5,11 @@ import android.content.SharedPreferences;
 import android.os.SystemClock;
 import android.provider.Settings;
 
-/** Numeric-only request provenance. It can suppress a personal lesson, never establish acceptance or tap authority. */
+/**
+ * Numeric-only provenance of the app's own automatic Accept request: an acceptance observed for the same offer soon
+ * after is marked automatic in the history (ACCEPTED_AUTOMATIC), not the user's. It is provenance, never learning (0.5.0
+ * learns nothing from any acceptance), and it never establishes acceptance or tap authority.
+ */
 final class AutoAcceptMemory {
     static final String PREFS = "auto_accept_request";
     /** Process-local write revision: a proven-unsent rollback cannot erase a newer request or a history clear. */
@@ -80,13 +84,13 @@ final class AutoAcceptMemory {
                 return false;
             }
             if (age < 0) {
-                // A clock from an unknown earlier boot can only suppress learning for one bounded new interval.
+                // A clock from an unknown earlier boot can only mark provenance for one bounded new interval.
                 // Resetting this numeric age once avoids keeping a future elapsed timestamp indefinitely.
                 p.edit().putLong("elapsed", SystemClock.elapsedRealtime()).putInt("boot", now).commit();
             }
             return offer.fingerprint().equals(p.getString("facts", ""));
         } catch (RuntimeException corrupt) {
-            return true; // Uncertain provenance may only suppress a lesson, never raise a floor.
+            return true; // Uncertain provenance may only mark an acceptance automatic, never grant authority.
         }
     }
     static synchronized void clear(Context context) { ++revision; prefs(context).edit().clear().apply(); }

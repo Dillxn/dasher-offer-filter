@@ -287,8 +287,12 @@ public final class DeclineErrorRecoveryAdapterTest {
         assertEquals(DecisionLog.Action.USER_TOOK_OVER, DecisionLog.recent(app, 1).get(0).action);
     }
     @Test public void scaleChangeCancelsPendingBack() {
+        // Since 0.5.0 the bar changes mid-decline only when the user turns Autopilot off: Autopilot set 103% between
+        // offers, and turning it off while the Back waits puts it back at exactly 100%.
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 103));
         begin(); failOn(node("Map", false));
-        FilterStore.save(app, FilterStore.load(app).withMinimumScalePercent(97));
+        FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         pass(600); assertTrue(actions().isEmpty());
     }
     @Test public void screenOffCancelsPendingBack() {

@@ -1,179 +1,146 @@
 package com.local.dasherfilter;
 
+import java.math.BigDecimal;
 import java.util.List;
 import org.junit.Test;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The area score, against fixtures worked out by hand (and checked with exact fractions): the user's rules are $13
- * pay, $3.85 a mile, $0.41 a minute and $4.75 a stop, at most 3 stops.
+ * What the minimums ask of an offer, exactly (R100, the partial known ask, θ and the score), and the constellation's
+ * stable drawing geometry, which stays while the retired axes keep their reserved indexes.
  */
 public final class AreaScoreTest {
-    private static final FilterSettings USER = new FilterSettings(true, 1300, 385, 41, 475, 3);
+    /** The README's rules as 0.5.0 keeps them: $13 pay, $3.85 a mile, 41¢ a minute ($24.60 an hour). */
+    private static final FilterSettings USER = FilterSettings.of(true, 1300, 385, 41, 3);
 
-    private static AreaScore.Floors floors(FilterSettings rules, int pay, Double miles, Integer minutes,
-                                           Integer stops) {
-        return AreaScore.floors(rules, new OfferSnapshot(pay, miles, minutes, stops));
+    private static BigDecimal cents(String value) {
+        return new BigDecimal(value);
+    }
+
+    private static void same(BigDecimal expected, BigDecimal actual) {
+        assertEquals(expected + " vs " + actual, 0, expected.compareTo(actual));
     }
 
     @Test
-    public void theSpokesPairUpInTheOrderTheyAreDrawn() {
-        // Pay top-left (-150°), per mile top-right (-30°), per minute bottom-right (30°), per stop bottom-left (150°):
-        // ascending, so index order is the clockwise order on the screen, 120° and 60° apart in turn.
+    public void theAxesKeepTheirStableIndexesAnglesAndDrawnOrder() {
+        assertEquals(0, AreaScore.PAY);
+        assertEquals(1, AreaScore.MILE);
+        assertEquals(2, AreaScore.MINUTE);
+        assertEquals(3, AreaScore.STOP);
+        assertEquals(4, AreaScore.HOTSPOT);
+        assertEquals(5, AreaScore.ITEM);
+        assertEquals(6, AreaScore.AXES);
         assertArrayEquals(new float[] {-150, -30, 30, 150, -90, 90}, AreaScore.ANGLES, 0f);
-        List<int[]> four = AreaScore.pairs(new int[] {0, 1, 2, 3});
-        assertEquals(4, four.size());
-        assertArrayEquals("pay–mile", new int[] {AreaScore.PAY, AreaScore.MILE}, four.get(0));
-        assertArrayEquals("mile–minute", new int[] {AreaScore.MILE, AreaScore.MINUTE}, four.get(1));
-        assertArrayEquals("minute–stop", new int[] {AreaScore.MINUTE, AreaScore.STOP}, four.get(2));
-        assertArrayEquals("stop–pay", new int[] {AreaScore.STOP, AreaScore.PAY}, four.get(3));
-        // Per stop off: per minute and pay stand opposite each other (30° and 210°), a triangle with no area.
+        assertArrayEquals(new int[] {AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE,
+                AreaScore.ITEM, AreaScore.STOP}, AreaScore.DRAW_ORDER);
+        // Drawing geometry only: three spokes join pay–mile and mile–minute; minute and pay stand opposite.
         List<int[]> three = AreaScore.pairs(new int[] {0, 1, 2});
         assertEquals(2, three.size());
         assertArrayEquals(new int[] {AreaScore.PAY, AreaScore.MILE}, three.get(0));
         assertArrayEquals(new int[] {AreaScore.MILE, AreaScore.MINUTE}, three.get(1));
+        assertTrue(AreaScore.closesThroughCenter(AreaScore.MINUTE, AreaScore.PAY));
+        assertFalse(AreaScore.closesThroughCenter(AreaScore.PAY, AreaScore.MILE));
+        assertEquals(1, AreaScore.pairs(new int[] {0, 2}).size());
+        assertEquals(0, AreaScore.pairs(new int[] {1}).size());
     }
 
     @Test
-    public void theWorkedExampleScoresAbout121Percent() {
-        // $15.00, 6 mi, 25 min, 2 stops. Floors: $13.00; 6 × $3.85 = $23.10; 25 × $0.41 = $10.25; 2 × $4.75 = $9.50.
-        AreaScore.Floors floors = floors(USER, 1500, 6.0, 25, 2);
-        double[] r = AreaScore.ratios(floors, 1500);
-        assertEquals(1500 / 1300.0, r[0], 1e-12);   // 1.154
-        assertEquals(1500 / 2310.0, r[1], 1e-12);   // 0.649
-        assertEquals(1500 / 1025.0, r[2], 1e-12);   // 1.463
-        assertEquals(1500 / 950.0, r[3], 1e-12);    // 1.579
-        // (1.154 × 0.649 + 0.649 × 1.463 + 1.463 × 1.579 + 1.579 × 1.154) ÷ 4 = 5.8320 ÷ 4 = 1.4580; √ = 1.2075.
-        assertEquals(1.207480540824083, AreaScore.score(floors, 1500), 1e-12);
-        assertEquals(121, AreaScore.percent(floors, 1500));
-        assertTrue(AreaScore.reaches(floors, 1500));
-        // 100% needs pay ≥ 1500 ÷ 1.2075 = $12.42…, so $12.43.
-        assertEquals(1243, AreaScore.requiredPay(floors));
-        assertTrue(AreaScore.reaches(floors, 1243));
-        assertFalse(AreaScore.reaches(floors, 1242));
+    public void theRequirementIsTheHighestSetAskWorkedExactly() {
+        // $15.00, 6 mi, 25 min: $13.00, 6 × $3.85 = $23.10, 25 × 41¢ = $10.25.
+        OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 2);
+        same(cents("2310"), AreaScore.required100(USER, offer));
+        same(cents("2310"), AreaScore.knownRequired100(USER, offer));
+        AreaScore.Asks asks = AreaScore.asks(USER, offer);
+        assertEquals(AreaScore.MILE, asks.axis);
+        assertFalse(asks.missing);
+        assertEquals("⌊150000 ÷ 2310⌋", 64, AreaScore.scorePercent(USER, offer));
+        assertEquals(64, AreaScore.passThreshold(USER, offer));
+        assertEquals(64, AreaScore.percent(USER, offer));
+        assertEquals("Score 64%", AreaScore.label(64));
+        // Max stops never changes the score; over it, θ is 0.
+        assertEquals(64, AreaScore.scorePercent(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
+        assertEquals(0, AreaScore.passThreshold(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
+        // A minimum that is off asks nothing, so pay and per hour decide a short trip.
+        FilterSettings noMile = FilterSettings.of(true, 1300, 0, 41, 0);
+        same(cents("1300"), AreaScore.required100(noMile, offer));
+        assertEquals(AreaScore.PAY, AreaScore.asks(noMile, offer).axis);
+        same(cents("1640"), AreaScore.required100(noMile, new OfferSnapshot(1500, 6.0, 40, 2)));
     }
 
     @Test
-    public void theReportedOfferStrictModeDeclinedScores49Percent() {
-        // $4.25, 2.1 mi, 16 min, 2 stops: ratios 0.327, 425 ÷ 808.5 = 0.526, 425 ÷ 656 = 0.648, 425 ÷ 950 = 0.447;
-        // (0.1719 + 0.3406 + 0.2898 + 0.1463) ÷ 4 = 0.2371; √ = 0.4870.
-        AreaScore.Floors floors = floors(USER, 425, 2.1, 16, 2);
-        assertEquals(0.4869553429377522, AreaScore.score(floors, 425), 1e-12);
-        assertEquals(49, AreaScore.percent(floors, 425));
-        assertFalse(AreaScore.reaches(floors, 425));
-        assertEquals("425 ÷ 0.48696 = $8.727…", 873, AreaScore.requiredPay(floors));
+    public void anUnreadQuantityLeavesOnlyAPartialRequirement() {
+        OfferSnapshot noMiles = new OfferSnapshot(1500, null, 25, 2);
+        assertNull(AreaScore.required100(USER, noMiles));
+        same(cents("1300"), AreaScore.knownRequired100(USER, noMiles));
+        assertTrue(AreaScore.asks(USER, noMiles).missing);
+        assertEquals(AreaScore.PAY, AreaScore.asks(USER, noMiles).axis);
+        assertEquals(-1, AreaScore.scorePercent(USER, noMiles));
+        assertEquals("⌊150000 ÷ 1300⌋", 115, AreaScore.passThreshold(USER, noMiles));
+        // With only rate minimums and nothing read there is nothing known at all.
+        FilterSettings rates = FilterSettings.of(true, 0, 385, 41, 0);
+        OfferSnapshot nothing = new OfferSnapshot(1500, null, null, 2);
+        assertNull(AreaScore.knownRequired100(rates, nothing));
+        assertEquals(-1, AreaScore.asks(rates, nothing).axis);
+        assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(rates, nothing));
+        // Unread stops matter to max stops only, never to the requirement or the score.
+        OfferSnapshot noStops = new OfferSnapshot(1500, 6.0, 25, null);
+        same(cents("2310"), AreaScore.required100(USER, noStops));
+        assertEquals(64, AreaScore.scorePercent(USER, noStops));
     }
 
     @Test
-    public void theScoreRisesInProportionToPay() {
-        AreaScore.Floors floors = floors(USER, 1500, 6.0, 25, 2);
-        assertEquals(2 * AreaScore.score(floors, 750), AreaScore.score(floors, 1500), 1e-12);
-        assertEquals(3 * AreaScore.score(floors, 500), AreaScore.score(floors, 1500), 1e-12);
+    public void milesStayExactDecimals() {
+        // 2.1 mi × $3.85 is 808.5 cents exactly; 1.0301 mi × $1.00 is 103.01.
+        same(cents("808.5"), AreaScore.required100(FilterSettings.of(true, 0, 385, 0, 0),
+                new OfferSnapshot(809, 2.1, 16, 2)));
+        same(cents("103.01"), AreaScore.fixedFloor(AreaScore.MILE, 100, new OfferSnapshot(100, 1.0301, 1, 2)));
+        assertEquals(809, AreaScore.roundedCents(cents("808.5"), 100));
+        assertEquals("103.01 × 0.97 = 99.9197", 100, AreaScore.roundedCents(cents("103.01"), 97));
+        assertEquals(104, AreaScore.roundedCents(cents("103.01"), 100));
+        assertEquals(Long.MAX_VALUE, AreaScore.roundedCents(cents("1e300"), 100));
+        assertEquals(0, AreaScore.roundedCents(BigDecimal.ZERO, 150));
     }
 
     @Test
-    public void anOfferExactlyAtEveryMinimumScoresExactly100Percent() {
-        // Each spoke asks $10.00 of 5 mi, 20 min, 2 stops.
-        FilterSettings even = new FilterSettings(true, 1000, 200, 50, 500, 0);
-        AreaScore.Floors floors = floors(even, 1000, 5.0, 20, 2);
-        assertEquals(1.0, AreaScore.score(floors, 1000), 0);
-        assertTrue(AreaScore.reaches(floors, 1000));
-        assertEquals(100, AreaScore.percent(floors, 1000));
-        assertEquals(1000, AreaScore.requiredPay(floors));
-        // A cent short is 99.9%, which would round to 100: it is shown as 99, never as reaching.
-        assertFalse(AreaScore.reaches(floors, 999));
-        assertEquals(99, AreaScore.percent(floors, 999));
+    public void theFixedAsksAreProductsOfARateAndAReadAmount() {
+        OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 3);
+        same(cents("1300"), AreaScore.fixedFloor(AreaScore.PAY, 1300, offer));
+        same(cents("2310"), AreaScore.fixedFloor(AreaScore.MILE, 385, offer));
+        same(cents("1025"), AreaScore.fixedFloor(AreaScore.MINUTE, 41, offer));
+        assertNull("off", AreaScore.fixedFloor(AreaScore.MILE, 0, offer));
+        assertNull("unread", AreaScore.fixedFloor(AreaScore.MINUTE, 41, new OfferSnapshot(1500, 6.0, null, 3)));
+        assertNull("the reserved hotspot axis asks nothing", AreaScore.fixedFloor(AreaScore.HOTSPOT, 100, offer));
+        same(BigDecimal.ZERO, AreaScore.required100(FilterSettings.of(true, 0, 385, 0, 0),
+                new OfferSnapshot(1500, 0.0, 25, 2)));
     }
 
     @Test
-    public void reachingIsWorkedOutExactlyWhereFloatingPointWouldNotBe() {
-        // 2.1 mi × $3.85 is 808.5 cents exactly (in binary floating point, 808.4999…). One spoke: 100% at the
-        // strict rules' own ask, rounded up to the cent.
-        FilterSettings perMile = new FilterSettings(true, 0, 385, 0, 0, 0);
-        AreaScore.Floors floors = floors(perMile, 809, 2.1, 16, 2);
-        assertEquals(OfferRule.mileageCost(385, 2.1), AreaScore.requiredPay(floors));
-        assertEquals(809, AreaScore.requiredPay(floors));
-        assertTrue(AreaScore.reaches(floors, 809));
-        assertFalse(AreaScore.reaches(floors, 808));
+    public void aPlusCeilingGivesThetaOnlyBelowOneHundredPercent() {
+        FilterSettings rules = FilterSettings.of(true, 1000, 100, 0, 3);
+        assertEquals("⌊100 × 835 ÷ 1000⌋", 83,
+                AreaScore.passThreshold(rules, new OfferSnapshot(null, 7.1, 23, 2, 835)));
+        assertEquals("a ceiling at the minimums never declines", Integer.MAX_VALUE,
+                AreaScore.passThreshold(rules, new OfferSnapshot(null, 7.1, 23, 2, 1000)));
+        assertEquals(99, AreaScore.passThreshold(rules, new OfferSnapshot(null, 7.1, 23, 2, 999)));
+        assertEquals("per mile binds: ⌊100 × 1110 ÷ 1200⌋", 92,
+                AreaScore.passThreshold(rules, new OfferSnapshot(null, 12.0, 30, 2, 1110)));
+        assertEquals(-1, AreaScore.scorePercent(rules, new OfferSnapshot(null, 7.1, 23, 2, 835)));
     }
 
     @Test
-    public void withThreeSpokesTheOppositePairCarriesNoArea() {
-        // Per stop off. Pay–mile and mile–minute count; minute–pay stand opposite each other and do not:
-        // (1.1538 × 0.6494 + 0.6494 × 1.4634) ÷ 2 = 0.8498; √ = 0.9218.
-        FilterSettings noStop = new FilterSettings(true, 1300, 385, 41, 0, 0);
-        AreaScore.Floors floors = floors(noStop, 1500, 6.0, 25, 2);
-        assertEquals(0.9218242761510783, AreaScore.score(floors, 1500), 1e-12);
-        assertEquals(92, AreaScore.percent(floors, 1500));
-        assertEquals(1628, AreaScore.requiredPay(floors));
-    }
-
-    @Test
-    public void withTwoSpokesTheOnePairAndWithOneItsRatio() {
-        FilterSettings two = new FilterSettings(true, 1300, 385, 0, 0, 0);
-        AreaScore.Floors pair = floors(two, 1500, 6.0, 25, 2);
-        // √(1.1538 × 0.6494) = 0.8656.
-        assertEquals(Math.sqrt(1500 / 1300.0 * 1500 / 2310.0), AreaScore.score(pair, 1500), 1e-12);
-        assertEquals(87, AreaScore.percent(pair, 1500));
-        assertEquals("√(1300 × 2310) = 1732.9…", 1733, AreaScore.requiredPay(pair));
-
-        FilterSettings one = new FilterSettings(true, 0, 385, 0, 0, 0);
-        AreaScore.Floors alone = floors(one, 1500, 6.0, 25, 2);
-        assertEquals(1500 / 2310.0, AreaScore.score(alone, 1500), 1e-12);
-        assertEquals("the strict rules' own ask", 2310, AreaScore.requiredPay(alone));
-    }
-
-    @Test
-    public void theAdaptiveMinimumRaisesEachFloorToWhatItAsksOfThisOffer() {
-        // Learned from an accepted $14.20, 6 mi, 24 min, 2 stops: pay must beat $14.20, best $2.367/mi, $0.592/min,
-        // $7.10/stop; and a $12.00 two-stop offer declined by hand ($6.00/stop, beaten by a cent).
-        FilterSettings rules = new FilterSettings(true, 1300, 385, 41, 475, 3, true, 1420,
-                AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2)),
-                new DeclinedFloor(0, new AcceptedBest(0, 0, 0, 0, 1200, 2)));
-        AreaScore.Floors floors = floors(rules, 1500, 6.0, 25, 2);
-        // Pay: $14.21. Per mile: the set $23.10 is above the learned $14.20. Per minute: the learned rate over this
-        // offer's 25 minutes, 1420 × 25 ÷ 24 = 1479.17, rounded up as the strict rules ask, $14.80, above the set
-        // $10.25. Per stop: the learned $14.20 above the set $9.50 and the declined $12.01.
-        assertEquals(0, floors.cents[0].compareTo(java.math.BigDecimal.valueOf(1421)));
-        assertEquals(0, floors.cents[1].compareTo(java.math.BigDecimal.valueOf(2310)));
-        assertEquals(0, floors.cents[2].compareTo(java.math.BigDecimal.valueOf(1480)));
-        assertEquals(0, floors.cents[3].compareTo(java.math.BigDecimal.valueOf(1420)));
-        assertEquals(0.9393154914470048, AreaScore.score(floors, 1500), 1e-12);
-        assertEquals(94, AreaScore.percent(floors, 1500));
-        assertEquals(1597, AreaScore.requiredPay(floors));
-
-        // Off, the same learned values do not count.
-        AreaScore.Floors off = floors(new FilterSettings(true, 1300, 385, 41, 475, 3, false, 1420, rules.best,
-                rules.declined), 1500, 6.0, 25, 2);
-        assertEquals(121, AreaScore.percent(off, 1500));
-    }
-
-    @Test
-    public void aSpokeOnlyTheAdaptiveMinimumHasIsActiveWhileItIsOn() {
-        AcceptedBest best = AcceptedBest.NONE.raisedBy(new OfferSnapshot(1420, 6.0, 24, 2));
-        FilterSettings learnedOnly = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best);
-        assertArrayEquals(new boolean[] {false, true, true, true, false, false}, AreaScore.active(learnedOnly));
-        assertArrayEquals(new boolean[] {false, false, false, false, false, false},
-                AreaScore.active(new FilterSettings(true, 0, 0, 0, 0, 0, false, 0, best)));
-    }
-
-    @Test
-    public void anActiveSpokeWhoseAmountWasNotReadLeavesNoScore() {
-        assertFalse(floors(USER, 1500, null, 25, 2).readable());
-        assertFalse("no distance is not read", floors(USER, 1500, 0.0, 25, 2).readable());
-        assertFalse(floors(USER, 1500, 6.0, null, 2).readable());
-        assertFalse("1 stop is a misread", floors(USER, 1500, 6.0, 25, 1).readable());
-        assertTrue(Double.isNaN(AreaScore.score(floors(USER, 1500, null, 25, 2), 1500)));
-        assertEquals(-1, AreaScore.percent(USER, new OfferSnapshot(1500, null, 25, 2)));
-        assertEquals(-1, AreaScore.percent(USER, new OfferSnapshot(null, 6.0, 25, 2)));
-        // A spoke with no minimum needs nothing read.
-        FilterSettings payOnly = new FilterSettings(true, 1300, 0, 0, 0, 0);
-        assertEquals(115, AreaScore.percent(payOnly, new OfferSnapshot(1500, null, null, null)));
-        assertEquals("no minimum at all, no score", -1,
-                AreaScore.percent(new FilterSettings(true, 0, 0, 0, 0, 3), new OfferSnapshot(1500, 6.0, 25, 2)));
+    public void aTinyRequirementSaturatesTheScoreRatherThanOverflowing() {
+        FilterSettings perMile = FilterSettings.of(true, 0, 1, 0, 0);
+        OfferSnapshot almostThere = new OfferSnapshot(100_000, 1e-9, 10, 2);
+        assertEquals(Integer.MAX_VALUE, AreaScore.scorePercent(perMile, almostThere));
+        assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(perMile, almostThere));
+        assertEquals(0, AreaScore.scorePercent(FilterSettings.of(true, 100_000, 0, 0, 0),
+                new OfferSnapshot(0, 6.0, 25, 2)));
+        assertEquals(0, AreaScore.passThreshold(FilterSettings.of(true, 100_000, 0, 0, 0),
+                new OfferSnapshot(0, 6.0, 25, 2)));
     }
 }

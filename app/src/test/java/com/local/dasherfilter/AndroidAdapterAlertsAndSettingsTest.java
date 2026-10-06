@@ -324,7 +324,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("[rules] the old extra-stop fee of $2.00 was retired"));
         // The user is told too: in the status, and once on the homepage. Other rules remain, so the filter stays on.
-        String notice = "Your $2.00 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it.";
+        String notice = "Your $2.00 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders.";
         assertTrue(FilterStore.lastStatus(app), FilterStore.lastStatus(app).endsWith("\n" + notice));
         assertEquals(notice, FilterStore.takeStopFeeNotice(app));
         assertNull("taken once", FilterStore.takeStopFeeNotice(app));
@@ -335,10 +336,10 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertEquals(again, again.indexOf("extra-stop fee"), again.lastIndexOf("extra-stop fee"));
         assertNull(FilterStore.takeStopFeeNotice(app));
 
-        // A per-stop minimum saved now lives under its own key and reads back as set.
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 350, 3));
-        assertEquals(350, FilterStore.load(app).perStopCents);
-        assertEquals(350, prefs.getInt("per_stop", 0));
+        // Per stop is retired as well (0.5.0): rules saved now write neither key, so nothing brings the fee back.
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 0, 3));
+        assertEquals(0, FilterStore.load(app).perStopCents);
+        assertFalse(prefs.contains("per_stop"));
         assertFalse(prefs.contains("stop"));
     }
 
@@ -369,8 +370,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertFalse("paused in the same edit that removed the fee", loaded.enabled);
         assertFalse(prefs.getBoolean("enabled", true));
         assertFalse(loaded.hasAnyRule());
-        String notice = "Your $1.50 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it. "
-                + "It was your only rule, so auto-decline is paused.";
+        String notice = "Your $1.50 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders. It was your only rule, so auto-decline is paused.";
         assertTrue(FilterStore.lastStatus(app), FilterStore.lastStatus(app).endsWith("\n" + notice));
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("[rules] the old extra-stop fee of $1.50 was retired"));
@@ -380,15 +381,16 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         // Already paused, a fee-only profile is only told, never switched on or off.
         prefs.edit().clear().putBoolean("enabled", false).putInt("stop", 150).commit();
         assertFalse(FilterStore.load(app).enabled);
-        assertEquals("Your $1.50 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it.",
-                FilterStore.takeStopFeeNotice(app));
+        assertEquals("Your $1.50 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders.", FilterStore.takeStopFeeNotice(app));
     }
 
     @Test
     public void theRetiredFeeNoticeShowsOnceOnTheHomepage() {
         android.content.SharedPreferences prefs = app.getSharedPreferences("offer_filter", Context.MODE_PRIVATE);
         prefs.edit().putBoolean("enabled", true).putInt("flat", 700).putInt("stop", 200).commit();
-        String notice = "Your $2.00 extra-stop fee was removed: Per stop is now a minimum. Set one if you want it.";
+        String notice = "Your $2.00 extra-stop fee was removed; it is not a rule any more. Use Max stops to limit "
+                + "stacked orders.";
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             TextView shown = shownTextContaining(content, notice);

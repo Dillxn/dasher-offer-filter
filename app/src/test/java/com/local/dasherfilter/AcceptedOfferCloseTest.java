@@ -12,9 +12,10 @@ import java.util.List;
 import org.junit.Test;
 
 /**
- * Learning from an offer the app left alone without seeing the user's tap (the user's decision): what came after it
- * decides, and every step is noted for its history line. Labels are shaped like the user's report, with made-up
- * names.
+ * What became of an offer the app left alone, without seeing the user's tap (the user's decision): what came after it
+ * decides, and every step is noted for its history line and the acceptance-rate count. Nothing is learned from any of
+ * it (0.5.0), so no step names a lesson and no decline by hand is held to teach. Labels are shaped like the user's
+ * report, with made-up names.
  */
 public class AcceptedOfferCloseTest {
     @Test public void anUnclearScreenBeforeAnyOfferUsesUpTheEarlierWaitingEvidence() {
@@ -129,7 +130,7 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void anOfferThatMayHaveRunOutTeachesNothing() {
+    public void anOfferThatMayHaveRunOutIsNotCountedAsAccepted() {
         tracker.afterScreen(WAITING, 500);
         shows(OFFER, 5, 1_000);
         tracker.afterScreen(DELIVERY, 3_000);
@@ -166,7 +167,7 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void anUnrecognisedScreenTeachesNothingOnceItSettlesAndIsKeptForTheReport() {
+    public void anUnrecognisedScreenCountsNothingOnceItSettlesAndIsKeptForTheReport() {
         shows(OFFER, 35, 1_000);
         List<String> unknown = Arrays.asList("Order details", "Store A", "Items 3");
         tracker.afterScreen(unknown, 2_000);
@@ -193,7 +194,7 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void aMinuteWithoutADeliveryOrTheWaitForOffersTeachesNothing() {
+    public void aMinuteWithoutADeliveryOrTheWaitForOffersCountsNothing() {
         shows(OFFER, 35, 1_000);
         tracker.afterScreen(Collections.<String>emptyList(), 2_000);
         tracker.afterScreen(Arrays.asList("New Delivery!", "New Order: Go to Store A"), 3_000);
@@ -242,9 +243,9 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(Collections.<String>emptyList(), 3_800);
         tracker.afterScreen(WAITING, 5_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertEquals("Dasher went back to the wait for offers 3 s after it left; it teaches once the next offer comes",
-                counted.detail);
-        assertEquals(OFFER.fingerprint(), counted.declined.fingerprint());
+        assertEquals("Dasher went back to the wait for offers 3 s after it left", counted.detail);
+        assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
+        assertNull("nothing is held to teach", counted.declined);
         assertNull("a declined offer is never accepted", counted.accepted);
     }
 
@@ -284,7 +285,8 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void onlyAnOfferTheRulesLetThroughTeachesByItsDecline() {
+    public void aDeclineByHandCountsTheSameWhateverTheRulesSaidAndTeachesNothing() {
+        // An offer left for the user's review (miles unread) and one the rules let through count alike.
         OfferSnapshot review = new OfferSnapshot(1675, null, 30, 3);
         tracker.offerLeftAlone(review, review, review, false, false, 35, false, 1_000);
         tracker.declineQuestion(2_000);
@@ -292,7 +294,25 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(WAITING, 3_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
         assertNull(counted.declined);
-        assertTrue(counted.detail, counted.detail.endsWith("the rules did not let it through, so it teaches nothing"));
+        assertEquals("Dasher went back to the wait for offers 1 s after it left", counted.detail);
+
+        tracker.offerLeftAlone(OFFER, OFFER, OFFER, false, true, 35, false, 10_000);
+        tracker.declineTapped(10_500);
+        assertEquals("it counts once Dasher goes back to the wait for offers or another offer comes",
+                only(DecisionLog.StepKind.DECLINE_TAPPED).detail);
+        tracker.declineQuestion(11_000);
+        assertEquals("after your Decline tap", only(DecisionLog.StepKind.DECLINE_QUESTION).detail);
+        tracker.afterScreen(WAITING, 13_000);
+        counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
+        assertNull(counted.declined);
+        assertEquals("Dasher went back to the wait for offers 2 s after it left", counted.detail);
+
+        // An add-on's decline by hand counts the same way.
+        OfferSnapshot addOn = new OfferSnapshot(500, 2.0, 10, 2);
+        tracker.offerLeftAlone(addOn, addOn, addOn, true, true, 35, false, 20_000);
+        tracker.declineTapped(20_500);
+        assertEquals("it counts once Dasher goes back to the wait for offers or another offer comes",
+                only(DecisionLog.StepKind.DECLINE_TAPPED).detail);
     }
 
     @Test
@@ -321,15 +341,15 @@ public class AcceptedOfferCloseTest {
         assertEquals("after your Decline tap", only(DecisionLog.StepKind.DECLINE_QUESTION).detail);
         tracker.afterScreen(WAITING, 3_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertEquals("Dasher went back to the wait for offers 1 s after it left; it teaches once the next offer comes",
-                counted.detail);
-        assertEquals(OFFER.fingerprint(), counted.declined.fingerprint());
+        assertEquals("Dasher went back to the wait for offers 1 s after it left", counted.detail);
+        assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
+        assertNull(counted.declined);
     }
 
     // ---- Accepting without a tap needs positive evidence the user was waiting (S1, S2) ----
 
     @Test
-    public void afterARestartAnOfferWithNothingReadBeforeItTeachesNothing() {
+    public void afterARestartAnOfferWithNothingReadBeforeItCountsNothing() {
         // S1: a fresh tracker (the app restarted mid-delivery), a stacked offer DoorDash pulls, and Dasher back on its
         // delivery screen: that screen proves nothing.
         shows(STACKED, 35, 1_000);
@@ -340,7 +360,7 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void anUnclearScreenAfterAnOfferLeavesTheNextOneUnlearned() {
+    public void anUnclearScreenAfterAnOfferLeavesTheNextOneUncounted() {
         // S2: the user's real acceptance lands on a delivery screen worded in a way the app does not know...
         tracker.afterScreen(WAITING, 500);
         shows(OFFER, 35, 1_000);
@@ -479,7 +499,7 @@ public class AcceptedOfferCloseTest {
     }
 
     @Test
-    public void anOfferLearnedFromWhatCameAfterItIsNotLearnedAgainByItsTap() {
+    public void anOfferCountedFromWhatCameAfterItIsNotCountedAgainByItsTap() {
         // S7: the tap path and what came after the offer both see one acceptance.
         tracker.afterScreen(WAITING, 500);
         shows(OFFER, 35, 1_000);
@@ -488,7 +508,7 @@ public class AcceptedOfferCloseTest {
         assertNull("not a progress step", tracker.observeOtherScreen(DELIVERY, 3_000));
         tracker.afterScreen(DELIVERY, 3_000);
         assertTrue(only(DecisionLog.StepKind.ACCEPTED_LEARNED).accepted.tapSeen);
-        assertNull("learned once", tracker.observeOtherScreen(Collections.singletonList("Arrived at store"), 6_000));
+        assertNull("counted once", tracker.observeOtherScreen(Collections.singletonList("Arrived at store"), 6_000));
         assertTrue(tracker.takeNotes().isEmpty());
     }
 
@@ -548,8 +568,9 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(Collections.<String>emptyList(), 72_500);
         shows(STACKED, 40, 73_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertEquals("another offer came; it teaches once the next offer comes", counted.detail);
-        assertEquals(OFFER.fingerprint(), counted.declined.fingerprint());
+        assertEquals("another offer came", counted.detail);
+        assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
+        assertNull(counted.declined);
 
         // The next offer after some other screen: nothing.
         tracker.afterScreen(WAITING, 80_000);
@@ -580,13 +601,13 @@ public class AcceptedOfferCloseTest {
         tracker.takeNotes();
         shows(OFFER, 34, 101_300);
         tracker.afterScreen(WAITING, 101_800);
-        assertNotNull(only(DecisionLog.StepKind.DECLINE_COUNTED).declined);
+        assertEquals(OFFER.fingerprint(), only(DecisionLog.StepKind.DECLINE_COUNTED).line.fingerprint());
     }
 
     // ---- A seen Decline tap is held like the question (S5) ----
 
     @Test
-    public void aSeenDeclineThenBackToTheOfferThenADeliveryTeachesNothing() {
+    public void aSeenDeclineThenBackToTheOfferThenADeliveryCountsNothing() {
         // S5: a seen Decline tap, Cancel back to the offer, then an unseen Accept onto a delivery screen.
         tracker.afterScreen(WAITING, 500);
         shows(OFFER, 35, 1_000);
@@ -614,9 +635,9 @@ public class AcceptedOfferCloseTest {
         tracker.takeNotes();
         tracker.afterScreen(DELIVERY, 2_500);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertEquals("Dasher went back to the delivery under way; it teaches once the next offer comes",
-                counted.detail);
-        assertEquals(STACKED.fingerprint(), counted.declined.fingerprint());
+        assertEquals("Dasher went back to the delivery under way", counted.detail);
+        assertEquals(STACKED.fingerprint(), counted.line.fingerprint());
+        assertNull(counted.declined);
 
         // With no delivery under way before, a delivery screen next counts nothing.
         tracker.afterScreen(WAITING, 10_000);
@@ -648,5 +669,41 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(DELIVERY, 3_000);
         assertEquals("a decline was requested through Dasher's notification, so the delivery screen after it is no "
                 + "Accept", only(DecisionLog.StepKind.NOT_LEARNED).detail);
+    }
+
+    // ---- The watched line: which offer a decline question the user brought up is about ----
+
+    @Test
+    public void theWatchedLineIsTheOfferLeftAloneUntilItsVerdict() {
+        assertNull(tracker.watchedLine());
+        assertNull(tracker.watchedLine(1_000));
+        OfferSnapshot line = new OfferSnapshot(1675, 3.9, 30, 3).withItems(2, true);
+        tracker.observeOffer(OFFER, OFFER, false, line, 1_000);
+        tracker.offerLeftAlone(line, OFFER, OFFER, false, true, 35, false, 1_000);
+        assertEquals("the offer as its history line has it", line.fingerprint(),
+                tracker.watchedLine().fingerprint());
+        assertEquals(line.fingerprint(),
+                tracker.watchedLine(1_000 + AcceptedOfferTracker.QUESTION_AGE_MS).fingerprint());
+        assertNull("a question long after the offer was read is not about it",
+                tracker.watchedLine(1_001 + AcceptedOfferTracker.QUESTION_AGE_MS));
+
+        tracker.declineQuestion(2_000);
+        only(DecisionLog.StepKind.DECLINE_QUESTION);
+        assertEquals("once a question was taken to be about it, later reads of it are too", line.fingerprint(),
+                tracker.watchedLine(2_000 + 3 * AcceptedOfferTracker.QUESTION_AGE_MS).fingerprint());
+
+        tracker.afterScreen(WAITING, 5_000);
+        only(DecisionLog.StepKind.DECLINE_COUNTED);
+        assertNull("its verdict ends the watch", tracker.watchedLine());
+        assertNull(tracker.watchedLine(5_000));
+    }
+
+    @Test
+    public void anOfferTheAppDeclinedIsNeverTheWatchedLine() {
+        shows(OFFER, 35, 1_000);
+        tracker.observeOffer(STACKED, STACKED, false, STACKED, 2_000);
+        tracker.offerDeclinedByApp(STACKED, false, 2_000);
+        assertNull("another offer came, and the app declined it", tracker.watchedLine());
+        assertNull(tracker.watchedLine(2_000));
     }
 }

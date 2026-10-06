@@ -367,4 +367,153 @@ public class DecisionLogTest {
                 Collections.emptyList()));
         assertEquals(3, DecisionLog.recent(app, 20).size());
     }
+
+    // ---- 0.5.0: the bar each decision used, whether Autopilot set it, and the rules model ----
+
+    /** A decision at an 82% Autopilot bar: $5.75 for 6.6 mi and 27 min under $4 / $1.00 per mile / $15 per hour. */
+    private static OfferRule.Decision belowMinimums() {
+        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, FilterSettings.GOAL_TOP_TIER, 82);
+        return OfferRule.evaluate(new OfferSnapshot(575, 6.6, 27, 2), rules);
+    }
+
+    @Test
+    public void aLineKeepsTheBarItUsedWhetherAutopilotSetItAndItsModelAcrossARestart() throws Exception {
+        OfferRule.Decision decision = belowMinimums();
+        assertEquals(OfferRule.Result.KEEP, decision.result);
+        assertTrue(decision.belowMinimums);
+        DecisionLog.Entry line = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, decision.basis, decision,
+                DecisionLog.Action.PASSES, true, Arrays.asList("$5.75", "2 stops (6.6 mi) • 27 min"));
+        assertEquals(82, line.barPercent);
+        assertTrue(line.autopilot);
+        assertEquals(DecisionLog.MODEL, line.model);
+        assertEquals(85, line.scorePercent);
+        org.json.JSONObject json = line.toJson();
+        assertEquals(82, json.getInt("bar"));
+        assertTrue(json.getBoolean("auto"));
+        assertEquals(2, json.getInt("model"));
+        assertEquals(85, json.getInt("score"));
+
+        DecisionLog.clear(app);
+        DecisionLog.record(app, line);
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        DecisionLog.Entry loaded = DecisionLog.recent(app, 1).get(0);
+        assertEquals(82, loaded.barPercent);
+        assertTrue(loaded.autopilot);
+        assertEquals(2, loaded.model);
+        assertEquals(85, loaded.scorePercent);
+        String report = DecisionLog.report(app, 1);
+        assertTrue(report, report.contains(" | score 85% | bar 82% auto | 6.6 mi · 27 min · 2 stops | "));
+
+        // A copy at another bar (a re-recorded line) keeps what it is given, and nothing else changes.
+        DecisionLog.Entry copied = loaded.withBar(100, false);
+        assertEquals(100, copied.barPercent);
+        assertFalse(copied.autopilot);
+        assertEquals(loaded.scorePercent, copied.scorePercent);
+        assertEquals(loaded.facts.fingerprint(), copied.facts.fingerprint());
+    }
+
+    @Test
+    public void aLineAtExactlyTheMinimumsWithAutopilotOffNamesNoBar() throws Exception {
+        DecisionLog.Entry plain = entry(1000, 790, OfferRule.Result.DECLINE, DecisionLog.Action.DECLINE_TAPPED);
+        assertEquals(100, plain.barPercent);
+        assertFalse(plain.autopilot);
+        assertEquals(DecisionLog.MODEL, plain.model);
+        org.json.JSONObject json = plain.toJson();
+        assertEquals(100, json.getInt("bar"));
+        assertFalse(json.getBoolean("auto"));
+        assertEquals(2, json.getInt("model"));
+        DecisionLog.clear(app);
+        DecisionLog.record(app, plain);
+        DecisionLog.record(app, entry(500_000, 900, OfferRule.Result.KEEP, DecisionLog.Action.PASSES)
+                .withBar(100, true));
+        DecisionLog.record(app, entry(900_000, 950, OfferRule.Result.KEEP, DecisionLog.Action.PASSES)
+                .withBar(120, false));
+        String report = DecisionLog.report(app, 3);
+        assertFalse(report, report.contains("| bar 100% |"));
+        assertTrue(report, report.contains(" | bar 100% auto | "));
+        assertTrue(report, report.contains(" | bar 120% | "));
+        assertEquals(report, 2, report.split(" \\| bar ", -1).length - 1);
+    }
+
+    @Test
+    public void aLineFromAnOlderVersionLoadsAsModelOneWithItsAreaScore() throws Exception {
+        org.json.JSONObject legacy = new org.json.JSONObject()
+                .put("at", 1_000_000L).put("source", "SCREEN").put("addOn", false).put("required", 1080)
+                .put("result", "KEEP").put("reason", "score 121% (needs 100%)").put("action", "PASSES")
+                .put("autoDecline", true).put("evidence", new org.json.JSONArray())
+                .put("pay", 1835).put("miles", 16.3).put("minutes", 33).put("stops", 2)
+                .put("finalStopHotspotMiles", 0.25).put("score", 121)
+                .put("notification", new org.json.JSONObject().put("at", 990_000L).put("source", "NOTIFICATION")
+                        .put("addOn", false).put("required", 0).put("result", "REVIEW").put("reason", "pay not found")
+                        .put("action", "CHECK_BELL").put("autoDecline", true).put("evidence", new org.json.JSONArray())
+                        .put("score", 64));
+        try (java.io.FileWriter out = new java.io.FileWriter(new java.io.File(app.getFilesDir(),
+                "decision-log.json"))) {
+            out.write(new org.json.JSONArray().put(legacy).toString());
+        }
+        DecisionLog.forgetCache();
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.LEGACY_MODEL, line.model);
+        assertEquals(121, line.scorePercent);
+        assertEquals("a line that does not say was decided at the minimums", 100, line.barPercent);
+        assertFalse(line.autopilot);
+        assertEquals("still read", 0.25, line.facts.finalStopHotspotMiles, 0);
+        assertEquals(DecisionLog.LEGACY_MODEL, line.notification.model);
+        assertEquals(64, line.notification.scorePercent);
+        String report = DecisionLog.report(app, 1);
+        assertTrue(report, report.contains(" | needed $10.80 | area score 121% | 16.3 mi · 33 min · 2 stops | "));
+        assertTrue(report, report.contains(" | pay ? | area score 64% | pay not found"));
+        assertFalse(report, report.contains("hotspot"));
+        assertFalse(report, report.contains("| bar "));
+
+        // Written again (a newer line is recorded): the older line keeps its shape, without the hotspot distance.
+        DecisionLog.record(app, entry(5_000_000, 790, OfferRule.Result.DECLINE, DecisionLog.Action.DECLINE_TAPPED));
+        DecisionLog.flush();
+        org.json.JSONArray stored = new org.json.JSONArray(new String(java.nio.file.Files.readAllBytes(
+                new java.io.File(app.getFilesDir(), "decision-log.json").toPath()), "UTF-8"));
+        org.json.JSONObject kept = stored.getJSONObject(0);
+        assertEquals(1_000_000L, kept.getLong("at"));
+        assertFalse(kept.toString(), kept.has("model"));
+        assertFalse(kept.toString(), kept.has("bar"));
+        assertFalse(kept.toString(), kept.has("auto"));
+        assertFalse(kept.toString(), kept.has("finalStopHotspotMiles"));
+        assertEquals(121, kept.getInt("score"));
+        assertFalse(kept.getJSONObject("notification").has("model"));
+        org.json.JSONObject fresh = stored.getJSONObject(1);
+        assertEquals(2, fresh.getInt("model"));
+        DecisionLog.forgetCache();
+        assertEquals(DecisionLog.LEGACY_MODEL, DecisionLog.recent(app, 2).get(1).model);
+        assertEquals(DecisionLog.MODEL, DecisionLog.recent(app, 2).get(0).model);
+    }
+
+    @Test
+    public void aNewLineNeverWritesTheRetiredHotspotDistance() throws Exception {
+        @SuppressWarnings("deprecation")
+        OfferSnapshot facts = new OfferSnapshot(790, 7.2, 21, 2).withFinalStopHotspotMiles(1.5);
+        DecisionLog.Entry line = new DecisionLog.Entry(1000, DecisionLog.Source.SCREEN, false, facts, 1080,
+                OfferRule.Result.DECLINE, "dollars per mile", DecisionLog.Action.DECLINE_TAPPED, true,
+                Collections.emptyList());
+        assertFalse(line.toJson().has("finalStopHotspotMiles"));
+        assertFalse(DecisionLog.facts(facts), DecisionLog.facts(facts).contains("hotspot"));
+        assertEquals("7.2 mi · 21 min · 2 stops", DecisionLog.facts(facts));
+    }
+
+    @Test
+    public void aFoldedNotificationKeepsItsOwnBarAndModel() throws Exception {
+        DecisionLog.Entry notice = new DecisionLog.Entry(10_000, DecisionLog.Source.NOTIFICATION, false,
+                OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.CHECK_BELL, true,
+                Collections.emptyList()).withBar(91, true);
+        DecisionLog.Entry screen = onScreen(24_000, 900).withBar(88, true);
+        DecisionLog.clear(app);
+        DecisionLog.record(app, notice);
+        DecisionLog.record(app, screen);
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertEquals(88, line.barPercent);
+        assertEquals(91, line.notification.barPercent);
+        assertTrue(line.notification.autopilot);
+        assertEquals(DecisionLog.MODEL, line.notification.model);
+    }
 }

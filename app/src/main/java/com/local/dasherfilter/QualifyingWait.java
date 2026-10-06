@@ -27,7 +27,7 @@ final class QualifyingWait {
             if (at < 0 || observedMs < 0 || observedMs > RETAIN_MS) throw new IllegalArgumentException("wait sample");
             this.at = at;
             this.observedMs = observedMs;
-            this.arrival = arrival == null ? null : arrival.withoutPayBound();
+            this.arrival = arrival == null ? null : numeric(arrival);
         }
     }
 
@@ -61,11 +61,13 @@ final class QualifyingWait {
             String evidence = qualifying + " qualifying offers among " + readable + " readable arrivals over "
                     + minutes(observedMs) + " of observed waiting in the last 24 hours.";
             if (status == Status.NO_RULES) return "Set at least one minimum to define a qualifying offer.";
-            if (status == Status.UNREADABLE) return evidence + " " + unreadable
-                    + " arrivals lack facts needed by your current minimums, so no wait is estimated.";
+            String lacked = unreadable == 0 ? "" : " " + unreadable + (unreadable == 1 ? " arrival" : " arrivals")
+                    + " lacked facts needed by your current minimums";
+            if (status == Status.UNREADABLE) return evidence + lacked + ", so no wait is estimated.";
+            if (!lacked.isEmpty()) evidence += lacked + ".";
             if (status != Status.READY) return evidence + " Needs at least " + MIN_QUALIFYING
                     + " matches, " + MIN_READABLE + " readable arrivals and 5 monitored minutes.";
-            return evidence + " Current strict/area rules, learned floors and minimums percentage are used. "
+            return evidence + " Your current minimums are used. "
                     + "The estimate assumes the observed arrival rate continues. Conditions can change; "
                     + "this rounded historical average is not a countdown or promise. "
                     + "Only visible, unlocked waiting is measured. Rejected-offer handling counts when waiting resumes; "
@@ -188,7 +190,9 @@ final class QualifyingWait {
                 if (result == OfferRule.Result.KEEP) matches++;
             }
         }
-        Status status = !settings.hasAnyRule() ? Status.NO_RULES : unreadable > 0 ? Status.UNREADABLE
+        // Arrivals that lack a fact the minimums need suppress the estimate only when they outnumber readable ones;
+        // otherwise their observed waiting still counts and the usual thresholds decide.
+        Status status = !settings.hasAnyRule() ? Status.NO_RULES : unreadable > readable ? Status.UNREADABLE
                 : matches < MIN_QUALIFYING || readable < MIN_READABLE || exposure < MIN_EXPOSURE_MS
                 ? Status.LEARNING : Status.READY;
         return new Estimate(status, exposure, matches, readable, unreadable);
@@ -258,8 +262,7 @@ final class QualifyingWait {
     }
 
     private static boolean sameFacts(OfferSnapshot a, OfferSnapshot b) {
-        return a.fingerprint().equals(b.fingerprint())
-                && java.util.Objects.equals(a.finalStopHotspotMiles, b.finalStopHotspotMiles);
+        return a.fingerprint().equals(b.fingerprint());
     }
 
     private static OfferSnapshot merge(OfferSnapshot previous, OfferSnapshot next) {
@@ -267,9 +270,18 @@ final class QualifyingWait {
         return new OfferSnapshot(next.payCents == null ? previous.payCents : next.payCents,
                 next.miles == null ? previous.miles : next.miles,
                 next.minutes == null ? previous.minutes : next.minutes,
-                next.stops == null ? previous.stops : next.stops, null,
-                next.finalStopHotspotMiles == null ? previous.finalStopHotspotMiles : next.finalStopHotspotMiles,
+                next.stops == null ? previous.stops : next.stops, null, null,
                 next.items == null ? previous.items : next.items,
                 previous.itemCountApplicable || next.itemCountApplicable);
+    }
+
+    /**
+     * What an arrival keeps: its observed numeric facts only, never the bound on unknown pay (a decline-only ceiling)
+     * or the retired hotspot distance.
+     */
+    private static OfferSnapshot numeric(OfferSnapshot offer) {
+        return offer.payAtMostCents == null && offer.finalStopHotspotMiles == null ? offer
+                : new OfferSnapshot(offer.payCents, offer.miles, offer.minutes, offer.stops, null, null,
+                        offer.items, offer.itemCountApplicable);
     }
 }

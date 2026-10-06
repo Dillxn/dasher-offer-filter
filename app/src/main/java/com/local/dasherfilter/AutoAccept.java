@@ -1,8 +1,10 @@
 package com.local.dasherfilter;
 
 /**
- * An opt-in Accept request needs two complete reads of one continuing offer, a quiet touch watch and current KEEP
- * rules. This class never taps or infers an acceptance. A refused request also consumes the one-request budget.
+ * An opt-in Accept request needs two complete reads of one continuing offer, a quiet touch watch and a KEEP under
+ * {@link #acceptRules}: 100% of the user's own minimums, or Autopilot's bar when that is higher, so an offer passing
+ * only below the minimums is never accepted automatically. This class never taps or infers an acceptance. A refused
+ * request also consumes the one-request budget.
  */
 final class AutoAccept {
     static final long QUIET_MS = 700;
@@ -20,14 +22,21 @@ final class AutoAccept {
 
     static boolean eligible(OfferSnapshot offer, FilterSettings settings, boolean enabled, boolean addOn,
                             boolean routeStored, int countdown) {
-        return enabled && settings.enabled && settings.hasAnyRule() && !addOn && !routeStored
-                && (settings.maxStops > 0 || AreaScore.floors(settings, offer).anyActive())
+        return enabled && settings.enabled && settings.hasMonetaryRule() && !addOn && !routeStored
                 && offer.payCents != null && offer.payCents > 0 && offer.payAtMostCents == null
                 && offer.miles != null && offer.miles > 0 && offer.minutes != null && offer.minutes > 0
                 && offer.stops != null && offer.stops >= 2
                 && (!offer.itemCountApplicable || offer.items != null)
                 && countdown > MIN_REMAINING_MS / 1000
-                && OfferRule.evaluate(offer, settings).result == OfferRule.Result.KEEP;
+                && OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
+    }
+
+    /**
+     * The rules an automatic Accept is judged by: the same minimums at {@code max(100, bar)}. Autopilot may lower the
+     * bar to protect the acceptance rate, but never what an automatic Accept asks.
+     */
+    static FilterSettings acceptRules(FilterSettings settings) {
+        return settings.withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
     }
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,
@@ -102,15 +111,9 @@ final class AutoAccept {
     }
     void clear() { clearCandidate(); blocked = null; }
 
-    /** Exact rule provenance, including learned floors; no formatted/rounded label decides authority. */
+    /** Exact rule provenance, the bar included ("enabled:flat:mile:minute:maxStops:bar"); no rounded label decides. */
     static String rulesKey(FilterSettings s) {
-        return s.enabled + ":" + java.util.Arrays.toString(s.minimums()) + ":" + s.maxStops + ":"
-                + s.risingOffers + ":" + s.lastAcceptedCents + ":" + bestKey(s.best) + ":"
-                + s.declined.payCents + ":" + bestKey(s.declined.rates) + ":" + s.scoreByArea
+        return s.enabled + ":" + s.flatCents + ":" + s.perMileCents + ":" + s.perMinuteCents + ":" + s.maxStops
                 + ":" + s.minimumScalePercent;
-    }
-    private static String bestKey(AcceptedBest b) {
-        return b.minutePay + ":" + b.minutes + ":" + b.milePay + ":" + b.miles + ":" + b.stopPay + ":" + b.stops
-                + ":" + b.itemPay + ":" + b.items;
     }
 }

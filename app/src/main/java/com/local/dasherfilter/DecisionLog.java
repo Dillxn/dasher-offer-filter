@@ -89,9 +89,11 @@ final class DecisionLog {
     }
 
     /**
-     * One step of learning from what the user did with an offer the app left alone (accepted, declined by hand, or
-     * neither, and why), kept on that offer's line. Steps never change the offer's action; an observed acceptance updates its tally and totals,
-     * and never leave the phone in an automatic report.
+     * One step of what became of an offer after its decision (accepted, declined by hand, or neither, and why), kept
+     * on that offer's line for its history and the acceptance-rate count. Nothing is learned from any of them (0.5.0).
+     * Steps never change the offer's action; an observed acceptance updates its tally and totals. They never leave the
+     * phone in an automatic report. Every kind an older version wrote still parses; the retired learning kinds read
+     * with neutral words.
      */
     enum StepKind {
         ACCEPTED_OBSERVED("Accepted; display only"),
@@ -101,19 +103,39 @@ final class DecisionLog {
         AUTO_ACCEPT_REQUESTED("Automatic Accept requested; not confirmed"),
         AUTO_ACCEPT_UNCONFIRMED("Automatic acceptance unconfirmed; left to you"),
         ACCEPT_UNCONFIRMED("No delivery screen within 15 s of your Accept tap"),
-        ACCEPTED_LEARNED("Accepted; the adaptive minimum learned from it"),
-        ACCEPTED_NOT_LEARNED("Accepted; nothing learned"),
-        ACCEPTED_BEST_SAVED("Accepted; new best saved"),
-        ACCEPTED_MINIMUMS_UNCHANGED("Accepted; minimums unchanged"),
-        ACCEPTED_ADD_ON("Accepted add-on; the standalone minimums never learn from add-ons"),
+        /** Accepted by the user: a seen Accept tap, or the offer closing into a delivery (0.5.0). */
+        ACCEPTED("Accepted"),
+        /** Accepted after the app's own automatic Accept request: provenance only (0.5.0). */
+        ACCEPTED_AUTOMATIC("Accepted after an automatic Accept request"),
+        /** Written before 0.5.0 (the adaptive minimum learned from it); reads as an acceptance. */
+        ACCEPTED_LEARNED("Accepted"),
+        /** Written before 0.5.0; reads as an acceptance. */
+        ACCEPTED_NOT_LEARNED("Accepted"),
+        /** Written before 0.5.0; reads as an acceptance. */
+        ACCEPTED_BEST_SAVED("Accepted"),
+        /** Written before 0.5.0; reads as an acceptance. */
+        ACCEPTED_MINIMUMS_UNCHANGED("Accepted"),
+        ACCEPTED_ADD_ON("Accepted add-on"),
         NOT_ACCEPTED("Not accepted"),
-        NOT_LEARNED("Not learned"),
+        /**
+         * What followed the offer did not count it as accepted, and why (the evidence was not enough). Not a verdict on
+         * the line: a seen Accept tap before it still counts it when a delivery screen followed
+         * ({@link DecisionLog#accepted}), so the words name only what followed.
+         */
+        NOT_LEARNED("Not counted from what followed"),
         DECLINE_TAPPED("You tapped Decline on it"),
         DECLINE_QUESTION("Dasher asked to confirm declining it; " + AppName.NAME + " did not decline it"),
         DECLINE_COUNTED("Counted as your Decline"),
         DECLINE_DROPPED("Not counted as your Decline"),
-        DECLINE_TAUGHT("Your Decline raised the adaptive minimum"),
-        DECLINE_NOT_TAUGHT("Your Decline taught nothing");
+        /** Written before 0.5.0 (a decline by hand that raised the adaptive minimum). */
+        DECLINE_TAUGHT("Your Decline (older version)"),
+        /** Written before 0.5.0. */
+        DECLINE_NOT_TAUGHT("Your Decline (older version)"),
+        /**
+         * Dasher's decline question said declining this offer does not lower the acceptance rate: the offer leaves
+         * the acceptance-rate count. A mark only: it changes no outcome, tally or total.
+         */
+        AR_EXEMPT("Dasher said declining it does not lower your acceptance rate");
 
         final String label;
 
@@ -122,7 +144,7 @@ final class DecisionLog {
         }
     }
 
-    /** A learning step: what, when (wall clock), and a detail of fixed words and numbers only, never screen text. */
+    /** An outcome step: what, when (wall clock), and a detail of fixed words and numbers only, never screen text. */
     static final class Step {
         final StepKind kind;
         final long at;
@@ -142,6 +164,11 @@ final class DecisionLog {
     /** Steps kept on one line at most; the oldest go first. */
     static final int MAX_STEPS = 8;
 
+    /** The rules model a line decided now is under (0.5.0: three minimums and the bar). */
+    static final int MODEL = 2;
+    /** What a line from an older version (no "model" in its JSON) was decided under; its score is a retired one. */
+    static final int LEGACY_MODEL = 1;
+
     static final class Entry {
         final long at;
         final Source source;
@@ -159,26 +186,37 @@ final class DecisionLog {
         final String alertTag;
         /** Memory only: recorded on a replay, which re-evaluates a post already recorded and is never a new offer. */
         final boolean replay;
-        /** What was learned from this offer afterwards, oldest first ({@link #MAX_STEPS} at most). */
+        /** What became of this offer afterwards, oldest first ({@link #MAX_STEPS} at most). */
         final List<Step> steps;
         /**
-         * The offer's area score under the rules it was decided by, as a whole percent ({@link AreaScore#percent});
-         * -1 when it could not be worked out, for an add-on, or for a line recorded before scores were kept.
+         * The offer's score under the rules it was decided by, as a whole percent: pay as a percent of what the
+         * minimums asked ({@link AreaScore#scorePercent}) on a {@link #MODEL} line, the retired area score on a
+         * {@link #LEGACY_MODEL} line. -1 when it could not be worked out, for an add-on, or for a line recorded before
+         * scores were kept.
          */
         final int scorePercent;
         /** Read on Dasher's screen because Peek brought Dasher up for it ({@link Peek}); shown as "(peeked)". */
         final boolean peeked;
+        /** The bar the decision used, in percent of the minimums; 100 when the line does not say (older lines). */
+        final int barPercent;
+        /** Autopilot was on when it was decided, so Autopilot had set that bar. */
+        final boolean autopilot;
+        /**
+         * The rules model it was decided under: {@link #MODEL} for a line this version made, {@link #LEGACY_MODEL} for
+         * one an older version wrote (score by area, learned minimums, the minimums scale).
+         */
+        final int model;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false, Collections.<Step>emptyList(), -1, false);
+                    false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL);
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
                       Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent,
-                      boolean peeked) {
+                      boolean peeked, int barPercent, boolean autopilot, int model) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -195,26 +233,36 @@ final class DecisionLog {
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
             this.scorePercent = scorePercent < 0 ? -1 : scorePercent;
             this.peeked = peeked;
+            this.barPercent = Math.max(1, Math.min(200, barPercent));
+            this.autopilot = autopilot;
+            this.model = Math.max(LEGACY_MODEL, model);
         }
 
+        /** A line for a decision made now: its score, and the bar it used and whether Autopilot set it. */
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
                         Action action, boolean autoDecline, List<String> labels) {
             return new Entry(System.currentTimeMillis(), source, addOn, facts, decision.requiredCents,
                     decision.result, decision.reason, action, autoDecline, evidence(labels)).withScore(
-                    addOn ? -1 : decision.scorePercent);
+                    addOn ? -1 : decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot);
         }
 
         /** This line, read because Peek brought Dasher up for it, or not. */
         Entry peeked(boolean on) {
             if (on == peeked) return this;
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, on);
+                    notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model);
         }
 
-        /** This line with the offer's area score as a whole percent (-1 for none). */
+        /** This line with the offer's score as a whole percent (-1 for none). */
         Entry withScore(int percent) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, percent, peeked);
+                    notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model);
+        }
+
+        /** This line decided at {@code bar} percent of the minimums, with Autopilot {@code auto} (on: it set the bar). */
+        Entry withBar(int bar, boolean auto) {
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model);
         }
 
         private boolean sameOffer(Entry other) {
@@ -230,30 +278,34 @@ final class DecisionLog {
 
         private Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false, steps, scorePercent, peeked);
+                    notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, peeked);
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay, steps, scorePercent, peeked);
+                    notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
         }
 
-        /** This line with Dasher's notification of the same offer folded in, without that notification's lines. */
+        /**
+         * This line with Dasher's notification of the same offer folded in, without that notification's lines (its
+         * score, bar and model stay its own).
+         */
         Entry withNotification(Entry n) {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
-                    n.autoDecline, Collections.emptyList()).withScore(n.scorePercent);
+                    n.autoDecline, Collections.<String>emptyList(), null, null, false, Collections.<Step>emptyList(),
+                    n.scorePercent, false, n.barPercent, n.autopilot, n.model);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay, steps, scorePercent, peeked);
+                    nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
         }
 
-        /** This line with one more learning step; an exact repeat of the last step is not added again. */
+        /** This line with one more step; an exact repeat of the last step is not added again. */
         Entry withStep(Step step) {
             if (!steps.isEmpty()) {
                 Step last = steps.get(steps.size() - 1);
@@ -263,9 +315,13 @@ final class DecisionLog {
             next.add(step);
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, next, scorePercent, peeked);
+                    notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model);
         }
 
+        /**
+         * The line as stored. A {@link #MODEL} line also keeps "bar", "auto" and "model"; a {@link #LEGACY_MODEL} line
+         * keeps the shape an older version wrote. The retired hotspot distance is never written.
+         */
         JSONObject toJson() throws JSONException {
             JSONObject json = new JSONObject()
                     .put("at", at).put("source", source.name()).put("addOn", addOn)
@@ -278,8 +334,8 @@ final class DecisionLog {
             if (facts.stops != null) json.put("stops", facts.stops);
             if (facts.items != null) json.put("items", facts.items);
             if (facts.itemCountApplicable) json.put("itemCountApplicable", true);
-            if (facts.finalStopHotspotMiles != null) json.put("finalStopHotspotMiles", facts.finalStopHotspotMiles);
             if (scorePercent >= 0) json.put("score", scorePercent);
+            if (model >= MODEL) json.put("bar", barPercent).put("auto", autopilot).put("model", model);
             if (peeked) json.put("peeked", true);
             if (notification != null) json.put("notification", notification.toJson());
             if (!steps.isEmpty()) {
@@ -313,6 +369,7 @@ final class DecisionLog {
         }
 
         private static Entry plainFromJson(JSONObject json) throws JSONException {
+            // An older line's hotspot distance is still read (it is part of what that line recorded), never written.
             OfferSnapshot facts = new OfferSnapshot(
                     json.has("pay") ? json.getInt("pay") : null,
                     json.has("miles") ? json.getDouble("miles") : null,
@@ -328,10 +385,15 @@ final class DecisionLog {
                 evidence.add(lines.getString(i));
             }
             evidence = PersonalText.accountScreen(evidence) ? new ArrayList<>() : PersonalText.mask(evidence);
+            // A line without "model" was written before 0.5.0; one without "bar" was decided at the minimums.
+            int model = json.has("model") ? json.optInt("model", LEGACY_MODEL) : LEGACY_MODEL;
+            int bar = json.has("bar") ? json.optInt("bar", FilterSettings.BAR_AT_MINIMUMS)
+                    : FilterSettings.BAR_AT_MINIMUMS;
             return new Entry(json.getLong("at"), Source.valueOf(json.getString("source")), json.optBoolean("addOn"),
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
-                    json.optBoolean("autoDecline"), evidence).withScore(json.optInt("score", -1));
+                    json.optBoolean("autoDecline"), evidence, null, null, false, Collections.<Step>emptyList(),
+                    json.optInt("score", -1), false, bar, json.optBoolean("auto", false), model);
         }
 
         /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
@@ -341,6 +403,14 @@ final class DecisionLog {
             return Double.isFinite(count) && count > 0 && count <= Integer.MAX_VALUE && count == Math.rint(count)
                     ? (int) count : null;
         }
+    }
+
+    /** Whether the line carries a step of this kind. */
+    static boolean hasStep(Entry entry, StepKind kind) {
+        for (Step step : entry.steps) {
+            if (step.kind == kind) return true;
+        }
+        return false;
     }
 
     /** How the main page counts an offer: passed, filtered (a failing offer the app acted on), or left to review. */
@@ -362,7 +432,7 @@ final class DecisionLog {
          * was not confirmed, or a known failure the app did not decline (a hidden notification declines nothing).
          */
         YOURS("YOURS", "Left to you"),
-        /** Later counted or seen as accepted: a learning step "Accepted…", or a seen Accept tap then a delivery. */
+        /** Later counted or seen as accepted: a step "Accepted…", or a seen Accept tap then a delivery. */
         ACCEPTED("ACCEPTED", "Accepted"),
         /** An automatic click was requested; Dasher has not yet shown explicit delivery progress. */
         REQUESTED("REQUESTED", "Accept requested, not confirmed");
@@ -415,14 +485,17 @@ final class DecisionLog {
     }
 
     /**
-     * Whether a learning step counted the offer as accepted ("Accepted…"), or saw the user's Accept tap on it followed
-     * by a delivery screen (one that taught nothing, because a delivery was already under way, say), with no sign of
-     * a Decline between the two.
+     * Whether a step counted the offer as accepted ("Accepted…", by the user or after the app's automatic request, and
+     * the kinds older versions wrote), or saw the user's Accept tap on it followed by a delivery screen (one not counted
+     * as such, because a delivery was already under way, say), with no sign of a Decline between the two. An
+     * {@link StepKind#AR_EXEMPT} mark changes nothing here.
      */
     static boolean accepted(Entry entry) {
         boolean tapped = false;
         for (Step step : entry.steps) {
             switch (step.kind) {
+                case ACCEPTED:
+                case ACCEPTED_AUTOMATIC:
                 case ACCEPTED_LEARNED:
                 case ACCEPTED_NOT_LEARNED:
                 case ACCEPTED_BEST_SAVED:
@@ -602,10 +675,8 @@ final class DecisionLog {
                 while (all.size() > MAX_ENTRIES) all.remove(0);
                 persist(context, all);
             }
-            // A new offer, not a later step of one already recorded: it counts once toward its area, and shows the
-            // dash went on after any offer the user declined by hand.
+            // A new offer, not a later step of one already recorded: it counts once toward its area.
             AreaMap.note(context, entry);
-            ManualDeclines.offerSeen(context, entry.facts, System.currentTimeMillis());
         } catch (RuntimeException error) {
             DiagnosticLog.log(context, "decision-log", "record failed: " + error.getClass().getSimpleName());
         }
@@ -631,7 +702,7 @@ final class DecisionLog {
 
     /**
      * Folds Dasher's notification of an offer the screen read moments before ({@link OfferPairing#screenFor}) into
-     * that offer's line. It is not a new offer: nothing is counted, and nothing about areas or declines by hand.
+     * that offer's line. It is not a new offer: nothing is counted, and nothing about areas.
      *
      * @return the screen offer's line with the notification folded in, or null when there is none to fold into
      */
@@ -670,9 +741,10 @@ final class DecisionLog {
     }
 
     /**
-     * Adds a learning step to the screen line of the offer with these facts, recorded at most {@code withinMs} ago:
-     * the newest line with exactly these facts, else the newest whose facts agree with them. The line's action, its
-     * tally and the totals never change, and nothing is counted toward areas or declines by hand.
+     * Adds a step to the screen line of the offer with these facts, recorded at most {@code withinMs} ago: the newest
+     * line with exactly these facts, else the newest whose facts agree with them. The line's action never changes, and
+     * nothing is counted toward areas. Its tally (and the totals) follow the outcome its steps now give
+     * ({@link #outcome}); a mark such as {@link StepKind#AR_EXEMPT} changes neither.
      *
      * @return whether a line took the step
      */
@@ -756,11 +828,13 @@ final class DecisionLog {
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : money(entry.facts.payCents))
                     .append(" | needed ").append(entry.requiredCents == 0 ? "-" : money(entry.requiredCents))
-                    .append(entry.scorePercent >= 0 ? " | score " + entry.scorePercent + "%" : "")
+                    .append(score(entry))
+                    .append(bar(entry))
                     .append(" | ").append(facts(entry.facts))
                     .append(" | ").append(entry.reason)
                     .append(" | ").append(entry.action.label)
                     .append(" | outcome ").append(outcome(entry).word)
+                    .append(hasStep(entry, StepKind.AR_EXEMPT) ? " | ar-exempt" : "")
                     .append(entry.autoDecline ? "" : " | auto-decline paused")
                     .append('\n');
             if (!entry.evidence.isEmpty()) {
@@ -772,7 +846,7 @@ final class DecisionLog {
                 out.append("    notification ").append(noticeWhen(entry))
                         .append(" | ").append(n.result)
                         .append(" | pay ").append(n.facts.payCents == null ? "?" : money(n.facts.payCents))
-                        .append(n.scorePercent >= 0 ? " | score " + n.scorePercent + "%" : "")
+                        .append(score(n))
                         .append(" | ").append(n.reason)
                         .append(" | ").append(n.action.label)
                         .append('\n');
@@ -784,6 +858,24 @@ final class DecisionLog {
             }
         }
         return out.toString();
+    }
+
+    /**
+     * " | score 85%" for a line's score as a percent of the minimums, " | area score 121%" for an older line's retired
+     * area score; "" when it has none.
+     */
+    private static String score(Entry entry) {
+        if (entry.scorePercent < 0) return "";
+        return (entry.model >= MODEL ? " | score " : " | area score ") + entry.scorePercent + "%";
+    }
+
+    /**
+     * " | bar 82% auto" when the line was decided at a bar other than exactly the minimums or with Autopilot on
+     * ("auto": Autopilot set it); "" otherwise and for an older line, whose bar is not known.
+     */
+    private static String bar(Entry entry) {
+        if (entry.model < MODEL || (entry.barPercent == FilterSettings.BAR_AT_MINIMUMS && !entry.autopilot)) return "";
+        return " | bar " + entry.barPercent + "%" + (entry.autopilot ? " auto" : "");
     }
 
     /** When Dasher's folded notification came, against the screen's reading: "14 s earlier" or "1 s later". */
@@ -827,8 +919,6 @@ final class DecisionLog {
         if (facts.stops != null) parts.add(facts.stops + (facts.stops == 1 ? " stop" : " stops"));
         if (facts.items != null) parts.add(facts.items + (facts.items == 1 ? " item" : " items"));
         else if (facts.itemCountApplicable) parts.add("item count unknown");
-        if (facts.finalStopHotspotMiles != null) parts.add(trimZero(facts.finalStopHotspotMiles)
-                + " mi from final stop to nearest hotspot");
         return parts.isEmpty() ? "no distance, time or stops read" : String.join(" · ", parts);
     }
 

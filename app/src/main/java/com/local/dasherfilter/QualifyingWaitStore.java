@@ -68,6 +68,17 @@ final class QualifyingWaitStore {
         }
     }
 
+    /**
+     * The retained samples as {@link #estimate} sees them now, oldest first: observed waits with their numeric
+     * arrivals, plus the open (right-censored) wait in progress. Immutable; read under the store's lock. For Autopilot's
+     * offer-rate estimate.
+     */
+    static List<QualifyingWait.Sample> snapshot(Context context) {
+        synchronized (LOCK) {
+            return loaded(context).snapshot(wallClock.getAsLong());
+        }
+    }
+
     /** No restored timer or cached estimate can make the homepage claim current waiting. */
     static boolean observingWaiting(Context context) {
         synchronized (LOCK) {
@@ -125,8 +136,7 @@ final class QualifyingWaitStore {
                 if (offer != null) {
                     JSONObject facts = new JSONObject().put("pay", offer.payCents).put("miles", offer.miles)
                             .put("minutes", offer.minutes).put("stops", offer.stops).put("items", offer.items)
-                            .put("itemApplicable", offer.itemCountApplicable)
-                            .put("hotspotMiles", offer.finalStopHotspotMiles);
+                            .put("itemApplicable", offer.itemCountApplicable);
                     row.put("arrival", facts);
                 }
                 out.put(row);
@@ -144,10 +154,10 @@ final class QualifyingWaitStore {
                 try {
                     JSONObject row = rows.getJSONObject(i);
                     JSONObject facts = row.optJSONObject("arrival");
+                    // An older record's "hotspotMiles" (the retired hotspot distance) is ignored.
                     OfferSnapshot offer = facts == null ? null : new OfferSnapshot(integer(facts, "pay"),
                             decimal(facts, "miles"), integer(facts, "minutes"), integer(facts, "stops"), null,
-                            decimal(facts, "hotspotMiles"), integer(facts, "items"),
-                            facts.optBoolean("itemApplicable", false));
+                            null, integer(facts, "items"), facts.optBoolean("itemApplicable", false));
                     out.add(new QualifyingWait.Sample(row.getLong("at"), row.getLong("wait"), offer));
                 } catch (JSONException | IllegalArgumentException corruptEntry) { /* Fail closed for this record. */ }
             }

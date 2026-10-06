@@ -25,7 +25,7 @@ public class QualifyingWaitStoreTest {
         QualifyingWaitStore.clear(context);
         context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, Consent.VERSION).commit();
-        rules = new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0);
+        rules = FilterSettings.of(true, 1000, 0, 0, 0);
     }
     @After public void cleanup() { QualifyingWaitStore.flush(); QualifyingWaitStore.clear(context);
         QualifyingWaitStore.wallClock = System::currentTimeMillis; }
@@ -111,6 +111,61 @@ public class QualifyingWaitStoreTest {
         assertEquals(0, QualifyingWaitStore.estimate(context, rules).observedMs);
         assertEquals(0, QualifyingWaitStore.estimate(context, rules).readable);
     }
+    @Test public void snapshotIsWhatTheEstimateSeesIncludingTheOpenWait() {
+        assertTrue(QualifyingWaitStore.snapshot(context).isEmpty());
+        QualifyingWaitStore.screen(context, true, DasherScene.WAITING, null, false, false);
+        for (int i = 0; i < 4; i++) { tick(5_000); QualifyingWaitStore.heartbeat(context, true); }
+        List<QualifyingWait.Sample> open = QualifyingWaitStore.snapshot(context);
+        assertEquals("the wait in progress, right-censored", 1, open.size());
+        assertNull(open.get(0).arrival);
+        assertEquals(20_000, open.get(0).observedMs);
+
+        QualifyingWaitStore.screen(context, true, DasherScene.OFFER,
+                new OfferSnapshot(1200, 3.0, 15, 2), false, false);
+        List<QualifyingWait.Sample> rows = QualifyingWaitStore.snapshot(context);
+        assertEquals(1, rows.size());
+        assertEquals(Integer.valueOf(1200), rows.get(0).arrival.payCents);
+        assertEquals(20_000, rows.get(0).observedMs);
+        long exposure = 0;
+        for (QualifyingWait.Sample row : rows) exposure += row.observedMs;
+        assertEquals(QualifyingWaitStore.estimate(context, rules).observedMs, exposure);
+        try {
+            rows.add(new QualifyingWait.Sample(1, 1, null));
+            fail("the snapshot is read-only");
+        } catch (UnsupportedOperationException expected) {
+            // A copy: nothing a caller does reaches the store.
+        }
+        // A restart keeps the numbers, never the timer.
+        QualifyingWaitStore.stop(context);
+        QualifyingWaitStore.flush();
+        QualifyingWaitStore.forgetCache();
+        assertEquals(1, QualifyingWaitStore.snapshot(context).size());
+        assertEquals(Integer.valueOf(1200), QualifyingWaitStore.snapshot(context).get(0).arrival.payCents);
+    }
+
+    @Test public void theRetiredHotspotDistanceIsNotWrittenAndOlderRowsStillDecode() {
+        @SuppressWarnings("deprecation")
+        OfferSnapshot withDistance = new OfferSnapshot(1000, 3.0, 15, 2).withFinalStopHotspotMiles(1.5);
+        List<QualifyingWait.Sample> rows = new ArrayList<>();
+        rows.add(new QualifyingWait.Sample(12345, 1000, withDistance));
+        String json = QualifyingWaitStore.encode(rows);
+        assertFalse(json, json.contains("hotspotMiles"));
+        assertTrue(json, json.contains("\"pay\":1000"));
+
+        String older = "[{\"at\":12345,\"wait\":1000,\"arrival\":{\"pay\":1000,\"miles\":3,\"minutes\":15,"
+                + "\"stops\":2,\"items\":null,\"itemApplicable\":false,\"hotspotMiles\":1.5}},"
+                + "{\"at\":12346,\"wait\":2000}]";
+        List<QualifyingWait.Sample> decoded = QualifyingWaitStore.decode(older);
+        assertEquals(2, decoded.size());
+        assertEquals(Integer.valueOf(1000), decoded.get(0).arrival.payCents);
+        assertEquals(3.0, decoded.get(0).arrival.miles, 0);
+        assertEquals(Integer.valueOf(15), decoded.get(0).arrival.minutes);
+        assertEquals(Integer.valueOf(2), decoded.get(0).arrival.stops);
+        assertNull(decoded.get(0).arrival.finalStopHotspotMiles);
+        assertNull(decoded.get(1).arrival);
+        assertFalse(QualifyingWaitStore.encode(decoded).contains("hotspotMiles"));
+    }
+
     @Test public void malformedNegativeOrOversizedHistoryDoesNotRestoreTiming() {
         assertTrue(QualifyingWaitStore.decode("oops").isEmpty());
         assertTrue(QualifyingWaitStore.decode("[{\"at\":1,\"wait\":-1}]").isEmpty());

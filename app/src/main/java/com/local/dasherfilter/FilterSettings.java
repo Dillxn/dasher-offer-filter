@@ -1,44 +1,269 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Saved rules. Every threshold uses zero to mean "disabled". */
+/**
+ * Saved rules (0.5.0): three money minimums, an optional max stops, and Autopilot's switch, goal and bar. Zero turns a
+ * minimum off. An offer passes when its pay reaches {@code ⌈bar × max(flat, per mile × miles, per minute × minutes)
+ * ÷ 100⌉} and it has at most {@code maxStops} stops ({@link OfferRule}). Per minute is stored in cents per minute and
+ * shown as per hour (× 60); its stored number never changes for the display.
+ *
+ * <p>The bar ({@link #minimumScalePercent}) is how much of the minimums an offer must pay. The stored rules keep it at
+ * exactly 100 while Autopilot is off and within 50–150 while Autopilot moves it; this value class itself accepts 1–200
+ * so any bar can be evaluated. Max stops is never scaled.
+ *
+ * <p>Score by area, the hotspot, per-stop and per-item minimums, and every learned minimum are retired. The members
+ * marked {@code @Deprecated} below are an inert compatibility surface that keeps files of later work packages
+ * compiling until they drop their uses: constant retired fields, no-op or throwing retired methods, and the old
+ * positional constructors, which throw {@code IllegalArgumentException("retired rule: …")} for any retired argument
+ * that is not its default rather than silently change its meaning.
+ */
 final class FilterSettings {
+    /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */
+    static final int MOST_CENTS = 100_000;
+    /** Autopilot's acceptance-rate goals in whole percent: keep a top tier, keep a tier, pay first. */
+    static final int GOAL_TOP_TIER = 70;
+    static final int GOAL_TIER = 50;
+    static final int GOAL_PAY_FIRST = 0;
+    /** The bar that means "exactly your minimums". */
+    static final int BAR_AT_MINIMUMS = 100;
+
     final boolean enabled;
+    /** Minimum pay, in cents. */
     final int flatCents;
+    /** Minimum pay per mile, in cents per mile. */
     final int perMileCents;
+    /** Minimum pay per minute of Dasher's own time estimate, in cents per minute; shown × 60 as per hour. */
     final int perMinuteCents;
-    /** Minimum pay per stop, a floor like per mile and per minute: an offer needs at least stops × this. */
-    final int perStopCents;
-    /** Saved pay per observed total item; only offers declaring items/shopping use it. */
-    final int perItemCents;
+    /** At most this many stops; 0 is no limit. A hard limit the bar never scales. */
     final int maxStops;
-    final boolean risingOffers;
-    /** The highest standalone pay accepted while learning (the adaptive pay minimum); only Reset lowers it. */
-    final int lastAcceptedCents;
-    /** Best accepted pay per minute, mile, stop and observed item; floors while the adaptive minimum is on. */
-    final AcceptedBest best;
-    /** What offers declined by hand taught the adaptive minimum: values later offers must beat. */
-    final DeclinedFloor declined;
-    /**
-     * Score by area, the user's choice: a standalone offer passes when its area score ({@link AreaScore}) reaches
-     * the selected minimum scale (100% by default), rather than every minimum. Max stops stays a hard limit, and
-     * add-ons keep the strict rules.
-     */
-    final boolean scoreByArea;
-    /** Minimum reciprocal final-stop-to-hotspot distance, in hundredths of 1/mile; zero disables it. */
-    final int hotspotProximityHundredths;
-    /** Common scale of the resolved minimums; 100 is unchanged, 97 allows a 3% buffer. Saved baselines stay intact. */
+    /** Autopilot on: only Autopilot moves the bar, between offers. */
+    final boolean autopilot;
+    /** Autopilot's acceptance-rate goal: 70, 50 or 0 (pay first). */
+    final int autopilotGoalPercent;
+    /** The bar: how much of the minimums an offer must pay, in percent (clamped 1–200; 100 is exactly them). */
     final int minimumScalePercent;
 
+    // ---- Retired rules: constant, so no decision can depend on them (removed with their last uses). ----
+    /** Retired adaptive minimum: always off. */
+    @Deprecated final boolean risingOffers = false;
+    /** Retired score by area: always off. */
+    @Deprecated final boolean scoreByArea = false;
+    /** Retired per-stop minimum (folded into minimum pay by the 0.5.0 migration): always 0. */
+    @Deprecated final int perStopCents = 0;
+    /** Retired per-item minimum: always 0. */
+    @Deprecated final int perItemCents = 0;
+    /** Retired hotspot-proximity minimum: always 0. */
+    @Deprecated final int hotspotProximityHundredths = 0;
+    /** Retired highest-accepted payout floor: always 0. */
+    @Deprecated final int lastAcceptedCents = 0;
+    /** Retired best accepted rates: always none. */
+    @Deprecated final AcceptedBest best = AcceptedBest.NONE;
+    /** Retired decline lessons: always none. */
+    @Deprecated final DeclinedFloor declined = DeclinedFloor.NONE;
+
+    /**
+     * The rules. Money minimums are held to [0, {@link #MOST_CENTS}], max stops to 0 or more, the goal to 70, 50 or 0
+     * (anything else is 70) and the bar to 1–200.
+     */
+    FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
+                   boolean autopilot, int autopilotGoalPercent, int minimumScalePercent) {
+        this.enabled = enabled;
+        this.flatCents = money(flatCents);
+        this.perMileCents = money(perMileCents);
+        this.perMinuteCents = money(perMinuteCents);
+        this.maxStops = Math.max(0, maxStops);
+        this.autopilot = autopilot;
+        this.autopilotGoalPercent = sanitizedGoal(autopilotGoalPercent);
+        this.minimumScalePercent = Math.max(1, Math.min(200, minimumScalePercent));
+    }
+
+    /** Rules with Autopilot off, its goal at the default 70% and the bar at exactly the minimums. */
+    static FilterSettings of(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, false, GOAL_TOP_TIER,
+                BAR_AT_MINIMUMS);
+    }
+
+    /** 70, 50 and 0 (pay first) stand; anything else is the default, 70. */
+    static int sanitizedGoal(int percent) {
+        return percent == GOAL_TOP_TIER || percent == GOAL_TIER || percent == GOAL_PAY_FIRST ? percent : GOAL_TOP_TIER;
+    }
+
+    private static int money(int cents) {
+        return Math.max(0, Math.min(MOST_CENTS, cents));
+    }
+
+    /** True when at least one rule can reject an offer or leave it for review: a money minimum or max stops. */
+    boolean hasAnyRule() {
+        return hasMonetaryRule() || maxStops > 0;
+    }
+
+    /** A pay, per-mile or per-hour minimum is set. Autopilot and auto-accept need one. */
+    boolean hasMonetaryRule() {
+        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0;
+    }
+
+    /** A rate minimum is set, which prices what an add-on adds (its miles and minutes). */
+    boolean hasMarginalRule() {
+        return perMileCents > 0 || perMinuteCents > 0;
+    }
+
+    /** Per minute shown as per hour: cents per minute × 60. */
+    long perHourCents() {
+        return perMinuteCents * 60L;
+    }
+
+    /**
+     * Plain-language summary, e.g. "at least $4.00 · $1.00 per mile · $15.00 per hour · at most 3 stops · Autopilot
+     * bar 82% (goal 70%)"; "No rules set" without a rule.
+     */
+    String describe() {
+        List<String> rules = new ArrayList<>();
+        if (flatCents > 0) rules.add("at least " + DecisionLog.money(flatCents));
+        if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
+        if (perMinuteCents > 0) rules.add(DecisionLog.money(perHourCents()) + " per hour");
+        if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
+        if (rules.isEmpty()) return "No rules set";
+        if (autopilot) {
+            rules.add("Autopilot bar " + minimumScalePercent + "% ("
+                    + (autopilotGoalPercent == GOAL_PAY_FIRST ? "pay first" : "goal " + autopilotGoalPercent + "%")
+                    + ")");
+        } else if (minimumScalePercent != BAR_AT_MINIMUMS) {
+            rules.add("bar " + minimumScalePercent + "%");
+        }
+        return String.join(" · ", rules);
+    }
+
+    /** Compact summary for the status line, e.g. "$4 min · $1/mi · $15/hr · ≤3 stops · Auto 82%". */
+    String brief() {
+        List<String> rules = new ArrayList<>();
+        if (flatCents > 0) rules.add(DecisionLog.shortMoney(flatCents) + " min");
+        if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
+        if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perHourCents()) + "/hr");
+        if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
+        if (rules.isEmpty()) return "No rules set";
+        if (autopilot) rules.add("Auto " + minimumScalePercent + "%");
+        else if (minimumScalePercent != BAR_AT_MINIMUMS) rules.add("bar " + minimumScalePercent + "%");
+        return String.join(" · ", rules);
+    }
+
+    /**
+     * What a plan made from these rules depends on: everything but the bar, which is the plan's own output
+     * ("enabled:flat:mile:minute:maxStops:autopilot:goal").
+     */
+    String rulesKey() {
+        return enabled + ":" + flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
+                + autopilot + ":" + autopilotGoalPercent;
+    }
+
+    FilterSettings withEnabled(boolean value) {
+        return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent);
+    }
+
+    /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
+    FilterSettings withMaxStops(int stops) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, stops, autopilot,
+                autopilotGoalPercent, minimumScalePercent);
+    }
+
+    /** These rules at another bar (clamped 1–200); the minimums themselves never change. */
+    FilterSettings withMinimumScalePercent(int percent) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, percent);
+    }
+
+    /**
+     * Autopilot on or off with {@code goal} (70, 50 or 0). Turning it off puts the bar back at exactly the minimums;
+     * turning it on keeps the bar until Autopilot moves it.
+     */
+    FilterSettings withAutopilot(boolean on, int goal) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, on, goal,
+                on ? minimumScalePercent : BAR_AT_MINIMUMS);
+    }
+
+    /** The three money minimums replaced; max stops, the switch, Autopilot and the bar stay. */
+    FilterSettings withMinimums(int flat, int mile, int minute) {
+        return new FilterSettings(enabled, flat, mile, minute, maxStops, autopilot, autopilotGoalPercent,
+                minimumScalePercent);
+    }
+
+    /** The set minimums by stable axis index: pay, per mile, per minute, then 0 for the retired stop, hotspot, item. */
+    int[] minimums() {
+        return new int[] {flatCents, perMileCents, perMinuteCents, 0, 0, 0};
+    }
+
+    /**
+     * Replace the minimums in {@link #minimums} order. The retired slots (3 per stop, 4 hotspot, 5 per item) must be 0
+     * when present: {@code IllegalArgumentException("retired rule: …")} otherwise.
+     */
+    FilterSettings withMinimums(int[] cents) {
+        String[] retired = {"per stop", "hotspot", "per item"};
+        for (int slot = 3; slot < cents.length; slot++) {
+            if (cents[slot] != 0) throw retired(slot - 3 < retired.length ? retired[slot - 3] : "slot " + slot);
+        }
+        return withMinimums(cents[0], cents[1], cents[2]);
+    }
+
+    // ---- Deprecated compatibility surface (inert) ----
+
+    /** Score by area is retired: turning it off changes nothing; turning it on is refused. */
+    @Deprecated
+    FilterSettings withScoreByArea(boolean on) {
+        if (on) throw new IllegalStateException("retired rule: score by area");
+        return this;
+    }
+
+    /** The adaptive minimum is retired: turning it off changes nothing; turning it on is refused. */
+    @Deprecated
+    FilterSettings withAdaptive(boolean on) {
+        if (on) throw new IllegalStateException("retired rule: adaptive");
+        return this;
+    }
+
+    /** Nothing is learned any more, so there is nothing to adopt. */
+    @Deprecated
+    FilterSettings adoptAdaptive() {
+        return this;
+    }
+
+    /** There is no adaptive baseline any more. */
+    @Deprecated
+    FilterSettings withoutRisingBaseline() {
+        return this;
+    }
+
+    /** The hotspot rule is retired: 0 changes nothing; anything else is refused. */
+    @Deprecated
+    FilterSettings withHotspotProximity(int hundredths) {
+        if (hundredths != 0) throw retired("hotspot");
+        return this;
+    }
+
+    /** The per-item rule is retired: 0 changes nothing; anything else is refused. */
+    @Deprecated
+    FilterSettings withPerItem(int cents) {
+        if (cents != 0) throw retired("per item");
+        return this;
+    }
+
+    /** Plain reciprocal-distance units of the retired hotspot rule; never money. */
+    @Deprecated
+    static String proximityLabel(int hundredths) {
+        return BigDecimal.valueOf(hundredths, 2).stripTrailingZeros().toPlainString() + " /mi";
+    }
+
+    /** Test shim: enabled, flat, per mile, per minute and max stops; per stop must be 0. Autopilot off, bar 100. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops) {
         this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, false, 0);
     }
 
+    /** Test shim; the adaptive minimum must be off with nothing learned. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents) {
@@ -46,6 +271,8 @@ final class FilterSettings {
                 lastAcceptedCents, AcceptedBest.NONE);
     }
 
+    /** Test shim; the adaptive minimum must be off with nothing learned. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best) {
@@ -53,6 +280,8 @@ final class FilterSettings {
                 lastAcceptedCents, best, DeclinedFloor.NONE);
     }
 
+    /** Test shim; the adaptive minimum must be off with nothing learned. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined) {
@@ -60,6 +289,8 @@ final class FilterSettings {
                 lastAcceptedCents, best, declined, false);
     }
 
+    /** Test shim; score by area must be off. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
@@ -68,14 +299,18 @@ final class FilterSettings {
                 lastAcceptedCents, best, declined, scoreByArea, 0);
     }
 
+    /** Test shim; the hotspot minimum must be 0. */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
                    boolean scoreByArea, int hotspotProximityHundredths) {
         this(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, risingOffers,
-                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, 100);
+                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, BAR_AT_MINIMUMS);
     }
 
+    /** Test shim; the old minimums scale becomes the bar (Autopilot off). */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
@@ -84,231 +319,36 @@ final class FilterSettings {
                 lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, 0);
     }
 
+    /**
+     * Test shim for every older positional form: maps enabled, flat, per mile, per minute, max stops and the old scale
+     * (as the bar) with Autopilot off, and refuses any retired argument that is not its default.
+     */
+    @Deprecated
     FilterSettings(boolean enabled, int flatCents, int perMileCents,
                    int perMinuteCents, int perStopCents, int maxStops,
                    boolean risingOffers, int lastAcceptedCents, AcceptedBest best, DeclinedFloor declined,
                    boolean scoreByArea, int hotspotProximityHundredths, int minimumScalePercent, int perItemCents) {
-        this.enabled = enabled;
-        this.flatCents = flatCents;
-        this.perMileCents = perMileCents;
-        this.perMinuteCents = perMinuteCents;
-        this.perStopCents = perStopCents;
-        this.perItemCents = Math.max(0, Math.min(MOST_CENTS, perItemCents));
-        this.maxStops = maxStops;
-        this.risingOffers = risingOffers;
-        this.lastAcceptedCents = lastAcceptedCents;
-        this.best = best == null ? AcceptedBest.NONE : best;
-        this.declined = declined == null ? DeclinedFloor.NONE : declined;
-        this.scoreByArea = scoreByArea;
-        this.hotspotProximityHundredths = Math.max(0, hotspotProximityHundredths);
-        this.minimumScalePercent = Math.max(1, Math.min(200, minimumScalePercent));
+        this(enabled, flatCents, perMileCents, perMinuteCents, maxStops, false, GOAL_TOP_TIER,
+                legacyBar(perStopCents, risingOffers, lastAcceptedCents, best, declined, scoreByArea,
+                        hotspotProximityHundredths, perItemCents, minimumScalePercent));
     }
 
-    /** True when at least one rule can reject or require review of an offer. */
-    boolean hasAnyRule() {
-        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0
-                || perItemCents > 0 || hotspotProximityHundredths > 0 || maxStops > 0 || risingOffers;
-    }
-
-    /** Rules whose cost scales with an add-on's own miles, minutes, or stops. */
-    boolean hasMarginalRule() {
-        return perMileCents > 0 || perMinuteCents > 0 || perStopCents > 0 || perItemCents > 0;
-    }
-
-    /**
-     * Plain-language summary of the enabled rules, e.g. "at least $7.00 · $1.50 per mile · at most 3 stops"; by area,
-     * "scored by area, 100% needed (max stops is a hard limit) · $7.00 pay · $1.50 per mile · at most 3 stops".
-     */
-    String describe() {
-        List<String> rules = new ArrayList<>();
-        // By area no single minimum is a floor of its own, so pay reads like the others.
-        if (flatCents > 0) rules.add(scoreByArea ? DecisionLog.money(flatCents) + " pay"
-                : "at least " + DecisionLog.money(flatCents));
-        if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
-        if (perMinuteCents > 0) rules.add(DecisionLog.money(perMinuteCents) + " per minute");
-        if (perStopCents > 0) rules.add(DecisionLog.money(perStopCents) + " per stop");
-        if (perItemCents > 0) rules.add(DecisionLog.money(perItemCents) + " per item (offers declaring items or shopping)");
-        if (hotspotProximityHundredths > 0) rules.add((scoreByArea ? "hotspot proximity " : "hotspot proximity at least ")
-                + proximityLabel(hotspotProximityHundredths) + " (final stop to nearest hotspot)");
-        if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
-        if (risingOffers) {
-            rules.add(lastAcceptedCents > 0
-                    ? "more than highest accepted " + DecisionLog.money(lastAcceptedCents)
-                    : "more than your highest accepted pay (none yet)");
-            if (!best.isEmpty()) rules.add("at least your best accepted " + best.summary());
-            if (!declined.isEmpty()) rules.add("more than you declined by hand: " + declined.summary());
+    /** The old scale, once every retired argument is confirmed at its default; throws otherwise. */
+    private static int legacyBar(int perStopCents, boolean risingOffers, int lastAcceptedCents, AcceptedBest best,
+                                 DeclinedFloor declined, boolean scoreByArea, int hotspotProximityHundredths,
+                                 int perItemCents, int minimumScalePercent) {
+        if (perStopCents != 0) throw retired("per stop");
+        if (risingOffers || lastAcceptedCents != 0 || (best != null && !best.isEmpty())
+                || (declined != null && !declined.isEmpty())) {
+            throw retired("adaptive");
         }
-        if (scoreByArea && !rules.isEmpty()) {
-            rules.add(0, "scored by area, " + minimumScalePercent + "% needed"
-                    + (maxStops > 0 ? " (max stops is a hard limit)" : ""));
-        }
-        if (minimumScalePercent != 100 && !rules.isEmpty()) {
-            rules.add(0, "minimums scaled to " + minimumScalePercent + "% of the following baselines");
-        }
-        return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
+        if (scoreByArea) throw retired("score by area");
+        if (hotspotProximityHundredths != 0) throw retired("hotspot");
+        if (perItemCents != 0) throw retired("per item");
+        return minimumScalePercent;
     }
 
-    /** Compact summary for the status line, e.g. "$7 min · $1.50/mi · ≤3 stops". */
-    String brief() {
-        List<String> rules = new ArrayList<>();
-        if (flatCents > 0) rules.add(DecisionLog.shortMoney(flatCents) + " min");
-        if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
-        if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perMinuteCents) + "/min");
-        if (perStopCents > 0) rules.add(DecisionLog.shortMoney(perStopCents) + "/stop");
-        if (perItemCents > 0) rules.add(DecisionLog.shortMoney(perItemCents) + "/item");
-        if (hotspotProximityHundredths > 0) rules.add("hotspot ≥" + proximityLabel(hotspotProximityHundredths));
-        if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
-        if (risingOffers) {
-            String adaptive = lastAcceptedCents > 0
-                    ? "beat " + DecisionLog.shortMoney(lastAcceptedCents) : "beat highest accepted";
-            rules.add(best.isEmpty() && declined.isEmpty() ? adaptive : adaptive + " + learned rates");
-        }
-        if (scoreByArea && !rules.isEmpty()) rules.add(0, "by area");
-        if (minimumScalePercent != 100 && !rules.isEmpty()) rules.add(0, "minimums " + minimumScalePercent + "%");
-        return rules.isEmpty() ? "No rules set" : String.join(" · ", rules);
-    }
-
-    FilterSettings withEnabled(boolean value) {
-        return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
-    }
-
-    /** These rules decided by area score ({@code on}) or by every minimum; nothing else changes. */
-    FilterSettings withScoreByArea(boolean on) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, on, hotspotProximityHundredths, minimumScalePercent, perItemCents);
-    }
-
-    /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
-    FilterSettings withMaxStops(int stops) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, Math.max(0, stops),
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
-    }
-
-    /**
-     * These rules with the adaptive minimum on or off; what it learned is kept either way (only Reset forgets it), and
-     * nothing else changes.
-     */
-    FilterSettings withAdaptive(boolean on) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops, on,
-                lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
-    }
-
-    /** The six set minimums: pay, per mile, per minute, per stop, reciprocal hotspot distance, per item. */
-    int[] minimums() {
-        return new int[] {flatCents, perMileCents, perMinuteCents, perStopCents, hotspotProximityHundredths, perItemCents};
-    }
-
-    /** Replace minimums in {@link #minimums} order; older callers leave absent hotspot and item minimums alone. */
-    FilterSettings withMinimums(int[] cents) {
-        return new FilterSettings(enabled, cents[0], cents[1], cents[2], cents[3], maxStops, risingOffers,
-                lastAcceptedCents, best, declined, scoreByArea,
-                cents.length > 4 ? cents[4] : hotspotProximityHundredths, minimumScalePercent,
-                cents.length > 5 ? cents[5] : perItemCents);
-    }
-
-    /** This independent fixed minimum is never learned or altered by adopting adaptive minimums. */
-    FilterSettings withHotspotProximity(int hundredths) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hundredths, minimumScalePercent, perItemCents);
-    }
-
-    /** Fixed per-item minimum; no other setting or learned value changes. */
-    FilterSettings withPerItem(int cents) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths,
-                minimumScalePercent, cents);
-    }
-
-    /** Scale the resolved minimums together without changing any saved or learned baseline. */
-    FilterSettings withMinimumScalePercent(int percent) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                risingOffers, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, percent, perItemCents);
-    }
-
-    /** Plain reciprocal-distance units; never formatted as money. */
-    static String proximityLabel(int hundredths) {
-        return BigDecimal.valueOf(hundredths, 2).stripTrailingZeros().toPlainString() + " /mi";
-    }
-
-    /**
-     * These rules with each set minimum raised to what the adaptive minimum on the same measure asks, so the set
-     * minimums alone are never looser than the adaptive ones, for an offer of any length. Pay: one cent above the
-     * highest accepted payout and above the payout declined by hand. Per mile, minute, stop and item: the smallest whole-cent
-     * rate that asks at least as much as the best accepted rate (which an offer must match, rounded up), so
-     * {@code ceil(pay ÷ amount)}, and more than the declined rate (which an offer must beat), so
-     * {@code floor(pay ÷ amount) + 1}. Worked exactly, never in floating point.
-     *
-     * <p>A set minimum is never lowered, a measure with nothing learned is left as it is, and nothing else changes:
-     * the on or paused state, max stops, the adaptive minimum and everything it learned stay as they are (it goes on
-     * rising, until Reset). Each is held to the most a knob can be set to, {@link #MOST_CENTS}.
-     */
-    FilterSettings adoptAdaptive() {
-        long pay = 0;
-        if (lastAcceptedCents > 0) pay = lastAcceptedCents + 1L;
-        if (declined.payCents > 0) pay = Math.max(pay, declined.beatPay());
-        long mile = 0;
-        if (best.hasPerMile()) mile = matched(best.milePay, miles(best.miles));
-        if (declined.rates.hasPerMile()) {
-            mile = Math.max(mile, beaten(declined.rates.milePay, miles(declined.rates.miles)));
-        }
-        long minute = 0;
-        if (best.hasPerMinute()) minute = matched(best.minutePay, BigDecimal.valueOf(best.minutes));
-        if (declined.rates.hasPerMinute()) {
-            minute = Math.max(minute, beaten(declined.rates.minutePay, BigDecimal.valueOf(declined.rates.minutes)));
-        }
-        long stop = 0;
-        if (best.hasPerStop()) stop = matched(best.stopPay, BigDecimal.valueOf(best.stops));
-        if (declined.rates.hasPerStop()) {
-            stop = Math.max(stop, beaten(declined.rates.stopPay, BigDecimal.valueOf(declined.rates.stops)));
-        }
-        long item = best.hasPerItem() ? matched(best.itemPay, BigDecimal.valueOf(best.items)) : 0;
-        return withMinimums(new int[] {raised(flatCents, pay), raised(perMileCents, mile),
-                raised(perMinuteCents, minute), raised(perStopCents, stop), hotspotProximityHundredths,
-                raised(perItemCents, item)});
-    }
-
-    /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */
-    static final int MOST_CENTS = 100_000;
-
-    /** A set minimum raised to {@code asks} (0 when nothing was learned), held to {@link #MOST_CENTS}; never lower. */
-    private static int raised(int set, long asks) {
-        if (asks <= 0) return set;
-        return (int) Math.max(set, Math.min(MOST_CENTS, asks));
-    }
-
-    /** Miles as the adaptive minimums compare them (their decimal form); null when not a usable amount. */
-    private static BigDecimal miles(double miles) {
-        return Double.isFinite(miles) && miles > 0 ? BigDecimal.valueOf(miles) : null;
-    }
-
-    /** The smallest whole-cent rate never below {@code pay ÷ amount}: {@code ceil(pay ÷ amount)}; saturates. */
-    private static long matched(int pay, BigDecimal amount) {
-        return perUnit(pay, amount, RoundingMode.CEILING, 0);
-    }
-
-    /** The smallest whole-cent rate always above {@code pay ÷ amount}: {@code floor(pay ÷ amount) + 1}; saturates. */
-    private static long beaten(int pay, BigDecimal amount) {
-        return perUnit(pay, amount, RoundingMode.FLOOR, 1);
-    }
-
-    private static long perUnit(int pay, BigDecimal amount, RoundingMode rounding, int plus) {
-        if (pay <= 0 || amount == null || amount.signum() <= 0) return 0;
-        try {
-            long rate = BigDecimal.valueOf(pay).divide(amount, 0, rounding).longValueExact();
-            return rate > Long.MAX_VALUE - plus ? Long.MAX_VALUE : rate + plus;
-        } catch (ArithmeticException overflow) {
-            return Long.MAX_VALUE;
-        }
-    }
-
-    /**
-     * Without the adaptive minimum (no payout baseline, best rates or decline floors): how add-on routes are judged,
-     * and all that a bound on unknown pay is judged by. Score by area is kept; add-ons ask for the strict rules
-     * themselves.
-     */
-    FilterSettings withoutRisingBaseline() {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, perStopCents, maxStops,
-                false, lastAcceptedCents, best, declined, scoreByArea, hotspotProximityHundredths, minimumScalePercent, perItemCents);
+    private static IllegalArgumentException retired(String rule) {
+        return new IllegalArgumentException("retired rule: " + rule);
     }
 }

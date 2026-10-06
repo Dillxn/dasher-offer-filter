@@ -8,7 +8,7 @@ import org.junit.Test;
 public class QualifyingWaitTest {
     private static final long WALL = 1_800_000_000_000L;
     private static OfferSnapshot offer(int pay) { return new OfferSnapshot(pay, 3.0, 15, 2); }
-    private static FilterSettings rules(int pay) { return new FilterSettings(true, pay, 0, 0, 0, 0, false, 0); }
+    private static FilterSettings rules(int pay) { return FilterSettings.of(true, pay, 0, 0, 0); }
     private static List<QualifyingWait.Sample> history() {
         List<QualifyingWait.Sample> rows = new ArrayList<>();
         for (int pay : new int[] {500, 1000, 1200, 1400, 700}) {
@@ -56,41 +56,101 @@ public class QualifyingWaitTest {
         assertEquals(300_000, estimate.typicalMs);
         assertTrue(estimate.detail().contains("not a countdown or promise"));
     }
-    @Test public void unreadableOffersSuppressNumericPredictionInsteadOfBecomingFailures() {
+    @Test public void unreadableArrivalsSuppressTheEstimateOnlyWhenTheyOutnumberReadableOnes() {
+        // Five readable arrivals and one that lacks a fact: the usual thresholds decide, and its waiting counts.
         List<QualifyingWait.Sample> rows = history();
         rows.add(new QualifyingWait.Sample(WALL, 60_000, OfferSnapshot.UNKNOWN));
         QualifyingWait.Estimate estimate = QualifyingWait.estimate(rows, rules(1000));
+        assertEquals(QualifyingWait.Status.READY, estimate.status);
+        assertEquals(1, estimate.unreadable);
+        assertEquals(5, estimate.readable);
+        assertEquals(3, estimate.qualifying);
+        assertEquals(660_000, estimate.observedMs);
+        assertEquals(220_000, estimate.typicalMs);
+        assertTrue(estimate.detail(), estimate.detail().contains(
+                " 1 arrival lacked facts needed by your current minimums. Your current minimums are used."));
+        assertFalse(estimate.detail(), estimate.detail().contains("learned"));
+        assertFalse(estimate.detail(), estimate.detail().contains("area"));
+
+        // As many unreadable as readable: still not suppressed.
+        for (int i = 0; i < 4; i++) rows.add(new QualifyingWait.Sample(WALL, 60_000, OfferSnapshot.UNKNOWN));
+        estimate = QualifyingWait.estimate(rows, rules(1000));
+        assertEquals(5, estimate.unreadable);
+        assertEquals(QualifyingWait.Status.READY, estimate.status);
+        assertTrue(estimate.detail(), estimate.detail().contains(" 5 arrivals lacked facts"));
+
+        // More unreadable than readable: no numerical estimate.
+        rows.add(new QualifyingWait.Sample(WALL, 60_000, OfferSnapshot.UNKNOWN));
+        estimate = QualifyingWait.estimate(rows, rules(1000));
         assertEquals(QualifyingWait.Status.UNREADABLE, estimate.status);
         assertEquals(-1, estimate.typicalMs);
-        assertEquals(1, estimate.unreadable);
+        assertEquals(6, estimate.unreadable);
+        assertTrue(estimate.detail(), estimate.detail().endsWith(
+                " 6 arrivals lacked facts needed by your current minimums, so no wait is estimated."));
     }
-    @Test public void currentBufferAndAdaptiveFloorsAreNotASecondScoringFormula() {
+    @Test public void unreadableArrivalsStillLeaveTheOtherThresholdsInCharge() {
+        // Readable arrivals below the minimum sample: learning, and the detail says what lacked facts.
+        List<QualifyingWait.Sample> rows = new ArrayList<>(history().subList(0, 4));
+        rows.add(new QualifyingWait.Sample(WALL, 60_000, OfferSnapshot.UNKNOWN));
+        QualifyingWait.Estimate estimate = QualifyingWait.estimate(rows, rules(1000));
+        assertEquals(QualifyingWait.Status.LEARNING, estimate.status);
+        assertTrue(estimate.detail(), estimate.detail().contains(
+                " 1 arrival lacked facts needed by your current minimums. Needs at least 3 matches"));
+        // With none unreadable the detail says nothing about it.
+        assertFalse(QualifyingWait.estimate(history(), rules(1000)).detail().contains("lacked"));
+    }
+    @Test public void theCurrentBarIsNotASecondScoringFormula() {
         FilterSettings baseline = rules(1000);
         assertEquals(3, QualifyingWait.estimate(history(), baseline).qualifying);
+        // At a 70% bar the minimum asks ⌈0.7 × $10.00⌉ = $7.00, which the $7.00 arrival meets.
         assertEquals(4, QualifyingWait.estimate(history(), baseline.withMinimumScalePercent(70)).qualifying);
-        FilterSettings learned = new FilterSettings(true, 1000, 0, 0, 0, 0, true, 1200);
-        assertEquals(1, QualifyingWait.estimate(history(), learned).qualifying);
-        assertEquals(3, QualifyingWait.estimate(history(), learned.withAdaptive(false)).qualifying);
+        // At 130% it asks $13.00: only the $14.00 arrival.
+        assertEquals(1, QualifyingWait.estimate(history(), baseline.withMinimumScalePercent(130)).qualifying);
     }
-    @Test public void compensatingAreaDecisionIsReusedExactly() {
-        FilterSettings settings = new FilterSettings(true, 1000, 100, 0, 0, 0, false, 0);
+    @Test public void theSharedStrictRuleDecidesEachArrival() {
+        // $8.00 for 1 mi and 15 min against $10.00 minimum pay and $1.00 per mile: every minimum must be met.
+        FilterSettings settings = FilterSettings.of(true, 1000, 100, 0, 0);
         List<QualifyingWait.Sample> rows = new ArrayList<>();
         for (int i = 0; i < 5; i++) rows.add(new QualifyingWait.Sample(WALL, 120_000,
                 new OfferSnapshot(800, 1.0, 15, 2)));
         assertEquals(0, QualifyingWait.estimate(rows, settings).qualifying);
-        assertEquals(5, QualifyingWait.estimate(rows, settings.withScoreByArea(true)).qualifying);
+        // ⌈bar × $10.00⌉ ≤ $8.00 exactly up to an 80% bar.
+        assertEquals(5, QualifyingWait.estimate(rows, settings.withMinimumScalePercent(80)).qualifying);
+        assertEquals(0, QualifyingWait.estimate(rows, settings.withMinimumScalePercent(81)).qualifying);
     }
-    @Test public void unavailableHotspotNeverBecomesAZeroDistance() {
-        FilterSettings settings = rules(1000).withHotspotProximity(100);
-        QualifyingWait.Estimate estimate = QualifyingWait.estimate(history(), settings);
-        assertEquals(QualifyingWait.Status.UNREADABLE, estimate.status);
-        assertEquals(-1, estimate.typicalMs);
+    @Test public void aRetiredHotspotDistanceIsNeverPartOfAnArrival() {
+        @SuppressWarnings("deprecation")
+        OfferSnapshot withDistance = offer(1000).withFinalStopHotspotMiles(2.0);
+        QualifyingWait.Sample sample = new QualifyingWait.Sample(WALL, 120_000, withDistance);
+        assertNull(sample.arrival.finalStopHotspotMiles);
+        assertEquals(offer(1000).fingerprint(), sample.arrival.fingerprint());
+
+        // A reread that differs only by that distance is the same arrival, and keeps none.
+        QualifyingWait model = new QualifyingWait();
+        model.waiting(0, WALL);
+        model.offer(5_000, WALL + 5_000, offer(1000), false);
+        model.offer(6_000, WALL + 6_000, withDistance, false);
+        List<QualifyingWait.Sample> rows = model.snapshot(WALL + 6_000);
+        assertEquals(1, rows.size());
+        assertNull(rows.get(0).arrival.finalStopHotspotMiles);
+        assertEquals(Integer.valueOf(1000), rows.get(0).arrival.payCents);
     }
-    @Test public void declaredMissingItemsNeverBecomeOrdinaryDelivery() {
+    @Test public void anUnreadItemCountNoLongerMakesAnArrivalUnreadable() {
+        // No rule uses items any more: a shopping offer with its count unread is judged on pay, miles and minutes.
         List<QualifyingWait.Sample> rows = history();
         rows.set(1, new QualifyingWait.Sample(WALL, 120_000, offer(1000).withItems(null, true)));
-        QualifyingWait.Estimate estimate = QualifyingWait.estimate(rows, rules(500).withPerItem(100));
-        assertEquals(QualifyingWait.Status.UNREADABLE, estimate.status);
+        QualifyingWait.Estimate estimate = QualifyingWait.estimate(rows, rules(500));
+        assertEquals(QualifyingWait.Status.READY, estimate.status);
+        assertEquals(0, estimate.unreadable);
+        assertEquals(5, estimate.qualifying);
+        assertTrue(rows.get(1).arrival.itemCountApplicable);
+        assertNull(rows.get(1).arrival.items);
+    }
+    @Test public void anArrivalNeverKeepsTheBoundOnUnknownPay() {
+        OfferSnapshot bounded = new OfferSnapshot(null, 3.0, 15, 2, 900);
+        QualifyingWait.Sample sample = new QualifyingWait.Sample(WALL, 60_000, bounded);
+        assertNull(sample.arrival.payAtMostCents);
+        assertNull(sample.arrival.payCents);
     }
     @Test public void stoppedOrRestartedObservationCannotCountOffShiftOrDeliveryGap() {
         QualifyingWait model = new QualifyingWait();

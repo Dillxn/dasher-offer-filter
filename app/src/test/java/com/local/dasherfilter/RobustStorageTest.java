@@ -197,32 +197,45 @@ public class RobustStorageTest {
         assertArrayEquals(totals, DecisionLog.totals(app));
     }
 
-    @Test public void reportsNameCurrentRuleContextManualFloorsAndRecordedOutcomes() throws Exception {
-        DeclinedFloor declined = new DeclinedFloor(1100, new AcceptedBest(1300, 25, 1700, 4.5, 2200, 3));
-        FilterSettings rules = new FilterSettings(true, 1200, 150, 50, 400, 5, true, 1900,
-                new AcceptedBest(1800, 30, 1200, 3.0, 1400, 2), declined, true, 50, 97);
-        FilterStore.save(app, rules);
+    @Test public void reportsNameTheCurrentRulesAndRecordedOutcomes() throws Exception {
+        FilterSettings saved = FilterSettings.of(true, 1200, 150, 50, 5);
+        FilterStore.save(app, saved);
+        FilterSettings rules = FilterStore.load(app);
+        assertArrayEquals(new int[] {1200, 150, 50, 0, 0, 0}, rules.minimums());
         DecisionLog.record(app, entry(1000, 700));
         String shared = DiagnosticLog.fullReport(app);
         assertTrue(shared.contains("Current when this report was generated"));
-        assertTrue(shared.contains("minimum scale percent=97"));
-        assertTrue(shared.contains("hotspot proximity hundredths/mi=50"));
-        assertTrue(shared.contains("learning now=on"));
+        assertTrue(shared, shared.contains("flat cents=1200"));
+        assertTrue(shared, shared.contains("per-mile cents=150"));
+        assertTrue(shared, shared.contains("per-minute cents=50"));
+        assertTrue(shared, shared.contains("max stops=5"));
         assertTrue(shared.contains("outcome PASSED"));
-        assertTrue(shared.matches("(?s).*learning \\(auto-decline and Adaptive minimum both on\\) since="
-                + "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} (?:Z|[+-]\\d{2}:\\d{2}).*"));
         JSONObject json = new JSONObject(OfferReport.text(OfferReport.Problem.OTHER, "test", 1, "Android test",
                 rules, entry(1000, 700)));
-        JSONObject saved = json.getJSONObject("rules");
-        assertEquals(97, saved.getInt("minimumScalePercent"));
-        assertTrue(saved.getString("context").startsWith("current rules"));
-        JSONObject floor = saved.getJSONObject("declinedByHand");
-        assertEquals(1100, floor.getInt("payCents"));
-        assertEquals(1300, floor.getInt("minutePay"));
-        assertEquals(25, floor.getInt("minutes"));
-        assertEquals(1700, floor.getInt("milePay"));
-        assertEquals(4.5, floor.getDouble("miles"), 0);
-        assertEquals(2200, floor.getInt("stopPay"));
-        assertEquals(3, floor.getInt("stops"));
+        JSONObject current = json.getJSONObject("rules");
+        assertTrue(current.getBoolean("enabled"));
+        assertEquals(1200, current.getInt("flatCents"));
+        assertEquals(150, current.getInt("perMileCents"));
+        assertEquals(50, current.getInt("perMinuteCents"));
+        assertEquals(5, current.getInt("maxStops"));
+        assertTrue(current.getString("context").startsWith("current rules"));
+        // The decision's line never carries the retired hotspot distance, nor its steps.
+        JSONObject entry = json.getJSONObject("entry");
+        assertFalse(entry.has("finalStopHotspotMiles"));
+        assertFalse(entry.has("steps"));
+    }
+
+    @Test public void historyWithTheNewFieldsSurvivesAnInterruptedReplacement() throws Exception {
+        DecisionLog.record(app, entry(1000, 700).withBar(82, true));
+        DecisionLog.flush();
+        File file = new File(app.getFilesDir(), "decision-log.json");
+        FileOutputStream unfinished = new AtomicFile(file).startWrite();
+        unfinished.write("[{incomplete".getBytes(StandardCharsets.UTF_8));
+        unfinished.close();
+        DecisionLog.forgetCache();
+        DecisionLog.Entry kept = DecisionLog.recent(app, 1).get(0);
+        assertEquals(82, kept.barPercent);
+        assertTrue(kept.autopilot);
+        assertEquals(DecisionLog.MODEL, kept.model);
     }
 }

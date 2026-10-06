@@ -44,9 +44,10 @@ public final class StackedBonusBoundTest {
         assertEquals("two stops must not fall back to a single bonus", Integer.valueOf(1500), oneDropoff.payAtMostCents);
     }
 
-    @Test public void reportedOffersFailTheirFixedAreaRulesEvenWithEveryObservedBonus() {
-        FilterSettings rules = new FilterSettings(true, 1950, 409, 59, 1275, 3)
-                .withPerItem(735).withScoreByArea(true);
+    @Test public void reportedOffersFailTheirMinimumsEvenWithEveryObservedBonus() {
+        // The reported rules as 0.5.0 keeps them: $19.50 pay with $12.75 a stop folded in (2 × $12.75 = $25.50),
+        // $4.09 a mile and 59¢ a minute, at most 3 stops.
+        FilterSettings rules = FilterSettings.of(true, 2550, 409, 59, 3);
         OfferSnapshot[] reads = {screenshot(),
                 offer("$11.00", "3 stops (8.4 mi) • 42 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)"),
                 offer("$11.85", "3 stops (7.6 mi) • 34 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)")};
@@ -61,27 +62,33 @@ public final class StackedBonusBoundTest {
     }
 
     @Test public void aCentShortDeclinesButMeetingTheCeilingAlwaysRemainsReview() {
-        for (boolean area : new boolean[]{false, true}) {
-            FilterSettings rules = new FilterSettings(true, 1501, 0, 0, 0, 3).withScoreByArea(area);
-            assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(screenshot(), rules).result);
-            rules = new FilterSettings(true, 1500, 0, 0, 0, 3).withScoreByArea(area);
-            OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules);
-            assertEquals(OfferRule.Result.REVIEW, decision.result);
-            assertEquals(-1, decision.scorePercent);
-            assertFalse(AutoAccept.eligible(screenshot(), rules, true, false, false, 24));
-            assertEquals(OfferRule.Result.DECLINE,
-                    OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(101)).result);
-            assertEquals(OfferRule.Result.REVIEW,
-                    OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(99)).result);
-        }
+        FilterSettings rules = FilterSettings.of(true, 1501, 0, 0, 3);
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(screenshot(), rules).result);
+        rules = FilterSettings.of(true, 1500, 0, 0, 3);
+        OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules);
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+        assertEquals(-1, decision.scorePercent);
+        assertFalse(AutoAccept.eligible(screenshot(), rules, true, false, false, 24));
+        // The ceiling is judged at min(bar, 100): a raised bar never makes it stricter than the minimums.
+        assertEquals(OfferRule.Result.REVIEW,
+                OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(101)).result);
+        assertEquals(OfferRule.Result.REVIEW,
+                OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(99)).result);
+        // Below 100 it follows the bar: ⌈0.99 × $15.16⌉ = $15.01 is more than the $15.00 ceiling.
+        OfferRule.Decision lowered = OfferRule.evaluate(screenshot(),
+                FilterSettings.of(true, 1516, 0, 0, 3).withMinimumScalePercent(99));
+        assertEquals(OfferRule.Result.DECLINE, lowered.result);
+        assertEquals(1501, lowered.requiredCents);
+        assertEquals("pay at most $15.00 with its +$ amount; 99% bar: flat minimum", lowered.reason);
     }
 
-    @Test public void adaptiveFloorsCannotTurnTheCeilingIntoAnAddOnDecline() {
-        FilterSettings rules = new FilterSettings(true, 1000, 0, 0, 0, 3, true, 3000);
-        for (boolean area : new boolean[]{false, true}) {
-            OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules.withScoreByArea(area));
+    @Test public void aRaisedBarCannotTurnTheCeilingIntoADecline() {
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 3);
+        for (int bar : new int[] {100, 120, 150}) {
+            OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(bar));
             assertEquals(OfferRule.Result.REVIEW, decision.result);
             assertEquals(-1, decision.scorePercent);
+            assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(rules, screenshot()));
         }
     }
 

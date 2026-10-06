@@ -15,10 +15,11 @@ final class OfferSnapshot {
     /** This offer declares shopping/items. No declaration means this scoped rule is not applicable. */
     final boolean itemCountApplicable;
     /**
-     * Miles from this offer's final stop to its nearest current Dasher hotspot. This is neither route mileage nor
-     * the phone's distance to a learned offer area. Null means no trustworthy observation; zero is a real match.
-     * Hotspots may move while one offer remains up, so this contextual value is excluded from offer identity.
+     * Retired (0.5.0): miles from the final stop to the nearest Dasher hotspot. No reader ever measured it, no rule
+     * uses it, and nothing sets it any more, so it is always null in practice. The field stays only so older history
+     * and wait records that name it still parse; it is excluded from offer identity and never shown.
      */
+    @Deprecated
     final Double finalStopHotspotMiles;
     /**
      * Decline-only ceiling while a total beside one bare "+$" amount leaves pay unknown. A corroborated stack
@@ -59,7 +60,8 @@ final class OfferSnapshot {
                         items, itemCountApplicable);
     }
 
-    /** Attach only a verified final-stop-to-hotspot observation; no other offer fact changes. */
+    /** Retired with the hotspot rule: nothing reads the distance; no other offer fact changes. */
+    @Deprecated
     OfferSnapshot withFinalStopHotspotMiles(Double distance) {
         return new OfferSnapshot(payCents, miles, minutes, stops, payAtMostCents, distance,
                 items, itemCountApplicable);
@@ -107,8 +109,6 @@ final class OfferSnapshot {
                 + ", miles " + (miles == null ? "?" : miles)
                 + ", minutes " + (minutes == null ? "?" : minutes)
                 + ", stops " + (stops == null ? "?" : stops)
-                + (itemCountApplicable ? ", items " + (items == null ? "?" : items) : "")
-                + (finalStopHotspotMiles == null ? "" : ", final stop to nearest hotspot "
-                        + finalStopHotspotMiles + " mi");
+                + (itemCountApplicable ? ", items " + (items == null ? "?" : items) : "");
     }
 }

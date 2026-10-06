@@ -197,19 +197,21 @@ public final class StalledDeclineTest {
     }
 
     @Test public void loweringMinimumsCancelsTheOldRetryAndItsLateConfirmation() {
-        AccessibilityNodeInfo offered = offer("$19.40", "0:35");
+        autopilotBarAt103();
+        AccessibilityNodeInfo offered = offer("$20.30", "0:35");
         List<Long> declined = taps(decline);
         show(offered);
         assertEquals(1, declined.size());
-        FilterStore.save(app, FilterStore.load(app).withMinimumScalePercent(97));
+        // The user turns Autopilot off mid-decline: the bar drops to exactly the minimums, where $20.30 passes.
+        FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         pass(3_000);
-        assertEquals("the original 100% request is never retried", 1, declined.size());
+        assertEquals("the original 103% request is never retried", 1, declined.size());
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         List<Long> confirmed = taps(confirm);
         show(question(confirm));
         pass(3_000);
-        assertTrue("a late dialog cannot use the superseded 100% authority", confirmed.isEmpty());
-        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 100% to 97%"));
+        assertTrue("a late dialog cannot use the superseded 103% authority", confirmed.isEmpty());
+        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 103% to 100%"));
         assertTrue(Shadows.shadowOf(service).getGlobalActionsPerformed().isEmpty());
 
         AccessibilityNodeInfo next = offer("$7.90", "0:35");
@@ -219,9 +221,10 @@ public final class StalledDeclineTest {
     }
 
     @Test public void minimumScaleChangingDuringTheFirstReadCannotSendTheOldDecline() {
-        AccessibilityNodeInfo offered = offer("$19.40", "0:35");
+        autopilotBarAt103();
+        AccessibilityNodeInfo offered = offer("$20.30", "0:35");
         List<Long> declined = taps(decline);
-        changeScaleDuringNextRead(97);
+        turnAutopilotOffDuringNextRead();
         show(offered);
         pass(3_000);
         assertTrue("fresh saved minimums are checked immediately before tapping", declined.isEmpty());
@@ -230,34 +233,47 @@ public final class StalledDeclineTest {
     }
 
     @Test public void minimumScaleChangingDuringAConfirmationReadRevokesThatRequest() {
-        show(offer("$19.40", "0:35"));
+        autopilotBarAt103();
+        show(offer("$20.30", "0:35"));
         pass(300);
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         List<Long> confirmed = taps(confirm);
-        changeScaleDuringNextRead(97);
+        turnAutopilotOffDuringNextRead();
         show(question(confirm));
         pass(3_000);
         assertTrue(confirmed.isEmpty());
-        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 100% to 97%"));
+        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 103% to 100%"));
     }
 
     @Test public void changingMinimumsStopsRetriesOfAnAlreadyRequestedConfirmation() {
-        show(offer("$19.40", "0:35"));
+        autopilotBarAt103();
+        show(offer("$20.30", "0:35"));
         pass(300);
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         List<Long> confirmed = taps(confirm);
         show(question(confirm));
         assertEquals(1, confirmed.size());
-        FilterStore.save(app, FilterStore.load(app).withMinimumScalePercent(97));
+        FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         pass(4_000);
         assertEquals("a taken request cannot be recalled, but no further request is sent", 1, confirmed.size());
         assertTrue(DiagnosticLog.read(app).contains("automatic decline stopped after its confirmation was tapped"));
     }
 
-    private void changeScaleDuringNextRead(int percent) {
+    /**
+     * Since 0.5.0 only Autopilot moves the bar, and only between offers; the one change mid-decline is the user's own,
+     * turning Autopilot off (back to exactly the minimums). Here Autopilot set 103% before the offer came: the $20.00
+     * minimum then asks $20.60, so $20.30 is declined at 103% and passes at 100%.
+     */
+    private void autopilotBarAt103() {
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 103));
+        assertEquals(103, FilterStore.load(app).minimumScalePercent);
+    }
+
+    private void turnAutopilotOffDuringNextRead() {
         OfferFilterService.nodeFetchForTests = () -> {
             OfferFilterService.nodeFetchForTests = null;
-            FilterStore.save(app, FilterStore.load(app).withMinimumScalePercent(percent));
+            FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         };
     }
 
