@@ -141,9 +141,12 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertNotNull(shownButton(content, "Share report"));
             assertNotNull(shownButton(content, "Clear history"));
             assertNotNull(shownButton(content, "Tip"));
-            assertFalse("problem reports only through a GitHub connection, shown once connected",
-                    findButton(content, "Send problem reports").isShown());
-            assertFalse(findButton(content, "Share diagnostics after each dash").isShown());
+            assertNotNull("one accountless feedback row", row(content, "Send anonymous feedback"));
+            for (String retired : new String[] {"Connect GitHub", "GitHub", "Send problem reports",
+                    "Share diagnostics after each dash"}) {
+                assertNull(retired, findButton(content, retired));
+            }
+            assertNull("no GitHub row or line anywhere in Settings", shownTextContaining(content, "GitHub"));
         }
     }
 
@@ -238,63 +241,74 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void aReportTokenFromAnOlderVersionIsRemovedWithTheReportsWaitingForIt() throws IOException {
+    public void aReportTokenFromAnOlderVersionGoesWithEveryReportThatWaited() throws IOException {
         // Saved by an older version: a pasted token, a refusal it earned, a problem report and a dash's diagnostics.
         android.content.SharedPreferences reports = app.getSharedPreferences("reports", Context.MODE_PRIVATE);
         reports.edit().putString("token", "github_pat_old").putString("last_error", "GitHub rejected the token")
                 .commit();
         File problem = queued("1790000000000-000001.json");
         File diagnostics = queued("1790000000001-000002-d.json");
+        LegacyReportingCleanup.forgetCache();
 
-        assertFalse("no reports go with a pasted token any more", ReportOutbox.enabled(app));
-        ReportOutbox.flush();
-        assertFalse("the token is gone from the phone", reports.contains("token"));
-        assertFalse(reports.contains("last_error"));
-        assertFalse("the problem report waiting to go with it is discarded", problem.exists());
-        assertTrue("diagnostics only ever went through the GitHub connection, and stay", diagnostics.exists());
-        assertEquals("Off", ReportOutbox.status(app));
-        assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("the report token was removed"));
-
-        // Once only: a later use finds nothing to remove.
-        ReportOutbox.enabled(app);
+        assertTrue(LegacyReportingCleanup.run(app));
+        assertFalse("the token is gone from the phone",
+                app.getSharedPreferences("reports", Context.MODE_PRIVATE).contains("token"));
+        assertFalse(LegacyReportingCleanup.prefsFile(app, "reports").exists());
+        assertFalse("nothing an older version queued is ever sent", problem.exists());
+        assertFalse(diagnostics.exists());
         String log = DiagnosticLog.read(app);
-        assertEquals(log.indexOf("report token was removed"), log.lastIndexOf("report token was removed"));
+        assertTrue(log, log.contains("retired GitHub reporting removed: 1 settings file, 2 unsent report files"));
+        assertFalse(log, log.contains("github_pat_old"));
+
+        // Once only: a later trigger finds nothing to remove.
+        assertTrue(LegacyReportingCleanup.run(app));
+        log = DiagnosticLog.read(app);
+        assertEquals(log.indexOf("retired GitHub reporting removed"), log.lastIndexOf("retired GitHub reporting removed"));
     }
 
     @Test
-    public void reportsTheUserTurnedOnThroughTheConnectionStayOnWhenAnOldTokenGoes() throws IOException {
-        reportsOn();
-        app.getSharedPreferences("reports", Context.MODE_PRIVATE).edit().putString("token", "github_pat_old").commit();
+    public void anOldOptInTurnsNothingOnAfterTheUpdate() throws IOException {
+        // An older version's choices: reports through GitHub and diagnostics after each dash, both on.
+        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit().putString("access_token", "ghu_old")
+                .putString("login", "someone").commit();
+        app.getSharedPreferences("reports", Context.MODE_PRIVATE).edit().putBoolean("via_github", true).commit();
+        app.getSharedPreferences("dash_diagnostics", Context.MODE_PRIVATE).edit().putBoolean("on", true).commit();
         File problem = queued("1790000000000-000001.json");
-
-        assertTrue("Send problem reports stays on", ReportOutbox.enabled(app));
-        ReportOutbox.flush();
-        assertFalse(app.getSharedPreferences("reports", Context.MODE_PRIVATE).contains("token"));
-        assertFalse("what waited went with the token, so it goes", problem.exists());
-        assertTrue(ReportOutbox.status(app).startsWith("On"));
+        LegacyReportingCleanup.forgetCache();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            LegacyReportingCleanup.flush();
+            for (String name : LegacyReportingCleanup.PREFS) {
+                assertFalse(name, LegacyReportingCleanup.prefsFile(app, name).exists());
+            }
+            assertFalse(problem.exists());
+            View content = openSettings(activity);
+            assertNull(findButton(content, "Send problem reports"));
+            assertNull(findButton(content, "Connect GitHub"));
+        }
     }
 
     @Test
-    public void anEmptyTokenFromAnOlderVersionGoesQuietly() throws IOException {
+    public void anEmptyTokenFromAnOlderVersionGoesToo() throws IOException {
         app.getSharedPreferences("reports", Context.MODE_PRIVATE).edit().putString("token", "").commit();
         File problem = queued("1790000000000-000001.json");
-        assertFalse(ReportOutbox.enabled(app));
-        ReportOutbox.flush();
-        assertFalse(app.getSharedPreferences("reports", Context.MODE_PRIVATE).contains("token"));
-        assertTrue("nothing was sent with no token, so nothing is discarded for it", problem.exists());
-        assertFalse(DiagnosticLog.read(app).contains("report token"));
+        LegacyReportingCleanup.forgetCache();
+        assertTrue(LegacyReportingCleanup.run(app));
+        assertFalse(LegacyReportingCleanup.prefsFile(app, "reports").exists());
+        assertFalse(problem.exists());
     }
 
     @Test
-    public void openingTheAppRemovesAnOldTokenToo() {
+    public void openingTheAppRemovesAnOldTokenAndReportThisOfferStaysOnTheTicket() {
         app.getSharedPreferences("reports", Context.MODE_PRIVATE).edit().putString("token", "github_pat_old").commit();
+        LegacyReportingCleanup.forgetCache();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            LegacyReportingCleanup.flush();
             assertFalse(app.getSharedPreferences("reports", Context.MODE_PRIVATE).contains("token"));
             View content = activity.get().findViewById(android.R.id.content);
             DecisionLog.record(app, declinedEntry());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             openTicket(content);
-            assertNull("no Report this offer: reports are off", shownButton(content, "Report this offer"));
+            assertNotNull("accountless: always on the ticket", shownButton(content, "Report this offer"));
         }
     }
 

@@ -50,7 +50,6 @@ public class AcceptanceObservationTest {
         FilterStore.resetAccepted(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         ActiveRouteStore.clear(app);
         OfferNotificationService.forgetDeclineAction();

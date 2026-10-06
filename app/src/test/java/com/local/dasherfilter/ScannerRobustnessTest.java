@@ -217,6 +217,25 @@ public final class ScannerRobustnessTest {
         assertFalse(Dashing.awaitingEnd(app));
     }
 
+    @Test public void mixedDashEndedAndDeliveryDoesNotReleaseTheHoldBeforeAnUnambiguousEnd() {
+        // Contradictory delivery text can remain during task/window transitions. Neither the route nor the update
+        // hold may complete from that one mixed screen.
+        ActiveRouteStore.save(app, new OfferSnapshot(2400, 5.0, 20, 2));
+        Dashing.seen(app);
+        AccessibilityNodeInfo mixed = node("Dash ended", false);
+        Shadows.shadowOf(mixed).addChild(node("Deliver to Sam P", false));
+        Shadows.shadowOf(mixed).addChild(node("Total earned $84.20", false));
+        show(mixed);
+        assertNotNull("delivery and end at once are not completion evidence", ActiveRouteStore.load(app));
+        assertTrue(Dashing.awaitingEnd(app));
+        pass(1_100);
+        AccessibilityNodeInfo ended = node("Dash ended", false);
+        Shadows.shadowOf(ended).addChild(node("Total earned $84.20", false));
+        show(ended);
+        assertNull("a clear completed end ends the route", ActiveRouteStore.load(app));
+        assertFalse(Dashing.awaitingEnd(app));
+    }
+
     @Test public void pausedScreenIsCapturedTruthfullyAndDoesNotReleaseTheUpdateHold() {
         show(node("Finding offers", false));
         pass(1_100);

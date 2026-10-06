@@ -53,10 +53,6 @@ public final class ItemHistoryTest {
                 Collections.emptyList()).withScore(score);
     }
 
-    private static JSONObject reportJson(ProblemReport report) throws Exception {
-        int start = report.body.indexOf("```json\n") + 8;
-        return new JSONObject(report.body.substring(start, report.body.indexOf("\n```", start)));
-    }
 
     @Test public void numericCountAndApplicabilityRoundTripWithoutChangingRecordedScore() throws Exception {
         DecisionLog.Entry original = entry(1000, offer(12, true), 137);
@@ -133,19 +129,17 @@ public final class ItemHistoryTest {
         FilterStore.save(app, rules);
         DecisionLog.Entry original = entry(1000, offer(12, true), 137);
         DecisionLog.record(app, original);
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.USER_REPORT, "test", rules, original,
-                Collections.emptyList(), null, null, Collections.singletonList(original));
-        JSONObject json = reportJson(report);
+        String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test", rules, original);
+        JSONObject json = new JSONObject(report);
         assertEquals(150, json.getJSONObject("rules").getInt("perItemCents"));
         assertEquals(12, json.getJSONObject("entry").getInt("items"));
         assertTrue(json.getJSONObject("entry").getBoolean("itemCountApplicable"));
         assertEquals(137, json.getJSONObject("entry").getInt("score"));
-        assertEquals(12, json.getJSONArray("recent").getJSONObject(0).getInt("items"));
         assertEquals(0, json.getJSONObject("rules").getJSONObject("bestAccepted").getInt("items"));
         assertEquals(0, json.getJSONObject("rules").getJSONObject("bestAccepted").getInt("itemPay"));
         assertFalse(FilterStore.load(app).best.hasPerItem());
         assertFalse(json.getJSONObject("rules").getJSONObject("declinedByHand").has("items"));
-        assertTrue(report.body.contains("12 items"));
+        assertTrue(json.getString("read"), json.getString("read").contains("12 items"));
         String shared = DiagnosticLog.fullReport(app);
         assertTrue(shared.contains("per-item cents=150"));
         assertTrue(shared.contains("Current when this report was generated"));

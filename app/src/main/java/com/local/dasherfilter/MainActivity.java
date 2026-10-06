@@ -1234,8 +1234,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .setTitle("Send anonymous feedback?")
                 .setMessage("No account, name or email is required. The feedback record stores only what you type, "
                         + "the app version, and masked diagnostics if you explicitly attach them. Network providers still "
-                        + "see ordinary connection metadata such as an IP address; Offer Filter does not store the raw IP "
-                        + "with your feedback. Masking can miss details, so review diagnostics before attaching them.")
+                        + "see ordinary connection metadata such as an IP address; " + AppName.NAME
+                        + " does not store the raw IP with your feedback. Masking can miss details, so review diagnostics before attaching them.")
                 .setView(frame)
                 .setPositiveButton("Send", (dialog, which) -> {
                     String note = message.getText().toString().trim();

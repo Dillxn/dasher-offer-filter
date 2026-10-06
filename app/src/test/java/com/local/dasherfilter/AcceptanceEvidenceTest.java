@@ -62,7 +62,6 @@ public class AcceptanceEvidenceTest {
         FilterStore.resetAccepted(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         ActiveRouteStore.clear(app);
         OfferNotificationService.forgetDeclineAction();
@@ -193,11 +192,11 @@ public class AcceptanceEvidenceTest {
         String log = DiagnosticLog.read(app);
         contains(log, "[accept] Accepted without a seen tap: Pay $16.75");
         contains(log, "[accept] Learned from accepted Pay $16.75");
-        // The steps stay on the phone: an automatic report carries none of them.
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.UNREADABLE_OFFER, "test", saved,
-                DecisionLog.recent(app, 1).get(0), Collections.<String>emptyList(), null, null,
-                DecisionLog.recent(app, 10));
-        assertFalse(report.body, report.body.contains("steps") || report.body.contains("Accepted;"));
+        // The steps stay on the phone: a report of the offer carries none of them, only its outcome category.
+        String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test", saved,
+                DecisionLog.recent(app, 1).get(0));
+        assertFalse(report, report.contains("steps") || report.contains("Accepted;"));
+        assertTrue(report, report.contains("\"outcome\": \"ACCEPTED\""));
     }
 
     @Test

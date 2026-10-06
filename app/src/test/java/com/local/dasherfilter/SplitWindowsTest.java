@@ -69,7 +69,6 @@ public class SplitWindowsTest {
         Updater.setEnabled(app, false);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         AreaMap.forgetCache();
         OfferFilterService.forgetScreenState();

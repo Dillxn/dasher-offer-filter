@@ -43,7 +43,9 @@ class MirrorOnboardingTest(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_no_account_setup_and_exact_consent_caption(self):
-        self.assertIn("No GitHub account is needed", self.page.text)
+        self.assertIn("No account is needed", self.page.text)
+        self.assertNotIn("Connecting GitHub", self.page.text)
+        self.assertNotIn("GitHub", self.page.text)
         self.assertIn("I understand and accept", self.page.text)
         self.assertIn("Not now", self.page.text)
         self.assertIn("Drag a knob", self.page.text)
@@ -72,12 +74,13 @@ class MirrorOnboardingTest(unittest.TestCase):
                 self.assertIn(phrase, self.page.text)
 
     def test_public_notices_and_existing_verification_links(self):
-        base = "https://github.com/Dillxn/offer-filter-site/blob/app-source/"
-        for destination in (base + "PRIVACY.md", base + "TERMS.md", base + "LICENSE",
-                            "/verification.json", "/signing-receipt.txt", "/OfferFilter.apk",
-                            "https://dillxn.github.io/offer-filter-site/#help"):
+        for destination in ("https://offerfilter.org/privacy/", "https://offerfilter.org/terms/",
+                            "https://offerfilter.org/license/", "/verification.json", "/signing-receipt.txt",
+                            "/OfferFilter.apk", "https://offerfilter.org/#help"):
             with self.subTest(destination=destination):
                 self.assertIn(destination, self.page.links)
+        stale = [link for link in self.page.links if "app-source" in (link or "") or "github.io" in (link or "")]
+        self.assertEqual([], stale, "legal texts are published on offerfilter.org, not a stale source snapshot")
         self.assertEqual("OfferFilter-" + self.published["versionName"] + ".apk",
                          self.page.links["/OfferFilter.apk"]["download"])
 

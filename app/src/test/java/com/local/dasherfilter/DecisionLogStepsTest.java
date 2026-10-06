@@ -92,14 +92,14 @@ public class DecisionLogStepsTest {
     }
 
     @Test
-    public void automaticReportsNeverCarrySteps() {
+    public void reportsNeverCarrySteps() {
         DecisionLog.record(app, passing(System.currentTimeMillis()));
         DecisionLog.markStep(app, PASSING, DecisionLog.StepKind.DECLINE_COUNTED, "Dasher went back to the wait", 60_000);
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.USER_REPORT, "test",
-                new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0), DecisionLog.recent(app, 1).get(0),
-                Collections.<String>emptyList(), null, null, DecisionLog.recent(app, 10));
-        assertFalse(report.body, report.body.contains("\"steps\""));
-        assertFalse(report.body, report.body.contains("Counted as your Decline"));
+        String report = OfferReport.text(OfferReport.Problem.WRONG_DECLINE, "test", 1, "Android test",
+                new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0), DecisionLog.recent(app, 1).get(0));
+        assertFalse(report, report.contains("\"steps\""));
+        assertFalse(report, report.contains("Counted as your Decline"));
+        assertFalse(report, report.contains("Dasher went back to the wait"));
     }
 
     @Test

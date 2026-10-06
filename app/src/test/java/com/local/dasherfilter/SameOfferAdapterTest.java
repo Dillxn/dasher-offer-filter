@@ -66,7 +66,6 @@ public class SameOfferAdapterTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         filter = Robolectric.buildService(OfferFilterService.class).create();

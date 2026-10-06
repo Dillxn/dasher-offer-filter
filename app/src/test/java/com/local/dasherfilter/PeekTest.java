@@ -100,7 +100,6 @@ public class PeekTest {
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.forgetScreenState();
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();

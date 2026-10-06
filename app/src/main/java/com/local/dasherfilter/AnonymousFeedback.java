@@ -52,16 +52,25 @@ final class AnonymousFeedback {
         });
     }
 
+    /** One offer's masked report (no learning steps, time to the minute) as diagnostics; the note as the message. */
     static void sendOffer(Context context, DecisionLog.Entry entry, String note, Callback callback) {
-        StringBuilder message = new StringBuilder("Selected offer report\n");
-        try {
-            message.append(entry.toJson().toString());
-        } catch (JSONException impossible) {
-            message.append("offer evidence unavailable");
-        }
+        Context app = context.getApplicationContext();
+        String report = OfferReport.text(OfferReport.Problem.OTHER, Updater.version(app), versionCode(app),
+                "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")", FilterStore.load(app),
+                entry);
         String typed = note == null ? "" : note.trim();
-        if (!typed.isEmpty()) message.append("\nNote: ").append(typed);
-        send(context, "problem", "bug", message.toString(), false, callback);
+        NETWORK.execute(() -> {
+            Result result;
+            try {
+                JSONObject payload = payload(app, "problem", OfferReport.Problem.OTHER.category(), typed, report, true);
+                if (typed.isEmpty()) payload.remove("message");
+                result = post(payload);
+            } catch (IOException | JSONException | RuntimeException failure) {
+                result = new Result(false, "", "check your connection and try again");
+            }
+            Result delivered = result;
+            new Handler(Looper.getMainLooper()).post(() -> callback.done(delivered));
+        });
     }
 
     static JSONObject payload(Context context, String kind, String category, String message, String diagnostics,

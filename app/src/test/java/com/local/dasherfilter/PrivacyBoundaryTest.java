@@ -7,9 +7,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,8 +24,6 @@ import static org.junit.Assert.*;
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PrivacyBoundaryTest {
     private Application app;
-    private final GitHubIssues.Transport originalTransport = GitHubIssues.transport;
-    private String client;
 
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
@@ -38,31 +33,10 @@ public class PrivacyBoundaryTest {
         DiagnosticLog.setEnabled(app, true);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
-        ReportOutbox.forgetCache();
-        client = GitHubConnect.clientId;
     }
 
     @After public void cleanup() {
-        GitHubIssues.transport = originalTransport;
-        GitHubConnect.disconnect(app);
-        GitHubConnect.clientId = client;
-        ReportOutbox.flush();
         DiagnosticLog.forgetCache();
-    }
-
-    private void reportsOn() {
-        GitHubConnect.clientId = "Iv1.test";
-        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit().putString("access_token", "ghu_fake").commit();
-        ReportOutbox.useGitHub(app, true);
-        assertTrue(DashDiagnostics.set(app, true));
-    }
-
-    private void queueDash(String token, String... more) {
-        java.util.List<String> parts = new java.util.ArrayList<>();
-        parts.add("Safe invented dash " + ReportOutbox.dashMark(token));
-        parts.addAll(Arrays.asList(more));
-        assertTrue(ReportOutbox.submitDiagnostics(app, "[diagnostics] synthetic", parts, token));
-        ReportOutbox.flush();
     }
 
     @Test public void paymentScreenNeverReachesEitherLogOrDecisionEvidence() {
@@ -190,15 +164,11 @@ public class PrivacyBoundaryTest {
         assertTrue(blocked.mkdir());
         File child = new File(blocked, "synthetic-private.txt");
         Files.write(child.toPath(), "731 12/34".getBytes(StandardCharsets.UTF_8));
-        AtomicInteger sends = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> { sends.incrementAndGet(); return "{}"; };
         DiagnosticLog.forgetCache();
         assertFalse(DiagnosticLog.cleanUpOnce(app));
         assertFalse(app.getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE)
                 .getBoolean(DiagnosticLog.CLEANED_UP, false));
         assertEquals("Diagnostics paused: privacy cleanup incomplete.", DiagnosticLog.readScreens(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertEquals(0, sends.get());
         assertTrue(child.delete());
         assertTrue(DiagnosticLog.cleanUpOnce(app));
         assertFalse(blocked.exists());
@@ -212,119 +182,23 @@ public class PrivacyBoundaryTest {
         app.getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
                 .remove(DiagnosticLog.CLEANED_UP).commit();
         DiagnosticLog.forgetCache();
-        assertFalse(ReportOutbox.discardAllNow(app));
+        assertFalse(LegacyReportingCleanup.deleteOutbox(app));
         assertFalse(DiagnosticLog.cleanUpOnce(app));
         assertTrue(queue.delete());
         assertTrue(DiagnosticLog.cleanUpOnce(app));
     }
 
-    @Test public void disablingDuringCommentUploadCannotResurrectDiscardedParts() {
-        reportsOn();
-        queueDash("cancel-comment", "Part 2", "Part 3");
-        AtomicInteger sends = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> {
-            int n = sends.incrementAndGet();
-            if (n == 1) return "{\"number\":94}";
-            ReportOutbox.useGitHub(app, false);
-            ReportOutbox.flush(); // deletion completes while the comment request is in flight
-            return "{\"id\":95}";
-        };
-        ReportOutbox.drain(app);
-        ReportOutbox.flush();
-        assertEquals(2, sends.get());
-        assertEquals(0, ReportOutbox.queued(app));
-        reportsOn();
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals(2, sends.get());
-    }
-
-    @Test public void problemReportsAndLegacyEvidenceRejectPaymentOrPartialScreens() throws Exception {
+    @Test public void offerReportsAndLegacyEvidenceRejectPaymentOrPartialScreens() throws Exception {
         java.util.List<String> payment = Arrays.asList("Card details", "CVV", "731", "$123.45");
-        assertTrue(ProblemReport.redact(payment).isEmpty());
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.SCAN_ERROR, "test",
-                new FilterSettings(true, 2000, 0, 0, 0, 0), null,
-                Arrays.asList("731", "12/34", "Copy"), new NumberFormatException("731 12/34"), "typed user note", java.util.Collections.emptyList());
-        assertFalse(report.body.contains("12/34"));
-        assertFalse(report.body.contains("731"));
-        assertTrue(report.body.contains("typed user note"));
+        assertTrue(OfferReport.redact(payment).isEmpty());
         DecisionLog.Entry old = new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
                 false, new OfferSnapshot(750, 2.0, 10, 2), 2000, OfferRule.Result.DECLINE, "synthetic",
                 DecisionLog.Action.DECLINE_TAPPED, true, payment);
+        String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test",
+                new FilterSettings(true, 2000, 0, 0, 0, 0), old);
+        assertFalse(report, report.contains("Card details"));
+        assertFalse(report, report.contains("731"));
+        assertFalse(report, report.contains("123.45"));
         assertTrue(DecisionLog.Entry.fromJson(old.toJson()).evidence.isEmpty());
-    }
-
-    @Test public void queuedReportsWaitForCurrentNoticeAndResumeAfterAcceptance() {
-        reportsOn();
-        queueDash("notice");
-        AtomicInteger requests = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> {
-            requests.incrementAndGet();
-            return "{\"number\": 91}";
-        };
-        ConsentedTestApp.forget(app);
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals(0, requests.get());
-        assertEquals(1, ReportOutbox.queued(app));
-        Consent.accept(app);
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals(1, requests.get());
-        assertEquals(0, ReportOutbox.queued(app));
-    }
-
-    @Test public void lostCreateResponseFindsClosedIssueOnLaterPageWithoutAnotherPost() {
-        reportsOn();
-        queueDash("lost-response");
-        AtomicInteger posts = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> {
-            if (method.equals("POST")) {
-                posts.incrementAndGet();
-                throw new IOException("response lost after remote creation");
-            }
-            assertTrue(url.contains("state=all"));
-            if (url.endsWith("page=1")) {
-                JSONArray page = new JSONArray();
-                for (int i = 0; i < GitHubIssues.LIST_PAGE; i++) page.put(new JSONObject());
-                return page.toString();
-            }
-            return "[{\"number\":92,\"state\":\"closed\",\"body\":\""
-                    + ReportOutbox.dashMark("lost-response") + "\"}]";
-        };
-        assertTrue(ReportOutbox.drain(app));
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals(1, posts.get());
-        assertEquals(92, ReportOutbox.lastDiagnostics(app));
-    }
-
-    @Test public void ambiguousMissingReceiptNeverCreatesADuplicate() {
-        reportsOn();
-        queueDash("ambiguous");
-        AtomicInteger posts = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> {
-            if (method.equals("POST")) {
-                posts.incrementAndGet();
-                throw new IOException("response lost");
-            }
-            return "[]";
-        };
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertEquals(1, posts.get());
-        assertEquals(1, ReportOutbox.queued(app));
-    }
-
-    @Test public void turningReportsOffDuringFirstPartPreventsEveryRemainingComment() {
-        reportsOn();
-        queueDash("stop", "Part 2 private dash text", "Part 3 private dash text");
-        AtomicInteger requests = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, body, max) -> {
-            requests.incrementAndGet();
-            ReportOutbox.useGitHub(app, false);
-            return "{\"number\":93}";
-        };
-        ReportOutbox.drain(app);
-        ReportOutbox.flush();
-        assertEquals(1, requests.get());
-        assertFalse(DashDiagnostics.on(app));
     }
 }

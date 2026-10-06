@@ -54,7 +54,6 @@ public class DasherOverlayTest {
         Updater.setEnabled(app, false);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         ActiveRouteStore.clear(app);
         Dashing.forgetCache();

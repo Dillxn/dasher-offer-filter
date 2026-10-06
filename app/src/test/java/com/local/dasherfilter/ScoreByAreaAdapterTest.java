@@ -53,7 +53,6 @@ public class ScoreByAreaAdapterTest {
         Updater.setEnabled(app, false);
         DecisionLog.forgetCache();
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
     }
 
     @Test
@@ -278,13 +277,11 @@ public class ScoreByAreaAdapterTest {
         assertTrue(history, history.contains(" | KEEP | pay $15.00 | needed $12.43 | score 121% "
                 + "| 6 mi · 25 min · 2 stops | score 121% (needs 100%) | "));
 
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.USER_REPORT, "0.4.41", rules, stored,
-                Collections.emptyList(), null, null, Collections.singletonList(stored));
-        assertTrue(report.body, report.body.contains("needed $12.43, score 121%"));
-        assertTrue(report.body, report.body.contains("**Rules:** scored by area, 100% needed (max stops is a hard "
-                + "limit) · $13.00 pay"));
-        String json = report.body.substring(report.body.indexOf("{"), report.body.lastIndexOf("}") + 1);
-        JSONObject data = new JSONObject(json);
+        JSONObject data = new JSONObject(OfferReport.text(OfferReport.Problem.WRONG_DECLINE, "0.4.41", 47,
+                "Android test", rules, stored));
+        assertTrue(data.getString("read"), data.getString("read").contains("needed $12.43, score 121%"));
+        String words = data.getJSONObject("rules").getString("inWords");
+        assertTrue(words, words.startsWith("scored by area, 100% needed (max stops is a hard limit) · $13.00 pay"));
         assertTrue(data.getJSONObject("rules").getBoolean("scoreByArea"));
         assertEquals(121, data.getJSONObject("entry").getInt("score"));
 

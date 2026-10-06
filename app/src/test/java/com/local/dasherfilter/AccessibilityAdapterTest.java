@@ -54,7 +54,6 @@ public class AccessibilityAdapterTest {
         Updater.setEnabled(app, false);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         // Reads run on the main looper here, so each event is read before show() returns; ScannerThreadTest runs
         // the service's own thread.
@@ -190,35 +189,13 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void unreadableOfferIsReportedOnceAndNeverDeclined() {
-        reportsOn();
+    public void unreadableOfferIsNeverDeclinedAndOpensNothing() {
         AccessibilityNodeInfo root = offer("Guaranteed pay");
         show(root);
         show(root);
-        ReportOutbox.flush();
 
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
-        assertEquals(1, ReportOutbox.queued(app));
         assertNull(Shadows.shadowOf(app).getNextStartedActivity());
-    }
-
-    @Test
-    public void nothingIsReportedUntilReportsAreOn() {
-        show(offer("Guaranteed pay"));
-        show(offer("$7.90"));
-        ReportOutbox.flush();
-
-        assertEquals(0, ReportOutbox.queued(app));
-    }
-
-    @Test
-    public void readableOffersFileNoReport() {
-        reportsOn();
-        show(offer("$7.90"));
-        show(offer("$25.00"));
-        ReportOutbox.flush();
-
-        assertEquals(0, ReportOutbox.queued(app));
     }
 
     // ---- Touching the screen hands the offer back ----
@@ -786,18 +763,10 @@ public class AccessibilityAdapterTest {
         assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
     }
 
-    /** Signed in to GitHub, as after Connect GitHub, and "Send problem reports" on: the only way reports go. */
-    private void reportsOn() {
-        app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE).edit()
-                .putString("access_token", "ghu_test").commit();
-        ReportOutbox.useGitHub(app, true);
-    }
-
     // ---- A decline that does not finish ----
 
     @Test
-    public void aDeclinedOfferStillShowingAfterFiveSecondsIsReportedOnce() {
-        reportsOn();
+    public void aDeclinedOfferStillShowingAfterFiveSecondsIsLoggedOnce() {
         AccessibilityNodeInfo stuck = offer("$7.90");
         show(stuck);
         // Taken first-step requests now give Dasher two seconds: requests at 0, 2 and 4 seconds.
@@ -805,23 +774,25 @@ public class AccessibilityAdapterTest {
             ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
             show(stuck);
         }
-        ReportOutbox.flush();
-        assertEquals("not yet: Dasher may still be closing it", 0, ReportOutbox.queued(app));
+        assertEquals("not yet: Dasher may still be closing it", 0, stuckLines());
 
         ShadowSystemClock.advanceBy(Duration.ofMillis(OfferFilterService.STUCK_MS
                 - (DeclineState.MAX_ATTEMPTS - 2) * DeclineState.RETRY_INTERVAL_MS));
         show(stuck);
         show(stuck);
-        ReportOutbox.flush();
-        assertEquals(1, ReportOutbox.queued(app));
+        assertEquals(1, stuckLines());
         // Spend the final retry after its patient interval, then prove the cap still holds before authority expires.
         ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
         show(stuck);
         ShadowSystemClock.advanceBy(Duration.ofMillis(DeclineState.RETRY_INTERVAL_MS));
         show(stuck);
         assertEquals(DeclineState.MAX_ATTEMPTS, Shadows.shadowOf(decline).getPerformedActions().size());
-        ReportOutbox.flush();
-        assertEquals("later reads and retries never duplicate the report", 1, ReportOutbox.queued(app));
+        assertEquals("later reads and retries never log it again", 1, stuckLines());
+    }
+
+    private int stuckLines() {
+        String log = DiagnosticLog.read(app);
+        return log.split(java.util.regex.Pattern.quote("decline still showing after"), -1).length - 1;
     }
 
     @Test

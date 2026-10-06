@@ -89,7 +89,6 @@ public class ScannerThreadTest {
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = null;
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));

@@ -47,7 +47,6 @@ public class ScreensLogNavigationTest {
         Updater.setEnabled(app, false);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         Dashing.seen(app);
         ActiveRouteStore.save(app, new OfferSnapshot(1500, 8.0, 30, 2));

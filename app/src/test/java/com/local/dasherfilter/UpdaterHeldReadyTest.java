@@ -38,7 +38,6 @@ public class UpdaterHeldReadyTest {
         Updater.prefs(app).edit().clear().commit();
         Updater.clearReady(app);
         Updater.setEnabled(app, true);
-        GitHubConnect.disconnect(app);
         Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(true);
         app.getSharedPreferences("dashing", 0).edit().clear().commit();
         Dashing.forgetCache();

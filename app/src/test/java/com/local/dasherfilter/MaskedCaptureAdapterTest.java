@@ -54,7 +54,6 @@ public class MaskedCaptureAdapterTest {
         DiagnosticLog.setEnabled(app, true);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         DecisionLog.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         controller = Robolectric.buildService(OfferFilterService.class).create();

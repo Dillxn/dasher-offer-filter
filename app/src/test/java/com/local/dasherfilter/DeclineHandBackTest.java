@@ -75,7 +75,6 @@ public class DeclineHandBackTest {
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = null;
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));

@@ -29,7 +29,7 @@ def main():
         for key, value in counts.items(): totals[key] += value
     # Each floor counts every suite its name matches as a glob, so a suite split by topic into several classes
     # (AndroidAdapter*Test) must still reach its floor together.
-    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.ReportOutboxTest': 27, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.GitHubConnectTest': 15, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
+    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
     adapter_suites = {}
     for pattern, minimum in required.items():
         counts = dict.fromkeys(totals, 0)
@@ -52,7 +52,7 @@ def main():
     check_channel(code, head, digest, previous, 'Render')
     repo_feed = ROOT / 'release/latest.json'
     if repo_feed.exists():
-        check_channel(code, head, digest, json.loads(repo_feed.read_text()), 'GitHub')
+        check_channel(code, head, digest, json.loads(repo_feed.read_text()), 'release/ (the Render mirror input)')
     public = ROOT / 'public'; shutil.rmtree(public, ignore_errors=True); public.mkdir()
     if code == previous['versionCode']:
         shutil.copy2(ROOT / '.channel-check/latest.json', public / 'latest.json')

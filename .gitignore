@@ -13,6 +13,5 @@ private-signing/
 .jdk/
 .channel-check/
 public/
-.fixer/
 __pycache__/
 dist/

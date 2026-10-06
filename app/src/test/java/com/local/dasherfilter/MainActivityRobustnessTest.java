@@ -139,18 +139,6 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void reportStatusIsUntouchedAtHomeAndRefreshesWhenSettingsOpens() throws Exception {
-        reportsOn();
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            TextView status = field(activity.get(), "reportStatus");
-            status.setText("not scanned while hidden");
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
-            assertEquals("not scanned while hidden", status.getText().toString());
-            settings(activity);
-            assertEquals(ReportOutbox.status(app), status.getText().toString());
-        }
-    }
-
     @Test @Config(sdk = {26, 28})
     public void visiblePausedOlderAndroidKeepsHistoryCurrentUntilStopped() throws Exception {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

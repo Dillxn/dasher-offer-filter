@@ -55,7 +55,6 @@ abstract class AndroidAdapterTestBase {
         OfferAlerts.ensureChannel(app);
         DecisionLog.forgetCache();
         AreaMap.forgetCache();
-        ReportOutbox.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
     }
@@ -285,16 +284,6 @@ abstract class AndroidAdapterTestBase {
         down.recycle();
         up.recycle();
         Shadows.shadowOf(Looper.getMainLooper()).idle();
-    }
-
-    /**
-     * Signed in to GitHub (the shipped app's own client ID), as after Connect GitHub, and "Send problem reports" turned
-     * on: the only way reports go now.
-     */
-    void reportsOn() {
-        app.getSharedPreferences("github", android.content.Context.MODE_PRIVATE).edit()
-                .putString("access_token", "ghu_test").commit();
-        ReportOutbox.useGitHub(app, true);
     }
 
     /** Settings is the page shown (its Share report row is on screen). */

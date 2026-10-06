@@ -32,14 +32,10 @@ import static org.junit.Assert.*;
 @Config(sdk = {26, 35})
 public class RobustStorageTest {
     private Application app;
-    private String client;
-    private GitHubIssues.Transport original;
 
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        original = GitHubIssues.transport;
-        client = GitHubConnect.clientId;
         DiagnosticLog.forgetCache();
         DiagnosticLog.clear(app);
         DiagnosticLog.setEnabled(app, true);
@@ -48,39 +44,11 @@ public class RobustStorageTest {
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
         DecisionLog.flush();
-        ReportOutbox.forgetCache();
     }
 
     @After public void cleanup() {
-        GitHubIssues.transport = original;
-        GitHubConnect.disconnect(app);
-        ReportOutbox.flush();
-        GitHubConnect.clientId = client;
         DecisionLog.flush();
         DiagnosticLog.read(app);
-    }
-
-    private void reportsOn() {
-        GitHubConnect.clientId = "Iv1.test";
-        app.getSharedPreferences("github", Context.MODE_PRIVATE).edit().putString("access_token", "ghu_fake").commit();
-        ReportOutbox.useGitHub(app, true);
-        assertTrue(DashDiagnostics.set(app, true));
-    }
-
-    private void queueDash(String id, String... comments) {
-        java.util.List<String> parts = new java.util.ArrayList<>();
-        parts.add("Invented dash " + ReportOutbox.dashMark(id));
-        parts.addAll(Arrays.asList(comments));
-        assertTrue(ReportOutbox.submitDiagnostics(app, "[diagnostics] synthetic", parts, id));
-        ReportOutbox.flush();
-    }
-
-    private void queueProblem() {
-        FilterSettings rules = new FilterSettings(true, 1200, 0, 0, 0, 0);
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.TEST, "test", rules, null,
-                Collections.emptyList(), null, null, Collections.emptyList());
-        assertTrue(ReportOutbox.submit(app, report, true));
-        ReportOutbox.flush();
     }
 
     private static DecisionLog.Entry entry(long at, int pay) {
@@ -229,128 +197,6 @@ public class RobustStorageTest {
         assertArrayEquals(totals, DecisionLog.totals(app));
     }
 
-    @Test public void lostProblemCreateResponseIsReconciledWithoutAnotherPost() {
-        reportsOn(); queueProblem();
-        AtomicInteger posts = new AtomicInteger();
-        AtomicReference<String> saved = new AtomicReference<>();
-        GitHubIssues.transport = (method, url, token, json, max) -> {
-            if (method.equals("POST")) {
-                posts.incrementAndGet();
-                try { saved.set(new JSONObject(json).getString("body")); } catch (Exception e) { throw new IOException(e); }
-                throw new IOException("remote created issue, response lost");
-            }
-            try { return new JSONArray().put(new JSONObject().put("number", 71).put("body", saved.get())).toString(); }
-            catch (Exception e) { throw new IOException(e); }
-        };
-        assertTrue(ReportOutbox.drain(app));
-        ReportOutbox.forgetCache();
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals(1, posts.get());
-        assertEquals(0, ReportOutbox.queued(app));
-    }
-
-    @Test public void lostCommentResponseOnLaterPageIsReconciledWithoutAnotherPost() {
-        reportsOn(); queueDash("parts", "Part 2 synthetic", "Part 3 synthetic");
-        AtomicInteger posts = new AtomicInteger();
-        AtomicReference<String> first = new AtomicReference<>();
-        GitHubIssues.transport = (method, url, token, json, max) -> {
-            if (method.equals("POST") && !url.endsWith("/comments")) return "{\"number\":72}";
-            if (method.equals("POST")) {
-                if (posts.incrementAndGet() == 1) {
-                    try { first.set(new JSONObject(json).getString("body")); } catch (Exception e) { throw new IOException(e); }
-                    throw new IOException("remote created comment, response lost");
-                }
-                return "{\"id\":200}";
-            }
-            if (url.endsWith("page=1")) {
-                JSONArray page = new JSONArray();
-                for (int i = 0; i < GitHubIssues.LIST_PAGE; i++) page.put(new JSONObject());
-                return page.toString();
-            }
-            try { return new JSONArray().put(new JSONObject().put("body", first.get())).toString(); }
-            catch (Exception e) { throw new IOException(e); }
-        };
-        assertTrue(ReportOutbox.drain(app));
-        ReportOutbox.forgetCache();
-        assertFalse(ReportOutbox.drain(app));
-        assertEquals("one POST per logical comment", 2, posts.get());
-        assertEquals(0, ReportOutbox.queued(app));
-    }
-
-    @Test public void anAmbiguousCommentWithoutReceiptStaysPendingWithoutDuplicating() {
-        reportsOn(); queueDash("pending", "Part 2 synthetic");
-        AtomicInteger posts = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, json, max) -> {
-            if (method.equals("GET")) return "[]";
-            if (!url.endsWith("/comments")) return "{\"number\":73}";
-            posts.incrementAndGet();
-            throw new IOException("response lost");
-        };
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertEquals(1, posts.get());
-        assertEquals(1, ReportOutbox.queued(app));
-    }
-
-    @Test public void stoppingDuringPostKeepsReceiptAndSendsNoFollowingPart() {
-        reportsOn(); queueDash("stopped", "Part 2 synthetic");
-        AtomicBoolean stopped = new AtomicBoolean();
-        AtomicInteger creates = new AtomicInteger(), comments = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, json, max) -> {
-            if (url.endsWith("/comments")) { comments.incrementAndGet(); return "{\"id\":1}"; }
-            creates.incrementAndGet(); stopped.set(true); return "{\"number\":74}";
-        };
-        assertTrue(ReportOutbox.drain(app, stopped::get));
-        assertEquals(0, comments.get());
-        stopped.set(false);
-        assertFalse(ReportOutbox.drain(app, stopped::get));
-        assertEquals(1, creates.get());
-        assertEquals(1, comments.get());
-    }
-
-    @Test public void explicitRateLimitCanRetryButServerFailureIsAmbiguous() {
-        reportsOn(); queueDash("server-error", "Part 2 synthetic");
-        AtomicInteger posts = new AtomicInteger();
-        GitHubIssues.transport = (method, url, token, json, max) -> {
-            if (method.equals("GET")) return "[]";
-            if (!url.endsWith("/comments")) return "{\"number\":75}";
-            if (posts.incrementAndGet() == 1) throw new GitHubIssues.Rejected(429, true, "rate limit");
-            throw new GitHubIssues.Rejected(503, false, "service unavailable");
-        };
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertTrue(ReportOutbox.drain(app));
-        assertEquals(2, posts.get());
-    }
-
-    @Test public void queuedDiskWorkCannotReturnAfterOptOutAndReenable() throws Exception {
-        reportsOn();
-        ReportOutbox.flush();
-        java.lang.reflect.Field field = ReportOutbox.class.getDeclaredField("DISK");
-        field.setAccessible(true);
-        java.util.concurrent.ExecutorService disk = (java.util.concurrent.ExecutorService) field.get(null);
-        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-        disk.execute(() -> {
-            entered.countDown();
-            try { release.await(5, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        });
-        assertTrue(entered.await(2, TimeUnit.SECONDS));
-        AtomicReference<Boolean> saved = new AtomicReference<>();
-        try {
-            assertTrue(ReportOutbox.submitDiagnostics(app, "[diagnostics] stale", Collections.singletonList(
-                    "Synthetic " + ReportOutbox.dashMark("stale")), "stale", saved::set));
-            ReportOutbox.useGitHub(app, false);
-            ReportOutbox.useGitHub(app, true);
-            assertTrue(DashDiagnostics.set(app, true));
-        } finally { release.countDown(); }
-        ReportOutbox.flush();
-        assertEquals(Boolean.FALSE, saved.get());
-        assertEquals(0, ReportOutbox.queued(app));
-        queueDash("fresh");
-        assertEquals(1, ReportOutbox.queued(app));
-    }
-
     @Test public void reportsNameCurrentRuleContextManualFloorsAndRecordedOutcomes() throws Exception {
         DeclinedFloor declined = new DeclinedFloor(1100, new AcceptedBest(1300, 25, 1700, 4.5, 2200, 3));
         FilterSettings rules = new FilterSettings(true, 1200, 150, 50, 400, 5, true, 1900,
@@ -365,10 +211,8 @@ public class RobustStorageTest {
         assertTrue(shared.contains("outcome PASSED"));
         assertTrue(shared.matches("(?s).*learning \\(auto-decline and Adaptive minimum both on\\) since="
                 + "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} (?:Z|[+-]\\d{2}:\\d{2}).*"));
-        ProblemReport report = ProblemReport.build(ProblemReport.Kind.TEST, "test", rules, null,
-                Collections.emptyList(), null, null, Collections.emptyList());
-        int start = report.body.indexOf("```json\n") + 8;
-        JSONObject json = new JSONObject(report.body.substring(start, report.body.indexOf("\n```", start)));
+        JSONObject json = new JSONObject(OfferReport.text(OfferReport.Problem.OTHER, "test", 1, "Android test",
+                rules, entry(1000, 700)));
         JSONObject saved = json.getJSONObject("rules");
         assertEquals(97, saved.getInt("minimumScalePercent"));
         assertTrue(saved.getString("context").startsWith("current rules"));
@@ -380,22 +224,5 @@ public class RobustStorageTest {
         assertEquals(4.5, floor.getDouble("miles"), 0);
         assertEquals(2200, floor.getInt("stopPay"));
         assertEquals(3, floor.getInt("stops"));
-    }
-
-    @Test public void fullQueueReportsFailureAndCountsItAfterActualDiskAdmission() throws Exception {
-        reportsOn();
-        File dir = new File(app.getFilesDir(), "report-outbox");
-        assertTrue(dir.isDirectory() || dir.mkdirs());
-        for (int i = 0; i < 30; i++) Files.write(new File(dir, "synthetic-" + i + ".json").toPath(),
-                "{}".getBytes(StandardCharsets.UTF_8));
-        ReportOutbox.forgetCache();
-        AtomicReference<Boolean> saved = new AtomicReference<>();
-        assertTrue(ReportOutbox.submitDiagnostics(app, "[diagnostics] full", Collections.singletonList(
-                "Synthetic " + ReportOutbox.dashMark("full")), "full", saved::set));
-        ReportOutbox.flush();
-        assertEquals(Boolean.FALSE, saved.get());
-        assertEquals(30, ReportOutbox.queued(app));
-        assertTrue(ReportOutbox.lossSummary(app).endsWith("=1"));
-        assertTrue(DiagnosticLog.read(app).contains("report not queued: queue full"));
     }
 }

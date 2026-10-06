@@ -2,9 +2,9 @@
 """Publishes the repo feed's release (release/OfferFilter.apk, already signed with the cloud key by
 tools/sign-local.sh and checked by tools/publish-repo-feed.py) on Render as public/, without building or signing.
 
-The user's decision ("Render serves the GitHub build"): Render's build minutes ran out at 0.4.13, and an
-installation that has never connected GitHub reads only Render, so new installs got 0.4.13, which cannot update
-itself. Copying the signed APK takes seconds. Nothing here signs anything or holds a key.
+The user's decision ("Render serves the GitHub build"): Render's build minutes ran out at 0.4.13, so Render copies
+the release signed in the local workspace instead of building one. From 0.4.73 every installation reads only Render.
+Copying the signed APK takes seconds. Nothing here signs anything or holds a key.
 
 Checks before anything is written (every phone checks size, SHA-256, package, version and signer again):
   * release/latest.json names this package, a version, and the APK's exact size and SHA-256;
@@ -120,8 +120,7 @@ independent real-phone checks. Not made by, endorsed by or affiliated with DoorD
 <p>Automatic declines may dramatically lower your acceptance rate. Using this app may break DoorDash's terms;
 DoorDash could limit or deactivate your account. It can misread, accept or decline an offer you did not want it to.
 Use at your own risk, with no warranty. Don't handle your phone while driving.</p>
-<p>No GitHub account is needed to download, use or receive updates from this server. Connecting GitHub is optional
-and requires access to the private app repository; skip it for normal setup.</p>
+<p>No account is needed to download, use or receive updates from this server.</p>
 <p><a href="/OfferFilter.apk" download="OfferFilter-{html.escape(version)}.apk">Download {name} {html.escape(version)}</a></p>
 <h2>First install</h2>
 <ol>
@@ -151,10 +150,10 @@ The retired 0.3.1 signing chain is different.</p>
 if you want in-app updates. This is separate from your browser's first-install permission. Tap <b>Updates</b> to check
 now. Android may request installation confirmation; review its prompt. Automatic installation waits for an observed
 dash end, while a manual check can update mid-dash when Dasher is not on screen.</p>
-<p><a href="https://dillxn.github.io/offer-filter-site/#help">Help and setup</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/TERMS.md">Terms of use</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/PRIVACY.md">Privacy</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/LICENSE">MIT License</a>.
+<p><a href="https://offerfilter.org/#help">Help and setup</a> ·
+<a href="https://offerfilter.org/terms/">Terms of use</a> ·
+<a href="https://offerfilter.org/privacy/">Privacy</a> ·
+<a href="https://offerfilter.org/license/">MIT License</a>.
 The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>
 <p><a href="/verification.json">Verification</a> · <a href="/signing-receipt.txt">Signing receipt</a></p>
 </body></html>
