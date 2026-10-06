@@ -130,6 +130,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness screenReading;
     private Readiness backgroundOffers;
     private Readiness offerAlerts;
+    /** Peek paused itself for a while (never the Settings switch): why, and Resume. */
+    private Readiness peekPaused;
     private LinearLayout routeRow;
     private TextView routeNote;
     /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
@@ -734,6 +736,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        // Peek paused itself for a while (until the next dash, or 15 minutes): why, and the user's own Resume.
+        peekPaused = new Readiness(problems, "Peek paused", "Resume", () -> {
+            Peek.resumeNow(this);
+            refresh();
+        });
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
@@ -1361,6 +1368,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading.update(readerConnected);
         backgroundOffers.update(OfferNotificationService.isConnected());
         offerAlerts.update(alertsAllowed.get());
+        // Only while the Settings switch is on: Peek turned off there is the user's own choice, not a pause.
+        String paused = FilterStore.peek(this) ? Peek.pausedWhy(this) : null;
+        if (paused != null) peekPaused.problem("Peek paused: " + paused);
+        peekPaused.update(paused == null);
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);

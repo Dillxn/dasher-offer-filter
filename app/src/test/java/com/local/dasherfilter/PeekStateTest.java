@@ -41,19 +41,19 @@ public class PeekStateTest {
         peek.opened(1_700, 1, 0);
         peek.up(2_000);
         peek.offerSign();
-        peek.end(true, false, 14_000);
+        peek.end(Peek.Outcome.DECLINED_BACK, true, 14_000, 0);
         assertNotNull(peek.refusal(request("two"), 18_999));
         assertNull(peek.refusal(request("two"), 19_000));
     }
     @Test public void failedLaunchDoesNotHoldTheNotificationAndTwoFailuresPause() {
         Peek peek = armed(0);
         peek.opened(700, 1, 0);
-        assertNull(peek.end(false, true, 6_700));
+        assertNull(peek.end(Peek.Outcome.OPEN_FAILED, false, 6_700, 0));
         assertNull(peek.refusal(request("new-post"), 11_700));
         peek.arm(request("new-post"), new Peek.Front(Peek.Back.HOME, "home", null, 1),
                 new ComponentName("com.doordash.driverapp", "Home"), 11_700);
         peek.opened(12_400, 2, 0);
-        assertNotNull(peek.end(false, true, 18_400));
+        assertNotNull(peek.end(Peek.Outcome.OPEN_FAILED, false, 18_400, 0));
     }
     @Test public void unrecognisedScreensNeverStartTheNoOfferClock() {
         Peek peek = armed(0);
@@ -133,7 +133,7 @@ public class PeekStateTest {
     @Test public void privateFrontPackageIsNotInItsPrintableKindAndCanBeForgotten() {
         Peek peek = armed(0);
         assertEquals("another app", peek.front().kind());
-        peek.end(false, false, 100);
+        peek.end(Peek.Outcome.INTERRUPTED, false, 100, 0);
         peek.forgetFront();
         assertNull(peek.front());
     }
@@ -143,7 +143,7 @@ public class PeekStateTest {
         peek.opened(700, 1, 0);
         peek.up(900);
         peek.screen(false, 1_000);
-        peek.end(false, false, 20_700);
+        peek.end(Peek.Outcome.TIMEOUT, false, 20_700, 0);
         Peek.Request next = new Peek.Request("one", first.postTime + 30_000, "Store", false, true, "next");
         assertNull(peek.refusal(next, 26_000));
     }

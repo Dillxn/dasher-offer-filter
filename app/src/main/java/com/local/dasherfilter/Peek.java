@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 
 /**
@@ -24,13 +25,26 @@ import java.util.function.LongSupplier;
  * user's decision): then Peek goes back to the map at once and the offer's card carries what was read. It is the one
  * exception to "the app never opens Dasher by itself", and only while the Peek switch (Settings) is on.
  *
- * <p>Before Dasher is opened, the touch watch goes up and the phone must be quiet for {@link #QUIET_MS} (no touch, no
+ * <p>Before Dasher is opened, the touch watch goes up and must see the phone quiet for {@link #QUIET_MS} (no touch, no
  * keyboard; the user's decision), {@link #QUIET_WAIT_MS} at most. A peek ends with Dasher left as it is after anything
- * of the user's, a decline handed back, refused or not confirmed, the screen off or locked, a call, or {@link #MAX_MS}.
- * It goes back only on positive proof: the app's own decline of the peeked offer completed (its question confirmed, or
- * an add-on's single Decline) and a read shows a screen Dasher's own words explain (the wait for offers, the dash
- * over, or the route the declined offer came during) with none of an offer's facts; or, with no offer, {@link
- * #NO_OFFER_MS} after such a screen; or, while navigating, a passing or unclear offer.
+ * of the user's, a decline handed back, refused or not confirmed, a call, or {@link #MAX_MS}. It goes back only on
+ * positive proof: the app's own decline of the peeked offer completed (its question confirmed, or an add-on's single
+ * Decline) and a read shows a screen Dasher's own words explain (the wait for offers, the dash over, or the route the
+ * declined offer came during) with none of an offer's facts; or, with no offer, {@link #NO_OFFER_MS} after such a
+ * screen once Dasher removed the offer's notification (never while it is still posted); or, while navigating, a
+ * passing or unclear offer, or an offer Dasher never drew.
+ *
+ * <p>Dasher brought up by its launcher fetches a background offer itself, and sometimes never draws it (the 0.4.72
+ * report: details only after entering split screen). With Dasher up {@link #PRESENT_MS}, no sign of an offer and the
+ * offer's notification still posted, Dasher's own notification tap is sent once; nothing of the offer
+ * {@link #OWN_TAP_WAIT_MS} later, the peek ends ({@link Outcome#UNSHOWN}) and the offer's card says so.
+ *
+ * <p>The screen turning off or the phone locking suspends an opened peek (memory only) for {@link #RESUME_MS}: an
+ * unlock in time resumes it from a fresh read, the locked time not counted. A fresh post refused only for the lock
+ * is looked at again at the unlock, up to {@link #UNLOCK_POST_MS} after it was posted. Peek pauses itself, for
+ * {@link #PAUSE_MS} or until the next dash starts, only after {@link #EMPTY_TO_PAUSE} withdrawn offers or
+ * {@link #FAILED_TO_PAUSE} launches that never came up in a row (within {@link #STREAK_MS}), or a runtime failure;
+ * the Settings switch stays the user's own.
  *
  * <p>This is one peek's state as the scanner thread keeps it (on {@link #now}, elapsed time: uptime stops in deep
  * sleep), what Peek counts across peeks, and the "[peek]" lines any thread may write. The app in front is kept in
@@ -43,8 +57,18 @@ final class Peek {
     static final long QUIET_WAIT_MS = 3_000;
     /** Dasher's window must appear this long after its launch intent was started (cold starts take 2-5 s). */
     static final long OPEN_MS = 6_000;
-    /** With Dasher's screen recognised and no offer on it this long, the peek goes back (the offer expired). */
+    /**
+     * With Dasher's screen recognised and no offer on it this long, and the offer's notification gone, the peek goes
+     * back (the offer was withdrawn). While the notification is still posted it never goes back for want of an offer.
+     */
     static final long NO_OFFER_MS = 4_000;
+    /**
+     * Dasher up this long with no sign of the offer while its notification is still posted: Dasher's own notification
+     * tap is sent, once (Dasher's launcher resumes its task; the notification's own tap asks it for the offer).
+     */
+    static final long PRESENT_MS = 2_500;
+    /** Still none of the offer this long after Dasher's own notification tap: the offer never showed. */
+    static final long OWN_TAP_WAIT_MS = 5_000;
     /** A peek, including any offers it follows, ends this long after it opened; Dasher stays as it is. */
     static final long MAX_MS = 20_000;
     /** The next peek begins at least this long after the last one ended. */
@@ -60,6 +84,13 @@ final class Peek {
     static final long LEFT_WITH_YOU_MS = OfferAlertState.LIFETIME_MS;
     /** A post older than this is not peeked at: its offer may be gone by the time Dasher is up. */
     static final long POST_AGE_MS = 10_000;
+    /**
+     * A fresh post refused only because the screen was off or the phone locked is peeked at after the unlock if its
+     * notification is still posted, unreplaced, and the post is no older than this.
+     */
+    static final long UNLOCK_POST_MS = 40_000;
+    /** A peek the screen turning off or the lock interrupted is kept in memory this long for the unlock. */
+    static final long RESUME_MS = 60_000;
     /** A screen offer read this recently that pairs with the post: the user saw it ({@link OfferPairing}). */
     static final long SCREEN_READ_MS = OfferPairing.NOTICE_LAG_MS;
     /** No peek this long after an acceptance or an Accept tap was seen. */
@@ -69,9 +100,17 @@ final class Peek {
     /** After going back, whether the app came back is looked at this often, this long. */
     static final long BACK_CHECK_EVERY_MS = 250;
     static final long BACK_CHECK_MS = 1_500;
-    /** In a row, these pause Peek: peeks that found no offer, and peeks whose Dasher never came up. */
+    /**
+     * In a row, these pause Peek for a while: peeks whose offer was withdrawn (its notification gone, Dasher's empty
+     * screen read), and peeks whose Dasher never came up. Locks, touches, calls, splits, settings, timeouts and offers
+     * Dasher never drew never count.
+     */
     static final int EMPTY_TO_PAUSE = 3;
     static final int FAILED_TO_PAUSE = 2;
+    /** "In a row" holds within this long only; a dash's start begins it afresh. */
+    static final long STREAK_MS = 30 * 60_000L;
+    /** A pause Peek puts on itself lasts this long at most, or until the next dash starts. */
+    static final long PAUSE_MS = 15 * 60_000L;
     /** An application window covering less of the display than this is not one full-screen app. */
     static final double FILLS = 0.95;
 
@@ -186,6 +225,24 @@ final class Peek {
         CONFIRMED
     }
 
+    /** How an opened peek ended, for what Peek counts toward pausing itself. */
+    enum Outcome {
+        /** The peeked offer's own decline completed and the user was taken back. */
+        DECLINED_BACK,
+        /** An offer was read and left with the user: on screen, or on its card after going back to the map. */
+        LEFT_WITH_USER,
+        /** Dasher removed the offer's notification and showed a recognised empty screen: an empty peek. */
+        WITHDRAWN,
+        /** Dasher never drew the offer, even after its own notification tap: its card says so. */
+        UNSHOWN,
+        /** Anything of the user's, the lock or screen-off, a call, a split, a setting turned off. */
+        INTERRUPTED,
+        /** {@link #MAX_MS} ran out with the offer's notification still posted (or not known gone). */
+        TIMEOUT,
+        /** Dasher's window never came up. */
+        OPEN_FAILED
+    }
+
     private Phase phase = Phase.NONE;
     private Request request;
     private Front front;
@@ -209,8 +266,35 @@ final class Peek {
     private boolean lastRecognised;
     private boolean leftWithUser;
     private long offerEndsAt = NEVER;
-    private int emptyInARow;
-    private int failedInARow;
+    /** The oldest post this peek may open Dasher for ({@link #POST_AGE_MS}, or after an unlock more). */
+    private long maxPostAge = POST_AGE_MS;
+    /** When this peek first read any of an offer's facts or both its controls; {@link #NEVER} for not yet. */
+    private long factsAt = NEVER;
+    /** When Dasher's own notification tap was sent (or found untappable): the offer's wait for showing starts. */
+    private long ownTapAt = NEVER;
+    private boolean presentationTried;
+    private boolean ownTapRequested;
+    /** A recognised empty screen was read during this peek. */
+    private boolean recognisedSeen;
+    /** The user touched the screen before Dasher's window first appeared: only the automatic decline goes back. */
+    private boolean openingTouched;
+    /** A touch during the quiet wait (since it was armed). */
+    private boolean touchedWhileArming;
+    /** When the touch watch was first seen up while arming; {@link #NEVER} until then. */
+    private long watchUpAt = NEVER;
+    /** While the lock or screen-off holds it: since when; {@link #NEVER} otherwise. */
+    private long suspendedAt = NEVER;
+    /** When an unlock resumed it; {@link #NEVER} for a peek never suspended. */
+    private long resumedAt = NEVER;
+    /** A return held for the quiet after the unlock. */
+    private boolean returnWaiting;
+    private boolean noOfferLogged;
+    private boolean factsLogged;
+    /** Consecutive counted outcomes, by when (elapsed time), oldest first. */
+    private final ArrayDeque<Long> emptyStreak = new ArrayDeque<>();
+    private final ArrayDeque<Long> failedStreak = new ArrayDeque<>();
+    /** The dash (its start, wall clock; 0 for none) the streaks belong to. */
+    private long streakDash = NEVER;
     private String heldKey = "";
     private long heldUntil = NEVER;
     private final LinkedHashSet<String> peekedPosts = new LinkedHashSet<>();
@@ -225,16 +309,27 @@ final class Peek {
      */
     static String refusal(Context context, Request request, FilterSettings settings, boolean foreground,
                           long screenReadAgo) {
+        return refusal(context, request, settings, foreground, screenReadAgo, POST_AGE_MS);
+    }
+
+    /**
+     * As {@link #refusal(Context, Request, FilterSettings, boolean, long)}, for a post up to {@code maxAgeMs} old:
+     * {@link #UNLOCK_POST_MS} for a post looked at again after an unlock.
+     */
+    static String refusal(Context context, Request request, FilterSettings settings, boolean foreground,
+                          long screenReadAgo, long maxAgeMs) {
         if (request.replay) return "a replay after a reconnect or a rules change, not a fresh post";
         if (!request.fresh) return "an update of an offer already announced, not a fresh post";
         if (!FilterStore.peek(context)) return "Peek is off in Settings";
+        String paused = pausedWhy(context);
+        if (paused != null) return "Peek is paused for now (" + paused + ")";
         if (!Consent.accepted(context)) return "the notice isn't accepted yet";
         if (!settings.enabled) return "auto-decline is paused";
         if (!settings.hasAnyRule()) return "no rules are set";
         if (foreground) return "Dasher is on screen";
         long age = System.currentTimeMillis() - request.postTime;
         if (age < -1_000) return "the notification's time is in the future";
-        if (age > POST_AGE_MS) return "the notification is " + seconds(age) + " old";
+        if (age > maxAgeMs) return "the notification is " + seconds(age) + " old";
         if (screenReadAgo >= 0) return "Dasher's screen showed this offer " + seconds(screenReadAgo) + " ago";
         if (Updater.installing(context)) return "an update is installing";
         return null;
@@ -261,6 +356,12 @@ final class Peek {
 
     /** The touch watch goes up; Dasher opens once the phone is quiet. */
     void arm(Request request, Front front, ComponentName dasher, long now) {
+        arm(request, front, dasher, now, POST_AGE_MS);
+    }
+
+    /** As {@link #arm(Request, Front, ComponentName, long)}, for a post up to {@code maxPostAgeMs} old. */
+    void arm(Request request, Front front, ComponentName dasher, long now, long maxPostAgeMs) {
+        this.maxPostAge = maxPostAgeMs;
         this.request = request;
         this.front = front;
         this.dasher = dasher;
@@ -277,12 +378,46 @@ final class Peek {
         this.lastRecognised = false;
         this.leftWithUser = false;
         this.offerEndsAt = NEVER;
+        this.factsAt = NEVER;
+        this.ownTapAt = NEVER;
+        this.presentationTried = false;
+        this.ownTapRequested = false;
+        this.recognisedSeen = false;
+        this.openingTouched = false;
+        this.touchedWhileArming = false;
+        this.watchUpAt = NEVER;
+        this.suspendedAt = NEVER;
+        this.resumedAt = NEVER;
+        this.returnWaiting = false;
+        this.noOfferLogged = false;
+        this.factsLogged = false;
         this.phase = Phase.ARMING;
     }
 
     /** A touch while arming: the quiet starts again from it. */
     void touchedWhileArming(long at) {
-        if (phase == Phase.ARMING) quietSince = Math.max(quietSince, at);
+        if (phase != Phase.ARMING) return;
+        if (at != NEVER && at > armedAt) touchedWhileArming = true;
+        quietSince = Math.max(quietSince, at);
+    }
+
+    /** Whether a touch came during this quiet wait (else a wait that ran out was for want of the touch watch). */
+    boolean touchedWhileArming() {
+        return touchedWhileArming;
+    }
+
+    /**
+     * The touch watch was seen up, having come up at {@code elapsed}: the quiet is counted from then, never from
+     * before the watch could see a touch.
+     *
+     * @return the first time, how long after arming it came up; -1 after that
+     */
+    long watchUp(long elapsed) {
+        if (phase != Phase.ARMING) return -1;
+        quietSince = Math.max(quietSince, elapsed);
+        if (watchUpAt != NEVER) return -1;
+        watchUpAt = Math.max(armedAt, elapsed);
+        return watchUpAt - armedAt;
     }
 
     /** Whether the phone has been quiet long enough to open Dasher. */
@@ -332,6 +467,11 @@ final class Peek {
         return armedAt;
     }
 
+    /** The oldest its post may be when Dasher is opened for it. */
+    long maxPostAge() {
+        return maxPostAge;
+    }
+
     long openedAt() {
         return openedAt;
     }
@@ -358,8 +498,27 @@ final class Peek {
         phase = Phase.UP;
         upAt = now;
         lastUpAt = now;
-        failedInARow = 0;
+        failedStreak.clear();
         return true;
+    }
+
+    /**
+     * The user touched the screen while Dasher opened, before its window first appeared (the touch was meant for the
+     * app they were in): the peek goes on, counting what the user does from {@code actions}, and only the automatic
+     * decline may still go back.
+     */
+    void openingTouched(long actions) {
+        openingTouched = true;
+        this.actions = actions;
+    }
+
+    boolean openingTouched() {
+        return openingTouched;
+    }
+
+    /** What the user does is counted again from {@code actions} (an unlock resumed the peek). */
+    void rebase(long actions) {
+        this.actions = actions;
     }
 
     /** Whether a tap at {@code at} came within {@link #EARLY_TAP_MS} of Dasher appearing in a peek. */
@@ -385,6 +544,12 @@ final class Peek {
         lastRecognised = recognised;
         if (!recognised) recognisedAt = NEVER;
         else if (recognisedAt == NEVER && phase == Phase.UP) recognisedAt = now;
+        if (recognised && phase == Phase.UP) recognisedSeen = true;
+    }
+
+    /** Whether a recognised empty screen was read during this peek. */
+    boolean recognisedSeen() {
+        return recognisedSeen;
     }
 
     boolean lastRecognised() {
@@ -399,6 +564,148 @@ final class Peek {
     boolean noOfferWaited(long now) {
         return phase == Phase.UP && !offerSign && lastRecognised && recognisedAt != NEVER
                 && now - recognisedAt >= NO_OFFER_MS;
+    }
+
+    /**
+     * A read showed any of an offer's facts (pay, a bound on it, miles, minutes, stops, items) or both its controls.
+     *
+     * @return true the first time this peek
+     */
+    boolean facts(long now) {
+        if (factsAt != NEVER || (phase != Phase.UP && phase != Phase.DECLINING && phase != Phase.CONFIRMED)) {
+            return false;
+        }
+        factsAt = now;
+        return true;
+    }
+
+    boolean factsRead() {
+        return factsAt != NEVER;
+    }
+
+    long factsAt() {
+        return factsAt;
+    }
+
+    /** Once per peek: whether the "[peek] no offer" line was already written (it is from now on). */
+    boolean noOfferLogged() {
+        boolean was = noOfferLogged;
+        noOfferLogged = true;
+        return was;
+    }
+
+    /**
+     * Whether Dasher's own notification tap is due: Dasher up {@link #PRESENT_MS}, no sign of an offer and none of its
+     * facts read, and the tap not tried yet this peek.
+     */
+    boolean presentationDue(long now) {
+        long due = presentationDueAt();
+        return due != NEVER && now >= due;
+    }
+
+    /** When Dasher's own notification tap is due, or {@link #NEVER} when it is not to be tried. */
+    long presentationDueAt() {
+        if (phase != Phase.UP || offerSign || factsAt != NEVER || presentationTried || upAt == NEVER) return NEVER;
+        return upAt + PRESENT_MS;
+    }
+
+    /** Dasher's own notification tap was sent: never again this peek. */
+    void ownTapSent(long now) {
+        presentationTried = true;
+        ownTapRequested = true;
+        ownTapAt = now;
+    }
+
+    /**
+     * Dasher's own notification tap was not sent, and is not tried again this peek.
+     *
+     * @param waitForOffer the offer's notification is still posted but cannot be tapped: the wait for the offer to
+     *     show runs all the same
+     */
+    void ownTapSkipped(long now, boolean waitForOffer) {
+        presentationTried = true;
+        if (waitForOffer) ownTapAt = now;
+    }
+
+    boolean ownTapRequested() {
+        return ownTapRequested;
+    }
+
+    long ownTapAt() {
+        return ownTapAt;
+    }
+
+    /** Dasher never drew the offer: {@link #OWN_TAP_WAIT_MS} after its own notification tap, no sign of it at all. */
+    boolean unshown(long now) {
+        long due = unshownAt();
+        return due != NEVER && now >= due;
+    }
+
+    /** When the offer counts as never shown, or {@link #NEVER} while that does not apply. */
+    long unshownAt() {
+        if (phase != Phase.UP || ownTapAt == NEVER || factsAt != NEVER || offerSign) return NEVER;
+        return ownTapAt + OWN_TAP_WAIT_MS;
+    }
+
+    /** The offer's notification is gone: it is no longer waited for as never shown (a withdrawn offer is not). */
+    void offerGone() {
+        ownTapAt = NEVER;
+    }
+
+    /** Whether the whole opened peek's time ({@link #MAX_MS} from its first open, locked time aside) is over. */
+    boolean pastDeadline(long now) {
+        return openedAt != NEVER && now - openedAt >= MAX_MS;
+    }
+
+    // ---- The lock ----
+
+    /** The screen turned off or the phone locked: nothing of this peek runs until an unlock resumes it. */
+    void suspend(long now) {
+        if (active() && phase != Phase.ARMING && suspendedAt == NEVER) suspendedAt = now;
+    }
+
+    boolean suspended() {
+        return suspendedAt != NEVER;
+    }
+
+    long suspendedAt() {
+        return suspendedAt;
+    }
+
+    /**
+     * An unlock in time resumes it: every time it keeps moves on by the time it was suspended, so the locked time
+     * counts toward none of its waits or its deadline.
+     */
+    void resume(long now) {
+        if (suspendedAt == NEVER) return;
+        long shift = Math.max(0, now - suspendedAt);
+        openedAt = shifted(openedAt, shift);
+        upAt = shifted(upAt, shift);
+        followingSince = shifted(followingSince, shift);
+        recognisedAt = shifted(recognisedAt, shift);
+        factsAt = shifted(factsAt, shift);
+        ownTapAt = shifted(ownTapAt, shift);
+        suspendedAt = NEVER;
+        resumedAt = now;
+        returnWaiting = false;
+    }
+
+    private static long shifted(long at, long shift) {
+        return at == NEVER ? NEVER : at + shift;
+    }
+
+    /** When an unlock resumed this peek, {@link #NEVER} for one never suspended. */
+    long resumedAt() {
+        return resumedAt;
+    }
+
+    /** A return held until the touch watch has seen the phone quiet after the unlock. */
+    void returnWaiting(boolean waiting) {
+        returnWaiting = waiting;
+    }
+
+    boolean returnWaiting() {
+        return returnWaiting;
     }
 
     /** A newer offer's notification came: the peek follows whatever Dasher shows next. */
@@ -468,38 +775,61 @@ final class Peek {
 
     /**
      * The peek is over. One that did not go back after Dasher was up left an offer with the user: its key is held for
-     * {@link #LEFT_WITH_YOU_MS}. Counts toward pausing Peek: a peek that found no offer, one whose Dasher never came up.
+     * {@link #LEFT_WITH_YOU_MS}. Only two outcomes count toward pausing Peek, each in a row within {@link #STREAK_MS}
+     * and within one dash: {@link Outcome#WITHDRAWN} and {@link Outcome#OPEN_FAILED}. A peek that read any sign of an
+     * offer begins the empty count afresh; the other outcomes neither count nor reset it.
      *
+     * @param wentBack whether it took the user back
+     * @param dashStart the dash under way's start ({@link Dashing#currentStart}), 0 for none: another dash begins the
+     *     counts afresh
      * @return why Peek should pause now, or null
      */
-    String end(boolean wentBack, boolean openFailed, long now) {
+    String end(Outcome outcome, boolean wentBack, long now, long dashStart) {
         if (!active()) return null;
         boolean opened = openedAt != NEVER;
+        boolean openFailed = outcome == Outcome.OPEN_FAILED;
         if (opened && !openFailed && upAt != NEVER && offerSign && (!wentBack || leftWithUser)) {
             heldKey = request.key;
             // Until the offer's own countdown runs out, when one was read.
             heldUntil = offerEndsAt != NEVER ? Math.min(offerEndsAt, now + LEFT_WITH_YOU_MS) : now + LEFT_WITH_YOU_MS;
         }
-        String pause = null;
-        if (openFailed) {
-            failedInARow++;
-            if (failedInARow >= FAILED_TO_PAUSE) {
-                pause = "Dasher did not come up for " + failedInARow + " peeks in a row (the phone may block apps "
-                        + "opening from the background)";
-                failedInARow = 0;
-            }
-        } else if (upAt != NEVER) {
-            emptyInARow = offerSign ? 0 : emptyInARow + 1;
-            if (emptyInARow >= EMPTY_TO_PAUSE) {
-                pause = emptyInARow + " peeks in a row found no offer";
-                emptyInARow = 0;
-            }
+        if (streakDash != dashStart) {
+            emptyStreak.clear();
+            failedStreak.clear();
+            streakDash = dashStart;
         }
-        if (opened) lastEndedAt = now;
+        String pause = null;
+        if (opened) {
+            if (offerSign || factsAt != NEVER) emptyStreak.clear();
+            if (outcome == Outcome.OPEN_FAILED) {
+                if (counted(failedStreak, now) >= FAILED_TO_PAUSE) {
+                    pause = "Dasher did not come up for " + failedStreak.size() + " peeks in a row (the phone may "
+                            + "block apps opening from the background)";
+                    failedStreak.clear();
+                }
+            } else if (outcome == Outcome.WITHDRAWN) {
+                if (counted(emptyStreak, now) >= EMPTY_TO_PAUSE) {
+                    pause = emptyStreak.size() + " offers in a row were gone by the time Dasher showed";
+                    emptyStreak.clear();
+                }
+            } else if (outcome == Outcome.DECLINED_BACK || outcome == Outcome.LEFT_WITH_USER) {
+                emptyStreak.clear();
+            }
+            lastEndedAt = now;
+        }
         phase = Phase.NONE;
         request = null;
         dasher = null;
+        suspendedAt = NEVER;
+        returnWaiting = false;
         return pause;
+    }
+
+    /** One more in a row, those older than {@link #STREAK_MS} forgotten: how many there are now. */
+    private static int counted(ArrayDeque<Long> streak, long now) {
+        while (!streak.isEmpty() && now - streak.peekFirst() >= STREAK_MS) streak.pollFirst();
+        streak.addLast(now);
+        return streak.size();
     }
 
     /** The offer read shows {@code secondsLeft} on its countdown (-1 for none): it is gone by then. */
@@ -543,6 +873,64 @@ final class Peek {
                 : "Unclear: " + line + (reason == null || reason.isEmpty() ? "" : " (" + reason + ")");
     }
 
+    // ---- Pausing itself (any thread) ----
+
+    /** A pause Peek put on itself: why, until when (Peek's clock), and the dash it began in; for one app only. */
+    private static final class Pause {
+        final Object app;
+        final String why;
+        final long until;
+        final long dashStart;
+
+        Pause(Object app, String why, long until, long dashStart) {
+            this.app = app;
+            this.why = why;
+            this.until = until;
+            this.dashStart = dashStart;
+        }
+    }
+
+    private static final AtomicReference<Pause> PAUSE = new AtomicReference<>();
+
+    /**
+     * Peek pauses itself (memory only) for {@link #PAUSE_MS}, or until the next dash starts, whichever is first. The
+     * Settings switch is never touched: it stays the user's own choice.
+     */
+    static void pause(Context context, String why) {
+        PAUSE.set(new Pause(context.getApplicationContext(), why, now() + PAUSE_MS, Dashing.currentStart(context)));
+    }
+
+    /**
+     * Why Peek has paused itself, or null when it has not: the pause is over {@link #PAUSE_MS} after it began, or once
+     * another dash started (said once in the log).
+     */
+    static String pausedWhy(Context context) {
+        Pause current = PAUSE.get();
+        if (current == null) return null;
+        if (current.app != context.getApplicationContext()) {
+            // Another app (a new process in tests): its pause is not this one's.
+            PAUSE.compareAndSet(current, null);
+            return null;
+        }
+        String over = null;
+        if (now() >= current.until) {
+            over = PAUSE_MS / 60_000 + " minutes passed";
+        } else {
+            long dash = Dashing.currentStart(context);
+            if (dash != 0 && dash != current.dashStart) over = "a new dash started";
+        }
+        if (over == null) return current.why;
+        if (PAUSE.compareAndSet(current, null)) log(context, "pause over: " + over + "; Peek works again");
+        return null;
+    }
+
+    /** The user tapped Resume on the homepage: the pause Peek put on itself ends now. */
+    static void resumeNow(Context context) {
+        Pause current = PAUSE.get();
+        if (current == null || !PAUSE.compareAndSet(current, null)) return;
+        log(context, "pause over: you tapped Resume");
+    }
+
     // ---- The log (any thread) ----
 
     /** The last skip logged and how often it came again since; a new app (a new process) starts afresh. */
@@ -571,6 +959,18 @@ final class Peek {
             forgetIfNewApp(context);
             flushSkips(context);
             lastSkip = "";
+            DiagnosticLog.log(context, "peek", line + state(context));
+            DashSummary.peek(context, line);
+        }
+    }
+
+    /**
+     * A "[peek]" line that leaves the count of a repeated skip alone: it may come between the repeats of one skip (an
+     * offer that came while the phone was locked, each one after the skip that says so).
+     */
+    static void note(Context context, String line) {
+        synchronized (Peek.class) {
+            forgetIfNewApp(context);
             DiagnosticLog.log(context, "peek", line + state(context));
             DashSummary.peek(context, line);
         }

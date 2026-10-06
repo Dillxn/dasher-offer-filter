@@ -112,6 +112,16 @@ final class OfferAlerts {
      */
     static boolean notifyOffer(Context context, String tag, PendingIntent doorDashIntent, OfferRule.Result result,
                                String detail, boolean ring, String store) {
+        return notifyOffer(context, tag, doorDashIntent, result, detail, ring, store, false);
+    }
+
+    /**
+     * As {@link #notifyOffer(Context, String, PendingIntent, OfferRule.Result, String, boolean, String)}; with
+     * {@code preferDasherOwn} (Dasher's launcher brought Dasher up and it never drew this offer), the card's tap tries
+     * Dasher's own notification intent first, its launcher after.
+     */
+    static boolean notifyOffer(Context context, String tag, PendingIntent doorDashIntent, OfferRule.Result result,
+                               String detail, boolean ring, String store, boolean preferDasherOwn) {
         if (result == OfferRule.Result.DECLINE) {
             clear(context, tag);
             return false;
@@ -141,7 +151,7 @@ final class OfferAlerts {
             // A group child with summary-only alerting never alerts, even on a high-importance channel.
             builder.setGroup("quiet-" + tag).setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY);
         }
-        PendingIntent open = openDasherIntent(context, tag, doorDashIntent);
+        PendingIntent open = openDasherIntent(context, tag, doorDashIntent, preferDasherOwn);
         if (open != null) builder.setContentIntent(open);
 
         try {
@@ -170,10 +180,11 @@ final class OfferAlerts {
      * it is already in split screen, into the other half when only ours is) and clears the card. DoorDash's own content intent only when Dasher has no launch intent, and only when
      * DoorDash created it.
      */
-    private static PendingIntent openDasherIntent(Context context, String tag, PendingIntent doorDashIntent) {
+    private static PendingIntent openDasherIntent(Context context, String tag, PendingIntent doorDashIntent,
+                                                  boolean preferDasherOwn) {
         PendingIntent dashers = doorDashIntent != null && DASHER_PACKAGE.equals(doorDashIntent.getCreatorPackage())
                 ? doorDashIntent : null;
-        return OpenDasherActivity.forCard(context, tag, dashers);
+        return OpenDasherActivity.forCard(context, tag, dashers, preferDasherOwn && dashers != null);
     }
 
     /** Whether the card with this tag is still posted (not cleared, timed out, or tapped away). */

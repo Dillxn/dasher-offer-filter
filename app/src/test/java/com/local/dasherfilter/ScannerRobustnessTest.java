@@ -282,15 +282,21 @@ public final class ScannerRobustnessTest {
         assertEquals(launch, method.invoke(service, pkg));
     }
 
-    @Test public void aPeekRuntimeFailurePersistsTheOffSwitchWithoutLeakingTheExceptionMessage() throws Exception {
+    @Test public void aPeekRuntimeFailurePausesPeekForAWhileWithoutTouchingTheSwitchOrLeakingTheMessage()
+            throws Exception {
         FilterStore.setPeek(app, true);
         Method method = OfferFilterService.class.getDeclaredMethod("peekFailed", String.class, RuntimeException.class);
         method.setAccessible(true);
         method.invoke(service, "test", new IllegalStateException("PRIVATE_ACCOUNT_SENTINEL"));
-        assertFalse(FilterStore.peek(app));
+        assertTrue("the Settings switch stays the user's own choice", FilterStore.peek(app));
+        assertNotNull("Peek paused itself for a while", Peek.pausedWhy(app));
         reconnect();
-        assertFalse(FilterStore.peek(app));
+        assertTrue(FilterStore.peek(app));
+        assertNotNull("the pause is the process's, not the connection's", Peek.pausedWhy(app));
         assertFalse(DiagnosticLog.read(app).contains("PRIVATE_ACCOUNT_SENTINEL"));
+        ShadowSystemClock.advanceBy(Duration.ofMillis(Peek.PAUSE_MS));
+        assertNull("over by itself after 15 minutes", Peek.pausedWhy(app));
+        assertTrue(DiagnosticLog.read(app).contains("[peek] pause over: 15 minutes passed"));
     }
 
     private void installed(ComponentName component, String category) throws Exception {

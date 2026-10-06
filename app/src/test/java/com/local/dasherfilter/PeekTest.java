@@ -470,8 +470,9 @@ public class PeekTest {
     }
 
     @Test
-    public void whenNoOfferShowsWithin4SecondsItGoesBack() {
+    public void whenNoOfferShowsWithin4SecondsAndItsNotificationIsGoneItGoesBack() {
         connect(app(MAPS));
+        // Dasher withdrew the offer: its notification is no longer listed.
         post("Taco Bell");
         dasherOpened();
         // The offer expired before Dasher came up: Dasher shows the wait for offers.
@@ -482,7 +483,8 @@ public class PeekTest {
         Intent back = started();
         assertNotNull("back after 4 s with no offer", back);
         assertEquals(MAPS_HOME, back.getComponent());
-        contains(log(app), "[peek] returned to a navigation app: no offer showed within 4 s of Dasher's screen");
+        contains(log(app), "[peek] returned to a navigation app: offer withdrawn: no offer showed within 4 s");
+        contains(log(app), "offer notification=gone");
     }
 
     @Test
@@ -630,15 +632,16 @@ public class PeekTest {
     }
 
     @Test
-    public void aTouchWhileDasherComesUpLeavesItUpAfterTheDecline() {
+    public void aTouchOnlyBeforeDasherAppearedDoesNotCancelTheReturnAfterTheAutomaticDecline() {
         connect(app(MAPS));
         post("Taco Bell");
         dasherOpened();
-        // The user touches the screen as Dasher opens (in Maps, or on Dasher).
+        // The user touches the screen as Dasher opens, before its window appeared: the touch was meant for Maps.
         pass(100);
         touchNow();
+        pass(50);
 
-        // The offer is still declined at once, as any offer on screen; but the user is not taken anywhere.
+        // The offer is declined at once, as any offer on screen, and the user is taken back (the user's approval, A5).
         offerRoot = offer("$7.90");
         List<Long> declines = taps(decline);
         dasherShows(offerRoot);
@@ -650,9 +653,39 @@ public class PeekTest {
         assertEquals(1, confirms.size());
         pass(300);
         dasherShows(finding());
+        Intent back = started();
+        assertNotNull("back to Maps after the completed automatic decline: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+        contains(log(app), "a touch before Dasher appeared was meant for a navigation app");
+    }
+
+    @Test
+    public void aTouchAfterDasherAppearedLeavesItUpAfterTheDecline() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        // Dasher's window appears (its event), and only then the user touches, before Peek read it.
+        AccessibilityEvent appeared = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        appeared.setPackageName(DASHER);
+        pass(100);
+        Shadows.shadowOf(screen.get()).setWindows(Collections.emptyList());
+        screen.get().onAccessibilityEvent(appeared);
+        pass(50);
+        touchNow();
+
+        offerRoot = offer("$7.90");
+        List<Long> declines = taps(decline);
+        dasherShows(offerRoot);
+        assertEquals("still declined at once, as any offer on screen", 1, declines.size());
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        dasherShows(question(confirm));
+        pass(300);
+        dasherShows(finding());
         pass(25_000);
-        assertNull("never back after anything of the user's", started());
+        assertNull("never back after the user touched Dasher", started());
         assertTrue(globalActions().isEmpty());
+        contains(log(app), "[peek] left Dasher up because you touched the screen as it opened");
     }
 
     @Test
