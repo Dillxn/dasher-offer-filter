@@ -452,7 +452,7 @@ public class PeekTest {
 
     @Test
     public void fromOfferFiltersOwnScreenItGoesBackToOfferFilter() {
-        Appearance.choose(app, Appearance.Mode.NIGHT);
+        LauncherAppearanceTest.enableOnly(app, LauncherAppearance.NIGHT);
         connect(app(OURS));
         post("Taco Bell");
         dasherOpened();
@@ -1024,7 +1024,7 @@ public class PeekTest {
     }
 
     @Test public void ownNightAliasTaskReturnsWithoutStackingAnotherActivity() {
-        Appearance.choose(app, Appearance.Mode.NIGHT);
+        LauncherAppearanceTest.enableOnly(app, LauncherAppearance.NIGHT);
         ownExistingTaskReturns(new ComponentName(app, LauncherAppearance.NIGHT));
     }
 

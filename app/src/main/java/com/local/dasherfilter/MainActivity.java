@@ -1303,7 +1303,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (appearanceCheckedAt >= 0 && now >= appearanceCheckedAt && now - appearanceCheckedAt < 60_000) return false;
         appearanceCheckedAt = now;
         Appearance.State appearance = Appearance.resolve(this);
-        LauncherAppearance.sync(this, appearance);
         if (sunButton != null) sunButton.show(appearance);
         if (appearance.night == ui.dark) return false;
         changingAppearance = true;

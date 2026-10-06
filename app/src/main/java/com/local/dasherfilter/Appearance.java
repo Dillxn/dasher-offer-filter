@@ -42,12 +42,11 @@ final class Appearance {
         return prefs.contains(NIGHT) ? (prefs.getBoolean(NIGHT, false) ? Mode.NIGHT : Mode.DAY) : Mode.AUTO;
     }
 
+    /** Saves the theme. It changes only the app's own screens, never the launcher entry ({@link LauncherAppearance}). */
     static boolean choose(Context context, Mode mode) {
         if (mode == null) throw new IllegalArgumentException("theme mode is required");
-        boolean saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(MODE, mode.name()).remove(NIGHT).commit();
-        if (saved) LauncherAppearance.sync(context, resolve(context));
-        return saved;
     }
 
     /** Compatibility for callers asking for an explicit day/night override, not Auto's current result. */
