@@ -81,9 +81,12 @@ final class LegalTexts {
             You can turn this off in Settings.
             - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does \
             not decline an order.
-            - It updates itself from its public signed update feed without requiring an account. Feedback is \
-            accountless and is sent only when you tap Send; masked diagnostics are attached only when you \
-            explicitly choose them (see the privacy text).
+            - It updates itself from its public signed update feed without requiring an account.
+            - Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go \
+            only when you attach them to feedback, or after each dash once you turn on Share anonymous diagnostics \
+            after each dash (off by default). The privacy text says what each sends, where it goes and how long it \
+            is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them \
+            for 90 days. Sending feedback does not guarantee a reply, review or fix.
 
             ## Your responsibilities
 
@@ -134,9 +137,10 @@ final class LegalTexts {
             review is claimed; a private privacy contact is not yet configured.
 
             {app} does not require an {app} account and has no ads or analytics. It does not sell or rent your \
-            data. Offer reading and decisions happen on your phone. Update requests, optional reports, place-name \
-            lookups and links you choose to open can send information to the services described under What leaves \
-            the phone. The developer's public project identity is Dillxn.
+            data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
+            optional diagnostics after each dash, place-name lookups and links you choose to open can send \
+            information to the services described under What leaves the phone. The developer's public project \
+            identity is Dillxn.
 
             ## What it reads on the phone
 
@@ -155,8 +159,11 @@ final class LegalTexts {
             - Approximate location, only if you allow it, for the offer map. Auto theme can use the same existing, \
             fresh approximate location while the offer map is enabled, to calculate sunrise and sunset on the \
             phone. Theme selection never requests a new location fix or precise location.
+            - Android's own record of how the app last stopped (Android 11 and later), to notice a crash or a stop \
+            for not responding.
 
-            Before you accept the current first-run notice, it reads none of this and sends no reports.
+            Before you accept the current first-run notice, it reads none of this and sends no feedback or \
+            diagnostics.
 
             ## What it keeps on the phone
 
@@ -203,11 +210,23 @@ final class LegalTexts {
             minimums; it never proves acceptance or restores tap authority. Clear history removes it.
             - A pending hand-decline observation can retain the same numeric offer facts, including observed item \
             count/applicability, to reconcile its outcome, for at most one hour.
-            - The state of updates. End-user GitHub sign-in is retired in 0.4.73; an old stored GitHub connection \
-            and unsent GitHub report queue are removed when the updated app first opens.
-            - Feedback is sent directly when you tap Send and is not kept in a persistent on-phone outbox. If you \
-            explicitly attach diagnostics, the app builds the same masked diagnostic report for that one \
-            submission.
+            - The state of updates: the version last advertised, and when updates were last checked.
+            - Feedback waiting to send. A submission is saved on the phone before it is sent, so no signal or a \
+            restart loses nothing: your words, its category, and any masked diagnostics or offer report you chose \
+            to include. At most 5 submissions wait, each at most 7 days; one still unsent after 7 days is discarded \
+            unsent. Each is deleted from the phone once the feedback service has accepted it, or refused it for \
+            good.
+            - The last 10 references of accepted submissions: the date, the short reference and whether it was \
+            feedback, an offer report or diagnostics after a dash, so you can refer to them. Newer ones replace \
+            older ones; uninstalling removes them.
+            - After the app stopped unexpectedly (a crash, or Android found it not responding), a short summary of \
+            each stop in the last 24 hours: the kind of stop, the minute (UTC), whether the app was in front, and \
+            where in the app's code it happened (the error's type and the top of its stack, or the top of the main \
+            thread for a stop for not responding). Never an error's message, a trace's other text or anything read \
+            from a screen. It is kept for 24 hours; Clear history removes it.
+            - With **Share anonymous diagnostics after each dash** on: counts of the current dash's problems by \
+            fixed category, and the masked read lines of up to six recent problems, until that dash's summary is \
+            queued. Turning the option off or Clear history removes them.
             - Your Day, Night, System or Auto theme choice. Auto is the default for new choices; it calculates the \
             local sun cycle using only an existing permitted approximate location, without a network request or a \
             separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
@@ -219,12 +238,12 @@ final class LegalTexts {
 
             Pay per item uses only an explicit, unambiguous total count on an offer declaring items or shopping. An \
             unread declared count stays unknown; no quantity is inferred from product names, unique-item counts, \
-            stops or orders. These numeric item facts may appear in the same opt-in/shared reports as the other \
-            offer figures.
+            stops or orders. These numeric item facts can appear in the reports and diagnostics you choose to send, \
+            like the other offer figures.
 
             Decision and confirmation lines take priority over repeated scan timings within the existing log \
-            limits. Reports include numeric counts of discarded log lines or queued reports, so missing evidence is \
-            visible. Atomic history writes keep a recovery copy only while replacing the same bounded history.
+            limits. Reports include numeric counts of discarded log lines, so missing evidence is visible. Atomic \
+            history writes keep a recovery copy only while replacing the same bounded history.
 
             Screen text is masked before it is kept: customer names, your own name, street addresses, city, state \
             and ZIP lines, apartment numbers, phone numbers, email addresses, delivery instructions, card numbers \
@@ -234,39 +253,69 @@ final class LegalTexts {
             the control shape and action category, never its text labels.
 
             Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee of anonymity or removal \
-            of every personal detail. Review a report before sharing it. Notes you type with Report this offer are \
-            not masked; do not include customer, payment or account details. Diagnostics are masked again with the \
-            current rules immediately before an explicitly requested feedback submission.
+            of every personal detail. Review what you send with Preview first. What you type in feedback, and notes \
+            you type with Report this offer, are not masked; do not include customer, payment or account details. \
+            Diagnostics and offer reports waiting to send are masked again with the current rules immediately \
+            before sending.
 
-            A one-time privacy cleanup clears older diagnostic logs and legacy unsent reports if it has not already \
-            completed on this installation. Separately, 0.4.73 retires any stored end-user GitHub connection and \
-            discards legacy unsent GitHub reports when the app opens. Neither cleanup can remove copies that were \
-            already sent.
+            Earlier versions could connect to GitHub and queue problem reports there. The first time this version \
+            runs, it deletes any stored GitHub connection, its history, the old report queue and its scheduled \
+            jobs, once. A one-time privacy cleanup also clears older diagnostic logs if it has not already \
+            completed on this installation. Neither cleanup can remove copies that were already sent.
 
             Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
 
             ## What leaves the phone, and when
 
             - Update checks. The app asks its public update server (dash-offer-filter-build.onrender.com, hosted by \
-            Render) for the latest version and downloads it. No GitHub account is required. These requests carry \
-            ordinary internet connection metadata such as your IP address and the app's own request information, \
-            but no offer history.
-            - Anonymous feedback, only when you tap Send. The app posts what you type to a dedicated Supabase Edge \
-            Function. No {app} account, GitHub account, name or email is required or included by the app. The \
-            feedback record stores the feedback category, message, app version and whether masked diagnostics were \
-            explicitly attached. The service derives a one-way, rotating rate-limit value from connection metadata; \
-            the raw IP address is not stored in the feedback table. Supabase and intervening network providers \
-            necessarily receive ordinary connection metadata while handling the request and may keep infrastructure \
-            logs under their own policies, so this is not a mathematical guarantee of anonymity.
-            - Masked diagnostics are included with feedback only when you explicitly turn on **Attach masked \
-            diagnostics** for that submission. They can include the Android version and phone maker, current rules, \
-            decision history and the bounded masked logs described above. Review them before sending because \
-            pattern-based masking can miss details.
-            - Feedback records expire after 90 days. They may be reviewed by the developer and by AI systems \
-            (Anthropic's Claude and OpenAI's ChatGPT/Codex) used to investigate problems. A submission does not \
-            guarantee review or a fix.
-            - **Share report**, only when you tap it, still hands a masked report to the app you choose. From \
-            there, that app handles the copy under its own privacy practices.
+            Render) for the latest version and downloads it. No account is required. These requests carry ordinary \
+            internet connection metadata such as your IP address and the app's own request information, but no \
+            offer history.
+            - **Send anonymous feedback**, only when you tap Send: the category you pick, what you type (at most \
+            4,000 characters), and the app's version. With **Attach masked diagnostics** on (off by default, chosen \
+            for each submission), it also sends the masked diagnostic report Share report builds: the Android \
+            version and phone maker, the app's readiness and settings, your current rules, the decision history, \
+            the bounded masked logs described above and any recent stop summary. Long diagnostics go in at most 4 \
+            parts; Preview shows exactly what will be sent.
+            - **Report this offer**, only when you tap Send: what went wrong (Misread, Wrong decline, Wrong accept \
+            or Other), your optional note, and that offer's report: its figures, decision and outcome, its masked \
+            read lines (with every word that is not offer vocabulary reduced to its shape), your current rules, the \
+            app's and Android's versions (not the phone's maker) and the minute it was decided. The dialog says \
+            what is sent; tapping Send is your choice to send it.
+            - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings (it starts off, \
+            and no update turns it on). After each dash ends (Dasher shows the dash ended, or nothing of the dash \
+            was seen for 30 minutes), it sends one masked summary of at most 30,000 characters: the app and Android \
+            version and phone maker; your switches, and whether screen reading, background offers and alerts were \
+            ready; counts of offers by result, action and outcome; unreadable offers; declines still showing, by \
+            stage; decline-error recoveries; automatic accepts not sent, and why; the types of screen-read and \
+            notification errors with the place in the app's code where they happened; how Dasher's window was laid \
+            out; what Peek did, by fixed category; that dash's decisions, with times counted from the dash's start; \
+            masked log lines only around those problems; and any recent stop summary. Never coordinates, place \
+            names, or an install or device identifier. At most one a dash and three a day. Turning it off discards \
+            summaries not yet sent.
+            - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
+            goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
+            report, which opens the feedback dialog with Bug chosen and diagnostics attached; nothing is sent \
+            unless you tap Send.
+            - Where feedback goes. All of the above go only to the project's own feedback service, a Supabase Edge \
+            Function reached through Cloudflare. Every submission carries a fresh random token, used only to tie \
+            its parts together and store each once; it is new for each submission and not tied to your phone. The \
+            service stores each part as sent, with its kind, category, app version, whether it came from the app or \
+            the website, and when it arrived: no account, name, email, IP address, user agent, install or device \
+            identifier. To limit how often one network can send, it turns the network's address into a one-way \
+            value that changes every day, used only to count recent submissions and deleted within two days. \
+            Cloudflare and Supabase necessarily receive ordinary connection metadata, such as your IP address, \
+            while handling a request and may keep infrastructure logs under their own policies, so this is not a \
+            guarantee of anonymity.
+            - Submissions are kept on the feedback service for 90 days, then deleted. The developer reads them, and \
+            may use AI systems (Anthropic's Claude or OpenAI's ChatGPT/Codex) to investigate problems with them. A \
+            submission does not guarantee review or a fix.
+            - Waiting and retrying. If the phone is offline, the service is busy or too many submissions came from \
+            your network recently, a submission waits on the phone (see above) and Android sends it later, once a \
+            network is available. Nothing is sent unless the current notice is accepted, and an after-dash summary \
+            only while that option is still on; both are checked again before every part.
+            - **Share report**, only when you tap it, hands a masked report to the app you choose. From there, that \
+            app handles the copy under its own privacy practices.
             - Place names. To name the squares on the map, the app asks Android's own place lookup (Google's \
             servers on most phones) about positions rounded to about half a kilometre, once while a position \
             remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes \
@@ -278,9 +327,9 @@ final class LegalTexts {
             - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for \
             them and counts nothing.
 
-            Render, Supabase, Google, Anthropic and OpenAI handle what reaches them under their own terms and \
-            privacy policies. Copies you deliberately share through another app are controlled by that app and \
-            recipient.
+            Render, Cloudflare, Supabase, Google, Anthropic and OpenAI handle what reaches them under their own \
+            terms and privacy policies. Copies you deliberately share through another app are controlled by that \
+            app and recipient.
 
             ## What it never collects
 
@@ -296,28 +345,33 @@ final class LegalTexts {
             split or floating windows, a pinned or unrecognized app, or another conflicting action. Its checks \
             depend on what Android exposes; they are not a safety guarantee.
             - Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map \
-            and cached place names, plus the temporary restart/error records above. Lookups and wait-record writes \
-            already in progress cannot restore cleared history. Your rules and learned minimums remain; Reset \
-            clears the learned minimums separately.
-            - Feedback leaves only after you tap Send. Leave **Attach masked diagnostics** off to send only your \
-            typed message and basic app-version metadata.
-            - Uninstalling removes the app's local data. It does not remove feedback already submitted or copies \
-            you deliberately shared through another app.
+            and cached place names, the temporary restart/error records above, stop summaries, the current dash's \
+            problem counts and after-dash summaries not yet sent. Lookups and wait-record writes already in \
+            progress cannot restore cleared history. Feedback and offer reports you sent and that still wait to go \
+            stay until they are sent or 7 days pass. Your rules and learned minimums remain; Reset clears the \
+            learned minimums separately.
+            - Feedback and offer reports leave only after you tap Send. Leave **Attach masked diagnostics** off to \
+            send only your words, the category and the app's version.
+            - **Share anonymous diagnostics after each dash** is off unless you turn it on, and you can turn it off \
+            at any time.
+            - Uninstalling removes the app's local data, including submissions still waiting and the kept \
+            references. It does not remove submissions the feedback service already received or copies you \
+            deliberately shared through another app.
 
             ## Help and privacy contact
 
             Use **Send anonymous feedback** in Settings, or the feedback form on offerfilter.org, for non-sensitive \
             feedback without creating an account. Do not type customer, payment, account or other sensitive \
             details. If you need to refer to an earlier submission, keep the short reference shown after it is \
-            accepted.
+            accepted; Settings' feedback dialog lists the last ten.
 
-            The project issue tracker remains public and is suitable only for public, non-sensitive development \
-            discussion. Do not attach diagnostic reports, customer details, payment or account information, \
-            addresses, screenshots containing personal information, or tokens.
+            The project's public issue tracker is suitable only for public, non-sensitive development discussion; \
+            posts there are public. Do not attach diagnostic reports, customer details, payment or account \
+            information, addresses, screenshots containing personal information, or tokens.
 
             A separate private identity-verification channel for privacy/deletion/security requests is not yet \
-            configured. Because ordinary feedback does not require an identity, the developer may be unable to \
-            prove which anonymous submission belongs to a requester without its reference.
+            configured. Because feedback carries no identity, the developer may be unable to tell which anonymous \
+            submission belongs to a requester without its reference.
 
             ## Children
 

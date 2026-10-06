@@ -37,10 +37,12 @@ final class Consent {
         {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
                 + "have no age-based expiry. A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling "
                 + "24-hour window; these are not shared. Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
-                + "Recognized payment, account and earnings screens are discarded. End-user GitHub sign-in and automatic report sharing are "
-                + "retired. Feedback is accountless and leaves only when you tap Send; masked diagnostics are attached only when you explicitly "
-                + "choose them. The feedback service keeps submitted feedback for up to 90 days. Network providers still receive normal "
-                + "connection metadata, and text masking can miss details. Privacy explains updates, feedback, place lookups and map links."},
+                + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
+                + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "
+                + "Settings (off by default). Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
+                + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex). Network providers "
+                + "still receive normal connection metadata, and text masking can miss details. Privacy explains updates, feedback, "
+                + "place lookups and map links."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "

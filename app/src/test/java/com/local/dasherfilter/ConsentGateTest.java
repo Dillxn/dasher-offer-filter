@@ -129,11 +129,14 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
         assertNotNull(data);
         for (String fact : new String[] {"rolling 24-hour window", "latest 200 offer decisions",
-                "no age-based expiry", "Up to 30 queued reports", "notes you type in reports are not masked",
-                "developer's private GitHub repository", "Anthropic's Claude", "OpenAI's ChatGPT/Codex",
-                "does not erase sent copies"}) {
+                "no age-based expiry", "Feedback and offer reports are accountless and leave only when you tap Send",
+                "masked diagnostics go only when you attach them",
+                "or after each dash if you turn that on in Settings (off by default)",
+                "Unsent submissions wait on this phone up to 7 days", "The feedback service keeps them 90 days",
+                "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details"}) {
             assertTrue(fact, data.contains(fact));
         }
+        assertFalse("no account of any kind", data.contains("GitHub"));
         assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
         assertFalse(data.contains("cleared by this update"));
     }
@@ -254,10 +257,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 12 did not distinguish outbox/history retention or fully explain report recipients.
-        assertEquals(13, Consent.VERSION);
+        // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics.
+        assertEquals(14, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 12).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 13).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

@@ -20,7 +20,8 @@ Automatic declines may dramatically lower your DoorDash acceptance rate. This ca
 - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were using after completion evidence; while navigation is detected, it also returns for passing or unclear offers and leaves a card. Otherwise those offers stay in Dasher. Your touch or app switch ends that automatic return. You can turn Peek off in Settings.
 - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.
-- It updates itself from its public signed update feed without requiring an account. Feedback is accountless and is sent only when you tap Send; masked diagnostics are attached only when you explicitly choose them (see the privacy text).
+- It updates itself from its public signed update feed without requiring an account.
+- Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go only when you attach them to feedback, or after each dash once you turn on Share anonymous diagnostics after each dash (off by default). The privacy text says what each sends, where it goes and how long it is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them for 90 days. Sending feedback does not guarantee a reply, review or fix.
 
 ## Your responsibilities
 
