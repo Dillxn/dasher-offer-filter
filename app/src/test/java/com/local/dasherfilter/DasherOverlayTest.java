@@ -349,6 +349,11 @@ public class DasherOverlayTest {
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherOverlay.OUT_FOR_MS));
         assertEquals(DasherTab.Look.PEEK, tab.look());
 
+        // Paused, nothing of Dasher's is read: the tab goes by Android's list of windows alone, as over a screen not
+        // recognised during a dash. Resumed, Dasher's screens are read again.
+        show(screen("Finding offers"));
+        assertEquals(DasherTab.Look.PEEK, tab.look());
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         // A route stored from an accepted offer tucks it away too, whatever the screen.
         show(screen("Finding offers"));
         assertEquals(DasherTab.Look.REST, tab.look());

@@ -68,6 +68,14 @@ import java.util.function.Supplier;
  * another event. After the first Decline tap, Dasher's question is looked for every {@link #CONFIRM_POLL_MS} for
  * {@link #CONFIRM_POLL_WINDOW_MS} without reading any window twice, and tapped the moment it is found.
  *
+ * <p>Never starve Dasher (the 6 October 2026 incident: Dasher stopped answering its user while it was read). After
+ * a read that showed no sign of an offer, the next one waits on the {@link ReadBudget} as well as the quiet gap: four
+ * reads a second at most, one a second during a delivery, longer after a costly read, none for a while when Dasher
+ * answers slowly. A read showing any sign of an offer, an event whose own words show one, a window change and the
+ * first event from a new window of Dasher's are read at once as above. A map's subtree is never walked
+ * ({@link MapNodes}), and while auto-decline is paused nothing of Dasher's is read at all: Android's list of windows
+ * alone places the tab.
+ *
  * <p>The user's decline. From the first Decline tap, the offer is handed back the moment the user acts on it: a touch
  * that is not the echo of one of the app's own taps ({@link OwnTaps}), a click Dasher reports on any node the app did
  * not tap, or the offer showing again after its screen gave way to its question with no tap of the question's Decline
@@ -95,7 +103,8 @@ public final class OfferFilterService extends AccessibilityService {
      * While nothing is up, Dasher's map and clocks change its screen many times a second. The first change after a
      * quiet spell this long is read at once; the later changes of a burst wait for one read this long after the last
      * one, the last change included. A window change, any sign of an offer or confirmation on the last read, a decline
-     * under way or a screen still settling is read at once.
+     * under way or a screen still settling is read at once. After a read that showed nothing of an offer, the read
+     * budget ({@link ReadBudget}) may hold the next read back longer; never after a sign of an offer.
      */
     static final long QUIET_SCAN_GAP_MS = 150;
     /**
@@ -635,6 +644,62 @@ public final class OfferFilterService extends AccessibilityService {
     /** For tests: how many window roots the scanner has asked Android for. */
     int rootFetches;
 
+    // ---- Read budget (scanner thread): Dasher is never read faster than it can draw ({@link ReadBudget}) ----
+
+    /** A root fetched for an offer's read: Dasher's nodes come with it, all at once (as always). */
+    private static final int ROOT_FOR_OFFER = Build.VERSION.SDK_INT >= 33
+            ? AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID | AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE : 0;
+    /** A root fetched for a routine read of a screen with nothing of an offer: its prefetch yields to Dasher. */
+    private static final int ROOT_ROUTINE = Build.VERSION.SDK_INT >= 33
+            ? AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID : 0;
+    /** A root fetched only to learn whose window it is: the root alone, nothing below it. */
+    private static final int ROOT_IDENTITY = 0;
+    private final ReadBudget budget = new ReadBudget();
+    private final ReadLoad load = new ReadLoad();
+    /**
+     * Whether the last read showed a sign of an offer for scheduling the next one ({@link #schedulingEvidence}): as
+     * {@link #offerEvidence}, less the travel time and distance a delivery or pickup screen shows of its own route.
+     */
+    private boolean readEvidence;
+    /** Whether a delivery or route is under way: a stored route, or the last read a delivery, pickup or map route. */
+    private boolean deliveryCalm;
+    /** Until when (uptime) a fresh read asked for (a notification, a rules change) keeps the old cadence. */
+    private long freshUntil = NEVER;
+    /** Whether the read under way is a budgeted one: its root is asked for without uninterruptible prefetch. */
+    private boolean routineRead;
+    /** The prefetch a known Dasher window's root is asked with: an offer read's, a routine read's, or none. */
+    private int rootPrefetch = ROOT_IDENTITY;
+    /** This read's first walk of a Dasher window, and that window's ID. */
+    private Scan readPrimary;
+    private int readWindowId = ReadBudget.NO_WINDOW;
+    /** This read's slowest single call into Dasher (ms), its map subtrees left unread, and whether it read content. */
+    private long readSlowestFetchMs;
+    private int readMaps;
+    private int readMapChildren;
+    private boolean readContent;
+    private boolean readCut;
+    /** The kinds of screen whose map subtree skip was logged (once each). */
+    private final Set<String> mapsLogged = new java.util.HashSet<>();
+    private long yieldLoggedAt = NEVER;
+    private boolean loadTickPending;
+    /** The deferred read's due time, while {@link #quietScanPending}. */
+    private long quietScanDue = NEVER;
+    /**
+     * Paused (auto-decline off, or no rule): nothing of Dasher's is read; only Android's list of windows, for the tab.
+     * Written on the scanner thread; the main thread reads it so a click's node is not fetched either.
+     */
+    private volatile boolean passive;
+    /** From the main thread with each hand-off: an event's own words showed a sign of an offer, or a new Dasher window. */
+    private final AtomicBoolean eventHint = new AtomicBoolean();
+    /** For tests: root fetches (from Android 13) with uninterruptible prefetch, and of the root alone. */
+    int uninterruptibleRootFetches;
+    int identityRootFetches;
+    /** For tests: reads of Dasher's content (each a walk of its nodes). */
+    int contentReads;
+    /** For tests: runs before each child is fetched, with its parent. */
+    static volatile java.util.function.Consumer<AccessibilityNodeInfo> childFetchForTests;
+    private final Runnable loadTick = this::logReadLoad;
+
     /** Re-scans while a screen is still settling or a decline confirmation is pending. */
     private final Runnable recheck = new Runnable() {
         @Override public void run() {
@@ -642,18 +707,52 @@ public final class OfferFilterService extends AccessibilityService {
             // A read for Dasher's events is queued: it reads the newest screen, and keeps reading after it.
             if (stopped || queued.get() != QUEUED_NONE) return;
             long now = SystemClock.uptimeMillis();
-            boolean more = checkOffer("recheck", now, MAX_SCAN_NODES);
+            // A screen with nothing of an offer on it settles on the read budget too.
+            if (budgeted(now)) {
+                long due = budget.dueAt(now, deliveryCalm);
+                if (now < due) {
+                    if (due < recheckUntil) {
+                        recheckPending = true;
+                        scanner.postAtTime(this, due);
+                    }
+                    watchWindows();
+                    return;
+                }
+                budget.take(now, deliveryCalm);
+                routineRead = true;
+            }
+            boolean more;
+            try {
+                more = checkOffer("recheck", now, MAX_SCAN_NODES);
+            } finally {
+                routineRead = false;
+            }
             if (more && (now < recheckUntil || declineState.hasPendingConfirmation(now))) scheduleRecheck();
             watchWindows();
         }
     };
-    /** The read owed to the later changes of a burst of content changes while nothing was up. */
+    /**
+     * The read owed to the later changes of a burst of content changes while nothing was up: on the read budget while
+     * the last read showed nothing of an offer ({@link #budgeted}).
+     */
     private final Runnable quietScan = new Runnable() {
         @Override public void run() {
             quietScanPending = false;
+            quietScanDue = NEVER;
             if (stopped) return;
+            long now = SystemClock.uptimeMillis();
+            if (budgeted(now)) {
+                long due = budget.dueAt(quietReadEndAt + QUIET_SCAN_GAP_MS, deliveryCalm);
+                if (now < due) {
+                    deferRead(quietScanEventAt, due);
+                    return;
+                }
+                budgetedReadNow(quietScanEventAt, "content burst");
+                return;
+            }
             scanNow(quietScanEventAt, "content burst");
             quietReadEndAt = lastScanEndAt;
+            readLateClicks();
         }
     };
     /**
@@ -683,10 +782,51 @@ public final class OfferFilterService extends AccessibilityService {
                 watchWindows(now + WINDOW_WATCH_MS);
                 return;
             }
+            if (dasherStillInFront()) {
+                // Android's list of windows is as the last look found it, with a window of Dasher's active: Dasher
+                // is still in front, and its root (a call into Dasher's UI thread, busy drawing its map) is not asked.
+                lastLookAt = now;
+                DashSummary.window(OfferFilterService.this, readWin);
+                syncWaitHeartbeat();
+                syncOverlay();
+                watchWindows();
+                return;
+            }
             lookAndPlace(true);
             watchWindows();
         }
     };
+
+    /**
+     * Whether Android's list of windows is unchanged since the last look and its active application window is still
+     * the window of Dasher's that look found (known by its ID), as Dasher readable in front: asks Android only, never
+     * Dasher. Only a window known by its ID can be recognised again so; with none, the list is not even asked for
+     * here (the look asks once). The active window is found before the list is fingerprinted, so a slow list costs
+     * one step when Dasher is no longer in front.
+     */
+    private boolean dasherStillInFront() {
+        // In split screen the look also renews the sighting of Dasher beside: it is not skipped there.
+        Screen seen = screen;
+        AccessibilityWindowInfo last = lastReadableWindow;
+        if (!seen.dasherReadable || seen.split || last == null || !realWindowId(last.getId())
+                || !dasherWindowIds.contains(last.getId())) {
+            return false;
+        }
+        try {
+            List<AccessibilityWindowInfo> listed = windowSource.get();
+            if (listed == null) return false;
+            AccessibilityWindowInfo active = null;
+            for (AccessibilityWindowInfo window : listed) {
+                if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION && window.isActive()) {
+                    active = window;
+                    break;
+                }
+            }
+            return active != null && active.getId() == last.getId() && windowsSignature(listed) == lastLookWindows;
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
+    }
     /** The notification path saw Dasher gone before the scanner did: look now, so the tab and the snapshot follow. */
     private final Runnable lookAgain = new Runnable() {
         @Override public void run() {
@@ -791,9 +931,10 @@ public final class OfferFilterService extends AccessibilityService {
             long at = eventsQueuedAt;
             int state = queued.getAndSet(QUEUED_NONE);
             boolean change = changeNoted.getAndSet(false);
+            boolean hint = eventHint.getAndSet(false);
             List<Click> taken = new ArrayList<>();
             for (Click click = clicks.poll(); click != null; click = clicks.poll()) taken.add(click);
-            onEvents(change, taken, at);
+            onEvents(change, taken, at, hint);
             // Read after read at the front, nothing else would ever run (Android's news of Dasher's ring, the
             // timers): when events came during a read taken from the front, the next read waits for what is due
             // behind it. What waits there and can wait (the window watch, settling, clicks) sees that read queued
@@ -846,12 +987,17 @@ public final class OfferFilterService extends AccessibilityService {
             long now = SystemClock.uptimeMillis();
             if (acceptedTracker.outcomeObservationDeadline() <= now) return;
             if (queued.get() != QUEUED_NONE || recheckPending || declineUnderWay(now) || peekReturning
-                    || now - lastScanEndAt < ACCEPTANCE_OBSERVATION_MS) {
+                    || now - lastScanEndAt < ACCEPTANCE_OBSERVATION_MS || budget.yielding(now)) {
                 scheduleAcceptanceObservation();
                 return;
             }
             // A newly readable offer hands back to the usual guarded scanner/recheck path.
-            scanNow(now, "acceptance observation");
+            routineRead = true;
+            try {
+                scanNow(now, "acceptance observation");
+            } finally {
+                routineRead = false;
+            }
         }
     };
 
@@ -1085,7 +1231,12 @@ public final class OfferFilterService extends AccessibilityService {
         if (service == null) return;
         long at = SystemClock.uptimeMillis();
         service.scanner.postAtFrontOfQueue(() -> {
-            if (!service.stopped) service.scanNow(at, "check");
+            if (service.stopped) return;
+            // A notification (perhaps an offer's) or a rules change: for the next moments Dasher is read as it always
+            // was, never on the read budget, and its slowness is judged afresh.
+            service.freshUntil = at + HOT_MS;
+            service.budget.fresh();
+            service.scanNow(at, "check");
         });
     }
 
@@ -1156,6 +1307,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     @Override protected void onServiceConnected() {
         scannerFaulted = false;
+        loadTickPending = false;
         restartStateLoaded = false;
         active = this;
         if (screenAwake == null) screenAwake = new ScreenAwake(this,
@@ -1267,7 +1419,12 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (screenAwake != null) screenAwake.start();
         long at = SystemClock.uptimeMillis();
-        Click click = type == AccessibilityEvent.TYPE_VIEW_CLICKED ? Click.of(event, at) : null;
+        boolean clicked = type == AccessibilityEvent.TYPE_VIEW_CLICKED;
+        // Dasher's own events name its windows (as Android delivered them: nothing is asked of Dasher).
+        boolean newWindow = !windowsChanged && learnDasherWindow(event.getWindowId());
+        // Paused, nothing of Dasher's is read: not even a click's node.
+        boolean paused = passive;
+        Click click = clicked && !paused ? Click.of(event, at) : null;
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
         // during a peek leaves Dasher up.
         if (click != null) {
@@ -1281,20 +1438,54 @@ public final class OfferFilterService extends AccessibilityService {
             clickDuringPeek(click);
         }
         boolean content = type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED;
-        boolean change = click == null && !content;
+        boolean change = !clicked && !content;
         // First: work that is not essential, under way on the scanner, stops at its next step.
         if (change) windowChanges.incrementAndGet();
         dasherEvents.incrementAndGet();
+        // Paused: a content change or a click asks the scanner nothing, unless it names a window of Dasher's not known
+        // yet; a window change still moves the tab (Android's list of windows only).
+        boolean look = change || (paused && newWindow);
+        if (paused && !look) return;
+        // A new window of Dasher's, or a sign of an offer in the event's own words: read at once, never on the budget.
+        boolean hint = !paused && (newWindow || (!change && eventShowsOffer(event, click)));
         if (onScannerThread()) {
-            onEvents(change, click == null ? Collections.<Click>emptyList() : Collections.singletonList(click), at);
+            onEvents(look, click == null ? Collections.<Click>emptyList() : Collections.singletonList(click), at,
+                    hint);
             return;
         }
         // Noted before the hand-off is queued, so the scanner taking the hand-off always sees it.
         if (click != null) clicks.add(click);
-        else if (change) changeNoted.set(true);
+        else if (look) changeNoted.set(true);
+        if (hint) eventHint.set(true);
         // A window change may be an offer or its confirmation, and so may anything while an offer is (or lately was)
         // up or a decline is under way: read ahead of everything else queued.
-        handOff(change || busyPublished || at < hotUntil, at);
+        handOff(look || hint || busyPublished || at < hotUntil, at);
+    }
+
+    /**
+     * Main thread: an event of Dasher's names one of its windows. The first from a window not known yet is news of a
+     * new window of Dasher's.
+     */
+    private boolean learnDasherWindow(int windowId) {
+        if (!realWindowId(windowId) || dasherWindowIds.contains(windowId)) return false;
+        rememberDasher(windowId);
+        return true;
+    }
+
+    /**
+     * Main thread: whether an event's own words, as Android delivered them (nothing is asked of Dasher), show a sign of
+     * an offer ({@link MapNodes#showsOffer}). A content change usually carries none.
+     */
+    private static boolean eventShowsOffer(AccessibilityEvent event, Click click) {
+        if (click != null) {
+            List<String> words = new ArrayList<>(click.text);
+            if (!click.description.isEmpty()) words.add(click.description);
+            return MapNodes.showsOffer(words);
+        }
+        List<CharSequence> text = event.getText();
+        CharSequence description = event.getContentDescription();
+        if ((text == null || text.isEmpty()) && (description == null || description.length() == 0)) return false;
+        return MapNodes.showsOffer(MapNodes.words(text, description));
     }
 
     /** Our touch watch, tab and guide never change which Dasher screen is being read. */
@@ -1582,25 +1773,37 @@ public final class OfferFilterService extends AccessibilityService {
      * confirmation is up or a decline is under way is named at once by what its event says and by the last offer
      * read's controls (no reading around it); any other click is read around after the read. The read is at once,
      * except a content change while nothing is up that comes within {@link #QUIET_SCAN_GAP_MS} of the last such read:
-     * it waits for one read at the end of that gap, which takes in every change until then.
+     * it waits for one read at the end of that gap, which takes in every change until then. While the last read
+     * showed nothing of an offer, a content change or a click is read on the read budget instead ({@link #budgeted});
+     * paused, nothing is read at all ({@link #notReading}).
      *
      * @param change whether a window change is among them
+     * @param hint whether their own words showed a sign of an offer, or one came from a new window of Dasher's: read
+     *     at once, as always
      */
-    private void onEvents(boolean change, List<Click> taken, long at) {
+    private void onEvents(boolean change, List<Click> taken, long at, boolean hint) {
         if (stopped) return;
         long now = SystemClock.uptimeMillis();
+        if (pausedNow()) {
+            lateClicks.clear();
+            notReading(now, change);
+            return;
+        }
+        readingAgain();
         for (Click click : taken) {
             if (busy(now)) observeClick(click, false);
             else lateClicks.addLast(new LateClick(click));
         }
         boolean content = !change && taken.isEmpty();
-        if (content && quiet(now)) {
-            if (quietScanPending) return;
+        if (!change && !hint && budgeted(now)) {
+            budgetedRead(at, content ? "content" : "click");
+            return;
+        }
+        if (content && !hint && quiet(now)) {
             long due = quietReadEndAt + QUIET_SCAN_GAP_MS;
+            if (quietScanPending && quietScanDue <= due) return;
             if (now < due) {
-                quietScanPending = true;
-                quietScanEventAt = at;
-                scanner.postAtTime(quietScan, due);
+                deferRead(at, due);
                 return;
             }
             // The first change after a quiet spell: read at once, an offer drawn by it included.
@@ -1613,11 +1816,62 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Nothing is up: the last read showed no sign of an offer or confirmation, and no decline or settling screen is
-     * pending.
+     * A content change or a click while the last read showed nothing of an offer: read now when the read budget allows
+     * ({@link ReadBudget}: four reads a second, one a second during a delivery, longer after a costly read, none while
+     * Dasher is slow to answer), else once it does, one read for every change until then.
+     */
+    private void budgetedRead(long at, String trigger) {
+        long now = SystemClock.uptimeMillis();
+        long due = budget.dueAt(quietReadEndAt + QUIET_SCAN_GAP_MS, deliveryCalm);
+        if (now < due) {
+            if (!quietScanPending || quietScanDue > due) deferRead(at, due);
+            return;
+        }
+        budgetedReadNow(at, trigger);
+    }
+
+    /** A budgeted read, now: it takes its token, and its root comes without uninterruptible prefetch. */
+    private void budgetedReadNow(long at, String trigger) {
+        budget.take(SystemClock.uptimeMillis(), deliveryCalm);
+        routineRead = true;
+        try {
+            scanNow(at, trigger);
+        } finally {
+            routineRead = false;
+        }
+        quietReadEndAt = lastScanEndAt;
+        readLateClicks();
+    }
+
+    /** One read owed at {@code due} (uptime) for every change until then: an earlier due replaces a later one. */
+    private void deferRead(long at, long due) {
+        if (quietScanPending) {
+            scanner.removeCallbacks(quietScan);
+        } else {
+            quietScanEventAt = at;
+        }
+        quietScanPending = true;
+        quietScanDue = due;
+        scanner.postAtTime(quietScan, due);
+    }
+
+    /**
+     * Whether Dasher's next change is read on the read budget: the last read showed nothing of an offer (the travel
+     * figures of a delivery's own route aside), no decline of the app's is under way or awaiting its question, no
+     * automatic acceptance is waiting, and no fresh read was asked for in the last {@link #HOT_MS} (an offer's
+     * notification, a rules change).
+     */
+    private boolean budgeted(long now) {
+        return !readEvidence && !quietTakenOver && now >= freshUntil && !declineUnderWay(now) && !episode.active(now)
+                && !autoAcceptWatched && !declineError.pending() && !polling(now);
+    }
+
+    /**
+     * Nothing is up: the last read showed no sign of an offer or confirmation (a delivery screen's own route figures
+     * are none, {@link #schedulingEvidence}), and no decline or settling screen is pending.
      */
     private boolean quiet(long now) {
-        return (!offerEvidence || quietTakenOver) && !recheckPending && !declineState.hasPendingConfirmation(now);
+        return (!readEvidence || quietTakenOver) && !recheckPending && !declineState.hasPendingConfirmation(now);
     }
 
     /**
@@ -1671,6 +1925,12 @@ public final class OfferFilterService extends AccessibilityService {
      * next event (whose read looks anyway), and then places nothing.
      */
     private void lookAndPlace(boolean yielding) {
+        // Paused, Android's list of windows alone places the tab: nothing of Dasher's is asked, not even its root.
+        if (pausedNow()) {
+            notReading(SystemClock.uptimeMillis(), true);
+            return;
+        }
+        readingAgain();
         BooleanSupplier stop = null;
         if (yielding) {
             long events = dasherEvents.get();
@@ -1773,6 +2033,10 @@ public final class OfferFilterService extends AccessibilityService {
      * (as it did before reads had a thread of their own), so nothing of ours stays over it.
      */
     private void lookSafely() {
+        if (pausedNow()) {
+            notReading(SystemClock.uptimeMillis(), true);
+            return;
+        }
         try {
             look();
         } catch (RuntimeException unreadable) {
@@ -3283,6 +3547,8 @@ public final class OfferFilterService extends AccessibilityService {
         for (AccessibilityWindowInfo window : listed) {
             if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || !window.isActive()) continue;
             if (front.back == Peek.Back.OURS && isOwnWindow(window.getId())) return true;
+            // The very window that was in front (Android never reuses a window's ID): its app, asked nothing.
+            if (realWindowId(window.getId()) && window.getId() == front.windowId) return true;
             AccessibilityNodeInfo root = windowRoot(window, true);
             CharSequence name = root == null ? null : root.getPackageName();
             return name != null && front.pkg.contentEquals(name);
@@ -3360,6 +3626,12 @@ public final class OfferFilterService extends AccessibilityService {
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
         if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true, "notice_required"); return false; }
         restoreRestartState();
+        // Paused (auto-decline off, or no rule): nothing of Dasher's is read, not one node, until it resumes.
+        if (pausedNow()) {
+            notReading(SystemClock.uptimeMillis(), true);
+            return false;
+        }
+        readingAgain();
         long started = SystemClock.uptimeMillis();
         long overlayAtStart = overlayTransition.get();
         long startedNanos = System.nanoTime();
@@ -3386,6 +3658,7 @@ public final class OfferFilterService extends AccessibilityService {
         questionLookIncomplete = false;
         otherWindowsListed = 0;
         otherWindowsRead = 0;
+        startReadAccounting();
         try {
             return checkReadableOffer();
         } catch (RuntimeException error) {
@@ -3401,7 +3674,8 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
-            if (offerEvidence && readWaitedMs > 0 && lastReadDurationMs > 0) {
+            readEvidence = schedulingEvidence();
+            if (readEvidence && readWaitedMs > 0 && lastReadDurationMs > 0) {
                 DiagnosticLog.log(this, "scan", "offer read waited " + readWaitedMs + " ms behind a "
                         + lastCompletedTrigger + " read of " + lastReadDurationMs + " ms");
             }
@@ -3422,7 +3696,292 @@ public final class OfferFilterService extends AccessibilityService {
             scheduleAcceptanceObservation();
             noteSlowScan((System.nanoTime() - startedNanos) / 1_000_000L, trigger, started - eventAt,
                     hotAtStart || busy(lastScanEndAt));
+            afterRead(started, lastScanEndAt);
         }
+    }
+
+    // ---- Read budget, map subtrees and the paused safe mode (scanner thread) ----
+
+    /** A read begins: what it will learn for the budget, and how its known Dasher window's root is asked for. */
+    private void startReadAccounting() {
+        readEvidence = false;
+        readPrimary = null;
+        readWindowId = ReadBudget.NO_WINDOW;
+        readContent = false;
+        readCut = false;
+        readSlowestFetchMs = 0;
+        readMaps = 0;
+        readMapChildren = 0;
+        // An offer's read asks for Dasher's nodes with its root, all at once, as always; a budgeted one lets Dasher's
+        // UI thread break off the prefetch.
+        rootPrefetch = routineRead ? ROOT_ROUTINE : ROOT_FOR_OFFER;
+    }
+
+    /**
+     * Whether this read showed a sign of an offer for scheduling the next one: {@link #offerEvidence}, less the travel
+     * time and distance a delivery or pickup screen shows of its own route (no pay, stops, items, offer controls or
+     * question on it), which only {@link DasherScene#ROUTE}'s own markers explain.
+     */
+    private boolean schedulingEvidence() {
+        if (!offerOnScreen && !offerEvidence) return false;
+        Scan primary = readPrimary;
+        if (primary == null || (offerOnScreen && !readCut)) return true;
+        return !routeFiguresOnly(primary);
+    }
+
+    /** A delivery or pickup screen whose only figures are its own route's travel time and distance. */
+    private static boolean routeFiguresOnly(Scan scan) {
+        if (scan.accept != null || scan.decline != null || scan.acceptLabel || scan.declineLabel) return false;
+        List<String> labels = withParts(scan);
+        if (DasherScene.showsNewOffer(labels) || DeclineConfirmation.isSurface(scan.text)) return false;
+        if (!DasherScene.showsRoute(labels) && !AcceptedOfferTracker.isDeliveryScreen(labels)) return false;
+        OfferSnapshot facts = OfferParser.parse(scan.text, scan.metricParts);
+        return facts.payCents == null && facts.payAtMostCents == null && facts.stops == null
+                && !AcceptedOfferTracker.itemOfferEvidence(facts, labels);
+    }
+
+    /**
+     * A screen too big to read in full (more nodes or labels than a read takes): a possible offer only when the part
+     * read shows a sign of one, and then, as always, the guide stays off it and its changes are read at once.
+     * Otherwise it is read on the read budget like any screen with nothing of an offer, and a peek takes it for an
+     * unreadable screen: it neither goes back over it for want of an offer nor waits on it beyond its own deadline.
+     */
+    private boolean tooBigToRead(Scan scan) {
+        readCut = true;
+        cancelAutoAccept(true, "read_incomplete");
+        declineError.notBlank();
+        declinedOfferShowing = false;
+        OfferSnapshot part = OfferParser.parse(scan.text, scan.metricParts);
+        boolean sign = scan.accept != null || scan.decline != null || scan.acceptLabel || scan.declineLabel
+                || DeclineConfirmation.isSurface(scan.text) || DasherScene.showsNewOffer(scan.text)
+                || AcceptedOfferTracker.offerFacts(part, scan.text);
+        offerOnScreen = sign;
+        offerEvidence = sign;
+        if (sign) {
+            // Perhaps an offer: a peek does not go back over it for want of one.
+            peek.offerSign();
+            status("Offer screen exceeded safe read limits; no automatic action.");
+        } else {
+            if (peek.active()) peek.screen(false, Peek.now());
+            status("Dasher's screen is too big to read in full; no sign of an offer in the part read.");
+        }
+        return false;
+    }
+
+    /**
+     * After every read: the read budget learns what it cost and whether it showed anything of an offer, the watchdog
+     * how long Dasher's slowest answer took, and the minute's load line counts it.
+     */
+    private void afterRead(long started, long ended) {
+        rootPrefetch = ROOT_IDENTITY;
+        Scan primary = readPrimary;
+        boolean routeStored = ActiveRouteStore.load(this) != null;
+        if (primary != null) {
+            List<String> labels = withParts(primary);
+            deliveryCalm = routeStored || DasherScene.showsRoute(labels) || AcceptedOfferTracker.isDeliveryScreen(labels)
+                    || DasherScene.showsNavigation(labels);
+        } else if (routeStored) {
+            deliveryCalm = true;
+        }
+        if (readEvidence) {
+            budget.evidence();
+        } else {
+            budget.window(readWindowId);
+            budget.factFree(started, ended);
+        }
+        if (!readContent) return;
+        contentReads++;
+        load.read(!readEvidence, scanNodes, ended - started, readCut, readMaps);
+        long median = budget.fetched(readSlowestFetchMs, !readEvidence, ended);
+        if (median >= 0) yielded(median, ended);
+        noteMapSkip();
+        scheduleLoadTick();
+    }
+
+    /** Dasher answers slowly with nothing of an offer up: such reads pause ({@link ReadBudget}); one line a minute. */
+    private void yielded(long median, long now) {
+        load.yielded();
+        if (yieldLoggedAt != NEVER && now - yieldLoggedAt < ReadLoad.EVERY_MS) return;
+        yieldLoggedAt = now;
+        DiagnosticLog.log(this, "screen", "yielding to Dasher: median fetch " + median + " ms");
+    }
+
+    /** Once per kind of screen: a map's subtree was counted and left unread (fixed words and a count only). */
+    private void noteMapSkip() {
+        Scan primary = readPrimary;
+        if (readMaps == 0 || primary == null) return;
+        List<String> labels = withParts(primary);
+        String kind = readEvidence ? "offer" : DasherScene.showsNavigation(labels) ? "navigation"
+                : ActiveRouteStore.load(this) != null || DasherScene.showsRoute(labels)
+                        || AcceptedOfferTracker.isDeliveryScreen(labels) ? "delivery"
+                : DasherScene.showsWaiting(labels) ? "waiting" : "unrecognised";
+        if (!mapsLogged.add(kind)) return;
+        DiagnosticLog.log(this, "screen", "map subtree skipped (" + readMapChildren + " children) on Dasher's " + kind
+                + " screen");
+    }
+
+    private void scheduleLoadTick() {
+        if (loadTickPending || stopped) return;
+        loadTickPending = true;
+        scanner.postDelayed(loadTick, ReadLoad.EVERY_MS);
+    }
+
+    /** Once a minute while Dasher is read: what reading it cost, in counts and milliseconds only. */
+    private void logReadLoad() {
+        loadTickPending = false;
+        if (stopped || !load.any()) return;
+        DiagnosticLog.log(this, "screen", load.take(budget.median()));
+    }
+
+    /** Paused: auto-decline off, or no rule set (the homepage calls both paused). Nothing of Dasher's is read then. */
+    private boolean pausedNow() {
+        FilterSettings settings = FilterStore.load(this);
+        return !settings.enabled || !settings.hasAnyRule();
+    }
+
+    /**
+     * Paused: nothing of Dasher's is read, not one node and not even a root, until auto-decline resumes. Only
+     * Android's list of windows is looked at ({@link #passiveLook}), so the tab still follows Dasher (its tap resumes)
+     * and the notification path still knows whether Dasher is on screen. What was under way ends as a pause ends it;
+     * the decision history then records nothing read from Dasher's screen.
+     *
+     * @param look whether to look at the windows now (a window change, or a read was asked for)
+     */
+    private void notReading(long now, boolean look) {
+        if (!passive) {
+            passive = true;
+            FilterSettings settings = FilterStore.load(this);
+            if (rulesEnabled == null || rulesEnabled != settings.enabled) {
+                DiagnosticLog.log(this, "rules", "auto-decline " + (settings.enabled ? "resumed" : "paused")
+                        + " (settings)");
+                rulesEnabled = settings.enabled;
+            }
+            DiagnosticLog.log(this, "screen", "not reading Dasher while paused ("
+                    + (settings.enabled ? "no rule is set" : "auto-decline is off") + ")");
+            endAuthority("auto-decline paused", true);
+            cancelAutoAccept(true, "offer_or_phone_ineligible");
+            stopWaitEstimate();
+            episode.end();
+            endConfirmationPoll(now);
+            heldConfirmation = null;
+            acceptedTracker.reset();
+            scanner.removeCallbacks(aftermathTick);
+            scanner.removeCallbacks(acceptanceObservation);
+            acceptanceObservationEligible = false;
+            scanner.removeCallbacks(recheck);
+            recheckPending = false;
+            scanner.removeCallbacks(quietScan);
+            quietScanPending = false;
+            scanner.removeCallbacks(confirmRetry);
+            confirmRetryPending = false;
+            scanner.removeCallbacks(declineRetry);
+            scanner.removeCallbacks(episodeCheck);
+            scanner.removeCallbacks(lateClicksRun);
+            lateClicksPending = false;
+            lateClicks.clear();
+            offerOnScreen = false;
+            offerEvidence = false;
+            readEvidence = false;
+            quietTakenOver = false;
+            declinedOfferShowing = false;
+            readIdentity = null;
+            offerAcceptTarget = null;
+            offerDeclineTarget = null;
+            scene = DasherScene.UNKNOWN;
+            syncAutomation();
+        }
+        status("Paused: " + AppName.NAME + " is not reading Dasher");
+        if (look) passiveLook(now);
+        watchWindows();
+    }
+
+    /** Auto-decline resumed: Dasher is read again, its budget and slowness judged afresh. */
+    private void readingAgain() {
+        if (!passive) return;
+        passive = false;
+        readEvidence = false;
+        budget.fresh();
+        DiagnosticLog.log(this, "screen", "reading Dasher again");
+    }
+
+    /**
+     * Paused: where Dasher is, from Android's list of windows alone and the window IDs Dasher's own events and earlier
+     * reads named (a window Android gave no ID, a stand-in in tests, is known by its root's package as before). It
+     * publishes that for the tab and the notification path, and reads nothing of Dasher's: the tab is placed from
+     * this metadata alone, as an unrecognised screen ({@link DasherScene#UNKNOWN}).
+     */
+    private void passiveLook(long now) {
+        lastLookAt = now;
+        List<AccessibilityWindowInfo> listed;
+        try {
+            listed = windowSource.get();
+        } catch (RuntimeException unavailable) {
+            listed = null;
+        }
+        if (listed == null) listed = Collections.emptyList();
+        lastLookWindows = windowsSignature(listed);
+        boolean split = false;
+        boolean system = false;
+        AccessibilityWindowInfo activeApp = null;
+        for (AccessibilityWindowInfo window : listed) {
+            int type = window.getType();
+            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
+            if (window.isActive() && type == AccessibilityWindowInfo.TYPE_SYSTEM) system = true;
+            if (activeApp == null && type == AccessibilityWindowInfo.TYPE_APPLICATION && window.isActive()) {
+                activeApp = window;
+            }
+        }
+        AccessibilityWindowInfo dasher = null;
+        boolean dasherActive = !system && activeApp != null && knownDasherWindow(activeApp);
+        boolean dasherListed = dasherActive;
+        if (dasherActive) {
+            dasher = activeApp;
+        } else if (!system && split && activeApp != null) {
+            for (AccessibilityWindowInfo window : listed) {
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || window == activeApp
+                        || !knownDasherWindow(window)) {
+                    continue;
+                }
+                dasherListed = true;
+                if (dasher == null || window.getLayer() > dasher.getLayer()) dasher = window;
+            }
+            if (dasher != null && SplitWindows.covered(listed, dasher, activeApp) != null) dasher = null;
+        }
+        Rect area = null;
+        if (dasher != null) {
+            Rect bounds = new Rect();
+            dasher.getBoundsInScreen(bounds);
+            if (!bounds.isEmpty()) area = bounds;
+        }
+        boolean bounded = area != null;
+        if (area == null && dasherActive) area = display();
+        if (split && dasherListed) dasherBesideAt = screenOnTime(now);
+        lastReadableWindow = dasher;
+        Screen next = new Screen(true, dasher != null, area, split, bounded);
+        if (!next.equals(screen)) screen = next;
+        readWin = SplitWindows.field(listed, this::knownOwner, display());
+        DashSummary.window(this, readWin);
+        scene = DasherScene.UNKNOWN;
+        // Nothing is read while paused, so no read approves the tab after a window change: these windows do.
+        overlayApprovedTransition = overlayTransition.get();
+        syncWaitHeartbeat();
+        syncOverlay();
+    }
+
+    /**
+     * Whether a listed window is Dasher's: by its ID, as Dasher's events, reads or an earlier look named it. A window
+     * none of them named yet is asked once whose it is (its root alone, nothing below it, never its content), then
+     * known by its ID.
+     */
+    private boolean knownDasherWindow(AccessibilityWindowInfo window) {
+        int id = window.getId();
+        if (realWindowId(id)) {
+            if (dasherWindowIds.contains(id)) return true;
+            if (isOwnWindow(id) || otherWindows.contains(id)) return false;
+        } else if (window == lastReadableWindow) {
+            return true;
+        }
+        return isDasher(windowRoot(window, true));
     }
 
     /** Display-only timing: failure cannot alter automation, capture extra words or delay its first tap. */
@@ -3646,18 +4205,7 @@ public final class OfferFilterService extends AccessibilityService {
             readSkipped = true;
             return true;
         }
-        // A screen too big to read might be an offer: the guide stays off it too, and its changes are read at once.
-        offerOnScreen = scan.truncated;
-        offerEvidence = scan.truncated;
-        if (scan.truncated) {
-            cancelAutoAccept(true, "read_incomplete");
-            declineError.notBlank();
-            declinedOfferShowing = false;
-            // Perhaps an offer: a peek does not go back over it for want of one.
-            peek.offerSign();
-            status("Offer screen exceeded safe read limits; no automatic action.");
-            return false;
-        }
+        if (scan.truncated) return tooBigToRead(scan);
         sceneLabels = scan.text;
         episode.readDuration(SystemClock.uptimeMillis() - currentReadStartedAt);
 
@@ -5022,6 +5570,15 @@ public final class OfferFilterService extends AccessibilityService {
         readTraversalNanos += System.nanoTime() - started;
         scanNodes += scan.visited;
         remoteFetches += scan.remoteFetches;
+        // For the read budget: Dasher's content was read, how slowly it answered, and the maps left unread.
+        readContent = true;
+        readSlowestFetchMs = Math.max(readSlowestFetchMs, scan.slowestFetchMs);
+        readMaps += scan.prunedMaps;
+        readMapChildren += scan.prunedChildren;
+        if (readPrimary == null) {
+            readPrimary = scan;
+            readWindowId = root.getWindowId();
+        }
         return scan;
     }
 
@@ -5358,42 +5915,48 @@ public final class OfferFilterService extends AccessibilityService {
         return SplitWindows.Owner.OTHER;
     }
 
-    /** The active window's root. On the scanner thread, counted, and remembered if it is Offer Filter's own. */
+    /**
+     * The active window's root, asked for when Android lists no active application window (or would not give the
+     * listed one's): whose it is is not known, so the root alone is asked for, nothing below it. On the scanner
+     * thread, counted, and remembered if it is Offer Filter's own.
+     */
     private AccessibilityNodeInfo activeRoot(boolean onScanner) {
-        long started = System.nanoTime();
-        AccessibilityNodeInfo root = null;
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            try { root = getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
-                    | AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE); }
-            catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
-        }
-        if (root == null) root = getRootInActiveWindow();
-        if (onScanner) {
-            long elapsed = System.nanoTime() - started;
-            readRootNanos += elapsed;
-            if (elapsed >= 2_000_000) remoteFetches++;
-            rootFetches++;
-            if (root != null) rememberIfOwn(root, root.getWindowId());
-        }
-        return root;
+        return fetchRoot(null, ROOT_IDENTITY, onScanner);
     }
 
-    /** A listed window's root. On the scanner thread, counted, and remembered if it is Offer Filter's own. */
+    /**
+     * A listed window's root. A window known to be Dasher's comes with the prefetch of the read under way (an offer's
+     * read asks for its nodes all at once, as always; a routine read lets Dasher's UI thread break off); any other
+     * window's, another app's included, is asked for alone, only to learn whose it is. On the scanner thread, counted,
+     * and remembered if it is Offer Filter's own.
+     */
     private AccessibilityNodeInfo windowRoot(AccessibilityWindowInfo window, boolean onScanner) {
+        int id = window.getId();
+        boolean dasher = realWindowId(id) ? dasherWindowIds.contains(id) : window == lastReadableWindow;
+        return fetchRoot(window, dasher ? rootPrefetch : ROOT_IDENTITY, onScanner);
+    }
+
+    /** A root from Android ({@code window} null: the active window's), with that prefetch from Android 13. */
+    private AccessibilityNodeInfo fetchRoot(AccessibilityWindowInfo window, int prefetch, boolean onScanner) {
         long started = System.nanoTime();
+        long startedMs = SystemClock.uptimeMillis();
         AccessibilityNodeInfo root = null;
         if (android.os.Build.VERSION.SDK_INT >= 33) {
-            try { root = window.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
-                    | AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE); }
+            if (onScanner) {
+                if (prefetch == ROOT_IDENTITY) identityRootFetches++;
+                else if ((prefetch & AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE) != 0) uninterruptibleRootFetches++;
+            }
+            try { root = window == null ? getRootInActiveWindow(prefetch) : window.getRoot(prefetch); }
             catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
         }
-        if (root == null) root = window.getRoot();
+        if (root == null) root = window == null ? getRootInActiveWindow() : window.getRoot();
         if (onScanner) {
             long elapsed = System.nanoTime() - started;
             readRootNanos += elapsed;
             if (elapsed >= 2_000_000) remoteFetches++;
             rootFetches++;
-            if (root != null) rememberIfOwn(root, window.getId());
+            readSlowestFetchMs = Math.max(readSlowestFetchMs, SystemClock.uptimeMillis() - startedMs);
+            if (root != null) rememberIfOwn(root, window == null ? root.getWindowId() : window.getId());
         }
         return root;
     }
@@ -5821,6 +6384,10 @@ public final class OfferFilterService extends AccessibilityService {
         String where = "";
         /** Whether the read stopped early because it was told to (it is then {@link #truncated} too). */
         boolean abandoned;
+        /** The slowest single child fetch (ms), and the map subtrees counted and left unread, with their children. */
+        long slowestFetchMs;
+        int prunedMaps;
+        int prunedChildren;
         private int maxNodes = MAX_SCAN_NODES;
         private BooleanSupplier stop;
 
@@ -5855,17 +6422,35 @@ public final class OfferFilterService extends AccessibilityService {
             }
             List<String> childLabels = new ArrayList<>();
             int children = node.getChildCount();
+            // A map view: counted, its children left unread (every one would be a call into Dasher as it draws).
+            if (children > 0 && mapSubtree(node)) {
+                prunedMaps++;
+                prunedChildren += children;
+                return own;
+            }
             for (int i = 0; i < children && !truncated; i++) {
                 if (stop != null && stop.getAsBoolean()) {
                     abandoned = true;
                     truncated = true;
                     break;
                 }
+                long began = SystemClock.uptimeMillis();
                 beforeNodeFetch();
-                childLabels.add(visit(child(node, i), depth + 1));
+                java.util.function.Consumer<AccessibilityNodeInfo> fetching = childFetchForTests;
+                if (fetching != null) fetching.accept(node);
+                AccessibilityNodeInfo child = child(node, i);
+                slowestFetchMs = Math.max(slowestFetchMs, SystemClock.uptimeMillis() - began);
+                childLabels.add(visit(child, depth + 1));
             }
             metricParts.addAll(OfferParser.joinMetricSiblings(childLabels));
             return own.isEmpty() && children == 1 && childLabels.size() == 1 ? childLabels.get(0) : own;
+        }
+
+        /** A map view ({@link MapNodes#isMap}) whose own words show nothing of an offer. */
+        private static boolean mapSubtree(AccessibilityNodeInfo node) {
+            CharSequence description = node.getContentDescription();
+            if (!MapNodes.isMap(node.getClassName(), node.getViewIdResourceName(), description)) return false;
+            return !MapNodes.showsOffer(MapNodes.words(Collections.singletonList(node.getText()), description));
         }
 
         private void addLabel(AccessibilityNodeInfo node, CharSequence value) {
