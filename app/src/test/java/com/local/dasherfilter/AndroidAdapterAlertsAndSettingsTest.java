@@ -657,7 +657,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     public void notificationAccessShortcutNamesThisListenerAsAString() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             // The homepage's own row for it (Settings no longer repeats it).
-            shownIcon(activity.get().findViewById(android.R.id.content), "Background offers are off. Fix.")
+            shownIcon(activity.get().findViewById(android.R.id.content), SetupChecklist.NOTIFICATIONS + ". Fix.")
                     .performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             if (Build.VERSION.SDK_INT >= 30) {

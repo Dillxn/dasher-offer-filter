@@ -47,6 +47,8 @@ final class SetupRow {
         sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
         text = ui.text("", 15, ui.ink, false);
+        // A few words that may wrap at large font sizes: compact lines keep the sky's other words in one screen.
+        text.setLineSpacing(0, 1f);
         text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
         row.addView(text, Ui.weighted());
         // Link ink, not the accent: it keeps its contrast on both skies (BETA-21).

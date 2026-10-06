@@ -179,7 +179,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
-            View fix = shownIcon(content, "Screen reading stopped. Fix.");
+            View fix = shownIcon(content, SetupChecklist.ACCESSIBILITY_RESTART + ". Fix.");
             assertNotNull("being enabled does not imply a running connection", fix);
             fix.performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
@@ -204,7 +204,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
             settle();
             Shadows.shadowOf(app).checkActivities(true);
             View content = activity.get().findViewById(android.R.id.content);
-            shownIcon(content, "Screen reading is off. Fix.").performClick();
+            shownIcon(content, SetupChecklist.ACCESSIBILITY + ". Fix.").performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertNotNull(opened);
             assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, opened.getAction());
@@ -215,16 +215,19 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
 
     @Test @Config(sdk = 35)
     public void unsuccessfulAccessibilityVisitOffersRestrictedSettingsGuidanceOnlyOnTap() {
+        // Neither the install source nor Android's restriction record says (the record unreadable on many phones).
+        Shadows.shadowOf(app.getSystemService(android.app.AppOpsManager.class)).setMode(RestrictedSettingsGuide.OP,
+                android.os.Process.myUid(), app.getPackageName(), android.app.AppOpsManager.MODE_DEFAULT);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
-            shownIcon(content, "Screen reading is off. Fix.").performClick();
+            shownIcon(content, SetupChecklist.ACCESSIBILITY + ". Fix.").performClick();
             assertEquals("android.settings.ACCESSIBILITY_DETAILS_SETTINGS",
                     Shadows.shadowOf(app).getNextStartedActivity().getAction());
             activity.pause().resume();
             settle();
             assertNull("returning opens nothing automatically", Shadows.shadowOf(app).getNextStartedActivity());
-            shownIcon(content, "Screen reading is off · switch greyed out?. Fix.").performClick();
+            shownIcon(content, SetupChecklist.ACCESSIBILITY + SetupChecklist.GREYED + ". Fix.").performClick();
             AlertDialog help = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(help);
             help.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
@@ -241,7 +244,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
-            shownIcon(content, "Alerts are blocked. Fix.").performClick();
+            shownIcon(content, SetupChecklist.ALERTS + ". Fix.").performClick();
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();
             assertEquals(Manifest.permission.POST_NOTIFICATIONS, request.requestedPermissions[0]);
@@ -249,7 +252,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
                     Shadows.shadowOf(app).getNextStartedActivity().getAction());
             activity.get().onRequestPermissionsResult(request.requestCode, request.requestedPermissions,
                     new int[] {android.content.pm.PackageManager.PERMISSION_DENIED});
-            shownIcon(content, "Alerts are blocked. Fix.").performClick();
+            shownIcon(content, SetupChecklist.ALERTS + ". Fix.").performClick();
             Intent settings = Shadows.shadowOf(app).getNextStartedActivity();
             assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, settings.getAction());
             assertEquals(app.getPackageName(), settings.getStringExtra(Settings.EXTRA_APP_PACKAGE));

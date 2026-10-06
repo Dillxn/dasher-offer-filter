@@ -273,7 +273,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             FilterHeroView mascot = find(content, FilterHeroView.class);
             ScenePage scene = find(content, ScenePage.class);
             View sky = (View) star.getParent();
-            assertNull("nothing to fix yet", shownTextContaining(content, "Background offers are off"));
+            assertNull("nothing to fix yet", shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
             float radius = star.skyRadius();
             int width = sky.getWidth();
             assertTrue("its middle a little right of the page's", star.skyX() > width / 2f);
@@ -313,7 +313,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             listener.destroy();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             layOut(content);
-            TextView problem = shownTextContaining(content, "Background offers are off");
+            TextView problem = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
             assertNotNull(problem);
             View row = (View) problem.getParent();
             assertEquals("a line does not shrink the constellation", radius, star.skyRadius(), 1f);
@@ -364,8 +364,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             int[] skyAt = new int[2];
             sky.getLocationInWindow(skyAt);
             float linesTop = Float.MAX_VALUE;
-            for (String line : new String[] {MainActivity.START_HINT, "Background offers are off",
-                    "Alerts are blocked"}) {
+            for (String line : new String[] {MainActivity.START_HINT, SetupChecklist.NOTIFICATIONS,
+                    SetupChecklist.ALERTS}) {
                 TextView shown = shownTextContaining(content, line);
                 assertNotNull(line, shown);
                 int[] at = new int[2];
@@ -832,7 +832,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
-            assertNotNull(shownTextContaining(content, "Background offers are off"));
+            assertNotNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
             TextView paused = findText(content, "Paused");
             assertNotNull(paused);
             int[] wordAt = new int[2];

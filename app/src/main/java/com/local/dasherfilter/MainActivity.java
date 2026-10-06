@@ -54,7 +54,8 @@ import java.util.regex.Pattern;
  * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
+    /** The alerts permission's request code (asked by the setup checklist, answered here). */
+    static final int NOTIFICATION_PERMISSION_REQUEST = 13;
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -65,9 +66,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
     private static final String SKY_CHOSEN = "sky_chosen";
-    private static final String SETUP_PREFS = "setup_steps";
-    private static final String NOTIFICATIONS_ASKED = "notifications_asked";
-    private static final String ACCESSIBILITY_OPENED = "accessibility_opened";
     /** With no rule saved, the line under the mascot: the fewest words that say how to begin. */
     static final String START_HINT = "Drag a knob to start";
 
@@ -90,15 +88,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final long HERE_EVERY_MS = 5_000;
     private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.dasher(this) != null);
     private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
-    private final Asked<Boolean> installsAllowed = new Asked<>(() -> getPackageManager().canRequestPackageInstalls());
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
-    private final Asked<Boolean> screenReadingEnabled = new Asked<>(this::screenReadingEnabled);
     private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
     /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
     private boolean resumed;
     private boolean started;
-    private boolean restrictedSettingsHint;
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
@@ -127,9 +122,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
-    private Readiness screenReading;
-    private Readiness backgroundOffers;
-    private Readiness offerAlerts;
+    /** Setup still to do, in order (restricted settings, Accessibility, notification access, alerts, updates). */
+    private SetupChecklist checklist;
     private LinearLayout routeRow;
     private TextView routeNote;
     /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
@@ -217,7 +211,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Settings page: only what is set nowhere else, one row each.
     /** Setup that needs a fix and has no row on the homepage; each hidden while all is well. */
     private Readiness doorDashAlerts;
-    private Readiness installs;
     private Readiness location;
     private Readiness locationAllTheTime;
     private Switch areasToggle;
@@ -375,9 +368,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.foreground(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
-        restrictedSettingsHint = Build.VERSION.SDK_INT >= 33
-                && getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(ACCESSIBILITY_OPENED, false)
-                && !screenReadingEnabled.get();
+        // Back from Android's settings: a switch tried and still off is noted; back from App info, the next one opens.
+        checklist.resumed();
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -426,10 +418,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void forgetAnswers() {
         dasherInstalled.forget();
         alertsAllowed.forget();
-        installsAllowed.forget();
         locationAllowed.forget();
         locationAlways.forget();
-        screenReadingEnabled.forget();
+        if (checklist != null) checklist.forget();
         here.forget();
     }
 
@@ -711,9 +702,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         waitParams.gravity = Gravity.CENTER_HORIZONTAL;
         LinearLayout problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
-        screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
-        backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
-        offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        checklist = new SetupChecklist(this, ui, problems, NOTIFICATION_PERMISSION_REQUEST);
         // A verified update held back while no dash is on: "Update ready · Install now" (the user's own check).
         updateReady = new UpdateReadyRow(this, ui, problems);
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
@@ -1128,8 +1117,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
-        installs = new Readiness(setup, "Updates can't install", () -> open(new Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);
         locationAllTheTime = new Readiness(setup, "The offer map needs location all the time", this::askForLocation);
 
@@ -1341,12 +1328,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (showWait && !estimate.label().contentEquals(waitEstimateLine.getText())) {
             waitEstimateLine.setText(estimate.label());
         }
-        screenReading.problem(screenReadingEnabled.get() ? "Screen reading stopped"
-                : restrictedSettingsHint ? "Screen reading is off · switch greyed out?" : "Screen reading is off");
-        screenReading.update(readerConnected);
-        backgroundOffers.update(OfferNotificationService.isConnected());
-        offerAlerts.update(alertsAllowed.get());
-        updateReady.refresh(installsAllowed.get());
+        checklist.refresh(readerConnected, alertsAllowed.get());
+        updateReady.refresh(checklist.installsAllowed());
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
@@ -1373,7 +1356,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
     private void refreshSettings() {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
-        installs.update(installsAllowed.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
         // What waits to send is read only while Settings shows, and as it opens.
         if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
@@ -2053,81 +2035,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void cancelReportShare() {
         reportShare.cancel();
         if (shareReportRow != null) shareReportRow.setEnabled(true);
-    }
-
-    private void openNotificationAccess() {
-        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-        if (Build.VERSION.SDK_INT >= 30) {
-            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                    Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                    new ComponentName(this, OfferNotificationService.class).flattenToString());
-        }
-        open(intent);
-    }
-
-    private boolean screenReadingEnabled() {
-        String enabled = Settings.Secure.getString(getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (enabled == null) return false;
-        ComponentName ours = new ComponentName(this, OfferFilterService.class);
-        for (String component : enabled.split(":")) {
-            if (ours.equals(ComponentName.unflattenFromString(component))) return true;
-        }
-        return false;
-    }
-
-    private void fixScreenReading() {
-        if (restrictedSettingsHint && !screenReadingEnabled.get()) {
-            OwnWindowTouches.show(new AlertDialog.Builder(this)
-                    .setTitle("Switch greyed out?")
-                    .setMessage("If Android blocks the switch, open App info, then its three-dot menu and "
-                            + "Allow restricted settings. Then return to Accessibility to enable screen reading.")
-                    .setPositiveButton("App info", (dialog, which) -> open(new Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
-                    .setNegativeButton("Accessibility", (dialog, which) -> openScreenReadingSettings())
-                    .setNeutralButton("Cancel", null));
-        } else {
-            openScreenReadingSettings();
-        }
-    }
-
-    private void openScreenReadingSettings() {
-        getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(ACCESSIBILITY_OPENED, true).apply();
-        if (Build.VERSION.SDK_INT >= 31) {
-            // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
-            Intent details = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                    .putExtra(Intent.EXTRA_COMPONENT_NAME,
-                            new ComponentName(this, OfferFilterService.class).flattenToString());
-            try {
-                startActivity(details);
-                return;
-            } catch (RuntimeException unsupported) {
-                // The public accessibility list remains available on phones without a direct service screen.
-            }
-        }
-        open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-    }
-
-    private void configureOfferAlerts() {
-        OfferAlerts.ensureChannel(this);
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            boolean asked = getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(NOTIFICATIONS_ASKED, false);
-            if (asked && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
-                openAppNotifications();
-                return;
-            }
-            getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(NOTIFICATIONS_ASKED, true).apply();
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
-            return;
-        }
-        openAppNotifications();
-    }
-
-    private void openAppNotifications() {
-        // Passing offers, review cards and the paused-until-opened reminder each have their own channel.
-        open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,
-                getPackageName()));
     }
 
     private void openDoorDashChannel() {
