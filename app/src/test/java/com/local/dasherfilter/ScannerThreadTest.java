@@ -967,7 +967,10 @@ public class ScannerThreadTest {
         before = service.rootFetches;
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());
-        assertEquals("ours, the first time, then Dasher's", 2, service.rootFetches - before);
+        // Ours, the first time; then Dasher's half, which no event of Dasher's named yet: its root alone, to learn whose
+        // it is, and (from Android 13, for this read taken at once) again with Dasher's nodes.
+        assertEquals("ours, the first time, then Dasher's", Build.VERSION.SDK_INT >= 33 ? 3 : 2,
+                service.rootFetches - before);
         before = service.rootFetches;
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());

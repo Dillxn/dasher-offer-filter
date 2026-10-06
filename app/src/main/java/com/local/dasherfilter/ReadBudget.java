@@ -3,19 +3,22 @@ package com.local.dasherfilter;
 import java.util.Arrays;
 
 /**
- * How often Dasher's screen is read while the last read showed no sign of an offer, so the reader never keeps
+ * How often Dasher's screen may be read when a read cannot catch a readable offer any sooner, so the reader never keeps
  * Dasher's own UI thread from drawing or from answering the user's taps (every node read is a call that thread must
- * serve; Dasher's map and delivery screens are big and change many times a second). Three limits, all on the
- * scanner's uptimes, none of them on an offer:
+ * serve; Dasher's map and delivery screens are big and change many times a second). It holds back only reads the
+ * caller decides it may hold back: what a timer asks for (settling, outcome observation), and the changes of a screen
+ * too big to read in full that showed nothing of an offer (no offer on it can be judged). A change after a read of a
+ * screen that could be read in full is never held here: the caller's 150 ms quiet gap is its only wait. Three limits,
+ * all on the scanner's uptimes, one budget for Dasher (its windows share one UI thread):
  *
  * <ul>
- *   <li>A token bucket for the Dasher window being read: at most {@link #TOKEN_MS one read every 250 ms} (4 a second)
- *   sustained, {@link #BURST} at once; while a delivery or route is under way, at most one every {@link #CALM_MS}.
- *   A new window starts with a full bucket.</li>
+ *   <li>A token bucket: at most {@link #TOKEN_MS one read every 250 ms} (4 a second) sustained, {@link #BURST} at
+ *   once; while a delivery or route is under way, at most one every {@link #CALM_MS}.</li>
  *   <li>Backoff from what such a read cost: one that took D ms is followed by the next no sooner than
- *   min({@link #MAX_GAP_MS}, max({@link #MIN_GAP_MS}, 2·D)) after it ended; slow reads in a row
- *   ({@link #SLOW_READ_MS} or more each) double that, up to {@link #MAX_GAP_MS}. A read that cost under 75 ms
- *   leaves the caller's own 150 ms quiet gap in charge, as before.</li>
+ *   max({@link #MIN_GAP_MS}, {@link #COST_FACTOR}·D) after it ended, so these reads take a quarter of Dasher's time at
+ *   most however long each takes; slow reads in a row ({@link #SLOW_READ_MS} or more each) double that, up to
+ *   {@link #MAX_GAP_MS} (or the cost gap, when longer). A read that cost under 50 ms leaves the caller's own 150 ms
+ *   quiet gap in charge.</li>
  *   <li>A watchdog: Dasher's slowest node fetch in each of the last {@link #FETCH_SAMPLES} reads. When their median
  *   is over {@link #SLOW_FETCH_MS} after a read that showed nothing of an offer, such reads stop for
  *   {@link #FIRST_YIELD_MS}; the first read after that is a probe, and while it is still slow the pause doubles, up to
@@ -23,12 +26,16 @@ import java.util.Arrays;
  * </ul>
  *
  * The moment a read, the text of an event Android delivered, a new Dasher window or an offer notification shows any
- * sign of an offer, the caller reads as it always did ({@link #evidence}): none of this applies to an offer. Pure
- * arithmetic, no Android; scanner thread only.
+ * sign of an offer, the caller reads as it always did: none of this applies to an offer. An offer's sign refills the
+ * bucket and forgets the cost ({@link #evidence}); a pause for Dasher's slowness stands until a probe finds Dasher
+ * answering in time again. Pure arithmetic, no Android; scanner thread only.
  */
 final class ReadBudget {
     /** The scanner's quiet gap: never less than this after a read of a burst. */
     static final long MIN_GAP_MS = 150;
+    /** The gap after a read is this many times its own time: such reads keep Dasher busy a quarter of the time at most. */
+    static final long COST_FACTOR = 3;
+    /** Slow reads in a row double the gap up to this (a single read's own cost gap may be longer). */
     static final long MAX_GAP_MS = 2_000;
     static final long SLOW_READ_MS = 250;
     static final int BURST = 2;
@@ -42,12 +49,9 @@ final class ReadBudget {
     static final int MIN_FETCH_SAMPLES = 3;
     static final long FIRST_YIELD_MS = 3_000;
     static final long MAX_YIELD_MS = 10_000;
-    /** No window known: Android gave none an ID (tests and stand-ins). */
-    static final int NO_WINDOW = Integer.MIN_VALUE;
 
     private static final long NEVER = Long.MIN_VALUE / 4;
 
-    private int window = NO_WINDOW;
     /** The bucket as a theoretical arrival time: a read may start once it is no further than the burst away. */
     private long tokenAt = NEVER;
     /** Until when the cost of the last read holds the next one back. */
@@ -79,44 +83,34 @@ final class ReadBudget {
         tokenAt = Math.max(tokenAt, now) + (calm ? CALM_MS : TOKEN_MS);
     }
 
-    /** The Dasher window a read found: a different one starts afresh (a full bucket, no backoff). */
-    void window(int id) {
-        if (id == window) return;
-        window = id;
-        tokenAt = NEVER;
-        costUntil = NEVER;
-        lastGap = 0;
-        slowInRow = 0;
-    }
-
-    /** A read showed nothing of an offer: what it cost holds the next one back. */
+    /** A read showed nothing of an offer: what it cost holds the next budgeted one back. */
     void factFree(long started, long ended) {
         long took = Math.max(0, ended - started);
-        long gap = Math.max(MIN_GAP_MS, 2 * took);
+        long cost = Math.max(MIN_GAP_MS, COST_FACTOR * took);
+        long gap = cost;
         if (took >= SLOW_READ_MS) {
             slowInRow++;
-            if (slowInRow >= 2) gap = Math.max(gap, 2 * lastGap);
+            if (slowInRow >= 2) gap = Math.max(gap, Math.min(MAX_GAP_MS, 2 * lastGap));
         } else {
             slowInRow = 0;
         }
-        gap = Math.min(MAX_GAP_MS, gap);
         lastGap = gap;
         // At the floor, the caller's own quiet gap rules, exactly as before (a read right after a window change's).
         costUntil = gap > MIN_GAP_MS ? ended + gap : NEVER;
     }
 
-    /** A sign of an offer: reads go as they always did, and the budget starts afresh after it. */
+    /** A sign of an offer: the bucket is full and the cost forgotten. A pause for Dasher's slowness stands. */
     void evidence() {
         tokenAt = NEVER;
         costUntil = NEVER;
         lastGap = 0;
         slowInRow = 0;
-        yieldUntil = NEVER;
     }
 
-    /** An offer notification or a rules change: as {@link #evidence}, and Dasher's slowness is judged anew. */
+    /** An offer notification, or reads resuming after a pause: as {@link #evidence}, and Dasher's slowness is judged anew. */
     void fresh() {
         evidence();
+        yieldUntil = NEVER;
         Arrays.fill(fetches, 0);
         fetchCount = 0;
         fetchNext = 0;

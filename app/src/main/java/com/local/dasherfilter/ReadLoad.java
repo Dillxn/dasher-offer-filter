@@ -37,7 +37,7 @@ final class ReadLoad {
     /** The minute's line, and a fresh minute after it. */
     String take(long medianFetchMs) {
         String line = "read load: " + reads + " reads/min (fact-free " + factFree + "), nodes " + nodes + ", slowest "
-                + slowestMs + " ms, median fetch " + medianFetchMs + " ms, truncated " + truncated
+                + ms(slowestMs) + ", median fetch " + ms(medianFetchMs) + ", truncated " + truncated
                 + ", pruned map subtrees " + pruned + ", yields " + yields;
         reads = 0;
         factFree = 0;
@@ -47,5 +47,13 @@ final class ReadLoad {
         pruned = 0;
         yields = 0;
         return line;
+    }
+
+    /**
+     * A duration for a log line, "N ms". From ten seconds on its digits are grouped ("12,345 ms"): the log's masking
+     * takes five digits before "ms" for a ZIP code and a Mississippi address, and would hide the very waits worth seeing.
+     */
+    static String ms(long millis) {
+        return millis >= 10_000 ? String.format(java.util.Locale.US, "%,d ms", millis) : millis + " ms";
     }
 }

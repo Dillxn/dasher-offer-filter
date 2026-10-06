@@ -60,43 +60,53 @@ public class ReadBudgetTest {
     }
 
     @Test
-    public void aCostlyReadIsFollowedNoSoonerThanTwiceItsCostAndSlowOnesInARowBackOffToTwoSeconds() {
+    public void aCostlyReadIsFollowedNoSoonerThanThreeTimesItsCostAndSlowOnesInARowBackOffToTwoSeconds() {
         ReadBudget budget = new ReadBudget();
         budget.factFree(0, 100);
-        assertEquals("twice 100 ms after it ended", 300, budget.dueAt(0, false));
+        assertEquals("three times 100 ms after it ended", 400, budget.dueAt(0, false));
         budget.factFree(1_000, 1_300);
-        assertEquals("a slow read: twice its cost", 1_900, budget.dueAt(0, false));
+        assertEquals("a slow read: three times its cost", 1_300 + 900, budget.dueAt(0, false));
         budget.factFree(2_000, 2_300);
-        assertEquals("slow twice in a row: the gap doubles", 2_300 + 1_200, budget.dueAt(0, false));
+        assertEquals("slow twice in a row: the gap doubles", 2_300 + 1_800, budget.dueAt(0, false));
         budget.factFree(4_000, 4_300);
-        assertEquals("never more than 2 s", 4_300 + 2_000, budget.dueAt(0, false));
+        assertEquals("doubling stops at 2 s", 4_300 + 2_000, budget.dueAt(0, false));
         budget.factFree(7_000, 9_000);
-        assertEquals(9_000 + 2_000, budget.dueAt(0, false));
+        assertEquals("a 2 s read rests three times as long: never more than a quarter of Dasher's time", 9_000 + 6_000,
+                budget.dueAt(0, false));
         // A fast read ends the streak: the caller's own quiet gap rules again.
-        budget.factFree(12_000, 12_050);
+        budget.factFree(16_000, 16_040);
         assertEquals(0, budget.dueAt(0, false));
-        budget.factFree(13_000, 13_300);
-        assertEquals("a slow read after a fast one: twice its cost, no doubling", 13_900, budget.dueAt(0, false));
+        budget.factFree(17_000, 17_300);
+        assertEquals("a slow read after a fast one: three times its cost, no doubling", 18_200, budget.dueAt(0, false));
     }
 
     @Test
-    public void aSignOfAnOfferOrANewWindowStartsAfresh() {
+    public void readsHeldBackOnTheBudgetTakeAQuarterOfDashersTimeAtMostHoweverLongEachTakes() {
+        for (long took : new long[] {20, 60, 100, 300, 1_000, 2_700, 7_500}) {
+            ReadBudget budget = new ReadBudget();
+            long busy = 0;
+            long t = 0;
+            while (t < 600_000) {
+                long start = Math.max(t, budget.dueAt(QUIET_PAST, false));
+                budget.take(start, false);
+                budget.factFree(start, start + took);
+                busy += took;
+                t = start + took;
+            }
+            // A quarter of the time at most (the last read may end just after the span).
+            assertTrue(took + " ms reads: " + busy + " of " + t + " ms", busy <= t / 4 + took);
+        }
+    }
+
+    @Test
+    public void anOffersSignRefillsTheBucketAndForgetsTheCost() {
         ReadBudget budget = new ReadBudget();
-        budget.window(7);
         budget.take(0, false);
         budget.take(0, false);
         budget.factFree(0, 900);
         assertTrue(budget.dueAt(0, false) > 1_000);
         budget.evidence();
-        assertTrue("an offer's sign: the budget starts afresh", budget.dueAt(0, false) <= 0);
-
-        budget.take(0, false);
-        budget.take(0, false);
-        budget.factFree(0, 900);
-        budget.window(7);
-        assertTrue("the same window keeps its budget", budget.dueAt(0, false) > 1_000);
-        budget.window(9);
-        assertTrue("a new window of Dasher's starts with a full bucket", budget.dueAt(0, false) <= 0);
+        assertTrue("an offer's sign: the bucket is full, the cost forgotten", budget.dueAt(0, false) <= 0);
     }
 
     @Test
@@ -135,15 +145,21 @@ public class ReadBudgetTest {
     }
 
     @Test
-    public void onlyAReadWithNothingOfAnOfferStartsAPauseAndAnOffersSignEndsOne() {
+    public void onlyAReadWithNothingOfAnOfferStartsAPauseAndOnlyAFreshJudgementEndsOne() {
         ReadBudget budget = new ReadBudget();
         budget.fetched(400, false, 0);
         budget.fetched(400, false, 0);
         assertEquals("slow offer reads are never paused", -1, budget.fetched(400, false, 0));
         assertEquals("the next read with nothing of an offer is", 400, budget.fetched(400, true, 0));
         assertTrue(budget.yielding(1));
+        // An offer's sign does not end it (an offer is read at once whatever the budget says): a figure flickering on
+        // a slow screen cannot keep the watchdog from pausing.
         budget.evidence();
-        assertFalse("an offer's sign ends the pause at once", budget.yielding(1));
+        assertTrue(budget.yielding(1));
+        // An offer's notification judges Dasher afresh.
+        budget.fresh();
+        assertFalse(budget.yielding(1));
+        assertEquals(0, budget.median());
     }
 
     @Test
@@ -156,6 +172,6 @@ public class ReadBudgetTest {
         for (int i = 0; i < 6; i++) budget.fetched(500, false, 0);
         assertEquals("six of the last ten slow", 500, budget.median());
         budget.fresh();
-        assertEquals("judged afresh after a notification or a rules change", 0, budget.median());
+        assertEquals("judged afresh after an offer's notification", 0, budget.median());
     }
 }

@@ -468,7 +468,7 @@ final class DasherOverlay implements DasherTab.Listener {
         FilterSettings next = saved.withEnabled(!saved.enabled);
         FilterStore.save(service, next);
         OfferNotificationService.rulesChanged();
-        OfferFilterService.requestCheckFromNotification();
+        OfferFilterService.requestCheckForRules();
         view.show(state(next));
         view.announceForAccessibility(next.enabled ? "Auto-decline on" : "Auto-decline paused");
         Toast.makeText(service, next.enabled ? "Auto-decline is on." : "Paused. Nothing will be declined.",

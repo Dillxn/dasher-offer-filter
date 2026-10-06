@@ -923,6 +923,30 @@ public class PeekTest {
     }
 
     @Test
+    public void aScreenTooBigToReadIsNeverTakenForAnEmptyPeek() throws Exception {
+        // Dasher comes up on a screen too big to read in full, its first part the wait for offers: an offer may be in
+        // the part not read. The peek does not go back over it, and it is not a peek that found no offer (three of
+        // those turn Peek off); its deadline leaves Dasher up, as always.
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        AccessibilityNodeInfo root = node(DASHER, null, false);
+        Shadows.shadowOf(root).addChild(node(DASHER, "Finding offers", false));
+        AccessibilityNodeInfo list = node(DASHER, null, false);
+        for (int i = 0; i < 2_000; i++) Shadows.shadowOf(list).addChild(node(DASHER, null, false));
+        Shadows.shadowOf(root).addChild(list);
+        dasherShows(root);
+        java.lang.reflect.Field peek = OfferFilterService.class.getDeclaredField("peek");
+        peek.setAccessible(true);
+        assertTrue("a possible offer", ((Peek) peek.get(screen.get())).sawOffer());
+        pass(6_000);
+        assertNull("not back over a possible offer", started());
+        pass(14_100);
+        assertNull("its deadline leaves Dasher where it is", started());
+        contains(log(app), "[peek] ended because 20 s passed");
+    }
+
+    @Test
     public void blockedBackgroundLaunchFallsBackAtSixSeconds() {
         connect(app(MAPS));
         post("Taco Bell");

@@ -33,6 +33,12 @@ public class MapNodesTest {
 
     @Test
     public void mapsByTheirDescription() {
+        // On a phone a MapView that does not override getAccessibilityClassName reports its superclass, and view IDs are
+        // not reported (no flagReportViewIds): Google's SDK still describes the map "Google Map". With neither, the map
+        // is read as any view (a screen too big to read then waits on the read budget).
+        assertTrue(MapNodes.isMap("android.widget.FrameLayout", null, "Google Map"));
+        assertFalse(MapNodes.isMap("android.widget.FrameLayout", null, null));
+        assertFalse(MapNodes.isMap("android.view.View", null, null));
         assertTrue(MapNodes.isMap("android.view.View", null, "Google Map"));
         assertTrue(MapNodes.isMap("android.view.View", null, " map "));
         assertTrue(MapNodes.isMap(null, null, "Map."));

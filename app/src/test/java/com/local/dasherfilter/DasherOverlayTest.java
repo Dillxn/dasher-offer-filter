@@ -252,8 +252,8 @@ public class DasherOverlayTest {
 
     @Test
     public void draggingTheTabMovesItAlongAndAcrossAndItStaysWhereItWasPut() {
-        // No rule saved: a tap would open Offer Filter, so a drag that counted as a tap would show it.
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+        // Auto-decline on: a tap would pause it, so a drag that counted as a tap would. (Paused, or with no rule yet,
+        // nothing of Dasher's is read and the tab over it soon takes no touches: there is nothing to drag.)
         show(screen("Finding offers"));
         DasherTab tab = tab();
         assertNotNull(tab);
@@ -266,9 +266,8 @@ public class DasherOverlayTest {
         assertEquals("moved up the edge with the finger", startY - 500, params(tab).y);
         assertEquals("still on the left edge", 0, params(tab).x);
         assertEquals(DasherTab.Look.REST, tab.look());
-        assertNull("a drag is not a tap: Offer Filter did not open",
-                Shadows.shadowOf(app).getNextStartedActivity());
-        assertFalse(FilterStore.load(app).enabled);
+        assertTrue("a drag is not a tap: auto-decline was not paused", FilterStore.load(app).enabled);
+        assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
         // Across, let go past the middle: it lands on the right edge.
         drag(tab, 700, 120);
@@ -276,7 +275,7 @@ public class DasherOverlayTest {
         assertEquals("on the right edge", PORTRAIT.right - width, params(tab).x);
         assertEquals(startY - 380, params(tab).y);
         assertTrue(tab.onRight());
-        assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+        assertTrue(FilterStore.load(app).enabled);
 
         // Remembered: Dasher leaves and comes back, and the service starts again.
         leaveDasher();
@@ -303,7 +302,7 @@ public class DasherOverlayTest {
 
         // A plain tap is still a tap.
         tap(tab);
-        assertNotNull(Shadows.shadowOf(app).getNextStartedActivity());
+        assertFalse(FilterStore.load(app).enabled);
     }
 
     @Test
@@ -349,10 +348,12 @@ public class DasherOverlayTest {
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherOverlay.OUT_FOR_MS));
         assertEquals(DasherTab.Look.PEEK, tab.look());
 
-        // Paused, nothing of Dasher's is read: the tab goes by Android's list of windows alone, as over a screen not
-        // recognised during a dash. Resumed, Dasher's screens are read again.
+        // Paused, nothing of Dasher's is read: the tab goes by Android's list of windows alone, as over a possible
+        // offer (nothing read can say there is none): the slim peek that takes no touches. Resumed, Dasher's screens
+        // are read again.
         show(screen("Finding offers"));
         assertEquals(DasherTab.Look.PEEK, tab.look());
+        assertTrue((params(tab).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
         FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         // A route stored from an accepted offer tucks it away too, whatever the screen.
         show(screen("Finding offers"));
