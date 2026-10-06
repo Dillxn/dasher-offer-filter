@@ -62,6 +62,8 @@ abstract class AndroidAdapterTestBase {
     @After
     public void tearDown() {
         OfferFilterService.scanLooperForTests = null;
+        // Whatever these tests sent, the real feedback service would have taken.
+        FakeFeedbackTransport.assertHonored();
     }
 
     static boolean isDescendant(View ancestor, View view) {

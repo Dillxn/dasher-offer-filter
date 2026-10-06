@@ -39,10 +39,11 @@ final class Consent {
                 + "24-hour window; these are not shared. Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
                 + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
                 + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "
-                + "Settings (off by default). Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
-                + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex). Network providers "
-                + "still receive normal connection metadata, and text masking can miss details. Privacy explains updates, feedback, "
-                + "place lookups and map links."},
+                + "Settings (off by default). What you type is sent as written, not masked. No feedback or diagnostics leave before "
+                + "you accept this notice. Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
+                + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex); clearing this phone "
+                + "does not erase sent copies. Network providers still receive normal connection metadata, and text masking can miss "
+                + "details. Privacy explains updates, feedback, place lookups and map links."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
@@ -66,6 +67,9 @@ final class Consent {
                 + "may act");
         // Feedback the user sent before an updated notice waited for it.
         FeedbackOutbox.consented(context);
+        // How the app last stopped is looked at from now on: before the notice, Android's record of it is not read.
+        StopReports.install(context);
+        StopReports.checkSoon(context);
     }
 
     private static SharedPreferences prefs(Context context) {

@@ -133,7 +133,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "masked diagnostics go only when you attach them",
                 "or after each dash if you turn that on in Settings (off by default)",
                 "Unsent submissions wait on this phone up to 7 days", "The feedback service keeps them 90 days",
-                "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details"}) {
+                "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details",
+                "What you type is sent as written, not masked",
+                "No feedback or diagnostics leave before you accept this notice",
+                "clearing this phone does not erase sent copies"}) {
             assertTrue(fact, data.contains(fact));
         }
         assertFalse("no account of any kind", data.contains("GitHub"));

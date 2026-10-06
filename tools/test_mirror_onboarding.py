@@ -32,10 +32,12 @@ class MirrorOnboardingTest(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.output = pathlib.Path(cls.temp.name) / "public"
-        # Use the checked-in signed release. No Android build, signing, or network request.
+        # Use the checked-in signed release. No Android build, signing, or network request: the website serves
+        # its legal pages here.
         with patch.object(mirror, "live_feed", side_effect=AssertionError("No network in this test")), \
+                patch.object(mirror, "page_serves", side_effect=AssertionError("No network in this test")), \
                 contextlib.redirect_stdout(io.StringIO()):
-            cls.published = mirror.main(out=cls.output, check_live=False)
+            cls.published = mirror.main(out=cls.output, check_live=False, serves=lambda url: True)
         cls.page = Page((cls.output / "index.html").read_text(encoding="utf-8"))
 
     @classmethod
@@ -83,6 +85,66 @@ class MirrorOnboardingTest(unittest.TestCase):
         self.assertEqual([], stale, "legal texts are published on offerfilter.org, not a stale source snapshot")
         self.assertEqual("OfferFilter-" + self.published["versionName"] + ".apk",
                          self.page.links["/OfferFilter.apk"]["download"])
+
+    def test_a_legal_page_the_website_does_not_serve_yet_links_to_its_source_copy(self):
+        asked = []
+
+        def serves(url):
+            asked.append(url)
+            return url.endswith("/privacy/")
+
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(mirror, "live_feed", side_effect=AssertionError("No network in this test")), \
+                patch.object(mirror, "page_serves", side_effect=AssertionError("No network in this test")), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as said:
+            output = pathlib.Path(temp) / "public"
+            mirror.main(out=output, check_live=False, serves=serves)
+            page = Page((output / "index.html").read_text(encoding="utf-8"))
+        self.assertEqual(["https://offerfilter.org/terms/", "https://offerfilter.org/privacy/",
+                          "https://offerfilter.org/license/"], asked)
+        self.assertIn("https://offerfilter.org/privacy/", page.links)
+        for missing, copy in (("https://offerfilter.org/terms/", mirror.SOURCE + "TERMS.md"),
+                              ("https://offerfilter.org/license/", mirror.SOURCE + "LICENSE")):
+            with self.subTest(missing=missing):
+                self.assertNotIn(missing, page.links)
+                self.assertIn(copy, page.links)
+                self.assertIn("LEGAL_PAGE_NOT_SERVED " + missing, said.getvalue())
+        self.assertEqual("https://github.com/Dillxn/dasher-offer-filter/blob/main/", mirror.SOURCE)
+        stale = [link for link in page.links if "app-source" in (link or "") or "github.io" in (link or "")]
+        self.assertEqual([], stale)
+        self.assertNotIn("GitHub", page.text)
+        for label in ("Terms of use", "Privacy", "MIT License"):
+            self.assertIn(label, page.text)
+
+    def test_a_page_counts_as_served_only_when_it_answers(self):
+        class Answer:
+            def __init__(self, status):
+                self.status = status
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def answering(*statuses):
+            calls = iter(statuses)
+
+            def urlopen(request, timeout):
+                status = next(calls)
+                if isinstance(status, Exception):
+                    raise status
+                if status >= 400:
+                    raise mirror.urllib.error.HTTPError(request.full_url, status, "status", {}, None)
+                return Answer(status)
+            return urlopen
+
+        cases = (((200,), True), ((404,), False), ((405, 200), True), ((405, 404), False),
+                 ((OSError("no route"),), False))
+        for statuses, expected in cases:
+            with self.subTest(statuses=statuses), \
+                    patch.object(mirror.urllib.request, "urlopen", side_effect=answering(*statuses)):
+                self.assertIs(expected, mirror.page_serves("https://offerfilter.org/terms/"))
 
     def test_onboarding_does_not_change_release_bytes_or_claim_device_install(self):
         original = json.loads((mirror.ROOT / "release/latest.json").read_text())

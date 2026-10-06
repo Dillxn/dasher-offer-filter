@@ -233,8 +233,9 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             assertTrue(dialog.isShowing());
             String said = ((TextView) dialog.findViewById(android.R.id.message)).getText().toString();
             assertEquals("the dialog says what it sends, and Send is the consent", "Sends this offer's figures, "
-                    + "decision and masked read lines, your current rules, the app's and Android's versions and the "
-                    + "minute it was decided, with your note. No account. Masking can miss details.", said);
+                    + "decision and masked read lines, your current rules and what the adaptive minimum learned from "
+                    + "offers you accepted or declined, the app's and Android's versions and the minute it was "
+                    + "decided, with your note. No account. Masking can miss details.", said);
             View decor = dialog.getWindow().getDecorView();
             assertNotNull(findText(decor, "Don't include customer, payment or account details."));
             List<String> chips = new ArrayList<>();
@@ -278,7 +279,12 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             String evidence = entry.getJSONArray("evidence").toString();
             assertTrue(evidence, evidence.contains("$7.90"));
             assertFalse(evidence, evidence.contains("Sam"));
-            assertTrue(sent.getJSONObject("rules").has("inWords"));
+            org.json.JSONObject rules = sent.getJSONObject("rules");
+            assertTrue(rules.has("inWords"));
+            // What the dialog discloses: the learned minimums go with the rules.
+            for (String learned : new String[] {"lastAcceptedCents", "declinedByHand", "bestAccepted"}) {
+                assertTrue(learned, rules.has(learned));
+            }
             assertFalse(request.toString().contains("Sam P"));
 
             android.app.AlertDialog done = (android.app.AlertDialog)

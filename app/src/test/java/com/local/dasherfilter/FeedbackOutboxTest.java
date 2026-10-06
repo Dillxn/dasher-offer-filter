@@ -14,14 +14,19 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 
@@ -56,7 +61,9 @@ public class FeedbackOutboxTest {
     @After
     public void cleanup() {
         FeedbackOutbox.clock = System::currentTimeMillis;
+        FeedbackOutbox.remover = File::delete;
         settle();
+        FakeFeedbackTransport.assertHonored();
     }
 
     private void settle() {
@@ -77,9 +84,41 @@ public class FeedbackOutboxTest {
     }
 
     private JSONObject item(boolean automatic, String... parts) {
-        return FeedbackOutbox.item(Feedback.newToken(), automatic ? Feedback.Kind.DIAGNOSTICS : Feedback.Kind.FEEDBACK,
-                "general", automatic, FeedbackOutbox.TEXT, automatic ? "" : "Typed words", parts.length > 0,
-                Arrays.asList(parts));
+        if (automatic) {
+            return FeedbackOutbox.automatic(Feedback.newToken(), Arrays.asList(parts), Feedback.automaticEpoch(app));
+        }
+        return FeedbackOutbox.item(Feedback.newToken(), Feedback.Kind.FEEDBACK, "general", false, FeedbackOutbox.TEXT,
+                "Typed words", parts.length > 0, Arrays.asList(parts));
+    }
+
+    private JobInfo job() {
+        return app.getSystemService(JobScheduler.class).getPendingJob(FeedbackOutbox.JOB_ID);
+    }
+
+    private List<Feedback.Event> eventsFor(String token) {
+        List<Feedback.Event> out = new ArrayList<>();
+        for (Feedback.Event event : events) if (event.token.equals(token)) out.add(event);
+        return out;
+    }
+
+    private int postsOf(String token) {
+        int posts = 0;
+        for (JSONObject request : service.requests()) if (token.equals(request.optString("reportToken"))) posts++;
+        return posts;
+    }
+
+    /** As a write that keeps failing would (a full disk): the place of the temporary file is taken. */
+    private static File blockWrites(File file) throws Exception {
+        File blocker = new File(file.getPath() + ".tmp");
+        assertTrue(blocker.mkdirs());
+        Files.write(new File(blocker, "taken").toPath(), "x".getBytes(StandardCharsets.UTF_8));
+        return blocker;
+    }
+
+    private static void unblock(File blocker) {
+        File[] inside = blocker.listFiles();
+        if (inside != null) for (File file : inside) assertTrue(file.delete());
+        assertTrue(blocker.delete());
     }
 
     private Feedback.Event last() {
@@ -173,9 +212,16 @@ public class FeedbackOutboxTest {
         JobInfo job = app.getSystemService(JobScheduler.class).getPendingJob(FeedbackOutbox.JOB_ID);
         assertTrue(job.getMinLatencyMillis() >= FeedbackOutbox.RATE_LIMIT_MS);
 
+        // Not tried again before its ten minutes, however often the outbox is sent meanwhile.
+        assertTrue(FeedbackOutbox.drain(app, () -> false).retry);
+        assertEquals("held back until the service's window has passed", 1, service.count());
+
+        long now = System.currentTimeMillis();
+        FeedbackOutbox.clock = () -> now + FeedbackOutbox.RATE_LIMIT_MS + 1_000L;
         service.answer(503, "{\"ok\":false}", 20 * 60_000L);
         FeedbackOutbox.Result result = FeedbackOutbox.drain(app, () -> false);
         settle();
+        assertEquals(2, service.count());
         assertTrue(result.retry);
         assertTrue("the service's Retry-After", result.delayMs >= 20 * 60_000L);
         assertEquals(Feedback.State.UNAVAILABLE, last().state);
@@ -229,6 +275,34 @@ public class FeedbackOutboxTest {
         settle();
         assertEquals("turning it off stops the rest, and discards it", 1, service.count());
         assertEquals(0, queued().length);
+    }
+
+    @Test
+    public void anAutomaticSummaryOfAnEarlierEpochIsNeverQueuedOrSent() throws Exception {
+        Feedback.setAfterDash(app, true);
+        // Begun while the opt-in was on; turned off and on again before it was queued: never lands.
+        JSONObject stale = item(true, "begun before the switch went off and on\n");
+        Feedback.setAfterDash(app, false);
+        Feedback.setAfterDash(app, true);
+        DashSummary.flush();
+        assertFalse(FeedbackOutbox.submitAutomatic(app, stale));
+        // Queued, then history cleared before it went (with the opt-in left on): never sent.
+        service.down = true;
+        assertTrue(FeedbackOutbox.submitAutomatic(app, item(true, "queued before Clear history\n")));
+        settle();
+        int before = service.count();
+        Feedback.clearAutomatic(app);
+        service.down = false;
+        FeedbackOutbox.drain(app, () -> false);
+        DashSummary.flush();
+        settle();
+        assertEquals(before, service.count());
+        assertEquals(0, queued().length);
+        assertTrue("the opt-in itself stays the user's", Feedback.afterDashOn(app));
+        // One begun now goes.
+        assertTrue(FeedbackOutbox.submitAutomatic(app, item(true, "a fresh summary\n")));
+        settle();
+        assertEquals(before + 1, service.count());
     }
 
     @Test
@@ -342,6 +416,294 @@ public class FeedbackOutboxTest {
         assertTrue(result.retry);
         assertEquals(before, service.count());
         assertEquals(1, queued().length);
+    }
+
+    // ---- One that waits never holds back another; a part acknowledged is never sent again ----
+
+    @Test
+    public void anAcknowledgedPartIsNeverSentAgainWhenItsProgressCannotBeSaved() throws Exception {
+        service.down = true;
+        JSONObject two = item(false, "first\n", "second");
+        String token = two.getString("token");
+        FeedbackOutbox.submit(app, two);
+        settle();
+        File blocker = blockWrites(queued()[0]);
+        service.down = false;
+        try {
+            FeedbackOutbox.Result result = FeedbackOutbox.drain(app, () -> false);
+            assertTrue("its progress could not be saved: the rest go later", result.retry);
+            assertTrue(result.delayMs >= FeedbackOutbox.FIRST_RETRY_MS);
+            assertEquals("part 0 once (after the offline try)", 2, postsOf(token));
+            // The next try sends only what is still owed, though the disk still says part 0 is.
+            assertFalse(FeedbackOutbox.drain(app, () -> false).retry);
+        } finally {
+            unblock(blocker);
+        }
+        List<JSONObject> sent = service.requests();
+        assertEquals(3, sent.size());
+        assertEquals(0, sent.get(1).getInt("partIndex"));
+        assertEquals(1, sent.get(2).getInt("partIndex"));
+        assertEquals(0, queued().length);
+        assertFalse(FeedbackOutbox.drain(app, () -> false).retry);
+        assertEquals("nothing is ever posted again", 3, service.count());
+
+        // One part only, with the place of its temporary file taken from the start: posted once, finished.
+        JSONObject one = item(false, "only\n");
+        String single = one.getString("token");
+        service.down = true;
+        FeedbackOutbox.submit(app, one);
+        settle();
+        File again = blockWrites(queued()[0]);
+        service.down = false;
+        try {
+            FeedbackOutbox.drain(app, () -> false);
+            FeedbackOutbox.drain(app, () -> false);
+        } finally {
+            unblock(again);
+        }
+        settle();
+        assertEquals("one offline try and one acknowledged post", 2, postsOf(single));
+        assertEquals(Feedback.State.SENT, last().state);
+    }
+
+    @Test
+    public void aSubmissionWhoseFileCannotBeDeletedIsNeverSentAgain() throws Exception {
+        FeedbackOutbox.remover = file -> !file.getName().endsWith(".json") && file.delete();
+        JSONObject one = item(false, "words\n");
+        String token = one.getString("token");
+        FeedbackOutbox.submit(app, one);
+        settle();
+        assertEquals(1, postsOf(token));
+        assertEquals(Feedback.State.SENT, last().state);
+        assertEquals("its file stays: the disk refuses", 1, queued().length);
+        int sentEvents = eventsFor(token).size();
+        FeedbackOutbox.Result result = FeedbackOutbox.drain(app, () -> false);
+        assertTrue("its file is tried again later, with backoff", result.retry);
+        assertEquals("never posted again", 1, postsOf(token));
+        assertEquals("and never reported twice", sentEvents, eventsFor(token).size());
+
+        FeedbackOutbox.remover = File::delete;
+        assertFalse(FeedbackOutbox.drain(app, () -> false).retry);
+        assertEquals(0, queued().length);
+        assertEquals(1, postsOf(token));
+    }
+
+    @Test
+    public void aSecondSubmissionHearsItWaitsThoughAnOlderOneCouldNotBeSent() throws Exception {
+        service.down = true;
+        String first = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "first", false, null);
+        settle();
+        String second = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "second", false, null);
+        settle();
+        assertFalse(eventsFor(first).isEmpty());
+        List<Feedback.Event> heard = eventsFor(second);
+        assertFalse("the second sender hears how it went", heard.isEmpty());
+        assertEquals(Feedback.State.OFFLINE, heard.get(heard.size() - 1).state);
+        assertTrue(heard.get(heard.size() - 1).user);
+        assertEquals(2, queued().length);
+    }
+
+    @Test
+    public void aSubmissionHeldBackByTheServiceIsNotTriedAgainWhenANewOneIsSent() throws Exception {
+        service.answer(429, "{\"ok\":false,\"error\":\"rate_limited\"}");
+        String held = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "held back", false, null);
+        settle();
+        assertEquals(Feedback.State.RATE_LIMITED, last().state);
+        String next = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "sent meanwhile", false, null);
+        settle();
+        assertEquals("not posted again within its ten minutes", 1, postsOf(held));
+        assertEquals(1, postsOf(next));
+        assertEquals(Feedback.State.SENT, eventsFor(next).get(eventsFor(next).size() - 1).state);
+        assertEquals(1, queued().length);
+        JobInfo waiting = job();
+        assertNotNull(waiting);
+        assertTrue(waiting.getMinLatencyMillis() > FeedbackOutbox.RATE_LIMIT_MS - 60_000L);
+
+        long now = System.currentTimeMillis();
+        FeedbackOutbox.clock = () -> now + FeedbackOutbox.RATE_LIMIT_MS + 1_000L;
+        assertFalse(FeedbackOutbox.drain(app, () -> false).retry);
+        assertEquals(2, postsOf(held));
+        assertEquals(0, queued().length);
+    }
+
+    @Test
+    public void aServerErrorOnOneSubmissionDoesNotHoldBackTheNext() throws Exception {
+        service.down = true;
+        JSONObject older = item(false, "older\n");
+        JSONObject newer = item(false, "newer\n");
+        FeedbackOutbox.submit(app, older);
+        FeedbackOutbox.submit(app, newer);
+        settle();
+        service.down = false;
+        service.answer(500, "{\"ok\":false}");
+        FeedbackOutbox.Result result = FeedbackOutbox.drain(app, () -> false);
+        settle();
+        assertTrue(result.retry);
+        assertEquals(Feedback.State.SENT, eventsFor(newer.getString("token")).get(
+                eventsFor(newer.getString("token")).size() - 1).state);
+        assertEquals("only the one the service failed waits", 1, queued().length);
+        assertEquals(older.getString("token"), read(queued()[0]).getString("token"));
+    }
+
+    // ---- Nothing is stranded ----
+
+    @Test
+    public void theJobIsScheduledBeforeTheFirstSendAndGoesOnceNothingWaits() throws Exception {
+        JobInfo[] during = new JobInfo[1];
+        service.during = () -> during[0] = job();
+        Feedback.sendFeedback(app, Feedback.Category.GENERAL, "Words in flight", false, null);
+        settle();
+        assertNotNull("a crash mid-send leaves Android a persisted job", during[0]);
+        assertTrue(during[0].isPersisted());
+        assertEquals(JobInfo.NETWORK_TYPE_ANY, during[0].getNetworkType());
+        assertEquals(1, service.count());
+        assertNull("sent: no job left to wake the phone", job());
+    }
+
+    @Test
+    public void whatWaitsWithNoJobGoesWhenTheAppOpens() throws Exception {
+        service.down = true;
+        String token = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "Stranded words", false, null);
+        settle();
+        // As after a crash before the job was scheduled: a new process, no job.
+        app.getSystemService(JobScheduler.class).cancelAll();
+        FeedbackOutbox.forgetCache();
+        service.down = false;
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            settle();
+            assertEquals(2, postsOf(token));
+            assertEquals(0, queued().length);
+            // Recreated (a resize, day and night): nothing more to send, nothing sent again.
+            activity.recreate();
+            settle();
+            assertEquals(2, postsOf(token));
+        }
+    }
+
+    @Test
+    public void whatWaitsWithNoJobGoesWhenAServiceConnects() throws Exception {
+        service.down = true;
+        String token = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "Stranded words", false, null);
+        settle();
+        app.getSystemService(JobScheduler.class).cancelAll();
+        FeedbackOutbox.forgetCache();
+        service.down = false;
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            listener.get().onListenerConnected();
+            settle();
+            assertEquals(2, postsOf(token));
+            assertEquals(0, queued().length);
+        } finally {
+            listener.destroy();
+        }
+    }
+
+    @Test
+    public void aStoppedJobStillFollowsAScheduleAskedForWhileItRan() throws Exception {
+        service.down = true;
+        FeedbackOutbox.submit(app, item(false));
+        settle();
+        JobScheduler jobs = app.getSystemService(JobScheduler.class);
+        jobs.cancelAll();
+        CountDownLatch inFlight = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        // A request in flight holds the sending thread.
+        FeedbackOutbox.runOnSender(() -> {
+            inFlight.countDown();
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(inFlight.await(5, TimeUnit.SECONDS));
+        ServiceController<FeedbackJobService> first = Robolectric.buildService(FeedbackJobService.class).create();
+        ServiceController<FeedbackJobService> second = Robolectric.buildService(FeedbackJobService.class).create();
+        try {
+            assertTrue(first.get().onStartJob(null));
+            assertTrue("Android stops it; something waits, so Android is to retry", first.get().onStopJob(null));
+            // Android's retry comes while the stopped work has not ended: it is taken as a schedule for after it.
+            assertFalse(second.get().onStartJob(null));
+        } finally {
+            release.countDown();
+        }
+        FeedbackOutbox.flush();
+        assertNotNull("the start taken meanwhile is not lost", job());
+        assertEquals(1, queued().length);
+        first.destroy();
+        second.destroy();
+    }
+
+    @Test
+    public void theOneTimeCleanupGateBacksOffAndOldSubmissionsStillExpire() throws Exception {
+        service.down = true;
+        FeedbackOutbox.submit(app, item(false));
+        settle();
+        app.getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
+                .remove(DiagnosticLog.CLEANED_UP).commit();
+        File blocked = new File(app.getFilesDir(), "dasher-screens.log");
+        assertTrue(blocked.mkdir());
+        File child = new File(blocked, "synthetic.txt");
+        Files.write(child.toPath(), "x".getBytes(StandardCharsets.UTF_8));
+        DiagnosticLog.forgetCache();
+        try {
+            long first = FeedbackOutbox.drain(app, () -> false).delayMs;
+            long second = FeedbackOutbox.drain(app, () -> false).delayMs;
+            long third = FeedbackOutbox.drain(app, () -> false).delayMs;
+            assertTrue("backs off: " + first + " " + second + " " + third, first < second && second < third);
+            long now = System.currentTimeMillis();
+            FeedbackOutbox.clock = () -> now + FeedbackOutbox.MAX_AGE_MS + 60_000L;
+            assertFalse("nothing left to wait for", FeedbackOutbox.drain(app, () -> false).retry);
+            assertEquals("expired while the cleanup was stuck", 0, queued().length);
+        } finally {
+            assertTrue(child.delete());
+            DiagnosticLog.forgetCache();
+        }
+    }
+
+    // ---- Masking right before sending ----
+
+    @Test
+    public void bothPickupVerificationFormsAreMaskedAgainRightBeforeSending() throws Exception {
+        // Queued by an older version, before the pickup-heading repair: the repair reaches what goes.
+        FeedbackOutbox.submit(app, item(false,
+                "[screen] labels=[Verify items for Jordan Q, 2 items, $9.10]\n"
+                        + "[screen] labels=[Verify items for, Jordan Q, Pick up by 9:40 PM]\n"));
+        settle();
+        String sent = Feedback.unframed(service.requests().get(0).getString("diagnostics"));
+        assertFalse(sent, sent.contains("Jordan"));
+        assertTrue(sent, sent.contains("$9.10"));
+
+        String report = new JSONObject().put("report", "offer").put("entry", new JSONObject()
+                .put("evidence", new org.json.JSONArray().put("Verify items for Jordan Q").put("Verify items for")
+                        .put("Jordan Q").put("$9.10"))).toString();
+        FeedbackOutbox.submit(app, FeedbackOutbox.item(Feedback.newToken(), Feedback.Kind.PROBLEM, "bug", false,
+                FeedbackOutbox.OFFER, "", true, Collections.singletonList(report)));
+        settle();
+        String offer = Feedback.unframed(service.requests().get(1).getString("diagnostics"));
+        assertFalse(offer, offer.contains("Jordan"));
+        assertTrue(offer, offer.contains("$9.10"));
+    }
+
+    @Test
+    public void nothingIsQueuedOrSentBeforeTheNoticeIsAccepted() throws Exception {
+        ConsentedTestApp.forget(app);
+        String feedback = Feedback.sendFeedback(app, Feedback.Category.BUG, "Before the notice.", true, null);
+        DecisionLog.Entry offer = new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, Collections.singletonList("$7.90"));
+        String report = Feedback.sendOfferReport(app, offer, OfferReport.Problem.MISREAD, "A note.", null);
+        settle();
+        assertEquals(0, service.count());
+        assertEquals(0, queued().length);
+        for (String token : new String[] {feedback, report}) {
+            List<Feedback.Event> heard = eventsFor(token);
+            assertEquals(1, heard.size());
+            assertEquals(Feedback.State.NOT_QUEUED, heard.get(0).state);
+            assertEquals("Accept the notice first.", heard.get(0).said);
+        }
     }
 
     @Test

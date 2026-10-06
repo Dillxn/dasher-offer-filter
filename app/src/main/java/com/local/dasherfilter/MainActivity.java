@@ -285,6 +285,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // How the last process ended, and a dash that went quiet meanwhile, are looked at off this thread.
         StopReports.checkSoon(this);
         DashSummary.checkSoon(this);
+        // Feedback still waiting (its job lost to a crash, a reboot or a stop) goes now, off this thread.
+        FeedbackOutbox.resume(this);
         if (Consent.accepted(this)) feedbackDialogs.restore(state);
         Updater.schedule(this);
         refresh();
@@ -2040,10 +2042,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     RestartSuppression.clear(this);
                     AutoAcceptMemory.clear(this);
                     ScannerFailure.clear(this);
-                    // Automatic diagnostics not yet sent, what this dash counted for them, and stop summaries.
-                    FeedbackOutbox.discardAutomatic(this);
-                    DashSummary.clear(this);
-                    StopReports.clear(this);
+                    // Automatic diagnostics not yet sent, what this dash counted for them, and stop summaries (their
+                    // files go off this thread; a summary being built is never queued).
+                    Feedback.clearAutomatic(this);
+                    StopReports.clearSoon(this);
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;

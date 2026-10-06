@@ -279,9 +279,10 @@ final class LegalTexts {
             parts; Preview shows exactly what will be sent.
             - **Report this offer**, only when you tap Send: what went wrong (Misread, Wrong decline, Wrong accept \
             or Other), your optional note, and that offer's report: its figures, decision and outcome, its masked \
-            read lines (with every word that is not offer vocabulary reduced to its shape), your current rules, the \
-            app's and Android's versions (not the phone's maker) and the minute it was decided. The dialog says \
-            what is sent; tapping Send is your choice to send it.
+            read lines (with every word that is not offer vocabulary reduced to its shape), your current rules and \
+            what the adaptive minimum learned from offers you accepted or declined (their pay and per-mile, \
+            per-minute, per-stop and per-item rates), the app's and Android's versions (not the phone's maker) and \
+            the minute it was decided. The dialog says what is sent; tapping Send is your choice to send it.
             - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings (it starts off, \
             and no update turns it on). After each dash ends (Dasher shows the dash ended, or nothing of the dash \
             was seen for 30 minutes), it sends one masked summary of at most 30,000 characters: the app and Android \
@@ -295,15 +296,16 @@ final class LegalTexts {
             summaries not yet sent.
             - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
             goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
-            report, which opens the feedback dialog with Bug chosen and diagnostics attached; nothing is sent \
-            unless you tap Send.
+            report, which opens the feedback dialog with Bug chosen and diagnostics attached, for that report only; \
+            nothing is sent unless you tap Send.
             - Where feedback goes. All of the above go only to the project's own feedback service, a Supabase Edge \
             Function reached through Cloudflare. Every submission carries a fresh random token, used only to tie \
             its parts together and store each once; it is new for each submission and not tied to your phone. The \
             service stores each part as sent, with its kind, category, app version, whether it came from the app or \
             the website, and when it arrived: no account, name, email, IP address, user agent, install or device \
-            identifier. To limit how often one network can send, it turns the network's address into a one-way \
-            value that changes every day, used only to count recent submissions and deleted within two days. \
+            identifier. To limit how often one network can send, it counts recent submissions under a one-way value \
+            made with a secret key from the network's address and the date, so the value changes every day; the \
+            address itself is not stored. Counts older than two days are deleted as new submissions arrive. \
             Cloudflare and Supabase necessarily receive ordinary connection metadata, such as your IP address, \
             while handling a request and may keep infrastructure logs under their own policies, so this is not a \
             guarantee of anonymity.
@@ -312,8 +314,9 @@ final class LegalTexts {
             submission does not guarantee review or a fix.
             - Waiting and retrying. If the phone is offline, the service is busy or too many submissions came from \
             your network recently, a submission waits on the phone (see above) and Android sends it later, once a \
-            network is available. Nothing is sent unless the current notice is accepted, and an after-dash summary \
-            only while that option is still on; both are checked again before every part.
+            network is available; the app also sends what waits when it next opens. Nothing is sent unless the \
+            current notice is accepted, and an after-dash summary only while that option is still on; both are \
+            checked again before every part.
             - **Share report**, only when you tap it, hands a masked report to the app you choose. From there, that \
             app handles the copy under its own privacy practices.
             - Place names. To name the squares on the map, the app asks Android's own place lookup (Google's \

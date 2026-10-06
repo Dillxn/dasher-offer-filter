@@ -35,11 +35,13 @@ import static org.junit.Assert.assertTrue;
 /**
  * Send anonymous feedback, as the user meets it in Settings: one row; a dialog with six categories, a counted
  * 4,000-character box, a reminder to leave out customer, payment and account details, an Attach masked diagnostics
- * switch (off) whose Preview shows exactly what goes; the reference afterwards, copyable; the last references
- * listed; the words kept when a send is refused, and kept through a recreated screen. The service is a fake.
+ * switch (off for every new submission) whose Preview shows exactly what goes, a page at a time; the reference
+ * afterwards, copyable; the last references listed; the words kept when a send is refused, and kept through a
+ * recreated screen. The service is a fake that answers as the real one would (and fails the test on a request the
+ * real one would refuse). Android 8 and 15.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class FeedbackDialogTest extends AndroidAdapterTestBase {
     private ActivityController<MainActivity> activity;
@@ -51,6 +53,7 @@ public class FeedbackDialogTest extends AndroidAdapterTestBase {
         if (activity != null) activity.close();
         Feedback.flush();
         Shadows.shadowOf(Looper.getMainLooper()).idle();
+        FakeFeedbackTransport.assertHonored();
     }
 
     /** The list row whose first line is {@code title}. */
@@ -116,6 +119,25 @@ public class FeedbackDialogTest extends AndroidAdapterTestBase {
     private static String said(AlertDialog dialog) {
         TextView message = dialog.findViewById(android.R.id.message);
         return message == null ? "" : message.getText().toString();
+    }
+
+    /** The preview's body: the selectable monospace text. */
+    private static TextView previewBody(AlertDialog preview) {
+        for (TextView text : all(decor(preview), TextView.class, new ArrayList<>())) {
+            if (text.isTextSelectable() && text.getTypeface() == android.graphics.Typeface.MONOSPACE) return text;
+        }
+        return null;
+    }
+
+    /** Every page of the preview, read with Next until the last: the whole of what is sent. */
+    private static String previewed(AlertDialog preview) {
+        StringBuilder whole = new StringBuilder(previewBody(preview).getText());
+        Button next = preview.getButton(AlertDialog.BUTTON_POSITIVE);
+        while (next.getText().toString().equals("Next") && next.isEnabled()) {
+            next.performClick();
+            whole.append(previewBody(preview).getText());
+        }
+        return whole.toString();
     }
 
     @Test
@@ -199,16 +221,15 @@ public class FeedbackDialogTest extends AndroidAdapterTestBase {
         Shadows.shadowOf(Looper.getMainLooper()).idle();
         AlertDialog preview = latest();
         assertNotSame(dialog, preview);
-        TextView body = all(decor(preview), TextView.class, new ArrayList<>()).stream()
-                .filter(text -> text.getText().toString().startsWith("Kind: feedback")).findFirst().orElse(null);
+        TextView body = previewBody(preview);
         assertNotNull(body);
-        assertTrue(body.isTextSelectable());
-        String previewed = body.getText().toString();
+        assertTrue(body.getText().toString().startsWith("Kind: feedback"));
+        String previewed = previewed(preview);
         assertTrue(previewed, previewed.contains("Kind: feedback · category: bug"));
         assertTrue(previewed, previewed.contains("Message:\nIt declined an offer it should have kept."));
         assertTrue(previewed, previewed.contains("a line of the log for the preview"));
         assertEquals("previewing sends nothing", 0, service.count());
-        preview.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        preview.dismiss();
         settle();
 
         send(dialog);
@@ -303,6 +324,123 @@ public class FeedbackDialogTest extends AndroidAdapterTestBase {
         AlertDialog sent = latest();
         assertTrue(sent.isShowing());
         assertNotNull(findText(decor(sent), "Reference: " + reference));
+    }
+
+    @Test
+    public void attachIsOffForEveryNewSubmissionWhateverAnEarlierDialogChose() throws Exception {
+        AlertDialog dialog = open();
+        find(decor(dialog), Switch.class).setChecked(true);
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        settle();
+        AlertDialog again = open();
+        assertFalse("a cancelled dialog's choice does not carry over", find(decor(again), Switch.class).isChecked());
+        find(decor(again), EditText.class).setText("Words only.");
+        send(again);
+        assertEquals(1, service.count());
+        assertFalse(service.requests().get(0).has("diagnostics"));
+        assertFalse(service.requests().get(0).getBoolean("diagnosticsConsented"));
+    }
+
+    @Test
+    public void aRecreatedScreenKeepsTheOpenDialogsOwnAttachChoiceOnly() {
+        AlertDialog dialog = open();
+        find(decor(dialog), EditText.class).setText("Half-written words.");
+        find(decor(dialog), Switch.class).setChecked(true);
+        activity.recreate();
+        settle();
+        AlertDialog restored = latest();
+        assertNotSame(dialog, restored);
+        assertTrue("the same submission, as it was", find(decor(restored), Switch.class).isChecked());
+        restored.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        settle();
+        content = activity.get().findViewById(android.R.id.content);
+        AlertDialog next = open();
+        assertEquals("the words stay a draft", "Half-written words.",
+                find(decor(next), EditText.class).getText().toString());
+        assertFalse("the switch does not", find(decor(next), Switch.class).isChecked());
+        assertEquals(0, service.count());
+    }
+
+    @Test
+    public void aSecondSubmissionClosesWithItsOwnWordWhileAnOlderOneWaits() {
+        AlertDialog first = open();
+        find(decor(first), EditText.class).setText("first words");
+        FakeFeedbackTransport.installed().down = true;
+        send(first);
+        assertFalse(first.isShowing());
+        assertEquals("Saved; it will send when you're online", said(latest()));
+        latest().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+
+        AlertDialog second = open();
+        find(decor(second), EditText.class).setText("second words");
+        send(second);
+        settle();
+        assertFalse("not left on Sending…", second.isShowing());
+        assertEquals("Saved; it will send when you're online", said(latest()));
+        assertEquals(2, new File(app.getFilesDir(), FeedbackOutbox.DIR).listFiles().length);
+    }
+
+    @Test
+    public void aRefusedSendIsSentAgainUnderAFreshTokenSoTheCorrectedWordsAreKept() throws Exception {
+        AlertDialog dialog = open();
+        EditText words = find(decor(dialog), EditText.class);
+        words.setText("Words the service refuses.");
+        find(decor(dialog), Switch.class).setChecked(true);
+        shownButton(decor(dialog), "Preview what is sent").performClick();
+        Feedback.flush();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        latest().dismiss();
+        settle();
+        service.answer(400, "{\"ok\":false,\"error\":\"invalid_feedback\"}");
+        send(dialog);
+        assertTrue(dialog.isShowing());
+        String refused = service.requests().get(0).getString("reportToken");
+
+        words.setText("Corrected words.");
+        send(dialog);
+        settle();
+        List<JSONObject> sent = service.requests();
+        String token = sent.get(sent.size() - 1).getString("reportToken");
+        assertFalse("a refused token is never used again", refused.equals(token));
+        assertEquals("Corrected words.", service.stored(token, 0).getString("message"));
+        assertNotNull(findTextContaining(decor(latest()), "Reference: " + token.substring(0, 8)));
+    }
+
+    @Test
+    public void thePreviewIsPagedAndGoesWithTheScreen() {
+        // A log long enough for several pages of preview.
+        for (int i = 0; i < 60; i++) {
+            DiagnosticLog.log(app, "accessibility", "line " + i + " of a long log " + "z".repeat(150));
+        }
+        AlertDialog dialog = open();
+        find(decor(dialog), Switch.class).setChecked(true);
+        find(decor(dialog), EditText.class).setText("Long diagnostics.");
+        shownButton(decor(dialog), "Preview what is sent").performClick();
+        Feedback.flush();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog preview = latest();
+        assertNotSame(dialog, preview);
+        TextView body = previewBody(preview);
+        assertTrue("a page at a time", body.getText().length() <= FeedbackDialogs.PREVIEW_PAGE_CHARS);
+        Button previous = preview.getButton(AlertDialog.BUTTON_NEUTRAL);
+        Button next = preview.getButton(AlertDialog.BUTTON_POSITIVE);
+        assertEquals("Next", next.getText().toString());
+        assertFalse("nothing before the first page", previous.isEnabled());
+        String first = body.getText().toString();
+        next.performClick();
+        assertTrue(previous.isEnabled());
+        previous.performClick();
+        assertEquals(first, previewBody(preview).getText().toString());
+        String whole = previewed(preview);
+        assertTrue(whole, whole.contains("line 59 of a long log"));
+        assertTrue(whole.length() > FeedbackDialogs.PREVIEW_PAGE_CHARS);
+
+        // A recreated screen takes the preview with it: no window is left behind.
+        activity.recreate();
+        settle();
+        assertFalse(preview.isShowing());
+        assertEquals("previewing sends nothing", 0, service.count());
     }
 
     @Test

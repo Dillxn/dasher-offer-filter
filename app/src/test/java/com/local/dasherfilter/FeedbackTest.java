@@ -201,6 +201,52 @@ public class FeedbackTest {
     }
 
     @Test
+    public void overSizeTheOldestDecisionsGoFirstAndTheLogsAlwaysStay() {
+        android.app.Application app = org.robolectric.RuntimeEnvironment.getApplication();
+        Updater.setEnabled(app, false);
+        DecisionLog.forgetCache();
+        DecisionLog.clear(app);
+        DiagnosticLog.clear(app);
+        DiagnosticLog.setEnabled(app, true);
+        String reason = "a long synthetic reason " + "r".repeat(2_500);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 100; i++) {
+            DecisionLog.record(app, new DecisionLog.Entry(now - (100 - i) * 60_000L, DecisionLog.Source.SCREEN, false,
+                    new OfferSnapshot(700 + i, 2.0, 10, 2), 2000, OfferRule.Result.DECLINE, "decision " + i + " "
+                    + reason, DecisionLog.Action.DECLINE_TAPPED, true, Collections.singletonList("$7.00")));
+        }
+        DiagnosticLog.log(app, "accessibility", "the newest log line, kept whatever is cut");
+
+        // Share report: at most its 60,000 characters, the oldest decisions cut first and said so; never the logs.
+        String report = DiagnosticLog.report(app);
+        assertTrue(report.length() + " characters", report.length() <= DiagnosticLog.MAX_REPORT_CHARS);
+        assertTrue(report.matches("(?s).*\\[only the newest \\d+ decisions fit\\]\n.*"));
+        assertTrue("the newest decision stays", report.contains("decision 99 "));
+        assertFalse("the oldest goes first", report.contains("decision 0 "));
+        assertFalse("nothing is cut off its end", report.contains(DiagnosticLog.TRUNCATED.trim()));
+        assertTrue(report.contains("== Raw diagnostic log"));
+        assertTrue(report.contains("the newest log line, kept whatever is cut"));
+        assertTrue(report.contains("== Dasher's other screens (newest)"));
+        assertTrue("the opt-in's state is in its readiness", report.contains(
+                "Share anonymous diagnostics after each dash: off\n"));
+
+        // Attached to feedback: at most 4 parts of 50,000 characters, the same order of cutting.
+        List<String> parts = Feedback.diagnosticParts(app);
+        assertTrue(parts.size() + " parts", parts.size() <= Feedback.MAX_PARTS);
+        for (String part : parts) assertTrue(part.length() <= Feedback.MAX_PART_CHARS);
+        String whole = String.join("", parts);
+        assertTrue(whole.matches("(?s).*\\[only the newest \\d+ decisions fit\\]\n.*"));
+        assertTrue(whole.contains("decision 99 "));
+        assertFalse(whole.contains("decision 0 "));
+        assertTrue(whole.contains("the newest log line, kept whatever is cut"));
+        assertTrue(whole.contains("== Dasher's other screens (newest)"));
+        Feedback.setAfterDash(app, true);
+        assertTrue(DiagnosticLog.report(app).contains("Share anonymous diagnostics after each dash: on\n"));
+        Feedback.setAfterDash(app, false);
+        DashSummary.flush();
+    }
+
+    @Test
     public void retriesBackOffAndRespectTheRateLimitWindow() {
         assertEquals(30_000L, FeedbackOutbox.delay(Feedback.State.OFFLINE, 1, 0));
         assertEquals(60_000L, FeedbackOutbox.delay(Feedback.State.OFFLINE, 2, 0));

@@ -198,6 +198,51 @@ public class AccessibilityAdapterTest {
         assertNull(Shadows.shadowOf(app).getNextStartedActivity());
     }
 
+    /** What the summary after a dash counted so far, as kept. */
+    private org.json.JSONObject dashCounts() throws Exception {
+        DashSummary.flush();
+        return new org.json.JSONObject(app.getSharedPreferences("dash_summary", android.content.Context.MODE_PRIVATE)
+                .getString("counts", "{}"));
+    }
+
+    @Test
+    public void anUnreadableOfferIsCountedOnceForTheSummaryAfterADash() throws Exception {
+        Feedback.setAfterDash(app, true);
+        AccessibilityNodeInfo root = offer("Guaranteed pay");
+        show(root);
+        show(root);
+        show(root);
+        assertEquals("counted once, however often it is read", 1,
+                dashCounts().getJSONObject("unreadable").getInt("offers"));
+        assertTrue("and still never declined", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        // Another unreadable offer is another count.
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
+        show(offer("Pay hidden until accepted"));
+        assertEquals(2, dashCounts().getJSONObject("unreadable").getInt("offers"));
+        Feedback.setAfterDash(app, false);
+        DashSummary.flush();
+    }
+
+    @Test
+    public void readableOffersAreNeverCountedAsUnreadable() throws Exception {
+        Feedback.setAfterDash(app, true);
+        show(offer("$7.90"));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
+        show(offer("$25.00"));
+        assertFalse(dashCounts().has("unreadable"));
+        Feedback.setAfterDash(app, false);
+        DashSummary.flush();
+    }
+
+    @Test
+    public void nothingIsCountedForTheSummaryWhileItsOptInIsOff() throws Exception {
+        show(offer("Guaranteed pay"));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(2));
+        show(offer("$7.90"));
+        DashSummary.flush();
+        assertTrue(app.getSharedPreferences("dash_summary", android.content.Context.MODE_PRIVATE).getAll().isEmpty());
+    }
+
     // ---- Touching the screen hands the offer back ----
 
     @Test

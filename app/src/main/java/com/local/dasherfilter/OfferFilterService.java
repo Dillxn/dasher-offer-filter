@@ -1169,6 +1169,8 @@ public final class OfferFilterService extends AccessibilityService {
         // How the last process ended, and a dash that went quiet meanwhile, are looked at off this thread.
         StopReports.checkSoon(this);
         DashSummary.checkSoon(this);
+        // Feedback still waiting (its job lost to a crash, a reboot or a stop) goes now, off this thread.
+        FeedbackOutbox.resume(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
         onScanner(() -> {

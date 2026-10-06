@@ -284,6 +284,59 @@ public class StopReportsTest extends AndroidAdapterTestBase {
     }
 
     @Test
+    public void theReportAfterAStopAttachesDiagnosticsForItsOwnDialogOnly() {
+        FakeFeedbackTransport service = FakeFeedbackTransport.installed();
+        crashNow(crash());
+        exited(ApplicationExitInfo.REASON_CRASH, System.currentTimeMillis(),
+                ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND, null);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            refreshed();
+            withContentDescription(content, LINE + ". Send report.").performClick();
+            settle();
+            AlertDialog offered = (AlertDialog) ShadowDialog.getLatestDialog();
+            assertTrue("attached in advance, for this report", find(offered.getWindow().getDecorView(), Switch.class)
+                    .isChecked());
+            offered.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            settle();
+
+            // Send anonymous feedback, later, from Settings: a new submission, its switch off.
+            iconButton(content, "Settings").performClick();
+            settle();
+            shownButton(content, "Send anonymous feedback").performClick();
+            settle();
+            AlertDialog ordinary = (AlertDialog) ShadowDialog.getLatestDialog();
+            assertTrue(ordinary.isShowing());
+            assertFalse("the stop's preset never carries over", find(ordinary.getWindow().getDecorView(),
+                    Switch.class).isChecked());
+            assertEquals(0, service.count());
+        }
+    }
+
+    @Test
+    public void nothingIsReadOrKeptBeforeTheNoticeIsAccepted() throws Exception {
+        ConsentedTestApp.forget(app);
+        exited(ApplicationExitInfo.REASON_CRASH, System.currentTimeMillis() - 60_000L,
+                ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND, null);
+        Thread.UncaughtExceptionHandler before = Thread.getDefaultUncaughtExceptionHandler();
+        StopReports.install(app);
+        assertTrue("no crash handler before the notice", Thread.getDefaultUncaughtExceptionHandler() == before);
+        StopReports.checkSoon(app);
+        StopReports.flush();
+        StopReports.check(app);
+        assertFalse("Android's record unread, nothing kept",
+                new File(app.getDataDir(), "shared_prefs/stop_reports.xml").exists());
+        assertEquals("", StopReports.section(app));
+        assertFalse(StopReports.unacknowledged(app));
+
+        // Accepting the notice starts it: the record is read now.
+        Consent.accept(app);
+        StopReports.flush();
+        assertTrue(StopReports.section(app), StopReports.section(app).contains("crash, app in front"));
+        assertTrue(StopReports.unacknowledged(app));
+    }
+
+    @Test
     public void withTheOptInOnNoLineShowsAndTheStopGoesWithTheNextSummary() throws Exception {
         FakeFeedbackTransport service = FakeFeedbackTransport.installed();
         Feedback.setAfterDash(app, true);
@@ -320,8 +373,8 @@ public class StopReportsTest extends AndroidAdapterTestBase {
         crashNow(crash());
         Feedback.setAfterDash(app, true);
         FakeFeedbackTransport.installed().down = true;
-        FeedbackOutbox.submitAutomatic(app, FeedbackOutbox.item(Feedback.newToken(), Feedback.Kind.DIAGNOSTICS,
-                "general", true, FeedbackOutbox.TEXT, "", true, Collections.singletonList("summary\n")));
+        assertTrue(FeedbackOutbox.submitAutomatic(app, FeedbackOutbox.automatic(Feedback.newToken(),
+                Collections.singletonList("summary\n"), Feedback.automaticEpoch(app))));
         FeedbackOutbox.flush();
         File outbox = new File(app.getFilesDir(), FeedbackOutbox.DIR);
         assertEquals(1, outbox.listFiles((dir, name) -> name.endsWith("-a.json")).length);
@@ -335,7 +388,9 @@ public class StopReportsTest extends AndroidAdapterTestBase {
             AlertDialog confirm = (AlertDialog) ShadowDialog.getLatestDialog();
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             settle();
+            // The files go off the main thread.
             StopReports.flush();
+            DashSummary.flush();
         }
         assertEquals("", StopReports.section(app));
         assertFalse(StopReports.unacknowledged(app));

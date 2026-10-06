@@ -35,8 +35,9 @@ import org.json.JSONObject;
  * and never more than one summary a dash or {@value #MAX_PER_DAY} a day. The old automatic problem reports (an
  * unreadable offer, a decline still showing, a read or notification error) live on here as counts and excerpts.
  *
- * <p>The hooks are cheap on the screen reader's thread: nothing is counted while the opt-in is off; what is is kept
- * on this class's own thread, so a dash that outlives its process loses little.
+ * <p>The hooks are cheap on the screen reader's thread: nothing is counted while the opt-in is off; what is (and every
+ * preference or dash lookup) is handled on this class's own thread, so a dash that outlives its process loses little.
+ * A count belongs to the dash under way when its hook fired, even when the dash ends before it is handled.
  */
 final class DashSummary {
     static final int MAX_PER_DAY = 3;
@@ -74,6 +75,9 @@ final class DashSummary {
     private static String windowLayout;
     private static long windowSince;
     private static long windowSavedAt;
+    // What the screen reader's thread last handed over (guarded by WINDOW): a layout, and when.
+    private static String postedLayout;
+    private static long postedAt;
 
     /** Why a dash counts as over. */
     enum End {
@@ -97,32 +101,71 @@ final class DashSummary {
         return collecting;
     }
 
-    /** The user turned the opt-in on or off: off forgets what this dash counted. */
+    /** The user turned the opt-in on or off: the hooks follow at once; off forgets what this dash counted. */
     static void optInChanged(Context context, boolean on) {
         Context app = context.getApplicationContext();
         collecting = on;
         collectingFor = app;
-        if (!on) clear(app);
+        if (!on) forgetSoon(app);
+    }
+
+    /**
+     * The opt-in turned off, or Clear history: what this dash counted and every automatic summary not yet sent go, on
+     * this class's thread, after every count and summary queued before (one queued after belongs to a later epoch, and
+     * stays). Any thread; nothing waits for the disk.
+     */
+    static void forgetSoon(Context context) {
+        Context app = context.getApplicationContext();
+        synchronized (WINDOW) {
+            windowMs.clear();
+            windowLayout = null;
+            postedLayout = null;
+        }
+        WORKER.execute(() -> {
+            try {
+                clear(app);
+                FeedbackOutbox.discardAutomatic(app);
+                // A dash that already ended without its summary is never summarized now (one went quiet and is found
+                // later, say): what it counted is gone, and its summary would be one not yet sent.
+                long[] last = Dashing.lastDash(app);
+                if (last != null && last[1] != Long.MAX_VALUE) {
+                    synchronized (DashSummary.class) {
+                        prefs(app).edit().putLong(SUMMARIZED, last[0]).commit();
+                    }
+                }
+            } catch (RuntimeException failure) {
+                // Discarded anyway before any send: the outbox checks the opt-in and its epoch before every part.
+            }
+        });
     }
 
     // ---- Hooks (any thread; cheap) ----
 
-    /** A visible offer the rules could not judge (a reading gap): counted, with its read lines masked twice. */
+    /**
+     * A visible offer the rules could not judge (a reading gap): counted, with its read lines masked twice, and only
+     * when they are a recognized offer screen (anything else, a partial screen among it, keeps a not-kept note).
+     */
     static void unreadable(Context context, List<String> labels) {
         if (!collecting(context)) return;
         List<String> copy = labels == null ? Collections.<String>emptyList() : new ArrayList<>(labels);
         long at = System.currentTimeMillis();
-        record(context, model -> {
+        record(context, at, model -> {
             increment(model, "unreadable", "offers");
-            anomaly(model, at, "unreadable offer", OfferReport.redact(copy));
+            anomaly(model, at, "unreadable offer", readLines(copy));
         });
+    }
+
+    /** An offer's read lines as a summary keeps them: masked twice when recognized, else only a not-kept note. */
+    static List<String> readLines(List<String> labels) {
+        return PersonalText.recognizedDashScreen(labels) ? OfferReport.redact(labels)
+                : Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
     }
 
     /** A declined offer or its confirmation still showing seconds after the first Decline: counted by stage. */
     static void stuck(Context context, String stage) {
         if (!collecting(context)) return;
         long at = System.currentTimeMillis();
-        record(context, model -> {
+        record(context, at, model -> {
             increment(model, "stuck", stage);
             anomaly(model, at, "decline still showing (" + stage + ")", null);
         });
@@ -132,7 +175,7 @@ final class DashSummary {
     static void recovery(Context context, String outcome) {
         if (!collecting(context)) return;
         long at = System.currentTimeMillis();
-        record(context, model -> {
+        record(context, at, model -> {
             increment(model, "recovery", outcome);
             anomaly(model, at, "decline-error recovery (" + outcome + ")", null);
         });
@@ -141,7 +184,7 @@ final class DashSummary {
     /** An armed automatic Accept not sent, by its fixed reason category. */
     static void notSent(Context context, String reason) {
         if (!collecting(context)) return;
-        record(context, model -> increment(model, "notSent", reason));
+        record(context, System.currentTimeMillis(), model -> increment(model, "notSent", reason));
     }
 
     /** A screen-read or notification-handler error: its type and top frame, digits masked; never its message. */
@@ -149,7 +192,7 @@ final class DashSummary {
         if (!collecting(context) || error == null) return;
         String signature = signature(error);
         long at = System.currentTimeMillis();
-        record(context, model -> {
+        record(context, at, model -> {
             increment(model, where + "Errors", signature);
             anomaly(model, at, where + " error " + signature, null);
         });
@@ -171,7 +214,7 @@ final class DashSummary {
     static void peek(Context context, String line) {
         if (!collecting(context) || line == null) return;
         String category = peekCategory(line);
-        record(context, model -> increment(model, "peek", category));
+        record(context, System.currentTimeMillis(), model -> increment(model, "peek", category));
     }
 
     /**
@@ -192,7 +235,9 @@ final class DashSummary {
 
     /**
      * Where Dasher was at a read ("win=split/top/dasher/48"): time is counted per layout (split, full, hidden), so the
-     * summary can say what share of the dash each took. Called on every read: a field check, then memory only.
+     * summary can say what share of the dash each took. Called on every read, on the screen reader's thread: a field
+     * check and a comparison in memory; a changed layout, or every few seconds the same one, is handed to this class's
+     * thread, which alone asks whether a dash is on and keeps the time.
      */
     static void window(Context context, String field) {
         if (!collecting(context)) return;
@@ -200,10 +245,25 @@ final class DashSummary {
         long now = SystemClock.elapsedRealtime();
         synchronized (WINDOW) {
             // The same layout is accounted at its next change, or every few seconds: most reads cost a comparison.
-            if (layout.equals(windowLayout) && now - windowSince >= 0 && now - windowSince < WINDOW_ACCOUNT_MS) return;
+            if (layout.equals(postedLayout) && now - postedAt >= 0 && now - postedAt < WINDOW_ACCOUNT_MS) return;
+            postedLayout = layout;
+            postedAt = now;
         }
+        Context app = context.getApplicationContext();
+        long at = System.currentTimeMillis();
+        WORKER.execute(() -> {
+            try {
+                account(app, layout, now, at);
+            } catch (RuntimeException failure) {
+                // Only a share of time.
+            }
+        });
+    }
+
+    /** Folds the time since the last layout into it, during a dash only. On this class's thread. */
+    private static void account(Context app, String layout, long now, long at) {
         // Time outside a dash is nobody's.
-        boolean dashing = Dashing.on(context);
+        boolean dashing = Dashing.on(app);
         boolean save = false;
         synchronized (WINDOW) {
             if (windowLayout != null && dashing) {
@@ -217,7 +277,7 @@ final class DashSummary {
                 save = true;
             }
         }
-        if (save) record(context, model -> { });
+        if (save) apply(app, at, model -> { });
     }
 
     /** "split", "full", "hidden" or "unknown", from a read's window field. */
@@ -234,7 +294,9 @@ final class DashSummary {
     static void dashEnded(Context context, long start, long end) {
         if (!collecting(context) || start <= 0) return;
         Context app = context.getApplicationContext();
-        WORKER.execute(() -> summarizeSafely(app, start, end, End.DASH_OVER));
+        // The opt-in's epoch as the dash ended: turning it off (and on again) before the summary is built discards it.
+        long epoch = Feedback.automaticEpoch(app);
+        WORKER.execute(() -> summarizeSafely(app, start, end, End.DASH_OVER, epoch));
     }
 
     /**
@@ -244,22 +306,24 @@ final class DashSummary {
     static void dashStarting(Context context, long previousStart, long previousSeen) {
         if (!collecting(context) || previousStart <= 0) return;
         Context app = context.getApplicationContext();
-        WORKER.execute(() -> summarizeSafely(app, previousStart, previousSeen, End.QUIET));
+        long epoch = Feedback.automaticEpoch(app);
+        WORKER.execute(() -> summarizeSafely(app, previousStart, previousSeen, End.QUIET, epoch));
     }
 
     /** When the app opens or a service connects: a dash that went quiet meanwhile is summarized now. */
     static void checkSoon(Context context) {
         if (!collecting(context)) return;
         Context app = context.getApplicationContext();
+        long epoch = Feedback.automaticEpoch(app);
         WORKER.execute(() -> {
             long[] quiet = Dashing.quietlyEnded(app);
-            if (quiet != null) summarizeSafely(app, quiet[0], quiet[1], End.QUIET);
+            if (quiet != null) summarizeSafely(app, quiet[0], quiet[1], End.QUIET, epoch);
         });
     }
 
-    private static void summarizeSafely(Context app, long start, long end, End why) {
+    private static void summarizeSafely(Context app, long start, long end, End why, long epoch) {
         try {
-            summarize(app, start, end, why);
+            summarize(app, start, end, why, epoch);
         } catch (RuntimeException failure) {
             // On a background thread an escaping exception would take the whole app, screen reader included.
             DiagnosticLog.log(app, "feedback", "could not build the dash's summary: "
@@ -267,40 +331,56 @@ final class DashSummary {
         }
     }
 
-    /** At most one summary a dash and {@value #MAX_PER_DAY} a day; only with the opt-in on and the notice accepted. */
+    /** {@link #summarize(Context, long, long, End, long)} in the opt-in's current epoch (as a caller on this thread). */
     static void summarize(Context app, long start, long end, End why) {
+        summarize(app, start, end, why, Feedback.automaticEpoch(app));
+    }
+
+    /**
+     * At most one summary a dash and {@value #MAX_PER_DAY} a day; only with the opt-in on and the notice accepted, and
+     * only in the opt-in's epoch the dash ended in ({@link Feedback#automaticEpoch}): turning the opt-in off (and on
+     * again) or clearing history after the dash ended, before or while its summary is built, discards it.
+     */
+    static void summarize(Context app, long start, long end, End why, long epoch) {
         if (!Consent.accepted(app) || !Feedback.afterDashOn(app)) return;
         SharedPreferences prefs = prefs(app);
-        JSONObject model;
+        JSONObject model = null;
         synchronized (DashSummary.class) {
             if (prefs.getLong(SUMMARIZED, 0) == start) return;
+            boolean changed = !Feedback.automaticAllowed(app, epoch);
             long now = System.currentTimeMillis();
             long day = (now + TimeZone.getDefault().getOffset(now)) / 86_400_000L;
             int today = prefs.getLong(DAY, -1) == day ? prefs.getInt(TODAY, 0) : 0;
+            boolean capped = !changed && today >= MAX_PER_DAY;
             // Marked first: whatever happens next, this dash never queues a second summary.
-            SharedPreferences.Editor edit = prefs.edit().putLong(SUMMARIZED, start).putLong(DAY, day);
-            if (today >= MAX_PER_DAY) {
-                edit.commit();
-                DiagnosticLog.log(app, "feedback", "dash summary not queued: today's " + MAX_PER_DAY + " were");
-                return;
+            SharedPreferences.Editor edit = prefs.edit().putLong(SUMMARIZED, start);
+            if (!changed && !capped) {
+                edit.putLong(DAY, day).putInt(TODAY, today + 1);
+                model = model(app, start);
+                flushWindow(model);
             }
-            edit.putInt(TODAY, today + 1).commit();
-            model = model(app, start);
-            flushWindow(model);
-            // The counts are this dash's; the next dash starts afresh.
-            prefs.edit().remove(START).remove(COUNTS).remove(ANOMALIES).commit();
-            synchronized (WINDOW) {
-                windowMs.clear();
+            // The counts are this dash's (or an older one's), summarized or not: they go now. A later dash's stay.
+            if (prefs.getLong(START, 0) <= start) {
+                edit.remove(START).remove(COUNTS).remove(ANOMALIES);
+                synchronized (WINDOW) {
+                    windowMs.clear();
+                }
+            }
+            edit.commit();
+            if (changed || capped) {
+                DiagnosticLog.log(app, "feedback", "dash summary not queued: " + (changed
+                        ? "the option changed since the dash ended" : "today's " + MAX_PER_DAY + " were"));
+                return;
             }
         }
         String text = build(app, start, end, why, model);
         List<String> parts = Feedback.chunks(text, Feedback.MAX_SUMMARY_CHARS, Feedback.MAX_PART_BYTES);
-        boolean queued = parts.size() == 1 && FeedbackOutbox.submitAutomatic(app, FeedbackOutbox.item(
-                Feedback.newToken(), Feedback.Kind.DIAGNOSTICS, Feedback.Category.GENERAL.wire, true,
-                FeedbackOutbox.TEXT, "", true, parts));
+        boolean queued = parts.size() == 1
+                && FeedbackOutbox.submitAutomatic(app, FeedbackOutbox.automatic(Feedback.newToken(), parts, epoch));
         if (queued) StopReports.acknowledge(app);
         DiagnosticLog.log(app, "feedback", "dash ended (" + why.why + "): summary "
-                + (queued ? "queued to send" : "not queued (the outbox is full)"));
+                + (queued ? "queued to send" : Feedback.automaticAllowed(app, epoch)
+                        ? "not queued (the outbox is full)" : "not queued (the option changed meanwhile)"));
     }
 
     // ---- The summary ----
@@ -492,7 +572,8 @@ final class DashSummary {
     private static String excerpts(Context app, long start, JSONObject model) {
         JSONArray anomalies = model.optJSONArray(ANOMALIES);
         if (anomalies == null || anomalies.length() == 0) return "";
-        String log = DiagnosticLog.read(app);
+        // As every report reads the log: a line of a payment, account or earnings screen is a not-kept note.
+        String log = DiagnosticLog.withoutAccountScreens(DiagnosticLog.read(app));
         List<long[]> times = new ArrayList<>();
         List<String> texts = new ArrayList<>();
         SimpleDateFormat format = new SimpleDateFormat(TIME_PATTERN, Locale.US);
@@ -537,24 +618,43 @@ final class DashSummary {
         void apply(JSONObject model) throws JSONException;
     }
 
-    /** Applies a change to this dash's counts, off the caller's thread; dropped outside a dash. */
-    private static void record(Context context, Change change) {
+    /**
+     * Applies a change to the counts of the dash under way at {@code at} (when its hook fired), off the caller's
+     * thread; dropped outside a dash, and once that dash's summary was decided.
+     */
+    private static void record(Context context, long at, Change change) {
         Context app = context.getApplicationContext();
-        WORKER.execute(() -> {
-            try {
+        WORKER.execute(() -> apply(app, at, change));
+    }
+
+    /** {@link #record}'s work, on this class's thread. */
+    private static void apply(Context app, long at, Change change) {
+        try {
+            long start = dashAt(app, at);
+            if (start <= 0) return;
+            synchronized (DashSummary.class) {
+                // Checked under the lock clear() takes: an opt-out or Clear history before this wins.
                 if (!Feedback.afterDashOn(app) || !Consent.accepted(app)) return;
-                long start = Dashing.currentStart(app);
-                if (start <= 0) return;
-                synchronized (DashSummary.class) {
-                    JSONObject model = model(app, start);
-                    change.apply(model);
-                    flushWindow(model);
-                    save(app, model);
-                }
-            } catch (JSONException | RuntimeException failure) {
-                // Only a count.
+                if (prefs(app).getLong(SUMMARIZED, 0) == start) return;
+                JSONObject model = model(app, start);
+                change.apply(model);
+                flushWindow(model);
+                save(app, model);
             }
-        });
+        } catch (JSONException | RuntimeException failure) {
+            // Only a count.
+        }
+    }
+
+    /**
+     * The start of the dash under way at {@code at}: the current one, or (for a hook that fired just before Dasher
+     * showed its end, or before it went quiet) the last one, when {@code at} lies within it; else 0.
+     */
+    private static long dashAt(Context app, long at) {
+        long current = Dashing.currentStart(app);
+        if (current > 0 && at >= current) return current;
+        long[] last = Dashing.lastDash(app);
+        return last != null && at >= last[0] && at <= last[1] ? last[0] : 0;
     }
 
     /** This dash's counts, or new ones when the counts kept were another dash's. */
@@ -562,13 +662,17 @@ final class DashSummary {
         SharedPreferences prefs = prefs(app);
         JSONObject model = new JSONObject();
         try {
-            if (prefs.getLong(START, 0) == start) {
+            long kept = prefs.getLong(START, 0);
+            if (kept == start) {
                 model.put(COUNTS, new JSONObject(prefs.getString(COUNTS, "{}")));
                 model.put(ANOMALIES, new JSONArray(prefs.getString(ANOMALIES, "[]")));
             } else {
                 model.put(COUNTS, new JSONObject()).put(ANOMALIES, new JSONArray());
-                synchronized (WINDOW) {
-                    windowMs.clear();
+                // Window time in memory belongs to this dash, unless another dash's counts were still kept.
+                if (kept != 0) {
+                    synchronized (WINDOW) {
+                        windowMs.clear();
+                    }
                 }
             }
             model.put(START, start);
@@ -627,7 +731,7 @@ final class DashSummary {
         }
     }
 
-    /** Clear history, or the opt-in turned off: this dash's counts go. */
+    /** Clear history, or the opt-in turned off: this dash's counts go. On a worker ({@link #forgetSoon}). */
     static void clear(Context context) {
         Context app = context.getApplicationContext();
         synchronized (DashSummary.class) {
@@ -636,6 +740,7 @@ final class DashSummary {
         synchronized (WINDOW) {
             windowMs.clear();
             windowLayout = null;
+            postedLayout = null;
         }
     }
 
@@ -659,7 +764,14 @@ final class DashSummary {
             windowMs.clear();
             windowLayout = null;
             windowSavedAt = 0;
+            postedLayout = null;
+            postedAt = 0;
         }
+    }
+
+    /** Runs {@code work} on this class's thread, after what is queued; for tests (to hold it, or follow it). */
+    static void onWorkerForTests(Runnable work) {
+        WORKER.execute(work);
     }
 
     private DashSummary() {}

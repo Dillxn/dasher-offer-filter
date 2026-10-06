@@ -31,6 +31,8 @@ import org.json.JSONObject;
  * <p>Read on the next start ({@link #checkSoon}) from Android's record of how the app's process exited (API 30+),
  * matched with the note this process wrote as it crashed ({@link #install}). With diagnostics after each dash on, the
  * summaries go with the next one; otherwise the homepage offers to send a report, and only the user's Send sends it.
+ * Before the current notice is accepted, nothing here runs: no note is written, Android's record is not read, nothing
+ * is kept; accepting the notice starts both ({@link Consent#accept}).
  */
 final class StopReports {
     static final long KEEP_MS = 24 * 3_600_000L;
@@ -74,7 +76,7 @@ final class StopReports {
      * message. Once per process; the previous handler (Android's) runs right after.
      */
     static void install(Context context) {
-        if (installed) return;
+        if (installed || !Consent.accepted(context)) return;
         synchronized (StopReports.class) {
             if (installed) return;
             installed = true;
@@ -121,10 +123,10 @@ final class StopReports {
         return out.toString();
     }
 
-    /** Reads how the last process ended, off the main thread, once per process. */
+    /** Reads how the last process ended, off the main thread, once per process; not before the notice is accepted. */
     static void checkSoon(Context context) {
         Context app = context.getApplicationContext();
-        if (checkedFor == app) return;
+        if (checkedFor == app || !Consent.accepted(app)) return;
         checkedFor = app;
         WORKER.execute(() -> {
             try {
@@ -138,6 +140,7 @@ final class StopReports {
     /** Android's record of the last stops, and this app's note, as kept summaries. On a worker. */
     static void check(Context context) {
         Context app = context.getApplicationContext();
+        if (!Consent.accepted(app)) return;
         long now = System.currentTimeMillis();
         SharedPreferences prefs = prefs(app);
         long seenUntil = prefs.getLong(SEEN_UNTIL, 0);
@@ -303,7 +306,19 @@ final class StopReports {
         return out.toString();
     }
 
-    /** Clear history: the summaries and any crash note go. */
+    /** Clear history, from any thread: the summaries and any crash note go, on this class's thread. */
+    static void clearSoon(Context context) {
+        Context app = context.getApplicationContext();
+        WORKER.execute(() -> {
+            try {
+                clear(app);
+            } catch (RuntimeException failure) {
+                // The summaries expire within a day anyway.
+            }
+        });
+    }
+
+    /** Clear history: the summaries and any crash note go. On a worker ({@link #clearSoon}). */
     static void clear(Context context) {
         Context app = context.getApplicationContext();
         synchronized (StopReports.class) {

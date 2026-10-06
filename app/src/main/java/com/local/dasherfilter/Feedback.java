@@ -480,6 +480,7 @@ final class Feedback {
 
     private static final String PREFS = "feedback";
     private static final String AFTER_DASH = "after_dash";
+    private static final String AUTOMATIC_EPOCH = "automatic_epoch";
     private static final String REFERENCES = "references";
     private static final String LAST_STATE = "last_state";
     private static final String LAST_SAID = "last_said";
@@ -495,17 +496,49 @@ final class Feedback {
         return prefs(context).getBoolean(AFTER_DASH, false);
     }
 
-    /** The user's choice. Off discards every automatic summary not yet sent, and what the current dash counted. */
-    static void setAfterDash(Context context, boolean on) {
+    /**
+     * The user's choice. Off discards every automatic summary not yet sent, and what the current dash counted. Any
+     * thread, the main one included: the choice holds at once (in memory; written to disk in the background), and the
+     * files go on DashSummary's own thread.
+     */
+    static synchronized void setAfterDash(Context context, boolean on) {
         Context app = context.getApplicationContext();
-        boolean was = afterDashOn(app);
-        prefs(app).edit().putBoolean(AFTER_DASH, on).commit();
+        SharedPreferences prefs = prefs(app);
+        boolean was = prefs.getBoolean(AFTER_DASH, false);
+        SharedPreferences.Editor edit = prefs.edit().putBoolean(AFTER_DASH, on);
+        // A new epoch: a summary of a dash that ended before the change is never queued or sent, even if the switch
+        // goes back.
+        if (was != on) edit.putLong(AUTOMATIC_EPOCH, prefs.getLong(AUTOMATIC_EPOCH, 0) + 1);
+        edit.apply();
         DashSummary.optInChanged(app, on);
-        if (!on) FeedbackOutbox.discardAutomatic(app);
         if (was != on) {
             DiagnosticLog.log(app, "feedback", "diagnostics after each dash turned " + (on ? "on" : "off")
                     + (on ? "" : "; unsent ones discarded"));
         }
+    }
+
+    /**
+     * Which epoch the opt-in is in: it changes whenever the opt-in is turned on or off, and when history is cleared. A
+     * summary carries the epoch its dash ended in ({@link FeedbackOutbox#automatic}), and is queued and sent only in it.
+     */
+    static long automaticEpoch(Context context) {
+        return prefs(context).getLong(AUTOMATIC_EPOCH, 0);
+    }
+
+    /** An automatic summary of {@code epoch} may be queued or sent: the opt-in is on, and has not changed since. */
+    static boolean automaticAllowed(Context context, long epoch) {
+        return afterDashOn(context) && automaticEpoch(context) == epoch;
+    }
+
+    /**
+     * Clear history: every automatic summary not yet sent, and what the current dash counted, go (a summary being built
+     * is never queued); the opt-in itself stays. Any thread, the main one included.
+     */
+    static synchronized void clearAutomatic(Context context) {
+        Context app = context.getApplicationContext();
+        SharedPreferences prefs = prefs(app);
+        prefs.edit().putLong(AUTOMATIC_EPOCH, prefs.getLong(AUTOMATIC_EPOCH, 0) + 1).apply();
+        DashSummary.forgetSoon(app);
     }
 
     // ---- What the user sees ----

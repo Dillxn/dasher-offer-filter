@@ -11,6 +11,9 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.TimeZone;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
@@ -20,13 +23,16 @@ import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -64,6 +70,7 @@ public class DashSummaryTest {
         if (controller != null) controller.destroy();
         OfferFilterService.scanLooperForTests = null;
         settle();
+        FakeFeedbackTransport.assertHonored();
     }
 
     private void settle() {
@@ -246,9 +253,278 @@ public class DashSummaryTest {
         DashSummary.stuck(app, "waiting for the question");
         settle();
         Feedback.setAfterDash(app, false);
+        assertFalse("off at once for the hooks", DashSummary.collecting(app));
+        // The files go on the summary's own thread, never the caller's.
+        DashSummary.flush();
         assertEquals(0, outbox.listFiles((dir, name) -> name.endsWith(".json")).length);
         assertFalse(app.getSharedPreferences("dash_summary", Context.MODE_PRIVATE).contains("counts"));
         assertTrue(DiagnosticLog.read(app).contains("diagnostics after each dash turned off; unsent ones discarded"));
+    }
+
+    // ---- What a dash counted goes with its summary, and only then ----
+
+    private android.content.SharedPreferences counted() {
+        return app.getSharedPreferences("dash_summary", Context.MODE_PRIVATE);
+    }
+
+    @Test
+    public void whenTheDailyCapIsReachedTheDashsCountsStillGo() {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.unreadable(app, Arrays.asList("Guaranteed pay", "2 stops (7.2 mi) • 21 min", "Accept", "Decline"));
+        DashSummary.stuck(app, "question seen; not confirmed");
+        DashSummary.window(app, "win=split/bottom/dasher/48");
+        DashSummary.flush();
+        assertTrue(counted().contains("anomalies"));
+        long now = System.currentTimeMillis();
+        long day = (now + TimeZone.getDefault().getOffset(now)) / 86_400_000L;
+        counted().edit().putLong("day", day).putInt("today", DashSummary.MAX_PER_DAY).commit();
+
+        DashSummary.summarize(app, start, now, DashSummary.End.QUIET);
+        settle();
+        assertEquals("over today's cap: nothing queued", 0, service.count());
+        for (String kept : new String[] {"start", "counts", "anomalies"}) {
+            assertFalse("the dash's " + kept + " go all the same", counted().contains(kept));
+        }
+        assertEquals("never summarized twice", start, counted().getLong("summarized", 0));
+    }
+
+    @Test
+    public void aCountMadeJustBeforeTheDashEndedGoesInItsSummary() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        CountDownLatch release = new CountDownLatch(1);
+        DashSummary.onWorkerForTests(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            // Counted while the dash is on, handled only after Dasher showed its end.
+            DashSummary.stuck(app, "waiting for the question");
+            Dashing.ended(app);
+        } finally {
+            release.countDown();
+        }
+        settle();
+        assertEquals(1, service.count());
+        String summary = summarySent(0);
+        assertTrue(summary, summary.contains("Declines still showing, by stage: waiting for the question 1"));
+    }
+
+    @Test
+    public void anOptOutRacingACountNeverWritesTheCountsBack() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        CountDownLatch release = new CountDownLatch(1);
+        DashSummary.onWorkerForTests(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            DashSummary.stuck(app, "waiting for the question");
+            Feedback.setAfterDash(app, false);
+            // Cleared directly too, as Clear history's own clear() could be, before the count is handled.
+            DashSummary.clear(app);
+        } finally {
+            release.countDown();
+        }
+        DashSummary.flush();
+        for (String kept : new String[] {"start", "counts", "anomalies"}) {
+            assertFalse(kept + " never comes back", counted().contains(kept));
+        }
+    }
+
+    @Test
+    public void aSummaryNotYetBuiltWhenTheOptInWentOffAndOnIsNeverSent() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        CountDownLatch release = new CountDownLatch(1);
+        DashSummary.onWorkerForTests(() -> {
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            // The dash ends; before its summary is built, the user turns the option off and on again.
+            Dashing.ended(app);
+            Feedback.setAfterDash(app, false);
+            Feedback.setAfterDash(app, true);
+        } finally {
+            release.countDown();
+        }
+        settle();
+        assertEquals("discarded with what was not yet sent", 0, service.count());
+        assertEquals(0, FeedbackOutbox.pending(app));
+        assertTrue(DiagnosticLog.read(app).contains("dash summary not queued: the option changed since the dash ended"));
+        assertTrue("the option itself stays on", Feedback.afterDashOn(app));
+    }
+
+    @Test
+    public void aDashThatEndedBeforeTheOptInWentOffIsNeverSummarizedLater() throws Exception {
+        Feedback.setAfterDash(app, true);
+        // Went quiet half an hour ago; nothing has looked yet.
+        openDash(40 * 60_000L);
+        Feedback.setAfterDash(app, false);
+        Feedback.setAfterDash(app, true);
+        DashSummary.flush();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            settle();
+            assertEquals("its summary would be one not yet sent", 0, service.count());
+        }
+        // The next dash is summarized as ever.
+        Dashing.seen(app);
+        Dashing.ended(app);
+        settle();
+        assertEquals(1, service.count());
+    }
+
+    @Test
+    public void nothingIsCountedOrSummarizedBeforeTheNoticeIsAccepted() {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        ConsentedTestApp.forget(app);
+        DashSummary.unreadable(app, Arrays.asList("Guaranteed pay", "Accept", "Decline"));
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        assertFalse(counted().contains("counts"));
+        DashSummary.summarize(app, start, System.currentTimeMillis(), DashSummary.End.DASH_OVER);
+        settle();
+        assertEquals(0, service.count());
+        assertFalse("not even marked", counted().contains("summarized"));
+        assertEquals(0, FeedbackOutbox.pending(app));
+    }
+
+    @Test
+    public void logExcerptsNeverCarryAPaymentOrAccountLine() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        // Written by a source the write-time filter does not cover: only the read-time one stands between.
+        DiagnosticLog.log(app, "accessibility", "window text: Fast Pay, Available balance $123.45");
+        DiagnosticLog.log(app, "accessibility", "decline still showing after 5012 ms; waiting for the question");
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        String summary = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        assertTrue(summary, summary.contains("decline still showing after 5012 ms"));
+        assertTrue(summary, summary.contains(DiagnosticLog.NOT_KEPT));
+        for (String account : new String[] {"Fast Pay", "Available balance", "123.45"}) {
+            assertFalse(account, summary.contains(account));
+        }
+    }
+
+    @Test
+    public void windowTimeIsKeptOffTheScreenReadersThread() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.window(app, "win=full/-/dasher/100");
+        DashSummary.flush();
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(20));
+        DashSummary.window(app, "win=split/bottom/dasher/48");
+        DashSummary.flush();
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(20));
+        DashSummary.window(app, "win=split/bottom/dasher/48");
+        // Read again at once: a comparison on the reader's thread, nothing handed over.
+        DashSummary.window(app, "win=split/bottom/dasher/48");
+        DashSummary.window(app, "win=full/-/dasher/100");
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        String summary = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        assertTrue(summary, summary.contains("Window layout (share of observed time): full 50%, split 50% of"));
+    }
+
+    // ---- The quiet end, found when the app opens or a service connects ----
+
+    /** A dash still open whose last sighting was {@code quietMs} ago, begun three hours ago. */
+    private long openDash(long quietMs) {
+        long now = System.currentTimeMillis();
+        long started = now - 3 * 3_600_000L;
+        app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().putLong("started_at", started)
+                .putLong("seen_at", now - quietMs).putBoolean("open", true).commit();
+        return started;
+    }
+
+    @Test
+    public void thirtyQuietMinutesEndADashForItsSummaryAndNothingSooner() {
+        openDash(29 * 60_000L);
+        assertNull("29 minutes is not quiet yet", Dashing.quietlyEnded(app));
+        long started = openDash(Dashing.WINDOW_MS + 1_000L);
+        android.content.SharedPreferences dashing = app.getSharedPreferences("dashing", Context.MODE_PRIVATE);
+        assertArrayEquals(new long[] {started, dashing.getLong("seen_at", 0)}, Dashing.quietlyEnded(app));
+        Dashing.ended(app);
+        assertNull("an ended dash is not one that went quiet", Dashing.quietlyEnded(app));
+    }
+
+    @Test
+    public void aDashThatWentQuietIsSummarizedWhenTheAppOpens() throws Exception {
+        Feedback.setAfterDash(app, true);
+        openDash(40 * 60_000L);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            settle();
+            assertEquals(1, service.count());
+            assertTrue(summarySent(0).contains("ended: nothing of the dash seen for 30 minutes"));
+            // Opened again: one summary a dash.
+            activity.recreate();
+            settle();
+            assertEquals(1, service.count());
+        }
+    }
+
+    @Test
+    public void aDashThatWentQuietIsSummarizedWhenAServiceConnects() throws Exception {
+        Feedback.setAfterDash(app, true);
+        openDash(40 * 60_000L);
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            listener.get().onListenerConnected();
+            settle();
+            assertEquals(1, service.count());
+            assertTrue(summarySent(0).contains("ended: nothing of the dash seen for 30 minutes"));
+        } finally {
+            listener.destroy();
+        }
+    }
+
+    @Test
+    public void aDashThatWentQuietIsNotSummarizedWhileTheOptInIsOff() {
+        openDash(40 * 60_000L);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            settle();
+            assertEquals(0, service.count());
+        }
+    }
+
+    @Test
+    public void dashersEndScreensEndADashButAPauseOrTheDashsOwnScreenDoNot() {
+        assertTrue(OfferEvidence.isDashOver(Arrays.asList("Dash ended", "$84.20")));
+        assertTrue(OfferEvidence.isDashOver(Arrays.asList("Dash summary", "4 offers")));
+        assertTrue(OfferEvidence.isDashOver(Arrays.asList("Dash now", "Schedule")));
+        assertTrue(OfferEvidence.isDashOver(Arrays.asList("Your dash has ended")));
+        assertFalse("a proposal to end can still be cancelled", OfferEvidence.isDashOver(Arrays.asList("End dash?",
+                "Are you sure you want to end your dash?", "End dash", "Cancel")));
+        assertFalse("Dasher's own question, whatever it is drawn over",
+                OfferEvidence.isDashOver(Arrays.asList("End your current dash?", "End dash", "Go back")));
+        assertFalse("a menu action alone is not completion", OfferEvidence.isDashOver(Arrays.asList("End dash")));
+        assertFalse("the dash's own screen", OfferEvidence.isDashOver(Arrays.asList("Finding offers", "End dash")));
+        assertFalse("a pause", OfferEvidence.isDashOver(Arrays.asList("Dash paused", "Resume dash", "End dash")));
+        assertFalse("a delivery", OfferEvidence.isDashOver(Arrays.asList("Deliver by 9:45 PM",
+                "Complete delivery steps", "End dash")));
+        assertFalse(OfferEvidence.isDashOver(Arrays.asList("Deliver to [name]", "Call", "Message")));
     }
 
     @Test

@@ -32,17 +32,27 @@ import java.util.Locale;
  * listens only while that screen is started, and its dialogs go with it, so no result reaches a screen that is gone.
  * Every submission is built and sent off the main thread ({@link Feedback}); the dialog stays open while it is sent,
  * keeps what was typed when it is refused, and shows the reference, copyable, once it is accepted.
+ *
+ * <p>Attach masked diagnostics is chosen for each submission: every new dialog opens with it off, unless that dialog
+ * itself was opened with it on (the report offered after a stop); no earlier dialog's choice carries over.
  */
 final class FeedbackDialogs implements Feedback.Listener {
     /** What the user was writing: kept across a recreated screen and a refused send, until it is accepted. */
     private static final class Draft {
         Feedback.Category category = Feedback.Category.GENERAL;
         String message = "";
-        boolean attach;
     }
 
+    /** What Report this offer says it sends: all of what OfferReport carries, the learned minimums among it. */
+    static final String OFFER_REPORT_SAYS = "Sends this offer's figures, decision and masked read lines, your current "
+            + "rules and what the adaptive minimum learned from offers you accepted or declined, the app's and Android's "
+            + "versions and the minute it was decided, with your note. No account. Masking can miss details.";
+    /** A page of the preview: a whole report in one view would stall the screen. */
+    static final int PREVIEW_PAGE_CHARS = 12_000;
     private static Draft draft = new Draft();
     private static final String OPEN = "feedback_dialog_open";
+    /** The open feedback dialog's own Attach choice, kept only through its recreated screen. */
+    private static final String OPEN_ATTACH = "feedback_dialog_attach";
 
     private final Activity activity;
     private final Ui ui;
@@ -52,6 +62,12 @@ final class FeedbackDialogs implements Feedback.Listener {
     private String waitingFor = "";
     private TextView statusLine;
     private boolean feedbackOpen;
+    /** The open feedback dialog's Attach masked diagnostics switch, or null. */
+    private Switch attachSwitch;
+    /** What the open dialog built ahead of Send (for its preview), or null; dropped once a send is refused. */
+    private Feedback.Prepared[] preparedNow;
+    /** The preview over the open dialog, so it goes with the screen. */
+    private AlertDialog previewDialog;
 
     /** @param changed run on the main thread after any submission changed (Settings' line refreshes) */
     FeedbackDialogs(Activity activity, Ui ui, Runnable changed) {
@@ -74,17 +90,21 @@ final class FeedbackDialogs implements Feedback.Listener {
 
     void destroy() {
         Feedback.unlisten(this);
+        if (previewDialog != null && previewDialog.isShowing()) previewDialog.dismiss();
+        previewDialog = null;
         if (dialog != null && dialog.isShowing()) dialog.dismiss();
         dialog = null;
     }
 
     /** A recreated screen (a resize, day and night) opens the feedback dialog again, as it was. */
     void save(Bundle state) {
-        state.putBoolean(OPEN, feedbackOpen && dialog != null && dialog.isShowing() && waitingFor.isEmpty());
+        boolean open = feedbackOpen && dialog != null && dialog.isShowing() && waitingFor.isEmpty();
+        state.putBoolean(OPEN, open);
+        state.putBoolean(OPEN_ATTACH, open && attachSwitch != null && attachSwitch.isChecked());
     }
 
     void restore(Bundle state) {
-        if (state != null && state.getBoolean(OPEN, false)) feedback(null, null);
+        if (state != null && state.getBoolean(OPEN, false)) feedback(null, state.getBoolean(OPEN_ATTACH, false));
     }
 
     boolean showing() {
@@ -99,12 +119,11 @@ final class FeedbackDialogs implements Feedback.Listener {
      * references of the last submissions.
      *
      * @param category chosen in advance (Bug, for a report after a stop), or null for the draft's
-     * @param attach   attach diagnostics in advance, or null for the draft's
+     * @param attach   attach diagnostics in advance, for this dialog only (a report after a stop); null or false: off
      */
     void feedback(Feedback.Category category, Boolean attach) {
         if (showing()) return;
         if (category != null) draft.category = category;
-        if (attach != null) draft.attach = attach;
         LinearLayout frame = frame();
         RadioGroup chips = chips(frame);
         for (Feedback.Category one : Feedback.Category.values()) {
@@ -120,9 +139,11 @@ final class FeedbackDialogs implements Feedback.Listener {
         });
         EditText message = editor(frame, "What should we know?", draft.message, typed -> draft.message = typed);
         frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
-        Switch diagnostics = ui.toggle(frame, "Attach masked diagnostics", draft.attach);
-        diagnostics.setOnCheckedChangeListener((view, on) -> draft.attach = on);
+        // Off for every new submission; on only when this dialog itself was opened so.
+        Switch diagnostics = ui.toggle(frame, "Attach masked diagnostics", attach != null && attach);
+        attachSwitch = diagnostics;
         Feedback.Prepared[] prepared = new Feedback.Prepared[1];
+        preparedNow = prepared;
         boolean[] preparedWith = new boolean[1];
         Button preview = ui.link("Preview what is sent", () -> {
             status("Preparing…");
@@ -191,6 +212,8 @@ final class FeedbackDialogs implements Feedback.Listener {
         EditText note = editor(frame, "What went wrong? (optional)", "", typed -> { });
         frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
         Feedback.Prepared[] prepared = new Feedback.Prepared[1];
+        preparedNow = prepared;
+        attachSwitch = null;
         OfferReport.Problem[] preparedFor = new OfferReport.Problem[1];
         Button preview = ui.link("Preview what is sent", () -> {
             status("Preparing…");
@@ -214,9 +237,7 @@ final class FeedbackDialogs implements Feedback.Listener {
         feedbackOpen = false;
         dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
                 .setTitle("Report this offer")
-                .setMessage("Sends this offer's figures, decision and masked read lines, your current rules, the "
-                        + "app's and Android's versions and the minute it was decided, with your note. No account. "
-                        + "Masking can miss details.")
+                .setMessage(OFFER_REPORT_SAYS)
                 .setView(scroll(frame))
                 .setPositiveButton("Send", null)
                 .setNegativeButton("Cancel", null)
@@ -247,6 +268,9 @@ final class FeedbackDialogs implements Feedback.Listener {
                 else said(event.state.said);
             } else if (event.state == Feedback.State.REJECTED || event.state == Feedback.State.NOT_QUEUED) {
                 waitingFor = "";
+                // A refused submission's token is never used again (the service may have kept a part of it): the
+                // next Send builds afresh, under a new one.
+                if (preparedNow != null) preparedNow[0] = null;
                 status(event.said);
                 busy(false);
             }
@@ -421,13 +445,54 @@ final class FeedbackDialogs implements Feedback.Listener {
         frame.addView(list, Ui.matchWidth());
     }
 
+    /**
+     * Exactly what is sent, a page of at most {@value #PREVIEW_PAGE_CHARS} characters at a time (cut at line ends:
+     * the pages, in order, are the whole), so a long report never stalls the screen. It goes with the screen.
+     */
     private void preview(String text) {
-        TextView body = ui.text(text, 11, ui.ink, false);
+        if (previewDialog != null && previewDialog.isShowing()) previewDialog.dismiss();
+        List<String> pages = Feedback.chunks(text, PREVIEW_PAGE_CHARS, Integer.MAX_VALUE);
+        if (pages.isEmpty()) pages = java.util.Collections.singletonList("");
+        TextView body = ui.text(pages.get(0), 11, ui.ink, false);
         body.setTypeface(Typeface.MONOSPACE);
         body.setTextIsSelectable(true);
         body.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(8));
-        OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle("What is sent").setView(scroll(body))
-                .setPositiveButton("OK", null));
+        ScrollView scroll = scroll(body);
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity).setTitle(pageTitle(0, pages.size()))
+                .setView(scroll);
+        if (pages.size() == 1) {
+            builder.setPositiveButton("OK", null);
+        } else {
+            builder.setPositiveButton("Next", null).setNeutralButton("Previous", null).setNegativeButton("Close", null);
+        }
+        AlertDialog shown = OwnWindowTouches.show(builder.setOnDismissListener(gone -> {
+            if (previewDialog == gone) previewDialog = null;
+        }));
+        previewDialog = shown;
+        if (pages.size() == 1) return;
+        List<String> all = pages;
+        int[] page = {0};
+        Runnable turn = () -> {
+            body.setText(all.get(page[0]));
+            scroll.scrollTo(0, 0);
+            shown.setTitle(pageTitle(page[0], all.size()));
+            shown.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(page[0] > 0);
+            shown.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(page[0] < all.size() - 1);
+        };
+        shown.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
+            if (page[0] < all.size() - 1) page[0]++;
+            turn.run();
+        });
+        shown.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(tapped -> {
+            if (page[0] > 0) page[0]--;
+            turn.run();
+        });
+        turn.run();
+    }
+
+    /** "What is sent · page 2 of 5". */
+    static String pageTitle(int page, int pages) {
+        return pages <= 1 ? "What is sent" : "What is sent · page " + (page + 1) + " of " + pages;
     }
 
     /** While a submission is on its way the dialog takes no new one, and nothing in it changes. */

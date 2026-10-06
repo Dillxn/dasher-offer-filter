@@ -200,5 +200,35 @@ public class PrivacyBoundaryTest {
         assertFalse(report, report.contains("731"));
         assertFalse(report, report.contains("123.45"));
         assertTrue(DecisionLog.Entry.fromJson(old.toJson()).evidence.isEmpty());
+
+        // An unreadable offer's lines in the summary after a dash: a bare CVV and expiry with no payment heading (a
+        // partial screen) is no recognized offer screen, so only a not-kept note is kept, as for a payment screen.
+        java.util.List<String> partial = Arrays.asList("731", "12/34", "Copy");
+        assertEquals(java.util.Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT), DashSummary.readLines(partial));
+        assertEquals(java.util.Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT), DashSummary.readLines(payment));
+        app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
+        Dashing.forgetCache();
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.unreadable(app, partial);
+        DashSummary.unreadable(app, payment);
+        DashSummary.flush();
+        String kept = app.getSharedPreferences("dash_summary", Context.MODE_PRIVATE).getString("anomalies", "");
+        assertTrue(kept, kept.contains(PersonalText.UNKNOWN_NOT_KEPT));
+        org.json.JSONObject model = new org.json.JSONObject()
+                .put("counts", new org.json.JSONObject(app.getSharedPreferences("dash_summary", Context.MODE_PRIVATE)
+                        .getString("counts", "{}")))
+                .put("anomalies", new org.json.JSONArray(kept)).put("start", start);
+        String summary = DashSummary.build(app, start, start + 60_000L, DashSummary.End.DASH_OVER, model);
+        for (String secret : new String[] {"731", "12/34", "Card details", "123.45"}) {
+            assertFalse(secret, kept.contains(secret));
+            assertFalse(secret, summary.contains(secret));
+        }
+        // A recognized offer screen keeps its lines, masked twice.
+        assertEquals(Arrays.asList("Guaranteed pay", "$7.90", "Accept", "Decline"),
+                DashSummary.readLines(Arrays.asList("Guaranteed pay", "$7.90", "Accept", "Decline")));
+        Feedback.setAfterDash(app, false);
+        DashSummary.flush();
     }
 }

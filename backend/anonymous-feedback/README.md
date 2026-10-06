@@ -43,8 +43,16 @@ line `[end part i/n]`; the text between them, part after part, is the whole. The
 | 429 + `Retry-After: 600` | This network's 10 new submissions in 10 minutes | Waits at least 10 minutes |
 | 503 + `Retry-After` | Storage unreachable (60 s), or today's global cap (until midnight UTC, at most an hour) | Retries with backoff |
 
-The app works with the function deployed before this change too (it answered 502 on a storage failure and counted
-every part toward the rate limit; the app retries both).
+The app works with the function deployed before this change too, with two differences that matter:
+
+- It counts every part toward the rate limit (the app waits out the 429 and retries).
+- It answers 502 when storage refuses a request, which the app retries, but its catch-all answers **400** when
+  storage could not be reached at all or answered unreadably. The app takes a 400 as final and drops the submission:
+  typed words come back to the open dialog (or to the next one, as the draft), but an automatic summary after a dash
+  is lost. So deploy this function before 0.5.0 ships (PUBLIC_BETA_PHONE_GATE.md lists it as a launch gate).
+
+It also keys its network value with the service-role key (long-lived) rather than a daily random salt, and deletes
+rate rows older than two days only during later submissions; PRIVACY.md describes only what both functions do.
 
 ## What is stored, and for how long
 

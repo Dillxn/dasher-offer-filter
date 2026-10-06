@@ -23,7 +23,10 @@ Broad Android compatibility claims need physical coverage beyond one handset, in
 ## Other launch gates
 
 - Ship the tested pickup-heading privacy fix with the original signing identity and all publication checks.
-- Publish a working private privacy/security contact. Public issues are not that private channel. Deploy the feedback service's hardening migration and function (backend/anonymous-feedback/README.md) and confirm its 90-day deletion job runs.
+- Publish a working private privacy/security contact. Public issues are not that private channel.
+- Before 0.5.0 ships, deploy the feedback service's hardening migration and then its function (backend/anonymous-feedback/README.md), run its smoke test and confirm its 90-day deletion job runs. The function deployed today answers 400, which the app drops, when its storage cannot be reached, so until then a storage outage loses automatic summaries.
+- Before merging 0.5.0 to main (Render rebuilds the download page from it), have the website serve https://offerfilter.org/terms/, /privacy/ and /license/. Until it does, each Render build links the missing ones to the texts in the public source instead (tools/mirror_repo_feed.py prints LEGAL_PAGE_NOT_SERVED for each); check the build log.
+- Get the user's explicit confirmation of the two flows this release adds beyond what users send themselves: the opt-in "Share anonymous diagnostics after each dash" summary (DashSummary, hooked into both services) and the stop line's feedback dialog that opens with Attach masked diagnostics on (the user still taps Send). Without it, remove the DashSummary/StopReports hooks and open the stop line's dialog with Bug only.
 - Have the draft legal notices reviewed; no legal clearance is claimed.
 - Verify OfferFilter.org DNS, HTTPS and links after the separate domain owner completes setup. This lane did not modify DNS or hosting domain settings.
 - Keep the initial rollout labeled beta; do not present incomplete field validation as a stable broad launch.

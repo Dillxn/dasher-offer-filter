@@ -15,3 +15,5 @@ private-signing/
 public/
 __pycache__/
 dist/
+# Left by the retired offer-report fixer in a checkout that ran it: problem-report bodies; never commit them.
+.fixer/

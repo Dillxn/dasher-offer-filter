@@ -10,8 +10,12 @@ Checks before anything is written (every phone checks size, SHA-256, package, ve
   * release/latest.json names this package, a version, and the APK's exact size and SHA-256;
   * the APK's v2/v3 signing block names the cloud certificate (553994c4…);
   * the version is not below what Render serves now (the same version only from the same source commit).
+
+The page links the Terms, Privacy and License to their pages on offerfilter.org (the owner's decision). Each is
+looked at as the page is built; one the website does not serve yet is linked to the same text in the app's public
+source instead, so the download page never links to a missing page.
 """
-import hashlib, html, json, pathlib, re, shutil, struct, sys, urllib.request
+import hashlib, html, json, pathlib, re, shutil, struct, sys, urllib.error, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = 'com.local.dasherfilter'
@@ -21,6 +25,13 @@ NAME = re.search(r'NAME = "([^"]+)"', (ROOT / 'app/src/main/java/com/local/dashe
                  .read_text(encoding='utf-8')).group(1)
 SIG_V2 = 0x7109871A
 SIG_V3 = 0xF05368C0
+# The texts the app bundles word for word, in its public source: where a legal link goes until its page is served.
+SOURCE = 'https://github.com/Dillxn/dasher-offer-filter/blob/main/'
+LEGAL = (
+    ('Terms of use', 'https://offerfilter.org/terms/', SOURCE + 'TERMS.md'),
+    ('Privacy', 'https://offerfilter.org/privacy/', SOURCE + 'PRIVACY.md'),
+    ('MIT License', 'https://offerfilter.org/license/', SOURCE + 'LICENSE'),
+)
 
 
 def signer_digests(apk: bytes):
@@ -78,7 +89,35 @@ def live_feed():
         return None
 
 
-def main(out=ROOT / 'public', live=None, check_live=True):
+def page_serves(url):
+    """Whether url answers with a page now (2xx after redirects): a HEAD, or a GET where HEAD is refused."""
+    for method in ('HEAD', 'GET'):
+        request = urllib.request.Request(url, method=method, headers={'User-Agent': 'OfferFilter-Render-Build'})
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return 200 <= response.status < 300
+        except urllib.error.HTTPError as error:
+            if method == 'HEAD' and error.code in (403, 405, 501):
+                continue
+            return False
+        except Exception:  # No answer at all is no page.
+            return False
+    return False
+
+
+def legal_links(serves=page_serves):
+    """(label, address) of each legal text: its page on offerfilter.org, or its source copy while that is missing."""
+    links = []
+    for label, page, source in LEGAL:
+        if serves(page):
+            links.append((label, page))
+        else:
+            print('LEGAL_PAGE_NOT_SERVED ' + page + ' linked to ' + source, file=sys.stderr)
+            links.append((label, source))
+    return links
+
+
+def main(out=ROOT / 'public', live=None, check_live=True, serves=None):
     feed = json.loads((ROOT / 'release/latest.json').read_text(encoding='utf-8'))
     apk = (ROOT / 'release/OfferFilter.apk').read_bytes()
     if feed.get('packageName') != PACKAGE:
@@ -111,6 +150,8 @@ def main(out=ROOT / 'public', live=None, check_live=True):
         f'versionName={version}\nversionCode={code}\nsourceCommit={feed.get("sourceCommit")}\n'
         f'sha256={feed["sha256"]}\nsize={len(apk)}\nsigner certificate SHA-256 digest: {SIGNER}\n', encoding='utf-8')
     name = html.escape(NAME)
+    legal = ' ·\n'.join(f'<a href="{html.escape(address)}">{html.escape(label)}</a>'
+                        for label, address in legal_links(serves or page_serves))
     (out / 'index.html').write_text(f'''<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{name} {html.escape(version)}</title>
 <body style="font-family:sans-serif;max-width:38em;margin:2em auto;padding:0 1em;line-height:1.5">
@@ -151,9 +192,7 @@ if you want in-app updates. This is separate from your browser's first-install p
 now. Android may request installation confirmation; review its prompt. Automatic installation waits for an observed
 dash end, while a manual check can update mid-dash when Dasher is not on screen.</p>
 <p><a href="https://offerfilter.org/#help">Help and setup</a> ·
-<a href="https://offerfilter.org/terms/">Terms of use</a> ·
-<a href="https://offerfilter.org/privacy/">Privacy</a> ·
-<a href="https://offerfilter.org/license/">MIT License</a>.
+{legal}.
 The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>
 <p><a href="/verification.json">Verification</a> · <a href="/signing-receipt.txt">Signing receipt</a></p>
 </body></html>
