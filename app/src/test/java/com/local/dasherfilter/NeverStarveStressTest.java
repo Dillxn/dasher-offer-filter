@@ -506,7 +506,8 @@ public class NeverStarveStressTest {
     }
 
     @Test
-    public void anAddOnDrawnByATextlessChangeOnADeliveryScreenWaitsTheQuietGapAtMost() {
+    public void anAddOnDrawnByATextlessChangeOnADeliveryScreenWaitsOneReadASecondAtMost() {
+        // The owner's decision (6 October 2026): during a delivery, one read a second.
         OfferFilterService service = service();
         AccessibilityNodeInfo root = deliveryScreen();
         show(service, root);
@@ -515,8 +516,46 @@ public class NeverStarveStressTest {
         add(root, sheet("$3.50", null));
         long[] declined = declineTimes();
         String line = churnUntilDeclined(service, declined, "b5 add-on by a textless change on a delivery screen");
-        // 215122e: one read a second during a delivery, 980 ms.
-        assertTrue(line, waited(line) <= OfferFilterService.QUIET_SCAN_GAP_MS);
+        assertTrue(line, waited(line) <= ReadBudget.CALM_MS);
+    }
+
+    @Test
+    public void anAddOnWhoseEventCarriesItsPayOnADeliveryScreenIsReadAtOnce() {
+        OfferFilterService service = service();
+        AccessibilityNodeInfo root = deliveryScreen();
+        show(service, root);
+        cost(2);
+        churn(service, 60, 10_000);
+        add(root, sheet("$3.50", null));
+        long[] declined = declineTimes();
+        long at = SystemClock.uptimeMillis();
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, WINDOW, "$3.50"));
+        String log = DiagnosticLog.read(app);
+        System.out.println("MEASURE b5b add-on by a change carrying its pay on a delivery screen (SDK "
+                + Build.VERSION.SDK_INT + "): declined " + (declined[0] - at) + " ms after its event; "
+                + declineLine(log));
+        assertTrue("declined at once", declined[0] >= 0);
+        assertTrue(log, declineLine(log).contains("; read after content (waited 0 ms)"));
+    }
+
+    @Test
+    public void aDeliveryScreenWhileDasherAnswersSlowlyStaysAtOneReadASecondAndAnAddOnWaitsASecondAtMost() {
+        // A delivery screen that can be read in full: neither the cost backoff nor the watchdog's pauses hold its reads
+        // back beyond one a second, so an add-on drawn there by a change alone still waits a second at most.
+        OfferFilterService service = service();
+        AccessibilityNodeInfo root = deliveryScreen();
+        show(service, root);
+        // Dasher answers every root 250 ms late.
+        cost(2, 2_500);
+        int reads = service.contentReads;
+        churn(service, 10, 10_000);
+        int read = service.contentReads - reads;
+        assertTrue("one a second at most: " + read, read <= 11);
+        assertTrue("still read every second: " + read, read >= 8);
+        add(root, sheet("$3.50", null));
+        long[] declined = declineTimes();
+        String line = churnUntilDeclined(service, declined, "b5c add-on on a delivery screen, Dasher 250 ms late");
+        assertTrue(line, waited(line) <= ReadBudget.CALM_MS);
     }
 
     @Test
@@ -718,22 +757,23 @@ public class NeverStarveStressTest {
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
     }
 
-    // ---- (e) Deliveries: their figures are their own; a screen too big to read, one read a second ----
+    // ---- (e) Deliveries: their figures are their own, and one read a second (the owner's decision) ----
 
     @Test
-    public void aDeliveryScreenIsReadOnTheQuietGapAndItsMapNever() {
+    public void aDeliveryScreenIsReadOnceASecondAndItsMapNever() {
         OfferFilterService service = service();
         int read = minuteOf(service, deliveryScreen(), "e delivery screen 606 nodes 60Hz 60s");
-        // 0.4.72: 439 reads of 600 nodes at every change, 88% of Dasher's time.
-        assertTrue("the quiet gap's cadence at most: " + read, read <= QUIET_READS_A_MINUTE);
+        // 0.4.72: 439 reads of 600 nodes at every change, 88% of Dasher's time. 0b423af: the quiet gap, about 12%.
+        assertTrue("one a second at most: " + read, read <= 61);
+        assertTrue("still read every second: " + read, read >= 55);
         assertEquals(0, mapFetches.get());
-        assertTrue(busyMs.get() + " ms", busyShare(MINUTE) < 0.15);
+        assertTrue(busyMs.get() + " ms", busyShare(MINUTE) < 0.05);
         assertTrue(DiagnosticLog.read(app).contains(
                 "[screen] map subtree skipped (500 children) on Dasher's delivery screen"));
     }
 
     @Test
-    public void aPickupScreenShowingItsOrdersTotalIsReadOnTheQuietGapNotAtEveryChange() {
+    public void aPickupScreenShowingItsOrdersTotalIsReadOnceASecondNotAtEveryChange() {
         // The owner's 0.4.72 reports: the pickup screen shows "$9.30 / this offer" (or "$0.00 / this dash") beside
         // "Pick up by …", "Directions" and "Arrived at store". OfferParser takes the one amount for pay.
         for (String[] figure : new String[][] {{"$9.30", "this offer"}, {"$0.00", "this dash"}}) {
@@ -742,8 +782,8 @@ public class NeverStarveStressTest {
             int read = minuteOf(service, screen(map(500), "Pick up by 7:30 PM", figure[0], figure[1], "Directions",
                     "Arrived at store"), "e2 pickup '" + figure[0] + " " + figure[1] + "' + map 500 60Hz 60s");
             // 215122e: 1628 reads, every change at once, all with uninterruptible prefetch, 55% of Dasher's time.
-            assertTrue("the quiet gap's cadence at most: " + read, read <= QUIET_READS_A_MINUTE);
-            assertTrue(busyMs.get() + " ms", busyShare(MINUTE) < 0.15);
+            assertTrue("one a second at most: " + read, read <= 61);
+            assertTrue(busyMs.get() + " ms", busyShare(MINUTE) < 0.05);
             if (Build.VERSION.SDK_INT >= 33) {
                 assertEquals("only the window change's read asks for an uninterruptible prefetch", uninterruptible + 1,
                         service.uninterruptibleRootFetches);

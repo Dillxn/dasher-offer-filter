@@ -767,7 +767,7 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * The read owed to the later changes of a burst of content changes while nothing was up (or an unchanged decided
      * offer was): {@link #QUIET_SCAN_GAP_MS} after the last such read, or on the read budget while the last read was of
-     * a screen too big to read that showed nothing of an offer ({@link #eventBudgeted}).
+     * a screen too big to read, or of a delivery screen, that showed nothing of an offer ({@link #eventBudgeted}).
      */
     private final Runnable quietScan = new Runnable() {
         @Override public void run() {
@@ -776,7 +776,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (stopped) return;
             long now = SystemClock.uptimeMillis();
             if (eventBudgeted(now)) {
-                long due = budget.dueAt(quietReadEndAt + QUIET_SCAN_GAP_MS, deliveryCalm);
+                long due = eventDue();
                 if (now < due) {
                     deferRead(quietScanEventAt, due);
                     return;
@@ -1814,9 +1814,11 @@ public final class OfferFilterService extends AccessibilityService {
      * read's controls (no reading around it); any other click is read around after the read. The read is at once,
      * except a content change while nothing is up (or an unchanged decided offer is) that comes within
      * {@link #QUIET_SCAN_GAP_MS} of the last such read: it waits for one read at the end of that gap, which takes in
-     * every change until then. That gap is the only wait before a read that can find a readable offer. Only after a
-     * read of a screen too big to read in full that showed nothing of an offer are a content change and a click read
-     * on the read budget instead ({@link #eventBudgeted}); paused, nothing is read at all ({@link #notReading}).
+     * every change until then. That gap is the only wait before a read that can find a readable offer, with one
+     * exception the owner chose: during a delivery, a change after a read that showed nothing of an offer waits for one
+     * read a second. After such a read, and after a read of a screen too big to read in full that showed nothing of an
+     * offer, a content change and a click are read on the read budget instead ({@link #eventBudgeted}); paused, nothing
+     * is read at all ({@link #notReading}).
      *
      * @param change whether a window change is among them
      * @param hint whether their own words showed a sign of an offer, or one came from a new window of Dasher's: read
@@ -1870,14 +1872,15 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * A content change or a click after a read of a screen too big to read that showed nothing of an offer: read now
-     * when the read budget allows ({@link ReadBudget}: four reads a second, one a second during a delivery, a quarter of
-     * Dasher's time at most, none while Dasher is slow to answer), else once it does, one read for every change until
-     * then.
+     * A content change or a click after a read that showed nothing of an offer, of a screen too big to read or during a
+     * delivery ({@link #eventBudgeted}): read now when the read budget allows ({@link #eventDue}; for a screen too big to
+     * read, {@link ReadBudget}: four reads a second, one a second during a delivery, a quarter of Dasher's time at most,
+     * none while Dasher is slow to answer; for a delivery screen read in full, one a second), else once it does, one
+     * read for every change until then.
      */
     private void budgetedRead(long at, String trigger) {
         long now = SystemClock.uptimeMillis();
-        long due = budget.dueAt(quietReadEndAt + QUIET_SCAN_GAP_MS, deliveryCalm);
+        long due = eventDue();
         if (now < due) {
             if (!quietScanPending || quietScanDue > due) deferRead(at, due);
             return;
@@ -1922,12 +1925,24 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Whether Dasher's next content change or click is read on the read budget: as {@link #timerBudgeted}, and the last
-     * read was of a screen too big to read in full ({@link #tooBigToRead}), so no offer on it could be judged anyway.
-     * After a read of any screen that could be read in full, the quiet gap is the only wait ({@link #quiet}).
+     * Whether Dasher's next content change or click is read on the read budget: as {@link #timerBudgeted}, and either
+     * the last read was of a screen too big to read in full ({@link #tooBigToRead}), so no offer on it could be judged
+     * anyway, or a delivery is under way ({@link #deliveryCalm}: the owner's decision, 6 October 2026, one read a second
+     * during deliveries, {@link #eventDue}). After a read of any other screen that could be read in full, the quiet gap
+     * is the only wait ({@link #quiet}).
      */
     private boolean eventBudgeted(long now) {
-        return readCut && timerBudgeted(now);
+        return (readCut || deliveryCalm) && timerBudgeted(now);
+    }
+
+    /**
+     * When a budgeted read of Dasher's events is due ({@link #eventBudgeted}): the whole read budget for a screen too
+     * big to read; for a delivery screen read in full, one read a second and nothing more ({@link ReadBudget#calmDueAt}),
+     * so an add-on drawn there by a change alone waits a second at most.
+     */
+    private long eventDue() {
+        long quietDue = quietReadEndAt + QUIET_SCAN_GAP_MS;
+        return readCut ? budget.dueAt(quietDue, deliveryCalm) : budget.calmDueAt(quietDue);
     }
 
     /**

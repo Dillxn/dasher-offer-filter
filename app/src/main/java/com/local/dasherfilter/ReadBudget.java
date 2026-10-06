@@ -6,10 +6,12 @@ import java.util.Arrays;
  * How often Dasher's screen may be read when a read cannot catch a readable offer any sooner, so the reader never keeps
  * Dasher's own UI thread from drawing or from answering the user's taps (every node read is a call that thread must
  * serve; Dasher's map and delivery screens are big and change many times a second). It holds back only reads the
- * caller decides it may hold back: what a timer asks for (settling, outcome observation), and the changes of a screen
- * too big to read in full that showed nothing of an offer (no offer on it can be judged). A change after a read of a
- * screen that could be read in full is never held here: the caller's 150 ms quiet gap is its only wait. Three limits,
- * all on the scanner's uptimes, one budget for Dasher (its windows share one UI thread):
+ * caller decides it may hold back: what a timer asks for (settling, outcome observation), the changes of a screen too
+ * big to read in full that showed nothing of an offer (no offer on it can be judged), and, during a delivery (the
+ * owner's decision, 6 October 2026), the changes of a delivery screen that showed nothing of an offer: those only to
+ * one read a second ({@link #calmDueAt}). Any other change after a read of a screen that could be read in full is never
+ * held here: the caller's 150 ms quiet gap is its only wait. Three limits, all on the scanner's uptimes, one budget for
+ * Dasher (its windows share one UI thread):
  *
  * <ul>
  *   <li>A token bucket: at most {@link #TOKEN_MS one read every 250 ms} (4 a second) sustained, {@link #BURST} at
@@ -76,6 +78,17 @@ final class ReadBudget {
     long dueAt(long quietDue, boolean calm) {
         long tokens = calm ? tokenAt : tokenAt - (BURST - 1) * TOKEN_MS;
         return Math.max(Math.max(quietDue, costUntil), Math.max(tokens, yieldUntil));
+    }
+
+    /**
+     * The earliest uptime the next read of a delivery screen that could be read in full may start, after one that
+     * showed nothing of an offer: one read a second (the owner's decision), and nothing more. Neither the cost backoff
+     * nor the watchdog holds it back further, so an add-on Dasher draws there by a change alone waits a second at most.
+     *
+     * @param quietDue when the caller's own quiet gap allows it (150 ms after the last read of a burst)
+     */
+    long calmDueAt(long quietDue) {
+        return Math.max(quietDue, tokenAt);
     }
 
     /** A budgeted read starts now: it takes a token. */
