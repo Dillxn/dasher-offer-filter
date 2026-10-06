@@ -1,3 +1,10 @@
+# 0.4.73 accountless feedback / user-GitHub retirement
+
+- End-user GitHub is retired. The Android app must use the public Render update channel only; keep package/version/size/SHA-256/original-signer verification unchanged. Repository release files and maintainer tooling may still use GitHub behind the scenes.
+- Settings exposes one **Send anonymous feedback** row. No account, name or email is required. Typed feedback leaves only after Send. Masked diagnostics are attached only through a separate per-submission choice that defaults off. Automatic GitHub problem reports and diagnostics-after-each-dash are retired and old stored GitHub/reporting state is discarded on first open after update.
+- Feedback goes only to the dedicated Supabase Edge Function committed under backend/anonymous-feedback. Public clients must have no database read/update/delete access and no privileged key. Store no raw IP/user-agent/account identifier with feedback; a rotating one-way network-derived value may be used only for rate limiting. Do not call this a guarantee of anonymity. Server-side feedback retention is 90 days.
+- This substantive data-flow change is Consent.VERSION 14 and TERMS/PRIVACY/LegalTexts must stay byte-equivalent through tools/legal_texts.py.
+
 # Offer Filter development
 
 - .71 Peek: only an uninterrupted interval of positively recognized empty Dasher screens can permit a no-offer return. Loading, item-only offer evidence, unavailable foreground and failed/incomplete reads reset that interval. Recheck it after the final fresh read, and preserve the original 20-second Peek deadline through final return dispatch. Never infer the reported handset incident was reproduced from synthetic tests alone.

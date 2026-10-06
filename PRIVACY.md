@@ -1,6 +1,6 @@
 # Offer Filter privacy
 
-Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed; a private privacy contact is not yet configured.
+Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed; a private privacy contact is not yet configured.
 
 Offer Filter does not require an Offer Filter account and has no ads or analytics. It does not sell or rent your data. Offer reading and decisions happen on your phone. Update requests, optional reports, place-name lookups and links you choose to open can send information to the services described under What leaves the phone. The developer's public project identity is Dillxn.
 
@@ -25,8 +25,8 @@ Before you accept the current first-run notice, it reads none of this and sends 
 - One temporary record that prevents automatic taps on a possibly taken-over or automatically accepted offer after a restart: numeric pay, miles, minutes, stops, observed item count/applicability, countdown, and device uptime/boot number. It can suppress taps for at most two minutes; the app discards it when it next checks an expired record, observes the offer ended, or you clear history. It never restores permission to tap. One scanner-error category, without the error message or screen text, is kept until the next service connection or Clear history.
 - A separate temporary automatic-Accept request record keeps only numeric offer facts and device uptime/boot number, for up to two minutes. It only prevents an automatic choice from training personal minimums; it never proves acceptance or restores tap authority. Clear history removes it.
 - A pending hand-decline observation can retain the same numeric offer facts, including observed item count/applicability, to reconcile its outcome, for at most one hour.
-- A GitHub connection, if you set one up, and the state of updates.
-- Up to 30 queued reports, if reporting is enabled. A queued report is a separate copy of the report as built, including any history, diagnostic text or note it contains. Queued reports have no age-based expiry and can remain pending after an outage, a permission failure or an uncertain send. They are removed when delivery finishes, when the app drops an invalid report, or when you turn the corresponding reporting option off, disconnect GitHub or uninstall. The logs' 24-hour window does not expire these copies.
+- The state of updates. End-user GitHub sign-in is retired in 0.4.73; an old stored GitHub connection and unsent GitHub report queue are removed when the updated app first opens.
+- Feedback is sent directly when you tap Send and is not kept in a persistent on-phone outbox. If you explicitly attach diagnostics, the app builds the same masked diagnostic report for that one submission.
 - Your Day, Night, System or Auto theme choice. Auto is the default for new choices; it calculates the local sun cycle using only an existing permitted approximate location, without a network request or a separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am to 6 pm. Existing explicit day/night choices are preserved.
 - During Peek, the previous app's identifier and launcher component stay only in memory. They are cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 seconds after returning). They are never saved or sent; Peek logs describe only the kind of previous app, such as a navigation app or the home screen. Its screen text is never kept.
 
@@ -36,25 +36,24 @@ Decision and confirmation lines take priority over repeated scan timings within 
 
 Screen text is masked before it is kept: customer names, your own name, street addresses, city, state and ZIP lines, apartment numbers, phone numbers, email addresses, delivery instructions, card numbers and their security codes/expiry/PIN, and streets in navigation become [name], [address], [phone], [email], [instructions], [card] and [street]. Store names, offer figures, buttons and shopping items stay. Offers are judged from what is on screen; only what is kept is masked. Click diagnostics retain the control shape and action category, never its text labels.
 
-Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee of anonymity or removal of every personal detail. Review a report before sharing it. Notes you type with Report this offer are not masked; do not include customer, payment or account details. Queued diagnostic bodies and comments are masked again with the current rules immediately before sending.
+Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee of anonymity or removal of every personal detail. Review a report before sharing it. Notes you type with Report this offer are not masked; do not include customer, payment or account details. Diagnostics are masked again with the current rules immediately before an explicitly requested feedback submission.
 
-A one-time privacy cleanup clears older diagnostic logs and unsent reports if it has not already completed on this installation. It does not run again merely because this notice changes. If that cleanup cannot finish, diagnostic reads, writes and report sending remain paused until it succeeds. It cannot remove reports already sent to GitHub or another app.
+A one-time privacy cleanup clears older diagnostic logs and legacy unsent reports if it has not already completed on this installation. Separately, 0.4.73 retires any stored end-user GitHub connection and discards legacy unsent GitHub reports when the app opens. Neither cleanup can remove copies that were already sent.
 
 Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
 
 ## What leaves the phone, and when
 
-- Update checks. The app asks its update server (dash-offer-filter-build.onrender.com, hosted by Render) for the latest version and downloads it; with GitHub connected, it also asks GitHub for the update files in the app's repository. These requests carry your IP address, as any internet request does, and the app's own name, and nothing about your offers. The app checks by itself, every so often and when it opens.
-- GitHub connection, if you choose it. Signing in uses GitHub's device sign-in. The token stays on the phone and goes only to GitHub: its sign-in pages, the app's update files, one look-up of your GitHub account name to show in Settings, and, if you also turn on Send problem reports, the app's private issue list.
-- Reports, only if you turn them on: Send problem reports in Settings (shown once GitHub is connected; they go only through that connection). Problem reports go to the developer's private GitHub repository as issues: when an offer cannot be read, when the app hits an error or a decline does not finish, and when you tap Report this offer. Every word that is not part of an offer's wording (pay, miles, buttons and the like) is masked first, and a problem report never carries the logs. A note you type with Report this offer is sent as you typed it. Issue and comment parts carry opaque receipt identifiers; uncertain sends are reconciled against those receipts before proceeding, and can remain pending rather than being sent twice.
-- Diagnostics after each dash, only if you turn them on (off by default; they need Send problem reports on). After a dash ends, the same masked report that Share report makes is filed to that private repository, at most one issue per detected dash and six times a day. Each dash has a random receipt identifier. If GitHub's reply is lost, the app looks for that receipt in the repository before continuing; it never creates another issue while the first request remains uncertain. Reports may remain pending after a lost reply.
-- Share report, only when you tap it: the masked report goes to the app you choose, and from there wherever you send it.
-- A report you share and the diagnostics after each dash also name your phone's Android version and maker (for example "Android 15 (API 35), Google"); problem reports do not.
+- Update checks. The app asks its public update server (dash-offer-filter-build.onrender.com, hosted by Render) for the latest version and downloads it. No GitHub account is required. These requests carry ordinary internet connection metadata such as your IP address and the app's own request information, but no offer history.
+- Anonymous feedback, only when you tap Send. The app posts what you type to a dedicated Supabase Edge Function. No Offer Filter account, GitHub account, name or email is required or included by the app. The feedback record stores the feedback category, message, app version and whether masked diagnostics were explicitly attached. The service derives a one-way, rotating rate-limit value from connection metadata; the raw IP address is not stored in the feedback table. Supabase and intervening network providers necessarily receive ordinary connection metadata while handling the request and may keep infrastructure logs under their own policies, so this is not a mathematical guarantee of anonymity.
+- Masked diagnostics are included with feedback only when you explicitly turn on **Attach masked diagnostics** for that submission. They can include the Android version and phone maker, current rules, decision history and the bounded masked logs described above. Review them before sending because pattern-based masking can miss details.
+- Feedback records expire after 90 days. They may be reviewed by the developer and by AI systems (Anthropic's Claude and OpenAI's ChatGPT/Codex) used to investigate problems. A submission does not guarantee review or a fix.
+- **Share report**, only when you tap it, still hands a masked report to the app you choose. From there, that app handles the copy under its own privacy practices.
 - Place names. To name the squares on the map, the app asks Android's own place lookup (Google's servers on most phones) about positions rounded to about half a kilometre, once while a position remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes with them.
 - Navigation, only when you tap it. Opening an offer area hands that historical area's center coordinates to your chosen Maps or Waze app, or to Google Maps in a browser. Gas and gas-price choices hand a search phrase to the map provider. The receiving app or website handles the request under its own privacy practices; these actions do not upload your offer history or establish your arrival.
 - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for them and counts nothing.
 
-Reports in the repository may be read by the developer and by AI systems (Anthropic's Claude and OpenAI's ChatGPT/Codex) that the developer uses to investigate problems. A report does not guarantee review or a fix. GitHub, Render, Google, Anthropic and OpenAI handle what reaches them under their own terms and privacy policies. Copies already sent to GitHub, an AI service or another app are not governed by the phone's 24-hour log window and are not automatically erased by Offer Filter. A developer-managed retention and deletion schedule for those copies has not yet been confirmed.
+Render, Supabase, Google, Anthropic and OpenAI handle what reaches them under their own terms and privacy policies. Copies you deliberately share through another app are controlled by that app and recipient.
 
 ## What it never collects
 
@@ -63,16 +62,17 @@ The app does not request your DoorDash password, contacts, photos, messages, pre
 ## Your choices
 
 - Turn off **Peek at background offers** in Settings to stop automatic temporary opens of Dasher. Peek requires an unlocked, quiet phone and skips when its checks find typing, a call, microphone/camera use, split or floating windows, a pinned or unrecognized app, or another conflicting action. Its checks depend on what Android exposes; they are not a safety guarantee.
-- Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map and cached place names, plus the temporary restart/error records above. Lookups and wait-record writes already in progress cannot restore cleared history. It does not remove queued reports or copies already sent. Your rules and learned minimums remain; Reset clears the learned minimums separately.
-- Turning Send problem reports off, or disconnecting GitHub, stops further reports and discards reports not yet sent. Turning Share diagnostics after each dash off discards unsent diagnostics, but not other queued problem reports. A request already in flight may still arrive; these choices do not delete reports already delivered.
-- Disconnecting GitHub (Settings) removes the GitHub token.
-- Uninstalling removes the app's local data, including queued reports. It does not remove reports or other copies already shared with GitHub, AI services or another app.
+- Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map and cached place names, plus the temporary restart/error records above. Lookups and wait-record writes already in progress cannot restore cleared history. Your rules and learned minimums remain; Reset clears the learned minimums separately.
+- Feedback leaves only after you tap Send. Leave **Attach masked diagnostics** off to send only your typed message and basic app-version metadata.
+- Uninstalling removes the app's local data. It does not remove feedback already submitted or copies you deliberately shared through another app.
 
 ## Help and privacy contact
 
-Non-sensitive questions and bug descriptions can be posted to the project's public issue tracker: https://github.com/Dillxn/offer-filter-site/issues. Posts there are public. Do not attach diagnostic reports, customer details, payment or account information, addresses, screenshots containing personal information, or tokens.
+Use **Send anonymous feedback** in Settings, or the feedback form on offerfilter.org, for non-sensitive feedback without creating an account. Do not type customer, payment, account or other sensitive details. If you need to refer to an earlier submission, keep the short reference shown after it is accepted.
 
-A private contact for privacy, deletion and security requests is not yet configured and needs the developer's confirmation before public launch. The public issue tracker is not a private reporting channel. The app's optional GitHub reporting uses the developer's private repository and requires access to that repository; it is not a general public support inbox. Public update downloads do not require a GitHub connection.
+The project issue tracker remains public and is suitable only for public, non-sensitive development discussion. Do not attach diagnostic reports, customer details, payment or account information, addresses, screenshots containing personal information, or tokens.
+
+A separate private identity-verification channel for privacy/deletion/security requests is not yet configured. Because ordinary feedback does not require an identity, the developer may be unable to prove which anonymous submission belongs to a requester without its reference.
 
 ## Children
 
@@ -80,4 +80,4 @@ Offer Filter is not for anyone under 18.
 
 ## Changes
 
-When this text changes in substance, the app shows its notice again before it reads anything more or sends reports.
+When this text changes in substance, the app shows its notice again before it reads anything more or sends feedback.

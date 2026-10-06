@@ -1,3 +1,12 @@
+## 0.4.73 — accountless feedback and no end-user GitHub
+
+- Removes end-user GitHub sign-in from Settings and updater selection. Phones use the existing public Render mirror while retaining package/version/size/SHA-256/original-signer verification.
+- Replaces GitHub problem-report and diagnostics switches with one accountless **Send anonymous feedback** dialog. No name, email or account is required. Masked diagnostics are attached only by a separate per-send choice that defaults off.
+- **Report this offer** now uses the same accountless endpoint with the selected offer's already-masked evidence and optional note. Automatic outbound problem reports and diagnostics-after-each-dash are retired.
+- Retires stored user-GitHub/reporting state and unsent legacy report queues on first open after the update.
+- Adds a dedicated Supabase feedback backend with no public database reads, rotating one-way rate limiting and 90-day feedback retention. Consent 14 and bundled Terms/Privacy disclose the new flow.
+- Source version is 0.4.73 / code 79. The existing signed 0.4.72 update feed is intentionally unchanged until this source completes the local Android/signing release gate.
+
 ## 0.4.71 — keep Peek from returning during offer loading (candidate)
 
 - Restarts Peek's four-second empty-screen wait when Dasher is loading, drawing only part of an offer, or cannot be read completely. A final fresh read must still confirm that the full empty-screen interval elapsed before returning to the previous app.

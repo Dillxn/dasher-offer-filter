@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed.
+Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed.
 
 ## What Offer Filter is
 
@@ -20,7 +20,7 @@ Automatic declines may dramatically lower your DoorDash acceptance rate. This ca
 - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were using after completion evidence; while navigation is detected, it also returns for passing or unclear offers and leaves a card. Otherwise those offers stay in Dasher. Your touch or app switch ends that automatic return. You can turn Peek off in Settings.
 - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.
-- It can update itself from its own update feed, and it sends reports only when you turn them on or share one (see the privacy text).
+- It updates itself from its public signed update feed without requiring an account. Feedback is accountless and is sent only when you tap Send; masked diagnostics are attached only when you explicitly choose them (see the privacy text).
 
 ## Your responsibilities
 

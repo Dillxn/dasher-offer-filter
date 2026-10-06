@@ -3,8 +3,6 @@ package com.local.dasherfilter;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -51,7 +49,7 @@ import java.util.regex.Pattern;
  * screen, a map of where offers pay best. Every rule lives on the constellation and saves at once: the knobs (the four
  * minimums, hollow until set), the max stops badge by the per-stop spoke, and the round buttons (score by area, the
  * adaptive minimum on or off with Reset on a long press, and adopting what it learned). Settings holds only what exists
- * nowhere else: setup still needing a fix, two switches, updates, GitHub, reports and a tip, each one row. Pause and
+ * nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip, each one row. Pause and
  * Resume take effect at once. The drawings move gently and shift with the phone's tilt while the app fills the screen,
  * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
@@ -225,14 +223,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness locationAllTheTime;
     private Switch areasToggle;
     private Button updatesRow;
-    private Button githubRow;
-    private Switch reportViaGitHub;
-    private TextView reportStatus;
     private Button shareReportRow;
-    private Switch diagnosticsAfterDash;
-    private TextView diagnosticsStatus;
-    private GitHubConnect.State shownGitHub;
-    private boolean askingGitHub;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
 
@@ -253,6 +244,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.retireSwitch(this);
         // What an older version kept of Dasher's screens (it could hold a payment card page) goes once, off this thread.
         DiagnosticLog.cleanUpSoon(this);
+        // Retire end-user GitHub/report queues before any new accountless feedback can leave.
+        AnonymousFeedback.retireLegacyReporting(this);
         // Retires an old extra-stop fee now, so its note is ready for the homepage.
         FilterStore.load(this);
         if (state != null) {
@@ -360,7 +353,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Sound left turned down by a decline the screen reader could not finish is put back here too.
         if (!OfferFilterService.isConnected()) OfferSilencer.restore(this);
         Updater.foreground(this);
-        if (GitHubConnect.configured()) GitHubConnect.resume(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
         restrictedSettingsHint = Build.VERSION.SDK_INT >= 33
@@ -372,9 +364,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Opening the app checks at once; coming back to it checks at most every five minutes.
         Updater.check(this, freshScreen ? UpdateCadence.Trigger.OPENED : UpdateCadence.Trigger.RESUMED, null);
         freshScreen = false;
-        ReportOutbox.retryRefused(this);
-        // A dash that went quiet while Android held its check back is filed now (off the main thread).
-        DashDiagnostics.checkSoon(this);
         DasherSplit.windowMode(this);
         DasherSplit.resumed(this);
         // Whether Dasher is beside now, not at Dasher's next event: the page is laid out for it at once.
@@ -1181,28 +1170,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
 
         LinearLayout connections = group(body);
-        // Checks are always automatic; a tap checks now.
+        // Checks are always automatic; a tap checks now. Public signed updates need no user account.
         updatesRow = ui.listRow(connections, "Updates", () -> Updater.check(this, true, null));
-        if (GitHubConnect.configured()) githubRow = ui.listRow(connections, "Connect GitHub", this::tapGitHub);
 
         LinearLayout reports = group(body);
+        ui.listRow(reports, "Send anonymous feedback", this::sendAnonymousFeedback);
         shareReportRow = ui.listRow(reports, "Share report", this::shareReport);
-        // Problem reports go only through the GitHub connection: shown once it is connected, off until turned on.
-        reportViaGitHub = ui.toggle(reports, "Send problem reports", ReportOutbox.useGitHubChosen(this));
-        reportViaGitHub.setOnCheckedChangeListener((view, on) -> {
-            if (on == ReportOutbox.useGitHubChosen(this)) return;
-            ReportOutbox.useGitHub(this, on);
-            refresh();
-        });
-        reportStatus = detail(reports);
-        // A further opt-in: only with reports on; turning them off turns it off.
-        diagnosticsAfterDash = ui.toggle(reports, "Share diagnostics after each dash", DashDiagnostics.on(this));
-        diagnosticsAfterDash.setOnCheckedChangeListener((view, on) -> {
-            if (on == DashDiagnostics.on(this)) return;
-            if (DashDiagnostics.set(this, on) != on) toast("Turn on Send problem reports first.");
-            refresh();
-        });
-        diagnosticsStatus = detail(reports);
         ui.listRow(reports, "Clear history", this::confirmClearHistory);
 
         if (!Support.methods().isEmpty()) ui.listRow(group(body), "Tip", this::chooseTip);
@@ -1252,57 +1225,39 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return detail;
     }
 
-    /**
-     * GitHub's row: connects (GitHub sends a code, which is copied and GitHub opened), then while waiting opens GitHub
-     * again or stops, and once connected asks before disconnecting.
-     */
-    private void tapGitHub() {
-        GitHubConnect.State state = GitHubConnect.state(this);
-        if (state == GitHubConnect.State.CONNECTED) {
-            OwnWindowTouches.show(new AlertDialog.Builder(this)
-                    .setTitle("Disconnect GitHub?")
-                    .setMessage("Updates then come only from the update server. Problem reports and diagnostics stop, "
-                            + "and any not yet sent are discarded.")
-                    .setPositiveButton("Disconnect", (dialog, which) -> {
-                        GitHubConnect.disconnect(this);
-                        refresh();
-                    })
-                    .setNegativeButton("Cancel", null));
-        } else if (state == GitHubConnect.State.WAITING) {
-            OwnWindowTouches.show(new AlertDialog.Builder(this)
-                    .setTitle("Connect GitHub")
-                    .setMessage("Enter " + GitHubConnect.userCode(this) + " on GitHub.")
-                    .setPositiveButton("Open GitHub", (dialog, which) -> openGitHub())
-                    .setNeutralButton("Stop", (dialog, which) -> {
-                        GitHubConnect.disconnect(this);
-                        refresh();
-                    })
-                    .setNegativeButton("Cancel", null));
-        } else if (!askingGitHub) {
-            connectGitHub();
-        }
-    }
-
-    /** Asks GitHub for a code, then opens GitHub with it copied. */
-    private void connectGitHub() {
-        askingGitHub = true;
-        refresh();
-        GitHubConnect.connect(this, () -> {
-            askingGitHub = false;
-            if (isFinishing() || isDestroyed()) return;
-            refresh();
-            if (GitHubConnect.userCode(this) != null) openGitHub();
-        });
-    }
-
-    private void openGitHub() {
-        String code = GitHubConnect.userCode(this);
-        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-        if (code != null && clipboard != null) {
-            clipboard.setPrimaryClip(ClipData.newPlainText("GitHub code", code));
-            toast("Code " + code + " copied. Paste it on GitHub, then come back.");
-        }
-        open(new Intent(Intent.ACTION_VIEW, Uri.parse(GitHubConnect.VERIFICATION_URL)));
+    /** Accountless feedback. Diagnostics are attached only when explicitly chosen for this submission. */
+    private void sendAnonymousFeedback() {
+        EditText message = new EditText(this);
+        message.setHint("What should we know?");
+        message.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        message.setMaxLines(6);
+        Switch diagnostics = new Switch(this);
+        diagnostics.setText("Attach masked diagnostics");
+        LinearLayout frame = ui.column();
+        frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0);
+        frame.addView(message, Ui.matchWidth());
+        frame.addView(diagnostics, Ui.matchWidth());
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Send anonymous feedback?")
+                .setMessage("No account, name or email is required. The feedback record stores only what you type, "
+                        + "the app version, and masked diagnostics if you explicitly attach them. Network providers still "
+                        + "see ordinary connection metadata such as an IP address; Offer Filter does not store the raw IP "
+                        + "with your feedback. Masking can miss details, so review diagnostics before attaching them.")
+                .setView(frame)
+                .setPositiveButton("Send", (dialog, which) -> {
+                    String note = message.getText().toString().trim();
+                    if (note.isEmpty()) {
+                        toast("Write something first.");
+                        return;
+                    }
+                    toast("Sending feedback…");
+                    AnonymousFeedback.send(this, "feedback", "general", note, diagnostics.isChecked(), result ->
+                            toast(result.ok
+                                    ? "Feedback sent" + (result.reference.isEmpty() ? "." : " · " + result.reference)
+                                    : "Feedback not sent: " + result.message));
+                })
+                .setNegativeButton("Cancel", null));
     }
 
     /** The configured ways to tip, to choose from; each opens only at the user's tap. */
@@ -1428,52 +1383,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refreshSettings();
     }
 
-    /** Settings' rows: what needs a fix, where updates stand, GitHub, and the reports' switches. */
+    /** Settings' rows: what needs a fix and where the accountless updater stands. */
     private void refreshSettings() {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
         installs.update(installsAllowed.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
-        if (githubRow != null) refreshGitHub();
-        boolean reporting = ReportOutbox.enabled(this);
-        boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;
-        reportViaGitHub.setVisibility(connected ? View.VISIBLE : View.GONE);
-        if (reportViaGitHub.isChecked() != ReportOutbox.useGitHubChosen(this)) {
-            reportViaGitHub.setChecked(ReportOutbox.useGitHubChosen(this));
-        }
-        reportStatus.setVisibility(connected && reporting ? View.VISIBLE : View.GONE);
-        if (reporting && showingSettings) reportStatus.setText(ReportOutbox.status(this));
-        diagnosticsAfterDash.setVisibility(connected ? View.VISIBLE : View.GONE);
-        diagnosticsAfterDash.setEnabled(DashDiagnostics.allowed(this));
-        if (diagnosticsAfterDash.isChecked() != DashDiagnostics.on(this)) {
-            diagnosticsAfterDash.setChecked(DashDiagnostics.on(this));
-        }
-        // Off says itself on the switch; only what it waits for, or where it stands while on.
-        String diagnostics = DashDiagnostics.status(this);
-        diagnosticsStatus.setVisibility(connected && !diagnostics.equals("Off") ? View.VISIBLE : View.GONE);
-        diagnosticsStatus.setText(diagnostics);
-        if (reportSelected != null) reportSelected.setVisibility(reporting ? View.VISIBLE : View.GONE);
-    }
-
-    /** GitHub's one row: what tapping it does, and where the connection stands. */
-    private void refreshGitHub() {
-        GitHubConnect.State state = GitHubConnect.state(this);
-        String code = GitHubConnect.userCode(this);
-        if (askingGitHub) {
-            ui.setRow(githubRow, "Connect GitHub", "Asking GitHub for a code…");
-        } else if (state == GitHubConnect.State.WAITING && code != null) {
-            ui.setRow(githubRow, "Connect GitHub", "Enter " + code + " on GitHub");
-        } else if (state == GitHubConnect.State.CONNECTED) {
-            String login = GitHubConnect.login(this);
-            ui.setRow(githubRow, "GitHub", "Connected" + (login.isEmpty() ? "" : " as " + login));
-        } else {
-            ui.setRow(githubRow, "Connect GitHub", GitHubConnect.note(this));
-        }
-        githubRow.setEnabled(!askingGitHub);
-        // Just connected: look for an update from the repository right away rather than at the next check.
-        if (state == GitHubConnect.State.CONNECTED && shownGitHub == GitHubConnect.State.WAITING) {
-            Updater.check(this, true, null);
-        }
-        shownGitHub = state;
+        if (reportSelected != null) reportSelected.setVisibility(View.VISIBLE);
     }
 
     /**
@@ -1798,7 +1713,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             ticket.addView(read);
         }
         reportSelected = ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
-        reportSelected.setVisibility(ReportOutbox.enabled(this) ? View.VISIBLE : View.GONE);
+        reportSelected.setVisibility(View.VISIBLE);
     }
 
     /** Keep the most recent observed learning result prominent, without inventing a lesson from a passed rule. */
@@ -2093,12 +2008,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refresh();
     }
 
-    /** Asks what went wrong (optional) and files the offer, with what was read, for the fixer. */
+    /** Accountless report for one selected offer; its stored evidence is already masked on the phone. */
     private void reportOffer(DecisionLog.Entry entry) {
-        if (!ReportOutbox.enabled(this)) {
-            toast("Turn on Send problem reports in Settings first.");
-            return;
-        }
         EditText note = new EditText(this);
         note.setHint("What went wrong? (optional)");
         note.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -2109,16 +2020,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         frame.addView(note, Ui.matchWidth());
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Report this offer?")
-                .setMessage("Sends masked offer text, your rules and recent decisions to the developer's private "
-                        + "GitHub repository. The developer may review it with Anthropic's Claude or OpenAI's ChatGPT/Codex; "
-                        + "review or a fix is not guaranteed.\n\n"
-                        + "Masking can miss details. Your note is sent without masking. Do not include customer, payment "
-                        + "or account details.")
+                .setMessage("Sends this offer's masked evidence and your optional note without requiring an account. "
+                        + "Do not put customer, payment or account details in your note. Masking can miss details.")
                 .setView(frame)
                 .setPositiveButton("Send", (dialog, which) -> {
-                    boolean queued = ReportOutbox.fileByUser(this, entry, note.getText().toString());
-                    toast(queued ? "Report queued. It sends when you're online." : "Daily report limit reached.");
-                    refresh();
+                    toast("Sending report…");
+                    AnonymousFeedback.sendOffer(this, entry, note.getText().toString(), result ->
+                            toast(result.ok
+                                    ? "Report sent" + (result.reference.isEmpty() ? "." : " · " + result.reference)
+                                    : "Report not sent: " + result.message));
                 })
                 .setNegativeButton("Cancel", null));
     }

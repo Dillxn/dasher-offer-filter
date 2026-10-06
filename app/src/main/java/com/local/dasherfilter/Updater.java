@@ -375,7 +375,7 @@ final class Updater {
                     .putLong(NEXT_CHECK_AT, now + SUCCESS_COOLDOWN_MS)
                     .putInt(FAILURE_COUNT, 0)
                     .putString(ADVERTISED, release.json.getString("versionName"))
-                    .putString(ADVERTISED_VIA, release.channel == UpdatePolicy.Channel.REPO ? "GitHub" : "Render")
+                    .putString(ADVERTISED_VIA, "Render")
                     .apply();
             if (!UpdatePolicy.isNewer(advertised, versionCode(installed))) {
                 settle(app, trigger, (advertised == versionCode(installed)
@@ -419,9 +419,7 @@ final class Updater {
     private static void settle(Context app, UpdateCadence.Trigger trigger, String message, Release release) {
         show(app, message);
         String state = message + " (installed " + version(app) + "; newest feed "
-                + release.json.optString("versionName", "?") + " via "
-                + (release.channel == UpdatePolicy.Channel.REPO ? "GitHub" : "Render") + "; GitHub "
-                + GitHubConnect.state(app).name().toLowerCase(java.util.Locale.US) + ")";
+                + release.json.optString("versionName", "?") + " via Render)";
         if (trigger.manual()) {
             DiagnosticLog.logAndRemember(app, "update", "result", state, "");
             resetCadence(app);
@@ -452,39 +450,9 @@ final class Updater {
         }
     }
 
-    /**
-     * The newest release among the channels that answered: Render always, and the repository while GitHub is
-     * connected. A tie goes to the first (Render).
-     *
-     * @throws Exception the first channel's failure when none answered
-     */
+    /** The public, accountless signed release feed. */
     private static Release newestRelease(Context app, long now, boolean manual) throws Exception {
-        Release render = null;
-        Release repo = null;
-        Exception renderError = null;
-        Exception repoError = null;
-        try {
-            render = fetchRelease(UpdatePolicy.Channel.RENDER, UpdatePolicy.FEED + "?t=" + now, null);
-        } catch (Exception error) {
-            renderError = error;
-        }
-        if (GitHubConnect.configured()) {
-            try {
-                String token = GitHubConnect.token(app);
-                if (token != null) repo = fetchRelease(UpdatePolicy.Channel.REPO, UpdatePolicy.REPO_FEED, token);
-            } catch (Exception error) {
-                repoError = error;
-                // An automatic check carries it in its result (the caveat), unless Render failed too.
-                if (manual || render == null) {
-                    DiagnosticLog.log(app, "update", "repository feed failed: " + error.getClass().getSimpleName());
-                }
-            }
-        }
-        Release newest = newer(render, repo);
-        if (newest == null) throw renderError != null ? renderError : repoError;
-        if (repoError != null) newest.caveat = " (GitHub not reachable: " + repoError.getMessage() + ")";
-        else if (renderError != null && newest.channel == UpdatePolicy.Channel.REPO) newest.caveat = " (from GitHub)";
-        return newest;
+        return fetchRelease(UpdatePolicy.Channel.RENDER, UpdatePolicy.FEED + "?t=" + now, null);
     }
 
     /** The one with the higher version code; {@code first} on a tie; null only when both are null. */
@@ -517,7 +485,7 @@ final class Updater {
         File part = new File(apk.getParentFile(), "download.apk");
         try {
             status(app, "Downloading " + release.json.getString("versionName")
-                    + (release.channel == UpdatePolicy.Channel.REPO ? " from GitHub…" : "…"));
+                    + "…");
             try (OutputStream out = new FileOutputStream(part)) {
                 UpdateTransport.download(release.channel, release.json.getString("apkUrl"), release.token, out,
                         release.json.getLong("size"));

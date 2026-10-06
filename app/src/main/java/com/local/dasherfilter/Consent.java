@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 13;
+    static final int VERSION = 14;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -36,13 +36,12 @@ final class Consent {
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
-                + "have no age-based expiry. Up to 30 queued reports can remain pending until sent or discarded. "
-                + "A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling 24-hour window; these are not shared. "
-                + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. Recognized payment, account and "
-                + "earnings screens are discarded. Text masking can miss details; notes you type in reports are not masked. "
-                + "Reports leave only when you turn them on or share them, after accepting this notice. Reports sent to the developer's "
-                + "private GitHub repository may be reviewed with Anthropic's Claude or OpenAI's ChatGPT/Codex; clearing this phone "
-                + "does not erase sent copies. Privacy explains update requests, place lookups and map links you open."},
+                + "have no age-based expiry. A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling "
+                + "24-hour window; these are not shared. Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
+                + "Recognized payment, account and earnings screens are discarded. End-user GitHub sign-in and automatic report sharing are "
+                + "retired. Feedback is accountless and leaves only when you tap Send; masked diagnostics are attached only when you explicitly "
+                + "choose them. The feedback service keeps submitted feedback for up to 90 days. Network providers still receive normal "
+                + "connection metadata, and text masking can miss details. Privacy explains updates, feedback, place lookups and map links."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
@@ -62,7 +61,6 @@ final class Consent {
         prefs(context).edit().putInt(ACCEPTED_VERSION, VERSION).putLong(ACCEPTED_AT, System.currentTimeMillis())
                 .commit();
         ConsentReminder.cancel(context);
-        ReportOutbox.consented(context);
         DiagnosticLog.log(context, "consent", "notice " + VERSION + " accepted; screen reading and background offers "
                 + "may act");
     }
