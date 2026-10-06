@@ -2069,7 +2069,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         try {
             startActivity(intent);
         } catch (RuntimeException error) {
-            toast("Android could not open this screen: " + error.getClass().getSimpleName());
+            // Plain words for the user; the detail goes to the log (BETA-20).
+            DiagnosticLog.log(this, "ui", "Android could not open " + intent.getAction() + ": "
+                    + error.getClass().getSimpleName());
+            toast("Android couldn't open that screen.");
         }
     }
 
@@ -2145,7 +2148,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             text = ui.text(problem, 15, ui.ink, false);
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
-            row.addView(ui.text(action, 15, ui.accent, true));
+            // Link ink: the accent itself read at 3.6:1 on the night sky (BETA-21).
+            row.addView(ui.text(action, 15, ui.link, true));
             parent.addView(row, Ui.matchWidth());
         }
 

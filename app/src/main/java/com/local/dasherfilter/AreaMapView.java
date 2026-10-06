@@ -51,9 +51,9 @@ final class AreaMapView extends View {
             + "Dashed squares need more measured offers.\n\n"
             + "You: the phone’s latest available location. The dotted trail points toward #1; it is not a road "
             + "route. North is up and the scale shows straight-line distance.\n\n"
-            + "Tap a square for its rate and sample count. Tap its details below the atlas to open Maps. "
+            + "Tap a square for its rate and sample count. Tap its details below the map to open Maps. "
             + "This is recorded offer history, not earnings or a prediction of future offers. It does not "
-            + "supply the hotspot spoke.";
+            + "measure hotspot distance.";
 
     private final Ui ui;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -242,11 +242,11 @@ final class AreaMapView extends View {
     }
 
     private String spokenKey() {
-        return "Offer atlas: phone areas when offers arrived, not pickups, final stops or Dasher hotspots. "
+        return "Offer map: phone areas when offers arrived, not pickups, final stops or Dasher hotspots. "
                 + "Deeper gold means higher total offered pay divided by total offer miles. "
                 + "Numbers 1 to 3 rank the best sampled areas. Dashed squares have fewer than " + AreaMap.MIN_OFFERS
                 + " offers with pay and miles. The blue dot is You; the dotted trail points toward number 1, "
-                + "not a road route. North is up. Recorded history, not a prediction. Use Explain atlas for the key.";
+                + "not a road route. North is up. Recorded history, not a prediction. Use Explain offer map for the key.";
     }
 
     /** Whatever the page gives it on one screen; asked with no limit, the least it reads well at. */
@@ -462,7 +462,7 @@ final class AreaMapView extends View {
 
     /** Shared by the visible info target and the screen-reader action. */
     void explainAtlas() {
-        OwnWindowTouches.show(new AlertDialog.Builder(getContext()).setTitle("Reading the atlas").setMessage(HELP)
+        OwnWindowTouches.show(new AlertDialog.Builder(getContext()).setTitle("Reading the offer map").setMessage(HELP)
                 .setPositiveButton("Got it", null));
     }
 
@@ -473,7 +473,7 @@ final class AreaMapView extends View {
 
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
-        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(EXPLAIN_ATLAS, "Explain atlas"));
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(EXPLAIN_ATLAS, "Explain offer map"));
     }
 
     @Override public boolean performAccessibilityAction(int action, Bundle arguments) {

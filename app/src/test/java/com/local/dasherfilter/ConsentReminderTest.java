@@ -60,7 +60,7 @@ public class ConsentReminderTest extends AndroidAdapterTestBase {
             assertNotNull(reminder);
             assertEquals(AppName.NAME + " is paused until you open it",
                     reminder.extras.getString(Notification.EXTRA_TITLE));
-            assertEquals("Tap to review and keep auto-declining.",
+            assertEquals("Tap to review and resume filtering.",
                     String.valueOf(reminder.extras.getCharSequence(Notification.EXTRA_TEXT)));
             assertTrue("it alerts only once", (reminder.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0);
             assertEquals(ConsentReminder.CHANNEL_ID, reminder.getChannelId());

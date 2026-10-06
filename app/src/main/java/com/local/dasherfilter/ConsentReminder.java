@@ -27,7 +27,8 @@ final class ConsentReminder {
     /** In {@link Consent#PREFS}: the notice version the reminder was last posted for. */
     static final String REMINDED_VERSION = "reminded_version";
     static final String TITLE = AppName.NAME + " is paused until you open it";
-    static final String TEXT = "Tap to review and keep auto-declining.";
+    /** Also for someone who never turned filtering on: what waits is the notice, then filtering as it was. */
+    static final String TEXT = "Tap to review and resume filtering.";
 
     /** Whether "notifications are off" was logged in this process, so each connect and offer does not log it again. */
     private static volatile boolean unavailableLogged;
