@@ -78,7 +78,7 @@ public final class AddOnOfferTest {
     public void missingRouteDoesNotTurnAddOnIntoStandaloneOffer() {
         AddOnOffer addOn = AddOnOffer.parse(null, Arrays.asList("Add to route", "+$5.00", "+2 mi"));
         assertNull(addOn.combined.payCents);
-        FilterSettings settings = new FilterSettings(true, 2000, 100, 0, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 2000, 100, 0, 0);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, settings).result);
     }
 }

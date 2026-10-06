@@ -6,24 +6,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * An offer's constellation against the minimums' constellation. The monetary spokes have ratios pay / the
- * cents each floor asks of this offer, including the existing adaptive floors. Hotspot proximity is independent of
- * pay: (1 / final-stop distance in miles) / (minimum reciprocal miles), or 100 / (hundredths × miles). It is never a
- * fabricated pay floor. Pay per item is a monetary spoke with fixed and accepted-rate floors; original learned floors are unchanged.
+ * What an offer's minimums ask of it, exactly (0.5.0), plus the constellation's stable axis geometry.
  *
- * <p>Spokes retain their original angles, with hotspot proximity between pay and per mile. Neighboring active points
- * are joined in {@link #DRAW_ORDER}. An empty clockwise sector of at least 180 degrees closes through the center,
- * rather than contributing a negative triangle: the rendered polygon and this score share that rule. All remaining
- * sectors are 60 or 120 degrees, whose sines are equal. The squared score is therefore the sum of neighboring ratio
- * products divided by the number of contributing pairs. As before, one active spoke uses its ratio and two use their
- * geometric mean (including the old opposite-spoke case, whose drawn line has no literal area).
+ * <p>The requirement at 100% is {@code R100 = max(flat, per mile × miles, per minute × minutes)} over the money
+ * minimums that are set, worked in exact decimals ({@code miles} is taken at its decimal value). At bar σ an offer
+ * needs {@code ⌈σ·R100 ÷ 100⌉} whole cents ({@link #roundedCents}: one rounding, after scaling). Its score is
+ * {@code ⌊100·pay ÷ R100⌋}, "pay as a percent of what your minimums ask"; for an integer bar σ,
+ * {@code pay ≥ ⌈σ·R100 ÷ 100⌉ ⟺ 100·pay ≥ σ·R100 ⟺ score ≥ σ}, so a shown score never claims a cutoff the offer
+ * missed. A known zero distance or time asks nothing (the established strict zero-route rule); unknown is not zero.
  *
- * <p>With item and hotspot proximity off, all original four-spoke scores and adaptive comparisons are unchanged.
- * With item off, existing five-spoke scores also stay unchanged. With hotspot proximity on,
- * the area is quadratic plus linear in pay, not proportional to pay squared. Threshold decisions and required pay
- * use exact decimal products, never a rounded display score. A known zero final-stop distance has infinite proximity;
- * a mixed pair with a zero-length monetary spoke contributes zero area even then. This makes zero pay's degenerate
- * polygon well-defined without inventing an epsilon distance or disguising a known zero as missing.
+ * <p>The axis indexes, angles and drawn order stay as drawing geometry only. Stop, hotspot and item are retired as
+ * rules; their indexes stay reserved. The old area-score functions ({@link Floors} and its helpers) are deprecated:
+ * no decision calls them.
  */
 final class AreaScore {
     static final int PAY = 0;
@@ -39,179 +33,102 @@ final class AreaScore {
     static final float[] ANGLES = {SPREAD - 180, -SPREAD, SPREAD, 180 - SPREAD, -90, 90};
     /** Stable axis indexes in clockwise drawn order. */
     static final int[] DRAW_ORDER = {PAY, HOTSPOT, MILE, MINUTE, ITEM, STOP};
-    /** A pay requirement past this many cents ($10 billion) is out of reach, answered as {@code Long.MAX_VALUE}. */
-    private static final long OUT_OF_REACH = 1_000_000_000_000L;
+    /** The money axes, in the order a tie between their asks is named. */
+    private static final int[] MONEY_AXES = {PAY, MILE, MINUTE};
 
-    /** What each spoke asks of one offer. */
-    static final class Floors {
-        /** Monetary floors only; null where off/unread, and always null for the independent hotspot spoke. */
-        final BigDecimal[] cents = new BigDecimal[AXES];
-        /** Exact fixed costs, and the established whole-cent accepted/declined costs; null if absent or unread. */
-        final BigDecimal[] fixedCents = new BigDecimal[AXES];
-        final BigDecimal[] acceptedCents = new BigDecimal[AXES];
-        final BigDecimal[] declinedCents = new BigDecimal[AXES];
-        /** Learned components remain available for the drawing while this switch gates their effect. */
-        private boolean adaptive;
+    // ---- The exact requirement ----
 
-        /** A resolved cost before global scaling. No floor and an unread floor both project to zero here. */
-        BigDecimal effectiveCents(int axis) {
-            BigDecimal result = BigDecimal.ZERO;
-            if (fixedCents[axis] != null) result = result.max(fixedCents[axis]);
-            if (adaptive && acceptedCents[axis] != null) result = result.max(acceptedCents[axis]);
-            if (adaptive && declinedCents[axis] != null) result = result.max(declinedCents[axis]);
-            return result;
+    /** What the money minimums ask of one offer at 100%, exactly. */
+    static final class Asks {
+        /** The highest ask among the set minimums whose quantity was read; null when none is set or none was read. */
+        final BigDecimal known;
+        /** The first axis (pay, per mile, per minute) whose ask equals {@link #known}; -1 when it is null. */
+        final int axis;
+        /** A set rate minimum's quantity (miles or minutes) was not read. */
+        final boolean missing;
+
+        private Asks(BigDecimal known, int axis, boolean missing) {
+            this.known = known;
+            this.axis = axis;
+            this.missing = missing;
         }
 
-        /** Existing whole-cent UI/closest-learning projection; the exact score floor itself is never rounded. */
-        long wholeCents(int axis) {
-            return roundedCents(effectiveCents(axis), 100);
+        /** R100: the highest ask once every set minimum was read; null otherwise, or with no money minimum. */
+        BigDecimal complete() {
+            return missing ? null : known;
         }
 
-        /** Resolve first, scale once, then round up; fixed-only is used for a ceiling on unread pay. */
-        long scaledCents(int axis, int scale, boolean fixedOnly) {
-            BigDecimal amount = fixedOnly ? fixedCents[axis] : effectiveCents(axis);
-            if (!fixedOnly && adaptive && (isSaturated(acceptedCents[axis]) || isSaturated(declinedCents[axis]))) {
-                return Long.MAX_VALUE;
-            }
-            return amount == null ? 0 : roundedCents(amount, scale);
-        }
-
-        /** A learned overflow remains unreachable even when the global scale is below 100%. */
-        private static boolean isSaturated(BigDecimal amount) {
-            return amount != null && amount.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) >= 0;
-        }
-
-        /** Whether a known independent proximity meets the same global cutoff used by every other spoke. */
-        boolean hotspotReaches(int scale) {
-            return hotspotDenominator != null && BigDecimal.valueOf(100)
-                    .compareTo(hotspotDenominator.multiply(BigDecimal.valueOf(scale))) >= 0;
-        }
-        /** Reciprocal of the hotspot ratio: minimum reciprocal miles × final-stop miles; null unread, 0 at hotspot. */
-        BigDecimal hotspotDenominator;
-        /** Per spoke: some minimum is on there (a set one, or an adaptive one that applies). */
-        final boolean[] active = new boolean[AXES];
-
-        /** Some spoke has a minimum. */
-        boolean anyActive() {
-            for (boolean on : active) if (on) return true;
-            return false;
-        }
-
-        /** At least one active spoke depends on pay; a proximity-only rule does not need pay read. */
-        boolean needsPay() {
-            return active[PAY] || active[MILE] || active[MINUTE] || active[STOP] || active[ITEM];
-        }
-
-        /** Every active spoke's amount was read, so the score can be worked out from pay when pay is needed. */
-        boolean readable() {
-            for (int i = 0; i < AXES; i++) {
-                if (active[i] && (i == HOTSPOT ? hotspotDenominator == null : cents[i] == null)) return false;
-            }
-            return true;
-        }
-
-        /** The active spokes, in drawn order. */
-        int[] activeAxes() {
-            int count = 0;
-            for (boolean on : active) if (on) count++;
-            int[] axes = new int[count];
-            int at = 0;
-            for (int axis : DRAW_ORDER) if (active[axis]) axes[at++] = axis;
-            return axes;
+        /** The score of {@code payCents} against these asks ({@link #scorePercent}); -1 when there is none. */
+        int score(Integer payCents) {
+            BigDecimal required = complete();
+            if (payCents == null || required == null || required.signum() == 0) return -1;
+            return floorPercent(payCents, required);
         }
     }
 
-    /** Which spokes have a minimum under {@code rules}: a set one, or (adaptive minimum on) a learned one. */
-    static boolean[] active(FilterSettings rules) {
-        boolean adaptive = rules.risingOffers;
-        AcceptedBest best = rules.best;
-        AcceptedBest declined = rules.declined.rates;
-        return new boolean[] {
-                rules.flatCents > 0 || (adaptive && (rules.lastAcceptedCents > 0 || rules.declined.payCents > 0)),
-                rules.perMileCents > 0 || (adaptive && (best.hasPerMile() || declined.hasPerMile())),
-                rules.perMinuteCents > 0 || (adaptive && (best.hasPerMinute() || declined.hasPerMinute())),
-                rules.perStopCents > 0 || (adaptive && (best.hasPerStop() || declined.hasPerStop())),
-                rules.hotspotProximityHundredths > 0, rules.perItemCents > 0 || (adaptive && best.hasPerItem())};
+    /** The money minimums' asks of {@code offer} at 100%. */
+    static Asks asks(FilterSettings rules, OfferSnapshot offer) {
+        int[] minimums = rules.minimums();
+        BigDecimal known = null;
+        int axis = -1;
+        boolean missing = false;
+        for (int money : MONEY_AXES) {
+            if (minimums[money] <= 0) continue;
+            BigDecimal ask = fixedFloor(money, minimums[money], offer);
+            if (ask == null) {
+                missing = true;
+            } else if (known == null || ask.compareTo(known) > 0) {
+                known = ask;
+                axis = money;
+            }
+        }
+        return new Asks(known, axis, missing);
     }
 
     /**
-     * The floors {@code rules} put on {@code offer}'s spokes. Scoring requires positive route miles/time and a
-     * plausible stop count; strict components preserve their existing zero-route policy. Item cost applies only
-     * with explicit item/shopping evidence and needs a positive observed count. Final-stop-to-hotspot distance is
-     * independent: a known zero makes proximity infinite; a missing distance keeps that active spoke unread.
+     * R100, the exact cents the money minimums ask at 100%: null when a set minimum's quantity (miles or minutes) was
+     * not read, or no money minimum is set.
      */
-    static Floors floors(FilterSettings rules, OfferSnapshot offer) {
-        return floors(rules, offer, false);
+    static BigDecimal required100(FilterSettings rules, OfferSnapshot offer) {
+        return asks(rules, offer).complete();
     }
 
-    /** The same fixed costs for explicitly added amounts; no flat, learned, or final-stop proximity constraint. */
-    static Floors incrementalFloors(FilterSettings rules, OfferSnapshot added) {
-        return floors(rules.withoutRisingBaseline(), added, true);
+    /** The highest ask among the set money minimums whose quantity was read: a partial R100; null when none. */
+    static BigDecimal knownRequired100(FilterSettings rules, OfferSnapshot offer) {
+        return asks(rules, offer).known;
     }
 
-    private static Floors floors(FilterSettings rules, OfferSnapshot offer, boolean incremental) {
-        Floors floors = new Floors();
-        boolean[] active = active(rules);
-        active[ITEM] &= offer.itemCountApplicable;
-        if (incremental) {
-            active[PAY] = false;
-            active[HOTSPOT] = false;
-        }
-        System.arraycopy(active, 0, floors.active, 0, AXES);
-        floors.adaptive = rules.risingOffers && !incremental;
-        boolean showLearned = !incremental;
-        AcceptedBest best = rules.best;
-        DeclinedFloor declined = rules.declined;
-        int[] minimums = rules.minimums();
-        for (int axis : new int[] {PAY, MILE, MINUTE, STOP, ITEM}) {
-            floors.fixedCents[axis] = fixedFloor(axis, minimums[axis], offer, incremental);
-        }
-        if (!incremental) {
-            if (rules.lastAcceptedCents > 0) {
-                floors.acceptedCents[PAY] = BigDecimal.valueOf(rules.lastAcceptedCents + 1L);
-            }
-            if (declined.payCents > 0) floors.declinedCents[PAY] = BigDecimal.valueOf(declined.beatPay());
-        }
-        if (offer.miles != null) {
-            double miles = offer.miles;
-            if (showLearned && best.hasPerMile()) floors.acceptedCents[MILE] = BigDecimal.valueOf(best.forMiles(miles));
-            if (showLearned && declined.rates.hasPerMile()) {
-                floors.declinedCents[MILE] = BigDecimal.valueOf(declined.beatMiles(miles));
-            }
-        }
-        if (offer.minutes != null) {
-            int minutes = offer.minutes;
-            if (showLearned && best.hasPerMinute()) {
-                floors.acceptedCents[MINUTE] = BigDecimal.valueOf(best.forMinutes(minutes));
-            }
-            if (showLearned && declined.rates.hasPerMinute()) {
-                floors.declinedCents[MINUTE] = BigDecimal.valueOf(declined.beatMinutes(minutes));
-            }
-        }
-        if (offer.stops != null && offer.stops >= (incremental ? 0 : AcceptedBest.PLAUSIBLE_STOPS)) {
-            int stops = offer.stops;
-            if (showLearned && best.hasPerStop()) floors.acceptedCents[STOP] = BigDecimal.valueOf(best.forStops(stops));
-            if (showLearned && declined.rates.hasPerStop()) {
-                floors.declinedCents[STOP] = BigDecimal.valueOf(declined.beatStops(stops));
-            }
-        }
-        if (showLearned && best.hasPerItem() && offer.itemCountApplicable && offer.items != null) {
-            floors.acceptedCents[ITEM] = BigDecimal.valueOf(best.forItems(offer.items));
-        }
-        for (int axis = 0; axis < AXES; axis++) {
-            if (!active[axis] || axis == HOTSPOT) continue;
-            boolean read = floors.fixedCents[axis] != null || floors.acceptedCents[axis] != null
-                    || floors.declinedCents[axis] != null;
-            // Preserve the existing policy: strict can price zero route units, but area does not score their ratios.
-            if (axis == MILE && offer.miles != null && offer.miles == 0) read = false;
-            if (axis == MINUTE && offer.minutes != null && offer.minutes == 0) read = false;
-            if (read) floors.cents[axis] = floors.effectiveCents(axis);
-        }
-        if (active[HOTSPOT] && offer.finalStopHotspotMiles != null) {
-            floors.hotspotDenominator = BigDecimal.valueOf(rules.hotspotProximityHundredths)
-                    .multiply(BigDecimal.valueOf(offer.finalStopHotspotMiles)).movePointLeft(2);
-        }
-        return floors;
+    /**
+     * θ, the largest bar at which {@code offer} is not declined: {@code θ ≥ σ ⟺ OfferRule.evaluate(offer,
+     * rules.withMinimumScalePercent(σ)).result ≠ DECLINE} for every integer bar σ. 0 above max stops;
+     * {@code Integer.MAX_VALUE} when pay is unread (and no "+$" ceiling proves less), when no read minimum asks
+     * anything, or when the asks are 0; otherwise {@code ⌊100·pay ÷ R_known⌋}. A "+$" ceiling C on unread pay declines
+     * only below {@code min(σ, 100)}, so it gives {@code ⌊100·C ÷ R_known⌋} when that is under 100 and
+     * {@code Integer.MAX_VALUE} otherwise. For a complete offer within max stops, θ is the score.
+     */
+    static int passThreshold(FilterSettings rules, OfferSnapshot offer) {
+        if (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops) return 0;
+        if (!rules.hasMonetaryRule()) return Integer.MAX_VALUE;
+        BigDecimal known = knownRequired100(rules, offer);
+        if (known == null || known.signum() == 0) return Integer.MAX_VALUE;
+        if (offer.payCents != null) return floorPercent(offer.payCents, known);
+        if (offer.payAtMostCents == null) return Integer.MAX_VALUE;
+        int ceiling = floorPercent(offer.payAtMostCents, known);
+        return ceiling >= 100 ? Integer.MAX_VALUE : ceiling;
+    }
+
+    /**
+     * The score: {@code ⌊100·pay ÷ R100⌋} as a whole percent of what the minimums ask; -1 when pay is unread, a set
+     * minimum's quantity was not read, no money minimum is set, or R100 is 0. Max stops never changes it.
+     */
+    static int scorePercent(FilterSettings rules, OfferSnapshot offer) {
+        return asks(rules, offer).score(offer.payCents);
+    }
+
+    /** {@code ⌊100·cents ÷ required⌋}, exactly, held to {@code Integer.MAX_VALUE}; {@code required} must be positive. */
+    private static int floorPercent(long cents, BigDecimal required) {
+        BigDecimal percent = BigDecimal.valueOf(cents).movePointRight(2).divide(required, 0, RoundingMode.FLOOR);
+        return percent.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) >= 0 ? Integer.MAX_VALUE : percent.intValue();
     }
 
     /** An exact fixed monetary component, shared with knob previews; null when off, unread or inapplicable. */
@@ -226,15 +143,15 @@ final class AreaScore {
             case MILE: return offer.miles == null ? null
                     : BigDecimal.valueOf(rate).multiply(BigDecimal.valueOf(offer.miles));
             case MINUTE: return offer.minutes == null ? null : BigDecimal.valueOf((long) rate * offer.minutes);
-            case STOP: return offer.stops == null || offer.stops < (incremental ? 0 : AcceptedBest.PLAUSIBLE_STOPS)
+            case STOP: return offer.stops == null || offer.stops < (incremental ? 0 : OfferSanity.PLAUSIBLE_STOPS)
                     ? null : BigDecimal.valueOf((long) rate * offer.stops);
             case ITEM: return !offer.itemCountApplicable || offer.items == null ? null
                     : BigDecimal.valueOf((long) rate * offer.items);
-            default: return null; // Proximity is independent of pay and has no fabricated monetary cost.
+            default: return null;
         }
     }
 
-    /** Exact cost projection shared by strict requirements, display and the established closest-floor lesson. */
+    /** {@code ⌈cents × scale ÷ 100⌉}: exact scaling, then one rounding up to whole cents; saturates at Long.MAX_VALUE. */
     static long roundedCents(BigDecimal cents, int scale) {
         try {
             return cents.multiply(BigDecimal.valueOf(scale)).movePointLeft(2)
@@ -253,7 +170,7 @@ final class AreaScore {
         return gap >= 180;
     }
 
-    /** The contributing neighbors, in drawn order; one pair for the existing two-spoke fallback. */
+    /** The contributing neighbors, in drawn order; one pair for the two-spoke fallback. */
     static List<int[]> pairs(int[] axes) {
         List<int[]> pairs = new ArrayList<>();
         int[] ordered = new int[axes.length];
@@ -277,22 +194,120 @@ final class AreaScore {
         return pairs;
     }
 
-    /** Each independent normalized spoke value (NaN where off or unread); proximity never changes with pay. */
+    /** The score of {@code offer} under {@code rules}: {@link #scorePercent}. */
+    static int percent(FilterSettings rules, OfferSnapshot offer) {
+        return scorePercent(rules, offer);
+    }
+
+    /** "Score 121%". */
+    static String label(int percent) {
+        return "Score " + percent + "%";
+    }
+
+    // ---- Retired area score (deprecated: drawing only until its last callers go; no decision calls it) ----
+
+    /** What each money spoke asks of one offer: fixed costs only (nothing is learned any more). */
+    @Deprecated
+    static final class Floors {
+        /** Where a spoke's amount was read (null where off or unread; a zero route is not scored here). */
+        final BigDecimal[] cents = new BigDecimal[AXES];
+        /** The exact fixed costs; null if absent or unread. */
+        final BigDecimal[] fixedCents = new BigDecimal[AXES];
+        /** Retired learned costs: always null. */
+        final BigDecimal[] acceptedCents = new BigDecimal[AXES];
+        final BigDecimal[] declinedCents = new BigDecimal[AXES];
+        /** Per spoke: a minimum is set there. */
+        final boolean[] active = new boolean[AXES];
+
+        /** A fixed cost before scaling; no floor and an unread floor both project to zero here. */
+        BigDecimal effectiveCents(int axis) {
+            return fixedCents[axis] == null ? BigDecimal.ZERO : fixedCents[axis];
+        }
+
+        /** Whole-cent projection for display. */
+        long wholeCents(int axis) {
+            return roundedCents(effectiveCents(axis), 100);
+        }
+
+        /** Scale once, then round up; 0 where there is no fixed cost. */
+        long scaledCents(int axis, int scale, boolean fixedOnly) {
+            return fixedCents[axis] == null ? 0 : roundedCents(fixedCents[axis], scale);
+        }
+
+        boolean anyActive() {
+            for (boolean on : active) if (on) return true;
+            return false;
+        }
+
+        boolean needsPay() {
+            return anyActive();
+        }
+
+        /** Every active spoke's amount was read. */
+        boolean readable() {
+            for (int i = 0; i < AXES; i++) if (active[i] && cents[i] == null) return false;
+            return true;
+        }
+
+        /** The active spokes, in drawn order. */
+        int[] activeAxes() {
+            int count = 0;
+            for (boolean on : active) if (on) count++;
+            int[] axes = new int[count];
+            int at = 0;
+            for (int axis : DRAW_ORDER) if (active[axis]) axes[at++] = axis;
+            return axes;
+        }
+    }
+
+    /** Which spokes have a minimum under {@code rules}: pay, per mile and per minute only. */
+    @Deprecated
+    static boolean[] active(FilterSettings rules) {
+        return new boolean[] {rules.flatCents > 0, rules.perMileCents > 0, rules.perMinuteCents > 0,
+                false, false, false};
+    }
+
+    /** The fixed floors {@code rules} put on {@code offer}'s spokes; a zero distance or time is not scored here. */
+    @Deprecated
+    static Floors floors(FilterSettings rules, OfferSnapshot offer) {
+        return floors(rules, offer, false);
+    }
+
+    /** The same fixed costs for explicitly added amounts; no flat constraint. */
+    @Deprecated
+    static Floors incrementalFloors(FilterSettings rules, OfferSnapshot added) {
+        return floors(rules, added, true);
+    }
+
+    private static Floors floors(FilterSettings rules, OfferSnapshot offer, boolean incremental) {
+        Floors floors = new Floors();
+        boolean[] active = active(rules);
+        if (incremental) active[PAY] = false;
+        System.arraycopy(active, 0, floors.active, 0, AXES);
+        int[] minimums = rules.minimums();
+        for (int axis : MONEY_AXES) {
+            floors.fixedCents[axis] = fixedFloor(axis, minimums[axis], offer, incremental);
+            if (!active[axis] || floors.fixedCents[axis] == null) continue;
+            if (axis == MILE && offer.miles != null && offer.miles == 0) continue;
+            if (axis == MINUTE && offer.minutes != null && offer.minutes == 0) continue;
+            floors.cents[axis] = floors.fixedCents[axis];
+        }
+        return floors;
+    }
+
+    /** Each normalized spoke value, pay ÷ its floor (NaN where off or unread). */
+    @Deprecated
     static double[] ratios(Floors floors, long payCents) {
         double[] ratios = new double[AXES];
         for (int i = 0; i < AXES; i++) {
-            if (!floors.active[i]) ratios[i] = Double.NaN;
-            else if (i == HOTSPOT) {
-                BigDecimal denominator = floors.hotspotDenominator;
-                ratios[i] = denominator == null ? Double.NaN : denominator.signum() == 0
-                        ? Double.POSITIVE_INFINITY
-                        : BigDecimal.ONE.divide(denominator, java.math.MathContext.DECIMAL64).doubleValue();
-            } else ratios[i] = floors.cents[i] == null ? Double.NaN : payCents / floors.cents[i].doubleValue();
+            ratios[i] = !floors.active[i] || floors.cents[i] == null ? Double.NaN
+                    : payCents / floors.cents[i].doubleValue();
         }
         return ratios;
     }
 
-    /** The score at {@code payCents}, 1 being the minimums' area; NaN when no spoke is active or one is unread. */
+    /** The retired area score at {@code payCents}, 1 being the minimums' area; NaN when not computable. */
+    @Deprecated
     static double score(Floors floors, long payCents) {
         if (!floors.anyActive() || !floors.readable() || payCents < 0) return Double.NaN;
         int[] axes = floors.activeAxes();
@@ -300,51 +315,37 @@ final class AreaScore {
         if (axes.length == 1) return r[axes[0]];
         List<int[]> pairs = pairs(axes);
         double area = 0;
-        for (int[] pair : pairs) {
-            double left = r[pair[0]], right = r[pair[1]];
-            // A collapsed monetary radius contributes no triangle, including beside infinite proximity.
-            if (left != 0 && right != 0) area += left * right;
-        }
+        for (int[] pair : pairs) area += r[pair[0]] * r[pair[1]];
         return Math.sqrt(area / pairs.size());
     }
 
-    /**
-     * Whether the score reaches 100%, exactly. Each monetary ratio is pay / cents; proximity is 1 / its independent
-     * denominator. Sum pair products by multiplying through their positive denominators, with no decimal division.
-     */
+    /** Whether the retired area score reaches 100%, exactly. */
+    @Deprecated
     static boolean reaches(Floors floors, long payCents) {
         return reaches(floors, payCents, 100);
     }
 
-    /** Whether raw fitness reaches the selected percent, with no rounding at the decision boundary. */
+    /** Whether the retired area score reaches the percent, exactly (cross-multiplied, no decimal division). */
+    @Deprecated
     static boolean reaches(Floors floors, long payCents, int minimumScalePercent) {
         if (!floors.anyActive() || !floors.readable() || payCents < 0) return false;
         int[] axes = floors.activeAxes();
         BigDecimal pay = BigDecimal.valueOf(payCents);
         if (axes.length == 1) {
-            BigDecimal scale = BigDecimal.valueOf(minimumScalePercent);
-            return axes[0] == HOTSPOT
-                    ? floors.hotspotReaches(minimumScalePercent)
-                    : pay.multiply(BigDecimal.valueOf(100)).compareTo(floors.cents[axes[0]].multiply(scale)) >= 0;
+            return pay.multiply(BigDecimal.valueOf(100))
+                    .compareTo(floors.cents[axes[0]].multiply(BigDecimal.valueOf(minimumScalePercent))) >= 0;
         }
         List<int[]> pairs = pairs(axes);
-        if (payCents == 0) return false; // Every pair contains at least one zero-length monetary radius.
         BigDecimal[] denominators = new BigDecimal[pairs.size()];
-        BigDecimal[] numerators = new BigDecimal[pairs.size()];
         BigDecimal all = BigDecimal.ONE;
         for (int p = 0; p < pairs.size(); p++) {
-            int left = pairs.get(p)[0], right = pairs.get(p)[1];
-            boolean hotspot = left == HOTSPOT || right == HOTSPOT;
-            BigDecimal leftDenominator = left == HOTSPOT ? floors.hotspotDenominator : floors.cents[left];
-            BigDecimal rightDenominator = right == HOTSPOT ? floors.hotspotDenominator : floors.cents[right];
-            denominators[p] = leftDenominator.multiply(rightDenominator);
-            if (denominators[p].signum() == 0) return true; // Known hotspot, nonzero monetary neighbor: infinite area.
-            numerators[p] = hotspot ? pay : pay.multiply(pay);
+            denominators[p] = floors.cents[pairs.get(p)[0]].multiply(floors.cents[pairs.get(p)[1]]);
+            if (denominators[p].signum() == 0) return payCents > 0;
             all = all.multiply(denominators[p]);
         }
         BigDecimal sum = BigDecimal.ZERO;
         for (int p = 0; p < pairs.size(); p++) {
-            BigDecimal others = numerators[p];
+            BigDecimal others = pay.multiply(pay);
             for (int q = 0; q < pairs.size(); q++) if (q != p) others = others.multiply(denominators[q]);
             sum = sum.add(others);
         }
@@ -352,73 +353,42 @@ final class AreaScore {
                 .multiply(BigDecimal.valueOf((long) minimumScalePercent * minimumScalePercent))) >= 0;
     }
 
-    /**
-     * The least whole-cent pay that scores 100%; Long.MAX_VALUE when pay cannot satisfy the rules or exceeds the
-     * existing $10-billion bound. Zero means no pay is asked (or the active data is incomplete; callers must REVIEW).
-     * Unlike the original monetary-only score, proximity is independent of pay, so the general case uses an exact
-     * monotone search, not 1 / score(1 cent). A proximity-only rule either already passes at zero or no pay can fix it.
-     */
+    /** The least whole-cent pay whose retired area score reaches 100%. */
+    @Deprecated
     static long requiredPay(Floors floors) {
         return requiredPay(floors, 100);
     }
 
-    /** Least whole-cent pay meeting the selected fitness cutoff; the baselines themselves remain unscaled. */
+    /** The least whole-cent pay whose retired area score reaches the percent; Long.MAX_VALUE when out of reach. */
+    @Deprecated
     static long requiredPay(Floors floors, int minimumScalePercent) {
         if (!floors.anyActive() || !floors.readable()) return 0;
-        if (floors.active[HOTSPOT]) {
-            if (reaches(floors, 0, minimumScalePercent)) return 0;
-            if (!reaches(floors, OUT_OF_REACH, minimumScalePercent)) return Long.MAX_VALUE;
-            long low = 0, high = OUT_OF_REACH;
-            while (high - low > 1) {
-                long middle = low + (high - low) / 2;
-                if (reaches(floors, middle, minimumScalePercent)) high = middle;
-                else low = middle;
-            }
-            return high;
-        }
-        // Monetary-only fitness stays linear in pay. Preserve the original 100% estimate, then check exact cents;
-        // never scale an already-rounded required pay, which could add a cent at the new cutoff.
         double atOneCent = score(floors, 1);
         if (!(atOneCent > 0)) return Long.MAX_VALUE;
         double estimate = Math.ceil((minimumScalePercent / 100.0) / atOneCent);
-        if (estimate > OUT_OF_REACH) return Long.MAX_VALUE;
+        if (estimate > 1_000_000_000_000L) return Long.MAX_VALUE;
         long pay = (long) estimate;
         for (int i = 0; i < 8 && pay > 0 && reaches(floors, pay - 1, minimumScalePercent); i++) pay--;
         for (int i = 0; i < 8 && !reaches(floors, pay, minimumScalePercent); i++) pay++;
         return pay;
     }
 
-    /**
-     * The score at {@code payCents} as a whole percent, rounded to the nearest, but never 100 or more when it falls
-     * short of 100% nor under 100 when it reaches it; -1 when it cannot be worked out.
-     */
+    /** The retired area score as a whole percent; -1 when not computable. */
+    @Deprecated
     static int percent(Floors floors, long payCents) {
         return percent(floors, payCents, 100);
     }
 
-    /** Raw baseline fitness, rounded without ever displaying a failing value as reaching the selected cutoff. */
+    /** The retired area score as a whole percent, never shown as reaching a cutoff it misses; -1 when none. */
+    @Deprecated
     static int percent(Floors floors, long payCents, int minimumScalePercent) {
         double score = score(floors, payCents);
         if (Double.isNaN(score)) return -1;
-        long rounded = Math.round(Math.min(score * 100, Integer.MAX_VALUE));
-        int shown = (int) Math.min(Integer.MAX_VALUE, rounded);
-        // Preserve the original 100% baseline boundary as well as the selected cutoff: a 99.9% offer is still 99.
+        int shown = (int) Math.min(Integer.MAX_VALUE, Math.round(Math.min(score * 100, Integer.MAX_VALUE)));
         shown = reaches(floors, payCents) ? Math.max(100, shown) : Math.min(99, shown);
         if (minimumScalePercent == 100) return shown;
         return reaches(floors, payCents, minimumScalePercent)
                 ? Math.max(minimumScalePercent, shown) : Math.min(minimumScalePercent - 1, shown);
-    }
-
-    /** The score of {@code offer} under {@code rules} as a whole percent ({@link #percent}); -1 when not computable. */
-    static int percent(FilterSettings rules, OfferSnapshot offer) {
-        Floors floors = floors(rules, offer);
-        if (offer.payCents == null && floors.needsPay()) return -1;
-        return percent(floors, offer.payCents == null ? 0 : offer.payCents, rules.minimumScalePercent);
-    }
-
-    /** "Score 121%". */
-    static String label(int percent) {
-        return "Score " + percent + "%";
     }
 
     private AreaScore() {}
