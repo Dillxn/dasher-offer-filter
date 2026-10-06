@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 
 /** Legacy preferences stay off; fixed hotspot rules and numeric observations survive safe copies and persistence. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public final class HotspotSettingsTest {
     private Application app;
 

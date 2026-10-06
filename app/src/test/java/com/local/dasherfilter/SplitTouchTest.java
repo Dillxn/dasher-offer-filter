@@ -42,7 +42,7 @@ import static org.junit.Assert.assertTrue;
  * half, nothing logged where a touch landed, and Dasher's click after such a touch found no decline under way.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SplitTouchTest extends AndroidAdapterTestBase {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

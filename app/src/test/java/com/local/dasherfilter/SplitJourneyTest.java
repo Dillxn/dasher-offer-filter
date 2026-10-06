@@ -46,7 +46,7 @@ import static org.junit.Assert.assertTrue;
  * </ul>
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SplitJourneyTest extends AndroidAdapterTestBase {
     private static final Rect TOP_HALF = new Rect(0, 0, 1080, 1000);

@@ -66,7 +66,7 @@ import static org.junit.Assert.assertTrue;
  * and wait for it with {@code shadowOf(looper).idle()}; a "slow phone" is a window list that takes its time.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScannerThreadTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

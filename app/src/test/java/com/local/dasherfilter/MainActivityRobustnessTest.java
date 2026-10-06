@@ -30,7 +30,7 @@ import org.robolectric.shadows.ShadowAlertDialog;
 
 /** Lifecycle and setup recovery through the actual Activity, without a real share target or network. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
     @After public void resetBuilder() { ReportShare.builder = ReportShare.DIAGNOSTICS; }
@@ -188,7 +188,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 35)
+    @Test @Config(sdk = {35, 36})
     public void missingOemServiceDetailsFallsBackToThePublicAccessibilityList() {
         ComponentName settings = new ComponentName("android.settings", "android.settings.Accessibility");
         org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
@@ -209,7 +209,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 35)
+    @Test @Config(sdk = {35, 36})
     public void unsuccessfulAccessibilityVisitOffersRestrictedSettingsGuidanceOnlyOnTap() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
@@ -231,7 +231,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 35)
+    @Test @Config(sdk = {35, 36})
     public void notificationsDeniedWithoutAnotherPromptLeadToAppNotificationSettings() {
         Shadows.shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

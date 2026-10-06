@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
  * and Automatic updates switch cleared from older versions.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     /** The list row whose first line is {@code title}, or null. */

@@ -23,7 +23,7 @@ import static org.junit.Assert.assertNull;
  * play nothing.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MascotPlaysOffersTest extends AndroidAdapterTestBase {
     @Test

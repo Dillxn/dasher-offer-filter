@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
  * API is used, so this compiles, and fails, on the code before these steps were kept. Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceEvidenceTest {
     /** The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops. */

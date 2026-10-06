@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
 
 /** Abrupt process death and an OS refusing volume changes are different from a successful mute. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = OfferSilencerRecoveryTest.FaultAudioManager.class)
+@Config(sdk = {26, 35, 36}, shadows = OfferSilencerRecoveryTest.FaultAudioManager.class)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferSilencerRecoveryTest {
     private Application app;

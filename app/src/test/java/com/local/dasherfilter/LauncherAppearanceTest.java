@@ -34,7 +34,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 /** Launcher identity must survive changing color, interrupted switches, reboot and package replacement. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = LauncherAppearanceTest.Packages.class)
+@Config(sdk = {26, 35, 36}, shadows = LauncherAppearanceTest.Packages.class)
 public class LauncherAppearanceTest {
     private Application app;
     private PackageManager packages;
@@ -168,7 +168,7 @@ public class LauncherAppearanceTest {
         only(LauncherAppearance.NIGHT);
     }
 
-    @Test @Config(sdk = 35) public void failedAtomicSwitchLeavesThePreviousLauncherDiscoverable() throws Exception {
+    @Test @Config(sdk = {35, 36}) public void failedAtomicSwitchLeavesThePreviousLauncherDiscoverable() throws Exception {
         Packages.refuse = "atomic";
         assertFalse(LauncherAppearance.sync(app, new Appearance.State(Appearance.Mode.NIGHT, true, false)));
         only(LauncherAppearance.DAY);
@@ -186,7 +186,7 @@ public class LauncherAppearanceTest {
         assertFalse(LauncherAppearance.ourHome(app, null));
     }
 
-    @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void renderBothAdaptiveIconsWithTheSameRecognizableMascot() throws Exception {
         File directory = new File("build/reports/launcher-appearance");
         assertTrue(directory.isDirectory() || directory.mkdirs());

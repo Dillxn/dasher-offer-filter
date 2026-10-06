@@ -25,7 +25,7 @@ import org.robolectric.annotation.LooperMode;
 
 /** A smaller filter control leaves the offer plot legible without reducing its usable touch target. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MascotSpacingTest extends AndroidAdapterTestBase {

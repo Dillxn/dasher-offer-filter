@@ -302,6 +302,18 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
             box.set(x - glow, y - glow, x + glow, y + glow);
             veils.add(new MinimumsStarView.Veil(box, true, 0.7f));
         }
+        // Respect each native header button's actual target, without reserving a blanket header band.
+        if (shown(header) && header instanceof ViewGroup) {
+            ViewGroup buttons = (ViewGroup) header;
+            for (int i = 0; i < buttons.getChildCount(); i++) {
+                View button = buttons.getChildAt(i);
+                if (button == star || !button.isClickable() || button.getVisibility() != VISIBLE
+                        || button.getWidth() <= 0 || button.getHeight() <= 0) continue;
+                box.set(header.getLeft() + button.getLeft(), header.getTop() + button.getTop(),
+                        header.getLeft() + button.getRight(), header.getTop() + button.getBottom());
+                veils.add(new MinimumsStarView.Veil(box, false, 0.8f));
+            }
+        }
         for (int i = 0; i < lines.getChildCount(); i++) {
             View line = lines.getChildAt(i);
             if (!shown(line) || line.getHeight() <= 0) continue;

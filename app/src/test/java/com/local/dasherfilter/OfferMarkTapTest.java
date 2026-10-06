@@ -35,7 +35,7 @@ import static org.junit.Assert.assertTrue;
  * chart's example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferMarkTapTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = new FilterSettings(true, 500, 300, 20, 100, 3);

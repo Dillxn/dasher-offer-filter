@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  * ticket, the map and its best area, and the mascot.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Test

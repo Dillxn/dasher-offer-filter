@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 
 /** Accepted total-item rates must survive the same lifecycle as the existing independent learned rates. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AdaptiveItemsTest {
     private Application app;

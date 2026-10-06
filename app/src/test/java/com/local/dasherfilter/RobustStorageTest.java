@@ -29,7 +29,7 @@ import static org.junit.Assert.*;
 
 /** Synthetic interruption/overload receipts; no captured customer or payment information. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public class RobustStorageTest {
     private Application app;
     private String client;

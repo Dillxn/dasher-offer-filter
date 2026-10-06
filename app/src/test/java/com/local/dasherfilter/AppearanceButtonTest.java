@@ -22,7 +22,7 @@ import org.robolectric.annotation.GraphicsMode;
 
 /** Badge layout/contrast and the single accessible action survive both palettes and large fonts. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class AppearanceButtonTest extends AndroidAdapterTestBase {
     @Test public void badgesRemainReadableInsideTheExistingTouchTarget() throws Exception {

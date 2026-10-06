@@ -30,7 +30,7 @@ import static org.junit.Assert.*;
 
 /** The fifth rule is reciprocal destination distance, never money, pickup distance or a guessed hotspot. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class HotspotConstellationTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 50, 500, 3)
@@ -185,12 +185,12 @@ public class HotspotConstellationTest extends AndroidAdapterTestBase {
         assertEquals("<0.01", MinimumsStarView.distanceText(0.001));
     }
 
-    @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void phoneLayoutKeepsTopSpokeAccessibleAndExportsNativePreview() throws Exception {
         renderLayout(false, "phone");
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void besideDasherKeepsTopSpokeAccessibleAndExportsNativePreview() throws Exception {
         renderLayout(true, "split");

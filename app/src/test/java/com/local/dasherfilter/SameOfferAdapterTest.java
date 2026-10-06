@@ -45,7 +45,7 @@ import static org.junit.Assert.assertTrue;
  * its own card tag.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SameOfferAdapterTest {
     private static final String STORE_A = "New Order: Go to Store A";

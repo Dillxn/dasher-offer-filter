@@ -1,6 +1,10 @@
 package com.local.dasherfilter;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ContextWrapper;
+import android.content.res.ColorStateList;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
@@ -14,10 +18,13 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewConfiguration;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
@@ -25,6 +32,9 @@ import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import java.util.ArrayList;
@@ -351,8 +361,6 @@ final class MinimumsStarView extends View {
     static final int MOST_STOPS = 10;
     /** A finger moving across the badge steps it once every this many dp. */
     private static final int STOPS_STEP_DP = 18;
-    /** Across the existing mode button, one percentage point per step. */
-    static final int MINIMUM_SCALE_STEP_DP = 8;
     /** The hollow knobs beckon this long, in two swells. */
     private static final long BECKON_MS = 1600;
     private static final int NO_NODE = Integer.MIN_VALUE;
@@ -431,6 +439,14 @@ final class MinimumsStarView extends View {
     private boolean scaleDragging;
     private int scaleValue = 100;
     private final TextPaint scaleText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private LinearLayout selectivityControl;
+    private SelectivitySeekBar selectivitySlider;
+    private TextView selectivityValue;
+    private boolean scaleGestureCanceled;
+    private boolean compactSelectivity;
+    private AlertDialog selectivityDialog;
+    private Switch selectivityMode;
+    private int legacyTouchPercent = -1;
     private final Glyph areaGlyph;
     /** By area, the chosen offer's score: its words and where it stands. */
     private final TextPaint scoreText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -544,6 +560,7 @@ final class MinimumsStarView extends View {
     /** Knobs and the adopt button save through {@code changes}; without them the chart only takes a tap. */
     void setChanges(Changes changes) {
         this.changes = changes;
+        syncSelectivityControl();
     }
 
     /** As the sky, a tap on a marked offer (and a screen reader's click on it) opens it through {@code taps}. */
@@ -624,6 +641,7 @@ final class MinimumsStarView extends View {
         byArea = rules.scoreByArea;
         maxStops = Math.max(0, rules.maxStops);
         shownRules = rules;
+        syncSelectivityControl();
         int[] rates = rules.minimums();
         for (int i = 0; i < NAMES.length; i++) setRates[i] = Math.max(0, rates[i]);
         exampleMiles = miles;
@@ -980,7 +998,7 @@ final class MinimumsStarView extends View {
                 + (byArea ? " The required score is " + shownRules.minimumScalePercent + "%." : "");
         described += " Farther out means higher payout or pay rates, or a final stop nearer the hotspot."
                 + " Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers."
-                + " Drag the percentage sideways to scale all minimums without changing those saved values.";
+                + " Use the minimums slider to allow more offers or raise the pay target without changing those saved values.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
@@ -1259,7 +1277,7 @@ final class MinimumsStarView extends View {
         }
         for (RectF level : levelBoxes) if (RectF.intersects(padded, level)) return false;
         if (buttonsPlaced && (RectF.intersects(padded, scoreBox) || RectF.intersects(padded, adaptiveBox)
-                || (adoptable && RectF.intersects(padded, adoptBox)))) return false;
+                || ((adoptable || undoValues != null) && RectF.intersects(padded, adoptBox)))) return false;
         if (!stopsBox.isEmpty() && RectF.intersects(padded, stopsBox)) return false;
         if (knobsOn()) for (int i = 0; i < NAMES.length; i++) {
             float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, 1));
@@ -2547,7 +2565,6 @@ final class MinimumsStarView extends View {
                 adaptiveHeld = false;
                 stopsPressed = on == STOPS_ID;
                 stopsDragging = false;
-                scaleDragging = false;
                 // Held, the adaptive minimum's toggle asks to reset what it learned.
                 if (adaptivePressed) postDelayed(holdAdaptive, ViewConfiguration.getLongPressTimeout());
                 if (on >= 0 && on < NAMES.length) {
@@ -2569,11 +2586,8 @@ final class MinimumsStarView extends View {
             case MotionEvent.ACTION_MOVE:
                 if (tapping && Math.hypot(x - downX, y - downY) > slop) {
                     tapping = false;
-                    if (scorePressed && Math.abs(x - downX) >= Math.abs(y - downY)) {
-                        scaleDragging = true;
-                        scaleValue = shownRules.minimumScalePercent;
-                        keepTouch(true);
-                    } else if (scorePressed) {
+                    // Mode/panel entry is a tap target; moving it never changes selectivity.
+                    if (scorePressed) {
                         scorePressed = false;
                         invalidate();
                     }
@@ -2610,7 +2624,7 @@ final class MinimumsStarView extends View {
                     adoptPressed = false;
                     invalidate();
                 }
-                if (scorePressed && !scaleDragging && target(x, y) != SCORE_ID) {
+                if (scorePressed && target(x, y) != SCORE_ID) {
                     scorePressed = false;
                     invalidate();
                 }
@@ -2621,11 +2635,10 @@ final class MinimumsStarView extends View {
                 }
                 if (dragging) moveKnob(along(held, x, y) + grabOffset);
                 if (stopsDragging) moveStops(x - downX);
-                if (scaleDragging) moveMinimumScale(x - downX);
                 return true;
             case MotionEvent.ACTION_UP: {
                 boolean button = adoptPressed;
-                boolean toggle = scorePressed && tapping && !scaleDragging;
+                boolean toggle = scorePressed && tapping;
                 boolean adaptive = adaptivePressed && !adaptiveHeld;
                 // A hold that asked to reset is done: the finger lifting is no tap.
                 boolean asked = adaptiveHeld;
@@ -2678,12 +2691,6 @@ final class MinimumsStarView extends View {
         touching = false;
         tapping = false;
         removeCallbacks(holdAdaptive);
-        if (scaleDragging) {
-            scaleDragging = false;
-            keepTouch(false);
-            if (lifted) setMinimumScale(scaleValue);
-            invalidate();
-        }
         if (adoptPressed || scorePressed || adaptivePressed || stopsPressed || pressed || pressedAt >= 0) {
             adoptPressed = false;
             scorePressed = false;
@@ -3096,7 +3103,8 @@ final class MinimumsStarView extends View {
             candidate.set(place[0], place[1], place[0] + size, place[1] + size);
             if (candidate.left < ui.dp(4) || candidate.right > getWidth() - ui.dp(4)
                     || candidate.top < ui.dp(4) || candidate.bottom > getHeight() - ui.dp(4)
-                    || underWords(candidate) || onMascot(candidate) || !iconClearOfKnobs(candidate)) continue;
+                    || underWords(candidate) || onMascot(candidate) || !iconClearOfKnobs(candidate)
+                    || overlapsPinnedButtons(candidate)) continue;
             boolean clear = true;
             for (int axis = 0; axis < NAMES.length; axis++) {
                 if (axis != AreaScore.STOP && skyIcon(axis, skyX, skyY, skyRadius, other)
@@ -3118,6 +3126,11 @@ final class MinimumsStarView extends View {
             return false;
         }
         if (underWords(stopsBox) || onMascot(stopsBox)) return false;
+        // New floors move this badge, while Undo deliberately stays under the finger.
+        RectF target = new RectF(stopsBox);
+        float grow = Math.max(0, ui.dp(ADOPT_DP) - target.height()) / 2;
+        target.inset(-grow, -grow);
+        if (overlapsPinnedButtons(target)) return false;
         RectF icon = new RectF();
         for (int i = 0; i < ICONS.length; i++) {
             if (skyIcon(i, skyX, skyY, skyRadius, icon) && RectF.intersects(icon, stopsBox)) return false;
@@ -3132,6 +3145,16 @@ final class MinimumsStarView extends View {
             if (dx * dx + dy * dy < clear * clear) return false;
         }
         return true;
+    }
+
+    /** Moving badge/decoration targets must respect the row pinned while Undo is offered. */
+    private boolean overlapsPinnedButtons(RectF box) {
+        if (undoValues == null || !buttonsPlaced || layoutMoved) return false;
+        RectF padded = new RectF(box);
+        padded.inset(-ui.dp(4), -ui.dp(4));
+        return (togglePlaced && RectF.intersects(padded, scoreBox))
+                || (adaptivePlaced && RectF.intersects(padded, adaptiveBox))
+                || (adoptPlaced && RectF.intersects(padded, adoptBox));
     }
 
     /**
@@ -3470,12 +3493,16 @@ final class MinimumsStarView extends View {
         }
         canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
         int color = byArea ? setColor() : ui.inkSecondary;
-        scaleText.setTextSize(Math.min(ui.sp(9), ui.dp(10)));
         scaleText.setColor(color);
-        canvas.drawText(byArea ? "Area" : "Each", x, y - ui.dp(6), scaleText);
-        scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
-        scaleText.setColor(color);
-        canvas.drawText(shownScalePercent() + "%", x, y + ui.dp(13), scaleText);
+        if (compactSelectivity) {
+            scaleText.setTextSize(Math.min(ui.sp(9), ui.dp(10)));
+            canvas.drawText("Minimums", x, y - ui.dp(6), scaleText);
+            scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
+            canvas.drawText(shownScalePercent() + "%", x, y + ui.dp(13), scaleText);
+        } else {
+            scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
+            canvas.drawText(byArea ? "Area" : "Each", x, y + ui.dp(4), scaleText);
+        }
     }
 
     /** Percentage shown by the one control; the unsaved preview never alters the stored minimums. */
@@ -3483,20 +3510,270 @@ final class MinimumsStarView extends View {
 
     int minimumScalePercent() { return shownRules.minimumScalePercent; }
 
-    private void moveMinimumScale(float dx) {
-        int percent = Math.max(1, Math.min(200, shownRules.minimumScalePercent
-                + Math.round(dx / Math.max(1, ui.dp(MINIMUM_SCALE_STEP_DP)))));
-        if (percent != scaleValue) {
-            scaleValue = percent;
-            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-        }
+    /** Tight layouts keep the chart's space; its existing control opens the native minimums panel. */
+    void setCompactSelectivity(boolean compact) {
+        compactSelectivity = compact;
         invalidate();
+        nodesChanged();
+    }
+
+    private boolean selectivityHostActive() {
+        if (!isAttachedToWindow() || !isShown()) return false;
+        Context context = getContext();
+        while (context instanceof ContextWrapper && !(context instanceof Activity)) {
+            Context next = ((ContextWrapper) context).getBaseContext();
+            if (next == context) break;
+            context = next;
+        }
+        return !(context instanceof Activity) || (!((Activity) context).isFinishing()
+                && !((Activity) context).isDestroyed());
+    }
+
+    private void cancelSelectivityPreview() {
+        scaleGestureCanceled = true;
+        scaleDragging = false;
+        legacyTouchPercent = -1;
+        if (selectivitySlider != null) selectivitySlider.pointerDown = false;
+        syncSelectivityControl();
+        invalidate();
+    }
+
+    private void closeSelectivityPanel() {
+        AlertDialog closing = selectivityDialog;
+        selectivityDialog = null;
+        if (selectivityMode != null) selectivityMode.setEnabled(false);
+        selectivityMode = null;
+        cancelSelectivityPreview();
+        if (closing != null) closing.dismiss();
+        if (compactSelectivity && selectivityControl != null) {
+            if (selectivityControl.getParent() instanceof ViewGroup) {
+                ((ViewGroup) selectivityControl.getParent()).removeView(selectivityControl);
+            }
+            selectivitySlider.setEnabled(false);
+            selectivityControl = null;
+            selectivitySlider = null;
+            selectivityValue = null;
+        }
+    }
+
+    private void openSelectivity() {
+        if (!selectivityHostActive() || changes == null || !anyMinimumOn()) return;
+        if (selectivityDialog != null && selectivityDialog.isShowing()) return;
+        // Each opening owns fresh native controls. Late callbacks from the old window cannot reach this one.
+        closeSelectivityPanel();
+        LinearLayout panel = ui.column();
+        panel.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(8));
+        View control = createSelectivityControl();
+        if (control.getParent() instanceof ViewGroup) ((ViewGroup) control.getParent()).removeView(control);
+        panel.addView(control, Ui.matchWidth());
+        Switch mode = ui.toggle(panel, "Score by area", byArea);
+        selectivityMode = mode;
+        panel.addView(ui.note("Area lets stronger measures compensate for weaker ones. With it off, every "
+                + "minimum must pass. 100% uses your saved and learned minimums; max stops stays fixed. "
+                + "Higher minimums do not guarantee higher earnings."), Ui.matchWidth());
+        ScrollView scroll = new ScrollView(getContext());
+        scroll.addView(panel, Ui.matchWidth());
+        AlertDialog opened = OwnWindowTouches.track(new AlertDialog.Builder(getContext())
+                .setTitle("Offer selectivity").setView(scroll).setPositiveButton("Done", null).create());
+        selectivityDialog = opened;
+        mode.setOnCheckedChangeListener((button, checked) -> {
+            if (selectivityDialog != opened || selectivityMode != mode || !opened.isShowing()
+                    || !selectivityHostActive() || !mode.isAttachedToWindow() || !mode.isShown()) return;
+            if (checked != byArea) changeScoreMode(checked);
+        });
+        opened.setOnDismissListener(dialog -> {
+            if (control.getParent() == panel) panel.removeView(control);
+            if (selectivityDialog == opened) closeSelectivityPanel();
+        });
+        opened.show();
+    }
+
+    /** A real Android slider with its original scale callback, separate from the scoring-mode switch. */
+    View createSelectivityControl() {
+        if (selectivityControl != null) return selectivityControl;
+        selectivityControl = ui.column();
+        selectivityControl.setPadding(0, ui.dp(2), 0, 0);
+        selectivityControl.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        LinearLayout labels = ui.row();
+        TextView lower = ui.text("More offers\nLower minimums", 12, ui.inkSecondary, false);
+        lower.setGravity(Gravity.START);
+        lower.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        labels.addView(lower, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        selectivityValue = ui.text("", 14, ui.ink, true);
+        selectivityValue.setGravity(Gravity.CENTER);
+        selectivityValue.setPadding(ui.dp(8), 0, ui.dp(8), 0);
+        selectivityValue.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        labels.addView(selectivityValue, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView higher = ui.text("Higher pay target\nHigher minimums", 12, ui.inkSecondary, false);
+        higher.setGravity(Gravity.END);
+        higher.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        labels.addView(higher, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        selectivityControl.addView(labels, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        selectivitySlider = new SelectivitySeekBar(getContext());
+        selectivitySlider.setMin(1);
+        selectivitySlider.setMax(200);
+        selectivitySlider.setKeyProgressIncrement(1);
+        selectivitySlider.setMinimumHeight(ui.dp(48));
+        selectivitySlider.setMinimumWidth(ui.dp(48));
+        selectivitySlider.setProgressTintList(ColorStateList.valueOf(setColor()));
+        selectivitySlider.setThumbTintList(ColorStateList.valueOf(setColor()));
+        selectivitySlider.setProgressBackgroundTintList(ColorStateList.valueOf(ui.baseline));
+        selectivitySlider.setTooltipText("100% uses your saved and learned minimums. Lower allows more offers; "
+                + "higher asks more of each offer. Higher minimums do not guarantee higher earnings. "
+                + "Max stops stays unchanged.");
+        selectivitySlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                if (bar != selectivitySlider || !selectivitySlider.inputReady() || !selectivitySlider.pointerDown) return;
+                scaleGestureCanceled = false;
+                scaleDragging = true;
+                scaleValue = shownRules.minimumScalePercent;
+            }
+
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (!fromUser || bar != selectivitySlider || !selectivitySlider.inputReady()) return;
+                int percent = legacyTouchPercent >= 1 ? legacyTouchPercent : progress;
+                scaleValue = percent;
+                if (!scaleDragging) setMinimumScale(percent);
+                syncSelectivityControl();
+                invalidate();
+            }
+
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                if (bar != selectivitySlider || !selectivitySlider.inputReady()) return;
+                int percent = legacyTouchPercent >= 1 ? legacyTouchPercent : scaleValue;
+                scaleDragging = false;
+                if (!scaleGestureCanceled && selectivitySlider.pointerDown) setMinimumScale(percent);
+                syncSelectivityControl();
+                invalidate();
+            }
+        });
+        selectivityControl.addView(selectivitySlider, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, ui.dp(48)));
+        syncSelectivityControl();
+        return selectivityControl;
+    }
+
+    private void syncSelectivityControl() {
+        if (selectivityMode != null && selectivityMode.isChecked() != byArea) selectivityMode.setChecked(byArea);
+        if (selectivitySlider == null) return;
+        int percent = shownScalePercent();
+        selectivityValue.setText(percent + "%");
+        if (selectivitySlider.getProgress() != percent) selectivitySlider.setProgress(percent);
+        selectivitySlider.setEnabled(changes != null);
+        selectivitySlider.setContentDescription("Minimums " + percent + " percent. "
+                + "Left: more offers, lower minimums. Right: higher pay target, higher minimums. "
+                + "Higher minimums may mean fewer matching offers and do not guarantee higher earnings.");
+        if (Build.VERSION.SDK_INT >= 30) selectivitySlider.setStateDescription(percent + " percent");
+    }
+
+    /** Native controls with exact reader steps and gesture/window ownership that cannot survive dismissal. */
+    private final class SelectivitySeekBar extends SeekBar {
+        private boolean pointerDown;
+        private long pointerStarted;
+        SelectivitySeekBar(Context context) { super(context); }
+
+        private boolean inputReady() {
+            return this == selectivitySlider && isEnabled() && isAttachedToWindow() && isShown()
+                    && selectivityHostActive() && (!compactSelectivity
+                    || selectivityDialog != null && selectivityDialog.isShowing());
+        }
+
+        @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+            return inputReady() && super.onKeyDown(keyCode, event);
+        }
+
+        @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
+            return inputReady() && super.onKeyUp(keyCode, event);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            if (!inputReady()) return false;
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                pointerDown = true;
+                pointerStarted = event.getDownTime();
+            } else if (!pointerDown || event.getDownTime() != pointerStarted) {
+                return false;
+            }
+            if (action == MotionEvent.ACTION_CANCEL) scaleGestureCanceled = true;
+            // Android 8.0/8.1 omit adding min back after multiplying the touch fraction by max-min.
+            if (Build.VERSION.SDK_INT <= 27 && action != MotionEvent.ACTION_CANCEL) {
+                float span = Math.max(1, getWidth() - getPaddingLeft() - getPaddingRight());
+                float share = Math.max(0, Math.min(1, (event.getX() - getPaddingLeft()) / span));
+                legacyTouchPercent = 1 + Math.round(199 * share);
+            }
+            try {
+                boolean handled = super.onTouchEvent(event);
+                if (legacyTouchPercent >= 1 && scaleDragging && !scaleGestureCanceled) {
+                    scaleValue = legacyTouchPercent;
+                    syncSelectivityControl();
+                    MinimumsStarView.this.invalidate();
+                }
+                return handled;
+            } finally {
+                legacyTouchPercent = -1;
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) pointerDown = false;
+            }
+        }
+
+        @SuppressWarnings("deprecation")
+        @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+            super.onInitializeAccessibilityNodeInfo(info);
+            // Android 8's native ProgressBar advertises zero even with setMin(1).
+            info.setRangeInfo(Build.VERSION.SDK_INT >= 30
+                    ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT,
+                            1, 200, getProgress())
+                    : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT,
+                            1, 200, getProgress()));
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            pointerDown = false;
+            if (this == selectivitySlider) cancelSelectivityPreview();
+            super.onDetachedFromWindow();
+        }
+
+        @Override protected void onVisibilityChanged(View changed, int visibility) {
+            super.onVisibilityChanged(changed, visibility);
+            if (visibility != VISIBLE) {
+                pointerDown = false;
+                if (this == selectivitySlider) cancelSelectivityPreview();
+            }
+        }
+
+        @Override public boolean performAccessibilityAction(int action, Bundle arguments) {
+            if (!inputReady()) return false;
+            if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    || action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
+                int step = action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD ? 1 : -1;
+                boolean changed = setMinimumScale(shownRules.minimumScalePercent + step);
+                syncSelectivityControl();
+                return changed;
+            }
+            if (action == android.R.id.accessibilityActionSetProgress) {
+                if (arguments == null) return false;
+                float value = arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, Float.NaN);
+                if (!Float.isFinite(value) || value < 1 || value > 200) return false;
+                boolean changed = setMinimumScale(Math.round(value));
+                syncSelectivityControl();
+                return changed;
+            }
+            return super.performAccessibilityAction(action, arguments);
+        }
     }
 
     private boolean setMinimumScale(int percent) {
         percent = Math.max(1, Math.min(200, percent));
-        if (changes == null || percent == shownRules.minimumScalePercent) return false;
+        if (!selectivityHostActive() || changes == null || percent == shownRules.minimumScalePercent) return false;
         changes.setMinimumScalePercent(percent);
+        // Only the host's synchronous refresh confirms a successful save, including durable auto-mode disable.
+        if (shownRules.minimumScalePercent != percent) {
+            syncSelectivityControl();
+            invalidate();
+            return false;
+        }
         say("Minimums " + percent + "%. " + (byArea ? "Required score " + percent + "%."
                 : "Every minimum uses " + percent + "% of its saved or learned value.")
                 + " Max stops stays unchanged.");
@@ -3505,10 +3782,17 @@ final class MinimumsStarView extends View {
         return true;
     }
 
-    /** The toggle: score by area on or off, saved at once; screen readers hear which, and what it means. */
     private void pressScore() {
-        if (changes == null) return;
-        boolean on = !byArea;
+        if (!selectivityHostActive() || changes == null) return;
+        if (compactSelectivity) {
+            openSelectivity();
+            return;
+        }
+        changeScoreMode(!byArea);
+    }
+
+    private void changeScoreMode(boolean on) {
+        if (!selectivityHostActive() || changes == null) return;
         changes.setScoreByArea(on);
         say(on ? SCORE_SAID + " on. An offer passes at a score of " + shownRules.minimumScalePercent + "% or more."
                 + (shownRules.maxStops > 0 ? " Max stops still declines." : "")
@@ -3613,10 +3897,16 @@ final class MinimumsStarView extends View {
     }
 
     @Override protected void onDetachedFromWindow() {
+        closeSelectivityPanel();
         removeCallbacks(undoEnds);
         removeCallbacks(holdAdaptive);
         undoValues = null;
         super.onDetachedFromWindow();
+    }
+
+    @Override protected void onVisibilityChanged(View changed, int visibility) {
+        super.onVisibilityChanged(changed, visibility);
+        if (visibility != VISIBLE) closeSelectivityPanel();
     }
 
     // ---- Screen readers: each knob an adjustable control, the button a button. ----
@@ -3729,7 +4019,8 @@ final class MinimumsStarView extends View {
         if (manager == null || !manager.isEnabled() || getParent() == null) return;
         AccessibilityEvent event = newEvent(type);
         event.setPackageName(getContext().getPackageName());
-        event.setClassName(node == ADOPT_ID || node == AreaScore.HOTSPOT || node >= OFFER_ID ? Button.class.getName()
+        event.setClassName(node == ADOPT_ID || node == AreaScore.HOTSPOT || node >= OFFER_ID
+                || (node == SCORE_ID && compactSelectivity) ? Button.class.getName()
                 : node == SCORE_ID || node == ADAPTIVE_ID ? Switch.class.getName() : SeekBar.class.getName());
         if (node == SCORE_ID) event.setChecked(byArea);
         if (node == ADAPTIVE_ID) event.setChecked(adaptiveOn);
@@ -3742,8 +4033,9 @@ final class MinimumsStarView extends View {
 
     private String nodeSaid(int node) {
         if (node >= OFFER_ID) return offerSaid(node - OFFER_ID);
-        if (node == SCORE_ID) return "Minimums " + shownRules.minimumScalePercent + "%. " + SCORE_SAID
-                + (byArea ? " on." : " off.") + " Drag sideways to scale all minimums; tap to change scoring mode.";
+        if (node == SCORE_ID) return compactSelectivity
+                ? "Minimums " + shownRules.minimumScalePercent + " percent. Adjust offer selectivity."
+                : SCORE_SAID + (byArea ? " on." : " off.") + " Tap to change scoring mode.";
         if (node == ADAPTIVE_ID) return ADAPTIVE_SAID;
         if (node == STOPS_ID) return stopsSaid(maxStops);
         return node == ADOPT_ID ? (undoValues != null ? "Undo" : ADOPT_SAID) : knobSaid(node);
@@ -3898,28 +4190,23 @@ final class MinimumsStarView extends View {
                 return info;
             }
             if (id == SCORE_ID) {
-                // One existing control: tap changes mode; adjustable actions change the one minimums scale.
+                if (compactSelectivity) {
+                    info.setClassName(Button.class.getName());
+                    info.setClickable(true);
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                            "Adjust offer selectivity"));
+                    return info;
+                }
+                // Mode is separate from the native minimums slider.
                 info.setClassName(Switch.class.getName());
                 info.setCheckable(true);
                 info.setChecked(byArea);
                 if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(byArea ? "On" : "Off");
-                info.setRangeInfo(Build.VERSION.SDK_INT >= 30
-                        ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 1,
-                                200, shownRules.minimumScalePercent)
-                        : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 1,
-                                200, shownRules.minimumScalePercent));
                 info.setClickable(true);
                 String toggle = byArea ? "Use strict minimums" : "Use score by area";
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
                         toggle));
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(TOGGLE_ACTION, toggle));
-                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
-                if (shownRules.minimumScalePercent < 200) {
-                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
-                }
-                if (shownRules.minimumScalePercent > 1) {
-                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
-                }
                 return info;
             }
             if (id == ADAPTIVE_ID) {
@@ -3983,7 +4270,7 @@ final class MinimumsStarView extends View {
 
         @Override public boolean performAction(int id, int action, Bundle arguments) {
             if (id == HOST_VIEW_ID) return performAccessibilityAction(action, arguments);
-            if (!shownNode(id)) return false;
+            if (!shownNode(id) || (id == SCORE_ID && !selectivityHostActive())) return false;
             switch (action) {
                 case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS: {
                     if (focusedNode == id) return false;
@@ -4026,7 +4313,6 @@ final class MinimumsStarView extends View {
                 case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
                     boolean up = action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD;
                     if (id == STOPS_ID) return setStops(stepStops(maxStops, up));
-                    if (id == SCORE_ID) return setMinimumScale(shownRules.minimumScalePercent + (up ? 1 : -1));
                     return id < NAMES.length && step(id, up);
                 }
                 case TOGGLE_ACTION:
@@ -4042,12 +4328,6 @@ final class MinimumsStarView extends View {
                     changes.resetLearned();
                     return true;
                 default:
-                    if (action == android.R.id.accessibilityActionSetProgress && id == SCORE_ID
-                            && arguments != null) {
-                        float percent = arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, -1);
-                        if (!Float.isFinite(percent) || percent < 1 || percent > 200) return false;
-                        return setMinimumScale(Math.round(percent));
-                    }
                     if (action == android.R.id.accessibilityActionSetProgress && id < NAMES.length
                             && arguments != null) {
                         float dollars = arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, -1);

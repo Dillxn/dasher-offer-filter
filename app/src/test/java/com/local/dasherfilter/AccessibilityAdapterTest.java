@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Drives OfferFilterService with synthetic DoorDash accessibility trees and inspects requested clicks. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AccessibilityAdapterTest {
     private Application app;

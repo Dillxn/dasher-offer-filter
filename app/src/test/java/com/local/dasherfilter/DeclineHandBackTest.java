@@ -52,7 +52,7 @@ import static org.junit.Assert.assertTrue;
  * taps. Most tests read on the main looper with simulated time; the last ones run the service's own scanner thread.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DeclineHandBackTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

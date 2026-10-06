@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode;
 
 /** The map as drawn: its land fades toward every edge, its compass and scale stay crisp, and names never collide. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w360dp-h780dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w360dp-h780dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class AreaMapViewTest {
     private Application app;

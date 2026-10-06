@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 
 /** Public window geometry can exclude floating panes; it is not a universal freeform-mode detector. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DasherSplitWindowTest extends AndroidAdapterTestBase {
     @After public void clearSplit() {

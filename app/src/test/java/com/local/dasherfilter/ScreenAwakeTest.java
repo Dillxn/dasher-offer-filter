@@ -40,7 +40,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Automatic timeout prevention through Android's APIs; no claim about an OEM's real power policy. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScreenAwakeTest {
     private Application app;

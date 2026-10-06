@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 
 /** Deadline, identity and scope regression tests for the final user-approved Peek policy. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public class PeekStateTest {
     private Peek.Request request(String key) {
         return new Peek.Request(key, System.currentTimeMillis(), "Example Store", false, true, key);

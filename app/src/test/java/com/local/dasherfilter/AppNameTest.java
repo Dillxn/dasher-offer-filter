@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  * shows from the manifest: a rename changes those two lines, and nothing else spells the name.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class AppNameTest {
     private static final Pattern LITERAL = Pattern.compile("\"(?:[^\"\\\\]|\\\\.)*\"");
 

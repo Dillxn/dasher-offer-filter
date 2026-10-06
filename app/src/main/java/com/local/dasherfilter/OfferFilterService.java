@@ -612,6 +612,32 @@ public final class OfferFilterService extends AccessibilityService {
     private OfferSnapshot waitReadOffer;
     private boolean waitReadExcluded;
     private boolean waitReadNewInstance;
+    /** Optional scale changes use existing ordinary reads only; no timer, extra content read, tap or restored lease. */
+    private static final long EARNINGS_STABLE_WAIT_MS = 1_000;
+    private static final long EARNINGS_READ_FRESH_MS = 2_000;
+    private static final long EARNINGS_EVALUATE_EVERY_MS = 60_000;
+    private final AtomicLong earningsInteractions = new AtomicLong();
+    private volatile long earningsInteractionAt = NEVER;
+    private String earningsWaitingKey = "";
+    private long earningsWaitingSince = NEVER;
+    private long earningsWaitingLast = NEVER;
+    private String earningsEvaluationKey = "";
+    private long earningsEvaluatedAt = NEVER;
+
+    private static final class EarningsRead {
+        final FilterStore.RuleSnapshot rules;
+        final String configKey;
+        final long configGeneration, at, events, windows, notifications, actions, acceptActions, interactions, ownTouch;
+        final boolean authorityAtStart;
+        EarningsRead(FilterStore.RuleSnapshot rules, String configKey, long configGeneration, long at,
+                     long events, long windows, long notifications, long actions, long acceptActions,
+                     long interactions, long ownTouch, boolean authorityAtStart) {
+            this.rules = rules; this.configKey = configKey; this.configGeneration = configGeneration;
+            this.at = at; this.events = events; this.windows = windows; this.notifications = notifications;
+            this.actions = actions; this.acceptActions = acceptActions; this.interactions = interactions;
+            this.ownTouch = ownTouch; this.authorityAtStart = authorityAtStart;
+        }
+    }
     /** This read's labels once it has read a screen without finding it too big, else null. */
     private List<String> sceneLabels;
     /** Whether this read was skipped: Android did not give the active window. */
@@ -1262,6 +1288,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
         // during a peek leaves Dasher up.
         if (click != null) {
+            noteEarningsInteraction(at);
             if (autoAcceptWatched && click.at >= autoAcceptBeganAt
                     && ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
                 autoAcceptActions.incrementAndGet();
@@ -2005,6 +2032,7 @@ public final class OfferFilterService extends AccessibilityService {
      * @param touchAt when the touch landed (uptime), as Android stamped it
      */
     private void touched(long touchAt) {
+        noteEarningsInteraction(SystemClock.uptimeMillis());
         if (autoAcceptWatched && touchAt >= autoAcceptBeganAt && ownTaps.touchEcho(touchAt) == null) {
             autoAcceptActions.incrementAndGet();
             scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
@@ -2125,6 +2153,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Offer Filter's own screen had a finger land: a touch held for it was on Offer Filter's half (main thread). */
     private void ownTouchArrived(long at) {
+        noteEarningsInteraction(SystemClock.uptimeMillis());
         if (autoAcceptWatched && at >= autoAcceptBeganAt && ownTaps.touchEcho(at) == null) {
             autoAcceptActions.incrementAndGet();
             scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
@@ -3344,10 +3373,10 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean checkOffer(String trigger, long eventAt, int maxNodes) {
         acceptanceObservationEligible = false;
         scanner.removeCallbacks(acceptanceObservation);
-        if (scannerFaulted) return false;
+        if (scannerFaulted) { resetEarningsWaiting(); return false; }
         if (!phoneReadable()) { suspendScreenReading(); return false; }
         // A guarded return is already queued on main; no new read/tap may cross that boundary.
-        if (peekReturning) return false;
+        if (peekReturning) { resetEarningsWaiting(); return false; }
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
         if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true, "notice_required"); return false; }
         restoreRestartState();
@@ -3377,9 +3406,14 @@ public final class OfferFilterService extends AccessibilityService {
         questionLookIncomplete = false;
         otherWindowsListed = 0;
         otherWindowsRead = 0;
+        EarningsRead earningsRead = captureEarningsRead(trigger, started);
+        boolean readCompleted = false;
         try {
-            return checkReadableOffer();
+            boolean more = checkReadableOffer();
+            readCompleted = true;
+            return more;
         } catch (RuntimeException error) {
+            readSkipped = true; // Partially collected labels cannot renew positive waiting coverage after failure.
             acceptanceObservationEligible = false;
             // A failed read cannot keep an earlier empty screen's authority to return from Peek.
             if (peek.active()) peek.screen(false, Peek.now());
@@ -3403,6 +3437,7 @@ public final class OfferFilterService extends AccessibilityService {
             // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
             syncWaitRead();
+            syncEarningsScale(readCompleted ? earningsRead : null);
             if (sceneLabels != null && !readSkipped && overlayTransition.get() == overlayAtStart) {
                 if (overlayApprovedTransition != overlayAtStart) overlayGiven = null;
                 overlayApprovedTransition = overlayAtStart;
@@ -3424,6 +3459,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void stopWaitEstimate() {
+        resetEarningsWaiting();
         try { QualifyingWaitStore.stop(this); }
         catch (RuntimeException unavailable) { /* Optional display-only estimate. */ }
     }
@@ -3438,8 +3474,125 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void syncWaitHeartbeat() {
-        try { QualifyingWaitStore.heartbeat(this, waitCoverageEligible()); }
+        try {
+            boolean eligible = waitCoverageEligible();
+            if (!eligible) resetEarningsWaiting();
+            QualifyingWaitStore.heartbeat(this, eligible);
+        }
         catch (RuntimeException unavailable) { /* Optional display-only estimate. */ }
+    }
+
+    /** An observed touch/click only removes optimizer eligibility; it grants no additional screen/tap access. */
+    private void noteEarningsInteraction(long now) {
+        earningsInteractionAt = now;
+        earningsInteractions.incrementAndGet();
+    }
+
+    private void resetEarningsWaiting() {
+        earningsWaitingKey = "";
+        earningsWaitingSince = NEVER;
+        earningsWaitingLast = NEVER;
+    }
+
+    private EarningsRead captureEarningsRead(String trigger, long now) {
+        try {
+            // Notification checks, Peek, outcome/retry timers and window heartbeats never adjust minimums.
+            if (!"change".equals(trigger) && !"content".equals(trigger) && !"content burst".equals(trigger)) return null;
+            EarningsStore.ConfigSnapshot saved = EarningsStore.configSnapshot(this);
+            if (!saved.config.enabled) return null;
+            return new EarningsRead(FilterStore.snapshot(this), saved.config.key(), saved.generation,
+                    now, lastReadEvents, readWindowChanges,
+                    OfferNotificationService.generation(), userActions.get(), autoAcceptActions.get(),
+                    earningsInteractions.get(), ownScreenTouchAt, earningsAuthorityPresent(now));
+        } catch (RuntimeException unavailable) { return null; }
+    }
+
+    /** Pending actions and offer outcome/takeover/Peek authority cannot be rewritten by a recommendation. */
+    private boolean earningsAuthorityPresent(long now) {
+        return offerOnScreen || offerEvidence || declineState.hasPendingConfirmation(now) || episode.active(now)
+                || declineError.pending() || takeover != Takeover.NONE || autoAccept.candidate() != null
+                || autoAcceptWatched || autoRequestedOffer != null || peek.active() || peekReturning || peekWatched
+                || peekPhase != Peek.Phase.NONE || touchesHeld > 0 || !clicks.isEmpty() || !lateClicks.isEmpty()
+                || acceptedTracker.watchedSince() >= 0 || acceptedTracker.outcomeObservationDeadline() >= now
+                || ActiveRouteStore.load(this) != null;
+    }
+
+    /** Only the just-completed normal read is evidence; this check performs no window or content reads. */
+    private boolean earningsReadStillEligible(EarningsRead read) {
+        long now = SystemClock.uptimeMillis();
+        return read != null && !read.authorityAtStart && !stopped && !scannerFaulted && active == this
+                && read.at == currentReadStartedAt && now >= read.at && now - read.at <= EARNINGS_READ_FRESH_MS
+                && scene == DasherScene.WAITING && sceneLabels != null && !readSkipped && !readShowsQuestion
+                && !waitReadExcluded && !earningsAuthorityPresent(now) && waitCoverageEligible()
+                && dasherEvents.get() == read.events && windowChanges.get() == read.windows
+                && OfferNotificationService.generation() == read.notifications
+                && userActions.get() == read.actions && autoAcceptActions.get() == read.acceptActions
+                && earningsInteractions.get() == read.interactions && ownScreenTouchAt == read.ownTouch
+                && (read.ownTouch == NEVER || now >= read.ownTouch && now - read.ownTouch >= EARNINGS_STABLE_WAIT_MS)
+                && (earningsInteractionAt == NEVER || now >= earningsInteractionAt
+                    && now - earningsInteractionAt >= EARNINGS_STABLE_WAIT_MS);
+    }
+
+    /**
+     * Best-effort between-offer settings update, after the ordinary screen pipeline has done all of its work.
+     * Two uninterrupted fresh waiting reads establish stability. Nothing here schedules work or dispatches taps.
+     */
+    private void syncEarningsScale(EarningsRead read) {
+        try {
+            if (!earningsReadStillEligible(read)) { resetEarningsWaiting(); return; }
+            FilterStore.RuleSnapshot current = FilterStore.snapshot(this);
+            EarningsStore.ConfigSnapshot savedConfig = EarningsStore.configSnapshot(this);
+            if (!savedConfig.config.enabled || !read.configKey.equals(savedConfig.config.key())
+                    || read.configGeneration != savedConfig.generation
+                    || current.generation != read.rules.generation || !current.key.equals(read.rules.key)) {
+                resetEarningsWaiting(); return;
+            }
+            long now = SystemClock.uptimeMillis();
+            String key = read.rules.generation + ":" + read.rules.key + ":" + read.configKey
+                    + ":" + read.configGeneration + ":" + read.windows + ":" + read.notifications + ":" + read.actions
+                    + ":" + read.acceptActions + ":" + read.interactions + ":" + read.ownTouch;
+            if (!key.equals(earningsWaitingKey) || earningsWaitingLast == NEVER || now < earningsWaitingLast
+                    || now - earningsWaitingLast > QualifyingWait.MAX_COVERAGE_GAP_MS) {
+                earningsWaitingKey = key;
+                earningsWaitingSince = now;
+                earningsWaitingLast = now;
+                return;
+            }
+            earningsWaitingLast = now;
+            if (now - earningsWaitingSince < EARNINGS_STABLE_WAIT_MS) return;
+            QualifyingWaitStore.Snapshot history = QualifyingWaitStore.capture(this);
+            if (!history.observingWaiting) { resetEarningsWaiting(); return; }
+            String evaluationKey = read.rules.key + ":" + read.rules.generation + ":" + read.configKey
+                    + ":" + read.configGeneration;
+            if (evaluationKey.equals(earningsEvaluationKey) && earningsEvaluatedAt != NEVER
+                    && now >= earningsEvaluatedAt && now - earningsEvaluatedAt < EARNINGS_EVALUATE_EVERY_MS) return;
+            earningsEvaluationKey = evaluationKey;
+            earningsEvaluatedAt = now;
+            EarningsModel.Recommendation recommendation = EarningsStore.recommendation(this, history.samples,
+                    read.rules.settings, history.wallNow);
+            if (!recommendation.canAdjust() || recommendation.generation != read.configGeneration
+                    || !recommendation.settingsKey.equals(EarningsModel.settingsKey(read.rules.settings))
+                    || !recommendation.configKey.equals(read.configKey)) return;
+            // Lock order: waiting history -> earnings configuration/history -> filter rules. A clear, manual
+            // edit, opt-in change or stale callback cannot resurrect an already evaluated recommendation.
+            int waitingWindow = lastReadableWindow == null ? -1 : lastReadableWindow.getId();
+            boolean saved = QualifyingWaitStore.withCurrentWaiting(this, history,
+                    () -> EarningsStore.applyIfCurrent(this, recommendation, QualifyingWaitStore.wallClock.getAsLong(),
+                            () -> FilterStore.saveScaleIfUnchanged(this, read.rules, recommendation.suggestedPercent,
+                                    // Dasher can hide without sending its own event. Metadata alone verifies
+                                    // the same uncovered window, then all action/lifecycle epochs are rechecked.
+                                    () -> knownDasherVisible(waitingWindow) && earningsReadStillEligible(read)
+                                            && EarningsStore.isApplyingCurrent(this, recommendation)
+                                            && QualifyingWaitStore.isCurrentWaiting(this, history))));
+            if (!saved) return;
+            resetEarningsWaiting();
+            // Use established invalidation paths without requesting another read or changing tap authority.
+            minimumRulesChanged(FilterStore.load(this), SystemClock.uptimeMillis());
+            cancelAutoAccept(true, "offer_rules_or_deadline_changed");
+            OfferNotificationService.rulesChanged();
+        } catch (RuntimeException unavailable) {
+            resetEarningsWaiting(); // Optional estimation/storage failure never becomes scanner/tap authority.
+        }
     }
 
     /**

@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
 
 /** Item facts may change a rule, never manufacture automatic-tap or completed-delivery evidence. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class ItemAuthorityAdapterTest {
     private static final String DASHER = "com.doordash.driverapp";

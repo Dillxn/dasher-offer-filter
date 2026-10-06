@@ -43,7 +43,7 @@ import static org.junit.Assert.assertTrue;
  * Every other test runs with the notice accepted (ConsentedTestApp); these start from a phone that has not seen it.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ConsentGateTest extends AndroidAdapterTestBase {
     @Before

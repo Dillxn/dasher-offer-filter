@@ -23,7 +23,7 @@ import static org.junit.Assert.assertTrue;
 
 /** The drawings' tilt parallax and motion clock, through Android's sensor and animator adapters. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MotionAdapterTest {
     private final Application app = RuntimeEnvironment.getApplication();

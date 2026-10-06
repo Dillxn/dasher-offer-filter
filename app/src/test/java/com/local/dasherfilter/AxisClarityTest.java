@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 
 /** Spoke names must explain their units and leave the actual minimum controls usable. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AxisClarityTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 50, 500, 3)

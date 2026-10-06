@@ -27,7 +27,7 @@ import static org.junit.Assert.*;
 
 /** Recorded fitness and current minimums must be readable without changing what an offer meant. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SkylineFitnessTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 0);
@@ -186,12 +186,12 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void phoneRendersRecordedTreesAndBothReferences() throws Exception {
         renderPage("phone", false);
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void shortWindowAndFiftyTwoDpChartKeepTheirReferencesInBounds() throws Exception {
         renderPage("short", false);
@@ -202,7 +202,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         export(chart, "compact-52dp");
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h914dp-night-xxhdpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-night-xxhdpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void nightPaletteRendersTheTwoSeries() throws Exception {
         renderPage("night", true);

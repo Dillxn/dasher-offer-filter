@@ -18,7 +18,7 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public class NavigationShortcutsTest extends AndroidAdapterTestBase {
     @Test public void bestUsesPooledRateAndExistingThreeOfferMinimum() {
         AreaMap.Cell sparse = cell(0, 0, 2, 9000, 1);

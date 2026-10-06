@@ -36,7 +36,7 @@ import static org.junit.Assert.*;
 
 /** Real own-window dispatch must resolve split touches without weakening takeover on Dasher's half. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OwnWindowTouchesTest extends AndroidAdapterTestBase {
     private ServiceController<OfferFilterService> service;

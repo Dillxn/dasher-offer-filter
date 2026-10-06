@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * kept where they put it, tucked away during a delivery or an offer. Reads run on the main looper here.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DasherOverlayTest {
     private static final Rect PORTRAIT = new Rect(0, 0, 1080, 2040);

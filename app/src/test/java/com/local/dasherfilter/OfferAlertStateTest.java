@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
 
 /** One notification incarnation: what the screen's reading settles, what a re-post is, and when it rings. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class OfferAlertStateTest {
     private static final OfferSnapshot READ = new OfferSnapshot(790, 7.2, 21, 2);
 

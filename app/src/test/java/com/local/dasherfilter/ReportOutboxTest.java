@@ -35,7 +35,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Problem reports: what they contain, when they are filed, and how they reach GitHub (a local fake here). */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class ReportOutboxTest {
     private static final String PRODUCTION_ENDPOINT = GitHubIssues.endpoint;
     private static final String SHIPPED_CLIENT_ID = GitHubConnect.clientId;

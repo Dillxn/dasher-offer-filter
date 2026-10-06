@@ -24,7 +24,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 /** The real page owns disclosure and explicit rule changes; explanations must not toggle filtering. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w420dp-h900dp")
+@Config(sdk = {26, 35, 36}, qualifiers = "w420dp-h900dp")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
     @Before public void clearWaiting() {

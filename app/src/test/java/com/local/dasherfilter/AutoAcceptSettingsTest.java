@@ -17,7 +17,7 @@ import static org.junit.Assert.*;
 
 /** Accepting deliveries is never enabled by an upgrade or by dismissing the explanation. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AutoAcceptSettingsTest extends AndroidAdapterTestBase {
     private Switch toggle(ActivityController<MainActivity> activity) {

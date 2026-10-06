@@ -20,7 +20,7 @@ import static org.junit.Assert.assertTrue;
  * that never stored it (an existing install updating, or a new one), saved at once and kept.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekSettingsTest extends AndroidAdapterTestBase {
     private static final String ROW = "Peek at background offers";

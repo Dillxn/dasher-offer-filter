@@ -40,7 +40,7 @@ import static org.junit.Assert.*;
 
 /** Synthetic toast delivery through the real service; actual Dasher/OEM toast exposure still needs phone testing. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = DeclineErrorRecoveryAdapterTest.GlobalActions.class)
+@Config(sdk = {26, 35, 36}, shadows = DeclineErrorRecoveryAdapterTest.GlobalActions.class)
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class DeclineErrorRecoveryAdapterTest {
     private static final String DASHER = "com.doordash.driverapp";

@@ -752,6 +752,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         groundParams = share(1);
         body.setLayoutParams(groundParams);
         // A stable target identifies the displayed shape and opens its ticket, clear of the minimum knobs.
+        boolean inlineSelectivity = !compact && heightDp >= 720
+                && getResources().getConfiguration().fontScale < 1.5f;
+        minimums.setCompactSelectivity(!inlineSelectivity);
+        if (inlineSelectivity) body.addView(minimums.createSelectivityControl(), Ui.matchWidth());
         body.addView(offerCaption, Ui.matchWidth());
         body.addView(waitEstimateLine, waitParams);
         addOffers(body);

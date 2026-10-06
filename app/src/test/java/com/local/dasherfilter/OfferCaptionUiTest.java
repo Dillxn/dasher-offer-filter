@@ -32,7 +32,7 @@ import org.robolectric.annotation.LooperMode;
 
 /** An outcome is readable and tappable without targeting a narrow skyline or a draggable minimum knob. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferCaptionUiTest extends AndroidAdapterTestBase {

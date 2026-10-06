@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 
 /** Area scoring may compensate a weak spoke; the history must not claim an unchanged floor rose. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AreaDeclineLessonTest {
     private Application app;

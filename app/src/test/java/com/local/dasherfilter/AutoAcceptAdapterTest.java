@@ -33,7 +33,7 @@ import static org.junit.Assert.*;
 
 /** Actual service adapter, synthetic Android windows. No physical-phone or DoorDash server success claimed. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class AutoAcceptAdapterTest {
     private Application app;

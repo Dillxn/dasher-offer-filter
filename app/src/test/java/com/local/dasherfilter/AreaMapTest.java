@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config;
 
 /** The offer areas: on from the start but nothing kept without location, approximate, counted once per offer, ranked fairly, and kept off reports. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public class AreaMapTest {
     private Application app;
     private int offers;

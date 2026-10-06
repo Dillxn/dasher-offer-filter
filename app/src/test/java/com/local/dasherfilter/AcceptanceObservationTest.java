@@ -29,7 +29,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Missing-event outcome observations with synthetic same-window Android trees; no handset success claimed. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceObservationTest {
     /** The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops. */

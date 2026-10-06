@@ -31,7 +31,7 @@ import org.robolectric.shadows.ShadowSystemClock;
  * now kept at most once a minute on a budget of its own, and never pushes another screen of the last 30 minutes out.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScreensLogNavigationTest {
     private static final String[] TURNS = {"Turn left onto Elm Rd", "Turn right onto Oak Ave", "Keep left",

@@ -3,11 +3,13 @@ package com.local.dasherfilter;
 import android.content.Context;
 import android.os.SystemClock;
 import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
+import java.util.function.BooleanSupplier;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -23,6 +25,51 @@ final class QualifyingWaitStore {
     private static long lastSave;
     private static long savedRevision = -1;
     private static long generation;
+    private static long observationRevision;
+
+    /** A detached numeric history with process-only waiting identity; never a restored waiting lease. */
+    static final class Snapshot {
+        final List<QualifyingWait.Sample> samples;
+        final boolean observingWaiting;
+        final long wallNow;
+        private final long generation, observationRevision, historyRevision;
+        private Snapshot(List<QualifyingWait.Sample> samples, boolean observingWaiting, long wallNow,
+                         long generation, long observationRevision, long historyRevision) {
+            this.samples = samples;
+            this.observingWaiting = observingWaiting;
+            this.wallNow = wallNow;
+            this.generation = generation;
+            this.observationRevision = observationRevision;
+            this.historyRevision = historyRevision;
+        }
+    }
+
+    static List<QualifyingWait.Sample> snapshot(Context context) { return capture(context).samples; }
+
+    static Snapshot capture(Context context) {
+        synchronized (LOCK) {
+            long wall = wallClock.getAsLong();
+            QualifyingWait model = loaded(context);
+            List<QualifyingWait.Sample> samples = model.snapshot(wall);
+            return new Snapshot(samples, Consent.accepted(context)
+                    && model.observingWaiting(SystemClock.elapsedRealtime(), wall), wall,
+                    generation, observationRevision, model.revision());
+        }
+    }
+
+    /** Clearing/stopping or replacing any observation must win over a recommendation already being evaluated. */
+    static boolean withCurrentWaiting(Context context, Snapshot expected, BooleanSupplier action) {
+        synchronized (LOCK) { return isCurrentWaiting(context, expected) && action.getAsBoolean(); }
+    }
+
+    static boolean isCurrentWaiting(Context context, Snapshot expected) {
+        synchronized (LOCK) {
+            return expected != null && expected.observingWaiting && Consent.accepted(context) && history != null
+                    && generation == expected.generation && observationRevision == expected.observationRevision
+                    && history.revision() == expected.historyRevision
+                    && history.observingWaiting(SystemClock.elapsedRealtime(), wallClock.getAsLong());
+        }
+    }
     /** Separate wall-clock seam: Android elapsed time advances independently of System time in simulation. */
     static volatile LongSupplier wallClock = System::currentTimeMillis;
 
@@ -30,6 +77,7 @@ final class QualifyingWaitStore {
     static void screen(Context context, boolean eligible, DasherScene scene, OfferSnapshot offer,
                        boolean addOnOrRoute, boolean newInstance) {
         synchronized (LOCK) {
+            observationRevision++;
             if (addOnOrRoute && history != null) history.excludePendingOffer();
             if (!Consent.accepted(context) || !eligible || addOnOrRoute) { stop(context); return; }
             QualifyingWait model = loaded(context);
@@ -46,6 +94,7 @@ final class QualifyingWaitStore {
     static void heartbeat(Context context, boolean eligible) {
         synchronized (LOCK) {
             if (history == null) return;
+            observationRevision++;
             if (!Consent.accepted(context) || !eligible) { stop(context); return; }
             long now = SystemClock.elapsedRealtime();
             long wall = wallClock.getAsLong();
@@ -56,6 +105,7 @@ final class QualifyingWaitStore {
 
     static void stop(Context context) {
         synchronized (LOCK) {
+            observationRevision++;
             if (history == null) return;
             history.stop();
             save(context, history, SystemClock.elapsedRealtime(), wallClock.getAsLong(), true);
@@ -82,6 +132,7 @@ final class QualifyingWaitStore {
             savedRevision = -1;
             lastSave = 0;
             generation++;
+            observationRevision++;
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(HISTORY).apply();
         }
     }
@@ -141,30 +192,58 @@ final class QualifyingWaitStore {
         try {
             JSONArray rows = new JSONArray(raw);
             for (int i = Math.max(0, rows.length() - QualifyingWait.MAX_SAMPLES); i < rows.length(); i++) {
-                try {
-                    JSONObject row = rows.getJSONObject(i);
-                    JSONObject facts = row.optJSONObject("arrival");
-                    OfferSnapshot offer = facts == null ? null : new OfferSnapshot(integer(facts, "pay"),
-                            decimal(facts, "miles"), integer(facts, "minutes"), integer(facts, "stops"), null,
-                            decimal(facts, "hotspotMiles"), integer(facts, "items"),
-                            facts.optBoolean("itemApplicable", false));
-                    out.add(new QualifyingWait.Sample(row.getLong("at"), row.getLong("wait"), offer));
-                } catch (JSONException | IllegalArgumentException corruptEntry) { /* Fail closed for this record. */ }
+                JSONObject row = rows.getJSONObject(i);
+                long at = whole(row.get("at"));
+                long wait = whole(row.get("wait"));
+                OfferSnapshot offer = null;
+                if (row.has("arrival")) {
+                    try {
+                        Object rawFacts = row.get("arrival");
+                        if (!(rawFacts instanceof JSONObject)) throw new IllegalArgumentException("arrival object");
+                        JSONObject facts = (JSONObject) rawFacts;
+                        Object applicable = facts.has("itemApplicable") ? facts.get("itemApplicable") : false;
+                        if (!(applicable instanceof Boolean)) throw new IllegalArgumentException("item applicability");
+                        offer = new OfferSnapshot(integer(facts, "pay"), decimal(facts, "miles"),
+                                integer(facts, "minutes"), integer(facts, "stops"), null,
+                                decimal(facts, "hotspotMiles"), integer(facts, "items"), (Boolean) applicable);
+                    } catch (JSONException | IllegalArgumentException corruptFacts) {
+                        // Unreadable arrivals cannot become censor-only time or disappear from support checks.
+                        offer = OfferSnapshot.UNKNOWN;
+                    }
+                }
+                out.add(new QualifyingWait.Sample(at, wait, offer));
             }
-        } catch (JSONException malformed) { /* No recovered timing/authority from malformed storage. */ }
+        } catch (JSONException | IllegalArgumentException malformed) {
+            // Unknown observation times cannot safely be retained/replayed: reject the corrupt history as a unit.
+            out.clear();
+        }
         return out;
     }
 
+    /** JSON getInt/getLong also coerce strings and truncate/wrap; retained model evidence must never do that. */
+    private static long whole(Object raw) {
+        if (!(raw instanceof Number)) throw new IllegalArgumentException("numeric integer required");
+        try { return new BigDecimal(raw.toString()).longValueExact(); }
+        catch (NumberFormatException | ArithmeticException invalid) { throw new IllegalArgumentException("integer range"); }
+    }
     private static Integer integer(JSONObject value, String name) throws JSONException {
-        return !value.has(name) || value.isNull(name) ? null : value.getInt(name);
+        if (!value.has(name) || value.isNull(name)) return null;
+        long number = whole(value.get(name));
+        if (number < Integer.MIN_VALUE || number > Integer.MAX_VALUE) throw new IllegalArgumentException("integer range");
+        return (int) number;
     }
     private static Double decimal(JSONObject value, String name) throws JSONException {
-        return !value.has(name) || value.isNull(name) ? null : value.getDouble(name);
+        if (!value.has(name) || value.isNull(name)) return null;
+        Object raw = value.get(name);
+        if (!(raw instanceof Number)) throw new IllegalArgumentException("numeric decimal required");
+        double number = ((Number) raw).doubleValue();
+        if (!Double.isFinite(number)) throw new IllegalArgumentException("finite decimal required");
+        return number;
     }
 
     /** Test/process-restart seam. No in-progress observation survives cache loss. */
     static void forgetCache() {
-        synchronized (LOCK) { history = null; lastSave = 0; savedRevision = -1; generation++; }
+        synchronized (LOCK) { history = null; lastSave = 0; savedRevision = -1; generation++; observationRevision++; }
     }
     static void flush() {
         try { WRITER.submit(() -> {}).get(2, TimeUnit.SECONDS); }

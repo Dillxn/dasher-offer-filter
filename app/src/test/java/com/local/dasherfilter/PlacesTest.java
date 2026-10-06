@@ -25,7 +25,7 @@ import org.robolectric.shadows.ShadowGeocoder;
 
 /** Place names: asked about only at rounded positions, once each, kept on the phone, and never while off. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public class PlacesTest {
     private Application app;
 

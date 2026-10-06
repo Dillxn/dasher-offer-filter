@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
  * ahead).
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class UpdateDuringDashTest extends AndroidAdapterTestBase {
     @Test public void aQuietDisconnectedShiftIsHeldUntilItsPositiveEnd() {

@@ -10,6 +10,7 @@ import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.SeekBar;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.time.Duration;
@@ -28,7 +29,7 @@ import static org.junit.Assert.*;
 
 /** A global buffer changes the active boundary without editing the user's five minima or past offers. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 3)
@@ -78,12 +79,14 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            AccessibilityNodeInfo score = node(star, MinimumsStarView.SCORE_ID);
+            SeekBar slider = find(content, SeekBar.class);
+            assertNotNull("main page hosts native selectivity", slider);
+            AccessibilityNodeInfo score = slider.createAccessibilityNodeInfo();
             assertNotNull(score.getRangeInfo());
             assertEquals(100f, score.getRangeInfo().getCurrent(), 0.001f);
             assertEquals(1f, score.getRangeInfo().getMin(), 0.001f);
             assertEquals(200f, score.getRangeInfo().getMax(), 0.001f);
-            setScale(star, 97);
+            setScale(slider, 97);
             DecisionChartView chart = find(content, DecisionChartView.class);
             assertEquals(970L, chart.payoutThresholdCents());
             assertEquals("a recorded 97% tree meets the new 97% reference", chart.treeAt(0)[1],
@@ -93,8 +96,8 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             assertEquals(before, DecisionLog.recent(app, 1).get(0).toJson().toString());
             assertTrue(chart.getContentDescription().toString(), chart.getContentDescription().toString()
                     .contains("97%"));
-            assertTrue(node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString()
-                    .contains("97%"));
+            assertTrue(slider.getContentDescription().toString().contains("97 percent"));
+            assertNull("mode is separate from scale", node(star, MinimumsStarView.SCORE_ID).getRangeInfo());
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
             assertFalse("a tap still toggles area mode", FilterStore.load(app).scoreByArea);
             assertEquals("the mode toggle preserves the buffer", 97, FilterStore.load(app).minimumScalePercent);
@@ -102,7 +105,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
-            assertEquals(97f, node(find(content, MinimumsStarView.class), MinimumsStarView.SCORE_ID)
+            assertEquals(97f, find(content, SeekBar.class).createAccessibilityNodeInfo()
                     .getRangeInfo().getCurrent(), 0.001f);
         }
     }
@@ -112,17 +115,20 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            RectF control = star.scoreToggleBox();
-            assertNotNull(control);
-            Ui ui = new Ui(app);
-            dragThrough(content, new float[][] {{control.centerX(), control.centerY()},
-                    {control.centerX() - ui.dp(24), control.centerY()}}, null);
+            SeekBar slider = find(content, SeekBar.class);
+            assertNotNull(slider);
+            long now = SystemClock.uptimeMillis();
+            float y = slider.getHeight() / 2f;
+            send(slider, now, now, MotionEvent.ACTION_DOWN, sliderX(slider, 100), y);
+            send(slider, now, now + 100, MotionEvent.ACTION_MOVE, sliderX(slider, 75), y);
+            assertEquals("preview is not saved yet", 100, FilterStore.load(app).minimumScalePercent);
+            send(slider, now, now + 120, MotionEvent.ACTION_UP, sliderX(slider, 75), y);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             FilterSettings saved = FilterStore.load(app);
-            assertEquals(97, saved.minimumScalePercent);
-            assertTrue("a drag is not also a mode toggle", saved.scoreByArea);
+            assertEquals(75, saved.minimumScalePercent);
+            assertTrue(saved.scoreByArea);
             assertArrayEquals(RULES.minimums(), saved.minimums());
-            assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
+            assertEquals(750L, find(content, DecisionChartView.class).payoutThresholdCents());
         }
     }
 
@@ -131,33 +137,48 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            RectF control = star.scoreToggleBox();
-            assertNotNull(control);
-            float x = control.centerX(), y = control.centerY();
+            SeekBar slider = find(content, SeekBar.class);
+            assertNotNull(slider);
+            float y = slider.getHeight() / 2f;
             long now = SystemClock.uptimeMillis();
-            send(star, now, now, MotionEvent.ACTION_DOWN, x, y);
-            send(star, now, now + 100, MotionEvent.ACTION_MOVE, x - new Ui(app).dp(40), y);
-            send(star, now, now + 120, MotionEvent.ACTION_CANCEL, x - new Ui(app).dp(40), y);
+            send(slider, now, now, MotionEvent.ACTION_DOWN, sliderX(slider, 97), y);
+            send(slider, now, now + 100, MotionEvent.ACTION_MOVE, sliderX(slider, 60), y);
+            send(slider, now, now + 120, MotionEvent.ACTION_CANCEL, sliderX(slider, 60), y);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
+            assertEquals(97, slider.getProgress());
             assertTrue(FilterStore.load(app).scoreByArea);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
         }
     }
 
-    @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test public void draggingModeChipNeverAdjustsTheScaleOrTogglesTheMode() {
+        FilterStore.save(app, RULES.withMinimumScalePercent(97));
+        try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = controller.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            RectF mode = star.scoreToggleBox();
+            assertNotNull(mode);
+            dragThrough(content, new float[][] {{mode.centerX(), mode.centerY()},
+                    {mode.centerX() + new Ui(app).dp(40), mode.centerY()}}, null);
+            assertEquals(97, FilterStore.load(app).minimumScalePercent);
+            assertTrue(FilterStore.load(app).scoreByArea);
+        }
+    }
+
+    @Test @Config(sdk = {35, 36}) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void phoneShowsTheNinetySevenPercentBoundary() throws Exception {
         render("phone-97", false);
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void shortWindowShowsTheNinetySevenPercentBoundary() throws Exception {
         render("short-97", false);
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h914dp-night-xxhdpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-night-xxhdpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void nightShowsTheNinetySevenPercentBoundary() throws Exception {
         render("night-97", true);
@@ -234,12 +255,16 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
                 Collections.emptyList()).withScore(score);
     }
 
-    private static void setScale(MinimumsStarView star, int percent) {
+    private static void setScale(SeekBar slider, int percent) {
         Bundle value = new Bundle();
         value.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, percent);
-        assertTrue(star.getAccessibilityNodeProvider().performAction(MinimumsStarView.SCORE_ID,
-                android.R.id.accessibilityActionSetProgress, value));
+        assertTrue(slider.performAccessibilityAction(android.R.id.accessibilityActionSetProgress, value));
         Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    private static float sliderX(SeekBar slider, int percent) {
+        return slider.getPaddingLeft() + (slider.getWidth() - slider.getPaddingLeft() - slider.getPaddingRight())
+                * (percent - 1) / 199f;
     }
 
     private static void send(View view, long start, long at, int action, float x, float y) {

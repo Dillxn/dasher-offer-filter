@@ -24,7 +24,7 @@ import static org.junit.Assert.*;
 
 /** Observed numeric item context survives history and temporary stores; legacy unknowns stay unknown. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public final class ItemHistoryTest {
     private Application app;
 

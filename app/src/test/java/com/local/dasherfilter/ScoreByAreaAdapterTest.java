@@ -40,7 +40,7 @@ import static org.junit.Assert.assertTrue;
  * rules are the user's: $13 pay, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScoreByAreaAdapterTest {
     private static final FilterSettings USER = new FilterSettings(true, 1300, 385, 41, 475, 3);
@@ -67,7 +67,7 @@ public class ScoreByAreaAdapterTest {
             assertTrue(star.backdrop());
             assertFalse("strict is the default", star.byArea());
             android.graphics.RectF toggle = star.scoreToggleBox();
-            assertNotNull("the shared scale and mode control by the chart", toggle);
+            assertNotNull("the independent scoring mode control by the chart", toggle);
             Ui ui = new Ui(app);
             assertTrue("a full touch target", toggle.width() >= ui.dp(48) - 1);
             for (int axis = 0; axis < 4; axis++) {
@@ -83,7 +83,7 @@ public class ScoreByAreaAdapterTest {
             // Screen readers find it as a switch.
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             AccessibilityNodeInfo node = nodes.createAccessibilityNodeInfo(MinimumsStarView.SCORE_ID);
-            assertEquals("Minimums 100%. Score by area off. Drag sideways to scale all minimums; tap to change scoring mode.",
+            assertEquals("Score by area off. Tap to change scoring mode.",
                     node.getContentDescription().toString());
             assertEquals(Switch.class.getName(), node.getClassName().toString());
             assertTrue(node.isCheckable());

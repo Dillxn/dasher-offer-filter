@@ -19,7 +19,7 @@ import static org.junit.Assert.assertTrue;
 
 /** The on-device decision history: merging, bounds, persistence, privacy filtering and the report text. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class DecisionLogTest {
     private Application app;
 

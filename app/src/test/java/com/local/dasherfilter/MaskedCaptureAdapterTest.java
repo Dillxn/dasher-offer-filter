@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * while the screen reader still decides from the raw labels. Drives OfferFilterService with invented Dasher screens.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MaskedCaptureAdapterTest {
     private Application app;

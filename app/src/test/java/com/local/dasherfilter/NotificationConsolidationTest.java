@@ -30,7 +30,7 @@ import static org.junit.Assert.*;
 
 /** Native-first presentation: never dismiss another app's passing/unknown notification. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = NotificationConsolidationTest.NativeNotifications.class)
+@Config(sdk = {26, 35, 36}, shadows = NotificationConsolidationTest.NativeNotifications.class)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class NotificationConsolidationTest extends AndroidAdapterTestBase {
     private ServiceController<OfferNotificationService> controller;

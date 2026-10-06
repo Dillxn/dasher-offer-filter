@@ -25,7 +25,7 @@ import static org.junit.Assert.assertTrue;
  * as the line does, and they never leave the phone in an automatic report.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class DecisionLogStepsTest {
     private static final OfferSnapshot PASSING = new OfferSnapshot(1675, 3.9, 30, 3);
     private Application app;

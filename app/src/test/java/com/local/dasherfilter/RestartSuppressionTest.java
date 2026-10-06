@@ -16,7 +16,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public final class RestartSuppressionTest {
     private Application app;
     @Before public void setup() {

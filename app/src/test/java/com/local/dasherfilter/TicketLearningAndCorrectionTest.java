@@ -16,7 +16,7 @@ import org.robolectric.annotation.LooperMode;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class TicketLearningAndCorrectionTest extends AndroidAdapterTestBase {
     @Test public void learningAndStrictReferenceStayInsideTheSelectedTicket() {

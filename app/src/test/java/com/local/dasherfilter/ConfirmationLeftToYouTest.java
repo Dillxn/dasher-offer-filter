@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  * as filtered, though Dasher still asked. Through the real service, reading on the main looper with simulated time.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ConfirmationLeftToYouTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

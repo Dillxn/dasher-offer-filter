@@ -34,7 +34,7 @@ import static org.junit.Assert.assertTrue;
  * local stand-in; the APK path is never reached. Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class QuietLogAdapterTest {
     private static final long MINUTE = 60_000L;

@@ -25,7 +25,7 @@ import static org.junit.Assert.*;
 
 /** Waiting is cheap; leaving the wait always returns to the normal feed and verification path. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class UpdaterHeldReadyTest {
     private Application app;

@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
  * never posted. Starts, as ConsentGateTest does, from a phone that has not accepted the notice.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ConsentReminderTest extends AndroidAdapterTestBase {
     @Before

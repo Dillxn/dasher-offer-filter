@@ -29,7 +29,7 @@ import org.robolectric.annotation.LooperMode;
 
 /** The sixth measure uses observed total items and the same exact floor components as decisions. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ItemConstellationTest extends AndroidAdapterTestBase {
     @Before public void useDeterministicDayPalette() {
@@ -268,24 +268,24 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 35) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}) @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void phoneExportsSixSpokePreviewWithClearLabelsAndControls() throws Exception {
         preview(false, "phone");
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void shortSplitExportsSixSpokePreviewWithClearLabelsAndControls() throws Exception {
         preview(true, "split");
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void readyWaitEstimateKeepsTheSplitItemVertexSelectable() throws Exception {
         seedWaitHistory(false);
         assertEquals("Next match: about 12 min", QualifyingWaitStore.estimate(app, RULES).label());
         preview(true, "split-ready-wait");
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h410dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void unreadableWaitEstimateKeepsTheSplitItemVertexSelectable() throws Exception {
         seedWaitHistory(true);
         assertEquals("Wait estimate needs readable offers", QualifyingWaitStore.estimate(app, RULES).label());
@@ -305,7 +305,7 @@ public class ItemConstellationTest extends AndroidAdapterTestBase {
         QualifyingWaitStore.forgetCache();
     }
 
-    @Test @Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void largeFontExportsSixSpokePreviewWithoutClippedLabels() throws Exception {
         android.content.res.Configuration configuration = new android.content.res.Configuration(app.getResources().getConfiguration());
         configuration.fontScale = 2f;

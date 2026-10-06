@@ -32,7 +32,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Signing in to GitHub with the device flow, and keeping the token fresh, against a local fake GitHub. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 35)
+@Config(sdk = {35, 36})
 public class GitHubConnectTest {
     private static final String DEVICE_CODE = GitHubConnect.deviceCodeEndpoint;
     private static final String TOKEN = GitHubConnect.tokenEndpoint;

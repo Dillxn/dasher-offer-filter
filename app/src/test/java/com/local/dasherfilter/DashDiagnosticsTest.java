@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
  * the repository through the GitHub connection, and nothing at all while it is off. GitHub is a local fake here.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DashDiagnosticsTest {
     private static final String PRODUCTION_ENDPOINT = GitHubIssues.endpoint;

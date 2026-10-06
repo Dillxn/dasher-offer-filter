@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 
 /** Learned offers survive ordinary rule edits; decisions, adoption and the common buffer use them consistently. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AdaptiveMinimumLifecycleTest {
     private Application app;

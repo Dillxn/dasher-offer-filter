@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * adapters.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase {
     @Test

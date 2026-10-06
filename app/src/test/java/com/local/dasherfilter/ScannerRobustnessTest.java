@@ -37,7 +37,7 @@ import static org.junit.Assert.*;
 
 /** Lifecycle failures and reconnects using synthetic screens, not live handset certification. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class ScannerRobustnessTest {
     private Application app;

@@ -34,7 +34,7 @@ import static org.junit.Assert.*;
 
 /** Synthetic stalled first-step reads, not a claim about DoorDash's real loading screen or server behavior. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class StalledDeclineTest {
     private Application app;

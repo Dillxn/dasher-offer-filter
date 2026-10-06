@@ -23,7 +23,7 @@ import static org.junit.Assert.*;
 
 /** Synthetic privacy regressions only; no recovered diagnostic text or real payment details. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PrivacyBoundaryTest {
     private Application app;

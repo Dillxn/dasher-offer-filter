@@ -36,7 +36,7 @@ import static org.junit.Assert.assertTrue;
  * minimums, and the decisions chart.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Test

@@ -13,6 +13,8 @@ ADAPTERS = (
     "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
     "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "AdaptiveMinimumLifecycleTest", "ConsentGateTest",
+    "EarningsStoreTest", "EarningsAdjustmentStoreTest", "EarningsAdjustmentAdapterTest",
+    "EarningsPanelTest", "SelectivityControlTest",
 )
 
 
@@ -49,9 +51,10 @@ def sdk_evidence(root, reports):
     evidence = {}
     for name in ADAPTERS:
         source = (root / ("app/src/test/java/com/local/dasherfilter/" + name + ".java")).read_text()
-        # These classes have one explicit {26,35} configuration and no SDK override.
-        configs = re.findall(r"@Config\([^)]*sdk\s*=\s*([^)]*)\)", source)
-        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35}":
+        # These classes have one explicit {26,35,36} SDK configuration and no SDK override.
+        # Qualifiers/shadows may accompany it; those do not change the selected SDKs.
+        configs = re.findall(r"@Config\([^)]*\bsdk\s*=\s*(\{[^}]*\}|[0-9]+)", source)
+        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35,36}":
             raise ValueError("Release adapter SDK configuration changed")
         report = reports.get("com.local.dasherfilter." + name)
         if report is None:
@@ -62,15 +65,18 @@ def sdk_evidence(root, reports):
         names = set(cases)
         api26 = {item[:-4] for item in names if item.endswith("[26]")}
         # Robolectric's final configured variant may retain the unsuffixed method
-        # name. Accept that paired variant or explicit [35], never a count alone.
+        # name. With this matrix only API 36 may be unsuffixed; API 35 must be
+        # explicit so an old dual-SDK result cannot masquerade as Android 16.
         if not api26:
             raise ValueError("Android 8 variant results missing")
         for base in api26:
-            if sum(candidate in names for candidate in (base, base + "[35]")) != 1:
-                raise ValueError("Android 15 paired variant result missing or ambiguous")
-        if len(names) != 2 * len(api26):
+            if base + "[35]" not in names:
+                raise ValueError("Android 15 paired variant result missing")
+            if sum(candidate in names for candidate in (base, base + "[36]")) != 1:
+                raise ValueError("Android 16 paired variant result missing or ambiguous")
+        if len(names) != 3 * len(api26):
             raise ValueError("Unpaired Android adapter variant result")
-        evidence[name] = {"26": len(api26), "35": len(api26)}
+        evidence[name] = {"26": len(api26), "35": len(api26), "36": len(api26)}
     return evidence
 
 
@@ -132,7 +138,7 @@ def gate(root, frozen):
         raise ValueError("Android lint gate failed")
     return dict(inputCount=current["count"], inputSha256=current["aggregate"], junit=totals,
                 suites=len(suites), lint=lint_counts, adapterSdkCases=sdks,
-                androidAdapterRuntime="Robolectric API 26 and 35; simulation only",
+                androidAdapterRuntime="Robolectric API 26, 35 and 36; simulation only",
                 deviceInstallVerified=False)
 
 

@@ -13,7 +13,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Silence may expire live display freshness, but must not authorize closing an unknown ongoing shift. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 public class DashingUpdateHoldTest {
     private Context app;
 

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import java.text.DateFormat;
 import java.util.Date;
+import java.util.function.BooleanSupplier;
 
 /** Saved rules, the standalone payout baseline, and the last user-visible status line. */
 final class FilterStore {
@@ -68,7 +69,43 @@ final class FilterStore {
     private static final String LEARNING_OFF_AT = "learning_off_at";
     private static final String ADAPTIVE_RESET_AT = "adaptive_reset_at";
 
-    static FilterSettings load(Context context) {
+    /** Process-local invalidation only: no recommendation or action authority is restored after restart. */
+    private static long rulesGeneration;
+
+    static final class RuleSnapshot {
+        final FilterSettings settings;
+        final String key;
+        final long generation;
+        private RuleSnapshot(FilterSettings settings, long generation) {
+            this.settings = settings;
+            this.key = AutoAccept.rulesKey(settings);
+            this.generation = generation;
+        }
+    }
+
+    static synchronized RuleSnapshot snapshot(Context context) {
+        return new RuleSnapshot(load(context), rulesGeneration);
+    }
+
+    /**
+     * The optimizer changes only the scale, through the ordinary save path. Manual edits (even change-back),
+     * learned floors and opt-in changes invalidate the captured rules. The last safety check runs under this lock.
+     */
+    static synchronized boolean saveScaleIfUnchanged(Context context, RuleSnapshot expected, int percent,
+                                                     BooleanSupplier stillEligible) {
+        FilterSettings current = load(context);
+        if (expected == null || expected.generation != rulesGeneration
+                || !expected.key.equals(AutoAccept.rulesKey(current)) || !current.enabled
+                || percent < 1 || percent > 200 || percent == current.minimumScalePercent
+                || Math.abs(percent - current.minimumScalePercent) > 5 || !stillEligible.getAsBoolean()) return false;
+        // Reentrant platform callbacks must not let a manual edit be overwritten with the earlier settings object.
+        current = load(context);
+        if (expected.generation != rulesGeneration || !expected.key.equals(AutoAccept.rulesKey(current))) return false;
+        save(context, current.withMinimumScalePercent(percent));
+        return true;
+    }
+
+    static synchronized FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
         retireExtraStopFee(context, prefs);
         return read(prefs);
@@ -106,6 +143,7 @@ final class FilterStore {
                         + (paused ? " It was your only rule, so auto-decline is paused." : "");
                 edit.putString(STOP_FEE_NOTICE, notice).putString(LAST_STATUS, stamped(notice));
             }
+            rulesGeneration++;
             edit.apply();
         }
         if (!(saved instanceof Integer) || (Integer) saved <= 0) return;
@@ -159,7 +197,7 @@ final class FilterStore {
      * An offer the user declined by hand, after the dash went on: the rule that came closest to catching it is
      * raised just past it. Learned only while auto-decline and the adaptive minimum are both on, like acceptances.
      */
-    static DeclineLesson learnFromDecline(Context context, OfferSnapshot declinedOffer) {
+    static synchronized DeclineLesson learnFromDecline(Context context, OfferSnapshot declinedOffer) {
         FilterSettings settings = load(context);
         if (!settings.enabled || !settings.risingOffers) return DeclineLesson.SWITCHES_OFF;
         DeclinedFloor floor = DeclinedFloor.raisedBy(settings, declinedOffer);
@@ -183,6 +221,7 @@ final class FilterStore {
                 break;
             }
         }
+        rulesGeneration++;
         prefs(context).edit()
                 .putInt(DECLINED_PAY, floor.payCents)
                 .putInt(DECLINED_MINUTE_PAY, floor.rates.minutePay).putInt(DECLINED_MINUTES, floor.rates.minutes)
@@ -202,13 +241,14 @@ final class FilterStore {
      * overwritten. When learning
      * (auto-decline and the adaptive minimum both on) starts or stops, the time is kept for a shared report.
      */
-    static void save(Context context, FilterSettings settings) {
+    static synchronized void save(Context context, FilterSettings settings) {
         SharedPreferences prefs = prefs(context);
         boolean before = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
         boolean after = settings.enabled && settings.risingOffers;
         SharedPreferences.Editor edit = prefs.edit();
         if (after && !before) edit.putLong(LEARNING_ON_SINCE, System.currentTimeMillis());
         if (before && !after) edit.putLong(LEARNING_OFF_AT, System.currentTimeMillis());
+        rulesGeneration++;
         edit.putBoolean(ENABLED, settings.enabled)
                 .putInt(FLAT, settings.flatCents)
                 .putInt(PER_MILE, settings.perMileCents)
@@ -247,7 +287,7 @@ final class FilterStore {
         return recordAcceptedLesson(context, accepted).considered();
     }
 
-    static AcceptedLesson recordAcceptedLesson(Context context, OfferSnapshot accepted) {
+    static synchronized AcceptedLesson recordAcceptedLesson(Context context, OfferSnapshot accepted) {
         if (accepted.payCents == null) return AcceptedLesson.PAY_UNKNOWN;
         SharedPreferences prefs = prefs(context);
         boolean learning = prefs.getBoolean(ENABLED, false) && prefs.getBoolean(RISING_OFFERS, false);
@@ -261,6 +301,7 @@ final class FilterStore {
                 || best.milePay != previous.milePay || Double.compare(best.miles, previous.miles) != 0
                 || best.stopPay != previous.stopPay || best.stops != previous.stops
                 || best.itemPay != previous.itemPay || best.items != previous.items;
+        if (recorded) rulesGeneration++;
         prefs.edit()
                 .putInt(LAST_ACCEPTED, highest)
                 .putInt(BEST_MINUTE_PAY, best.minutePay).putInt(BEST_MINUTES, best.minutes)
@@ -288,7 +329,8 @@ final class FilterStore {
      * Forgets the payout baseline, every best rate and everything declines taught: the adaptive minimum starts over
      * from the saved rules.
      */
-    static void resetAccepted(Context context) {
+    static synchronized void resetAccepted(Context context) {
+        rulesGeneration++;
         prefs(context).edit().putLong(ADAPTIVE_RESET_AT, System.currentTimeMillis())
                 .remove(LAST_ACCEPTED).remove(BEST_MINUTE_PAY).remove(BEST_MINUTES)
                 .remove(BEST_MILE_PAY).remove(BEST_MILES).remove(BEST_STOP_PAY).remove(BEST_STOPS)
@@ -387,7 +429,8 @@ final class FilterStore {
         return prefs(context).getBoolean(PEEK, true);
     }
 
-    static void setPeek(Context context, boolean on) {
+    static synchronized void setPeek(Context context, boolean on) {
+        rulesGeneration++;
         prefs(context).edit().putBoolean(PEEK, on).apply();
     }
 
@@ -395,7 +438,8 @@ final class FilterStore {
         return prefs(context).getBoolean(AUTO_ACCEPT, false);
     }
 
-    static void setAutoAcceptEnabled(Context context, boolean on) {
+    static synchronized void setAutoAcceptEnabled(Context context, boolean on) {
+        rulesGeneration++;
         prefs(context).edit().putBoolean(AUTO_ACCEPT, on).apply();
     }
 

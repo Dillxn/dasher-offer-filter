@@ -27,7 +27,7 @@ import static org.junit.Assert.assertEquals;
  * judge names the store it names. Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class NewOfferCardTest {
     private Application app;

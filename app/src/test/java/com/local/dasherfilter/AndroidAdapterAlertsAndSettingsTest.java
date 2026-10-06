@@ -36,7 +36,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Offer alerts and the notification listener, and the settings screen and rules, through real Android adapters. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase {
     @Test

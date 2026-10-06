@@ -8,6 +8,20 @@ if (!(testHeap ==~ /[1-9][0-9]*[mMgG]/)) {
     throw new GradleException('Invalid -PtestHeap: use a positive whole number with m or g, e.g. -PtestHeap=768m.')
 }
 
+// Optional worker recycling limits accumulated Robolectric/native state without omitting test classes.
+def testForkEvery = providers.gradleProperty('testForkEvery').getOrElse('0')
+if (!(testForkEvery ==~ /0|[1-9][0-9]*/) || testForkEvery.toBigInteger() > Long.MAX_VALUE) {
+    throw new GradleException('Invalid -PtestForkEvery: use a nonnegative whole number, e.g. -PtestForkEvery=1.')
+}
+// Android 8.1 is an optional compatibility probe, never a substitute for the release matrix.
+if (project.hasProperty('testApi27') && !project.hasProperty('allSdks')) {
+    throw new GradleException('Optional -PtestApi27 requires -PallSdks so API 27 is not filtered out.')
+}
+// Robolectric's Android 16 runtime requires Java 21; do not silently omit it on an older JVM.
+if (project.hasProperty('allSdks') && !JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_21)) {
+    throw new GradleException('The -PallSdks release matrix (API 26, 35, 36) requires JDK 21 or newer.')
+}
+
 android {
     namespace 'com.local.dasherfilter'
     compileSdk 36
@@ -15,23 +29,31 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 26
         targetSdk 35
-        versionCode 78
-        versionName '0.4.72'
+        versionCode 79
+        versionName '0.4.73'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    sourceSets {
+        // Opt in with -PallSdks -PtestApi27; required release tests do not depend on API 27 availability.
+        if (project.hasProperty('testApi27')) {
+            test.java.srcDir 'src/testApi27/java'
+        }
+    }
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
             maxHeapSize = testHeap
+            forkEvery = testForkEvery.toLong()
             // Test classes run in parallel JVMs; Robolectric keeps no state across them. Gradle deals the classes out
             // to the JVMs in turn, by name, and never splits one, so no class should run much longer than the rest.
             // -Pforks=N sets how many JVMs (e.g. -Pforks=1 when several worktrees build at once).
             maxParallelForks = (project.findProperty('forks') ?: '3') as int
-            // Day to day only Android 15 is simulated; a release, the fixer's gate and Render pass -PallSdks
-            // so Android 8 runs too.
+            // Day to day only Android 15 is simulated. The local release gate passes -PallSdks
+            // for declared Android 8/15/16 variants (plus targeted legacy API 28 cases).
+            // enabledSdks filters @Config selections; it cannot add an undeclared SDK.
             if (!project.hasProperty('allSdks')) {
                 systemProperty 'robolectric.enabledSdks', '35'
                 // Quick JIT for day-to-day runs (about 15% faster here); releases keep the full JIT.

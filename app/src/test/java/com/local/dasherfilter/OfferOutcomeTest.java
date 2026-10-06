@@ -34,7 +34,7 @@ import static org.junit.Assert.assertTrue;
  * when the app's decline went through; the rules' verdict stays on the ticket as a line of its own.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferOutcomeTest extends AndroidAdapterTestBase {
     /** The offer on the user's ticket: $26.30 for 29.2 mi, 71 min and 4 stops, at most 3 stops allowed. */

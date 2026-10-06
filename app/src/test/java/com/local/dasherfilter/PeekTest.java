@@ -65,7 +65,7 @@ import static org.junit.Assert.assertTrue;
  * and Dasher brought up mid-offer, are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

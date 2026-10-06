@@ -17,7 +17,7 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         test_source = self.root / "app/src/test/java/com/local/dasherfilter"
         test_source.mkdir(parents=True)
         for name in gate.ADAPTERS:
-            (test_source / (name + ".java")).write_text("@Config(sdk={26,35}) class " + name + " {}")
+            (test_source / (name + ".java")).write_text("@Config(sdk={26,35,36}) class " + name + " {}")
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
         self.frozen = gate.snapshot(self.root)
         self.junit = self.root / "app/build/test-results/testDebugUnitTest/TEST-example.xml"
@@ -27,8 +27,9 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         self.junit.write_text('<testsuite name="ordinary" tests="1774" failures="0" errors="0" skipped="0"/>')
         for name in gate.ADAPTERS:
             path = self.junit.parent / ("TEST-" + name + ".xml")
-            path.write_text('<testsuite name="com.local.dasherfilter.' + name + '" tests="2">'
-                            '<testcase name="example[26]"/><testcase name="example"/></testsuite>')
+            path.write_text('<testsuite name="com.local.dasherfilter.' + name + '" tests="3">'
+                            '<testcase name="example[26]"/><testcase name="example[35]"/>'
+                            '<testcase name="example"/></testsuite>')
         self.lint.write_text('<issues><issue severity="Warning"/></issues>')
 
     def tearDown(self):
@@ -36,9 +37,12 @@ class ReleaseBridgeGateTest(unittest.TestCase):
 
     def test_success_reports_counts_and_exact_frozen_inputs(self):
         result = gate.gate(self.root, self.frozen)
-        self.assertEqual(1774 + 2 * len(gate.ADAPTERS), result["junit"]["tests"])
+        self.assertEqual(14, len(gate.ADAPTERS))
+        self.assertEqual(1774 + 3 * len(gate.ADAPTERS), result["junit"]["tests"])
         self.assertEqual(dict(errors=0, warnings=1), result["lint"])
         self.assertEqual(self.frozen["aggregate"], result["inputSha256"])
+        self.assertEqual({"26": 1, "35": 1, "36": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+        self.assertIn("API 26, 35 and 36", result["androidAdapterRuntime"])
 
     def test_source_mutation_rejected(self):
         (self.root / "app/src/Source.java").write_text("class Changed {}")
@@ -52,7 +56,7 @@ class ReleaseBridgeGateTest(unittest.TestCase):
             gate.gate(self.root, self.frozen)
 
     def test_missing_failed_skipped_or_insufficient_tests_rejected(self):
-        for attrs in ('tests="0"', f'tests="{1773 - 2 * len(gate.ADAPTERS)}"', 'tests="1774" failures="1"',
+        for attrs in ('tests="0"', f'tests="{1773 - 3 * len(gate.ADAPTERS)}"', 'tests="1774" failures="1"',
                       'tests="1774" errors="1"', 'tests="1774" skipped="1"'):
             self.junit.write_text('<testsuite name="ordinary" ' + attrs + "/>")
             with self.subTest(attrs=attrs), self.assertRaises(ValueError):
@@ -70,16 +74,52 @@ class ReleaseBridgeGateTest(unittest.TestCase):
     def test_missing_sdk_variant_rejected_even_with_enough_tests(self):
         path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
         original = path.read_text()
-        for missing in ('<testcase name="example[26]"/>', '<testcase name="example"/>'):
+        for missing in ('<testcase name="example[26]"/>', '<testcase name="example[35]"/>',
+                        '<testcase name="example"/>'):
             path.write_text(original.replace(missing, ""))
             with self.subTest(missing=missing), self.assertRaises(ValueError):
                 gate.gate(self.root, self.frozen)
 
-    def test_explicit_api35_marker_is_supported(self):
+    def test_explicit_api36_marker_is_supported(self):
         path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
-        path.write_text(path.read_text().replace('name="example"', 'name="example[35]"'))
+        path.write_text(path.read_text().replace('name="example"', 'name="example[36]"'))
         result = gate.gate(self.root, self.frozen)
-        self.assertEqual({"26": 1, "35": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+        self.assertEqual({"26": 1, "35": 1, "36": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+
+    def test_stale_dual_sdk_results_are_rejected(self):
+        path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
+        for final_variant in ('example', 'example[35]'):
+            path.write_text('<testsuite name="com.local.dasherfilter.' + gate.ADAPTERS[0] + '" tests="2">'
+                            '<testcase name="example[26]"/><testcase name="' + final_variant + '"/></testsuite>')
+            with self.subTest(final_variant=final_variant), self.assertRaises(ValueError):
+                gate.gate(self.root, self.frozen)
+
+    def test_ambiguous_or_unpaired_android16_results_are_rejected(self):
+        path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
+        original = path.read_text()
+        for extra in ('example[36]', 'different[36]', 'example[26]'):
+            path.write_text(original.replace('</testsuite>', '<testcase name="' + extra + '"/></testsuite>'))
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                gate.gate(self.root, self.frozen)
+
+    def test_old_sdk_source_declaration_is_rejected(self):
+        source = self.root / "app/src/test/java/com/local/dasherfilter" / (gate.ADAPTERS[0] + ".java")
+        source.write_text(source.read_text().replace('{26,35,36}', '{26,35}'))
+        frozen = gate.snapshot(self.root)
+        with self.assertRaisesRegex(ValueError, "SDK configuration"):
+            gate.gate(self.root, frozen)
+
+    def test_qualifiers_do_not_change_sdk_selection(self):
+        source = self.root / "app/src/test/java/com/local/dasherfilter" / (gate.ADAPTERS[0] + ".java")
+        source.write_text(source.read_text().replace('sdk={26,35,36}', 'sdk={26, 35, 36}, qualifiers="w411dp-h914dp"'))
+        result = gate.gate(self.root, gate.snapshot(self.root))
+        self.assertEqual({"26": 1, "35": 1, "36": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+
+    def test_method_sdk_override_is_rejected(self):
+        source = self.root / "app/src/test/java/com/local/dasherfilter" / (gate.ADAPTERS[0] + ".java")
+        source.write_text(source.read_text().replace('{}', '{ @Config(sdk=35) void example() {} }'))
+        with self.assertRaisesRegex(ValueError, "SDK configuration"):
+            gate.gate(self.root, gate.snapshot(self.root))
 
 
 class MainAuthorityTest(unittest.TestCase):

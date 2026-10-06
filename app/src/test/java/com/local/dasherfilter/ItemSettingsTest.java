@@ -11,7 +11,7 @@ import static org.junit.Assert.*;
 
 /** Upgrade defaults and rule transformations must never silently remove or enable the optional item floor. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {26, 35, 36})
 public final class ItemSettingsTest {
     private Application app;
     @Before public void clear() {

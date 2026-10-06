@@ -34,7 +34,7 @@ import static org.junit.Assert.assertTrue;
  * as it draws. The rules are the user's: $13 pay, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AdaptiveShapeByAreaTest extends AndroidAdapterTestBase {
