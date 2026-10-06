@@ -5,11 +5,14 @@ import android.graphics.RectF;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.SeekBar;
+import android.widget.EditText;
+import android.os.Looper;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
+import org.robolectric.shadows.ShadowAlertDialog;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
@@ -26,6 +29,33 @@ public class SelectivityRenderTest extends AndroidAdapterTestBase {
     @Test public void compactMinimumsChipAndOpenedNativePanel() { renderScene(true, "compact"); }
 
     @Test public void denseFullWindowKeepsTheMinimumsTargetClearOfNavigation() { renderScene(false, "short-window"); }
+
+    @Test @Config(qualifiers = "w411dp-h914dp-xxhdpi")
+    public void advancedCostsPanelShowsUnknownCostAndSeparateOptIn() {
+        assertTrue(EarningsStore.saveConfig(app, new EarningsModel.Config(false, null, 80, 120)));
+        try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = controller.get().findViewById(android.R.id.content);
+            settleSky(content);
+            iconDescribed(content, "Settings").performClick();
+            View entry = shownButton(content, "Costs and estimates");
+            assertNotNull(entry);
+            entry.performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(dialog);
+            assertTrue(dialog.isShowing());
+            View panel = dialog.getWindow().getDecorView();
+            Ui ui = new Ui(app);
+            panel.measure(View.MeasureSpec.makeMeasureSpec(content.getWidth() - ui.dp(32), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(content.getHeight() - ui.dp(32), View.MeasureSpec.AT_MOST));
+            panel.layout(0, 0, panel.getMeasuredWidth(), panel.getMeasuredHeight());
+            assertEquals("unknown cost remains blank", "", find(panel, EditText.class).getText().toString());
+            assertFalse(EarningsStore.config(app).enabled);
+            assertNotNull(findButton(panel, "Enable automatic adjustment…"));
+            render(panel, "costs-and-estimates");
+            dialog.dismiss();
+        }
+    }
 
     private void renderScene(boolean split, String name) {
         FilterStore.save(app, new FilterSettings(true, 1000, 200, 30, 100, 3)

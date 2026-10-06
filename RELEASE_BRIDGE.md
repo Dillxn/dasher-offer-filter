@@ -13,8 +13,8 @@ installation. Load only the required original-signer values privately for
 replacement key, or weaken the original-certificate check.
 
 1. Freeze and commit the complete candidate source; recheck current GitHub main.
-2. Run the meaningful local dual-SDK tests and lint against immutable inputs.
-   `tools/sign-local.sh` runs the dual-SDK gate and reuses valid unchanged Gradle
+2. Run the meaningful local API 26/35/36 tests and lint against immutable inputs.
+   `tools/sign-local.sh` runs the API 26/35/36 gate and reuses valid unchanged Gradle
    results, then signs with the original key into `dist/`.
 3. Run `tools/publish-repo-feed.py` from that exact committed checkout. Preserve its
    signer, package/version, size/hash, live-channel and production updater checks.

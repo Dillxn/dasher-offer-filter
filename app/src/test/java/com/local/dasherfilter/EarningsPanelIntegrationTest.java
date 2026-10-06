@@ -28,7 +28,7 @@ public class EarningsPanelIntegrationTest extends AndroidAdapterTestBase {
             settleSky(content);
             AlertDialog panel = openPanel(content);
             find(panel.getWindow().getDecorView(), EditText.class).setText("1.23");
-            Button save = findButton(panel.getWindow().getDecorView(), "Save driving cost");
+            View save = findButton(panel.getWindow().getDecorView(), "Save driving cost");
             iconDescribed(content, "Back").performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertFalse(panel.isShowing());
@@ -44,7 +44,7 @@ public class EarningsPanelIntegrationTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             AlertDialog panel = openPanel(content);
-            Button enable = findButton(panel.getWindow().getDecorView(), "Enable automatic adjustment…");
+            View enable = findButton(panel.getWindow().getDecorView(), "Enable automatic adjustment…");
             assertNotNull(enable);
             enable.performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
@@ -70,7 +70,7 @@ public class EarningsPanelIntegrationTest extends AndroidAdapterTestBase {
             settleSky(content);
             AlertDialog old = openPanel(content);
             find(old.getWindow().getDecorView(), EditText.class).setText("1.23");
-            Button stale = findButton(old.getWindow().getDecorView(), "Save driving cost");
+            View stale = findButton(old.getWindow().getDecorView(), "Save driving cost");
             activity.recreate();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertFalse(old.isShowing());

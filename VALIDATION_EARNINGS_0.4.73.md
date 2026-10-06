@@ -27,7 +27,9 @@ The competing earnings branch is reviewed explicitly in RECONCILIATION_EARNINGS_
 
 ## Fresh verification receipt
 
-- Matrix-tool synthetic tests: 16 passed on reconstructed configuration
+- Python release tools: 46 passed on reconstructed configuration (including 16 matrix-gate cases)
+- Fresh direct JVM earnings-model tests: 14 passed against newly compiled production classes
+- Preserved core safety regressions: 2,008 assertions passed
 - New full Java/Robolectric matrix: pending
 - New lint: pending
 - Original-signer APK: pending; signing input presently unavailable

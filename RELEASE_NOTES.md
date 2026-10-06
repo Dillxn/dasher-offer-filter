@@ -7,6 +7,13 @@
 - Raises Consent 14 and documents local retention. Required simulated Android coverage is 26/35/36; optional 27 remains separately disclosed
 - Reconstructed source is checkpointed independently; fresh full verification, original-signer publication and real-phone evidence are separate gates
 
+## 0.4.72 — conservative offer evidence and update addresses
+
+- Separates displayed per-unit rates from total payout; preserves fragmented item qualifiers and keeps unique/estimated counts conservative
+- Avoids malformed-item regex overflow and rejects ranged standalone/add-on facts instead of guessing exact values
+- Rejects noncanonical update addresses while preserving the existing signed-feed transport and certificate checks
+- Includes prior Peek/privacy repairs. Published with the original signer; real-phone incident outcomes remain separate from local regression proof
+
 ## 0.4.71 — keep Peek from returning during offer loading (candidate)
 
 - Restarts Peek's four-second empty-screen wait when Dasher is loading, drawing only part of an offer, or cannot be read completely. A final fresh read must still confirm that the full empty-screen interval elapsed before returning to the previous app.
