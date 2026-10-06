@@ -129,9 +129,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
         assertNotNull(data);
         for (String fact : new String[] {"rolling 24-hour window", "latest 200 offer decisions",
-                "no age-based expiry", "Up to 30 queued reports", "notes you type in reports are not masked",
-                "developer's private GitHub repository", "Anthropic's Claude", "OpenAI's ChatGPT/Codex",
-                "does not erase sent copies"}) {
+                "no age-based expiry", "End-user GitHub sign-in", "Feedback is accountless",
+                "masked diagnostics are attached only when you explicitly choose them", "up to 90 days",
+                "connection metadata"}) {
             assertTrue(fact, data.contains(fact));
         }
         assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
@@ -254,10 +254,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 12 did not distinguish outbox/history retention or fully explain report recipients.
-        assertEquals(13, Consent.VERSION);
+        // Version 13 still described user GitHub and automatic GitHub reporting.
+        assertEquals(14, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 12).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 13).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

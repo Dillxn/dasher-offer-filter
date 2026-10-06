@@ -134,15 +134,16 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertNull("no paragraph about what is kept", findTextView(content, "stays on this phone for reports"));
             assertNull("all is well: no setup row", shownTextContaining(content, "Fix"));
 
-            // What stays: two switches and a few rows.
+            // What stays: two switches and the accountless, user-facing rows.
             assertTrue(findButton(content, "Quiet Dasher while declining").isShown());
             assertTrue(findButton(content, "Offer map").isShown());
             assertTrue(row(content, "Updates").isShown());
+            assertNotNull(shownButton(content, "Send anonymous feedback"));
             assertNotNull(shownButton(content, "Share report"));
             assertNotNull(shownButton(content, "Clear history"));
             assertNotNull(shownButton(content, "Tip"));
-            assertFalse("problem reports only through a GitHub connection, shown once connected",
-                    findButton(content, "Send problem reports").isShown());
+            assertNull("end-user GitHub is retired", findButton(content, "Connect GitHub"));
+            assertFalse(findButton(content, "Send problem reports").isShown());
             assertFalse(findButton(content, "Share diagnostics after each dash").isShown());
         }
     }
@@ -294,7 +295,8 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             DecisionLog.record(app, declinedEntry());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             openTicket(content);
-            assertNull("no Report this offer: reports are off", shownButton(content, "Report this offer"));
+            assertNotNull("Report this offer is accountless and needs no prior opt-in",
+                    shownButton(content, "Report this offer"));
         }
     }
 
