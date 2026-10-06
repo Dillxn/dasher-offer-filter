@@ -90,6 +90,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
+    private final Asked<Boolean> batteryRestricted = new Asked<>(() -> BatteryLimits.restricted(this));
     private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
     /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
     private boolean resumed;
@@ -211,6 +212,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Settings page: only what is set nowhere else, one row each.
     /** Setup that needs a fix and has no row on the homepage; each hidden while all is well. */
     private Readiness doorDashAlerts;
+    /** Android's "Restricted" battery setting stops the update and feedback jobs (BETA-16). */
+    private Readiness battery;
     private Readiness location;
     private Readiness locationAllTheTime;
     private Switch areasToggle;
@@ -420,6 +423,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         alertsAllowed.forget();
         locationAllowed.forget();
         locationAlways.forget();
+        batteryRestricted.forget();
         if (checklist != null) checklist.forget();
         here.forget();
     }
@@ -1117,6 +1121,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
+        battery = new Readiness(setup, BatteryLimits.PROBLEM, () -> BatteryLimits.open(this, this::open));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);
         locationAllTheTime = new Readiness(setup, "The offer map needs location all the time", this::askForLocation);
 
@@ -1173,6 +1178,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (Updater.waitsForPermission(this)) open(UpdateNotices.allowUpdates(this));
             else Updater.check(this, true, null);
         });
+        // The website's install and setup help (BETA-22).
+        ui.setRow(ui.listRow(connections, BetaProgram.HELP, () -> open(BetaProgram.help())), BetaProgram.HELP,
+                BetaProgram.HELP_DETAIL);
 
         LinearLayout reports = group(body);
         feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
@@ -1204,8 +1212,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         if (!Support.methods().isEmpty()) ui.listRow(group(body), "Tip", this::chooseTip);
 
-        TextView footer = ui.text(AppName.NAME + " v" + Updater.version(this) + " · Not a DoorDash app.", 12,
-                ui.inkSecondary, false);
+        TextView footer = ui.text("", 12, ui.inkSecondary, false);
+        // The version with a small Beta label beside it (BETA-22).
+        footer.setText(BetaProgram.footer(ui, Updater.version(this)));
+        footer.setContentDescription(BetaProgram.footerSaid(Updater.version(this)));
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(0, ui.dp(28), 0, 0);
         body.addView(footer, Ui.matchWidth());
@@ -1356,6 +1366,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
     private void refreshSettings() {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
+        battery.update(!batteryRestricted.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
         // What waits to send is read only while Settings shows, and as it opens.
         if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
