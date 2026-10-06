@@ -373,7 +373,9 @@ final class DiagnosticLog {
             for (int i = 0; i < lines.size() && total > budget; i++) {
                 String line = lines.get(i);
                 int source = line.indexOf(" [");
-                boolean timing = source >= 0 && line.startsWith("[scan]", source + 1);
+                boolean timing = source >= 0 && (line.startsWith("[scan]", source + 1)
+                        || line.startsWith("[screen] read load:", source + 1)
+                        || line.startsWith("[screen] yielding to Dasher:", source + 1));
                 if (dropped[i] || (pass == 0 && !timing)) continue;
                 dropped[i] = true;
                 total -= size(line, bytes);

@@ -886,12 +886,15 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void pausedOfferIsRecordedWithoutAction() {
+    public void pausedNothingOfDasherIsReadSoNothingIsDeclinedOrRecorded() {
+        // Paused is the safe mode (the 6 October 2026 incident): not one node of Dasher's is read, so an offer is
+        // neither declined nor written to the history, and the status says so.
         FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
         AccessibilityNodeInfo root = offer("$7.90");
         show(root);
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
-        assertEquals(DecisionLog.Action.PAUSED, DecisionLog.recent(app, 1).get(0).action);
+        assertTrue(DecisionLog.recent(app, 1).isEmpty());
+        assertTrue(FilterStore.lastStatus(app).endsWith("Paused: " + AppName.NAME + " is not reading Dasher"));
     }
 
     @Test

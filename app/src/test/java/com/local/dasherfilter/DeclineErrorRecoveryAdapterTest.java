@@ -235,6 +235,24 @@ public final class DeclineErrorRecoveryAdapterTest {
         begin(); failOn(node("Map", true)); pass(1_000);
         assertTrue(actions().isEmpty());
     }
+    @Test public void aMapsOwnControlBlocksBackThoughOtherReadsLeaveTheMapUnread() {
+        // Every other read leaves a map's subtree unread (MapNodes); the recovery's reads take it in full, so a control
+        // drawn inside the map is the actionable control it is.
+        AccessibilityNodeInfo map = node("", false);
+        map.setClassName("com.google.android.gms.maps.MapView");
+        map.setContentDescription("Google Map");
+        Shadows.shadowOf(map).addChild(node("My location", true));
+        begin(); failOn(map); pass(1_000);
+        assertTrue(actions().isEmpty());
+    }
+    @Test public void aMapWithNothingActionableInsideStillAllowsTheRecovery() {
+        AccessibilityNodeInfo map = node("", false);
+        map.setClassName("com.google.android.gms.maps.MapView");
+        map.setContentDescription("Google Map");
+        for (int i = 0; i < 5; i++) Shadows.shadowOf(map).addChild(node("", false));
+        begin(); failOn(map); pass(600);
+        assertEquals(Arrays.asList(AccessibilityService.GLOBAL_ACTION_BACK), actions());
+    }
     @Test public void activeButUnfocusedDasherCannotReceiveGlobalBack() {
         begin(); failOn(node("Map", false));
         ((ShadowAccessibilityWindowInfo) Shadow.extract(service.getWindows().get(0))).setFocused(false);

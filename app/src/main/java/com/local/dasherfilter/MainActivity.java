@@ -1999,7 +1999,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void rulesChanged() {
         OfferNotificationService.rulesChanged();
-        OfferFilterService.requestCheckFromNotification();
+        OfferFilterService.requestCheckForRules();
         refresh();
     }
 
