@@ -250,14 +250,24 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
 
     @Test
     public void anExistingInstallSeesTheNoticeOnceAfterThisUpdate() {
-        // A phone in use before the notice existed: rules on, offers in its history, the map and sound settings.
+        assertEquals(14, Consent.VERSION);
+        assertUpgradeRequiresCurrentNotice(13);
+    }
+
+    @Test
+    public void anOlderDisclosureNoticeAlsoRequiresCurrentConsent() {
+        assertEquals(14, Consent.VERSION);
+        assertUpgradeRequiresCurrentNotice(12);
+    }
+
+    private void assertUpgradeRequiresCurrentNotice(int previousNotice) {
+        // A phone already in use: preserve its rules, offer history and sound settings across the new notice.
         FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 12 did not distinguish outbox/history retention or fully explain report recipients.
-        assertEquals(13, Consent.VERSION);
+        // Both older disclosures and the immediately preceding notice predate these local earnings features.
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 12).commit();
+                .putInt(Consent.ACCEPTED_VERSION, previousNotice).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

@@ -91,7 +91,7 @@ public final class LegalTextsTest {
         assertTrue(privacy.contains("retention and deletion schedule for those copies has not yet been confirmed"));
         for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
             assertTrue(doc.file, doc.text().startsWith("# " + AppName.NAME));
-            assertTrue(doc.file, doc.text().contains("Draft of 4 October 2026."));
+            assertTrue(doc.file, doc.text().contains("Draft of 6 October 2026."));
             assertTrue(doc.file, doc.text().contains("No attorney review is claimed"));
         }
         assertTrue(LegalTexts.Doc.TERMS.text().contains("To the extent the law allows"));
