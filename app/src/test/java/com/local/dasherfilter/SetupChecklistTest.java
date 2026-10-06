@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import static org.junit.Assert.*;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.AppOpsManager;
 import android.content.ComponentName;
@@ -10,8 +11,10 @@ import android.content.pm.PackageInstaller;
 import android.os.Looper;
 import android.os.Process;
 import android.provider.Settings;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.time.Duration;
 import org.junit.Before;
@@ -19,10 +22,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAlertDialog;
 import org.robolectric.shadows.ShadowNotificationListenerService;
@@ -346,6 +351,47 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             activity.pause().resume();
             tick();
             assertNotNull("no greyed-out hint before Android 13", line(content, SetupChecklist.ACCESSIBILITY));
+        }
+    }
+
+    /**
+     * The largest font on a narrow phone: a step's words keep to two lines (they would take three), a little smaller,
+     * never below three quarters of the user's size; longer words take as few lines as that allows (three, not four);
+     * words that fit keep the user's size.
+     */
+    @Test @Config(sdk = {26, 35}, qualifiers = "w320dp-h640dp-xhdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void aStepsWordsKeepToTwoLinesAtTheLargestFontAndOtherwiseTheUsersSize() {
+        RuntimeEnvironment.setFontScale(2f);
+        try {
+            Activity screen = Robolectric.buildActivity(Activity.class).setup().get();
+            Ui ui = new Ui(screen);
+            LinearLayout column = ui.column();
+            SetupRow longer = new SetupRow(screen, ui, column, () -> { });
+            SetupRow shorter = new SetupRow(screen, ui, column, () -> { });
+            SetupRow restart = new SetupRow(screen, ui, column, () -> { });
+            longer.show(SetupRow.Mark.STEP, 2, SetupChecklist.NOTIFICATIONS, SetupChecklist.FIX);
+            shorter.show(SetupRow.Mark.STEP, 3, SetupChecklist.ALERTS, SetupChecklist.FIX);
+            restart.show(SetupRow.Mark.PROBLEM, 1, SetupChecklist.ACCESSIBILITY_RESTART, SetupChecklist.FIX);
+            // The homepage's column on a 320 dp phone.
+            int width = ui.dp(288);
+            column.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            column.layout(0, 0, width, column.getMeasuredHeight());
+            float user = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, SetupRow.WORDS_SP,
+                    screen.getResources().getDisplayMetrics());
+            SetupRow[] steps = {longer, restart};
+            int[] most = {2, 3};
+            for (int i = 0; i < steps.length; i++) {
+                TextView words = steps[i].wordsView();
+                assertTrue(steps[i].words() + ": " + words.getLineCount() + " lines", words.getLineCount() <= most[i]);
+                assertTrue(steps[i].words() + ": " + words.getTextSize() + " of " + user,
+                        words.getTextSize() < user && words.getTextSize() >= user * SetupRow.LEAST_SCALE);
+            }
+            assertEquals("fits: the user's size", user, shorter.wordsView().getTextSize(), 0.01f);
+            assertEquals(1, shorter.wordsView().getLineCount());
+        } finally {
+            RuntimeEnvironment.setFontScale(1f);
         }
     }
 }
