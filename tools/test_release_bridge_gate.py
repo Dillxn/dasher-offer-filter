@@ -24,7 +24,8 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         self.junit.parent.mkdir(parents=True)
         self.lint = self.root / "app/build/reports/lint-results-debug.xml"
         self.lint.parent.mkdir(parents=True)
-        self.junit.write_text('<testsuite name="ordinary" tests="1774" failures="0" errors="0" skipped="0"/>')
+        self.junit.write_text(f'<testsuite name="ordinary" tests="{gate.MIN_TESTS}" failures="0" errors="0" '
+                              'skipped="0"/>')
         for name in gate.ADAPTERS:
             path = self.junit.parent / ("TEST-" + name + ".xml")
             path.write_text('<testsuite name="com.local.dasherfilter.' + name + '" tests="2">'
@@ -36,7 +37,7 @@ class ReleaseBridgeGateTest(unittest.TestCase):
 
     def test_success_reports_counts_and_exact_frozen_inputs(self):
         result = gate.gate(self.root, self.frozen)
-        self.assertEqual(1774 + 2 * len(gate.ADAPTERS), result["junit"]["tests"])
+        self.assertEqual(gate.MIN_TESTS + 2 * len(gate.ADAPTERS), result["junit"]["tests"])
         self.assertEqual(dict(errors=0, warnings=1), result["lint"])
         self.assertEqual(self.frozen["aggregate"], result["inputSha256"])
 
@@ -52,8 +53,9 @@ class ReleaseBridgeGateTest(unittest.TestCase):
             gate.gate(self.root, self.frozen)
 
     def test_missing_failed_skipped_or_insufficient_tests_rejected(self):
-        for attrs in ('tests="0"', f'tests="{1773 - 2 * len(gate.ADAPTERS)}"', 'tests="1774" failures="1"',
-                      'tests="1774" errors="1"', 'tests="1774" skipped="1"'):
+        floor = gate.MIN_TESTS
+        for attrs in ('tests="0"', f'tests="{floor - 1 - 2 * len(gate.ADAPTERS)}"', f'tests="{floor}" failures="1"',
+                      f'tests="{floor}" errors="1"', f'tests="{floor}" skipped="1"'):
             self.junit.write_text('<testsuite name="ordinary" ' + attrs + "/>")
             with self.subTest(attrs=attrs), self.assertRaises(ValueError):
                 gate.gate(self.root, self.frozen)

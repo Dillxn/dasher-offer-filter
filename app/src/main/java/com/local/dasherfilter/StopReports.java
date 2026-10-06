@@ -201,6 +201,7 @@ final class StopReports {
 
     /** The top frames of the main thread in an ANR's trace; nothing else of it. */
     static String mainThread(ApplicationExitInfo exit) {
+        if (Build.VERSION.SDK_INT < 30) return "";
         StringBuilder out = new StringBuilder();
         try (InputStream trace = exit.getTraceInputStream()) {
             if (trace == null) return "";

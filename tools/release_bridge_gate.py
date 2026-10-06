@@ -9,6 +9,11 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 
+# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks: Android 8 and 15) at its last recount, after
+# the accountless-feedback change (2,278 on 6 October 2026). Raise it as tests are added; a run below it is missing
+# tests.
+MIN_TESTS = 2278
+
 ADAPTERS = (
     "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
@@ -117,7 +122,7 @@ def gate(root, frozen):
         reports[name] = result
         for key in totals:
             totals[key] += int(result.get(key, 0))
-    if totals["tests"] < 1774 or any(totals[key] for key in ("failures", "errors", "skipped")):
+    if totals["tests"] < MIN_TESTS or any(totals[key] for key in ("failures", "errors", "skipped")):
         raise ValueError("Full test gate failed")
     sdks = sdk_evidence(root, reports)
     lint = ET.parse(root / "app/build/reports/lint-results-debug.xml").getroot()

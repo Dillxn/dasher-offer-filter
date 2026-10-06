@@ -29,7 +29,10 @@ def main():
         for key, value in counts.items(): totals[key] += value
     # Each floor counts every suite its name matches as a glob, so a suite split by topic into several classes
     # (AndroidAdapter*Test) must still reach its floor together.
-    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4}
+    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4,
+                # Accountless feedback, its outbox and dialogs, the opt-in dash summary, stop reports, the offer report
+                # and the one-time removal of the GitHub state.
+                'com.local.dasherfilter.Feedback*Test': 48, 'com.local.dasherfilter.DashSummaryTest': 14, 'com.local.dasherfilter.StopReportsTest': 8, 'com.local.dasherfilter.OfferReportTest': 8, 'com.local.dasherfilter.LegacyReportingCleanupTest': 10}
     adapter_suites = {}
     for pattern, minimum in required.items():
         counts = dict.fromkeys(totals, 0)

@@ -90,6 +90,76 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
+    public void feedbackThatFoundNoNetworkWaitsForAnAndroidJobThatSendsIt() throws Exception {
+        FakeFeedbackTransport service = FakeFeedbackTransport.installed();
+        service.down = true;
+        String token = Feedback.sendFeedback(app, Feedback.Category.BUG, "Sent once a network is back.", false, null);
+        Feedback.flush();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals("tried once at once", 1, service.count());
+
+        JobInfo job = app.getSystemService(JobScheduler.class).getPendingJob(FeedbackOutbox.JOB_ID);
+        assertNotNull("a real Android job waits for a network", job);
+        assertEquals(JobInfo.NETWORK_TYPE_ANY, job.getNetworkType());
+        assertTrue("kept across a restart", job.isPersisted());
+        assertEquals(JobInfo.BACKOFF_POLICY_EXPONENTIAL, job.getBackoffPolicy());
+        assertEquals(FeedbackOutbox.FIRST_RETRY_MS, job.getInitialBackoffMillis());
+
+        service.down = false;
+        ServiceController<FeedbackJobService> controller = Robolectric.buildService(FeedbackJobService.class).create();
+        assertTrue("its work runs off the main thread", controller.get().onStartJob(null));
+        FeedbackOutbox.flush();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(Shadows.shadowOf(controller.get()).getIsJobFinished());
+        assertFalse("nothing left to retry", Shadows.shadowOf(controller.get()).getIsRescheduleNeeded());
+        assertEquals(2, service.count());
+        assertEquals("the same submission, never a second one", token,
+                service.requests().get(1).getString("reportToken"));
+        assertEquals(0, FeedbackOutbox.pending(app));
+        controller.destroy();
+    }
+
+    /** Android 11 and later also keep their own record of the stop; earlier ones have only the app's note. */
+    private void androidRecordsTheCrash() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+        Shadows.shadowOf(app.getSystemService(android.app.ActivityManager.class)).addApplicationExitInfo(
+                org.robolectric.shadows.ShadowActivityManager.ApplicationExitInfoBuilder.newBuilder()
+                        .setReason(android.app.ApplicationExitInfo.REASON_CRASH)
+                        .setTimestamp(System.currentTimeMillis())
+                        .setImportance(android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND)
+                        .build());
+    }
+
+    @Test
+    public void aCrashOffersOneReportOnTheHomepageThatOnlyTheUserSends() {
+        IllegalStateException crash = new IllegalStateException("Deliver to Jane Doe, 100 Example St");
+        crash.setStackTrace(new StackTraceElement[] {new StackTraceElement(
+                "com.local.dasherfilter.OfferFilterService", "read", "OfferFilterService.java", 1200)});
+        StopReports.handler(new java.io.File(app.getFilesDir(), StopReports.NOTE), "0.4.73", (thread, error) -> { })
+                .uncaughtException(Thread.currentThread(), crash);
+        androidRecordsTheCrash();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            StopReports.flush();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            View content = activity.get().findViewById(android.R.id.content);
+            View line = shownIcon(content, AppName.NAME + " stopped unexpectedly last time. Send report.");
+            assertNotNull("one line on the homepage", line);
+            String kept = StopReports.section(app);
+            assertTrue(kept, kept.contains("java.lang.IllegalStateException\n"
+                    + "  at com.local.dasherfilter.OfferFilterService.read(OfferFilterService.java:1200)"));
+            assertFalse("never the error's message", kept.contains("Jane"));
+
+            line.performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            android.app.AlertDialog dialog = (android.app.AlertDialog)
+                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertTrue("the feedback dialog, for the user to send", dialog.isShowing());
+            assertNull("offered once", shownIcon(content, AppName.NAME + " stopped unexpectedly last time. Send report."));
+            assertEquals("nothing is sent before Send", 0, FakeFeedbackTransport.installed().count());
+        }
+    }
+
+    @Test
     public void installResultForAnotherSessionIsIgnored() {
         Updater.prefs(app).edit().putInt("session", 7).commit();
         Updater.status(app, "Installing 9.9.9");
