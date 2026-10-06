@@ -449,6 +449,9 @@ public final class OfferFilterService extends AccessibilityService {
      * again at the unlock ({@link Peek#UNLOCK_POST_MS}).
      */
     private Peek.Request lockedPost;
+    /** When it was kept (Peek's clock), and how old its post was then: its age at the unlock goes by both. */
+    private long lockedPostKeptAt = NEVER;
+    private long lockedPostAgeWhenKept;
     /** What the last read during a peek made of Dasher's screen, in fixed words, for the "[peek] no offer" line. */
     private String peekScreen = "unreadable";
     /** What a peek cost Dasher's UI thread: reads, nodes, slow remote fetches, the slowest read, Dasher's events. */
@@ -2779,8 +2782,9 @@ public final class OfferFilterService extends AccessibilityService {
             logDasherLauncher(dasher);
             cardOpen = null;
             // Armed from now, after the lookups above (another app's root, the package manager): a slow one must not
-            // count toward the quiet the touch watch has to see.
-            peek.arm(request, front, dasher, Peek.now());
+            // count toward the quiet the touch watch has to see. A post looked at again after the unlock keeps its
+            // own age limit while the quiet is waited for.
+            peek.arm(request, front, dasher, Peek.now(), afterUnlock ? Peek.UNLOCK_POST_MS : Peek.POST_AGE_MS);
             // The touch watch goes up now, before Dasher is opened: the phone must be quiet first.
             syncAutomation();
             schedulePeekTick();
@@ -2802,6 +2806,8 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void keepForUnlock(Peek.Request request) {
         lockedPost = request;
+        lockedPostKeptAt = Peek.now();
+        lockedPostAgeWhenKept = Math.max(0, System.currentTimeMillis() - request.postTime);
         Peek.note(this, "offer arrived while locked; waiting for unlock");
     }
 
@@ -3110,7 +3116,7 @@ public final class OfferFilterService extends AccessibilityService {
         // Held for the unlock: nothing of it runs while the phone is locked, and it ends once that took too long.
         if (peek.suspended()) {
             if (now - peek.suspendedAt() >= Peek.RESUME_MS) {
-                peekOver("ended: not unlocked within " + Peek.RESUME_MS / 1000 + " s", Peek.Outcome.INTERRUPTED);
+                endHeld("ended: not unlocked within " + Peek.RESUME_MS / 1000 + " s");
             } else {
                 schedulePeekTick();
             }
@@ -3333,7 +3339,8 @@ public final class OfferFilterService extends AccessibilityService {
             long after = peek.watchUp(elapsedOf(watchReadyAt));
             if (after > 100) Peek.log(this, "touch watch up after " + after + " ms");
         }
-        if (peek.quietTimedOut(now) && !peek.quiet(now)) {
+        // Not quiet, or no watch to have seen it, by the end of the wait: no peek.
+        if (peek.quietTimedOut(now) && (!peek.quiet(now) || !watchReady)) {
             abandonArming(request, peek.touchedWhileArming() || keyboard ? "you were using the phone"
                     : "the touch watch was not ready");
             return;
@@ -4115,7 +4122,10 @@ public final class OfferFilterService extends AccessibilityService {
         Peek.Request kept = lockedPost;
         lockedPost = null;
         if (kept == null) return;
-        long age = System.currentTimeMillis() - kept.postTime;
+        // As old as it was when kept, plus the time since on Peek's clock (which runs in deep sleep and never jumps),
+        // or older when the wall clock says so.
+        long age = Math.max(System.currentTimeMillis() - kept.postTime,
+                lockedPostAgeWhenKept + Math.max(0, Peek.now() - lockedPostKeptAt));
         if (OfferNotificationService.postStillUp(kept) != OfferNotificationService.Posted.POSTED) {
             Peek.log(this, "unlocked too late: offer notification gone");
             return;
@@ -4150,12 +4160,16 @@ public final class OfferFilterService extends AccessibilityService {
         if (why == null) why = deviceRefusal();
         if (why == null && DasherSplit.pending()) why = "a split screen with Dasher is being set up";
         if (why == null && Updater.installing(this)) why = "an update is installing";
+        // A touch while Dasher opened, before the lock, not judged yet (Dasher was not seen up): never forgiven.
+        if (why == null && peek.phase() == Peek.Phase.OPENING && peekActions.get() != peek.actions()) {
+            why = "you touched the screen as Dasher opened";
+        }
         if (why != null) {
-            peekOver("ended at the unlock: " + why, Peek.Outcome.INTERRUPTED);
+            endHeld("ended at the unlock: " + why);
             return false;
         }
         peek.resume(now);
-        // Nothing of the user's could be seen while locked: what they do is counted from now.
+        // Nothing of the user's could be seen while locked (the watch was down): what they do is counted from now.
         peek.rebase(peekActions.get());
         peekBeganAt = SystemClock.uptimeMillis();
         postCheckAfter = NEVER;
@@ -4169,6 +4183,17 @@ public final class OfferFilterService extends AccessibilityService {
             watchWindows();
         }
         return true;
+    }
+
+    /**
+     * A peek held for the unlock ends (not unlocked in time, or something at the unlock refused it): Dasher stays as
+     * it is. One that never saw Dasher come up rings its card once, as a launch Dasher never came up for does.
+     */
+    private void endHeld(String line) {
+        Peek.Request request = peek.request();
+        boolean neverUp = peek.phase() == Peek.Phase.OPENING;
+        peekOver(line, Peek.Outcome.INTERRUPTED);
+        if (neverUp && request != null) OfferNotificationService.peekNotTaken(request.alertTag);
     }
 
     private boolean startHere(Intent intent) {
