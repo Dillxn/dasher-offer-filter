@@ -13,7 +13,7 @@ import android.content.SharedPreferences;
  */
 final class Consent {
     /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
-    static final int VERSION = 13;
+    static final int VERSION = 14;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -31,13 +31,14 @@ final class Consent {
                 + "it may go Back and retry, at most twice. Your touch stops it. It can briefly turn offer sound down."},
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer, then return to your previous app. Turn Peek off in Settings."},
+        {"Optional estimates.", "Entered driving costs and acceptance-rate snapshots stay on this phone. Local estimates use observed offers and waiting, not actual completed earnings or a known DoorDash dispatch formula. Automatic minimums adjustment starts off; enabling it can change which offers are declined or, if you separately enabled Auto-accept, accepted."},
         {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "
                 + "account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
                 + "have no age-based expiry. Up to 30 queued reports can remain pending until sent or discarded. "
-                + "A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling 24-hour window; these are not shared. "
+                + "A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling 24-hour window; these are not shared. Manually entered acceptance-rate snapshots are limited to 200 and 30 days; adjustment records and cost settings also stay local. "
                 + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. Recognized payment, account and "
                 + "earnings screens are discarded. Text masking can miss details; notes you type in reports are not masked. "
                 + "Reports leave only when you turn them on or share them, after accepting this notice. Reports sent to the developer's "

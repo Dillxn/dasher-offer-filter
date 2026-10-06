@@ -1,6 +1,6 @@
 # Offer Filter privacy
 
-Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed; a private privacy contact is not yet configured.
+Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed; a private privacy contact is not yet configured.
 
 Offer Filter does not require an Offer Filter account and has no ads or analytics. It does not sell or rent your data. Offer reading and decisions happen on your phone. Update requests, optional reports, place-name lookups and links you choose to open can send information to the services described under What leaves the phone. The developer's public project identity is Dillxn.
 
@@ -41,6 +41,14 @@ Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee 
 A one-time privacy cleanup clears older diagnostic logs and unsent reports if it has not already completed on this installation. It does not run again merely because this notice changes. If that cleanup cannot finish, diagnostic reads, writes and report sending remain paused until it succeeds. It cannot remove reports already sent to GitHub or another app.
 
 Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
+
+## Local cost estimates and optional adjustment
+
+You may enter a driving cost per mile, calculate it from your own fuel price, observed fuel economy and wear allowance, and manually record a reported acceptance rate. Blank cost means unknown; zero is used only when you explicitly enter it. The app does not automatically read your acceptance rate or obtain fuel prices. Cost settings and bounded automatic-adjustment preferences stay on the phone until changed or the app is uninstalled. Up to 200 manually entered acceptance-rate snapshots are kept for 30 days, pruned during use. A reported rate is an observation, not proof of how DoorDash dispatches offers.
+
+Estimated net rates reuse the separate bounded numeric offer/wait history above. They subtract entered per-mile costs and use displayed route times plus observed eligible waiting; they do not measure completed earnings, unpaid return trips or all working time. The AR snapshot date may select a sufficiently supported observation cohort; its numeric value is not a causal dispatch multiplier. These settings, AR snapshots, estimates and adjustment records are not added to diagnostic logs, reports or uploads.
+
+Automatic adjustment starts off and requires a separate confirmation. It changes only the shared minimums percentage, within your selected bounds, by at most five percentage points and no more often than once per fifteen real minutes after enough fresh evidence. It acts only between offers during positively observed visible, unlocked waiting. Saved and learned floors are preserved. A manual percentage change turns it off. Clear history removes its AR and adjustment records as well as observed-wait history, while cost and preference settings remain.
 
 ## What leaves the phone, and when
 

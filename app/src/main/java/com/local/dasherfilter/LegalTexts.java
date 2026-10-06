@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
+            Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
             review is claimed.
 
             ## What {app} is
@@ -84,6 +84,21 @@ final class LegalTexts {
             - It can update itself from its own update feed, and it sends reports only when you turn them on or \
             share one (see the privacy text).
 
+            ## Optional cost estimates and minimums adjustment
+
+            Local estimates use your explicitly entered driving costs, observed offer figures and monitored \
+            waiting. Blank costs remain unknown. You can manually record a reported acceptance rate; the app does \
+            not automatically read it or know DoorDash's dispatch formula. These estimates are not completed \
+            earnings, financial advice or a promise of more income. Unobserved time, return mileage and other costs \
+            can make results materially different.
+
+            Automatic minimums adjustment starts off. If you separately enable it, sufficiently supported local \
+            observations may move the shared minimums percentage within your chosen bounds, by at most five \
+            percentage points no more often than every fifteen minutes, between offers. It preserves saved and \
+            learned minimums. It can change which offers are declined and, if you separately enabled Auto-accept, \
+            which deliveries may be accepted. It can lower acceptance rate or earnings. A manual percentage change \
+            turns this adjustment off; you can also disable it in its settings.
+
             ## Your responsibilities
 
             - Your Dasher account and your agreements with DoorDash are yours. Using third-party tools may break \
@@ -129,7 +144,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
+            Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney \
             review is claimed; a private privacy contact is not yet configured.
 
             {app} does not require an {app} account and has no ads or analytics. It does not sell or rent your \
@@ -245,6 +260,29 @@ final class LegalTexts {
             cannot remove reports already sent to GitHub or another app.
 
             Android backup is turned off for this app, so none of this goes into your phone's cloud backup.
+
+            ## Local cost estimates and optional adjustment
+
+            You may enter a driving cost per mile, calculate it from your own fuel price, observed fuel economy and \
+            wear allowance, and manually record a reported acceptance rate. Blank cost means unknown; zero is used \
+            only when you explicitly enter it. The app does not automatically read your acceptance rate or obtain \
+            fuel prices. Cost settings and bounded automatic-adjustment preferences stay on the phone until changed \
+            or the app is uninstalled. Up to 200 manually entered acceptance-rate snapshots are kept for 30 days, \
+            pruned during use. A reported rate is an observation, not proof of how DoorDash dispatches offers.
+
+            Estimated net rates reuse the separate bounded numeric offer/wait history above. They subtract entered \
+            per-mile costs and use displayed route times plus observed eligible waiting; they do not measure \
+            completed earnings, unpaid return trips or all working time. The AR snapshot date may select a \
+            sufficiently supported observation cohort; its numeric value is not a causal dispatch multiplier. These \
+            settings, AR snapshots, estimates and adjustment records are not added to diagnostic logs, reports or \
+            uploads.
+
+            Automatic adjustment starts off and requires a separate confirmation. It changes only the shared \
+            minimums percentage, within your selected bounds, by at most five percentage points and no more often \
+            than once per fifteen real minutes after enough fresh evidence. It acts only between offers during \
+            positively observed visible, unlocked waiting. Saved and learned floors are preserved. A manual \
+            percentage change turns it off. Clear history removes its AR and adjustment records as well as \
+            observed-wait history, while cost and preference settings remain.
 
             ## What leaves the phone, and when
 

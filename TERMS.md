@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Draft of 4 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed.
+Draft of 6 October 2026. Not legal advice; have a lawyer review before public release. No attorney review is claimed.
 
 ## What Offer Filter is
 
@@ -21,6 +21,12 @@ Automatic declines may dramatically lower your DoorDash acceptance rate. This ca
 - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.
 - It can update itself from its own update feed, and it sends reports only when you turn them on or share one (see the privacy text).
+
+## Optional cost estimates and minimums adjustment
+
+Local estimates use your explicitly entered driving costs, observed offer figures and monitored waiting. Blank costs remain unknown. You can manually record a reported acceptance rate; the app does not automatically read it or know DoorDash's dispatch formula. These estimates are not completed earnings, financial advice or a promise of more income. Unobserved time, return mileage and other costs can make results materially different.
+
+Automatic minimums adjustment starts off. If you separately enable it, sufficiently supported local observations may move the shared minimums percentage within your chosen bounds, by at most five percentage points no more often than every fifteen minutes, between offers. It preserves saved and learned minimums. It can change which offers are declined and, if you separately enabled Auto-accept, which deliveries may be accepted. It can lower acceptance rate or earnings. A manual percentage change turns this adjustment off; you can also disable it in its settings.
 
 ## Your responsibilities
 
