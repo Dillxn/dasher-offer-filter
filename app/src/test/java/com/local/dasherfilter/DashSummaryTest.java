@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * Diagnostics after each dash, the user's opt-in: off by default and never turned on by an update; with it on, one
  * masked summary of at most 30,000 characters per dash (three a day at most) once Dasher shows the dash ended or it
  * went quiet, carrying counts, this dash's decisions timed from its start and log lines around its problems, and
- * never a name, an address or a place. The feedback service is a fake (ConsentedTestApp).
+ * never a name, an address, a place or Dasher's acceptance rate. The feedback service is a fake (ConsentedTestApp).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
@@ -54,7 +54,7 @@ public class DashSummaryTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DiagnosticLog.setEnabled(app, true);
         DecisionLog.forgetCache();
@@ -423,6 +423,135 @@ public class DashSummaryTest {
         for (String account : new String[] {"Fast Pay", "Available balance", "123.45"}) {
             assertFalse(account, summary.contains(account));
         }
+    }
+
+    // ---- Settings and Dasher's acceptance rate ----
+
+    @Test
+    public void theSettingsNameTheBarAndAutopilotAndNoRetiredRule() throws Exception {
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        String off = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER, modelForTest(start));
+        assertTrue(off, off.contains(" · bar 100% (Autopilot off) · rules set: pay, per mile, per hour, max stops\n"));
+
+        // Autopilot on, its bar moved: the settings say the bar and the switch, never what the bar came from.
+        FilterStore.setAutopilot(app, true, 70);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+        AutopilotStore.recordReading(app, 37, "", System.currentTimeMillis());
+        String on = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER, modelForTest(start));
+        String settings = on.substring(on.indexOf("Settings: "), on.indexOf('\n', on.indexOf("Settings: ")));
+        assertTrue(settings, settings.startsWith("Settings: auto-decline on · Peek on · "));
+        assertTrue(settings, settings.endsWith(" · bar 82% (Autopilot on) · rules set: pay, per mile, per hour, "
+                + "max stops"));
+        assertFalse(settings, settings.contains("37"));
+        assertFalse(settings, settings.contains("goal"));
+        for (String retired : new String[] {"score by area", "adaptive", "minimums scale", "per stop", "per item",
+                "hotspot", "per minute", "learned", "learning"}) {
+            assertFalse(retired, on.toLowerCase(java.util.Locale.US).contains(retired));
+        }
+    }
+
+    @Test
+    public void aLogLineCarriesTheAcceptanceRateIntoTheSummaryNever() {
+        // Autopilot's plans and Dasher's readings stay on the phone; so does any Autopilot line not listed as safe.
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] plan 100% RECOVERY: need 80%, pass 16/20 at 100%, "
+                + "share bar 100%, ar 55% dasher (12 min ago, 2 since), recovering yes, extra 0"));
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] plan 50% PINNED: need 80%, ar ~31% estimate (29 "
+                + "counted)"));
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] ar reading 55% (exempt no)"));
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] ar reading none (exempt yes)"));
+        assertNull("a line a later version adds", DashSummary.withoutAcceptanceRate(" [autopilot] status AR 55%"));
+        // Autopilot's lines that never name it stay as they are, their bars and goals included.
+        for (String kept : new String[] {" [autopilot] on; goal 70%", " [autopilot] on; pay first",
+                " [autopilot] off; bar back to 100%", " [autopilot] goal 50% (was 70%)",
+                " [autopilot] pay first (was 70%)", " [autopilot] commit 100% -> 82% (acceptance rate below your goal)",
+                " [autopilot] commit deferred: offer or decline in flight", " [autopilot] commit failed: "
+                + "IllegalStateException", " [autopilot] plan discarded: rules changed",
+                " [autopilot] plan failed: IllegalStateException",
+                " [autopilot] ar exemptions ignored: 12 of 20 declines flagged"}) {
+            assertEquals(kept, DashSummary.withoutAcceptanceRate(kept));
+        }
+        // Dasher's question, as the screen reader logs it: its percentages masked, its words kept.
+        assertEquals(" [screen] confirmation|||false|true win=full/-/dasher/100 labels=[Are you sure you want to "
+                + "decline this offer?, Does not lower acceptance rate, #%, Decline offer, Go back] metricParts=[]",
+                DashSummary.withoutAcceptanceRate(" [screen] confirmation|||false|true win=full/-/dasher/100 "
+                + "labels=[Are you sure you want to decline this offer?, Does not lower acceptance rate, 9%, Decline "
+                + "offer, Go back] metricParts=[]"));
+        assertEquals("the question's line, whatever its words", " [screen] confirmation|x|y labels=[Sure?, #%]",
+                DashSummary.withoutAcceptanceRate(" [screen] confirmation|x|y labels=[Sure?, 55 %]"));
+        assertEquals(" [screen] other labels=[Your Acceptance Rate, #%, Completion rate, #%]",
+                DashSummary.withoutAcceptanceRate(" [screen] other labels=[Your Acceptance Rate, 55%, Completion "
+                + "rate, 98%]"));
+        assertEquals("as Android may hand it over (NFKC)", " [screen] other labels=[acceptance\u00A0rate, #%, #%]",
+                DashSummary.withoutAcceptanceRate(" [screen] other labels=[acceptance\u00A0rate, 55\u00A0%, "
+                + "\uFF15\uFF15\uFF05]"));
+        assertEquals(" [screen] other labels=[Your acceptance-rate goal, #%]",
+                DashSummary.withoutAcceptanceRate(" [screen] other labels=[Your acceptance-rate goal, 70%]"));
+        // The rate as Autopilot's own words put it, wherever such a line came from, and the accepts that give it away.
+        assertEquals(" [status] Autopilot #% · AR #% → #%: about # more accepts", DashSummary.withoutAcceptanceRate(
+                " [status] Autopilot 82% · AR 55% → 70%: about 15 more accepts"));
+        assertEquals(" [status] AR ~#% → #%: about # more accepts", DashSummary.withoutAcceptanceRate(
+                " [status] AR ~31% → 70%: about 39 more accepts"));
+        // Any other line, percentages and all, as it was.
+        for (String other : new String[] {" [scan] read took 230 ms", " [screen] offer|a|b labels=[$7.90, 100% of "
+                + "tips] metricParts=[]", " [accessibility] decline still showing after 5012 ms",
+                " [status] Autopilot bar 82% (goal 70%)", " [screen] other labels=[Car 50% charged, 3 more accepts]"}) {
+            assertEquals(other, DashSummary.withoutAcceptanceRate(other));
+        }
+
+        // Read labels of a problem: masked only where they name the acceptance rate.
+        assertEquals(Arrays.asList("Are you sure you want to decline this offer?", "Declining this offer xxx lower "
+                + "your acceptance rate", "#%", "Decline offer", "Go back"),
+                DashSummary.readLines(Arrays.asList("Are you sure you want to decline this offer?",
+                        "Declining this offer may lower your acceptance rate", "37%", "Decline offer", "Go back")));
+        assertEquals(Arrays.asList("$7.90", "100% of tips"),
+                DashSummary.withoutAcceptanceRate(Arrays.asList("$7.90", "100% of tips")));
+    }
+
+    @Test
+    public void theSummaryNeverCarriesTheAcceptanceRateAroundAProblem() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        List<String> asked = Arrays.asList("Are you sure you want to decline this offer?",
+                "Declining this offer may lower your acceptance rate", "37%", "Decline offer", "Go back");
+        DiagnosticLog.log(app, "screen", "confirmation|||false|true win=full/-/dasher/100 labels=" + asked
+                + " metricParts=[]");
+        DiagnosticLog.log(app, AutopilotRuntime.LOG, AutopilotText.logReading(37, false));
+        DiagnosticLog.log(app, AutopilotRuntime.LOG, "plan 100% RECOVERY: need 80%, pass 16/20 at 100%, share bar "
+                + "100%, ar 37% dasher (0 min ago, 0 since), recovering yes, extra 0, lambda 6.0/h, mix 20");
+        DiagnosticLog.log(app, AutopilotRuntime.LOG, AutopilotText.logCommit(100, 82, Autopilot.Reason.RECOVERY));
+        DiagnosticLog.log(app, "accessibility", "decline still showing after 5012 ms; waiting for the question");
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.unreadable(app, asked);
+        DashSummary.flush();
+        String kept = counted().getString("anomalies", "");
+        assertFalse("not even kept on the phone for the summary", kept.contains("37%"));
+        // The declined offer's line, with Dasher's mark that declining it was free: a step, never the rate.
+        long now = System.currentTimeMillis();
+        DecisionLog.record(app, new DecisionLog.Entry(now, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(575, 6.6, 27, 2), 625, OfferRule.Result.DECLINE, "dollars per hour",
+                DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.singletonList("$5.75"))
+                .withStep(new DecisionLog.Step(DecisionLog.StepKind.AR_EXEMPT, now + 1_000L, "")));
+
+        Dashing.ended(app);
+        settle();
+        assertEquals(1, service.count());
+        String summary = summarySent(0);
+        assertTrue(summary, summary.contains("| DECLINE | pay $5.75 | needed $6.25"));
+        assertTrue(summary, summary.contains("\n    then " + DashSummary.relative(now + 1_000L - start)
+                + " Dasher said declining it does not lower your acceptance rate\n"));
+        assertFalse(summary, summary.contains("learning"));
+        assertTrue(summary, summary.contains("decline still showing after 5012 ms"));
+        assertTrue(summary, summary.contains("lower your acceptance rate, #%, Decline offer"));
+        assertTrue(summary, summary.contains("[autopilot] commit 100% -> 82% (acceptance rate below your goal)"));
+        assertFalse(summary, summary.contains("ar reading"));
+        assertFalse(summary, summary.contains("RECOVERY: need"));
+        assertFalse(summary, java.util.regex.Pattern.compile("37 ?%|(?i)\\bar ~?37\\b").matcher(summary).find());
     }
 
     @Test

@@ -6,7 +6,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -18,12 +22,30 @@ import org.robolectric.annotation.LooperMode;
 
 import static org.junit.Assert.*;
 
-/** Synthetic privacy regressions only; no recovered diagnostic text or real payment details. */
+/**
+ * Synthetic privacy regressions only; no recovered diagnostic text or real payment details. Among them, where Dasher's
+ * acceptance rate may go: it leaves the phone only in what the user sends (Share report, feedback with masked
+ * diagnostics attached, and Report this offer, whose dialog says so before Send), never in the automatic summary after
+ * a dash or in feedback without diagnostics; Clear history removes it; and no text of Dasher's question goes with it.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PrivacyBoundaryTest {
+    private static final String QUESTION = "Are you sure you want to decline this offer?";
+    private static final String WARNING = "Declining this offer may lower your acceptance rate";
+    /** Dasher's question as the screen reader hands it over: the rate (37%, a figure nothing else here shows). */
+    private static final List<String> ASKED = Arrays.asList(QUESTION, WARNING, "37%", "Decline offer", "Go back");
+    /** The worked example's offers, newest first: pay in cents, miles, minutes; two stops each. */
+    private static final int[] PAY = {1625, 975, 700, 1350, 575, 800, 2250, 600, 1100, 350, 925, 1490, 400, 1050,
+            725, 1700, 875, 500, 1225, 650};
+    private static final double[] MILES = {6.2, 11.8, 2.2, 7.0, 6.6, 3.0, 12.6, 7.9, 5.1, 4.8, 6.3, 9.9, 2.6, 4.4,
+            5.5, 8.8, 7.4, 3.2, 6.0, 4.1};
+    private static final int[] MINUTES = {26, 41, 14, 28, 27, 16, 44, 29, 23, 19, 25, 38, 15, 20, 24, 33, 31, 18, 26,
+            22};
+
     private Application app;
+    private long wall;
 
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
@@ -37,6 +59,11 @@ public class PrivacyBoundaryTest {
 
     @After public void cleanup() {
         DiagnosticLog.forgetCache();
+        AutopilotRuntime.forgetCache();
+        AutopilotRuntime.executorForTests = null;
+        AutopilotRuntime.wallClock = System::currentTimeMillis;
+        // Whatever these tests sent, the real feedback service would have taken.
+        FakeFeedbackTransport.assertHonored();
     }
 
     @Test public void paymentScreenNeverReachesEitherLogOrDecisionEvidence() {
@@ -221,8 +248,19 @@ public class PrivacyBoundaryTest {
                         .getString("counts", "{}")))
                 .put("anomalies", new org.json.JSONArray(kept)).put("start", start);
         String summary = DashSummary.build(app, start, start + 60_000L, DashSummary.End.DASH_OVER, model);
+        // What each kept problem says and the lines it kept: its time ("t", epoch milliseconds) is no screen text, and
+        // its digits can spell "731" for a few seconds at a time.
+        StringBuilder keptText = new StringBuilder();
+        org.json.JSONArray problems = new org.json.JSONArray(kept);
+        for (int i = 0; i < problems.length(); i++) {
+            org.json.JSONObject problem = problems.getJSONObject(i);
+            keptText.append(problem.optString("what")).append('\n');
+            org.json.JSONArray lines = problem.optJSONArray("read");
+            for (int k = 0; lines != null && k < lines.length(); k++) keptText.append(lines.getString(k)).append('\n');
+        }
+        assertEquals(2, problems.length());
         for (String secret : new String[] {"731", "12/34", "Card details", "123.45"}) {
-            assertFalse(secret, kept.contains(secret));
+            assertFalse(secret, keptText.toString().contains(secret));
             assertFalse(secret, summary.contains(secret));
         }
         // A recognized offer screen keeps its lines, masked twice.
@@ -230,5 +268,172 @@ public class PrivacyBoundaryTest {
                 DashSummary.readLines(Arrays.asList("Guaranteed pay", "$7.90", "Accept", "Decline")));
         Feedback.setAfterDash(app, false);
         DashSummary.flush();
+    }
+
+    // ---- Dasher's acceptance rate ----
+
+    /**
+     * Autopilot on (400 / 100 / 25, goal 70%) over the worked example's 20 offers, and Dasher's decline question
+     * showing 37%: logged as the screen reader logs the question's screen, and handed to Autopilot, which keeps the
+     * reading, logs it and plans from it. Plans and readings run on this thread.
+     */
+    private void dasherShowedTheRate() {
+        wall = System.currentTimeMillis();
+        AutopilotRuntime.wallClock = () -> wall;
+        AutopilotRuntime.executorForTests = Runnable::run;
+        AutopilotRuntime.forgetCache();
+        AutopilotStore.clear(app);
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        FilterSettings rules = FilterStore.load(app);
+        for (int i = PAY.length - 1; i >= 0; i--) {
+            OfferSnapshot facts = new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 2);
+            OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
+            DecisionLog.record(app, new DecisionLog.Entry(wall - (2 + 3L * i) * 60_000L, DecisionLog.Source.SCREEN,
+                    false, facts, decision.requiredCents, decision.result, decision.reason,
+                    decision.result == OfferRule.Result.DECLINE ? DecisionLog.Action.CONFIRMATION_TAPPED
+                            : DecisionLog.Action.PASSES, true, Collections.<String>emptyList()));
+        }
+        DiagnosticLog.log(app, "screen", "confirmation|||false|true win=full/-/dasher/100 labels=" + ASKED
+                + " metricParts=[]");
+        AutopilotRuntime.confirmationSeen(app, ASKED, null);
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertEquals(37, AutopilotStore.reading(app, wall).percent);
+    }
+
+    private static void settle() {
+        Feedback.flush();
+        DashSummary.flush();
+        Feedback.flush();
+        FeedbackOutbox.flush();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+    }
+
+    /** The diagnostic log's lines of one source, without their time and tag. */
+    private List<String> logged(String source) {
+        List<String> lines = new ArrayList<>();
+        String tag = "[" + source + "] ";
+        for (String line : DiagnosticLog.read(app).split("\n")) {
+            int at = line.indexOf(tag);
+            if (at >= 0) lines.add(line.substring(at + tag.length()));
+        }
+        return lines;
+    }
+
+    @Test public void dashersAcceptanceRateLeavesOnlyInWhatTheUserSends() throws Exception {
+        FakeFeedbackTransport service = FakeFeedbackTransport.installed();
+        dasherShowedTheRate();
+
+        // Share report: Autopilot's line carries it, and so do the log lines it shows the user.
+        String shared = DiagnosticLog.report(app);
+        assertTrue(shared, shared.contains("\nAutopilot: on; goal 70%; bar 100%; mode RECOVERY; recovering yes; "));
+        assertTrue(shared, shared.contains("; AR 37% (Dasher, "));
+        assertTrue(shared, shared.contains("[autopilot] ar reading 37% (exempt no)"));
+
+        // What the user sends: feedback with masked diagnostics attached (the report Share report builds), feedback
+        // without them (only what was typed), and Report this offer (its rules carry Autopilot's state, as its
+        // dialog says before Send).
+        String attached = Feedback.sendFeedback(app, Feedback.Category.BUG, "It declined too much.", true, null);
+        String typed = Feedback.sendFeedback(app, Feedback.Category.GENERAL, "Words only.", false, null);
+        String offer = Feedback.sendOfferReport(app, DecisionLog.recent(app, 1).get(0),
+                OfferReport.Problem.WRONG_DECLINE, "It declined this one.", null);
+        settle();
+        assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains("your latest acceptance rate"));
+        int seen = 0;
+        for (JSONObject request : service.requests()) {
+            String token = request.getString("reportToken");
+            String diagnostics = request.has("diagnostics") ? Feedback.unframed(request.getString("diagnostics")) : "";
+            if (token.equals(attached)) {
+                assertTrue(diagnostics, diagnostics.contains("; AR 37% (Dasher, "));
+            } else if (token.equals(typed)) {
+                assertFalse(request.has("diagnostics"));
+                assertFalse(request.toString(), request.toString().contains("37%"));
+            } else if (token.equals(offer)) {
+                JSONObject rules = new JSONObject(diagnostics).getJSONObject("rules");
+                assertEquals(37, rules.getInt("arPercent"));
+                assertEquals("DASHER", rules.getString("arSource"));
+                assertEquals("RECOVERY", rules.getString("autopilotMode"));
+            } else {
+                continue;
+            }
+            seen++;
+        }
+        assertEquals(3, seen);
+
+        // The summary after a dash, which leaves without a tap: never the rate, even around a problem right beside
+        // Dasher's question, Autopilot's reading and its plan.
+        Feedback.setAfterDash(app, true);
+        Dashing.forgetCache();
+        app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.unreadable(app, ASKED);
+        DashSummary.flush();
+        int before = service.count();
+        DashSummary.summarize(app, start, System.currentTimeMillis() + 1_000L, DashSummary.End.DASH_OVER);
+        settle();
+        assertEquals("one summary", before + 1, service.count());
+        JSONObject sent = service.requests().get(before);
+        assertEquals("diagnostics", sent.getString("kind"));
+        String summary = Feedback.unframed(sent.getString("diagnostics"));
+        assertTrue(summary, summary.contains(" · bar 100% (Autopilot on) · "));
+        assertTrue("the question's screen line stays, its rate masked", summary.contains(WARNING + ", #%"));
+        assertFalse(summary, java.util.regex.Pattern.compile("37 ?%|(?i)\\bar ~?37\\b").matcher(summary).find());
+        assertFalse(summary, summary.contains("ar reading"));
+        assertFalse(summary, java.util.regex.Pattern.compile("\\[autopilot\\] plan \\d").matcher(summary).find());
+        assertTrue("Autopilot's lines without the rate stay", summary.contains("[autopilot] on; goal 70%"));
+        Feedback.setAfterDash(app, false);
+        DashSummary.flush();
+    }
+
+    @Test public void clearingHistoryLeavesNoReadingAndNoCopyOfItOnThePhone() throws Exception {
+        dasherShowedTheRate();
+        // Clear history's own steps, in its order: the decisions and the watched waiting, the logs, then Autopilot
+        // (AutopilotRuntime.cleared runs after the history it plans from is gone).
+        DecisionLog.clear(app);
+        QualifyingWaitStore.clear(app);
+        DiagnosticLog.clear(app);
+        AutopilotRuntime.cleared(app);
+
+        assertNull(AutopilotStore.reading(app, wall));
+        assertFalse(app.getSharedPreferences(AutopilotStore.PREFS, Context.MODE_PRIVATE).contains("ar_percent"));
+        assertTrue("the switch, goal and minimums stay", FilterStore.load(app).autopilot);
+        assertEquals(400, FilterStore.load(app).flatCents);
+        String shared = DiagnosticLog.report(app);
+        assertFalse(shared, shared.contains("37%"));
+        assertTrue(shared, shared.contains("; AR unknown"));
+        DecisionLog.Entry later = new DecisionLog.Entry(wall, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, Collections.singletonList("$7.90"));
+        JSONObject rules = new JSONObject(OfferReport.text(app, OfferReport.Problem.MISREAD, "test", 1,
+                "Android test", later)).getJSONObject("rules");
+        assertEquals(-1, rules.getInt("arPercent"));
+        assertEquals("UNKNOWN", rules.getString("arSource"));
+        assertEquals(-1, rules.getInt("arAgeMinutes"));
+    }
+
+    @Test public void noTextOfDashersQuestionGoesWithTheRate() throws Exception {
+        dasherShowedTheRate();
+        List<String> autopilot = logged(AutopilotRuntime.LOG);
+        assertFalse(autopilot.isEmpty());
+        String[] words = {"Are you sure", "decline this offer", "Declining", "may lower", "Decline offer", "Go back"};
+        for (String line : autopilot) {
+            for (String word : words) assertFalse(line, line.contains(word));
+            // Of Autopilot's lines only its reading and its plans name the rate (fixed words and numbers).
+            if (line.contains("37%")) {
+                assertTrue(line, line.equals("ar reading 37% (exempt no)")
+                        || line.matches("plan \\d+% [A-Z_]+: .*, ar 37% dasher \\(.*"));
+            }
+        }
+        String shared = DiagnosticLog.report(app);
+        String line = shared.substring(shared.indexOf("\nAutopilot: ") + 1);
+        line = line.substring(0, line.indexOf('\n'));
+        String rules = OfferReport.rulesJson(AutopilotRuntime.status(app, wall, false)).toString();
+        for (String word : words) {
+            assertFalse(line, line.contains(word));
+            assertFalse(rules, rules.contains(word));
+        }
+        assertTrue(line, line.contains("AR 37%"));
     }
 }

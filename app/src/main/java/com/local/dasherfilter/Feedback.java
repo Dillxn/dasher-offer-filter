@@ -408,8 +408,8 @@ final class Feedback {
         BUILD.execute(() -> {
             Prepared prepared;
             try {
-                String report = OfferReport.text(problem, Updater.version(app), versionCode(app), android(),
-                        FilterStore.load(app), entry);
+                String report = OfferReport.text(app, problem, Updater.version(app), versionCode(app), android(),
+                        entry);
                 prepared = new Prepared(newToken(), Kind.PROBLEM, chunks(report, MAX_PART_CHARS, MAX_PART_BYTES),
                         FeedbackOutbox.OFFER);
             } catch (RuntimeException failure) {
@@ -464,9 +464,8 @@ final class Feedback {
                     post(new Event(token, State.NOT_QUEUED, "", "Accept the notice first.", Kind.PROBLEM, true));
                     return;
                 }
-                List<String> parts = prepared != null ? prepared.parts : chunks(OfferReport.text(problem,
-                        Updater.version(app), versionCode(app), android(), FilterStore.load(app), entry),
-                        MAX_PART_CHARS, MAX_PART_BYTES);
+                List<String> parts = prepared != null ? prepared.parts : chunks(OfferReport.text(app, problem,
+                        Updater.version(app), versionCode(app), android(), entry), MAX_PART_CHARS, MAX_PART_BYTES);
                 FeedbackOutbox.submit(app, FeedbackOutbox.item(token, Kind.PROBLEM, problem.category(), false,
                         FeedbackOutbox.OFFER, typed, true, parts));
             } catch (RuntimeException failure) {

@@ -3,6 +3,7 @@ package com.local.dasherfilter;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
+import java.text.Normalizer;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -35,6 +36,11 @@ import org.json.JSONObject;
  * and never more than one summary a dash or {@value #MAX_PER_DAY} a day. The old automatic problem reports (an
  * unreadable offer, a decline still showing, a read or notification error) live on here as counts and excerpts.
  *
+ * <p>Dasher's acceptance rate never leaves the phone in this summary ({@link #withoutAcceptanceRate}): the settings
+ * name Autopilot's bar and switch only, Autopilot's plan and reading lines stay out of the excerpts, and any other line
+ * or read label that names the acceptance rate (Dasher's decline question) has its percentages masked. The rate goes
+ * only in what the user sends: Share report, feedback with masked diagnostics attached, or Report this offer.
+ *
  * <p>The hooks are cheap on the screen reader's thread: nothing is counted while the opt-in is off; what is (and every
  * preference or dash lookup) is handled on this class's own thread, so a dash that outlives its process loses little.
  * A count belongs to the dash under way when its hook fired, even when the dash ends before it is handled.
@@ -52,6 +58,36 @@ final class DashSummary {
     private static final long WINDOW_ACCOUNT_MS = 5_000L;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS XXX";
     private static final Pattern DIGITS = Pattern.compile("\\d");
+    /**
+     * Words naming the acceptance rate, as Dasher's decline question shows them, in any case, or the rate as
+     * Autopilot's own words abbreviate it ("AR 55%", "AR ~31%", "ar reading 55%"); looked for in the NFKC form, as
+     * {@link AcceptanceRate} reads the question.
+     */
+    private static final Pattern RATE_WORDS = Pattern.compile("(?i)acceptance[\\s\\p{Pd}]+rate"
+            + "|\\bar[ :]+(?:reading[ :]+)?~?\\p{Nd}+(?:[.,]\\p{Nd}+)?\\s?%");
+    /** Any percentage ("9%", "9 %", "100%", "8.5%"), in any digits, before or after NFKC. */
+    private static final Pattern PERCENT = Pattern.compile(
+            "(?<![\\p{Nd}.,])\\p{Nd}+(?:[.,]\\p{Nd}+)?[\\s\\u00A0\\u202F]?[%\\uFF05]");
+    /** A percentage as a summary keeps it where it could be the acceptance rate: no digit, so not even its size. */
+    static final String MASKED_PERCENT = "#%";
+    /**
+     * "about 15 more accepts": the accepts a goal still needs, which beside that goal give the rate away; masked with
+     * the percentages ("about # more accepts").
+     */
+    private static final Pattern ACCEPTS_NEEDED =
+            Pattern.compile("(?i)(?<!\\p{Nd})\\p{Nd}+(?=\\s+more\\s+accepts?\\b)");
+    /** A log line's source tag, after its time: "[autopilot] ", "[screen] ". */
+    private static final String AUTOPILOT_TAG = "[" + AutopilotRuntime.LOG + "] ";
+    /**
+     * The Autopilot log lines a summary may carry ({@link AutopilotText}'s fixed lines that never name the acceptance
+     * rate): on, off, a goal, a commit (or its deferral or failure), a discarded or failed plan, and the exemption
+     * valve. Every other Autopilot line (its plans and Dasher's readings carry the rate) stays on the phone, as does
+     * any line a later version adds until it is listed here.
+     */
+    private static final Pattern AUTOPILOT_KEPT = Pattern.compile("^(?:on; |off; |goal \\d|pay first \\(was |commit "
+            + "|plan discarded: |plan failed: |ar exemptions ignored: )");
+    /** The decline question's own screen line ("[screen] confirmation|…"): its percentages are the rate. */
+    private static final String QUESTION_TAG = "[screen] confirmation|";
 
     private static final String PREFS = "dash_summary";
     private static final String START = "start";
@@ -155,10 +191,59 @@ final class DashSummary {
         });
     }
 
-    /** An offer's read lines as a summary keeps them: masked twice when recognized, else only a not-kept note. */
+    /**
+     * An offer's read lines as a summary keeps them: masked twice when recognized, else only a not-kept note; with
+     * Dasher's decline question among them, without the acceptance rate it shows ({@link #withoutAcceptanceRate}).
+     */
     static List<String> readLines(List<String> labels) {
-        return PersonalText.recognizedDashScreen(labels) ? OfferReport.redact(labels)
+        return PersonalText.recognizedDashScreen(labels) ? withoutAcceptanceRate(OfferReport.redact(labels))
                 : Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
+    }
+
+    /**
+     * Read labels as a summary may carry them: when any of them names the acceptance rate (Dasher's decline question
+     * says "acceptance rate" beside the rate it shows), every percentage among them is masked
+     * ({@value #MASKED_PERCENT}); otherwise they are as they were.
+     */
+    static List<String> withoutAcceptanceRate(List<String> labels) {
+        if (labels == null) return null;
+        boolean question = false;
+        for (String label : labels) question |= label != null && namesAcceptanceRate(label);
+        if (!question) return labels;
+        List<String> out = new ArrayList<>(labels.size());
+        for (String label : labels) out.add(label == null ? null : maskPercentages(label));
+        return out;
+    }
+
+    /**
+     * A log line's text (after its time: " [source] message") as a summary may carry it, or null when it stays on the
+     * phone. The acceptance rate Dasher shows on its decline question leaves the phone only in what the user sends
+     * (Share report, feedback with masked diagnostics attached, Report this offer), never in this automatic summary:
+     * of Autopilot's lines only those that never name it are kept ({@link #AUTOPILOT_KEPT}: not its plans, not
+     * Dasher's readings, nothing unlisted), and any other line that names the acceptance rate, or is the decline
+     * question's own screen line, has every percentage masked ({@value #MASKED_PERCENT}).
+     */
+    static String withoutAcceptanceRate(String text) {
+        if (text == null) return null;
+        String line = text.trim();
+        if (line.startsWith(AUTOPILOT_TAG)) {
+            return AUTOPILOT_KEPT.matcher(line.substring(AUTOPILOT_TAG.length())).find() ? text : null;
+        }
+        return line.startsWith(QUESTION_TAG) ? maskPercentages(text) : maskedWhereItNamesTheRate(text);
+    }
+
+    /** {@code text} with every percentage masked when it names the acceptance rate; as it was otherwise. */
+    private static String maskedWhereItNamesTheRate(String text) {
+        return text != null && namesAcceptanceRate(text) ? maskPercentages(text) : text;
+    }
+
+    private static boolean namesAcceptanceRate(String text) {
+        return RATE_WORDS.matcher(Normalizer.normalize(text, Normalizer.Form.NFKC)).find();
+    }
+
+    /** Every percentage masked ({@value #MASKED_PERCENT}), and with them the accepts a goal still needs. */
+    private static String maskPercentages(String text) {
+        return ACCEPTS_NEEDED.matcher(PERCENT.matcher(text).replaceAll(MASKED_PERCENT)).replaceAll("#");
     }
 
     /** A declined offer or its confirmation still showing seconds after the first Decline: counted by stage. */
@@ -435,22 +520,22 @@ final class DashSummary {
                 : minutes + " min";
     }
 
+    /**
+     * The switches, the bar and which rules are set (never their amounts): "auto-decline on · Peek on · quiet while
+     * declining off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set: pay, per mile, per hour".
+     * Never Autopilot's acceptance-rate reading or anything worked out from it.
+     */
     private static String settings(Context app, FilterSettings rules) {
         List<String> set = new ArrayList<>();
         if (rules.flatCents > 0) set.add("pay");
         if (rules.perMileCents > 0) set.add("per mile");
-        if (rules.perMinuteCents > 0) set.add("per minute");
-        if (rules.perStopCents > 0) set.add("per stop");
-        if (rules.perItemCents > 0) set.add("per item");
-        if (rules.hotspotProximityHundredths > 0) set.add("hotspot");
+        if (rules.perMinuteCents > 0) set.add("per hour");
         if (rules.maxStops > 0) set.add("max stops");
         return "auto-decline " + onOff(rules.enabled) + " · Peek " + onOff(FilterStore.peek(app))
                 + " · quiet while declining " + onOff(FilterStore.silenceWhileDeclining(app))
                 + " · auto-accept " + onOff(FilterStore.autoAcceptEnabled(app))
                 + " · offer map " + onOff(AreaMap.enabled(app))
-                + " · score by area " + onOff(rules.scoreByArea)
-                + " · adaptive minimum " + onOff(rules.risingOffers)
-                + " · minimums scale " + rules.minimumScalePercent + "%"
+                + " · bar " + rules.minimumScalePercent + "% (Autopilot " + onOff(rules.autopilot) + ")"
                 + " · rules set: " + (set.isEmpty() ? "none" : String.join(", ", set));
     }
 
@@ -521,7 +606,10 @@ final class DashSummary {
         return String.join(", ", parts) + " of " + duration(total);
     }
 
-    /** Each decision as a line (and its read lines, masked twice, and learning lines), timed from the dash's start. */
+    /**
+     * Each decision as a line (and its read lines, masked twice, and what became of it after, one step a line), timed
+     * from the dash's start. A line an older version decided shows its retired score as an area score.
+     */
     private static List<String> decisionLines(List<DecisionLog.Entry> decisions, long start) {
         List<String> out = new ArrayList<>();
         for (DecisionLog.Entry entry : decisions) {
@@ -532,7 +620,8 @@ final class DashSummary {
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : DecisionLog.money(entry.facts.payCents))
                     .append(" | needed ").append(entry.requiredCents == 0 ? "-" : DecisionLog.money(entry.requiredCents))
-                    .append(entry.scorePercent >= 0 ? " | score " + entry.scorePercent + "%" : "")
+                    .append(entry.scorePercent < 0 ? "" : (entry.model >= DecisionLog.MODEL ? " | score "
+                            : " | area score ") + entry.scorePercent + "%")
                     .append(" | ").append(DecisionLog.facts(entry.facts))
                     .append(" | ").append(entry.reason)
                     .append(" | ").append(entry.action.label)
@@ -550,8 +639,9 @@ final class DashSummary {
                         .append(notice.action.label).append('\n');
             }
             for (DecisionLog.Step step : entry.steps) {
-                line.append("    learning ").append(relative(step.at - start)).append(' ').append(step.text())
-                        .append('\n');
+                // Fixed words; one that ever named the acceptance rate beside a figure would carry it masked.
+                line.append("    then ").append(relative(step.at - start)).append(' ')
+                        .append(maskedWhereItNamesTheRate(step.text())).append('\n');
             }
             out.add(line.toString());
         }
@@ -567,7 +657,8 @@ final class DashSummary {
 
     /**
      * Masked log lines around each problem the dash counted (at most {@value #MAX_ANOMALIES}, the newest), timed from
-     * the dash's start; "" when there was none. The log is already masked; it is masked again as it is read.
+     * the dash's start; "" when there was none. The log is already masked; it is masked again as it is read, and
+     * nothing of it carries the acceptance rate ({@link #withoutAcceptanceRate(String)}).
      */
     private static String excerpts(Context app, long start, JSONObject model) {
         JSONArray anomalies = model.optJSONArray(ANOMALIES);
@@ -577,12 +668,15 @@ final class DashSummary {
         List<long[]> times = new ArrayList<>();
         List<String> texts = new ArrayList<>();
         SimpleDateFormat format = new SimpleDateFormat(TIME_PATTERN, Locale.US);
-        int length = format.format(new Date(0)).length();
         for (String line : log.split("\n")) {
-            Date at = line.length() >= length ? format.parse(line, new ParsePosition(0)) : null;
+            // The text starts where the time ends, whatever the length of its zone ("Z" or "-04:00").
+            ParsePosition end = new ParsePosition(0);
+            Date at = format.parse(line, end);
             if (at == null) continue;
+            String text = withoutAcceptanceRate(line.substring(end.getIndex()));
+            if (text == null) continue;
             times.add(new long[] {at.getTime()});
-            texts.add(line.substring(length));
+            texts.add(text);
         }
         StringBuilder out = new StringBuilder("== Log lines around those problems (masked)\n");
         for (int i = 0; i < anomalies.length(); i++) {
@@ -595,7 +689,8 @@ final class DashSummary {
                 // As a plain list: JSON's quoting is what the masking reads as a quoted name, and would mangle it.
                 List<String> shown = new ArrayList<>();
                 for (int k = 0; k < read.length(); k++) shown.add(read.optString(k));
-                out.append("   read: ").append(shown).append('\n');
+                // Masked as they were counted; again here for lines an older version counted.
+                out.append("   read: ").append(withoutAcceptanceRate(shown)).append('\n');
             }
             StringBuilder excerpt = new StringBuilder();
             int lines = 0;

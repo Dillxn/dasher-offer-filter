@@ -440,9 +440,10 @@ final class DiagnosticLog {
     }
 
     /**
-     * A shareable report: readiness, every saved rule, updater state, the decision history and the captured screen
-     * text, all masked ({@link PersonalText}). Nothing is sent unless the user shares it or explicitly attaches it to
-     * anonymous feedback.
+     * A shareable report: readiness, every saved rule and Autopilot's state (with the latest acceptance rate Dasher
+     * showed), updater state, the decision history and the captured screen text, all masked ({@link PersonalText}).
+     * Nothing is sent unless the user shares it or explicitly attaches it to anonymous feedback; the summary after a
+     * dash is built apart ({@link DashSummary}) and never carries the acceptance rate.
      */
     static String report(Context context) {
         // At most MAX_REPORT_CHARS, marker included: the oldest decisions go first, never the logs at its end.
@@ -465,7 +466,10 @@ final class DiagnosticLog {
 
     /** The whole report with the newest {@code decisions} decisions (fewer, when a report must fit a size). */
     static String fullReport(Context context, int decisions) {
-        FilterSettings rules = FilterStore.load(context);
+        // The rules and Autopilot's state read together, so the report's rules line and its Autopilot line agree.
+        AutopilotText.Status autopilot = AutopilotRuntime.status(context, AutopilotRuntime.wallClock.getAsLong(),
+                OfferFilterService.isConnected());
+        FilterSettings rules = autopilot.rules;
         SharedPreferences updates = Updater.prefs(context);
         String log = fitLog(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS, false);
         String screens = newestScreens(PersonalText.maskLine(withoutAccountScreens(readScreens(context))),
@@ -487,22 +491,8 @@ final class DiagnosticLog {
                 + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"
                 + "Current when this report was generated; not a reconstructed historical baseline.\n"
-                + "Auto-decline saved: " + rules.enabled
-                + "; flat cents=" + rules.flatCents
-                + "; per-mile cents=" + rules.perMileCents
-                + "; per-minute cents=" + rules.perMinuteCents
-                + "; per-stop cents=" + rules.perStopCents
-                + "; per-item cents=" + rules.perItemCents
-                + "; max stops=" + rules.maxStops
-                + "; hotspot proximity hundredths/mi=" + rules.hotspotProximityHundredths
-                + "; minimum scale percent=" + rules.minimumScalePercent
-                + "; rising offers=" + rules.risingOffers
-                + "; highest accepted cents=" + rules.lastAcceptedCents
-                + "; best accepted=" + (rules.best.isEmpty() ? "none" : rules.best.summary())
-                + "; learned from manual declines=" + (rules.declined.isEmpty() ? "none" : rules.declined.summary())
-                + "; score by area=" + rules.scoreByArea
-                + learningTimes(context)
-                + "\n"
+                + rulesLine(rules) + "\n"
+                + AutopilotText.reportLine(autopilot) + "\n"
                 + "In words: " + rules.describe() + "\n\n"
                 + "== Decision history (newest first)\n"
                 + (decisions < REPORT_DECISIONS ? "[only the newest " + decisions + " decisions fit]\n" : "")
@@ -535,20 +525,17 @@ final class DiagnosticLog {
     }
 
     /**
-     * When learning was on (auto-decline and the adaptive minimum both), and when the adaptive minimums were last
-     * reset, so a report can tell whether an offer accepted then could have taught.
+     * The saved rules as the report's rules line: "Auto-decline saved: true; flat cents=400; per-mile cents=100;
+     * per-minute cents=25 (per hour $15.00); max stops=0". The three minimums and max stops are every rule there is;
+     * Autopilot's switch, goal and bar are its own line ({@link AutopilotText#reportLine}).
      */
-    private static String learningTimes(Context context) {
-        long[] times = FilterStore.learningTimes(context);
-        SimpleDateFormat time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
-        String[] shown = new String[times.length];
-        for (int i = 0; i < times.length; i++) {
-            shown[i] = times[i] > 0 ? time.format(new Date(times[i])) : "not recorded";
-        }
-        FilterSettings current = FilterStore.load(context);
-        return "; learning now=" + (current.enabled && current.risingOffers ? "on" : "off")
-                + "; learning (auto-decline and Adaptive minimum both on) since=" + shown[0]
-                + "; learning last turned off=" + shown[1] + "; adaptive minimums last reset=" + shown[2];
+    private static String rulesLine(FilterSettings rules) {
+        return "Auto-decline saved: " + rules.enabled
+                + "; flat cents=" + rules.flatCents
+                + "; per-mile cents=" + rules.perMileCents
+                + "; per-minute cents=" + rules.perMinuteCents + " (per hour "
+                + DecisionLog.money(rules.perHourCents()) + ")"
+                + "; max stops=" + rules.maxStops;
     }
 
     /**

@@ -1,8 +1,10 @@
 package com.local.dasherfilter;
 
+import android.content.Context;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -17,10 +19,13 @@ import org.json.JSONObject;
 
 /**
  * One offer the user reports from its ticket ("Report this offer"), as it leaves the phone: the decision's figures,
- * reason, action and fixed outcome category, the lines read from the offer masked twice, the current rules as one
- * compact object, the app's and Android's versions, and when it was decided, to the minute (UTC). Never its learning
- * steps, the exact time, the notification's own time or any account or device identifier. It is JSON so that a misread
- * can become a test; the user's own note travels beside it, never inside it.
+ * reason, action and fixed outcome category, the lines read from the offer masked twice, the current rules and
+ * Autopilot's state as one compact object ({@link #rulesJson}: the three minimums, max stops, Autopilot's switch, goal,
+ * bar and mode, and the acceptance rate it counts with), the app's and Android's versions, and when it was decided, to
+ * the minute (UTC). Never its outcome steps, the exact time, the notification's own time, any screen text beyond its
+ * masked read lines, or any account or device identifier. It is JSON so that a misread can become a test; the user's
+ * own note travels beside it, never inside it. It leaves only when the user taps Send on a dialog that says what it
+ * sends ({@link FeedbackDialogs#OFFER_REPORT_SAYS}).
  *
  * <p>The read lines are masked as the phone keeps them ({@link PersonalText}: "Order for Jane D." reads "Order for
  * [name]"), then every word that is not offer vocabulary is reduced to its shape ("Chick-fil-A" reads "Xxxxx-xxx-A")
@@ -75,18 +80,51 @@ final class OfferReport {
             // PersonalText's placeholders ("[name]'s order"), which name what was masked and hide nothing.
             "name", "address", "phone", "email", "instructions", "card", "street", "s"));
 
+    /** The rules object's keys, in order (finalSpec.privacyConsent, REPORTS): nothing else is ever in it. */
+    static final List<String> RULES_KEYS = Collections.unmodifiableList(Arrays.asList(
+            "enabled", "flatCents", "perMileCents", "perMinuteCents", "maxStops",
+            "autopilot", "autopilotGoal", "barPercent", "autopilotMode", "recovering", "extra",
+            "arPercent", "arSource", "arAgeMinutes", "lastChange", "context"));
+    /** What {@link #rulesJson} says of when the rules were read. */
+    private static final String CONTEXT =
+            "current rules when report was built; historical baselines are not reconstructed";
+
     /**
-     * The report, as pretty-printed JSON.
+     * The report as it is sent, with the rules and Autopilot's state as they are now (the same state the shared
+     * report's Autopilot line describes). Off the main thread: it reads the stored rules and Autopilot's state.
+     *
+     * @param android "Android 15 (API 35)": the version alone, never the phone's maker or model
+     */
+    static String text(Context context, Problem problem, String appVersion, long versionCode, String android,
+                       DecisionLog.Entry entry) {
+        return text(problem, appVersion, versionCode, android, AutopilotRuntime.status(context,
+                AutopilotRuntime.wallClock.getAsLong(), OfferFilterService.isConnected()), entry);
+    }
+
+    /**
+     * The report, as pretty-printed JSON, with {@code rules} alone: Autopilot's switch, goal and bar as these rules
+     * say, and nothing it worked out or read (no mode, no acceptance rate, no last change).
      *
      * @param android "Android 15 (API 35)": the version alone, never the phone's maker or model
      */
     static String text(Problem problem, String appVersion, long versionCode, String android, FilterSettings rules,
                        DecisionLog.Entry entry) {
-        return pretty(json(problem, appVersion, versionCode, android, rules, entry));
+        return text(problem, appVersion, versionCode, android, rulesAlone(rules), entry);
+    }
+
+    /** The report, as pretty-printed JSON, with the rules and Autopilot's state {@code autopilot} describes. */
+    static String text(Problem problem, String appVersion, long versionCode, String android,
+                       AutopilotText.Status autopilot, DecisionLog.Entry entry) {
+        return pretty(json(problem, appVersion, versionCode, android, autopilot, entry));
     }
 
     static JSONObject json(Problem problem, String appVersion, long versionCode, String android,
                            FilterSettings rules, DecisionLog.Entry entry) {
+        return json(problem, appVersion, versionCode, android, rulesAlone(rules), entry);
+    }
+
+    static JSONObject json(Problem problem, String appVersion, long versionCode, String android,
+                           AutopilotText.Status autopilot, DecisionLog.Entry entry) {
         JSONObject json = new JSONObject();
         try {
             json.put("report", "offer")
@@ -97,11 +135,16 @@ final class OfferReport {
                     .put("decision", entry.result + " — " + entry.reason + " (" + entry.action.label + ")")
                     .put("read", read(entry))
                     .put("entry", redacted(entry))
-                    .put("rules", rulesJson(rules));
+                    .put("rules", rulesJson(autopilot));
         } catch (JSONException impossible) {
             // Only strings, numbers, booleans and objects of them are put.
         }
         return json;
+    }
+
+    /** Rules with nothing Autopilot worked out or read: no plan, reading or last change. */
+    private static AutopilotText.Status rulesAlone(FilterSettings rules) {
+        return new AutopilotText.Status(rules, true, null, null, null, 0L);
     }
 
     /** "pay $7.90, 7.2 mi · 21 min · 2 stops, needed $10.80, score 73%": what was read, in a line. */
@@ -114,7 +157,7 @@ final class OfferReport {
 
     /**
      * An entry as a report carries it: its figures, reason, action and one fixed outcome category, its read lines
-     * masked twice, and when it was decided to the minute; none of the learning steps, their times or the exact time.
+     * masked twice, and when it was decided to the minute; none of its outcome steps, their times or the exact time.
      * Dasher's notification of the same offer, when folded in, keeps only its offset from the screen's reading.
      */
     static JSONObject redacted(DecisionLog.Entry entry) throws JSONException {
@@ -132,27 +175,46 @@ final class OfferReport {
         return json;
     }
 
-    /** The current rules, compactly, with the floors the adaptive minimum learned. */
+    /** The current rules alone, compactly ({@link #rulesJson(AutopilotText.Status)} with nothing Autopilot knows). */
     static JSONObject rulesJson(FilterSettings rules) throws JSONException {
-        return new JSONObject().put("enabled", rules.enabled).put("flatCents", rules.flatCents)
-                .put("perMileCents", rules.perMileCents).put("perMinuteCents", rules.perMinuteCents)
-                .put("perStopCents", rules.perStopCents).put("maxStops", rules.maxStops)
-                .put("perItemCents", rules.perItemCents)
-                .put("hotspotProximityHundredths", rules.hotspotProximityHundredths)
-                .put("risingOffers", rules.risingOffers).put("scoreByArea", rules.scoreByArea)
-                .put("lastAcceptedCents", rules.lastAcceptedCents)
-                .put("minimumScalePercent", rules.minimumScalePercent)
-                .put("inWords", rules.describe() + (rules.enabled ? "" : " (paused)"))
-                .put("context", "current rules when report was built; historical baselines are not reconstructed")
-                .put("declinedByHand", new JSONObject().put("payCents", rules.declined.payCents)
-                        .put("minutePay", rules.declined.rates.minutePay).put("minutes", rules.declined.rates.minutes)
-                        .put("milePay", rules.declined.rates.milePay).put("miles", rules.declined.rates.miles)
-                        .put("stopPay", rules.declined.rates.stopPay).put("stops", rules.declined.rates.stops))
-                .put("bestAccepted", new JSONObject()
-                        .put("minutePay", rules.best.minutePay).put("minutes", rules.best.minutes)
-                        .put("milePay", rules.best.milePay).put("miles", rules.best.miles)
-                        .put("stopPay", rules.best.stopPay).put("stops", rules.best.stops)
-                        .put("itemPay", rules.best.itemPay).put("items", rules.best.items));
+        return rulesJson(rulesAlone(rules));
+    }
+
+    /**
+     * The current rules and Autopilot's state, compactly, with exactly the keys of {@link #RULES_KEYS}: whether
+     * auto-decline is on; the three minimums (per minute in cents per minute, shown in the app as per hour) and max
+     * stops; Autopilot's switch, goal (70, 50, or 0 for pay first) and bar; the mode of its latest plan for these rules
+     * (null before one), whether it is recovering toward the goal and its stall correction; the acceptance rate it
+     * counts with (carried forward from Dasher's latest reading, or its own estimate, to the hundredth; -1 when
+     * unknown), where that came from (DASHER, ESTIMATE or UNKNOWN) and how many minutes ago Dasher showed it (-1
+     * without a reading); and the last bar change ({from, to, reason, minutesAgo}, the reason a fixed name such as
+     * RECOVERY; null when none). Numbers and fixed words only: no screen text, no time of day.
+     */
+    static JSONObject rulesJson(AutopilotText.Status autopilot) throws JSONException {
+        FilterSettings rules = autopilot.rules;
+        String mode = autopilot.modeName();
+        AutopilotStore.Change change = autopilot.lastChange;
+        return new JSONObject()
+                .put("enabled", rules.enabled)
+                .put("flatCents", rules.flatCents)
+                .put("perMileCents", rules.perMileCents)
+                .put("perMinuteCents", rules.perMinuteCents)
+                .put("maxStops", rules.maxStops)
+                .put("autopilot", rules.autopilot)
+                .put("autopilotGoal", rules.autopilotGoalPercent)
+                .put("barPercent", rules.minimumScalePercent)
+                .put("autopilotMode", mode == null ? JSONObject.NULL : mode)
+                .put("recovering", autopilot.recovering)
+                .put("extra", autopilot.extra)
+                .put("arPercent", autopilot.arHundredths < 0 ? -1 : autopilot.arHundredths / 100.0)
+                .put("arSource", autopilot.arSource.name())
+                .put("arAgeMinutes", autopilot.arAgeMinutes())
+                .put("lastChange", change == null ? JSONObject.NULL : new JSONObject()
+                        .put("from", change.from)
+                        .put("to", change.to)
+                        .put("reason", change.why)
+                        .put("minutesAgo", Math.max(0, autopilot.wallNow - change.at) / 60_000))
+                .put("context", CONTEXT);
     }
 
     /**
