@@ -7,17 +7,17 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * What the user did with an offer, so the adaptive minimum can learn from it. Nothing here taps anything, and nothing
- * about an offer's own decision changes. A wrong lesson raises the user's minimums until Reset and declines good
- * offers, so whenever the evidence is ambiguous nothing is learned, and the history line says why.
+ * What became of an offer: accepted, declined by hand, or neither, and why. It feeds the offer's history line and the
+ * acceptance-rate count; nothing is learned from it (0.5.0), nothing here taps anything, and nothing about an offer's
+ * own decision changes. Whenever the evidence is ambiguous nothing is counted, and the history line says why.
  *
  * <p><b>Accepted, tap seen.</b> The user's Accept tap on a readable offer, then a delivery screen within 15 s (or,
- * for an offer left alone, Dasher's next settled screen within the minute). Even with the tap, a standalone offer
- * teaches nothing when a delivery was already under way as it came (a stored route, or the last delivery-or-waiting
- * screen read was a delivery), or when its countdown, as last read, had {@value #TIME_LEFT_MS} ms or less left by the
- * time a read found it gone (the tap may have failed as it ran out). Dasher may report no finger taps at all (its
- * screens look like Jetpack Compose, which reports clicks made through accessibility only), so this alone may never
- * see one.
+ * for an offer left alone, Dasher's next settled screen within the minute). Even with the tap, a standalone offer is
+ * not counted as accepted when a delivery was already under way as it came (a stored route, or the last
+ * delivery-or-waiting screen read was a delivery), or when its countdown, as last read, had {@value #TIME_LEFT_MS} ms
+ * or less left by the time a read found it gone (the tap may have failed as it ran out). Dasher may report no finger
+ * taps at all (its screens look like Jetpack Compose, which reports clicks made through accessibility only), so this
+ * alone may never see one.
  *
  * <p><b>Accepted, no tap seen</b> (the user's decision, approved in chat). A readable standalone offer Offer Filter did
  * not decline (it passed, or it was left for the user's review) counts as accepted when all of these hold:
@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
  *       the door" or "Confirm to complete delivery"), not the wait for offers (which includes the dash's summary
  *       between deliveries, "This dash so far" / "Continue dashing", and the zone screens).</li>
  * </ul>
- * A next screen that is neither, once it has stayed {@value #SETTLE_MS} ms, teaches nothing, and its words go to the
+ * A next screen that is neither, once it has stayed {@value #SETTLE_MS} ms, counts nothing, and its words go to the
  * screens log so a report shows them. So does a screen showing both a delivery and the wait for offers, turn-by-turn
  * navigation alone (its speed and distances, "Turn left", "Exit": it shows on the way to a customer and on the way
  * back to a zone alike), and Dasher's "End your current dash?" (the dash counts as ended only once the user's "End
@@ -50,7 +50,6 @@ import java.util.regex.Pattern;
  * Anything else counts nothing, and says why: going back to the offer (any read of it after the question, unless the
  * wait for offers or the next offer follows at once), a later Accept tap on it, a delivery screen (for the question
  * alone, or with none under way before), an unclear screen that settles, the minute running out, or the dash ending.
- * Only an offer the rules let through can teach (through {@link ManualDeclines}).
  *
  * <p>Each step is noted for the offer's history line ({@link #takeNotes}). Pure Java; the screen reader drives it on
  * its scanner thread.
@@ -74,9 +73,7 @@ final class AcceptedOfferTracker {
     static final String WAIT_NOT_SEEN = "Dasher's wait for offers wasn't seen before it";
     static final String DELIVERY_UNDER_WAY =
             "a delivery was already under way when it came, so the delivery screen after it proves nothing";
-    /** What a held decline of an offer the rules let through does next. */
-    static final String TEACHES_NEXT = "it teaches once the next offer comes";
-    /** Why a delivery screen after an offer teaches nothing, beside {@link #DELIVERY_UNDER_WAY} and its countdown. */
+    /** Why a delivery screen after an offer does not count it, beside {@link #DELIVERY_UNDER_WAY} and its countdown. */
     static final String BEGAN_TO_DECLINE = "you began to decline it, so the delivery screen after it is no Accept";
     static final String DECLINED_THROUGH_NOTIFICATION =
             "a decline was requested through Dasher's notification, so the delivery screen after it is no Accept";
@@ -133,9 +130,13 @@ final class AcceptedOfferTracker {
         final OfferSnapshot line;
         /** Fixed words and numbers only, never screen text. */
         final String detail;
-        /** Accepted without the tap path: what to learn from. Null otherwise. */
+        /** Accepted without the tap path: the acceptance to record. Null otherwise. */
         final Acceptance accepted;
-        /** Counted as the user's Decline of an offer the rules let through: held until the dash goes on. */
+        /**
+         * Retired (0.5.0): an offer declined by hand was once held here to teach the adaptive minimum. Nothing is
+         * taught any more, so it is always null.
+         */
+        @Deprecated
         final OfferSnapshot declined;
         /** Dasher's next screen, when it was neither a delivery nor the wait for offers: for the screens log. */
         final List<String> screen;
@@ -262,7 +263,7 @@ final class AcceptedOfferTracker {
         }
         if (read.items != null) return true;
         // Bare references to items also occur on unknown shopping lists/details. They remain unknown and may
-        // settle as not learned; only this explicit offer-type label holds a count that has not drawn yet.
+        // settle as not counted; only this explicit offer-type label holds a count that has not drawn yet.
         if (labels != null) for (String label : labels) {
             if (OfferEvidence.normalize(label).matches("(?i)shop\\s*(?:&|and)\\s*deliver")) return true;
         }
@@ -331,7 +332,8 @@ final class AcceptedOfferTracker {
     /**
      * Acceptance only: a complete pickup/delivery read can retain the exact watched payout and item count.
      * Shared classification stays conservative for Peek, decline completion, and every unrelated screen. Only
-     * the original full standalone offer can teach; none of this read's figures replace its observed facts.
+     * the original full standalone offer can count as accepted; none of this read's figures replace its observed
+     * facts.
      */
     private static After acceptanceScreen(List<String> labels, boolean offerFacts, OfferSnapshot read,
                                           boolean completeWithoutControls, OfferSnapshot original) {
@@ -422,10 +424,10 @@ final class AcceptedOfferTracker {
 
     private static final class Watch {
         final OfferSnapshot line;
+        /** What an acceptance of it records (an add-on's own increment). */
         OfferSnapshot learn;
         OfferSnapshot routeAfter;
         final boolean addOn;
-        final boolean passed;
         final boolean deliveryBefore;
         final boolean waitingBefore;
         final long firstAt;
@@ -453,13 +455,12 @@ final class AcceptedOfferTracker {
         String unclearWords;
         long unclearSince;
 
-        Watch(OfferSnapshot line, OfferSnapshot learn, OfferSnapshot routeAfter, boolean addOn, boolean passed,
+        Watch(OfferSnapshot line, OfferSnapshot learn, OfferSnapshot routeAfter, boolean addOn,
               boolean deliveryBefore, boolean waitingBefore, long now) {
             this.line = line;
             this.learn = learn;
             this.routeAfter = routeAfter;
             this.addOn = addOn;
-            this.passed = passed;
             this.deliveryBefore = deliveryBefore;
             this.waitingBefore = waitingBefore;
             this.firstAt = now;
@@ -597,13 +598,13 @@ final class AcceptedOfferTracker {
             note(DecisionLog.StepKind.ACCEPT_TAPPED, s.line, "waiting for a delivery screen");
             return s.offer;
         }
-        if (recent) note(DecisionLog.StepKind.ACCEPT_TAPPED, s.line, "its pay was not read, so nothing to learn");
+        if (recent) note(DecisionLog.StepKind.ACCEPT_TAPPED, s.line, PAY_NOT_READ);
         return null;
     }
 
     /**
      * An Accept tap whose delivery screen never came in time: returns that offer once (and forgets it), so the log
-     * can say it was not learned; null otherwise.
+     * can say it was not counted; null otherwise.
      */
     OfferSnapshot missedAcceptance(long now) {
         if (pending == null || now - clickedAt <= MAX_CLICK_TO_PROGRESS_MS) return null;
@@ -621,7 +622,8 @@ final class AcceptedOfferTracker {
 
     /**
      * Returns the acceptance once delivery progress follows a recent Accept tap; otherwise null. A standalone offer
-     * that came during a delivery, or may have run out, teaches nothing even with the tap: its history line says so.
+     * that came during a delivery, or may have run out, is not counted as accepted even with the tap: its history line
+     * says so.
      *
      * @param offerFacts the read found an offer's facts: an offer being drawn, never a delivery screen
      */
@@ -638,7 +640,7 @@ final class AcceptedOfferTracker {
             return null;
         }
         OfferSnapshot original = pending.automaticRequest || pending.addOn
-                || notLearnedWithTap(pending.deliveryBefore, pending.secondsLeft, pending.countdownAt,
+                || notCountedWithTap(pending.deliveryBefore, pending.secondsLeft, pending.countdownAt,
                         pending.goneAt < 0 ? now : pending.goneAt) != null ? null : pending.offer;
         After shown = acceptanceScreen(labels, offerFacts, read, completeWithoutControls, original);
         if (pending.automaticRequest && (shown == After.WAITING || shown == After.DASH_OVER
@@ -653,7 +655,7 @@ final class AcceptedOfferTracker {
         Watch w = watch;
         // Its verdict is given here: what came after that offer needs none of its own.
         if (w != null && w.sameOffer(s.line, s.addOn)) watch = null;
-        String why = s.addOn ? null : notLearnedWithTap(s.deliveryBefore, s.secondsLeft, s.countdownAt, s.goneAt);
+        String why = s.addOn ? null : notCountedWithTap(s.deliveryBefore, s.secondsLeft, s.countdownAt, s.goneAt);
         if (why != null) {
             note(s.automaticRequest ? DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED
                     : DecisionLog.StepKind.NOT_LEARNED, s.line, why);
@@ -682,8 +684,8 @@ final class AcceptedOfferTracker {
      * paused. A different offer gives the one watched before its verdict.
      *
      * @param line        the offer as its history line has it
-     * @param learn       what an acceptance would teach (an add-on's own increment)
-     * @param passed      the rules let it through (so a decline by hand may teach)
+     * @param learn       what an acceptance of it records (an add-on's own increment)
+     * @param passed      the rules let it through; kept for callers, it no longer changes anything here
      * @param secondsLeft its countdown, -1 when none was read
      * @param routeStored whether a route was stored as it came
      */
@@ -722,7 +724,7 @@ final class AcceptedOfferTracker {
         // This offer uses up what was read before it.
         lastClear = null;
         screenSinceOffer = false;
-        Watch next = new Watch(line, learn, routeAfter, addOn, passed, deliveryBefore, waitingBefore, now);
+        Watch next = new Watch(line, learn, routeAfter, addOn, deliveryBefore, waitingBefore, now);
         seen(next, secondsLeft, now);
         watch = next;
     }
@@ -794,7 +796,7 @@ final class AcceptedOfferTracker {
 
     /**
      * The user's own Decline tap (never Offer Filter's echo): held, like Dasher's question, until Dasher moves on.
-     * Nothing is taught at the tap itself.
+     * Nothing counts at the tap itself.
      */
     void declineTapped(long now) {
         unconfirmedAutomatic("you tapped Decline before delivery confirmation");
@@ -808,8 +810,8 @@ final class AcceptedOfferTracker {
         }
         hold(w);
         w.declineSignalAt = now;
-        note(DecisionLog.StepKind.DECLINE_TAPPED, w.line, teachable(w) != null
-                ? "it counts once Dasher goes back to the wait for offers or another offer comes" : whyNotTaught(w));
+        note(DecisionLog.StepKind.DECLINE_TAPPED, w.line,
+                "it counts once Dasher goes back to the wait for offers or another offer comes");
     }
 
     private static void hold(Watch w) {
@@ -955,7 +957,7 @@ final class AcceptedOfferTracker {
         endTapAt = -1;
     }
 
-    /** A timeout only records that no acceptance was established; it never reads a screen or teaches. */
+    /** A timeout only records that no acceptance was established; it never reads a screen. */
     boolean expire(long now) {
         if (pending != null && pending.automaticRequest && now - clickedAt > MAX_CLICK_TO_PROGRESS_MS) {
             return unconfirmedAutomatic("no explicit pickup or delivery progress within 15 s");
@@ -1017,6 +1019,26 @@ final class AcceptedOfferTracker {
         return w == null || w.leftAt < 0 ? -1 : Math.max(0, now - w.leftAt);
     }
 
+    /**
+     * The offer Offer Filter left alone that is on screen, or left it moments ago, as its history line has it; null
+     * when none is watched. It names the offer a decline question the user brought up is about (for the
+     * acceptance-rate reading); {@link #watchedLine(long)} also applies this tracker's own rule for that.
+     */
+    OfferSnapshot watchedLine() {
+        Watch w = watch;
+        return w == null ? null : w.line;
+    }
+
+    /**
+     * As {@link #watchedLine()}, but only while a decline question seen at {@code now} (uptime) would be about it: one
+     * was already taken to be, or the offer was read at most {@link #QUESTION_AGE_MS} before. Null otherwise.
+     */
+    OfferSnapshot watchedLine(long now) {
+        Watch w = watch;
+        if (w == null || (w.questionAt < 0 && now - w.lastAt > QUESTION_AGE_MS)) return null;
+        return w.line;
+    }
+
     /** When the offer watched first showed (uptime), or -1: tells one watch from the next. */
     long watchedSince() {
         Watch w = watch;
@@ -1059,7 +1081,7 @@ final class AcceptedOfferTracker {
             note(DecisionLog.StepKind.NOT_LEARNED, w.line, reason);
             return;
         }
-        // Learned here: a seen Accept tap on it waits for nothing more, so it is never learned twice.
+        // Counted here: a seen Accept tap on it waits for nothing more, so it is never counted twice.
         clearPending();
         long left = timeLeftWhenGone(w);
         String detail = w.acceptTapped
@@ -1112,11 +1134,9 @@ final class AcceptedOfferTracker {
             notes.add(new Note(DecisionLog.StepKind.DECLINE_DROPPED, w.line, drop, null, null, screen));
             return;
         }
-        OfferSnapshot teach = teachable(w);
         String outcome = end == End.ANOTHER_OFFER ? "another offer came"
                 : end == End.ROUTE ? "Dasher went back to the delivery under way" : describe(end) + when;
-        notes.add(new Note(DecisionLog.StepKind.DECLINE_COUNTED, w.line, outcome + "; "
-                + (teach != null ? TEACHES_NEXT : whyNotTaught(w)), null, teach, null));
+        notes.add(new Note(DecisionLog.StepKind.DECLINE_COUNTED, w.line, outcome, null, null, null));
     }
 
     /** Why a delivery screen after this offer does not show it was accepted; null when it does. */
@@ -1128,10 +1148,10 @@ final class AcceptedOfferTracker {
     private static String notAcceptedBecause(Watch w, long goneAt) {
         if (w.declineBegun()) return BEGAN_TO_DECLINE;
         if (w.declinedElsewhere) return DECLINED_THROUGH_NOTIFICATION;
-        // Pay is what an acceptance teaches, and a route is kept only with it: none was read, so nothing is.
+        // An acceptance is counted, and a route kept, only with its pay: none was read.
         if (w.learn == null || w.learn.payCents == null) return PAY_NOT_READ;
         if (w.addOn) return w.acceptTapped ? null : ADD_ON_NEEDS_TAP;
-        if (w.acceptTapped) return notLearnedWithTap(w.deliveryBefore, w.secondsLeft, w.countdownAt, goneAt);
+        if (w.acceptTapped) return notCountedWithTap(w.deliveryBefore, w.secondsLeft, w.countdownAt, goneAt);
         if (w.deliveryBefore) return DELIVERY_UNDER_WAY;
         if (!w.waitingBefore) return WAIT_NOT_SEEN;
         if (w.secondsLeft < 0) return NO_COUNTDOWN;
@@ -1139,9 +1159,9 @@ final class AcceptedOfferTracker {
     }
 
     /**
-     * Whether a "Not learned" reason is one given when Dasher showed a delivery screen after the offer (it taught
-     * nothing, but the screen came): every reason {@link #notAcceptedBecause} and the Accept tap's own path give, never
-     * those of a watch that ended any other way. With a seen Accept tap before it, the offer was seen accepted.
+     * Whether a "Not counted as accepted" reason is one given when Dasher showed a delivery screen after the offer
+     * (not counted, but the screen came): every reason {@link #notAcceptedBecause} and the Accept tap's own path give,
+     * never those of a watch that ended any other way. With a seen Accept tap before it, the offer was seen accepted.
      */
     static boolean deliveryScreenFollowed(String reason) {
         if (reason == null) return false;
@@ -1152,10 +1172,10 @@ final class AcceptedOfferTracker {
     }
 
     /**
-     * Why a standalone offer with a seen Accept tap teaches nothing: a delivery was under way as it came, or its
-     * countdown (when one was read) may have run out. Null when neither.
+     * Why a standalone offer with a seen Accept tap is not counted as accepted: a delivery was under way as it came,
+     * or its countdown (when one was read) may have run out. Null when neither.
      */
-    private static String notLearnedWithTap(boolean deliveryBefore, int secondsLeft, long countdownAt, long goneAt) {
+    private static String notCountedWithTap(boolean deliveryBefore, int secondsLeft, long countdownAt, long goneAt) {
         if (deliveryBefore) return DELIVERY_UNDER_WAY;
         return secondsLeft < 0 ? null : ranOut(secondsLeft, countdownAt, goneAt);
     }
@@ -1174,17 +1194,6 @@ final class AcceptedOfferTracker {
 
     private static long timeLeftWhenGone(int secondsLeft, long countdownAt, long goneAt) {
         return secondsLeft * 1000L - Math.max(0, goneAt - countdownAt);
-    }
-
-    /** What a decline by hand of this offer may teach: a readable standalone offer the rules let through. */
-    private static OfferSnapshot teachable(Watch w) {
-        return w.passed && !w.addOn && w.learn != null && w.learn.payCents != null ? w.learn : null;
-    }
-
-    private static String whyNotTaught(Watch w) {
-        if (w.addOn) return "an add-on teaches nothing";
-        if (!w.passed) return "the rules did not let it through, so it teaches nothing";
-        return "its pay was not read, so it teaches nothing";
     }
 
     private static String describe(End end) {
