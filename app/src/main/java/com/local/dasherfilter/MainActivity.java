@@ -142,7 +142,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private DecisionChartView chart;
     private LinearLayout ticket;
     private Decor.Ticket ticketShape;
-    private Button reportSelected;
     private long shownHistoryVersion = -1;
     /** The newest offer the page has seen (when it was recorded), so the mascot plays out each new one once. */
     private long seenOfferAt = -1;
@@ -1109,7 +1108,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
-     * the homepage), behavior switches, updates, GitHub, reports and a tip, then the version and the bundled texts.
+     * the homepage), behavior switches, updates, anonymous feedback, reports and a tip, then the version and the
+     * bundled texts.
      * The rules are all on the homepage's constellation.
      */
     private void buildSettings(LinearLayout page) {
@@ -1215,14 +1215,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         params.topMargin = ui.dp(18);
         body.addView(group, params);
         return group;
-    }
-
-    /** A few words under a switch saying where it stands. */
-    private TextView detail(LinearLayout parent) {
-        TextView detail = ui.text("", 13, ui.inkSecondary, false);
-        detail.setPadding(ui.dp(4), 0, ui.dp(56), ui.dp(4));
-        parent.addView(detail, Ui.matchWidth());
-        return detail;
     }
 
     /** Accountless feedback. Diagnostics are attached only when explicitly chosen for this submission. */
@@ -1388,7 +1380,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
         installs.update(installsAllowed.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
-        if (reportSelected != null) reportSelected.setVisibility(View.VISIBLE);
     }
 
     /**
@@ -1628,10 +1619,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (minimums != null) minimums.showTicket(ticketOpen && countTicket == null ? entry : null);
         ticket.removeAllViews();
         ticket.setVisibility(ticketOpen ? View.VISIBLE : View.GONE);
-        if (!ticketOpen) {
-            reportSelected = null;
-            return;
-        }
+        if (!ticketOpen) return;
         LinearLayout stub = ui.row();
         stub.addView(new Decor.Stamp(this, ui, DecisionLog.outcome(entry)));
         TextView time = ui.text(when(entry.at) + (entry.addOn ? " · add-on" : ""), 13, ui.inkSecondary, false);
@@ -1712,8 +1700,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             read.setTextIsSelectable(true);
             ticket.addView(read);
         }
-        reportSelected = ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
-        reportSelected.setVisibility(View.VISIBLE);
+        ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
     }
 
     /** Keep the most recent observed learning result prominent, without inventing a lesson from a passed rule. */

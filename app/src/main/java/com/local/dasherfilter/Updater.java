@@ -46,8 +46,7 @@ import org.json.JSONObject;
 /**
  * Update checks, download verification, and installation are separate observable stages. An APK is installed only
  * after its size, SHA-256, package, embedded version, and signing certificate all match the feed and this app.
- * Releases are read from Render and, once the user connects GitHub, from the app's private repository too; the newer
- * of the two is used, and one being unreachable does not stop the other.
+ * Releases are read from the public Render feed, which needs no account.
  */
 final class Updater {
     private static final int PERIODIC_JOB_ID = 7241;
@@ -72,7 +71,7 @@ final class Updater {
     private static final String NEXT_CHECK_AT = "next_check_at";
     private static final String FAILURE_COUNT = "failure_count";
     private static final String ADVERTISED = "advertised";
-    /** Which feed the advertised version came from: "Render" or "GitHub". */
+    /** Which feed the advertised version came from: "Render" (older versions could also say "GitHub"). */
     private static final String ADVERTISED_VIA = "advertised_via";
     /** Automatic checks since the last logged update line that found the same, or were too soon to start. */
     private static final String QUIET = "quiet_";
@@ -91,8 +90,7 @@ final class Updater {
 
     /** Reads a feed's JSON. Tests only stand in feed bytes here, which still pass every check; APKs never come here. */
     interface FeedReader {
-        void read(UpdatePolicy.Channel channel, String address, String token, OutputStream out, long limit)
-                throws IOException;
+        void read(String address, OutputStream out, long limit) throws IOException;
     }
 
     static volatile FeedReader feedReader = UpdateTransport::download;
@@ -380,7 +378,7 @@ final class Updater {
             if (!UpdatePolicy.isNewer(advertised, versionCode(installed))) {
                 settle(app, trigger, (advertised == versionCode(installed)
                         ? "Up to date: " + installed.versionName
-                        : "Feed is older than this installation; no downgrade attempted.") + release.caveat, release);
+                        : "Feed is older than this installation; no downgrade attempted."), release);
                 clearReady(app);
                 JobScheduler jobs = app.getSystemService(JobScheduler.class);
                 if (jobs != null) jobs.cancel(RETRY_JOB_ID);
@@ -413,8 +411,8 @@ final class Updater {
 
     /**
      * A check's result that is a state, not an event: shown in Settings, and logged in full when the user asked; an
-     * automatic check logs it only when it differs from the last one logged (with the feed it came from and the
-     * GitHub connection's state), and otherwise counts it for the report.
+     * automatic check logs it only when it differs from the last one logged (with the feed it came from), and
+     * otherwise counts it for the report.
      */
     private static void settle(Context app, UpdateCadence.Trigger trigger, String message, Release release) {
         show(app, message);
@@ -431,18 +429,12 @@ final class Updater {
         }
     }
 
-    /** A release as one channel advertised it, with the token that channel needs (null for Render). */
+    /** A release as the feed advertised it. */
     static final class Release {
-        final UpdatePolicy.Channel channel;
         final JSONObject json;
-        final String token;
-        /** A note about the other channel when it could not be read, for the status line. */
-        String caveat = "";
 
-        Release(UpdatePolicy.Channel channel, JSONObject json, String token) {
-            this.channel = channel;
+        Release(JSONObject json) {
             this.json = json;
-            this.token = token;
         }
 
         long versionCode() {
@@ -452,21 +444,13 @@ final class Updater {
 
     /** The public, accountless signed release feed. */
     private static Release newestRelease(Context app, long now, boolean manual) throws Exception {
-        return fetchRelease(UpdatePolicy.Channel.RENDER, UpdatePolicy.FEED + "?t=" + now, null);
+        return fetchRelease(UpdatePolicy.FEED + "?t=" + now);
     }
 
-    /** The one with the higher version code; {@code first} on a tie; null only when both are null. */
-    static Release newer(Release first, Release second) {
-        if (first == null) return second;
-        if (second == null) return first;
-        return second.versionCode() > first.versionCode() ? second : first;
-    }
-
-    private static Release fetchRelease(UpdatePolicy.Channel channel, String address, String token)
-            throws IOException, JSONException {
+    private static Release fetchRelease(String address) throws IOException, JSONException {
         ByteArrayOutputStream feed = new ByteArrayOutputStream();
-        feedReader.read(channel, address, token, feed, MAX_FEED_BYTES);
-        Release release = new Release(channel, new JSONObject(feed.toString(StandardCharsets.UTF_8.name())), token);
+        feedReader.read(address, feed, MAX_FEED_BYTES);
+        Release release = new Release(new JSONObject(feed.toString(StandardCharsets.UTF_8.name())));
         checkMetadata(release);
         return release;
     }
@@ -487,8 +471,7 @@ final class Updater {
             status(app, "Downloading " + release.json.getString("versionName")
                     + "…");
             try (OutputStream out = new FileOutputStream(part)) {
-                UpdateTransport.download(release.channel, release.json.getString("apkUrl"), release.token, out,
-                        release.json.getLong("size"));
+                UpdateTransport.download(release.json.getString("apkUrl"), out, release.json.getLong("size"));
             }
             validateApk(app, part, release, installed);
             if (apk.exists() && !apk.delete()) throw new IOException("Could not replace old update");
@@ -512,7 +495,7 @@ final class Updater {
                 || !POSITIVE_INTEGER.matcher(String.valueOf(json.get("size"))).matches()) {
             throw new IOException("Noninteger version or size");
         }
-        UpdatePolicy.validate(release.channel, json.getString("packageName"), json.getLong("versionCode"),
+        UpdatePolicy.validate(json.getString("packageName"), json.getLong("versionCode"),
                 json.getString("apkUrl"), json.getString("sha256"), json.getLong("size"),
                 json.optString("encoding", "raw"));
         if (!UpdatePolicy.validVersionName(json.getString("versionName"))) {

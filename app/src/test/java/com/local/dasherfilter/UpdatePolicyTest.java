@@ -1,6 +1,5 @@
 package com.local.dasherfilter;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import org.junit.Test;
@@ -17,6 +16,7 @@ public final class UpdatePolicyTest {
     private static final String RETIRED_BASE64 =
             "https://raw.githubusercontent.com/Dillxn/dasher-offer-filter-updates/main/apks/v0.4.1/OfferFilter.apk.b64";
     private static final String HASH = "a".repeat(64);
+    /** The retired private-repository channel's addresses, which no version from 0.4.73 reads. */
     private static final String REPO_APK =
             "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main";
     private static final String REPO_FEED =
@@ -33,6 +33,8 @@ public final class UpdatePolicyTest {
     @Test public void rejectsTheRetiredGitHubFeedInEveryEncoding() {
         assertThrows(IllegalArgumentException.class,
                 () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, RETIRED_RELEASE, HASH, 50000, "raw"));
+        assertThrows("the retired repository channel, read through api.github.com", IllegalArgumentException.class,
+                () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, REPO_APK, HASH, 50000, "raw"));
         assertThrows(IllegalArgumentException.class,
                 () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, RETIRED_BASE64, HASH, 50000, "base64"));
         assertThrows(IllegalArgumentException.class,
@@ -101,65 +103,25 @@ public final class UpdatePolicyTest {
         assertFalse(UpdatePolicy.validVersionName(null));
     }
 
-    @Test public void theRepositoryFeedIsReadFromMainThroughTheApi() {
-        assertEquals(REPO_FEED, UpdatePolicy.REPO_FEED);
-        assertEquals(REPO_APK, UpdatePolicy.REPO_APK);
-    }
-
-    @Test public void eachChannelAcceptsOnlyItsOwnApkAddress() {
-        UpdatePolicy.validate(UpdatePolicy.Channel.REPO, UpdatePolicy.PACKAGE, 7, REPO_APK, HASH, 50000, "raw");
-        UpdatePolicy.validate(UpdatePolicy.Channel.RENDER, UpdatePolicy.PACKAGE, 7, RENDER, HASH, 50000, "raw");
+    @Test public void theFeedAcceptsOnlyTheRenderApkAddress() {
+        UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, RENDER, HASH, 50000, "raw");
         for (String url : new String[] {
-                RENDER,
+                REPO_APK,
                 REPO_APK.replace("?ref=main", ""),
-                REPO_APK.replace("ref=main", "ref=feature"),
-                REPO_APK.replace("https:", "http:"),
-                REPO_APK.replace("dasher-offer-filter/", "dasher-offer-filter-updates/"),
-                REPO_APK.replace("/release/", "/app/"),
-                REPO_APK.replace("api.github.com", "api.github.com.attacker.test"),
-                REPO_APK.replace("https://", "https://name@"),
                 "https://raw.githubusercontent.com/Dillxn/dasher-offer-filter/main/release/OfferFilter.apk",
                 RETIRED_RELEASE}) {
-            assertThrows(url, IllegalArgumentException.class, () -> UpdatePolicy.validate(
-                    UpdatePolicy.Channel.REPO, UpdatePolicy.PACKAGE, 7, url, HASH, 50000, "raw"));
+            assertThrows(url, IllegalArgumentException.class,
+                    () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, url, HASH, 50000, "raw"));
         }
-        assertThrows("Render's feed cannot point into the repository", IllegalArgumentException.class,
-                () -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 7, REPO_APK, HASH, 50000, "raw"));
-        assertThrows(IllegalArgumentException.class, () -> UpdatePolicy.validate(
-                UpdatePolicy.Channel.REPO, UpdatePolicy.PACKAGE, 7, REPO_APK, HASH, 50000, "base64"));
     }
 
-    @Test public void theGitHubTokenOnlyEverGoesToThisRepositorysReleaseFolder() {
-        assertTrue(UpdatePolicy.trustedAddress(UpdatePolicy.Channel.REPO, URI.create(REPO_FEED)));
-        assertTrue(UpdatePolicy.trustedAddress(UpdatePolicy.Channel.REPO, URI.create(REPO_APK)));
-        for (String url : new String[] {
-                "https://api.github.com/user",
-                "https://api.github.com/repos/Dillxn/other/contents/release/latest.json",
-                "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/app/build.gradle",
-                "https://api.github.com/repos/Dillxn/dasher-offer-filter/issues",
-                "https://github.com/Dillxn/dasher-offer-filter/raw/main/release/latest.json",
-                "https://api.github.com.attacker.test/repos/Dillxn/dasher-offer-filter/contents/release/x",
-                UpdatePolicy.FEED}) {
-            assertFalse(url, UpdatePolicy.trustedAddress(UpdatePolicy.Channel.REPO, URI.create(url)));
+    @Test public void noGitHubAddressIsEverRequestedAnyMore() {
+        assertTrue(UpdatePolicy.trustedAddress(URI.create(UpdatePolicy.FEED)));
+        for (String url : new String[] {REPO_FEED, REPO_APK, "https://api.github.com/user",
+                "https://github.com/Dillxn/dasher-offer-filter/raw/main/release/latest.json"}) {
+            assertFalse(url, UpdatePolicy.trustedAddress(URI.create(url)));
+            assertThrows(url, IOException.class, () -> UpdateTransport.validateAddress(url));
         }
-        assertFalse(UpdatePolicy.trustedAddress(UpdatePolicy.Channel.RENDER, URI.create(REPO_FEED)));
-        assertTrue(UpdatePolicy.trustedAddress(UpdatePolicy.Channel.RENDER, URI.create(UpdatePolicy.FEED)));
-    }
-
-    @Test public void theTransportChecksEveryRepositoryAddressAndNeedsAToken() throws IOException {
-        UpdateTransport.validateAddress(UpdatePolicy.Channel.REPO, REPO_FEED);
-        UpdateTransport.validateAddress(UpdatePolicy.Channel.REPO, REPO_APK);
-        for (String url : new String[] {
-                REPO_FEED.replace("https:", "http:"),
-                REPO_FEED.replace("api.github.com/", "api.github.com:8443/"),
-                REPO_FEED.replace("/release/latest.json", "/release/../app/build.gradle"),
-                REPO_FEED.replace("/release/latest.json", "/release/%2e%2e/app/build.gradle"),
-                REPO_FEED + "#fragment"}) {
-            assertThrows(url, IOException.class, () -> UpdateTransport.validateAddress(UpdatePolicy.Channel.REPO, url));
-        }
-        assertThrows(IOException.class, () -> UpdateTransport.validateAddress(UpdatePolicy.Channel.RENDER, REPO_FEED));
-        IOException offline = assertThrows(IOException.class, () -> UpdateTransport.download(
-                UpdatePolicy.Channel.REPO, REPO_FEED, null, new ByteArrayOutputStream(), 1000));
-        assertEquals("Not connected to GitHub", offline.getMessage());
+        assertFalse(UpdatePolicy.trustedAddress(null));
     }
 }

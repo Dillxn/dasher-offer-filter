@@ -54,14 +54,13 @@ public class QuietLogAdapterTest {
         versionCode = Build.longVersionCode(info);
         versionName = info.versionName;
         assertTrue(versionCode > 1);
-        Updater.feedReader = (channel, address, token, out, limit) -> {
+        Updater.feedReader = (address, out, limit) -> {
             reads.incrementAndGet();
             if (offline.get()) throw new IOException("offline");
             String feed = "{\"packageName\":\"com.local.dasherfilter\",\"versionCode\":"
                     + (older ? versionCode - 1 : versionCode) + ",\"versionName\":\""
                     + (older ? "0.0.1" : versionName) + "\",\"sha256\":\"" + repeat('a', 64) + "\",\"size\":1000,"
-                    + "\"encoding\":\"raw\",\"apkUrl\":\"" + (channel == UpdatePolicy.Channel.RENDER
-                    ? "https://dash-offer-filter-build.onrender.com/OfferFilter.apk" : UpdatePolicy.REPO_APK) + "\"}";
+                    + "\"encoding\":\"raw\",\"apkUrl\":\"https://dash-offer-filter-build.onrender.com/OfferFilter.apk\"}";
             out.write(feed.getBytes(StandardCharsets.UTF_8));
         };
         GitHubConnect.disconnect(app);

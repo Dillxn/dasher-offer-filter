@@ -46,7 +46,7 @@ public class UpdaterHeldReadyTest {
         PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
         long code = Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
         JSONObject current = feed(code, installed.versionName);
-        Updater.feedReader = (channel, address, token, out, limit) -> {
+        Updater.feedReader = (address, out, limit) -> {
             reads.incrementAndGet();
             out.write(current.toString().getBytes(StandardCharsets.UTF_8));
         };
@@ -54,7 +54,7 @@ public class UpdaterHeldReadyTest {
         assertTrue(dir.isDirectory() || dir.mkdirs());
         apk = new File(dir, "OfferFilter.apk");
         Files.write(apk.toPath(), new byte[] {1, 2, 3});
-        Updater.Release release = new Updater.Release(UpdatePolicy.Channel.RENDER, feed(code + 1, "99.0.0"), null);
+        Updater.Release release = new Updater.Release(feed(code + 1, "99.0.0"));
         // Seed only the private receipt produced after verifiedApk succeeds. This test exercises waiting, not an
         // APK or signer fixture; the receipt is never accepted by the installation path as verification evidence.
         Class<?> receipt = Class.forName(Updater.class.getName() + "$VerifiedReady");

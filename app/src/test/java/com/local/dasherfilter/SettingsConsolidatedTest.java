@@ -150,7 +150,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     @Test
     public void theUpdatesRowSaysWhereUpdatesStandAndATapChecksNow() throws Exception {
         Updater.status(app, "Up to date (0.4.44).");
-        Updater.feedReader = (channel, address, token, out, limit) -> {
+        Updater.feedReader = (address, out, limit) -> {
             throw new IOException("offline in tests");
         };
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -318,7 +318,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     public void openingTheAppTurnsAnOldUpdatesSwitchBackOn() {
         app.getSharedPreferences("updates", Context.MODE_PRIVATE).edit().clear().putBoolean("enabled", false)
                 .commit();
-        Updater.feedReader = (channel, address, token, out, limit) -> {
+        Updater.feedReader = (address, out, limit) -> {
             throw new IOException("offline in tests");
         };
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {

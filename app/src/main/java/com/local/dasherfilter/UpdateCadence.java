@@ -14,7 +14,7 @@ final class UpdateCadence {
     static final long AUTOMATIC_SPACING_MS = 300_000L;
 
     enum Trigger {
-        /** The user tapped Updates in Settings (or just connected GitHub). */
+        /** The user tapped Updates in Settings. */
         MANUAL,
         /** Offer Filter's screen opened fresh. */
         OPENED,

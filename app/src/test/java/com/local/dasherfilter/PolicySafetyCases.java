@@ -6,6 +6,12 @@ import java.util.Objects;
 
 /** Offline checks of existing recovery and updater guard logic. No Android action, request, or install is sent. */
 public final class PolicySafetyCases {
+    /** The retired private-repository channel's addresses: never trusted, a GitHub connection or not. */
+    private static final String RETIRED_REPO_FEED =
+            "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/latest.json?ref=main";
+    private static final String RETIRED_REPO_APK =
+            "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main";
+
     public static int declineRecovery() {
         Checks c = new Checks();
         Object offer = new Object();
@@ -56,8 +62,7 @@ public final class PolicySafetyCases {
         String hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         String apk = "https://" + UpdatePolicy.HOST + UpdatePolicy.APK_PATH;
         UpdatePolicy.validate(UpdatePolicy.PACKAGE, 78, apk, hash, 12345); c.count++;
-        UpdatePolicy.validate(UpdatePolicy.Channel.REPO, UpdatePolicy.PACKAGE, 78, UpdatePolicy.REPO_APK,
-                hash, 12345, "raw"); c.count++;
+        UpdatePolicy.validate(UpdatePolicy.PACKAGE, 78, apk, hash, 12345, "raw"); c.count++;
         for (long code : new long[]{0, -1, (long) Integer.MAX_VALUE + 1}) {
             c.reject(() -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, code, apk, hash, 12345), "invalid version code");
         }
@@ -72,15 +77,13 @@ public final class PolicySafetyCases {
         for (String address : Arrays.asList(null, apk.replace("https:", "http:"), apk + "?ref=main", apk + "#part",
                 "https://" + UpdatePolicy.HOST + ":443" + UpdatePolicy.APK_PATH,
                 "https://user@" + UpdatePolicy.HOST + UpdatePolicy.APK_PATH,
-                "https://example.invalid/OfferFilter.apk", UpdatePolicy.REPO_APK)) {
+                "https://example.invalid/OfferFilter.apk", RETIRED_REPO_APK)) {
             c.reject(() -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 78, address, hash, 12345), "wrong release address");
         }
-        c.reject(() -> UpdatePolicy.validate(UpdatePolicy.Channel.REPO, UpdatePolicy.PACKAGE, 78,
-                UpdatePolicy.REPO_APK.replace("ref=main", "ref=other"), hash, 12345, "raw"), "non-main repo artifact");
-        c.reject(() -> UpdatePolicy.validate(null, UpdatePolicy.PACKAGE, 78,
-                UpdatePolicy.REPO_APK, hash, 12345, "raw"), "missing channel");
-        c.eq(false, UpdatePolicy.trustedAddress(null, java.net.URI.create(UpdatePolicy.REPO_APK)), "unknown origin channel");
-        c.eq(false, UpdatePolicy.trustedAddress(UpdatePolicy.Channel.RENDER, null), "missing URI");
+        c.reject(() -> UpdatePolicy.validate(UpdatePolicy.PACKAGE, 78, RETIRED_REPO_APK, hash, 12345, "raw"),
+                "retired repository artifact");
+        c.eq(false, UpdatePolicy.trustedAddress(java.net.URI.create(RETIRED_REPO_APK)), "retired repository origin");
+        c.eq(false, UpdatePolicy.trustedAddress(null), "missing URI");
         c.eq(true, UpdatePolicy.isNewer(78, 74), "new version");
         c.eq(false, UpdatePolicy.isNewer(74, 74), "same version");
         c.eq(false, UpdatePolicy.isNewer(73, 74), "no downgrade");
@@ -101,8 +104,6 @@ public final class PolicySafetyCases {
         try {
             UpdateTransport.validateAddress(UpdatePolicy.FEED); c.count++;
             UpdateTransport.validateAddress("https://" + UpdatePolicy.HOST + UpdatePolicy.APK_PATH); c.count++;
-            UpdateTransport.validateAddress(UpdatePolicy.Channel.REPO, UpdatePolicy.REPO_FEED); c.count++;
-            UpdateTransport.validateAddress(UpdatePolicy.Channel.REPO, UpdatePolicy.REPO_APK); c.count++;
         } catch (IOException error) { throw new AssertionError("canonical release origin refused", error); }
         for (String address : Arrays.asList("http://" + UpdatePolicy.HOST + "/latest.json",
                 "https://user@" + UpdatePolicy.HOST + "/latest.json",
@@ -112,19 +113,11 @@ public final class PolicySafetyCases {
                 "https://" + UpdatePolicy.HOST + "/..",
                 "https://" + UpdatePolicy.HOST + "/%2e%2e/OfferFilter.apk",
                 "https://" + UpdatePolicy.HOST + "/OfferFilter.apk#fragment",
-                "https://example.invalid/OfferFilter.apk", UpdatePolicy.REPO_APK)) {
-            c.rejectAddress(UpdatePolicy.Channel.RENDER, address);
+                "https://example.invalid/OfferFilter.apk", RETIRED_REPO_FEED, RETIRED_REPO_APK,
+                "https://api.github.com/user", "https://github.com/Dillxn/dasher-offer-filter/raw/main/release/latest.json")) {
+            c.rejectAddress(address);
         }
-        for (String address : Arrays.asList(UpdatePolicy.FEED, "http://api.github.com" + UpdatePolicy.REPO_RELEASE_PATH,
-                "https://user@api.github.com" + UpdatePolicy.REPO_RELEASE_PATH,
-                "https://api.github.com:443" + UpdatePolicy.REPO_RELEASE_PATH,
-                "https://api.github.com" + UpdatePolicy.REPO_RELEASE_PATH + "../secret",
-                "https://api.github.com" + UpdatePolicy.REPO_RELEASE_PATH + "%2e%2e/secret",
-                UpdatePolicy.REPO_APK.replace("dasher-offer-filter", "other-repo"))) {
-            c.rejectAddress(UpdatePolicy.Channel.REPO, address);
-        }
-        c.rejectAddress(UpdatePolicy.Channel.RENDER, null);
-        c.rejectAddress(null, UpdatePolicy.REPO_APK);
+        c.rejectAddress(null);
         return c.count;
     }
 
@@ -139,9 +132,9 @@ public final class PolicySafetyCases {
             try { action.run(); } catch (IllegalArgumentException expected) { return; }
             throw new AssertionError(context + " was accepted");
         }
-        void rejectAddress(UpdatePolicy.Channel channel, String address) {
+        void rejectAddress(String address) {
             count++;
-            try { UpdateTransport.validateAddress(channel, address); } catch (IOException expected) { return; }
+            try { UpdateTransport.validateAddress(address); } catch (IOException expected) { return; }
             throw new AssertionError("untrusted address was accepted: " + address);
         }
     }

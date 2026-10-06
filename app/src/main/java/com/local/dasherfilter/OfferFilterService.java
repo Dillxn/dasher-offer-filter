@@ -622,10 +622,8 @@ public final class OfferFilterService extends AccessibilityService {
     /** A window transition hides old overlay controls until a read started afterward classifies the new screen. */
     private final AtomicLong overlayTransition = new AtomicLong();
     private long overlayApprovedTransition;
-    /** The last declined offer already reported as stuck. */
+    /** The last declined offer already logged as stuck. */
     private String reportedStuck = "";
-    /** The last offer already reported as unreadable, so repeated reads of it file nothing more. */
-    private String reportedOffer = "";
     private String lastStatus = "";
     private String lastDiagnosticSignature = "";
     /** This read's cost so far: nodes visited and windows listed. */
@@ -3389,7 +3387,6 @@ public final class OfferFilterService extends AccessibilityService {
             endAuthority("screen read failed: " + error.getClass().getSimpleName(), true);
             DiagnosticLog.log(this, "accessibility",
                     "scan rejected; no further action: " + error.getClass().getSimpleName());
-            ReportOutbox.fileAutomatic(this, ProblemReport.Kind.SCAN_ERROR, null, null, error);
             status("Screen read failed. No automatic action until a new readable screen.");
             return false;
         } finally {
@@ -3721,10 +3718,7 @@ public final class OfferFilterService extends AccessibilityService {
         offerReadAt = now;
         readIdentity = new ReadIdentity(offer, scan.text, SystemClock.uptimeMillis());
         generation = OfferNotificationService.generationForRead(generation, offer, scan.text, currentReadStartedAt);
-        boolean handled = handleOffer(scan, offer, settings, now, generation);
-        // After the offer was handled (and any decline tapped): a dash's diagnostics count its offers.
-        DashDiagnostics.offerSeen(this);
-        return handled;
+        return handleOffer(scan, offer, settings, now, generation);
     }
 
     /** Only observed exact toast wording; generic failures elsewhere do not authorize recovery. */
@@ -3893,7 +3887,7 @@ public final class OfferFilterService extends AccessibilityService {
                     .contradicts(episode.offer())) {
                 // The question of the app's own decline, its authority over: never the user's decline. One the app
                 // never managed to tap before its time ran out is left to the user, and the log says so.
-                reportIfStuck(confirmation, now);
+                logIfStuck(confirmation, now);
                 if (authorityEndReason.isEmpty()) {
                     authorityEndReason = "offer countdown expired";
                     confirmLog("authority ended: " + authorityEndReason);
@@ -3935,7 +3929,7 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
-        reportIfStuck(confirmation, now);
+        logIfStuck(confirmation, now);
         long at = SystemClock.uptimeMillis();
         int tries = declineState.confirmationTries();
         if (declineState.confirmationExhausted(at)) {
@@ -4197,10 +4191,8 @@ public final class OfferFilterService extends AccessibilityService {
         if (OfferEvidence.isIdle(scan.text) || OfferEvidence.isDashOver(scan.text)) {
             captureOtherScreen(scan, now, OfferEvidence.isPaused(scan.text) ? "dash paused" : "idle");
         }
-        // Diagnostics after a dash (the user's opt-in) are filed when Dasher shows it ended; a cheap check when off.
         // A stale wait/home label drawn with pickup/delivery evidence is contradictory, not route completion.
         // Use the same no-route guard for lifecycle effects as for clearing the stored route above.
-        if (noRoute) DashDiagnostics.screen(this, scan.text);
         if (noRoute && OfferEvidence.isDashOver(scan.text)) {
             onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
@@ -4537,7 +4529,7 @@ public final class OfferFilterService extends AccessibilityService {
             noteNotificationDecline();
             applyNotes();
             boolean peeked = peekReads(offer);
-            DecisionLog.Entry entry = record(scan, isAddOn, decision, settings, !settings.enabled
+            record(scan, isAddOn, decision, settings, !settings.enabled
                     ? DecisionLog.Action.PAUSED
                     : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
                     : DecisionLog.Action.NEEDS_REVIEW, peeked);
@@ -4550,8 +4542,6 @@ public final class OfferFilterService extends AccessibilityService {
                 peek.countdown(secondsLeft, Peek.now());
                 peekLeavesOffer(decision.result, offer, decision.reason, !settings.enabled);
             }
-            if (decision.result == OfferRule.Result.REVIEW
-                    && !OfferRule.onlyHotspotMissing(offer, addOn, settings)) reportUnreadable(scan, offer, entry);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
@@ -4598,7 +4588,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (!again && !declineState.mayDecline(key, now)) {
             diagnostic(phase, scan, offer, decision);
-            if (key.equals(declinedKey)) reportIfStuck(scan, now);
+            if (key.equals(declinedKey)) logIfStuck(scan, now);
             return declineState.hasPendingConfirmation(now);
         }
         // A restart may only recover suppression, never tap authority. Persist before Android can take the request.
@@ -4883,30 +4873,17 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * A declined offer, or its confirmation, still on screen {@link #STUCK_MS} after the first Decline tap means
-     * Dasher is still ringing for it: report what the screen shows, once per offer.
+     * Dasher is still ringing for it: logged once per offer, with how far the decline got.
      */
-    private void reportIfStuck(Scan scan, long now) {
+    private void logIfStuck(Scan scan, long now) {
         if (declinedKey.isEmpty() || declinedKey.equals(reportedStuck) || now - declinedAt < STUCK_MS) return;
         reportedStuck = declinedKey;
-        List<String> labels = new ArrayList<>(scan.text);
-        labels.addAll(scan.metricParts);
         String stage = !episode.questionWasSeen() ? "waiting for the question"
                 : episode.wasConfirmed() ? "question requested; waiting for Dasher to close it"
                 : "question seen; not confirmed";
         DiagnosticLog.log(this, "accessibility", "decline still showing after " + (now - declinedAt)
                 + " ms; " + stage + "; first-step requests " + declineState.declineAttempts()
                 + "/" + DeclineState.MAX_ATTEMPTS);
-        ReportOutbox.fileAutomatic(this, ProblemReport.Kind.DECLINE_STUCK, declinedEntry, labels, null);
-    }
-
-    /** A visible offer the rules could not judge is a reading gap worth fixing: report it once per offer. */
-    private void reportUnreadable(Scan scan, OfferSnapshot offer, DecisionLog.Entry entry) {
-        String key = DeclineState.offerKey(offer, scan.text);
-        if (key.equals(reportedOffer) || !ReportOutbox.enabled(this)) return;
-        reportedOffer = key;
-        List<String> labels = new ArrayList<>(scan.text);
-        labels.addAll(scan.metricParts);
-        ReportOutbox.fileAutomatic(this, ProblemReport.Kind.UNREADABLE_OFFER, entry, labels, null);
     }
 
     /** @param peeked whether this offer was read because a peek brought Dasher up for it: its line says so */

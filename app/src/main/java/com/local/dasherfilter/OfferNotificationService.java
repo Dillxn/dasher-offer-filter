@@ -497,7 +497,6 @@ public final class OfferNotificationService extends NotificationListenerService 
                 action = filter(source, notification, offer, decision, signature, replay);
             }
             Dashing.seen(this);
-            DashDiagnostics.offerSeen(this);
             DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION,
                     addOn, decision.basis, decision, action, settings.enabled, labels)
                     .withAlertTag(offer.alertTag, replay));
@@ -509,10 +508,6 @@ public final class OfferNotificationService extends NotificationListenerService 
             invalidatePeekForKey(source.getKey());
             DiagnosticLog.log(this, "notification",
                     "payload/handler rejected; original retained: " + error.getClass().getSimpleName());
-            // An oversized notification is refused on purpose; only real failures are worth a report.
-            if (!(error instanceof OversizedNotification)) {
-                ReportOutbox.fileAutomatic(this, ProblemReport.Kind.NOTIFICATION_ERROR, null, null, error);
-            }
         }
     }
 

@@ -31,15 +31,15 @@ import java.util.function.Supplier;
  * Dasher's other screens (a shopping list, an item), so a few minutes of shopping can never push the offers out.
  * Turn-by-turn navigation goes into the screens log at most once a minute, and never pushes another screen of the
  * last 30 minutes out of it or out of a report (the pickup leg after an Accept stays).
- * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares or, with
- * "Share diagnostics after each dash" on, in the one {@link DashDiagnostics} files after a dash. Every line is masked
- * ({@link PersonalText}) before it is written: names, addresses, phone numbers, emails and a customer's own words never
- * reach either log. Masking and bounded I/O run on the writer thread, so neither blocks screen-decision callbacks.
+ * Each is kept only about as long as a report can carry, and leaves the phone only in a report the user shares or
+ * explicitly attaches to anonymous feedback. Every line is masked ({@link PersonalText}) before it is written: names,
+ * addresses, phone numbers, emails and a customer's own words never reach either log. Masking and bounded I/O run on
+ * the writer thread, so neither blocks screen-decision callbacks.
  *
  * <p>Some lines are states, not events (what an automatic update check found, DoorDash's alert-channel settings):
  * {@link #logOnChange} writes one only when it differs from the copy kept, or that copy is a day old, and the latest
- * copy of each is in the shared report's "Latest states". States never hold screen text, notification values,
- * tokens, the GitHub account name or a sign-in code.
+ * copy of each is in the shared report's "Latest states". States never hold screen text, notification values or
+ * any account identifier.
  */
 final class DiagnosticLog {
     private static final String PREFS = "offer_filter_diagnostics";
@@ -440,8 +440,8 @@ final class DiagnosticLog {
 
     /**
      * A shareable report: readiness, every saved rule, updater state, the decision history and the captured screen
-     * text, all masked ({@link PersonalText}). Nothing is sent unless the user shares it, or (with "Share diagnostics
-     * after each dash" on) {@link DashDiagnostics} files it after a dash, whole and in parts.
+     * text, all masked ({@link PersonalText}). Nothing is sent unless the user shares it or explicitly attaches it to
+     * anonymous feedback.
      */
     static String report(Context context) {
         String report = fullReport(context);
@@ -470,8 +470,7 @@ final class DiagnosticLog {
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
                 + "Screen text capture: " + (isEnabled(context) ? "automatic, masked" : "off")
                 + " (kept on this phone: about what one report carries, never older than 24 hours)\n"
-                + "Diagnostics after each dash: " + DashDiagnostics.reportLine(context) + "\n"
-                + lossSummary() + "; " + ReportOutbox.lossSummary(context) + "\n"
+                + lossSummary() + "\n"
                 + "Last status: " + PersonalText.maskLine(FilterStore.lastStatus(context).replace('\n', ' ')) + "\n"
                 + AreaMap.summary(context) + "\n\n"
                 + "== Rules\n"

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Publish the APK that tools/sign-local.sh signed to release/ on main, the repository's update feed.
+"""Publish the APK that tools/sign-local.sh signed to release/ on main, the input Render's mirror publishes.
 
-Phones connected to GitHub read release/latest.json and release/OfferFilter.apk through the GitHub API with their
-own read-only token, and install only an APK signed like the installed app. This script writes those two files and
-nothing else, after checking that the APK is the cloud-signed build of this exact, committed source: its signer,
-package and embedded version, a version code above the one already published, and the feed fields against the
-app's own policy code. It never signs, commits or pushes; commit release/ and push it to main afterwards.
+Render (render-build.sh, tools/mirror_repo_feed.py) copies release/OfferFilter.apk to public/ and rewrites the feed's
+apkUrl to its own address; every phone reads only that public feed and installs only an APK signed like the installed
+app. This script writes release/latest.json and release/OfferFilter.apk and nothing else, after checking that the APK
+is the cloud-signed build of this exact, committed source: its signer, package and embedded version, a version code
+above the one already published, and the feed fields, in the form Render serves them, against the app's own policy
+code. It never signs, commits or pushes; commit release/ and push it to main afterwards.
+
+release/latest.json keeps the retired repository address as its apkUrl for one more release: Offer Filter 0.4.72 and
+older, on a phone still connected to GitHub, read release/ directly and require exactly that address (otherwise they
+fall back to Render with a note). 0.4.73 and later never read release/; the mirror ignores this apkUrl.
 """
 import hashlib, json, os, pathlib, re, subprocess
 from release_identity import check_channel
@@ -13,7 +18,10 @@ from runtime_http_proxy import java_environment
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SIGNER = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
 PACKAGE = 'com.local.dasherfilter'
+# The retired repository channel's APK address, which 0.4.72-and-older phones connected to GitHub still require.
 REPO_APK = 'https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main'
+# What tools/mirror_repo_feed.py writes as apkUrl on Render, the only feed the app reads.
+RENDER_APK = 'https://dash-offer-filter-build.onrender.com/OfferFilter.apk'
 MAX_APK_BYTES = 20 * 1024 * 1024
 def run(*args):
     # The nested live-channel verifier reads current standard HTTP(S)_PROXY.
@@ -58,8 +66,9 @@ def main():
     source = ROOT / 'app/src/main/java/com/local/dasherfilter'
     run('javac', '-d', str(classes), str(source / 'UpdatePolicy.java'), str(source / 'UpdateTransport.java'),
         str(ROOT / 'tools/UpdateChannelProbe.java'))
-    run('java', '-cp', str(classes), 'com.local.dasherfilter.UpdateChannelProbe', 'repo-metadata', PACKAGE, str(code),
-        REPO_APK, feed['sha256'], str(feed['size']), 'raw', version)
+    # Checked as Render will serve it (the mirror rewrites apkUrl), by the app's own policy code.
+    run('java', '-cp', str(classes), 'com.local.dasherfilter.UpdateChannelProbe', 'metadata', PACKAGE, str(code),
+        RENDER_APK, feed['sha256'], str(feed['size']), 'raw', version)
 
     release.mkdir(exist_ok=True)
     apk_path.write_bytes(data)

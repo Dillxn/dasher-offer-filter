@@ -36,13 +36,6 @@ final class AnonymousFeedback {
 
     interface Callback { void done(Result result); }
 
-    static void retireLegacyReporting(Context context) {
-        Context app = context.getApplicationContext();
-        DashDiagnostics.set(app, false);
-        ReportOutbox.useGitHub(app, false);
-        if (GitHubConnect.configured()) GitHubConnect.disconnect(app);
-    }
-
     static void send(Context context, String kind, String category, String message, boolean attachDiagnostics,
                      Callback callback) {
         Context app = context.getApplicationContext();
