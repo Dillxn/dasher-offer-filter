@@ -270,8 +270,9 @@ final class Ui {
         button.setTextColor(link);
         button.setMinHeight(dp(48));
         button.setMinimumHeight(dp(48));
-        button.setMinWidth(0);
-        button.setMinimumWidth(0);
+        // A 48 dp target however short the word ("OK" alone measured 42 dp across).
+        button.setMinWidth(dp(48));
+        button.setMinimumWidth(dp(48));
         button.setPadding(dp(12), 0, dp(12), 0);
         button.setStateListAnimator(null);
         button.setBackground(pressable(24));

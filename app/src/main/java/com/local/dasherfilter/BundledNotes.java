@@ -33,7 +33,9 @@ final class BundledNotes {
         notice(14,
                 "[DOCS PACKAGE: what changed in notice 14, line 1 (e.g. feedback no longer needs GitHub)]",
                 "[DOCS PACKAGE: line 2, or delete this line]");
-        // What is new in this version, shown once after the update. Two or three short lines, plain words.
+        // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
+        // the versionName that ships: the release is 0.5.0 (AGENTS.md), so the docs package renames this key with
+        // app/build.gradle's versionName (BundledNotesTest requires the current versionName's entry).
         release("0.4.73",
                 "[DOCS PACKAGE: what is new in 0.4.73, line 1]",
                 "[DOCS PACKAGE: line 2, or delete this line]");

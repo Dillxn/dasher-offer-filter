@@ -23,6 +23,11 @@ final class WhatsNewCard {
     private final OnboardingCard card;
     /** This version's name, asked once: the page refreshes every second. */
     private String version;
+    /**
+     * The lines this card shows, worked out once for this page (whether this install was updated is a PackageManager
+     * call, not one for every second's refresh); null until then.
+     */
+    private List<String> lines;
     /** Closed, or nothing to show for this version: no more asking until the page is made again. */
     private boolean done;
     private String shownFor;
@@ -45,8 +50,10 @@ final class WhatsNewCard {
 
     void refresh() {
         if (done) return;
-        if (version == null) version = Updater.version(context);
-        List<String> lines = pending(context, version, notes.apply(version));
+        if (lines == null) {
+            if (version == null) version = Updater.version(context);
+            lines = pending(context, version, notes.apply(version));
+        }
         boolean show = !lines.isEmpty();
         if (show && !version.equals(shownFor)) {
             shownFor = version;

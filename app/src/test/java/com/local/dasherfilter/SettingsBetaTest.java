@@ -116,6 +116,30 @@ public class SettingsBetaTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Android's restricted standby bucket throttles the update and feedback jobs as the Restricted setting does (One
+     * UI's deep sleep may put a rarely opened app there; unverified on a Galaxy): the same row, and the one choice that
+     * lifts it.
+     */
+    @Test @Config(sdk = 35)
+    public void theRestrictedStandbyBucketGetsTheRowTooWithTheChoiceThatLiftsIt() {
+        android.app.usage.UsageStatsManager usage = app.getSystemService(android.app.usage.UsageStatsManager.class);
+        Shadows.shadowOf(usage).setCurrentAppStandbyBucket(android.app.usage.UsageStatsManager.STANDBY_BUCKET_RESTRICTED);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = settings(activity);
+            View fix = shownIcon(content, BatteryLimits.PROBLEM + ". Fix.");
+            assertNotNull(fix);
+            fix.performClick();
+            assertEquals(BatteryLimits.APP_BATTERY, Shadows.shadowOf(app).getNextStartedActivity().getAction());
+            assertEquals("Choose Unrestricted.", org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+
+            Shadows.shadowOf(usage).setCurrentAppStandbyBucket(android.app.usage.UsageStatsManager.STANDBY_BUCKET_ACTIVE);
+            activity.pause().resume();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull("lifted: the row goes", shownIcon(content, BatteryLimits.PROBLEM + ". Fix."));
+        }
+    }
+
     @Test public void settingsStillHoldsNoParagraphForThem() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = settings(activity);

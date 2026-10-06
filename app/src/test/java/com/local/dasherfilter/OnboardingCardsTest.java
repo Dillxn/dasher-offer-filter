@@ -210,8 +210,68 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
             fix.performClick();
             ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertEquals(Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                    Shadows.shadowOf(activity.get()).getLastRequestedPermission().requestedPermissions[0]);
+            org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission();
+            assertEquals(Manifest.permission.ACCESS_BACKGROUND_LOCATION, request.requestedPermissions[0]);
+
+            // Refused: where the switch is, for later.
+            activity.get().onRequestPermissionsResult(request.requestCode, request.requestedPermissions,
+                    new int[] {android.content.pm.PackageManager.PERMISSION_DENIED});
+            assertEquals("Not allowed. " + LocationRationale.PATH,
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+
+            // Android will not show its request again (asked before, no rationale left): Continue opens App info.
+            Shadows.shadowOf(app).clearNextStartedActivities();
+            fix.performClick();
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertSame("no request that would come back unanswered", request,
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+            android.content.Intent info = Shadows.shadowOf(app).getNextStartedActivity();
+            assertEquals(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, info.getAction());
+            assertEquals("package:" + app.getPackageName(), info.getDataString());
+            assertEquals(LocationRationale.PATH, org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            assertEquals("In App info: Permissions → Location → Allow all the time.", LocationRationale.PATH);
+
+            // While Android still has a reason to give, it is Android that asks again.
+            Shadows.shadowOf(app.getPackageManager()).setShouldShowRequestPermissionRationale(
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION, true);
+            fix.performClick();
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNotSame(request, Shadows.shadowOf(activity.get()).getLastRequestedPermission());
         }
+    }
+
+    // ---- The cards' links are 48 dp targets; What is new asks Android once ----
+
+    @Test public void theCardsShortLinksAreFullTouchTargets() {
+        Activity screen = Robolectric.buildActivity(Activity.class).setup().get();
+        LinearLayout parent = new LinearLayout(screen);
+        screen.setContentView(parent);
+        installedAt(1000, 2000);
+        WhatsNewCard card = card(parent, LINES);
+        card.refresh();
+        Button ok = shownButton(parent, "OK");
+        assertNotNull(ok);
+        Ui ui = new Ui(screen);
+        ok.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        assertTrue("48 dp across: " + ok.getMeasuredWidth(), ok.getMeasuredWidth() >= ui.dp(48));
+        assertTrue("48 dp tall: " + ok.getMeasuredHeight(), ok.getMeasuredHeight() >= ui.dp(48));
+    }
+
+    @Test public void whatIsNewWorksOutItsLinesOnceNotAtEverySecondsRefresh() {
+        Activity screen = Robolectric.buildActivity(Activity.class).setup().get();
+        LinearLayout parent = new LinearLayout(screen);
+        installedAt(1000, 2000);
+        int[] asked = {0};
+        WhatsNewCard card = new WhatsNewCard(screen, new Ui(screen), parent, version -> {
+            asked[0]++;
+            return LINES;
+        });
+        for (int second = 0; second < 5; second++) card.refresh();
+        assertTrue(card.shown());
+        assertEquals("once per page", 1, asked[0]);
     }
 }

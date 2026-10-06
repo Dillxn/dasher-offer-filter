@@ -499,6 +499,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             toast(granted ? "Alerts allowed." : "Alerts not allowed.");
         } else if (requestCode == LOCATION_REQUEST && !granted) {
             toast("Location not allowed, so no areas are kept. You can allow it in Android's app settings.");
+        } else if (requestCode == BACKGROUND_LOCATION_REQUEST) {
+            LocationRationale.answered(this, granted);
         }
     }
 
@@ -1827,9 +1829,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!AreaMap.hasPermission(this)) {
             requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
         } else if (!AreaMap.hasBackgroundPermission(this)) {
-            // One line of why first; Android's request only after Continue.
+            // One line of why first; Android's request only after Continue (App info once Android won't ask).
             LocationRationale.ask(this, () -> requestPermissions(
-                    new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION}, BACKGROUND_LOCATION_REQUEST));
+                    new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION}, BACKGROUND_LOCATION_REQUEST),
+                    this::open);
         }
     }
 

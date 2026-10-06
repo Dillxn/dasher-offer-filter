@@ -258,6 +258,8 @@ public class LauncherAppearanceTest {
         protected void setComponentEnabledSettings(List<PackageManager.ComponentEnabledSetting> settings) {
             for (PackageManager.ComponentEnabledSetting setting : settings) {
                 changes.add(setting.getComponentName().getClassName() + ":" + setting.getEnabledState());
+                // Whichever setter changes a launcher entry, the app is never killed for it.
+                assertEquals(PackageManager.DONT_KILL_APP, setting.getEnabledFlags());
             }
             super.setComponentEnabledSettings(settings);
         }
