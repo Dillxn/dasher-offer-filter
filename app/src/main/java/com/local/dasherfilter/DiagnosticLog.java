@@ -583,8 +583,9 @@ final class DiagnosticLog {
                 found = screens.exists() || offers.exists();
                 if (!deleteLegacy(screens) || !deleteLegacy(offers)) return false;
             }
-            found |= ReportOutbox.queued(app) > 0;
-            if (!ReportOutbox.discardAllNow(app)) return false;
+            // The retired report queue too, half-written files included; one that cannot be listed fails closed.
+            found |= LegacyReportingCleanup.outboxPresent(app);
+            if (!LegacyReportingCleanup.deleteOutbox(app)) return false;
             if (!prefs.edit().putBoolean(CLEANED_UP, true).commit()) {
                 // SharedPreferences updates memory even if its disk write failed; don't trust that in-process flag.
                 prefs.edit().remove(CLEANED_UP).apply();

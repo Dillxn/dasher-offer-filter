@@ -244,8 +244,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.retireSwitch(this);
         // What an older version kept of Dasher's screens (it could hold a payment card page) goes once, off this thread.
         DiagnosticLog.cleanUpSoon(this);
-        // Retire end-user GitHub/report queues before any new accountless feedback can leave.
-        AnonymousFeedback.retireLegacyReporting(this);
+        // What the retired GitHub connection and its report queues left goes once, off this thread.
+        LegacyReportingCleanup.cleanUpSoon(this);
         // Retires an old extra-stop fee now, so its note is ready for the homepage.
         FilterStore.load(this);
         if (state != null) {

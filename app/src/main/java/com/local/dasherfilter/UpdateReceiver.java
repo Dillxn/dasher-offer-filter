@@ -44,6 +44,8 @@ public final class UpdateReceiver extends BroadcastReceiver {
         LauncherAppearance.sync(context, Appearance.resolve(context));
         // What an older version kept of Dasher's screens is cleaned up once, as soon as the update is in.
         DiagnosticLog.cleanUpSoon(context);
+        // So is what the retired GitHub connection and its report queues left (a stored token among it).
+        LegacyReportingCleanup.cleanUpSoon(context);
         OfferSilencer.restore(context);
         Updater.clearReady(context);
         Updater.status(context, "Updated to " + Updater.version(context));

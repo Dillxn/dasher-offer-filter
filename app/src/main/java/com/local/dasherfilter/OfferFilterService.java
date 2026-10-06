@@ -1162,6 +1162,8 @@ public final class OfferFilterService extends AccessibilityService {
         watchScreenState();
         watchCameras();
         Updater.schedule(this);
+        // What the retired GitHub connection and its report queues left goes once, off this thread.
+        LegacyReportingCleanup.cleanUpSoon(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
         onScanner(() -> {

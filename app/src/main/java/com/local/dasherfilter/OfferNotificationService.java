@@ -280,6 +280,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         OfferAlerts.ensureChannel(this);
         OfferAlerts.clearAll(this);
         Updater.schedule(this);
+        // What the retired GitHub connection and its report queues left goes once, off this thread.
+        LegacyReportingCleanup.cleanUpSoon(this);
         DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting");
         reconcile();
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
