@@ -55,7 +55,7 @@ final class SetupRow {
         sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
         sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
-        text = new Words(context, WORDS_SP);
+        text = new Words(context);
         text.setTextColor(ui.ink);
         text.setLineSpacing(0, 1.15f);
         text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
@@ -114,11 +114,11 @@ final class SetupRow {
         private int fittedWidth = -1;
         private float fittedSize;
 
-        Words(Context context, float sizeSp) {
+        Words(Context context) {
             super(context);
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, WORDS_SP);
             full = getTextSize();
-            float unscaled = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, sizeSp,
+            float unscaled = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, WORDS_SP,
                     context.getResources().getDisplayMetrics());
             least = Math.min(full, Math.max(full * LEAST_SCALE, unscaled));
         }

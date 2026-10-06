@@ -231,9 +231,9 @@ final class RestrictedSettingsGuide {
     }
 
     /** API 33 calls, kept apart so older Android never loads them. */
-    @android.annotation.TargetApi(33)
     private static final class Sources {
         static boolean sideloaded(Context context) throws Exception {
+            if (Build.VERSION.SDK_INT < 33) return false;
             InstallSourceInfo info = context.getPackageManager().getInstallSourceInfo(context.getPackageName());
             int source = info.getPackageSource();
             if (source == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE
