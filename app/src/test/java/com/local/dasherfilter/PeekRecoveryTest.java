@@ -242,10 +242,20 @@ public class PeekRecoveryTest {
         return screen.get();
     }
 
-    /** Dasher's window changed (a read follows). */
+    /** Dasher's window changed (a read follows), stamped with its own time as Android stamps every event. */
     private void dasherEvent() {
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName(DASHER);
+        event.setEventTime(SystemClock.uptimeMillis());
+        screen.get().onAccessibilityEvent(event);
+        idle();
+    }
+
+    /** Dasher's content changed (as its offer draws): read at once, or held for the quiet gap after the last read. */
+    private void dasherChanged() {
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        event.setPackageName(DASHER);
+        event.setEventTime(SystemClock.uptimeMillis());
         screen.get().onAccessibilityEvent(event);
         idle();
     }
@@ -529,18 +539,52 @@ public class PeekRecoveryTest {
     }
 
     @Test
-    public void aWholePeekWithOnlyAControlOfTheOfferDrawnLeavesACardThatSaysSo() {
+    public void anOfferWithOnlyItsControlDrawnGetsDashersOwnTapThenACardThatSaysSo() {
         connect(app(OTHER));
         postListed("Taco Bell", false);
         dasherOpened();
-        // Dasher draws the offer's Accept and nothing else of it, the whole time.
+        // Dasher draws the offer's Accept and nothing else of it (no pay, miles, minutes or stops), the whole time:
+        // the offer without its details, as the 0.4.72 report had it.
         dasherShows(dasherScreen("Accept"));
-        pass(Peek.MAX_MS);
-        assertTrue("never over a sign of the offer", ownTaps.isEmpty());
-        contains(log(app), "[peek] ended because 20 s passed");
-        contains(log(app), "[peek] the offer's card after 20 s: silent");
+        long up = peekState().upAt();
+        passTo(up + Peek.PRESENT_MS - 100);
+        assertTrue(ownTaps.isEmpty());
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals("a control without the offer's figures is not the offer shown", 1, ownTaps.size());
+        contains(log(app), "[peek] no offer 2.5 s after Dasher came up: screen=partial:controls; offer notification=posted");
+        long tapped = peekState().ownTapAt();
+        passTo(tapped + Peek.OWN_TAP_WAIT_MS + 100);
+        contains(log(app), "[peek] offer never showed (launcher, Dasher's notification tap); left Dasher up; card silent");
         assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
+        assertNull("not navigating: Dasher stays up", started());
+        assertFalse(log(app).contains("offer facts read"));
+        assertNull("never counted as an empty peek", Peek.pausedWhy(app));
+    }
+
+    @Test
+    public void whileNavigatingAnOfferWithBothControlsAndNoFiguresGoesBackToTheMapWithItsCard() {
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        AccessibilityNodeInfo controls = node(DASHER, null, false);
+        Shadows.shadowOf(controls).addChild(button("Decline"));
+        Shadows.shadowOf(controls).addChild(button("Accept"));
+        dasherShows(controls);
+        long up = peekState().upAt();
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals("Dasher's own tap over its controls without figures", 1, ownTaps.size());
+        long tapped = peekState().ownTapAt();
+        passTo(tapped + Peek.OWN_TAP_WAIT_MS - 100);
         assertNull(started());
+        passTo(tapped + Peek.OWN_TAP_WAIT_MS + 100);
+        Intent back = started();
+        assertNotNull("back to the map: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+        String log = log(app);
+        contains(log, "[peek] returned to a navigation app: the offer never showed");
+        contains(log, "card rang");
+        assertFalse("controls alone are not the offer's facts", log.contains("offer facts read"));
+        assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
     }
 
     @Test
@@ -575,18 +619,17 @@ public class PeekRecoveryTest {
     }
 
     @Test
-    public void signsOfAnOfferBeingDrawnNeverGetDashersOwnTap() {
-        // One of its controls, its items, or a screen too big to read: the offer is drawing.
-        assertNoOwnTapOver(dasherScreen("Accept"), null);
-        assertNoOwnTapOver(dasherScreen("Finding offers", "3 items"), null);
+    public void theOffersFiguresOrWhatMayBeTheWholeOfferNeverGetDashersOwnTap() {
+        // Its items, its route figures, a screen too big to read, or Dasher's question: never Dasher's own tap over it.
+        assertNoOwnTapOver(dasherScreen("Finding offers", "3 items"));
+        assertNoOwnTapOver(dasherScreen("2 stops (7.2 mi) • 21 min"));
         AccessibilityNodeInfo big = node(DASHER, null, false);
         for (int i = 0; i < 1_600; i++) Shadows.shadowOf(big).addChild(node(DASHER, "Row " + i, false));
-        assertNoOwnTapOver(big, null);
-        // Dasher's headline alone: a visible offer is never replaced by Dasher's own tap.
-        assertNoOwnTapOver(dasherScreen("New Delivery!"), "[peek] Dasher's own notification tap: skipped (offer showing)");
+        assertNoOwnTapOver(big);
+        assertNoOwnTapOver(question(button("Decline offer")));
     }
 
-    private void assertNoOwnTapOver(AccessibilityNodeInfo partial, String skipLine) {
+    private void freshPeek(AccessibilityNodeInfo front) {
         if (screen != null) {
             screen.destroy();
             screen = null;
@@ -594,15 +637,46 @@ public class PeekRecoveryTest {
         DiagnosticLog.clear(app);
         ownTaps.clear();
         OfferFilterService.forgetScreenState();
-        connect(app(OTHER));
+        connect(front);
         pass(Peek.GAP_MS);
         postListed("Store " + System.nanoTime(), false);
         dasherOpened();
-        dasherShows(partial);
-        pass(Peek.PRESENT_MS + 500);
-        assertTrue("no tap of Dasher's own over a sign of the offer: " + log(app), ownTaps.isEmpty());
-        if (skipLine != null) contains(log(app), skipLine);
-        else assertFalse(log(app), log(app).contains("own notification tap"));
+    }
+
+    private void assertNoOwnTapOver(AccessibilityNodeInfo shown) {
+        freshPeek(app(OTHER));
+        dasherShows(shown);
+        pass(Peek.PRESENT_MS + Peek.DRAWING_MS + 500);
+        assertTrue("no tap of Dasher's own over the offer or what may be it: " + log(app), ownTaps.isEmpty());
+        assertFalse(log(app), log(app).contains("own notification tap: requested"));
+    }
+
+    @Test
+    public void theOffersControlsOrHeadlineWithoutItsFiguresGetDashersOwnTapOnceTheyHadAMomentToDraw() {
+        // Dasher's headline alone from the start: due 2.5 s after Dasher came up.
+        freshPeek(app(OTHER));
+        dasherShows(dasherScreen("New Delivery!"));
+        long up = peekState().upAt();
+        passTo(up + Peek.PRESENT_MS - 100);
+        assertTrue(ownTaps.isEmpty());
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals(1, ownTaps.size());
+        contains(log(app), "screen=partial:headline; offer notification=posted");
+
+        // Its controls appear only 2 s after Dasher came up: they get a moment to be joined by the figures first.
+        freshPeek(app(OTHER));
+        dasherShows(finding());
+        up = peekState().upAt();
+        passTo(up + 2_000);
+        AccessibilityNodeInfo controls = node(DASHER, null, false);
+        Shadows.shadowOf(controls).addChild(button("Decline"));
+        Shadows.shadowOf(controls).addChild(button("Accept"));
+        dasherShows(controls);
+        long drawing = Peek.now();
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertTrue("not while the offer may still be drawing", ownTaps.isEmpty());
+        passTo(drawing + Peek.DRAWING_MS + 100);
+        assertEquals(1, ownTaps.size());
     }
 
     @Test
@@ -778,13 +852,18 @@ public class PeekRecoveryTest {
         connect(app(OTHER));
         postListed("Taco Bell", false);
         dasherOpened();
-        // Dasher's headline only, the whole time: its own tap is not sent over it, and the peek's time runs out.
-        dasherShows(dasherScreen("New Delivery!"));
+        // A screen too big to read, the whole time (perhaps the offer): Dasher's own tap is never sent over it, and the
+        // peek's time runs out with Dasher left as it is.
+        AccessibilityNodeInfo big = node(DASHER, null, false);
+        for (int i = 0; i < 1_600; i++) Shadows.shadowOf(big).addChild(node(DASHER, "Row " + i, false));
+        dasherShows(big);
         pass(Peek.MAX_MS);
         String log = log(app);
+        assertTrue(ownTaps.isEmpty());
         contains(log, "[peek] ended because 20 s passed");
         contains(log, "[peek] the offer's card after 20 s: silent");
         assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
+        assertNull("no return after the deadline", started());
         assertNull(Peek.pausedWhy(app));
     }
 
@@ -952,9 +1031,11 @@ public class PeekRecoveryTest {
         assertEquals(1, confirms.size());
         pass(100);
         dasherShows(finding());
-        if (Peek.now() < resumed + Peek.QUIET_MS - 50) {
-            assertNull("not back before the touch watch saw the phone quiet after the unlock", started());
-        }
+        assertTrue("the decline completed well within the quiet after the unlock",
+                Peek.now() < resumed + Peek.QUIET_MS - 100);
+        assertNull("not back before the touch watch saw the phone quiet after the unlock", started());
+        passTo(resumed + Peek.QUIET_MS - 100);
+        assertNull("still not back 100 ms before that quiet is over", started());
         passTo(resumed + Peek.QUIET_MS + 200);
         Intent back = started();
         assertNotNull("back once quiet: " + log(app), back);
@@ -1113,7 +1194,8 @@ public class PeekRecoveryTest {
         listOnly(newer);
         inFront(app(MAPS));
         unlock();
-        contains(log(app), "[peek] unlocked too late: offer notification gone");
+        contains(log(app), "[peek] unlocked: offer notification replaced since; left to its card");
+        assertFalse(log(app).contains("unlocked too late"));
         pass(Peek.QUIET_MS + 100);
         assertNull(started());
     }
@@ -1422,6 +1504,21 @@ public class PeekRecoveryTest {
     }
 
     @Test
+    public void aCardsDasherShowingTheOffersControlsWithoutItsFiguresGetsDashersOwnTapOnce() {
+        cardTapped();
+        AccessibilityNodeInfo controls = node(DASHER, null, false);
+        Shadows.shadowOf(controls).addChild(button("Decline"));
+        Shadows.shadowOf(controls).addChild(button("Accept"));
+        dasherShows(controls);
+        Object open = ReflectionHelpers.getField(screen.get(), "cardOpen");
+        assertNotNull("its controls alone are not the offer shown: the card's Dasher is still watched", open);
+        long up = ReflectionHelpers.<Long>getField(open, "upAt");
+        passTo(up + Peek.PRESENT_MS + 200);
+        assertEquals(1, ownTaps.size());
+        contains(log(app), "[alert] card: Dasher's own notification tap: requested");
+    }
+
+    @Test
     public void aCardsDasherShowingTheOfferNeedsNoTapOfItsOwn() {
         cardTapped();
         dasherShows(offer("$25.00"));
@@ -1453,5 +1550,481 @@ public class PeekRecoveryTest {
         pass(Peek.PRESENT_MS + 500);
         assertTrue(ownTaps.isEmpty());
         contains(log(app), "[alert] card: Dasher's own notification tap: skipped (notification gone)");
+    }
+
+    // ---- Review fixes: an update of the same offer, card taps, the unlock, the opening touch, one own tap ----
+
+    /** Dasher's offer notification, still listed by Android, posted at {@code postedAt}, with its own tap. */
+    private StatusBarNotification postListedAt(String store, long postedAt) {
+        StatusBarNotification source = notification("New Delivery!", "New Order: Go to " + store, postedAt);
+        source.getNotification().contentIntent = dashersOwn();
+        listOnly(source);
+        listener.get().onNotificationPosted(source, null);
+        idle();
+        return source;
+    }
+
+    /** Dasher updates its own notification of the same offer (its words change, still no pay); Android lists it. */
+    private StatusBarNotification sameOfferUpdated(StatusBarNotification first, long after) {
+        return sameOfferUpdated(first, after, "Taco Bell");
+    }
+
+    private StatusBarNotification sameOfferUpdated(StatusBarNotification first, long after, String store) {
+        StatusBarNotification update = notification("New Delivery! Respond soon", "New Order: Go to " + store,
+                first.getPostTime() + after);
+        update.getNotification().contentIntent = dashersOwn();
+        listOnly(update);
+        listener.get().onNotificationPosted(update, null);
+        idle();
+        return update;
+    }
+
+    @Test
+    public void anUpdateOfTheSameOfferWhileDasherIsUpNeverTakesItForWithdrawnAndStillGetsDashersOwnTap() {
+        connect(app(MAPS));
+        StatusBarNotification first = postListed("Taco Bell", false);
+        dasherOpened();
+        dasherShows(finding());
+        long up = peekState().upAt();
+        pass(300);
+        sameOfferUpdated(first, 300);
+        contains(log(app), "[peek] skipped: an update of an offer already announced");
+        assertEquals("Android lists the update: the offer's notification is still posted",
+                OfferNotificationService.Posted.POSTED, OfferNotificationService.offerPosted(peekState().request()));
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals("Dasher's own tap, from the update Android lists", 1, ownTaps.size());
+        contains(log(app), "[peek] no offer 2.5 s after Dasher came up: screen=waiting; offer notification=posted");
+        passTo(up + Peek.NO_OFFER_MS + 1_500);
+        assertNull("never back for want of an offer while its notification is listed: " + log(app), started());
+        assertFalse(log(app).contains("offer withdrawn"));
+        assertFalse(log(app).contains("notification gone"));
+    }
+
+    @Test
+    public void threePeeksWithAnUpdateOfTheSameOfferNeverPausePeek() {
+        connect(app(MAPS));
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                inFront(app(MAPS));
+                pass(Peek.GAP_MS);
+            }
+            StatusBarNotification first = postListedAt("Store " + i, System.currentTimeMillis());
+            dasherOpened();
+            dasherShows(finding());
+            pass(300);
+            sameOfferUpdated(first, 300, "Store " + i);
+            pass(Peek.MAX_MS);
+        }
+        assertEquals(3, count(log(app), "[peek] opening Dasher for Store "));
+        assertFalse(log(app).contains("offer withdrawn"));
+        assertNull("an offer whose notification was still listed is not an empty peek", Peek.pausedWhy(app));
+    }
+
+    /** No peek (for {@code why}); the offer's card rang. Its tap opens Dasher by its launcher, and Dasher shows no offer. */
+    private void cardOfARefusedPeekTappedWhileDasherShowsNoOffer(String why) {
+        contains(log(app), "[peek] skipped: " + why);
+        Notification card = card();
+        Intent tap = Shadows.shadowOf(card.contentIntent).getSavedIntent();
+        inFront(app(MAPS));
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        idle();
+        Intent opened = started();
+        assertNotNull(opened);
+        assertEquals("Dasher's launcher", DASHER_HOME, opened.getComponent());
+        assertEquals("Android still lists the offer's notification", 1,
+                listener.get().getActiveNotifications().length);
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals("Dasher's own tap, once, while its notification is listed: " + log(app), 1, ownTaps.size());
+        contains(log(app), "[alert] card: Dasher's own notification tap: requested");
+        pass(10_000);
+        dasherEvent();
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals("never again", 1, ownTaps.size());
+    }
+
+    @Test
+    public void aCardsFallbackWorksWithPeekOffInSettings() {
+        connect(app(MAPS));
+        FilterStore.setPeek(app, false);
+        postListed("Taco Bell", false);
+        cardOfARefusedPeekTappedWhileDasherShowsNoOffer("Peek is off in Settings");
+    }
+
+    @Test
+    public void aCardsFallbackWorksWhilePeekIsPaused() {
+        connect(app(MAPS));
+        Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
+        postListed("Taco Bell", false);
+        cardOfARefusedPeekTappedWhileDasherShowsNoOffer("Peek is paused for now");
+    }
+
+    @Test
+    public void aCardsFallbackWorksForAPostOlderThanPeekLooksAt() {
+        connect(app(MAPS));
+        postListedAt("Taco Bell", System.currentTimeMillis() - 15_000);
+        cardOfARefusedPeekTappedWhileDasherShowsNoOffer("the notification is 15.");
+    }
+
+    @Test
+    public void aCardTappedOnTheLockScreenBeforeTheUnlockMeansNoCatchUp() {
+        connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        contains(log(app), "[peek] offer arrived while locked; waiting for unlock");
+        Intent tap = Shadows.shadowOf(card().contentIntent).getSavedIntent();
+        // Android starts the card's tap as the keyguard goes, a moment before it says the user is present.
+        Shadows.shadowOf(screen.get().getSystemService(PowerManager.class)).setIsInteractive(true);
+        Shadows.shadowOf(screen.get().getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
+        inFront(app(MAPS));
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        Intent fromCard = started();
+        assertNotNull("the card's own launch of Dasher", fromCard);
+        assertEquals(DASHER_HOME, fromCard.getComponent());
+        app.sendBroadcast(new Intent(Intent.ACTION_SCREEN_ON));
+        app.sendBroadcast(new Intent(Intent.ACTION_USER_PRESENT));
+        idle();
+        pass(Peek.QUIET_MS + 1_000);
+        assertNull("no peek after the user opened Dasher from the card: " + log(app), started());
+        String log = log(app);
+        contains(log, "[peek] unlocked: you opened Dasher from an offer's card; not checked");
+        assertFalse(log.contains("unlocked in time"));
+        assertFalse(log.contains("opening Dasher for"));
+        // The card's own watch goes on: Dasher up without the offer gets its own tap once.
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals(1, ownTaps.size());
+        contains(log(app), "[alert] card: Dasher's own notification tap: requested");
+    }
+
+    @Test
+    public void aCardTapTheScannerHasNotTakenYetStillMeansNoCatchUpAtTheUnlock() {
+        OfferFilterService service = connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        contains(log(app), "[peek] offer arrived while locked; waiting for unlock");
+        // The card's tap is noted on the main thread at once; Android's word that the user is present is taken first.
+        ReflectionHelpers.setField(service, "cardTapAt", Peek.now());
+        inFront(app(MAPS));
+        unlock();
+        pass(Peek.QUIET_MS + 1_000);
+        assertNull("no peek after the user opened Dasher from the card: " + log(app), started());
+        contains(log(app), "[peek] unlocked: you opened Dasher from an offer's card; not checked");
+        assertFalse(log(app).contains("unlocked in time"));
+    }
+
+    @Test
+    public void anotherOfferWhileACardsLaunchOfDasherIsWatchedIsNotPeekedAtAndTheWatchGoesOn() {
+        connect(app(MAPS));
+        AccessibilityNodeInfo maps = app(MAPS);
+        Shadows.shadowOf(screen.get()).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, SCREEN),
+                window(AccessibilityWindowInfo.TYPE_INPUT_METHOD, null, false, BOTTOM_HALF)));
+        Shadows.shadowOf(screen.get()).setRootInActiveWindow(maps);
+        StatusBarNotification first = postListed("Taco Bell", false);
+        contains(log(app), "[peek] skipped: the keyboard is up");
+        Intent tap = Shadows.shadowOf(card().contentIntent).getSavedIntent();
+        inFront(app(MAPS));
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        idle();
+        assertEquals(DASHER_HOME, started().getComponent());
+        // Dasher is slow to come up; meanwhile another offer's notification comes (a key of its own).
+        pass(Peek.GAP_MS);
+        StatusBarNotification another = new StatusBarNotification(DASHER, DASHER, 4, "NEW_ORDER", 10001, 0, 0,
+                offerNotification("Burger Barn").getNotification(), android.os.Process.myUserHandle(),
+                System.currentTimeMillis());
+        listener.get().onNotificationPosted(another, null);
+        idle();
+        pass(Peek.QUIET_MS + 500);
+        assertNull("no peek over the user's own opening of Dasher: " + log(app), started());
+        contains(log(app), "[peek] skipped: you opened Dasher from an offer's card");
+        assertNotNull("the card's watch is still on", ReflectionHelpers.getField(screen.get(), "cardOpen"));
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals(1, ownTaps.size());
+        contains(log(app), "[alert] card: Dasher's own notification tap: requested");
+        assertTrue(first.getPostTime() > 0);
+    }
+
+    @Test
+    public void aCardTappedWhileTheCatchUpWaitsForTheQuietEndsItAndKeepsTheCardsWatch() {
+        connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        pass(2_000);
+        inFront(app(MAPS));
+        unlock();
+        contains(log(app), "[peek] unlocked in time: checking it");
+        Intent tap = Shadows.shadowOf(card().contentIntent).getSavedIntent();
+        pass(200);
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        idle();
+        Intent fromCard = started();
+        assertNotNull(fromCard);
+        assertEquals(DASHER_HOME, fromCard.getComponent());
+        pass(Peek.QUIET_MS + 1_000);
+        assertNull("no peek of its own after the user's tap: " + log(app), started());
+        contains(log(app), "[peek] skipped: you tapped the offer's card");
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals("the card's watch was never cancelled by the catch-up", 1, ownTaps.size());
+    }
+
+    @Test
+    public void dashersOwnWindowComingUpAfterTheUnlockMeansNoCatchUp() {
+        connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        pass(2_000);
+        inFront(app(MAPS));
+        unlock();
+        contains(log(app), "[peek] unlocked in time: checking it");
+        // The user tapped Dasher's own notification on the lock screen: Dasher's window comes up, slowly.
+        pass(200);
+        dasherEvent();
+        pass(Peek.QUIET_MS + 1_000);
+        assertNull("no peek over the user's own opening of Dasher: " + log(app), started());
+        contains(log(app), "[peek] skipped: you are opening Dasher");
+    }
+
+    @Test
+    public void androidsWordThatTheUserIsPresentBeforeTheKeyguardClearsStillCatchesUp() {
+        OfferFilterService service = connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        contains(log(app), "offer arrived while locked; waiting for unlock");
+        Shadows.shadowOf(service.getSystemService(PowerManager.class)).setIsInteractive(true);
+        app.sendBroadcast(new Intent(Intent.ACTION_SCREEN_ON));
+        idle();
+        // Android says the user is present a moment before the keyguard says it is gone; no event follows.
+        app.sendBroadcast(new Intent(Intent.ACTION_USER_PRESENT));
+        idle();
+        assertFalse(log(app).contains("unlocked in time"));
+        pass(300);
+        Shadows.shadowOf(service.getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
+        inFront(app(MAPS));
+        pass(OfferFilterService.UNLOCK_RETRY_MS + 50);
+        contains(log(app), "[peek] unlocked in time: checking it");
+        dasherOpened();
+        contains(log(app), "[peek] opening Dasher for Taco Bell (was in front: a navigation app)");
+    }
+
+    @Test
+    public void aKeyguardThatNeverClearsAfterAndroidsWordLooksAgainOnlyForAMoment() {
+        OfferFilterService service = connect(app(MAPS));
+        lockScreen();
+        postListed("Taco Bell", false);
+        Shadows.shadowOf(service.getSystemService(PowerManager.class)).setIsInteractive(true);
+        app.sendBroadcast(new Intent(Intent.ACTION_SCREEN_ON));
+        app.sendBroadcast(new Intent(Intent.ACTION_USER_PRESENT));
+        idle();
+        pass(OfferFilterService.UNLOCK_RETRY_WINDOW_MS + 1_000);
+        assertEquals("no more looks once the moment is over", NEVER_TIME,
+                (long) ReflectionHelpers.<Long>getField(service, "unlockRetryUntil"));
+        // A read that finds the phone unlocked later still looks at the kept post.
+        Shadows.shadowOf(service.getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
+        inFront(app(MAPS));
+        service.onAccessibilityEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOWS_CHANGED));
+        idle();
+        contains(log(app), "[peek] unlocked in time: checking it");
+    }
+
+    private static final long NEVER_TIME = Long.MIN_VALUE;
+
+    @Test
+    public void aHeldPeekIsReadOnceAtTheUnlock() {
+        OfferFilterService service = connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        pass(1_000);
+        lockScreen();
+        pass(5_000);
+        inFront(finding());
+        int fetches = service.rootFetches;
+        unlock();
+        contains(log(app), "[peek] resumed after unlock");
+        assertEquals("one fresh read of Dasher at the unlock, not two back to back", 1, service.rootFetches - fetches);
+    }
+
+    @Test
+    public void aTouchAfterDashersWindowWasListedButBeforeItsFirstEventLeavesDasherUp() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        // Dasher's window is listed in front with its offer; no event of Dasher's has come yet. The user touches it.
+        AccessibilityNodeInfo shown = offer("$7.90");
+        List<Long> declines = taps(decline);
+        AccessibilityWindowInfo dasherWindow = window(AccessibilityWindowInfo.TYPE_APPLICATION, shown, true, SCREEN);
+        ReflectionHelpers.callInstanceMethod(dasherWindow, "setId",
+                ReflectionHelpers.ClassParameter.from(int.class, 4242));
+        Shadows.shadowOf(screen.get()).setWindows(Collections.singletonList(dasherWindow));
+        Shadows.shadowOf(screen.get()).setRootInActiveWindow(shown);
+        touchNow();
+        pass(300);
+        assertEquals("the poll read declines it at once, as any offer on screen", 1, declines.size());
+        contains(log(app), "[peek] left Dasher up because you touched the screen as it opened");
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        dasherShows(question(confirm));
+        pass(300);
+        dasherShows(finding());
+        pass(Peek.MAX_MS);
+        assertNull("a touch when Dasher's window may already have been up leaves Dasher up: " + log(app), started());
+        assertFalse(log(app).contains("was meant for"));
+    }
+
+    @Test
+    public void aTouchBeforeALookFoundOnlyTheAppTheUserWasInIsForgivenAfterTheAutomaticDecline() {
+        screen = Robolectric.buildService(OfferFilterService.class).create();
+        AccessibilityNodeInfo maps = app(MAPS);
+        AccessibilityWindowInfo mapsWindow = window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, SCREEN);
+        ReflectionHelpers.callInstanceMethod(mapsWindow, "setId", ReflectionHelpers.ClassParameter.from(int.class, 100));
+        Shadows.shadowOf(screen.get()).setWindows(Collections.singletonList(mapsWindow));
+        Shadows.shadowOf(screen.get()).setRootInActiveWindow(maps);
+        screen.get().ownTapSender = (intent, options) -> ownTaps.add(intent);
+        screen.get().onServiceConnected();
+        idle();
+        post("Taco Bell");
+        dasherOpened();
+        // The user touches Maps as Dasher opens; the next look at Android's list still finds only Maps.
+        pass(50);
+        touchNow();
+        pass(300);
+        // Then Dasher's window is listed in front with its offer, no event of Dasher's yet: the poll reads it.
+        AccessibilityNodeInfo shown = offer("$7.90");
+        List<Long> declines = taps(decline);
+        AccessibilityWindowInfo dasherWindow = window(AccessibilityWindowInfo.TYPE_APPLICATION, shown, true, SCREEN);
+        ReflectionHelpers.callInstanceMethod(dasherWindow, "setId",
+                ReflectionHelpers.ClassParameter.from(int.class, 4242));
+        Shadows.shadowOf(screen.get()).setWindows(Collections.singletonList(dasherWindow));
+        Shadows.shadowOf(screen.get()).setRootInActiveWindow(shown);
+        pass(300);
+        assertEquals(1, declines.size());
+        contains(log(app), "[peek] a touch before Dasher appeared was meant for a navigation app");
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm);
+        dasherShows(question(confirm));
+        assertEquals(1, confirms.size());
+        pass(300);
+        dasherShows(finding());
+        Intent back = started();
+        assertNotNull("back to Maps after the completed automatic decline: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+    }
+
+    @Test
+    public void dashersOwnTapWaitsForARead() {
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        dasherShows(finding());
+        long up = peekState().upAt();
+        // Dasher's content changes just before its own tap is due: read at once (the first after a quiet spell)...
+        passTo(up + Peek.PRESENT_MS - 120);
+        dasherChanged();
+        // ...and the offer drawn by the next change, within the quiet gap, is read only at its end, after the tap was due.
+        passTo(up + Peek.PRESENT_MS - 40);
+        AccessibilityNodeInfo shown = offer("$7.90");
+        List<Long> declines = taps(decline);
+        inFront(shown);
+        dasherChanged();
+        assertTrue("held for the quiet gap", ReflectionHelpers.<Boolean>getField(screen.get(), "quietScanPending"));
+        passTo(up + Peek.PRESENT_MS + 300);
+        assertTrue("never Dasher's own tap over an offer still to be read: " + log(app), ownTaps.isEmpty());
+        assertEquals("the offer drawn meanwhile is declined as any offer on screen", 1, declines.size());
+    }
+
+    @Test
+    public void dashersOwnTapIsSentOnceForAnOfferWhicheverPathAsks() {
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        dasherShows(finding());
+        long up = peekState().upAt();
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals(1, ownTaps.size());
+        String tag = peekState().request().alertTag;
+        // The user taps a card of the same offer (its tap opens Dasher by its launcher): the peek leaves Dasher up.
+        Intent tap = Shadows.shadowOf(OpenDasherActivity.forCard(app, tag, dashersOwn())).getSavedIntent();
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        idle();
+        contains(log(app), "[peek] left Dasher up because you tapped the offer's card");
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + 500);
+        assertEquals("the card's watch sends no second tap for the same offer", 1, ownTaps.size());
+        contains(log(app), "[alert] card: Dasher's own notification tap: skipped (sent for this offer already)");
+    }
+
+    /** A peek whose offer Dasher never drew while the user navigated: its card that says so, tapped. */
+    private void unshownCardTapped() {
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        dasherShows(finding());
+        pass(Peek.PRESENT_MS + Peek.OWN_TAP_WAIT_MS + 300);
+        assertEquals(MAPS_HOME, started().getComponent());
+        Notification card = card();
+        assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card));
+        Intent tap = Shadows.shadowOf(card.contentIntent).getSavedIntent();
+        inFront(app(MAPS));
+        Robolectric.buildActivity(OpenDasherActivity.class, tap).create();
+        idle();
+        Intent opened = started();
+        assertNotNull(opened);
+        assertEquals("Dasher's own screen for its notification, first", DASHER_OFFER, opened.getComponent());
+    }
+
+    @Test
+    public void aCardsFirstSendOfDashersOwnIntentThatBringsNothingUpIsFollowedByItsLauncherOnce() {
+        unshownCardTapped();
+        // Android blocked that start without a word: nothing of Dasher's comes up.
+        pass(OfferFilterService.OWN_FIRST_WAIT_MS - 200);
+        assertNull(started());
+        pass(400);
+        Intent launcher = started();
+        assertNotNull("Dasher's launcher follows: " + log(app), launcher);
+        assertEquals(DASHER_HOME, launcher.getComponent());
+        contains(log(app), "[alert] card: nothing of Dasher's came up 1.5 s after its own notification's screen was "
+                + "asked for; Dasher's launcher: requested");
+        pass(5_000);
+        assertNull("once", started());
+        assertEquals("no automatic own tap after the card's own first", 1, ownTaps.size());
+    }
+
+    @Test
+    public void aCardsFirstSendOfDashersOwnIntentThatBringsDasherUpNeedsNoLauncher() {
+        unshownCardTapped();
+        pass(500);
+        dasherShows(finding());
+        pass(OfferFilterService.OWN_FIRST_WAIT_MS + 500);
+        assertNull("Dasher came up: no launcher on top of it", started());
+        contains(log(app), "[alert] card: Dasher's launcher after its own notification's screen: not sent (Dasher came up)");
+    }
+
+    @Test
+    public void aPeekTheLockHeldThatRunsOutWithItsNotificationGoneIsNotAnEmptyPeek() {
+        connect(app(MAPS));
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                inFront(app(MAPS));
+                pass(Peek.GAP_MS);
+            }
+            StatusBarNotification source = postListedAt("Store " + i, System.currentTimeMillis());
+            dasherOpened();
+            dasherShows(finding());
+            pass(500);
+            lockScreen();
+            pass(5_000);
+            // Unlocked onto a screen Dasher's words do not explain; then Dasher withdraws the offer.
+            inFront(dasherScreen("Something else"));
+            unlock();
+            contains(log(app), "[peek] resumed after unlock");
+            withdraw(source);
+            pass(Peek.MAX_MS);
+            assertTrue(log(app), count(log(app), "[peek] ended because 20 s passed") == i + 1);
+        }
+        assertNull("a peek the lock held never counts as empty at its deadline", Peek.pausedWhy(app));
     }
 }

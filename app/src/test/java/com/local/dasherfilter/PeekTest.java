@@ -226,6 +226,8 @@ public class PeekTest {
         inFront(root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName(DASHER);
+        // As Android stamps every event it sends.
+        event.setEventTime(SystemClock.uptimeMillis());
         screen.get().onAccessibilityEvent(event);
         idle();
     }
@@ -668,6 +670,7 @@ public class PeekTest {
         AccessibilityEvent appeared = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         appeared.setPackageName(DASHER);
         pass(100);
+        appeared.setEventTime(SystemClock.uptimeMillis());
         Shadows.shadowOf(screen.get()).setWindows(Collections.emptyList());
         screen.get().onAccessibilityEvent(appeared);
         pass(50);

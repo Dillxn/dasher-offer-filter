@@ -45,11 +45,18 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /**
      * Dasher's latest post of each live offer incarnation, by its card's tag, for the screen reader (any thread): the
-     * key, the post's time and Dasher's own tap intent, never any of its words. Published as each post is handled;
-     * gone with the incarnation, or when a post no longer the offer's replaces it.
+     * key, the post's time and Dasher's own tap intent, never any of its words. Replaced in place as each post of the
+     * offer is handled (whether or not it may be peeked at: this is no peek token), and gone only with the
+     * incarnation ({@link #remove}, {@link #clearTracked}). A missing record never says the offer's notification is
+     * gone: only Android's own listing says that.
      */
     private final java.util.concurrent.ConcurrentHashMap<String, DasherPost> dasherPosts =
             new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * The incarnations (by their card's tag) whose Dasher notification tap the app has sent once already, whether a
+     * peek's, a card watch's or a card's own first: the screen reader never sends one a second time for that offer.
+     */
+    private final java.util.Set<String> ownTapsSent = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** One incarnation's latest post, immutable. */
     private static final class DasherPost {
@@ -67,8 +74,12 @@ public final class OfferNotificationService extends NotificationListenerService 
         }
     }
 
-    /** Whether Dasher's notification of an offer is still posted, as Android lists it now. */
-    enum Posted { POSTED, GONE, UNKNOWN }
+    /**
+     * Whether Dasher's notification of an offer is still posted, as Android lists it now: posted, gone (Android lists
+     * nothing on its key, or an older post), replaced by a later post on its key (only {@link #postStillUp} says so;
+     * for {@link #offerPosted} a later post is the offer's notification still up), or not known.
+     */
+    enum Posted { POSTED, GONE, REPLACED, UNKNOWN }
 
     /** Dasher's own tap on an offer notification still posted, or why there is none to send. */
     static final class DasherTap {
@@ -96,42 +107,46 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /**
      * Whether Dasher's notification of this peeked offer's incarnation is still posted: Android lists its key with
-     * this incarnation's latest post (or a later one not handled yet). Asks Android only, never Dasher. Any thread.
+     * this incarnation's latest post (or a later one not handled yet). Without a record of the incarnation (it ended,
+     * or the listener lost it in a reconnect), Android's listing of the peeked post itself decides. Only Android's own
+     * listing says it is gone. Asks Android only, never Dasher. Any thread.
      */
     static Posted offerPosted(Peek.Request request) {
         OfferNotificationService service = active;
         if (service == null || request == null || request.alertTag == null) return Posted.UNKNOWN;
         DasherPost post = service.dasherPosts.get(request.alertTag);
-        if (post == null || !post.key.equals(request.key)) return Posted.GONE;
-        StatusBarNotification listed;
-        try {
-            listed = service.listed(post.key);
-        } catch (RuntimeException unknown) {
-            return Posted.UNKNOWN;
-        }
-        return listed != null && listed.getPostTime() >= post.postTime ? Posted.POSTED : Posted.GONE;
-    }
-
-    /**
-     * Whether Dasher's notification of this very post (its key and its post time) is still posted, unreplaced: a post
-     * refused for the lock is looked at again after the unlock only then. Any thread.
-     */
-    static Posted postStillUp(Peek.Request request) {
-        OfferNotificationService service = active;
-        if (service == null || request == null || request.alertTag == null) return Posted.UNKNOWN;
-        if (!service.dasherPosts.containsKey(request.alertTag)) return Posted.GONE;
+        boolean recorded = post != null && post.key.equals(request.key);
+        long since = recorded ? post.postTime : request.postTime;
         StatusBarNotification listed;
         try {
             listed = service.listed(request.key);
         } catch (RuntimeException unknown) {
             return Posted.UNKNOWN;
         }
-        return listed != null && listed.getPostTime() == request.postTime ? Posted.POSTED : Posted.GONE;
+        return listed != null && listed.getPostTime() >= since ? Posted.POSTED : Posted.GONE;
+    }
+
+    /**
+     * Whether Dasher's notification of this very post (its key and its post time) is still posted, unreplaced: a post
+     * refused for the lock is looked at again after the unlock only then. Android's listing alone decides: gone when
+     * it lists nothing on the key (or an older post), replaced when a later post took the key. Any thread.
+     */
+    static Posted postStillUp(Peek.Request request) {
+        OfferNotificationService service = active;
+        if (service == null || request == null || request.alertTag == null) return Posted.UNKNOWN;
+        StatusBarNotification listed;
+        try {
+            listed = service.listed(request.key);
+        } catch (RuntimeException unknown) {
+            return Posted.UNKNOWN;
+        }
+        if (listed == null || listed.getPostTime() < request.postTime) return Posted.GONE;
+        return listed.getPostTime() == request.postTime ? Posted.POSTED : Posted.REPLACED;
     }
 
     /** Dasher's own tap on the peeked offer's notification, when that very post is still up. Any thread. */
     static DasherTap dasherTap(Peek.Request request) {
-        if (request == null) return DasherTap.none("notification gone", false);
+        if (request == null) return DasherTap.none("notification unknown", false);
         return dasherTap(request.alertTag, request.key, null);
     }
 
@@ -147,7 +162,17 @@ public final class OfferNotificationService extends NotificationListenerService 
         OfferNotificationService service = active;
         if (service == null || alertTag == null) return DasherTap.none("notification unknown", false);
         DasherPost post = service.dasherPosts.get(alertTag);
-        if (post == null || (key != null && !post.key.equals(key))) return DasherTap.none("notification gone", false);
+        if (post == null || (key != null && !post.key.equals(key))) {
+            // No record of the incarnation's latest post: never a tap without one. Gone only when Android lists none.
+            String listedKey = key != null ? key : keyOf(alertTag);
+            boolean gone = false;
+            try {
+                gone = listedKey != null && service.listed(listedKey) == null;
+            } catch (RuntimeException unknown) {
+                // Not known: said as unknown.
+            }
+            return DasherTap.none(gone ? "notification gone" : "notification unknown", false);
+        }
         StatusBarNotification listed;
         try {
             listed = service.listed(post.key);
@@ -159,6 +184,22 @@ public final class OfferNotificationService extends NotificationListenerService 
         PendingIntent own = post.contentIntent != null ? post.contentIntent : fallback;
         if (!DasherOwnIntent.fromDasher(own)) return DasherTap.none("no activity intent", true);
         return DasherTap.of(own);
+    }
+
+    /**
+     * The one send of Dasher's own notification tap for the offer of the card with {@code alertTag}: true the first
+     * time (the caller sends it now), false once it was sent for that offer by any path. Any thread.
+     */
+    static boolean claimOwnTap(String alertTag) {
+        OfferNotificationService service = active;
+        return service != null && alertTag != null && service.ownTapsSent.add(alertTag);
+    }
+
+    /** The notification key inside an incarnation's card tag ("offer-<time>-<serial>-<key>"), or null for another tag. */
+    private static String keyOf(String alertTag) {
+        if (alertTag == null || !alertTag.startsWith("offer-")) return null;
+        String[] parts = alertTag.split("-", 4);
+        return parts.length == 4 && !parts[3].isEmpty() ? parts[3] : null;
     }
 
     /** Android's listing of Dasher's notification with this key now, or null when it lists none; throws when unknown. */
@@ -540,11 +581,12 @@ public final class OfferNotificationService extends NotificationListenerService 
             offer.dasherSounded |= dasherSounded;
             offer.contentIntent = notification.contentIntent;
             // A same-key update with sufficient figures is already judged. It revokes the earlier payless
-            // request while that request is still waiting for quiet. Launched peeks no longer use this token.
+            // request while that request is still waiting for quiet (a peek already opened goes by the post below).
             if (decision.result != OfferRule.Result.REVIEW || !settings.enabled || foreground || replay) {
                 invalidatePeekForKey(source.getKey());
             }
-            // This post of the offer, for a peek under way or a card tapped (any update of it, Dasher on screen too).
+            // This post of the offer, in place of the last, for a peek under way or a card tapped (any update of it,
+            // Dasher on screen too, peekable or not).
             publishPost(offer, source, decision.result != OfferRule.Result.DECLINE);
             if (offer.state.duplicate(signature, decision.result)) {
                 // Sound evidence may arrive on an otherwise unchanged update while Peek is waiting.
@@ -655,12 +697,15 @@ public final class OfferNotificationService extends NotificationListenerService 
         }
     }
 
-    /** Main thread: a replacement no longer eligible for Peek revokes the earlier quiet-wait request. */
+    /**
+     * Main thread: a replacement no longer eligible for Peek revokes the earlier quiet-wait request. The offer's post
+     * record ({@link #dasherPosts}) stays: a peek already opened and a card's tap still go by it, and Android's
+     * listing, not this, says when the offer's notification is gone.
+     */
     private void invalidatePeekForKey(String key) {
         TrackedOffer offer = tracked.get(key);
         if (offer != null) {
             livePeekCards.remove(offer.alertTag);
-            dasherPosts.remove(offer.alertTag);
             offer.quietCard = null;
         }
     }
@@ -1011,6 +1056,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         tracked.remove(key);
         livePeekCards.remove(offer.alertTag);
         dasherPosts.remove(offer.alertTag);
+        ownTapsSent.remove(offer.alertTag);
         if (offer.expiry != null) handler.removeCallbacks(offer.expiry);
         OfferAlerts.clear(this, offer.alertTag);
         offerOutstanding = !tracked.isEmpty();
@@ -1033,6 +1079,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         tracked.clear();
         livePeekCards.clear();
         dasherPosts.clear();
+        ownTapsSent.clear();
         postedKeys.clear();
         offerOutstanding = false;
     }

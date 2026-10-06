@@ -34,17 +34,18 @@ import java.util.function.LongSupplier;
  * screen once Dasher removed the offer's notification (never while it is still posted); or, while navigating, a
  * passing or unclear offer, or an offer Dasher never drew.
  *
- * <p>Dasher brought up by its launcher fetches a background offer itself, and sometimes never draws it (the 0.4.72
- * report: details only after entering split screen). With Dasher up {@link #PRESENT_MS}, no sign of an offer and the
- * offer's notification still posted, Dasher's own notification tap is sent once; nothing of the offer
+ * <p>Dasher brought up by its launcher fetches a background offer itself, and sometimes never draws it, or draws it
+ * without its details (the 0.4.72 report: details only after entering split screen). With Dasher up
+ * {@link #PRESENT_MS}, none of the offer's figures drawn (its controls or headline alone are not them) and the offer's
+ * notification still posted, Dasher's own notification tap is sent once; still none of its figures
  * {@link #OWN_TAP_WAIT_MS} later, the peek ends ({@link Outcome#UNSHOWN}) and the offer's card says so.
  *
  * <p>The screen turning off or the phone locking suspends an opened peek (memory only) for {@link #RESUME_MS}: an
  * unlock in time resumes it from a fresh read, the locked time not counted. A fresh post refused only for the lock
  * is looked at again at the unlock, up to {@link #UNLOCK_POST_MS} after it was posted. Peek pauses itself, for
  * {@link #PAUSE_MS} or until the next dash starts, only after {@link #EMPTY_TO_PAUSE} withdrawn offers or
- * {@link #FAILED_TO_PAUSE} launches that never came up in a row (within {@link #STREAK_MS}), or a runtime failure;
- * the Settings switch stays the user's own.
+ * {@link #FAILED_TO_PAUSE} launches that never came up in a row (within {@link #STREAK_MS}); after a runtime failure,
+ * until the next dash starts or the user taps Resume. The Settings switch stays the user's own.
  *
  * <p>This is one peek's state as the scanner thread keeps it (on {@link #now}, elapsed time: uptime stops in deep
  * sleep), what Peek counts across peeks, and the "[peek]" lines any thread may write. The app in front is kept in
@@ -63,11 +64,17 @@ final class Peek {
      */
     static final long NO_OFFER_MS = 4_000;
     /**
-     * Dasher up this long with no sign of the offer while its notification is still posted: Dasher's own notification
-     * tap is sent, once (Dasher's launcher resumes its task; the notification's own tap asks it for the offer).
+     * Dasher up this long with none of the offer's figures drawn while its notification is still posted: Dasher's own
+     * notification tap is sent, once (Dasher's launcher resumes its task; the notification's own tap asks it for the
+     * offer).
      */
     static final long PRESENT_MS = 2_500;
-    /** Still none of the offer this long after Dasher's own notification tap: the offer never showed. */
+    /**
+     * Signs of the offer being drawn without its figures (a control or its label, its headline) this recent: it may
+     * still be drawing, so Dasher's own notification tap waits this long after the first such sign.
+     */
+    static final long DRAWING_MS = 1_000;
+    /** Still none of the offer's figures this long after Dasher's own notification tap: the offer never showed. */
     static final long OWN_TAP_WAIT_MS = 5_000;
     /** A peek, including any offers it follows, ends this long after it opened; Dasher stays as it is. */
     static final long MAX_MS = 20_000;
@@ -295,6 +302,13 @@ final class Peek {
     private final ArrayDeque<Long> failedStreak = new ArrayDeque<>();
     /** The dash (its start, wall clock; 0 for none) the streaks belong to. */
     private long streakDash = NEVER;
+    /** When a read first showed signs of the offer being drawn without its figures; {@link #NEVER} for none yet. */
+    private long drawingSince = NEVER;
+    /**
+     * A read showed what may be the whole offer without its figures read: a screen too big to read, or Dasher's
+     * question. Dasher's own notification tap is never sent over it, and the offer is not taken for one never shown.
+     */
+    private boolean unreadOffer;
     private String heldKey = "";
     private long heldUntil = NEVER;
     private final LinkedHashSet<String> peekedPosts = new LinkedHashSet<>();
@@ -379,6 +393,8 @@ final class Peek {
         this.leftWithUser = false;
         this.offerEndsAt = NEVER;
         this.factsAt = NEVER;
+        this.drawingSince = NEVER;
+        this.unreadOffer = false;
         this.ownTapAt = NEVER;
         this.presentationTried = false;
         this.ownTapRequested = false;
@@ -567,7 +583,8 @@ final class Peek {
     }
 
     /**
-     * A read showed any of an offer's facts (pay, a bound on it, miles, minutes, stops, items) or both its controls.
+     * A read showed any of an offer's figures (pay, a bound on it, miles, minutes, stops, items): the offer is drawn.
+     * Its controls or its headline alone are not figures ({@link #drawing}).
      *
      * @return true the first time this peek
      */
@@ -595,8 +612,26 @@ final class Peek {
     }
 
     /**
-     * Whether Dasher's own notification tap is due: Dasher up {@link #PRESENT_MS}, no sign of an offer and none of its
-     * facts read, and the tap not tried yet this peek.
+     * A read showed signs of the offer being drawn (a control or its label, its headline) without any of its figures:
+     * Dasher's own notification tap waits {@link #DRAWING_MS} after the first such sign, in case they follow.
+     */
+    void drawing(long now) {
+        if (phase == Phase.UP && drawingSince == NEVER) drawingSince = now;
+    }
+
+    /** A read showed a screen too big to read, or Dasher's question: perhaps the whole offer ({@link #unreadOffer}). */
+    void unreadOffer() {
+        if (phase == Phase.UP || phase == Phase.DECLINING || phase == Phase.CONFIRMED) unreadOffer = true;
+    }
+
+    boolean offerUnread() {
+        return unreadOffer;
+    }
+
+    /**
+     * Whether Dasher's own notification tap is due: Dasher up {@link #PRESENT_MS} with none of the offer's figures
+     * read (an empty or unrecognised screen, or only its controls or headline, settled {@link #DRAWING_MS}), never a
+     * screen too big to read or Dasher's question, and the tap not tried yet this peek.
      */
     boolean presentationDue(long now) {
         long due = presentationDueAt();
@@ -605,8 +640,9 @@ final class Peek {
 
     /** When Dasher's own notification tap is due, or {@link #NEVER} when it is not to be tried. */
     long presentationDueAt() {
-        if (phase != Phase.UP || offerSign || factsAt != NEVER || presentationTried || upAt == NEVER) return NEVER;
-        return upAt + PRESENT_MS;
+        if (phase != Phase.UP || factsAt != NEVER || unreadOffer || presentationTried || upAt == NEVER) return NEVER;
+        long due = upAt + PRESENT_MS;
+        return drawingSince == NEVER ? due : Math.max(due, drawingSince + DRAWING_MS);
     }
 
     /** Dasher's own notification tap was sent: never again this peek. */
@@ -635,7 +671,10 @@ final class Peek {
         return ownTapAt;
     }
 
-    /** Dasher never drew the offer: {@link #OWN_TAP_WAIT_MS} after its own notification tap, no sign of it at all. */
+    /**
+     * Dasher never drew the offer: {@link #OWN_TAP_WAIT_MS} after its own notification tap, none of its figures (its
+     * controls or headline alone are not the offer shown), and never a screen too big to read or Dasher's question.
+     */
     boolean unshown(long now) {
         long due = unshownAt();
         return due != NEVER && now >= due;
@@ -643,7 +682,7 @@ final class Peek {
 
     /** When the offer counts as never shown, or {@link #NEVER} while that does not apply. */
     long unshownAt() {
-        if (phase != Phase.UP || ownTapAt == NEVER || factsAt != NEVER || offerSign) return NEVER;
+        if (phase != Phase.UP || ownTapAt == NEVER || factsAt != NEVER || unreadOffer) return NEVER;
         return ownTapAt + OWN_TAP_WAIT_MS;
     }
 
@@ -674,7 +713,8 @@ final class Peek {
 
     /**
      * An unlock in time resumes it: every time it keeps moves on by the time it was suspended, so the locked time
-     * counts toward none of its waits or its deadline.
+     * counts toward none of its waits or its deadline. An empty screen read before the lock proves nothing after it:
+     * the empty-screen interval starts again from the first fresh read (nothing was read meanwhile).
      */
     void resume(long now) {
         if (suspendedAt == NEVER) return;
@@ -682,9 +722,11 @@ final class Peek {
         openedAt = shifted(openedAt, shift);
         upAt = shifted(upAt, shift);
         followingSince = shifted(followingSince, shift);
-        recognisedAt = shifted(recognisedAt, shift);
         factsAt = shifted(factsAt, shift);
+        drawingSince = shifted(drawingSince, shift);
         ownTapAt = shifted(ownTapAt, shift);
+        recognisedAt = NEVER;
+        lastRecognised = false;
         suspendedAt = NEVER;
         resumedAt = now;
         returnWaiting = false;
@@ -901,8 +943,16 @@ final class Peek {
     }
 
     /**
-     * Why Peek has paused itself, or null when it has not: the pause is over {@link #PAUSE_MS} after it began, or once
-     * another dash started (said once in the log).
+     * After a runtime failure, which would only come again: Peek pauses itself (memory only) until the next dash
+     * starts or the user taps Resume, with no time limit. The Settings switch is never touched.
+     */
+    static void pauseUntilNextDash(Context context, String why) {
+        PAUSE.set(new Pause(context.getApplicationContext(), why, Long.MAX_VALUE, Dashing.currentStart(context)));
+    }
+
+    /**
+     * Why Peek has paused itself, or null when it has not: the pause is over {@link #PAUSE_MS} after it began (never by
+     * time after a runtime failure, {@link #pauseUntilNextDash}), or once another dash started (said once in the log).
      */
     static String pausedWhy(Context context) {
         Pause current = PAUSE.get();

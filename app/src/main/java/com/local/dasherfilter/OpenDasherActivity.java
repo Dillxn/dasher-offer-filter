@@ -15,12 +15,13 @@ import android.os.Parcelable;
  * launcher icon does, so Dasher's task comes to the front with the offer it is showing (nothing in it is cleared or
  * reset), in its own half when it is already in one half of a split screen, or into the other half when this screen
  * opened in one half without Dasher beside it; then it clears that card and is gone. Dasher's launcher resumes its
- * task, and Dasher sometimes never draws a background offer it has to fetch (the 0.4.72 report): with Dasher up and
- * no sign of the offer {@link Peek#PRESENT_MS} later, the screen reader sends Dasher's own notification tap once
- * ({@link OfferFilterService#cardOpened}). A card that says Dasher did not show the offer when it opened sends Dasher's
- * own notification intent first, its launcher only if that cannot be sent. Dasher's own intent is otherwise used
- * only when Dasher has no launch intent. It runs only at the user's tap on a card. The app opens Dasher by itself
- * only for Peek ({@link Peek}), from its screen reader, the same way.
+ * task, and Dasher sometimes never draws a background offer it has to fetch, or draws it without its details (the
+ * 0.4.72 report): with Dasher up and none of the offer's figures {@link Peek#PRESENT_MS} later, the screen reader sends
+ * Dasher's own notification tap once for that offer ({@link OfferFilterService#cardOpened}). A card that says Dasher did not show the offer when it opened sends Dasher's
+ * own notification intent first, its launcher at once if that cannot be sent, or from the screen reader if nothing of
+ * Dasher's came up {@link OfferFilterService#OWN_FIRST_WAIT_MS} later ({@link OfferFilterService#cardOpenedOwnFirst}).
+ * Dasher's own intent is otherwise used only when Dasher has no launch intent. It runs only at the user's tap on a card.
+ * The app opens Dasher by itself only for Peek ({@link Peek}), from its screen reader, the same way.
  */
 public final class OpenDasherActivity extends Activity {
     static final String EXTRA_CARD = "card";
@@ -60,8 +61,16 @@ public final class OpenDasherActivity extends Activity {
         String card = tap == null ? null : tap.getStringExtra(EXTRA_CARD);
         boolean preferOwn = tap != null && tap.getBooleanExtra(EXTRA_PREFER_DASHER_OWN, false);
         String opened = null;
-        // Dasher's launcher already brought Dasher up once without drawing this offer: its own intent first.
-        if (preferOwn && sendDashersOwn(tap)) opened = "its own notification's screen, first";
+        // Dasher's launcher already brought Dasher up once without drawing this offer: its own intent first. Android
+        // may block that start without a word (a send it refuses still returns), so the screen reader starts Dasher's
+        // launcher once if nothing of Dasher's comes up; and no automatic own tap follows for this offer.
+        if (preferOwn && sendDashersOwn(tap)) {
+            opened = "its own notification's screen, first";
+            if (card != null) {
+                OfferNotificationService.claimOwnTap(card);
+                OfferFilterService.cardOpenedOwnFirst(card);
+            }
+        }
         boolean launched = false;
         if (opened == null) {
             // Dasher already in one half of a split screen: its plain launch intent brings its task forward there.

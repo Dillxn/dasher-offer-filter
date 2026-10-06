@@ -228,7 +228,13 @@ public class PeekStateTest {
         assertFalse(peek.suspended());
         assertEquals(30_700, peek.openedAt());
         assertEquals(30_900, peek.upAt());
-        assertEquals(31_000, peek.recognisedAt());
+        assertEquals("an empty screen before the lock proves nothing after it", Long.MIN_VALUE, peek.recognisedAt());
+        assertFalse(peek.lastRecognised());
+        assertFalse(peek.noOfferWaited(40_000));
+        peek.screen(true, 32_100);
+        assertEquals("the empty-screen interval starts from the first fresh read", 32_100, peek.recognisedAt());
+        assertFalse(peek.noOfferWaited(32_100 + Peek.NO_OFFER_MS - 1));
+        assertTrue(peek.noOfferWaited(32_100 + Peek.NO_OFFER_MS));
         assertEquals(30_900 + Peek.PRESENT_MS, peek.presentationDueAt());
         assertFalse("its 20 s count from the first open, the locked time aside", peek.pastDeadline(50_699));
         assertTrue(peek.pastDeadline(50_700));
