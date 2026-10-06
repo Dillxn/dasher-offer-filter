@@ -121,14 +121,24 @@ final class Peek {
     /** An application window covering less of the display than this is not one full-screen app. */
     static final double FILLS = 0.95;
 
-    /** Navigation apps, by a fixed list: with one in front, the user is navigating. */
-    static final List<String> NAVIGATION = Arrays.asList("com.google.android.apps.maps", "com.waze");
+    /**
+     * Navigation apps, by a fixed list (package identity only, never logged): with one in front, the user is
+     * navigating. Google Maps, Waze and Google Maps Go.
+     */
+    static final List<String> NAVIGATION = Arrays.asList("com.google.android.apps.maps", "com.waze",
+            "com.google.android.apps.mapslite");
     /** System screens that stand in front of an app for a moment (a chooser, a permission, a picker): no peek. */
     static final List<String> GUESTS = Arrays.asList("android", "com.android.intentresolver",
             "com.android.permissioncontroller", "com.google.android.permissioncontroller",
             "com.android.documentsui", "com.google.android.documentsui",
             "com.android.providers.media.module", "com.google.android.providers.media.module",
             "com.google.android.gms");
+
+    /**
+     * What Peek's Settings row says under its name: a locked phone is never peeked at (during a dash the screen is not
+     * let time out, so only the user's own lock pauses it; an offer that came meanwhile is looked at again at the unlock).
+     */
+    static final String LOCKED_NOTE = "Peek pauses while your phone is locked";
 
     /** Peek's clock: elapsed time, which runs in deep sleep too. Tests may replace it. */
     static volatile LongSupplier clock = SystemClock::elapsedRealtime;
@@ -913,6 +923,27 @@ final class Peek {
         String line = pay + (read.miles == null && read.minutes == null && read.stops == null ? "" : " · " + facts);
         return result == OfferRule.Result.KEEP ? "Passes: " + line
                 : "Unclear: " + line + (reason == null || reason.isEmpty() ? "" : " (" + reason + ")");
+    }
+
+    /**
+     * What a card carries after a peek went back with a passing or unclear add-on: the add-on's own figures, as Dasher
+     * shows them, "Add-on passes: +$3.50 · +2.1 mi · +8 min", "Add-on unclear: added pay not read · +2 mi (add-on
+     * details unclear)". Nothing is inferred: what the add-on does not say is not on its card.
+     */
+    static String addOnCardText(OfferRule.Result result, OfferSnapshot added, String reason) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        parts.add(added.payCents != null ? "+" + DecisionLog.money(added.payCents) : "added pay not read");
+        if (added.miles != null) {
+            double miles = added.miles;
+            parts.add("+" + (miles == Math.rint(miles) ? String.valueOf((long) miles) : String.valueOf(miles)) + " mi");
+        }
+        if (added.minutes != null) parts.add("+" + added.minutes + " min");
+        if (added.stops != null) parts.add("+" + added.stops + (added.stops == 1 ? " stop" : " stops"));
+        String line = String.join(" · ", parts);
+        if (result == OfferRule.Result.KEEP) return "Add-on passes: " + line;
+        String why = reason == null || reason.isEmpty() ? "" : MainActivity.plainReason(reason);
+        return "Add-on unclear: " + line + (why.isEmpty() ? "" : " (" + why.substring(0, 1).toLowerCase(Locale.US)
+                + why.substring(1) + ")");
     }
 
     // ---- Pausing itself (any thread) ----

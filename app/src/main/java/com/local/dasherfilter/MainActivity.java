@@ -104,6 +104,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private ScenePage scene;
     /** The header's Split with Dasher button (Put Dasher beside once split), while Dasher is not beside already. */
     private View splitButton;
+    /** The header's one-tap Open Dasher, filling the screen (F22). */
+    private View openDasherButton;
+    /** Offer Filter's half at about a third of a split screen: the strip in place of the page; null otherwise. */
+    private DrivingStrip strip;
+    /** The split screen's own lines: the divider hint beside Dasher, and the layout note beside another app. */
+    private SplitLines splitLines;
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
     private FrameLayout sheet;
@@ -274,6 +280,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
         buildUpdatingCover(root);
+        // About a third of a split screen: one strip in place of the page (the divider gives Dasher's map the rest).
+        if (DrivingStrip.wanted(this)) {
+            strip = new DrivingStrip(this, ui, this::toggleAutoDecline);
+            root.addView(strip, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            SplitLines.markHintShown(this);
+        }
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
         root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -308,6 +321,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         notice.setVisibility(shown ? View.VISIBLE : View.GONE);
         if (shown) {
             mainPage.setVisibility(View.GONE);
+            if (strip != null) strip.setVisibility(View.GONE);
+            if (splitLines != null) splitLines.pageChanged();
             settingsPage.setVisibility(View.GONE);
             sheet.setVisibility(View.GONE);
             root.setBackgroundColor(ui.page);
@@ -469,6 +484,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (said != null) toast(said);
     }
 
+    /** The layout note's Swap: Dasher into this half, so the map beside it stays (at the user's tap only). */
+    private void swapInDasher() {
+        String said = DasherSplit.swapIn(this);
+        if (said != null) toast(said);
+    }
+
     @Override protected void onPause() {
         resumed = false;
         cancelReportShare();
@@ -519,11 +540,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Swaps the pages in place; each keeps its own scroll position. */
     private void showSettings(boolean settings) {
-        View shown = settings ? settingsPage : mainPage;
+        View shown = settings ? settingsPage : strip != null ? strip : mainPage;
         boolean changed = shown.getVisibility() != View.VISIBLE;
         showingSettings = settings;
-        mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
+        // In a third of a split screen the strip stands in for the main page.
+        mainPage.setVisibility(settings || strip != null ? View.GONE : View.VISIBLE);
+        if (strip != null) strip.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
+        if (splitLines != null) splitLines.pageChanged();
         if (!settings) cancelReportShare();
         else if (!noticeShown()) refreshSettings();
         // Behind the status bar: the top of the main page's sky, or the Settings page.
@@ -555,6 +579,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
             mainHeader = header;
             mainTitle = name;
             header.addView(iconButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
+            // One tap to Dasher filling the screen (with the tab over it), at the user's tap only.
+            openDasherButton = iconButton(Glyph.Shape.PHONE, DasherSplit.OPEN_LABEL, () -> {
+                String said = DasherSplit.openDasher(this);
+                if (said != null) toast(said);
+            });
+            openDasherButton.setVisibility(View.GONE);
+            header.addView(openDasherButton);
             splitButton = iconButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
             LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
             splitParams.setMarginEnd(ui.dp(4));
@@ -749,6 +780,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             refresh();
         });
         addFeeNotice(problems);
+        // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
+        // beside another app.
+        splitLines = new SplitLines(this, ui, root, mainPage, problems, this::swapInDasher);
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
         routeNote = ui.text("", 13, ui.inkSecondary, false);
@@ -1165,6 +1199,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
         // Peek (on unless turned off): Dasher is brought up for a moment to read a background offer.
         Switch peek = ui.toggle(switches, "Peek at background offers", FilterStore.peek(this));
+        peek.setText(ui.twoLines("Peek at background offers", Peek.LOCKED_NOTE));
         peek.setOnCheckedChangeListener((view, on) -> {
             if (on == FilterStore.peek(this)) return;
             FilterStore.setPeek(this, on);
@@ -1351,6 +1386,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 splitButton.setContentDescription(label);
             }
         }
+        if (openDasherButton != null) {
+            int open = DasherSplit.opens(this, dasherInstalled.get(), compact) ? View.VISIBLE : View.GONE;
+            if (openDasherButton.getVisibility() != open) openDasherButton.setVisibility(open);
+        }
+        if (splitLines != null) splitLines.refresh(besideDasherNow(), dasherInstalled.get());
 
         boolean readerConnected = OfferFilterService.isConnected();
         // Setup prompts take precedence over optional timing, especially at large font sizes in a short window.
@@ -1372,6 +1412,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String paused = FilterStore.peek(this) ? Peek.pausedWhy(this) : null;
         if (paused != null) peekPaused.problem("Peek paused: " + paused);
         peekPaused.update(paused == null);
+        if (strip != null) refreshStrip(saved, readerConnected, paused);
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
@@ -1401,6 +1442,38 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         refreshSettings();
+    }
+
+    /**
+     * The strip in a third of a split screen: the mascot, the latest offer's verdict, and the filter's status, or the
+     * one thing that needs the user (a setup fix, Peek paused, or this layout needing a tap), its tap the same fix.
+     */
+    private void refreshStrip(FilterSettings saved, boolean readerConnected, String peekPausedWhy) {
+        FilterHeroView.State state = saved.enabled ? FilterHeroView.State.ON
+                : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF;
+        String problem = null;
+        Runnable fix = null;
+        if (!readerConnected) {
+            problem = screenReadingEnabled.get() ? "Screen reading stopped" : "Screen reading is off";
+            fix = this::fixScreenReading;
+        } else if (!OfferNotificationService.isConnected()) {
+            problem = "Background offers are off";
+            fix = this::openNotificationAccess;
+        } else if (!alertsAllowed.get()) {
+            problem = "Alerts are blocked";
+            fix = this::configureOfferAlerts;
+        } else if (SplitLines.noteWanted(this, DasherSplit.inSplit(this), besideDasherNow(), dasherInstalled.get())) {
+            problem = SplitLines.LAYOUT_NOTE_SHORT;
+            fix = this::swapInDasher;
+        } else if (peekPausedWhy != null) {
+            problem = "Peek paused: " + peekPausedWhy + " · Resume";
+            fix = () -> {
+                Peek.resumeNow(this);
+                refresh();
+            };
+        }
+        refreshHistory();
+        strip.show(state, recentEntries.isEmpty() ? null : recentEntries.get(0), readyForOffers, problem, fix);
     }
 
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
@@ -1939,9 +2012,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void openArea() {
         AreaMap.Cell cell = shownArea;
         if (cell == null) return;
+        // In the map's own task (nothing cleared or reset), as every map handoff opens.
         open(new Intent(Intent.ACTION_VIEW, Uri.parse(String.format(Locale.US,
                 "geo:%.4f,%.4f?q=%.4f,%.4f(Offer area)", cell.latitude(), cell.longitude(), cell.latitude(),
-                cell.longitude()))));
+                cell.longitude()))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
     /** Always available in the header, including when the Atlas is hidden beside Dasher. */

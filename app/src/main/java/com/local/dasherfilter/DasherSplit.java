@@ -44,6 +44,13 @@ final class DasherSplit {
     /** The button's words, as screen readers hear them: before a split, and split without Dasher beside. */
     static final String SPLIT_LABEL = "Split screen with Dasher";
     static final String BESIDE_LABEL = "Put Dasher beside";
+    /**
+     * Split without Dasher beside during a dash (Dasher's directions opened a map in its half, say): Dasher takes
+     * Offer Filter's own half, so the map stays (F18).
+     */
+    static final String SWAP_LABEL = "Swap in Dasher";
+    /** The header's one-tap Dasher, full screen (F22). */
+    static final String OPEN_LABEL = "Open Dasher";
 
     /** Asks Android to split the screen, then to open recent apps; replaced only by tests. */
     static java.util.function.BooleanSupplier split = OfferFilterService::splitScreen;
@@ -120,9 +127,45 @@ final class DasherSplit {
         return at != 0 && age >= 0 && age < waitMs;
     }
 
-    /** What the button says to screen readers: {@link #SPLIT_LABEL}, or {@link #BESIDE_LABEL} once split. */
+    /**
+     * What the button says to screen readers: {@link #SPLIT_LABEL}; once split, {@link #BESIDE_LABEL}, or during a
+     * dash {@link #SWAP_LABEL} (Dasher takes this half, so what is in the other half stays).
+     */
     static String label(Activity activity) {
-        return inSplit(activity) ? BESIDE_LABEL : SPLIT_LABEL;
+        if (!inSplit(activity)) return SPLIT_LABEL;
+        return swaps(activity) ? SWAP_LABEL : BESIDE_LABEL;
+    }
+
+    /**
+     * Whether a tap in split screen swaps Dasher into Offer Filter's own half instead of opening it in the other one: a
+     * dash is under way, so the other half is most likely the map Dasher's directions opened, which should stay.
+     */
+    static boolean swaps(Context context) {
+        return Dashing.now(context);
+    }
+
+    /**
+     * Whether the header's Open Dasher shows (F22): Dasher installed, and this screen filling the screen (in split
+     * screen the split button puts Dasher on screen; a short window has no room in its header).
+     */
+    static boolean opens(Activity activity, boolean dasherInstalled, boolean shortWindow) {
+        return dasherInstalled && !shortWindow && !activity.isInMultiWindowMode();
+    }
+
+    /**
+     * The user's tap on Open Dasher: Dasher's own launch intent, as its launcher icon opens it (full screen, its task as
+     * it was; nothing cleared or reset). Never by itself.
+     *
+     * @return what to tell the user when Dasher could not be opened, else null
+     */
+    static String openDasher(Activity activity) {
+        Intent dasher = launcher(activity);
+        if (dasher == null) {
+            log(activity, "Open Dasher: Dasher is not installed");
+            return "Dasher is not installed.";
+        }
+        log(activity, "Open Dasher tapped: Dasher's launch intent");
+        return open(activity, dasher);
     }
 
     /** Android's multi-window flag includes floating windows and PiP. Only reject shapes we can distinguish. */
@@ -185,6 +228,7 @@ final class DasherSplit {
                 log(activity, "tap in split screen: Dasher already visible beside; no launch requested");
                 return null;
             }
+            if (swaps(activity)) return swapIn(activity);
             log(activity, "tap in split screen: Dasher's launch intent into the other half");
             return open(activity, dasher);
         }
@@ -201,6 +245,27 @@ final class DasherSplit {
         }
         log(activity, "tap: Android refused the split request");
         return byHand(activity);
+    }
+
+    /**
+     * Split beside another app during a dash, at the user's tap (the readiness line's Swap, or the header's button):
+     * Dasher's own launch intent from this screen's half, without asking for the other half, so Dasher takes Offer
+     * Filter's own half and the app beside it (the map) stays (F18; which half Android uses is phone-specific).
+     *
+     * @return what to tell the user when Dasher could not be opened, else null
+     */
+    static String swapIn(Activity activity) {
+        Intent dasher = launcher(activity);
+        if (dasher == null) {
+            log(activity, "swap: Dasher is not installed");
+            return "Dasher is not installed.";
+        }
+        if (OfferFilterService.dasherBesideNow()) {
+            log(activity, "swap: Dasher already visible beside; no launch requested");
+            return null;
+        }
+        log(activity, "tap in split screen during a dash: Dasher's launch intent into this half (the other half stays)");
+        return open(activity, dasher);
     }
 
     /**

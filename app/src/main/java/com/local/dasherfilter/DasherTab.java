@@ -75,6 +75,8 @@ final class DasherTab extends View {
     private final DashPathEffect dashed;
     private final int touchSlop;
     private FilterHeroView.State state = FilterHeroView.State.OFF;
+    /** Over an offer, what the rules made of it: KEEP tints the slim peek green, REVIEW amber; null for neither. */
+    private OfferRule.Result verdict;
     private Look look = Look.REST;
     private boolean right;
     /** Whether a tap on the peek brings the tab out (a delivery), or it stays tucked (an offer). */
@@ -118,6 +120,30 @@ final class DasherTab extends View {
         invalidate();
     }
 
+    /**
+     * Over an offer: KEEP (it passes) tints the slim peek green, REVIEW (it needs the user) amber; anything else, the
+     * filter's own colour. Presentation only.
+     */
+    void setVerdict(OfferRule.Result next) {
+        OfferRule.Result shown = next == OfferRule.Result.KEEP || next == OfferRule.Result.REVIEW ? next : null;
+        if (shown == verdict) return;
+        verdict = shown;
+        describe();
+        invalidate();
+    }
+
+    OfferRule.Result verdict() {
+        return verdict;
+    }
+
+    /** The slim peek's colour: the verdict's over an offer, else the filter's state. */
+    int peekColor() {
+        if (look == Look.PEEK && verdict == OfferRule.Result.KEEP) return Ui.GOOD;
+        if (look == Look.PEEK && verdict == OfferRule.Result.REVIEW) return Ui.WARNING;
+        return state == FilterHeroView.State.ON ? ui.accent
+                : state == FilterHeroView.State.PAUSED ? Ui.WARNING : ui.inkMuted;
+    }
+
     /** Which screen-reader moves make sense where it is now. */
     void setMoves(boolean up, boolean down) {
         canMoveUp = up;
@@ -151,7 +177,10 @@ final class DasherTab extends View {
                 : state == FilterHeroView.State.PAUSED ? AppName.NAME + ": paused." : AppName.NAME + ": no rules yet.";
         String tap = state == FilterHeroView.State.ON ? " Tap to pause."
                 : state == FilterHeroView.State.PAUSED ? " Tap to resume." : " Tap to set them up.";
-        setContentDescription(look != Look.PEEK ? now + tap : tapToShow ? now + " Tucked away. Tap to show it." : now);
+        String offer = look != Look.PEEK || verdict == null ? ""
+                : verdict == OfferRule.Result.KEEP ? " This offer passes your rules." : " This offer needs your review.";
+        setContentDescription(look != Look.PEEK ? now + tap : tapToShow ? now + " Tucked away. Tap to show it."
+                : now + offer);
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
@@ -179,11 +208,11 @@ final class DasherTab extends View {
         int border = ui.dark ? 0x40FFFFFF : 0x330B0B0B;
         line.setPathEffect(null);
         if (look == Look.PEEK) {
-            // A slim bar in the state's colour along the edge.
+            // A slim bar along the edge: in the state's colour, or over an offer in its verdict's (green or amber).
             float shown = ui.dp(PEEK_SHOWN_DP);
             float inset = ui.dp(8);
             rect.set(-shown, inset, shown, height - inset);
-            fill.setColor(color);
+            fill.setColor(peekColor());
             canvas.drawRoundRect(rect, shown, shown, fill);
             canvas.restore();
             return;

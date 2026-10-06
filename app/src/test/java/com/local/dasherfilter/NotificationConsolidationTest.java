@@ -89,13 +89,19 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
         } catch (Exception failure) { throw new AssertionError(failure); }
     }
 
-    @Test public void silentNativeStillGetsTheExistingReviewBell() {
+    /**
+     * The owner (0.4.72): "still gives redundant notifications on dashes (says dasher notification didn't have price
+     * info...etc)". A payless card never stands beside Dasher's own tappable notification, whatever Android says (or
+     * does not say) of its sound.
+     */
+    @Test public void aTappableNativeAndroidDoesNotSaySoundedStillGetsNoPaylessCard() {
         StatusBarNotification source = source(true, false, System.currentTimeMillis());
         nativeAlerts.addActiveNotification(source);
         listener.onNotificationPosted(source, null);
-        assertEquals(1, notifications().size());
-        assertEquals(DecisionLog.Action.CHECK_BELL, DecisionLog.recent(app, 1).get(0).action);
-        assertEquals(0, nativeAlerts.cancellations);
+        nativeOnly(source);
+        assertEquals(DecisionLog.Action.NATIVE_ALERT, DecisionLog.recent(app, 1).get(0).action);
+        assertTrue(DiagnosticLog.read(app).contains(
+                "payless card omitted, whatever Android says of its sound"));
     }
 
     @Test public void silentNativeStillGetsTheSelectivePassingChime() {
@@ -208,7 +214,8 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
     }
 
     @Test public void anUnchangedSilentNativeCannotCancelTheSoleRequestedOwnBell() {
-        StatusBarNotification source = source(true, false, System.currentTimeMillis());
+        // A passing card that rang as the sole alert (Dasher's own did not sound): an unchanged update keeps it.
+        StatusBarNotification source = source(true, true, System.currentTimeMillis());
         nativeAlerts.addActiveNotification(source);
         listener.onNotificationPosted(source, null);
         Notification first = notifications().getAllNotifications().get(0);

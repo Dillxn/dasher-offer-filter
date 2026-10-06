@@ -273,14 +273,15 @@ public class PeekTest {
         assertEquals("the native alert was never dismissed", 1, listener.get().getActiveNotifications().length);
     }
 
-    @Test public void skippedQuietPeekStillRingsOnceWhenNativeWasSilent() throws Exception {
+    @Test public void skippedQuietPeekPostsNoPaylessCardBesideATappableNativeEvenIfItWasNotHeard() throws Exception {
         connect(app(MAPS));
         postTappableNative(false);
         assertEquals(0, cards());
         for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
         pass(600);
         assertNull(started());
-        assertEquals("silent native cannot consume the app's necessary fallback bell", 1, cards());
+        assertEquals("Dasher's own tappable notification is the way in: no payless card beside it (the owner, "
+                + "0.4.72), whatever Android says of its sound", 0, cards());
         assertEquals(1, listener.get().getActiveNotifications().length);
     }
 
@@ -357,7 +358,9 @@ public class PeekTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }

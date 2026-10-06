@@ -111,7 +111,9 @@ public class AccessibilityAdapterTest {
     private List<View> overlays() {
         List<View> watches = new java.util.ArrayList<>();
         for (View view : windows()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }

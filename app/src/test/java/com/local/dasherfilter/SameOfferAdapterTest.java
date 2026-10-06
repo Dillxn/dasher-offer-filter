@@ -171,8 +171,10 @@ public class SameOfferAdapterTest {
         return Shadows.shadowOf(app.getSystemService(NotificationManager.class));
     }
 
+    /** Neither a quiet group child nor a card on the silent pop-up channel ("Offer details"): it makes a sound. */
     private static boolean rings(Notification card) {
-        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY;
+        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY
+                && !OfferAlerts.SHOWN_CHANNEL_ID.equals(card.getChannelId());
     }
 
     /** A notification of an earlier offer, recorded {@code agoMs} before now. */

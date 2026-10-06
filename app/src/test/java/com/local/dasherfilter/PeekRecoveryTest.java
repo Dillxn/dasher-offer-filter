@@ -315,6 +315,23 @@ public class PeekRecoveryTest {
         return source;
     }
 
+    /**
+     * Dasher's offer notification, with its own tap, that Android did not list yet as it came (so the offer's card is
+     * the way in: a payless card never stands beside Dasher's own tappable notification) and lists by the card's tap.
+     */
+    private StatusBarNotification postWithCard(String store) {
+        return postWithCardAt(store, System.currentTimeMillis());
+    }
+
+    private StatusBarNotification postWithCardAt(String store, long postedAt) {
+        StatusBarNotification source = notification("New Delivery!", "New Order: Go to " + store, postedAt);
+        source.getNotification().contentIntent = dashersOwn();
+        listener.get().onNotificationPosted(source, null);
+        idle();
+        listOnly(source);
+        return source;
+    }
+
     /** Android's word that Dasher's own alert for this post sounded. */
     private static android.service.notification.NotificationListenerService.RankingMap soundedRanking(
             StatusBarNotification source) {
@@ -383,7 +400,9 @@ public class PeekRecoveryTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }
@@ -1469,7 +1488,7 @@ public class PeekRecoveryTest {
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, SCREEN),
                 window(AccessibilityWindowInfo.TYPE_INPUT_METHOD, null, false, BOTTOM_HALF)));
         Shadows.shadowOf(service).setRootInActiveWindow(maps);
-        postListed("Taco Bell", false);
+        postWithCard("Taco Bell");
         contains(log(app), "[peek] skipped: the keyboard is up");
         Notification card = card();
         Intent tap = Shadows.shadowOf(card.contentIntent).getSavedIntent();
@@ -1647,7 +1666,7 @@ public class PeekRecoveryTest {
     public void aCardsFallbackWorksWithPeekOffInSettings() {
         connect(app(MAPS));
         FilterStore.setPeek(app, false);
-        postListed("Taco Bell", false);
+        postWithCard("Taco Bell");
         cardOfARefusedPeekTappedWhileDasherShowsNoOffer("Peek is off in Settings");
     }
 
@@ -1655,14 +1674,14 @@ public class PeekRecoveryTest {
     public void aCardsFallbackWorksWhilePeekIsPaused() {
         connect(app(MAPS));
         Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
-        postListed("Taco Bell", false);
+        postWithCard("Taco Bell");
         cardOfARefusedPeekTappedWhileDasherShowsNoOffer("Peek is paused for now");
     }
 
     @Test
     public void aCardsFallbackWorksForAPostOlderThanPeekLooksAt() {
         connect(app(MAPS));
-        postListedAt("Taco Bell", System.currentTimeMillis() - 15_000);
+        postWithCardAt("Taco Bell", System.currentTimeMillis() - 15_000);
         cardOfARefusedPeekTappedWhileDasherShowsNoOffer("the notification is 15.");
     }
 
@@ -1670,7 +1689,7 @@ public class PeekRecoveryTest {
     public void aCardTappedOnTheLockScreenBeforeTheUnlockMeansNoCatchUp() {
         connect(app(MAPS));
         lockScreen();
-        postListed("Taco Bell", false);
+        postWithCard("Taco Bell");
         contains(log(app), "[peek] offer arrived while locked; waiting for unlock");
         Intent tap = Shadows.shadowOf(card().contentIntent).getSavedIntent();
         // Android starts the card's tap as the keyguard goes, a moment before it says the user is present.
@@ -1721,7 +1740,7 @@ public class PeekRecoveryTest {
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, SCREEN),
                 window(AccessibilityWindowInfo.TYPE_INPUT_METHOD, null, false, BOTTOM_HALF)));
         Shadows.shadowOf(screen.get()).setRootInActiveWindow(maps);
-        StatusBarNotification first = postListed("Taco Bell", false);
+        StatusBarNotification first = postWithCard("Taco Bell");
         contains(log(app), "[peek] skipped: the keyboard is up");
         Intent tap = Shadows.shadowOf(card().contentIntent).getSavedIntent();
         inFront(app(MAPS));
@@ -1750,7 +1769,7 @@ public class PeekRecoveryTest {
     public void aCardTappedWhileTheCatchUpWaitsForTheQuietEndsItAndKeepsTheCardsWatch() {
         connect(app(MAPS));
         lockScreen();
-        postListed("Taco Bell", false);
+        postWithCard("Taco Bell");
         pass(2_000);
         inFront(app(MAPS));
         unlock();

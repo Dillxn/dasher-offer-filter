@@ -772,6 +772,11 @@ public final class OfferFilterService extends AccessibilityService {
     private List<String> sceneLabels;
     /** Whether this read was skipped: Android did not give the active window. */
     private boolean readSkipped;
+    /**
+     * What the last read decided of the offer on screen, for the slim bar's tint only (S10, presentation): KEEP or
+     * REVIEW with auto-decline on; null for a decline, a takeover, auto-decline paused or no offer decided.
+     */
+    private OfferRule.Result offerVerdict;
     /** The last state the overlay was given, and when (uptime). */
     private OverlayState overlayGiven;
     private long overlayGivenAt;
@@ -1301,6 +1306,7 @@ public final class OfferFilterService extends AccessibilityService {
         };
         touchWatch = new TouchWatch(this, this::touched);
         overlay = new DasherOverlay(this);
+        overlay.setBackToMap(this::backToMapTapped);
         silencer = new OfferSilencer(this, scanner, this::mayQuiet);
         // Puts back any sound left turned down if the app died during a decline.
         OfferSilencer.restore(this);
@@ -1353,8 +1359,9 @@ public final class OfferFilterService extends AccessibilityService {
         scannerFaulted = false;
         restartStateLoaded = false;
         active = this;
-        if (screenAwake == null) screenAwake = new ScreenAwake(this,
-                () -> !stopped && screen.dasherReadable && knownDasherVisible(-1));
+        // During an active dash the screen is not let time out, whatever app is in front (the owner: "Don't let it lock
+        // mid-dash"), so Peek can still bring Dasher up; it never wakes or unlocks the phone, and the power button wins.
+        if (screenAwake == null) screenAwake = new ScreenAwake(this, () -> !stopped && !scannerFaulted);
         screenAwake.start();
         watchScreenState();
         watchCameras();
@@ -1688,6 +1695,7 @@ public final class OfferFilterService extends AccessibilityService {
             ownFirstTag = null;
             unlockRetryUntil = NEVER;
             forgetBackCheck();
+            forgetBackToMap("screen reading stopped");
             syncAutomation();
         });
         if (scannerThread != null) scannerThread.quitSafely();
@@ -1746,6 +1754,7 @@ public final class OfferFilterService extends AccessibilityService {
         cardOpen = null;
         ownFirstTag = null;
         unlockRetryUntil = NEVER;
+        backToMap = null;
         try {
             peek.end(Peek.Outcome.INTERRUPTED, false, Peek.now(), 0);
             peek.forgetFront();
@@ -1780,6 +1789,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void suspendScreenReading() {
         stopWaitEstimate();
         cancelAutoAccept(true, "screen_off_or_locked");
+        forgetBackToMap("the phone locked or the screen went off");
         long now = SystemClock.uptimeMillis();
         if (declineState.hasPendingConfirmation(now) || episode.active(now)) {
             handBack(HandBack.SCREEN_OFF, "screen off or locked", now);
@@ -2045,16 +2055,190 @@ public final class OfferFilterService extends AccessibilityService {
         Rect area = active == this ? seen.area : null;
         // Positive window metadata is enough to remove a gone overlay; showing controls requires fresh labels.
         if (area != null && overlayApprovedTransition != transition) return;
-        OverlayState next = new OverlayState(area, area != null && seen.split, scene);
+        // The slim bar over an offer takes its verdict's tint (presentation only): pass green, review amber.
+        OfferRule.Result verdict = scene == DasherScene.OFFER ? offerVerdict : null;
+        OverlayState next = new OverlayState(area, area != null && seen.split, seen.oursBeside, scene, verdict,
+                area != null && backToMapShows(seen));
         long now = SystemClock.uptimeMillis();
         if (next.equals(overlayGiven) && now - overlayGivenAt < OVERLAY_CHECK_MS) return;
         overlayGiven = next;
         overlayGivenAt = now;
         onMain(() -> {
             if (!stopped && !scannerFaulted && overlay != null && overlayTransition.get() == transition) {
-                overlay.sync(next.area, next.split, next.scene);
+                overlay.sync(next.area, next.split, next.oursBeside, next.scene, next.verdict, next.backToMap);
             }
         });
+    }
+
+    // ---- Back to map (scanner thread) ----
+
+    /** The chip shows this long at most, once. */
+    static final long CHIP_SHOW_MS = 12_000;
+    /** Armed, the chip waits this long at most for the offer to end (an offer's lifetime, as notifications count it). */
+    static final long CHIP_ARMED_MS = OfferAlertState.LIFETIME_MS;
+
+    /**
+     * The Back to map chip (the owner's approval, A1): a peek left Dasher up, or a card opened it, while the user was in a
+     * navigation app. Memory only: that app's launcher (never logged, never kept: the log names its kind only), until
+     * the chip has shown {@link #CHIP_SHOW_MS}, the offer did not end within {@link #CHIP_ARMED_MS}, or an acceptance,
+     * a delivery, the lock or screen off, another app in front, its tap, or the screen reader stopping ends it.
+     */
+    private BackToMap backToMap;
+
+    private static final class BackToMap {
+        final Peek.Front front;
+        /** When it was armed (Peek's clock). */
+        final long armedAt;
+        /** {@link #lastAcceptAt} as it was armed: any later acceptance ends it. */
+        final long acceptAt;
+        /** Dasher was seen in front since it was armed: another app in front after that means the user left it. */
+        boolean dasherSeen;
+        /** When it first showed (Peek's clock); {@link #NEVER} before. */
+        long shownAt = NEVER;
+
+        BackToMap(Peek.Front front, long armedAt, long acceptAt) {
+            this.front = front;
+            this.armedAt = armedAt;
+            this.acceptAt = acceptAt;
+        }
+    }
+
+    /** The chip's time ran out (shown long enough, or armed too long without the offer ending): it goes. */
+    private final Runnable backToMapExpiry = () -> {
+        expireBackToMap();
+        syncOverlay();
+    };
+
+    /** @return whether the chip is gone: never armed, or its time just ran out */
+    private boolean expireBackToMap() {
+        BackToMap chip = backToMap;
+        if (chip == null) return true;
+        long now = Peek.now();
+        if (chip.shownAt != NEVER && now - chip.shownAt >= CHIP_SHOW_MS) {
+            forgetBackToMap("shown " + CHIP_SHOW_MS / 1000 + " s");
+            return true;
+        }
+        if (chip.shownAt == NEVER && now - chip.armedAt >= CHIP_ARMED_MS) {
+            forgetBackToMap("the offer did not end in time");
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Armed for a navigation app the user was in (only one with a launcher): the chip waits for the offer to end
+     * without an acceptance, over Dasher's wait for offers.
+     *
+     * @param dasherUp whether Dasher is up already (a peek's): another app in front from now on means the user left it
+     * @param how what left Dasher up, for the log
+     */
+    private void armBackToMap(Peek.Front front, boolean dasherUp, String how) {
+        if (front == null || !front.navigation() || front.launcher == null) return;
+        backToMap = new BackToMap(front, Peek.now(), lastAcceptAt);
+        backToMap.dasherSeen = dasherUp;
+        scanner.removeCallbacks(backToMapExpiry);
+        scanner.postDelayed(backToMapExpiry, CHIP_ARMED_MS);
+        Peek.log(this, "back to map: armed (" + how + "; was in front: " + front.kind() + ")");
+    }
+
+    /** The chip goes, said once with why. */
+    private void forgetBackToMap(String why) {
+        if (backToMap == null) return;
+        backToMap = null;
+        scanner.removeCallbacks(backToMapExpiry);
+        Peek.log(this, "back to map: gone (" + why + ")");
+    }
+
+    /**
+     * Whether the chip shows now: armed, never over an offer, its confirmation or a delivery, only over Dasher's wait for
+     * offers while Dasher fills the screen (not split: the map is beside it then), and no acceptance since it was armed.
+     * Its {@link #CHIP_SHOW_MS} start the first time it shows.
+     */
+    private boolean backToMapShows(Screen seen) {
+        if (expireBackToMap()) return false;
+        BackToMap chip = backToMap;
+        long now = Peek.now();
+        if (lastAcceptAt != chip.acceptAt) {
+            forgetBackToMap("an offer was accepted");
+            return false;
+        }
+        if (scene == DasherScene.ROUTE) {
+            forgetBackToMap("a delivery is under way");
+            return false;
+        }
+        if (!seen.dasherReadable || seen.split || scene != DasherScene.WAITING) return false;
+        if (chip.shownAt == NEVER) {
+            chip.shownAt = now;
+            scanner.removeCallbacks(backToMapExpiry);
+            scanner.postDelayed(backToMapExpiry, CHIP_SHOW_MS);
+            Peek.log(this, "back to map: offered over Dasher's wait for offers (" + chip.front.kind() + ")");
+        }
+        return true;
+    }
+
+    /** A look found Dasher in front, or another app (the user left Dasher: the chip goes). Scanner thread. */
+    private void noteBackToMapLook(Look seen) {
+        BackToMap chip = backToMap;
+        if (chip == null || seen.activeApp == null) return;
+        if (seen.dasherActive) {
+            chip.dasherSeen = true;
+            return;
+        }
+        if (!chip.dasherSeen || seen.split) return;
+        SplitWindows.Owner owner = ownerOf(seen.activeApp, seen);
+        if (owner == SplitWindows.Owner.OTHER) forgetBackToMap("another app came in front");
+    }
+
+    /** The user tapped the chip (main thread): that navigation app, as its launcher opens it. */
+    void backToMapTapped() {
+        scanner.postAtFrontOfQueue(() -> {
+            BackToMap chip = backToMap;
+            backToMap = null;
+            scanner.removeCallbacks(backToMapExpiry);
+            syncOverlay();
+            if (chip == null || stopped || scannerFaulted || !phoneReadable()) return;
+            boolean opened = startHere(launcherIntent(chip.front.launcher));
+            Peek.log(this, "back to map: you tapped it; " + (opened ? "opened " : "could not open ") + chip.front.kind());
+        });
+    }
+
+    /**
+     * A card's tap (main thread, from {@link #cardTapped}): the app the user was in as they tapped, from the windows
+     * Android listed then (metadata only here). On the scanner, the first app's window that is neither Offer Filter's
+     * nor Dasher's is asked for its package alone (never its words): a navigation app with a launcher arms the chip.
+     */
+    private void noteCardFront(List<AccessibilityWindowInfo> listed) {
+        if (listed == null || stopped || scannerFaulted || !Consent.accepted(this)) return;
+        List<AccessibilityWindowInfo> apps = new ArrayList<>();
+        for (AccessibilityWindowInfo window : listed) {
+            if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || window.isInPictureInPictureMode()) {
+                continue;
+            }
+            if (isOwnWindow(window.getId()) || (realWindowId(window.getId())
+                    && dasherWindowIds.contains(window.getId()))) {
+                continue;
+            }
+            apps.add(window);
+        }
+        // The active one first, then the one in front.
+        apps.sort((a, b) -> a.isActive() != b.isActive() ? (a.isActive() ? -1 : 1)
+                : Integer.compare(b.getLayer(), a.getLayer()));
+        for (AccessibilityWindowInfo window : apps) {
+            AccessibilityNodeInfo root;
+            try {
+                root = windowRoot(window, true);
+            } catch (RuntimeException gone) {
+                root = null;
+            }
+            CharSequence name = root == null ? null : root.getPackageName();
+            if (name == null || name.length() == 0) return;
+            String pkg = name.toString();
+            if (pkg.equals(getPackageName()) || isDasherPackage(pkg)) continue;
+            if (!Peek.NAVIGATION.contains(pkg)) return;
+            armBackToMap(new Peek.Front(Peek.Back.APP, pkg, launcher(pkg), window.getId()), false,
+                    "you opened Dasher from an offer's card");
+            return;
+        }
     }
 
     // ---- What the user does (click facts arrive as values; touches as a flag) ----
@@ -2712,12 +2896,22 @@ public final class OfferFilterService extends AccessibilityService {
         if (service == null || service.stopped) return;
         service.peekActions.incrementAndGet();
         service.cardTapAt = Peek.now();
+        // The windows as the user tapped, before Dasher comes up over them (Android's metadata only, no app asked).
+        List<AccessibilityWindowInfo> windows;
+        try {
+            windows = Consent.accepted(service) ? service.windowSource.get() : null;
+        } catch (RuntimeException unavailable) {
+            windows = null;
+        }
+        List<AccessibilityWindowInfo> atTap = windows;
         service.scanner.postAtFrontOfQueue(() -> {
             if (service.lockedPost != null) {
                 service.lockedPost = null;
                 Peek.log(service, CARD_BEFORE_UNLOCK);
             }
             service.peekOver("left Dasher up because you tapped the offer's card", Peek.Outcome.INTERRUPTED);
+            // Tapped from a navigation app: the Back to map chip waits for the offer to end.
+            service.noteCardFront(atTap);
         });
     }
 
@@ -3859,17 +4053,31 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * A passing or unclear offer the peek read: while navigating, back to the map at once and the offer's card carries
-     * what was read and rings once (the user's decision); otherwise Dasher stays up for the user.
+     * what was read and rings once (the user's decision), or pops up without a sound of its own when Dasher's alert
+     * already rang; otherwise Dasher stays up for the user.
+     *
+     * @param addOn the add-on read, whose own figures its card carries; null for a standalone offer
+     * @param endsAt when the offer's countdown runs out (wall clock), as read; 0 when none was read
+     * @param folded the notification incarnation the reading folded in: the card goes on that offer's card
      */
-    private void peekLeavesOffer(OfferRule.Result result, OfferSnapshot read, String reason, boolean paused) {
+    private void peekLeavesOffer(OfferRule.Result result, OfferSnapshot read, AddOnOffer addOn, String reason,
+                                 boolean paused, long endsAt, FoldedTag folded) {
         peek.leftWithUser();
         String why = paused ? "auto-decline is paused" : result == OfferRule.Result.KEEP
                 ? "the offer passes your rules" : "the offer needs your review";
         if (!paused && navigating()) {
-            String text = Peek.cardText(result, read, reason);
+            String text = addOn != null ? Peek.addOnCardText(result, addOn.incremental, reason)
+                    : Peek.cardText(result, read, reason);
+            OfferSnapshot facts = addOn != null ? addOn.incremental : read;
+            // The peeked post's own card, when the reading folded none in (and the peek follows no newer offer).
+            Peek.Request request = peek.request();
+            String own = request != null && peek.followingSince() == peek.openedAt() ? request.alertTag : null;
             peekBack(why + "; you are navigating, so its card carries it", true, Peek.Outcome.LEFT_WITH_USER, how -> {
                 // A cancelled return leaves the user in Dasher with the offer showing: no card for it then.
-                if (how != Returned.CANCELLED) OfferNotificationService.peekCard(this, read, result, text);
+                if (how == Returned.CANCELLED) return;
+                // Asked on the main thread, after the history took the reading (and so knows what it folded in).
+                OfferNotificationService.peekCard(this, () -> folded != null && folded.tag != null ? folded.tag : own,
+                        facts, result, text, endsAt);
             });
             return;
         }
@@ -4337,8 +4545,15 @@ public final class OfferFilterService extends AccessibilityService {
                     + " remote fetches ≥2 ms, slowest " + peekSlowest + " ms, " + (dasherEvents.get() - peekEventsAtOpen)
                     + " Dasher events");
         }
+        // Left up over Dasher while the user was in a navigation app: the Back to map chip waits for the offer to end
+        // (memory only; never while the phone is locked, the screen off or a call under way).
+        Peek.Front leftFrom = opened && !wentBack && outcome != Peek.Outcome.OPEN_FAILED && peek.upAt() != NEVER
+                ? peek.front() : null;
         String pause = peek.end(outcome, wentBack, now, Dashing.currentStart(this));
         if (!wentBack) peek.forgetFront();
+        if (leftFrom != null && leftFrom.navigation() && phoneRefusal() == null) {
+            armBackToMap(leftFrom, true, "a peek left Dasher up");
+        }
         peekBeganAt = Long.MAX_VALUE;
         postCheckAfter = NEVER;
         scanner.removeCallbacks(peekTick);
@@ -4561,8 +4776,14 @@ public final class OfferFilterService extends AccessibilityService {
         questionLookIncomplete = false;
         otherWindowsListed = 0;
         otherWindowsRead = 0;
+        // The bar's tint is this read's verdict alone (a skipped read keeps the last): a new offer's first frames are
+        // never tinted with the one before.
+        OfferRule.Result verdictBefore = offerVerdict;
+        offerVerdict = null;
         try {
-            return checkReadableOffer();
+            boolean more = checkReadableOffer();
+            if (readSkipped) offerVerdict = verdictBefore;
+            return more;
         } catch (RuntimeException error) {
             acceptanceObservationEligible = false;
             // A failed read cannot keep an earlier empty screen's authority to return from Peek.
@@ -5827,9 +6048,12 @@ public final class OfferFilterService extends AccessibilityService {
             noteAutoAcceptNotSent("candidate_replaced");
         }
         boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE;
+        // The slim bar over the offer: green for a pass, amber for review (presentation only; never a decision).
+        offerVerdict = settings.enabled && !declines ? decision.result : null;
         // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
         if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
+            offerVerdict = null;
             cancelAutoAccept(true, "user_takeover");
             if (declines) diagnostic(phase, scan, offer, decision);
             declinedOfferShowing = false;
@@ -5887,7 +6111,10 @@ public final class OfferFilterService extends AccessibilityService {
             if (peeked) {
                 peek.screen(false, Peek.now());
                 peek.countdown(secondsLeft, Peek.now());
-                peekLeavesOffer(decision.result, offer, decision.reason, !settings.enabled);
+                // An add-on's card carries the add-on's own figures (its "+$" and what it adds), never the standalone
+                // parse, which ignores them; the offer's countdown, as read, runs on the card.
+                peekLeavesOffer(decision.result, offer, isAddOn ? addOn : null, decision.reason, !settings.enabled,
+                        secondsLeft >= 0 ? System.currentTimeMillis() + secondsLeft * 1000L : 0, lastFolded);
             }
             if (decision.result == OfferRule.Result.REVIEW
                     && !OfferRule.onlyHotspotMissing(offer, addOn, settings)) countUnreadable(scan, offer);
@@ -6257,9 +6484,22 @@ public final class OfferFilterService extends AccessibilityService {
                 action, settings.enabled, labels).peeked(peeked);
         boolean freshInstance = newScreenInstancePending;
         newScreenInstancePending = false;
-        recordRead(entry, OfferEvidence.secondsLeft(scan.text), true, freshInstance);
+        FoldedTag folded = new FoldedTag();
+        lastFolded = folded;
+        recordRead(entry, OfferEvidence.secondsLeft(scan.text), true, freshInstance, folded);
         return entry;
     }
+
+    /**
+     * The card tag of the notification a screen reading folded into its line (the offer's notification incarnation),
+     * written on the main thread as the history takes the reading, and read there after it; null when it folded none.
+     */
+    static final class FoldedTag {
+        volatile String tag;
+    }
+
+    /** The last screen reading's {@link FoldedTag} (scanner thread). */
+    private FoldedTag lastFolded;
 
     /**
      * Records a screen reading. Dasher's notifications of the same offer are folded into its line, and our card for
@@ -6275,10 +6515,17 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private void recordRead(DecisionLog.Entry entry, int secondsLeft, boolean newReading, boolean freshInstance) {
+        recordRead(entry, secondsLeft, newReading, freshInstance, null);
+    }
+
+    /** @param folded told the card tag of the first notification folded in, if any (main thread) */
+    private void recordRead(DecisionLog.Entry entry, int secondsLeft, boolean newReading, boolean freshInstance,
+                            FoldedTag folded) {
         onMain(() -> {
             DecisionLog.Entry stamped = newReading ? entry.withTime(System.currentTimeMillis()) : entry;
             for (DecisionLog.Entry notice : DecisionLog.record(this, stamped, secondsLeft, freshInstance)) {
                 if (notice.alertTag == null) continue;
+                if (folded != null && folded.tag == null) folded.tag = notice.alertTag;
                 OfferAlerts.clear(this, notice.alertTag);
                 OfferNotificationService.readOnScreen(notice.alertTag, entry.facts);
             }
@@ -6642,11 +6889,22 @@ public final class OfferFilterService extends AccessibilityService {
         boolean bounded = area != null;
         if (area == null && seen.dasherActive) area = display();
         lastReadableWindow = seen.dasherWindow;
-        Screen next = new Screen(true, seen.dasherRoot != null, area, seen.split, bounded);
+        // Split: whether the other half is Offer Filter's own (its window, known by ID or by the root just read).
+        boolean oursBeside = false;
+        if (seen.split) {
+            for (AccessibilityWindowInfo window : seen.windows) {
+                if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION && window != seen.dasherWindow
+                        && ownerOf(window, seen) == SplitWindows.Owner.OURS) {
+                    oursBeside = true;
+                }
+            }
+        }
+        Screen next = new Screen(true, seen.dasherRoot != null, area, seen.split, bounded, oursBeside);
         if (!next.equals(screen)) screen = next;
         readWin = SplitWindows.field(seen.windows, window -> ownerOf(window, seen), display());
         DashSummary.window(this, readWin);
         noteCover(seen.covered == null ? "" : seen.covered);
+        noteBackToMapLook(seen);
         return seen;
     }
 
@@ -7076,20 +7334,31 @@ public final class OfferFilterService extends AccessibilityService {
         final boolean split;
         /** Whether {@link #area} is the bounds of Dasher's own window (not the whole display, for want of them). */
         final boolean bounded;
+        /**
+         * Split, with one of Offer Filter's own windows in the other half (its mascot is there: no tab over Dasher).
+         * Split beside another app (a map, say), the tab shows over Dasher's half.
+         */
+        final boolean oursBeside;
 
         Screen(boolean known, boolean dasherReadable, Rect area, boolean split, boolean bounded) {
+            this(known, dasherReadable, area, split, bounded, split);
+        }
+
+        Screen(boolean known, boolean dasherReadable, Rect area, boolean split, boolean bounded, boolean oursBeside) {
             this.known = known;
             this.dasherReadable = dasherReadable;
             this.area = area == null ? null : new Rect(area);
             this.split = split;
             this.bounded = bounded && area != null;
+            this.oursBeside = split && oursBeside;
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof Screen)) return false;
             Screen that = (Screen) other;
             return known == that.known && dasherReadable == that.dasherReadable && split == that.split
-                    && bounded == that.bounded && (area == null ? that.area == null : area.equals(that.area));
+                    && bounded == that.bounded && oursBeside == that.oursBeside
+                    && (area == null ? that.area == null : area.equals(that.area));
         }
 
         @Override public int hashCode() {
@@ -7119,27 +7388,39 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
-    /** What the tab and guide are given. */
+    /** What the tab, the guide and the Back to map chip are given. */
     private static final class OverlayState {
         final Rect area;
         final boolean split;
+        /** Split with Offer Filter's own window in the other half: its mascot is there, so no tab over Dasher. */
+        final boolean oursBeside;
         final DasherScene scene;
+        /** The offer on screen passes (KEEP) or needs review (REVIEW), as decided: the slim bar's tint; else null. */
+        final OfferRule.Result verdict;
+        /** The Back to map chip shows. */
+        final boolean backToMap;
 
-        OverlayState(Rect area, boolean split, DasherScene scene) {
+        OverlayState(Rect area, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict,
+                     boolean backToMap) {
             this.area = area == null ? null : new Rect(area);
             this.split = split;
+            this.oursBeside = split && oursBeside;
             this.scene = scene;
+            this.verdict = verdict;
+            this.backToMap = backToMap;
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof OverlayState)) return false;
             OverlayState that = (OverlayState) other;
-            return split == that.split && scene == that.scene
+            return split == that.split && oursBeside == that.oursBeside && scene == that.scene
+                    && verdict == that.verdict && backToMap == that.backToMap
                     && (area == null ? that.area == null : area.equals(that.area));
         }
 
         @Override public int hashCode() {
-            return (split ? 1 : 0) + scene.ordinal() * 2 + (area == null ? 0 : area.hashCode());
+            return (split ? 1 : 0) + (oursBeside ? 2 : 0) + (backToMap ? 4 : 0) + scene.ordinal() * 8
+                    + (verdict == null ? 0 : (verdict.ordinal() + 1) * 64) + (area == null ? 0 : area.hashCode());
         }
     }
 

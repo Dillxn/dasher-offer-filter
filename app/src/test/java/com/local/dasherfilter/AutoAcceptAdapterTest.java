@@ -416,7 +416,7 @@ public final class AutoAcceptAdapterTest {
     private void touch() {
         ShadowWindowManagerImpl windows = Shadow.extract(service.getSystemService(WindowManager.class));
         for (View view : new java.util.ArrayList<>(windows.getViews())) {
-            if (view instanceof DasherTab || view instanceof DasherGuide) continue;
+            if (view instanceof DasherTab || view instanceof DasherGuide || view instanceof BackToMapChip) continue;
             long now = SystemClock.uptimeMillis();
             MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_OUTSIDE, 0, 0, 0);
             view.dispatchTouchEvent(event); event.recycle();
