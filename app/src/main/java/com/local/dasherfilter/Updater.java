@@ -28,9 +28,11 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -82,6 +84,12 @@ final class Updater {
     private static final String COMMITTED_AT = "committed_at";
     private static final String RELAUNCH_AT = "relaunch_at";
     private static final String RELAUNCH_FROM = "relaunch_from_code";
+    /** The version name of the update handed to Android, until it is in or failed. */
+    private static final String INSTALLING_VERSION = "installing_version";
+    /** Android's confirmation of that update was posted as a notification (so Settings may point to it). */
+    private static final String CONFIRM_NOTICE = "confirm_notice_posted";
+    /** The version name of an update Android blocked (STATUS_FAILURE_BLOCKED); "" when its name was not known. */
+    private static final String BLOCKED_VERSION = "blocked_version";
     private static final long INSTALL_WINDOW_MS = 10 * 60_000L;
 
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
@@ -98,6 +106,8 @@ final class Updater {
         WORKER.submit(() -> { }).get(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
     private static final AtomicBoolean BUSY = new AtomicBoolean();
+    /** The user's own checks asked for while a check ran (guarded by itself): one manual check answers them next. */
+    private static final List<Waiting> WAITING = new ArrayList<>();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile WeakReference<Activity> foreground = new WeakReference<>(null);
     private static volatile Intent pendingConfirmation;
@@ -309,27 +319,67 @@ final class Updater {
         return check(context, manual ? UpdateCadence.Trigger.MANUAL : UpdateCadence.Trigger.AUTOMATIC, done);
     }
 
+    /** A manual request that came while a check ran; finished once the manual check that answers it has run. */
+    private static final class Waiting {
+        final CompletableFuture<Void> finished = new CompletableFuture<>();
+        final Runnable done;
+
+        Waiting(Runnable done) {
+            this.done = done;
+        }
+    }
+
     /**
-     * Runs one check on the worker thread, if what started it may start one now ({@link UpdateCadence}). A check
-     * already in progress absorbs this request. Only a manual check bypasses the cooldown and may install while the
-     * app is open. An automatic check logs its result only when it differs from the last one logged (or a day
-     * passed); a failure, a manual check and every install step are always logged.
+     * Runs one check on the worker thread, if what started it may start one now ({@link UpdateCadence}). An automatic
+     * request is absorbed by a check already in progress; the user's own (manual) request never is: it waits, and one
+     * manual check, fresh feed and every APK check, runs as soon as that check ends (a tap on Install now right after
+     * the app opened would otherwise be lost to the automatic check opening it started). Only a manual check bypasses
+     * the cooldown and may install while the app is open. An automatic check logs its result only when it differs
+     * from the last one logged (or a day passed); a failure, a manual check and every install step are always logged.
      *
      * @param done posted to the main thread once this request is finished
      */
     static Future<?> check(Context context, UpdateCadence.Trigger trigger, Runnable done) {
         Context app = context.getApplicationContext();
         if (!BUSY.compareAndSet(false, true)) {
+            if (trigger.manual()) {
+                synchronized (WAITING) {
+                    if (BUSY.get()) {
+                        Waiting waiting = new Waiting(done);
+                        WAITING.add(waiting);
+                        return waiting.finished;
+                    }
+                }
+                // The running check ended meanwhile: this one starts now.
+                return check(context, trigger, done);
+            }
             if (done != null) MAIN.post(done);
             return CompletableFuture.completedFuture(null);
         }
+        return start(app, trigger, done, Collections.<Waiting>emptyList());
+    }
+
+    /** One check on the worker; {@code answering} are the manual requests it runs for. Holds BUSY until the last. */
+    private static Future<?> start(Context app, UpdateCadence.Trigger trigger, Runnable done,
+                                   List<Waiting> answering) {
         FutureTask<Void> task = new FutureTask<Void>(() -> {
             runCheck(app, trigger);
             return null;
         }) {
             @Override protected void done() {
-                BUSY.set(false);
+                List<Waiting> next;
+                synchronized (WAITING) {
+                    next = new ArrayList<>(WAITING);
+                    WAITING.clear();
+                    // Handed on, still busy, to the manual check that answers what came meanwhile.
+                    if (next.isEmpty()) BUSY.set(false);
+                }
+                for (Waiting answered : answering) {
+                    answered.finished.complete(null);
+                    if (answered.done != null) MAIN.post(answered.done);
+                }
                 if (done != null) MAIN.post(done);
+                if (!next.isEmpty()) start(app, UpdateCadence.Trigger.MANUAL, null, next);
             }
         };
         WORKER.execute(task);
@@ -585,6 +635,8 @@ final class Updater {
     static final String AFTER_DASH = "Update ready: installs after your dash";
     /** What a verified update says while updates from this app are not allowed; a tap on Updates opens the switch. */
     static final String BLOCKED = "Update ready: tap to allow updates from " + AppName.NAME;
+    /** What a held update says once updates from this app are allowed: a tap on Updates checks and installs it. */
+    static final String READY = "Update ready: tap to install";
     /** How often an update held for a dash is tried again. */
     static final long DASH_RETRY_MS = 5 * 60_000L;
     /**
@@ -613,6 +665,20 @@ final class Updater {
     }
 
     /**
+     * Updates from this app are allowed now (Android said so lately; the homepage asks at each refresh): the notice
+     * asking for that goes, and Settings' line no longer says to allow them while its tap would install. Preferences
+     * only, unless something changes.
+     */
+    static void installsAllowed(Context context) {
+        UpdateNotices.allowed(context);
+        String held = heldVersion(context);
+        if (held != null && BLOCKED.equals(status(context))) {
+            show(context, READY);
+            DiagnosticLog.log(context, "update", "updates from this app allowed; the held " + held + " can install");
+        }
+    }
+
+    /**
      * Why a verified update does not install now (it is retried), or null when it may. An automatic one waits while a
      * dash has not been seen to end ({@link Dashing#awaitingEnd}): installing closes Offer Filter, and with it its
      * half of a split screen beside Dasher and anything it was watching; that wait ends at its ceiling
@@ -622,7 +688,7 @@ final class Updater {
      */
     static String heldBack(Context context, boolean manual) {
         if (!manual && Dashing.awaitingEnd(context)) {
-            String ceiling = UpdateHold.ceilingReached(context, System.currentTimeMillis());
+            String ceiling = UpdateHold.ceilingReached(context);
             if (ceiling == null) return AFTER_DASH;
             DiagnosticLog.log(context, "update", "dash hold reached its ceiling: " + ceiling
                     + "; the freshly verified update may install");
@@ -647,11 +713,19 @@ final class Updater {
         SharedPreferences prefs = prefs(context);
         if (!enabled(context) && !manual) return;
         if (!manual && prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)) {
+            String blocked = prefs.getString(BLOCKED_VERSION, null);
+            if (blocked != null && (blocked.isEmpty() || blocked.equals(release.optString("versionName")))) {
+                // Android blocked this very update (a policy, Samsung's Auto Blocker): the same tap would fail the
+                // same way, so the homepage stops offering it; Settings says why, and its tap is the user's retry.
+                if (heldVersion(context) != null) prefs.edit().remove(HELD_VERSION).apply();
+                settle(context, trigger, INSTALL_BLOCKED, checked);
+                return;
+            }
             hold(context, checked);
-            settle(context, trigger, "Android declined the previous installation. Manual retry is required.", checked);
+            settle(context, trigger, INSTALL_FAILED, checked);
             return;
         }
-        if (manual) prefs.edit().remove(MANUAL_RETRY_REQUIRED).apply();
+        if (manual) prefs.edit().remove(MANUAL_RETRY_REQUIRED).remove(BLOCKED_VERSION).apply();
         if (!context.getPackageManager().canRequestPackageInstalls()) {
             hold(context, checked);
             settle(context, trigger, BLOCKED, checked);
@@ -659,6 +733,7 @@ final class Updater {
             UpdateNotices.installsBlocked(context, checked.versionCode());
             return;
         }
+        UpdateNotices.allowed(context);
         String wait = heldBack(context, manual);
         if (wait != null) {
             hold(context, checked);
@@ -679,8 +754,7 @@ final class Updater {
         if (old != null) {
             long age = System.currentTimeMillis() - prefs.getLong(SESSION_AT, 0);
             if (old.isSealed() && age >= 0 && age < PENDING_SESSION_GRACE_MS && !manual) {
-                settle(context, trigger, "An installation is already pending; check Android's confirmation "
-                        + "notification.", checked);
+                settle(context, trigger, waitingWords(context), checked);
                 return;
             }
             installer.abandonSession(oldId);
@@ -715,6 +789,7 @@ final class Updater {
             Intent resultIntent = new Intent(context, UpdateReceiver.class).setAction(UpdateReceiver.INSTALL_RESULT);
             PendingIntent result = PendingIntent.getBroadcast(context, id, resultIntent, flags);
             status(context, "Installing " + release.getString("versionName") + "… Android may request confirmation.");
+            prefs.edit().putString(INSTALLING_VERSION, release.getString("versionName")).apply();
             installStarted(context, foreground.get() != null);
             session.commit(result.getIntentSender());
         } catch (Exception error) {
@@ -724,14 +799,28 @@ final class Updater {
         }
     }
 
-    /** Shows Android's install confirmation: directly when the app is open, otherwise as a quiet notification. */
+    /** What Settings says while Android waits for the user to confirm the update, with no notice of it posted. */
+    static final String CONFIRM = "Android asks you to confirm the update. Tap Updates in Settings to see it again.";
+    /** As {@link #CONFIRM}, once its quiet notice was posted. */
+    static final String CONFIRM_NOTICED = "Android asks you to confirm the update: tap the update notification, or "
+            + "Updates in Settings.";
+
+    /**
+     * Shows Android's install confirmation: directly when the app is open, otherwise as a quiet notification (when
+     * notifications are allowed). Until confirmed it is still an update held back, so the homepage's "Update ready ·
+     * Install now" offers it again (its tap shows the confirmation again), and Settings points to the notification only
+     * when one was posted.
+     */
     static void confirmation(Context context, Intent intent) {
         pendingConfirmation = intent;
+        SharedPreferences prefs = prefs(context);
         // Android is waiting for the user, not installing. Keep its session/intent, but release the blocking
         // updating cover so the user can reach Settings and reopen the confirmation after dismissing it.
-        prefs(context).edit().remove(COMMITTED_AT).apply();
-        status(context, "Android requires installation confirmation. Tap Updates in Settings or the update "
-                + "notification.");
+        SharedPreferences.Editor edit = prefs.edit().remove(COMMITTED_AT).remove(CONFIRM_NOTICE);
+        String version = prefs.getString(INSTALLING_VERSION, null);
+        if (version != null) edit.putString(HELD_VERSION, version);
+        edit.apply();
+        status(context, CONFIRM);
         MAIN.post(() -> {
             Activity activity = foreground.get();
             if (activity != null && !activity.isFinishing()) {
@@ -742,28 +831,45 @@ final class Updater {
                     DiagnosticLog.log(context, "update", "confirmation UI unavailable");
                 }
             }
-            postConfirmationNotice(context, intent);
+            if (postConfirmationNotice(context, intent)) {
+                prefs(context).edit().putBoolean(CONFIRM_NOTICE, true).apply();
+                show(context, CONFIRM_NOTICED);
+            }
         });
     }
 
-    private static void postConfirmationNotice(Context context, Intent intent) {
+    /** Android's confirmation as a quiet notification; whether it was posted (notifications may be off). */
+    private static boolean postConfirmationNotice(Context context, Intent intent) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (manager == null || !manager.areNotificationsEnabled()) return;
+        if (manager == null || !manager.areNotificationsEnabled()) return false;
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-            return;
+            return false;
         }
         UpdateNotices.ensureChannel(manager);
         PendingIntent action = PendingIntent.getActivity(context, CONFIRMATION_NOTICE_ID, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UpdateNotices.CHANNEL_ID)
-                .setSmallIcon(OfferAlerts.smallIcon(context))
-                .setContentTitle(AppName.NAME + " update ready")
-                .setContentText("Tap to confirm installation.")
-                .setContentIntent(action)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .build());
+        try {
+            manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UpdateNotices.CHANNEL_ID)
+                    .setSmallIcon(OfferAlerts.smallIcon(context))
+                    .setContentTitle(AppName.NAME + " update ready")
+                    .setContentText("Tap to confirm installation.")
+                    .setContentIntent(action)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .build());
+            return true;
+        } catch (RuntimeException refused) {
+            DiagnosticLog.log(context, "update", "confirmation notice refused: " + refused.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /** What Settings says while a handed-over installation is still Android's: its confirmation, or under way. */
+    private static String waitingWords(Context context) {
+        if (prefs(context).getBoolean(CONFIRM_NOTICE, false)) return CONFIRM_NOTICED;
+        if (pendingConfirmation != null) return CONFIRM;
+        return "An installation is already under way.";
     }
 
     /**
@@ -772,8 +878,9 @@ final class Updater {
      */
     static void installStarted(Context context, boolean onScreen) {
         long now = System.currentTimeMillis();
-        // Handed to Android: no longer an update held back.
-        SharedPreferences.Editor edit = prefs(context).edit().putLong(COMMITTED_AT, now).remove(HELD_VERSION);
+        // Handed to Android: no longer an update held back (until Android asks the user to confirm it).
+        SharedPreferences.Editor edit = prefs(context).edit().putLong(COMMITTED_AT, now).remove(HELD_VERSION)
+                .remove(CONFIRM_NOTICE);
         if (onScreen) {
             edit.putLong(RELAUNCH_AT, now).putLong(RELAUNCH_FROM, versionCode(context));
         } else {
@@ -841,21 +948,31 @@ final class Updater {
 
     static void installationFailed(Context context, int code, String detail) {
         pendingConfirmation = null;
-        prefs(context).edit()
+        SharedPreferences prefs = prefs(context);
+        boolean blocked = code == PackageInstaller.STATUS_FAILURE_BLOCKED;
+        String version = prefs.getString(INSTALLING_VERSION, null);
+        SharedPreferences.Editor edit = prefs.edit()
                 .remove(SESSION)
                 .remove(SESSION_AT)
                 .remove(COMMITTED_AT)
                 .remove(RELAUNCH_AT)
                 .remove(RELAUNCH_FROM)
-                .putBoolean(MANUAL_RETRY_REQUIRED, true)
-                .apply();
+                .remove(INSTALLING_VERSION)
+                .remove(CONFIRM_NOTICE)
+                .putBoolean(MANUAL_RETRY_REQUIRED, true);
+        // Blocked (a policy, a verifier, Samsung's Auto Blocker): not offered again until the user retries it.
+        if (blocked) edit.putString(BLOCKED_VERSION, version == null ? "" : version).remove(HELD_VERSION);
+        edit.apply();
         // Android's code and words go to the log; Settings says it in plain words.
         DiagnosticLog.log(context, "update", "Android installation failed (" + code + "): " + detail);
-        status(context, INSTALL_FAILED);
+        status(context, blocked ? INSTALL_BLOCKED : INSTALL_FAILED);
     }
 
     /** What Settings says after Android did not install an update. */
     static final String INSTALL_FAILED = "The update didn't install. Tap Updates to try again.";
+    /** What Settings says after Android blocked the update (STATUS_FAILURE_BLOCKED). */
+    static final String INSTALL_BLOCKED = "Android blocked the update (on Samsung, check Auto Blocker). Tap Updates to "
+            + "try again.";
 
     /** Forgets any prepared update: session bookkeeping, the cached APK, and the confirmation notice. */
     static void clearReady(Context context) {
@@ -867,6 +984,9 @@ final class Updater {
                 .remove(COMMITTED_AT)
                 .remove(MANUAL_RETRY_REQUIRED)
                 .remove(HELD_VERSION)
+                .remove(INSTALLING_VERSION)
+                .remove(CONFIRM_NOTICE)
+                .remove(BLOCKED_VERSION)
                 // Written by 0.4.5 and earlier but never read; removed here so old installs shed them.
                 .remove("ready")
                 .remove("confirmation_needed")

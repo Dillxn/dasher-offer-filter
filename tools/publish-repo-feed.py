@@ -6,13 +6,16 @@ apkUrl to its own address; every phone reads only that public feed and installs 
 app. This script writes release/latest.json and release/OfferFilter.apk and nothing else, after checking that the APK
 is the cloud-signed build of this exact, committed source: its signer, package and embedded version, a version code
 above the one already published, and the feed fields, in the form Render serves them, against the app's own policy
-code. It never signs, commits or pushes; commit release/ and push it to main afterwards.
+code; and that offerfilter.org serves the page the app's Help row opens (tools/help_page.py). It never signs, commits
+or pushes; commit release/ and push it to main afterwards.
 
 release/latest.json keeps the retired repository address as its apkUrl for one more release: Offer Filter 0.4.72 and
 older, on a phone still connected to GitHub, read release/ directly and require exactly that address (otherwise they
 fall back to Render with a note). 0.4.73 and later never read release/; the mirror ignores this apkUrl.
 """
 import hashlib, json, os, pathlib, re, subprocess
+from help_page import check_help_page
+from mirror_repo_feed import page_serves
 from release_identity import check_channel
 from runtime_http_proxy import java_environment
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,6 +38,8 @@ def main():
     code = int(re.search(r'versionCode (\d+)', gradle).group(1))
     if run('git', 'status', '--porcelain', '--', 'app', 'build-local.sh', 'build.gradle', 'settings.gradle').strip():
         raise ValueError('Commit the app source first: the feed names the commit the APK was built from')
+    # The app's Help row opens this page at a tap, with no fallback: it must be served before the APK ships.
+    check_help_page(page_serves)
     head = run('git', 'rev-parse', 'HEAD').strip()
     release = ROOT / 'release'
     feed_path, apk_path = release / 'latest.json', release / 'OfferFilter.apk'

@@ -2,6 +2,8 @@ package com.local.dasherfilter;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
+import android.provider.Settings;
 
 /**
  * Whether the user is dashing, as far as the app has seen: an offer, Dasher's "finding offers" screen or a delivery
@@ -14,6 +16,9 @@ final class Dashing {
     /** Screens arrive many times a second; the time is written at most this often. */
     private static final long WRITE_EVERY_MS = 30_000L;
     private static final String SEEN_AT = "seen_at";
+    /** The same sighting on the boot's own clock (elapsedRealtime), and which boot it was (Settings.Global). */
+    private static final String SEEN_ELAPSED = "seen_elapsed";
+    private static final String SEEN_BOOT = "seen_boot";
     private static final String ENDED_AT = "ended_at";
     private static final String STARTED_AT = "started_at";
     private static final String PAUSED = "paused";
@@ -36,7 +41,8 @@ final class Dashing {
         long previousStart = prefs.getLong(STARTED_AT, 0);
         long previousSeen = prefs.getLong(SEEN_AT, 0);
         boolean previousOpen = open(prefs);
-        SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now).putBoolean(OPEN, true).remove(PAUSED);
+        SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now).putBoolean(OPEN, true).remove(PAUSED)
+                .putLong(SEEN_ELAPSED, SystemClock.elapsedRealtime()).putInt(SEEN_BOOT, boot(context));
         if (!onDash) edit.putLong(STARTED_AT, now);
         edit.apply();
         // A dash still open but quiet for half an hour ended then: its opt-in summary goes now (cheap when off).
@@ -142,10 +148,39 @@ final class Dashing {
 
     /**
      * When anything of a dash was last seen (an offer, Dasher's wait for offers or a delivery screen; wall clock), 0
-     * for never. Written at most every half minute. Only {@link UpdateHold}'s ceiling reads it.
+     * for never. Written at most every half minute.
      */
     static long lastSeen(Context context) {
         return prefs(context).getLong(SEEN_AT, 0);
+    }
+
+    /**
+     * How long nothing of a dash has been seen, or -1 for never (or a sighting in the future): on the boot's own clock
+     * when the last sighting was in this boot, so a wall clock set forward (by hand, or a network correction) cannot
+     * shorten it; by the wall clock across a reboot, or when the boot cannot be told. Only {@link UpdateHold}'s
+     * ceiling reads it.
+     */
+    static long quietFor(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long seen = prefs.getLong(SEEN_AT, 0);
+        if (seen <= 0) return -1;
+        int then = prefs.getInt(SEEN_BOOT, -1);
+        int now = boot(context);
+        if (then >= 0 && now >= 0 && then == now && prefs.contains(SEEN_ELAPSED)) {
+            long quiet = SystemClock.elapsedRealtime() - prefs.getLong(SEEN_ELAPSED, 0);
+            return quiet >= 0 ? quiet : -1;
+        }
+        long quiet = System.currentTimeMillis() - seen;
+        return quiet >= 0 ? quiet : -1;
+    }
+
+    /** Android's count of boots, or -1 when it cannot be read. */
+    private static int boot(Context context) {
+        try {
+            return Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+        } catch (RuntimeException unavailable) {
+            return -1;
+        }
     }
 
     /** For tests: forget the write throttle. */

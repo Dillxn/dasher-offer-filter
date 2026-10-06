@@ -221,9 +221,12 @@ final class SetupChecklist {
         step++;
         // Updates matter once the app works, or at once when a verified update waits for this switch.
         boolean coreDone = readerConnected && listenerConnected && alertsAllowed;
-        if (!installsAllowed.get() && (coreDone || Updater.heldVersion(activity) != null)) {
+        boolean allowed = installsAllowed.get();
+        if (!allowed && (coreDone || Updater.heldVersion(activity) != null)) {
             lines.add(new Line(updates, SetupRow.Mark.STEP, step, UPDATES));
         }
+        // Allowed (from this line, the notice or Settings): the notice goes and Settings stops asking for it.
+        if (allowed) Updater.installsAllowed(activity);
 
         boolean fold = !unfolded && lines.size() >= FOLD_FROM;
         int showing = fold ? 1 : lines.size();
