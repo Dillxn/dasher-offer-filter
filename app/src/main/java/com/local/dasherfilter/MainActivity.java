@@ -224,6 +224,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness location;
     private Readiness locationAllTheTime;
     private Switch areasToggle;
+    private Switch earningsAutoTune;
+    private Button vehicleCostRow;
     private Button updatesRow;
     private Button githubRow;
     private Switch reportViaGitHub;
@@ -713,10 +715,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         waitEstimateLine.setMinHeight(ui.dp(48));
         waitEstimateLine.setGravity(Gravity.CENTER_HORIZONTAL);
         waitEstimateLine.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
-        waitEstimateLine.setOnClickListener(tapped -> OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Time until a matching offer")
-                .setMessage(QualifyingWaitStore.estimate(this, FilterStore.load(this)).detail())
-                .setPositiveButton("OK", null)));
+        waitEstimateLine.setOnClickListener(tapped -> {
+            FilterSettings current = FilterStore.load(this);
+            String detail = QualifyingWaitStore.estimate(this, current).detail() + "\n\nOffers / profit\n"
+                    + EarningsOptimizer.recommend(this, current).detail();
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
+                    .setTitle("Time and earnings from your history")
+                    .setMessage(detail)
+                    .setPositiveButton("OK", null));
+        });
         LinearLayout.LayoutParams waitParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         waitParams.gravity = Gravity.CENTER_HORIZONTAL;
@@ -950,10 +957,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 setScoreMode(on);
             }
 
-            @Override public void setMinimumScalePercent(int percent) {
-                FilterSettings saved = FilterStore.load(MainActivity.this);
-                FilterSettings next = saved.withMinimumScalePercent(percent);
-                if (next.minimumScalePercent != saved.minimumScalePercent) saveRules(saved, next);
+            @Override public void setTradeoffPercent(int percent) {
+                setTradeoffPreference(percent);
             }
 
             @Override public void setMaxStops(int stops) {
@@ -968,6 +973,25 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 confirmResetLearned();
             }
         });
+    }
+
+    /**
+     * The single offers-versus-profit preference. It never rewrites a saved or learned baseline; it chooses only the
+     * existing minimums percentage. With sparse history it has a deterministic conservative mapping, and with enough
+     * bounded local observations it uses the earnings optimizer immediately.
+     */
+    private boolean setTradeoffPreference(int percent) {
+        FilterSettings saved = FilterStore.load(this);
+        int chosen = Math.max(0, Math.min(100, percent));
+        EarningsPreferences.setTradeoff(this, chosen);
+        EarningsOptimizer.Result result = EarningsOptimizer.recommend(this, saved, chosen);
+        FilterSettings next = saved.withMinimumScalePercent(result.recommendedScalePercent);
+        DiagnosticLog.log(this, "earnings", "tradeoff " + chosen + "% -> minimums "
+                + next.minimumScalePercent + "%; " + (result.status == EarningsOptimizer.Status.READY
+                ? "history ready" : "history learning"));
+        if (next.minimumScalePercent != saved.minimumScalePercent) return saveRules(saved, next);
+        updateMeter();
+        return true;
     }
 
     /**
@@ -1172,6 +1196,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
                         DiagnosticLog.log(this, "auto-accept", "explicitly enabled in Settings");
                     }));
         });
+        earningsAutoTune = ui.toggle(switches, "Auto-tune offers / profit", EarningsPreferences.autoTune(this));
+        earningsAutoTune.setOnCheckedChangeListener((view, on) -> {
+            if (on == EarningsPreferences.autoTune(this)) return;
+            FilterSettings current = FilterStore.load(this);
+            EarningsPreferences.setAutoTune(this, on, current.minimumScalePercent);
+            DiagnosticLog.log(this, "earnings", "auto-tune " + (on ? "on" : "off"));
+            // Enabling the automatic learner never rewrites an existing boundary merely because history is sparse.
+            // The next positively recognized waiting screen may retune only after enough observations exist.
+            refresh();
+        });
+        vehicleCostRow = ui.listRow(switches, "Vehicle cost per mile", this::editVehicleCost);
+
         areasToggle = ui.toggle(switches, "Offer map", AreaMap.enabled(this));
         areasToggle.setOnCheckedChangeListener((view, on) -> {
             if (on == AreaMap.enabled(this)) return;
@@ -1305,6 +1341,43 @@ public final class MainActivity extends Activity implements Updater.Busy {
         open(new Intent(Intent.ACTION_VIEW, Uri.parse(GitHubConnect.VERIFICATION_URL)));
     }
 
+    /** Sets the one economic cost input; zero deliberately means gross pay rather than an invented vehicle cost. */
+    private void editVehicleCost() {
+        int current = EarningsPreferences.vehicleCostCentsPerMile(this);
+        EditText value = new EditText(this);
+        value.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        value.setSingleLine(true);
+        value.setHint("0.00");
+        if (current > 0) value.setText(String.format(Locale.US, "%.2f", current / 100.0));
+        int pad = ui.dp(20);
+        FrameLayout holder = new FrameLayout(this);
+        holder.setPadding(pad, 0, pad, 0);
+        holder.addView(value, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Vehicle cost per mile")
+                .setMessage("Used only for the local net $/hour estimate. Fuel alone is gas price ÷ actual MPG. "
+                        + "Add mileage-linked tires, oil, maintenance and depreciation if you want a fuller marginal "
+                        + "operating cost. Enter 0 to optimize gross pay.")
+                .setView(holder)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    double dollars;
+                    try { dollars = Double.parseDouble(value.getText().toString().trim()); }
+                    catch (RuntimeException invalid) { toast("Enter a dollar amount per mile."); return; }
+                    if (!Double.isFinite(dollars) || dollars < 0 || dollars > 5) {
+                        toast("Use an amount from $0 to $5 per mile.");
+                        return;
+                    }
+                    EarningsPreferences.setVehicleCostCentsPerMile(this, (int) Math.round(dollars * 100));
+                    FilterSettings rules = FilterStore.load(this);
+                    if (EarningsPreferences.chosen(this)) {
+                        setTradeoffPreference(EarningsPreferences.tradeoff(this, rules.minimumScalePercent));
+                    }
+                    refresh();
+                }));
+    }
+
     /** The configured ways to tip, to choose from; each opens only at the user's tap. */
     private void chooseTip() {
         List<Support.Method> methods = Support.methods();
@@ -1433,6 +1506,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
         installs.update(installsAllowed.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
+        if (earningsAutoTune != null && earningsAutoTune.isChecked() != EarningsPreferences.autoTune(this)) {
+            earningsAutoTune.setChecked(EarningsPreferences.autoTune(this));
+        }
+        if (vehicleCostRow != null) {
+            int cost = EarningsPreferences.vehicleCostCentsPerMile(this);
+            ui.setRow(vehicleCostRow, "Vehicle cost per mile", cost > 0
+                    ? DecisionLog.money(cost) + "/mi · net earnings estimate"
+                    : "Off · earnings estimate uses gross pay");
+        }
         if (githubRow != null) refreshGitHub();
         boolean reporting = ReportOutbox.enabled(this);
         boolean connected = GitHubConnect.configured() && GitHubConnect.state(this) == GitHubConnect.State.CONNECTED;

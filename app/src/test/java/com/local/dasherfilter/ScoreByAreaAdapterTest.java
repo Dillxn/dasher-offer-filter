@@ -83,7 +83,7 @@ public class ScoreByAreaAdapterTest {
             // Screen readers find it as a switch.
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             AccessibilityNodeInfo node = nodes.createAccessibilityNodeInfo(MinimumsStarView.SCORE_ID);
-            assertEquals("Minimums 100%. Score by area off. Drag sideways to scale all minimums; tap to change scoring mode.",
+            assertEquals("Offers versus profit 50%. Effective minimums 100%. More offers and lower minimums to the left; more profit and higher minimums to the right. Score by area off. Drag sideways to adjust; tap to change scoring mode.",
                     node.getContentDescription().toString());
             assertEquals(Switch.class.getName(), node.getClassName().toString());
             assertTrue(node.isCheckable());

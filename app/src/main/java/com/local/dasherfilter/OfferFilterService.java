@@ -3430,8 +3430,11 @@ public final class OfferFilterService extends AccessibilityService {
 
     private void syncWaitRead() {
         try {
-            QualifyingWaitStore.screen(this, waitCoverageEligible() && !readSkipped, scene,
-                    waitReadOffer, waitReadExcluded, waitReadNewInstance);
+            boolean eligible = waitCoverageEligible() && !readSkipped;
+            QualifyingWaitStore.screen(this, eligible, scene, waitReadOffer, waitReadExcluded, waitReadNewInstance);
+            // Retuning is deliberately downstream of a positively recognized idle/waiting read. It never runs while
+            // an offer, route, unknown screen, lock or hidden foreground could make a changed boundary actionable.
+            if (eligible && !waitReadExcluded && scene == DasherScene.WAITING) EarningsOptimizer.maybeRetune(this);
         } catch (RuntimeException unavailable) {
             // The estimate is optional. Never turn a timing/storage failure into an offer action or scanner fault.
         }

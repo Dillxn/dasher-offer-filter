@@ -80,10 +80,10 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             AccessibilityNodeInfo score = node(star, MinimumsStarView.SCORE_ID);
             assertNotNull(score.getRangeInfo());
-            assertEquals(100f, score.getRangeInfo().getCurrent(), 0.001f);
-            assertEquals(1f, score.getRangeInfo().getMin(), 0.001f);
-            assertEquals(200f, score.getRangeInfo().getMax(), 0.001f);
-            setScale(star, 97);
+            assertEquals(50f, score.getRangeInfo().getCurrent(), 0.001f);
+            assertEquals(0f, score.getRangeInfo().getMin(), 0.001f);
+            assertEquals(100f, score.getRangeInfo().getMax(), 0.001f);
+            setTradeoff(star, 47);
             DecisionChartView chart = find(content, DecisionChartView.class);
             assertEquals(970L, chart.payoutThresholdCents());
             assertEquals("a recorded 97% tree meets the new 97% reference", chart.treeAt(0)[1],
@@ -102,7 +102,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
-            assertEquals(97f, node(find(content, MinimumsStarView.class), MinimumsStarView.SCORE_ID)
+            assertEquals(47f, node(find(content, MinimumsStarView.class), MinimumsStarView.SCORE_ID)
                     .getRangeInfo().getCurrent(), 0.001f);
         }
     }
@@ -234,7 +234,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
                 Collections.emptyList()).withScore(score);
     }
 
-    private static void setScale(MinimumsStarView star, int percent) {
+    private static void setTradeoff(MinimumsStarView star, int percent) {
         Bundle value = new Bundle();
         value.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, percent);
         assertTrue(star.getAccessibilityNodeProvider().performAction(MinimumsStarView.SCORE_ID,

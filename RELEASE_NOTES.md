@@ -1,3 +1,12 @@
+## 0.4.73 — offers / profit optimizer (candidate)
+
+- Replaces the raw horizontal minimum-percentage gesture with one user-facing **More offers ↔ More profit** tradeoff while preserving the existing strict/area scoring choice. The underlying minimum percentage remains the only decision boundary; saved and learned minimums, max stops and scoring mode are not rewritten by the optimizer.
+- Reuses the existing bounded on-device waiting samples and retained decision history to estimate matching-offer pace and active gross $/hour. An optional local vehicle-cost-per-mile input converts that estimate to net $/hour; zero deliberately means gross pay rather than an invented operating cost.
+- Adds optional **Auto-tune offers / profit**, off by default. It can retune only after a positively recognized waiting screen, never while an offer or route is actionable, at most once per five minutes and five percentage points per adjustment.
+- Uses only confirmed Accepted and Declined outcomes for an app-observed acceptance proxy. Where enough history exists it may use correlation between those observed acceptance bands and offer-arrival rate; it never calls that proxy DoorDash's official acceptance rate and never claims to know DoorDash's dispatch formula.
+- Adds deterministic sparse-history behavior, optimizer/preference regressions and updates the existing scale/area accessibility tests. No new offer-history retention, network transfer, report payload or action authority is introduced.
+- Source candidate only until the local build/sign/publish gate and Android 16 handset smoke test complete.
+
 ## 0.4.71 — keep Peek from returning during offer loading (candidate)
 
 - Restarts Peek's four-second empty-screen wait when Dasher is loading, drawing only part of an offer, or cannot be read completely. A final fresh read must still confirm that the full empty-screen interval elapsed before returning to the previous app.

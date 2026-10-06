@@ -95,9 +95,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     + "Per stop: set $1.00, adaptive $7.10. "
                     + "The hotspot spoke uses inverse miles: closer is farther out; "
                     + "its 1 per mile shares the $10 ring radius for display only. "
+                    + "Offers versus profit 50%: left means more offers and lower minimums; right means more profit and higher minimums. "
+                    + "Effective minimums 100%. Saved and learned values stay unchanged; max stops stays fixed. "
                     + "Farther out means higher payout or pay rates, or a final stop nearer the hotspot. "
                     + "Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers. "
-                    + "Drag the percentage sideways to scale all minimums without changing those saved values.",
+                    + "Drag the offers/profit control sideways to adjust the tradeoff.",
                     star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
             // The per-stop spoke holds the set minimum as the example's 2 stops × $1.00, beside the adaptive 2 × $7.10.

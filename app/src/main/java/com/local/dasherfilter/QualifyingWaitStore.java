@@ -68,6 +68,13 @@ final class QualifyingWaitStore {
         }
     }
 
+    /** Bounded numeric observations for local earnings optimization; no new retention or reporting path. */
+    static List<QualifyingWait.Sample> samples(Context context) {
+        synchronized (LOCK) {
+            return loaded(context).snapshot(wallClock.getAsLong());
+        }
+    }
+
     /** No restored timer or cached estimate can make the homepage claim current waiting. */
     static boolean observingWaiting(Context context) {
         synchronized (LOCK) {

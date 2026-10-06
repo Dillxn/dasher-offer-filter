@@ -276,8 +276,8 @@ final class MinimumsStarView extends View {
         /** Turns score by area on or off, saving it at once. */
         default void setScoreByArea(boolean on) {}
 
-        /** Scales every active minimum without changing the saved or learned values; max stops is unchanged. */
-        default void setMinimumScalePercent(int percent) {}
+        /** Chooses the offers-versus-profit preference; it maps only to the existing minimums percentage. */
+        default void setTradeoffPercent(int percent) {}
 
         /** Sets the max stops (0: no limit), saving it at once. */
         default void setMaxStops(int stops) {}
@@ -975,12 +975,13 @@ final class MinimumsStarView extends View {
         }
         if (!byArea) described += " The hotspot spoke uses inverse miles: closer is farther out; "
                 + "its 1 per mile shares the $10 ring radius for display only.";
-        if (shownRules.minimumScalePercent != 100) described += " Minimums scale "
+        described += " Offers versus profit " + shownTradeoffPercent() + "%: left means more offers and lower "
+                + "minimums; right means more profit and higher minimums. Effective minimums "
                 + shownRules.minimumScalePercent + "%. Saved and learned values stay unchanged; max stops stays fixed."
                 + (byArea ? " The required score is " + shownRules.minimumScalePercent + "%." : "");
         described += " Farther out means higher payout or pay rates, or a final stop nearer the hotspot."
                 + " Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers."
-                + " Drag the percentage sideways to scale all minimums without changing those saved values.";
+                + " Drag the offers/profit control sideways to adjust the tradeoff.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
@@ -2571,7 +2572,7 @@ final class MinimumsStarView extends View {
                     tapping = false;
                     if (scorePressed && Math.abs(x - downX) >= Math.abs(y - downY)) {
                         scaleDragging = true;
-                        scaleValue = shownRules.minimumScalePercent;
+                        scaleValue = shownTradeoffPercent();
                         keepTouch(true);
                     } else if (scorePressed) {
                         scorePressed = false;
@@ -3451,8 +3452,9 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The score by area toggle, a round button like the adopt one with the area icon: the minimums' small shape inside
-     * an offer's larger one. On, the small shape is filled in the set minimums' color and the button is ringed in it.
+     * The compact offers-versus-profit slider handle. A horizontal drag changes the tradeoff preference; a tap still
+     * changes strict/area scoring. The ring continues to show area mode without making the raw minimums percentage the
+     * user's primary control.
      */
     private void drawScoreToggle(Canvas canvas) {
         float x = scoreBox.centerX();
@@ -3470,22 +3472,33 @@ final class MinimumsStarView extends View {
         }
         canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
         int color = byArea ? setColor() : ui.inkSecondary;
+        int tradeoff = shownTradeoffPercent();
         scaleText.setTextSize(Math.min(ui.sp(9), ui.dp(10)));
         scaleText.setColor(color);
         canvas.drawText(byArea ? "Area" : "Each", x, y - ui.dp(6), scaleText);
-        scaleText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
+        scaleText.setTextSize(Math.min(ui.sp(10), ui.dp(11)));
         scaleText.setColor(color);
-        canvas.drawText(shownScalePercent() + "%", x, y + ui.dp(13), scaleText);
+        canvas.drawText(tradeoff < 45 ? "Offers" : tradeoff > 55 ? "Profit" : "Balance",
+                x, y + ui.dp(12), scaleText);
     }
 
-    /** Percentage shown by the one control; the unsaved preview never alters the stored minimums. */
-    private int shownScalePercent() { return scaleDragging ? scaleValue : shownRules.minimumScalePercent; }
+    /** The actual effective rule boundary; while dragging, preview only the deterministic sparse-history mapping. */
+    private int shownScalePercent() {
+        return scaleDragging ? EarningsPreferences.fallbackScale(scaleValue) : shownRules.minimumScalePercent;
+    }
+
+    /** The user-facing slider preference; an older install starts where its existing scale most closely maps. */
+    private int shownTradeoffPercent() {
+        return scaleDragging ? scaleValue
+                : EarningsPreferences.tradeoff(getContext(), shownRules.minimumScalePercent);
+    }
 
     int minimumScalePercent() { return shownRules.minimumScalePercent; }
 
     private void moveMinimumScale(float dx) {
-        int percent = Math.max(1, Math.min(200, shownRules.minimumScalePercent
-                + Math.round(dx / Math.max(1, ui.dp(MINIMUM_SCALE_STEP_DP)))));
+        int start = EarningsPreferences.tradeoff(getContext(), shownRules.minimumScalePercent);
+        int percent = Math.max(0, Math.min(100,
+                start + Math.round(dx / Math.max(1, ui.dp(MINIMUM_SCALE_STEP_DP)))));
         if (percent != scaleValue) {
             scaleValue = percent;
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
@@ -3494,12 +3507,14 @@ final class MinimumsStarView extends View {
     }
 
     private boolean setMinimumScale(int percent) {
-        percent = Math.max(1, Math.min(200, percent));
-        if (changes == null || percent == shownRules.minimumScalePercent) return false;
-        changes.setMinimumScalePercent(percent);
-        say("Minimums " + percent + "%. " + (byArea ? "Required score " + percent + "%."
-                : "Every minimum uses " + percent + "% of its saved or learned value.")
-                + " Max stops stays unchanged.");
+        percent = Math.max(0, Math.min(100, percent));
+        if (changes == null || percent == shownTradeoffPercent()) return false;
+        changes.setTradeoffPercent(percent);
+        int effective = FilterStore.load(getContext()).minimumScalePercent;
+        say("Offers versus profit " + percent + "%. "
+                + (percent < 50 ? "More offers and lower minimums." : percent > 50
+                ? "More profit and higher minimums." : "Balanced.")
+                + " Effective minimums " + effective + "%. Saved and learned values stay unchanged.");
         invalidate();
         nodesChanged();
         return true;
@@ -3742,8 +3757,10 @@ final class MinimumsStarView extends View {
 
     private String nodeSaid(int node) {
         if (node >= OFFER_ID) return offerSaid(node - OFFER_ID);
-        if (node == SCORE_ID) return "Minimums " + shownRules.minimumScalePercent + "%. " + SCORE_SAID
-                + (byArea ? " on." : " off.") + " Drag sideways to scale all minimums; tap to change scoring mode.";
+        if (node == SCORE_ID) return "Offers versus profit " + shownTradeoffPercent()
+                + "%. Effective minimums " + shownRules.minimumScalePercent + "%. More offers and lower minimums "
+                + "to the left; more profit and higher minimums to the right. " + SCORE_SAID
+                + (byArea ? " on." : " off.") + " Drag sideways to adjust; tap to change scoring mode.";
         if (node == ADAPTIVE_ID) return ADAPTIVE_SAID;
         if (node == STOPS_ID) return stopsSaid(maxStops);
         return node == ADOPT_ID ? (undoValues != null ? "Undo" : ADOPT_SAID) : knobSaid(node);
@@ -3898,28 +3915,25 @@ final class MinimumsStarView extends View {
                 return info;
             }
             if (id == SCORE_ID) {
-                // One existing control: tap changes mode; adjustable actions change the one minimums scale.
+                // One compact control: tap changes mode; adjustable actions change the offers/profit preference.
                 info.setClassName(Switch.class.getName());
                 info.setCheckable(true);
                 info.setChecked(byArea);
-                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(byArea ? "On" : "Off");
+                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(byArea ? "Area scoring" : "Strict scoring");
+                int tradeoff = shownTradeoffPercent();
                 info.setRangeInfo(Build.VERSION.SDK_INT >= 30
-                        ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 1,
-                                200, shownRules.minimumScalePercent)
-                        : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 1,
-                                200, shownRules.minimumScalePercent));
+                        ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
+                                100, tradeoff)
+                        : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
+                                100, tradeoff));
                 info.setClickable(true);
                 String toggle = byArea ? "Use strict minimums" : "Use score by area";
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
                         toggle));
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(TOGGLE_ACTION, toggle));
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
-                if (shownRules.minimumScalePercent < 200) {
-                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
-                }
-                if (shownRules.minimumScalePercent > 1) {
-                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
-                }
+                if (tradeoff < 100) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
+                if (tradeoff > 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
                 return info;
             }
             if (id == ADAPTIVE_ID) {
@@ -4026,7 +4040,7 @@ final class MinimumsStarView extends View {
                 case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
                     boolean up = action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD;
                     if (id == STOPS_ID) return setStops(stepStops(maxStops, up));
-                    if (id == SCORE_ID) return setMinimumScale(shownRules.minimumScalePercent + (up ? 1 : -1));
+                    if (id == SCORE_ID) return setMinimumScale(shownTradeoffPercent() + (up ? 1 : -1));
                     return id < NAMES.length && step(id, up);
                 }
                 case TOGGLE_ACTION:
@@ -4045,7 +4059,7 @@ final class MinimumsStarView extends View {
                     if (action == android.R.id.accessibilityActionSetProgress && id == SCORE_ID
                             && arguments != null) {
                         float percent = arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, -1);
-                        if (!Float.isFinite(percent) || percent < 1 || percent > 200) return false;
+                        if (!Float.isFinite(percent) || percent < 0 || percent > 100) return false;
                         return setMinimumScale(Math.round(percent));
                     }
                     if (action == android.R.id.accessibilityActionSetProgress && id < NAMES.length
