@@ -1,3 +1,9 @@
+## Local selectivity and cost estimates (0.4.73 candidate)
+
+The native minimums control spans 1–200% without rewriting saved or learned floors. Compact windows open it from the existing chip; mode changes remain separate. Settings → Costs and estimates accepts explicit driving costs and a bounded dated manual acceptance-rate history. Blank cost stays unknown. All new data stays on the phone.
+
+Optional automatic adjustment starts off. After separate confirmation it may move the percentage within chosen bounds, at most five points per fifteen real minutes after sufficient fresh evidence, only between offers during visible unlocked waiting. Changing the percentage manually turns it off. Estimates use displayed offer time/mileage and monitored waiting; they are not completed earnings, a known DoorDash dispatch formula or a promise of profit. See VALIDATION_EARNINGS_0.4.73.md for acceptance, pending verification and remaining phone limitations.
+
 # Offer Filter
 
 A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.

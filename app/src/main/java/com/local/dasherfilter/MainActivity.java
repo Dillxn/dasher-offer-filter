@@ -225,6 +225,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness locationAllTheTime;
     private Switch areasToggle;
     private Button updatesRow;
+    private EarningsPanel earningsPanel;
     private Button githubRow;
     private Switch reportViaGitHub;
     private TextView reportStatus;
@@ -349,6 +350,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override protected void onStart() {
         super.onStart();
         started = true;
+        if (minimums != null) minimums.setSelectivityActivityActive(true);
         handler.removeCallbacks(refresh);
         handler.post(refresh);
     }
@@ -472,11 +474,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override protected void onStop() {
         started = false;
+        if (earningsPanel != null) earningsPanel.dismiss();
+        if (minimums != null) minimums.setSelectivityActivityActive(false);
         handler.removeCallbacks(refresh);
         super.onStop();
     }
 
     @Override protected void onDestroy() {
+        if (earningsPanel != null) earningsPanel.dismiss();
+        if (minimums != null) minimums.setSelectivityActivityActive(false);
         cancelReportShare();
         super.onDestroy();
     }
@@ -508,6 +514,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Swaps the pages in place; each keeps its own scroll position. */
     private void showSettings(boolean settings) {
+        if (!settings && earningsPanel != null) earningsPanel.dismiss();
+        if (settings && minimums != null) minimums.dismissSelectivityControls();
         View shown = settings ? settingsPage : mainPage;
         boolean changed = shown.getVisibility() != View.VISIBLE;
         showingSettings = settings;
@@ -957,7 +965,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
             @Override public void setMinimumScalePercent(int percent) {
                 FilterSettings saved = FilterStore.load(MainActivity.this);
                 FilterSettings next = saved.withMinimumScalePercent(percent);
-                if (next.minimumScalePercent != saved.minimumScalePercent) saveRules(saved, next);
+                if (next.minimumScalePercent != saved.minimumScalePercent) {
+                    if (!EarningsStore.disableForManualChange(MainActivity.this)) {
+                        toast("Could not turn off automatic selectivity. Try again.");
+                        updateMeter();
+                        return;
+                    }
+                    saveRules(saved, next);
+                }
             }
 
             @Override public void setMaxStops(int stops) {
@@ -1127,6 +1142,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * the homepage), behavior switches, updates, GitHub, reports and a tip, then the version and the bundled texts.
      * The rules are all on the homepage's constellation.
      */
+    private void showCostsAndEstimates() {
+        if (!started || !showingSettings || !Consent.accepted(this) || isFinishing() || isDestroyed()) return;
+        if (earningsPanel == null) earningsPanel = new EarningsPanel(this, ui, () -> {
+            if (!started || !Consent.accepted(this)) return;
+            refreshSettings();
+            updateMeter();
+        });
+        earningsPanel.show();
+    }
+
     private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
         LinearLayout body = body(page);
@@ -1183,6 +1208,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (on && !AreaMap.hasPermission(this)) askForLocation();
             refresh();
         });
+
+        ui.listRow(group(body), "Costs and estimates", this::showCostsAndEstimates);
 
         LinearLayout connections = group(body);
         // Checks are always automatic; a tap checks now.
@@ -2131,12 +2158,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void confirmClearHistory() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Clear history?")
-                .setMessage("Removes the offer decisions, waiting estimates, captured screen text, offer areas and cached place names "
-                        + "from this phone. Your rules stay.")
+                .setMessage("Removes the offer decisions, waiting estimates, recorded acceptance rates, adjustment history, "
+                        + "captured screen text, offer areas and cached place names from this phone. "
+                        + "Your rules, entered driving cost, bounds and other preferences stay.")
                 .setPositiveButton("Clear", (dialog, which) -> {
                     cancelReportShare();
                     DecisionLog.clear(this);
                     QualifyingWaitStore.clear(this);
+                    EarningsStore.clearHistory(this);
                     DiagnosticLog.clear(this);
                     AreaMap.forget(this);
                     Places.forget(this);

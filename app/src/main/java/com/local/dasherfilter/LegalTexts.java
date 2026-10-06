@@ -273,9 +273,10 @@ final class LegalTexts {
             Estimated net rates reuse the separate bounded numeric offer/wait history above. They subtract entered \
             per-mile costs and use displayed route times plus observed eligible waiting; they do not measure \
             completed earnings, unpaid return trips or all working time. The AR snapshot date may select a \
-            sufficiently supported observation cohort; its numeric value is not a causal dispatch multiplier. These \
-            settings, AR snapshots, estimates and adjustment records are not added to diagnostic logs, reports or \
-            uploads.
+            sufficiently supported observation cohort; its numeric value is not a causal dispatch multiplier. One \
+            last-adjustment record stores its numeric percentage, evidence counts, time and boot/elapsed cooldown \
+            markers until replaced, cleared or uninstalled; it cannot restore tap authority. These settings, AR \
+            snapshots, estimates and adjustment records are not added to diagnostic logs, reports or uploads.
 
             Automatic adjustment starts off and requires a separate confirmation. It changes only the shared \
             minimums percentage, within your selected bounds, by at most five percentage points and no more often \

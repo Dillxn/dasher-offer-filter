@@ -97,7 +97,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     + "its 1 per mile shares the $10 ring radius for display only. "
                     + "Farther out means higher payout or pay rates, or a final stop nearer the hotspot. "
                     + "Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers. "
-                    + "Drag the percentage sideways to scale all minimums without changing those saved values.",
+                    + "Use the minimums slider to allow more offers or raise the pay target without changing those saved values.",
                     star.getContentDescription().toString());
             // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
             // The per-stop spoke holds the set minimum as the example's 2 stops × $1.00, beside the adaptive 2 × $7.10.
@@ -602,6 +602,12 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     nodes.createAccessibilityNodeInfo(MinimumsStarView.ADOPT_ID).getContentDescription().toString());
             settleSky(content);
             assertEquals("Undo stays under the finger, though the set shape grew", button, star.adoptBox());
+            android.graphics.RectF stops = star.stopsBox();
+            assertNotNull("max stops remains reachable while Undo is shown", stops);
+            float grow = Math.max(0, new Ui(app).dp(48) - stops.height()) / 2;
+            stops.inset(-grow, -grow);
+            assertFalse("the moving max-stops target cannot cover pinned Undo",
+                    android.graphics.RectF.intersects(stops, button));
 
             // Undo puts the four back exactly.
             button = star.adoptBox();

@@ -444,6 +444,7 @@ final class MinimumsStarView extends View {
     private TextView selectivityValue;
     private boolean scaleGestureCanceled;
     private boolean compactSelectivity;
+    private boolean selectivityActivityActive = true;
     private AlertDialog selectivityDialog;
     private Switch selectivityMode;
     private int legacyTouchPercent = -1;
@@ -3517,8 +3518,16 @@ final class MinimumsStarView extends View {
         nodesChanged();
     }
 
+    void setSelectivityActivityActive(boolean active) {
+        selectivityActivityActive = active;
+        if (!active) closeSelectivityPanel();
+    }
+
+    void dismissSelectivityControls() { closeSelectivityPanel(); }
+
     private boolean selectivityHostActive() {
-        if (!isAttachedToWindow() || !isShown()) return false;
+        if (!selectivityActivityActive || !isAttachedToWindow() || !isShown()
+                || getWindowVisibility() != VISIBLE) return false;
         Context context = getContext();
         while (context instanceof ContextWrapper && !(context instanceof Activity)) {
             Context next = ((ContextWrapper) context).getBaseContext();
@@ -3906,6 +3915,11 @@ final class MinimumsStarView extends View {
 
     @Override protected void onVisibilityChanged(View changed, int visibility) {
         super.onVisibilityChanged(changed, visibility);
+        if (visibility != VISIBLE) closeSelectivityPanel();
+    }
+
+    @Override protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
         if (visibility != VISIBLE) closeSelectivityPanel();
     }
 

@@ -1,3 +1,12 @@
+## 0.4.73 — local cost estimates and deliberate selectivity (candidate)
+
+- Adds an accessible native 1–200% minimums slider with separate area-mode control and responsive compact dialog
+- Adds explicit driving costs, an optional fuel/MPG/wear calculator and dated manual reported acceptance-rate history, all local
+- Adds off-by-default, separately confirmed automatic adjustment using bounded observed offer/wait evidence, chosen limits and unchanged action-safety guards
+- Preserves learned/saved minimums; manual percentage changes disable automatic adjustment. No proprietary dispatch model or actual earnings guarantee is claimed
+- Raises Consent 14 and documents local retention. Required simulated Android coverage is 26/35/36; optional 27 remains separately disclosed
+- Reconstructed source is checkpointed independently; fresh full verification, original-signer publication and real-phone evidence are separate gates
+
 ## 0.4.71 — keep Peek from returning during offer loading (candidate)
 
 - Restarts Peek's four-second empty-screen wait when Dasher is loading, drawing only part of an offer, or cannot be read completely. A final fresh read must still confirm that the full empty-screen interval elapsed before returning to the previous app.
