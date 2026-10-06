@@ -140,6 +140,14 @@ final class Dashing {
         return recent || (open(prefs) && ActiveRouteStore.load(context) != null);
     }
 
+    /**
+     * When anything of a dash was last seen (an offer, Dasher's wait for offers or a delivery screen; wall clock), 0
+     * for never. Written at most every half minute. Only {@link UpdateHold}'s ceiling reads it.
+     */
+    static long lastSeen(Context context) {
+        return prefs(context).getLong(SEEN_AT, 0);
+    }
+
     /** For tests: forget the write throttle. */
     static void forgetCache() {
         lastWrite = 0;

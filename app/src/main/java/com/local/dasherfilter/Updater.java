@@ -3,7 +3,6 @@ package com.local.dasherfilter;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.job.JobInfo;
@@ -60,7 +59,6 @@ final class Updater {
     private static final int MAX_FEED_BYTES = 16384;
     private static final int MAX_FAILURES = 8;
     private static final Pattern POSITIVE_INTEGER = Pattern.compile("[1-9][0-9]{0,9}");
-    private static final String UPDATE_CHANNEL_ID = "updates";
 
     private static final String ENABLED = "enabled";
     /** Set once the retired Automatic updates switch's "off" was cleared (or checks were set since). */
@@ -352,12 +350,14 @@ final class Updater {
             if (manual) DiagnosticLog.log(app, "update", "check start manual=true installed=" + version(app));
             PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), signingFlags());
             VerifiedReady ready = verifiedReady;
-            if (!manual && ready != null && ready.unchanged(app, installed) && Dashing.awaitingEnd(app)
+            if (!manual && ready != null && ready.unchanged(app, installed) && UpdateHold.holds(app)
                     && !prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)
                     && app.getPackageManager().canRequestPackageInstalls()) {
                 // The first check already downloaded and verified this APK. A five-minute wakeup during a
-                // hours-long dash only needs to keep waiting. Once the dash ends (or the user asks), both feeds
-                // and every APK check run again before installation; these cheap file checks cannot install it.
+                // hours-long dash only needs to keep waiting. Once the dash ends, its hold reaches its ceiling
+                // (UpdateHold) or the user asks, the feed and every APK check run again before installation; these
+                // cheap file checks cannot install it.
+                hold(app, ready.release);
                 settle(app, trigger, AFTER_DASH, ready.release);
                 retry(app, DASH_RETRY_MS, false);
                 return;
@@ -400,13 +400,28 @@ final class Updater {
                     .apply();
             String failed = "Update failed: " + error.getClass().getSimpleName() + ": " + error.getMessage()
                     + ". Retry requested after " + delay / 60000 + " min; Android may defer it.";
-            // A failure is always logged, automatic or not.
-            show(app, failed);
+            // A failure is always logged in full, automatic or not; Settings shows it in plain words.
+            show(app, failedInPlainWords(error, delay));
             DiagnosticLog.logAndRemember(app, "update", "result", failed,
                     manual ? "" : "automatic check (" + trigger.label() + "): ");
             resetCadence(app);
             retry(app, delay);
         }
+    }
+
+    /**
+     * What Settings says of a failed check: no exception names (the log keeps them), only whether the server was out
+     * of reach or the update did not pass, and when it tries again.
+     */
+    static String failedInPlainWords(Throwable error, long retryDelayMs) {
+        boolean unreachable = false;
+        for (Throwable cause = error; cause != null && !unreachable; cause = cause.getCause()) {
+            unreachable = cause instanceof java.net.UnknownHostException || cause instanceof java.net.SocketException
+                    || cause instanceof java.net.SocketTimeoutException || cause instanceof javax.net.ssl.SSLException;
+        }
+        long minutes = Math.max(1, retryDelayMs / 60_000L);
+        return (unreachable ? "Couldn't reach the update server (no connection?)."
+                : "The update check didn't finish; nothing was installed.") + " Tries again in " + minutes + " min.";
     }
 
     /**
@@ -568,18 +583,50 @@ final class Updater {
 
     /** What an automatic install says while a dash is on: it waits for the dash to end. */
     static final String AFTER_DASH = "Update ready: installs after your dash";
+    /** What a verified update says while updates from this app are not allowed; a tap on Updates opens the switch. */
+    static final String BLOCKED = "Update ready: tap to allow updates from " + AppName.NAME;
     /** How often an update held for a dash is tried again. */
     static final long DASH_RETRY_MS = 5 * 60_000L;
+    /**
+     * The version name of a verified update held back (by the dash, the switch or a declined install); see below. Not
+     * "held_…": resetCadence clears every key with that prefix.
+     */
+    private static final String HELD_VERSION = "ready_version";
+
+    /**
+     * A verified update an automatic check held back, as its version name, or null: for the homepage's "Update ready ·
+     * Install now" line, whose tap is the user's own check (the fresh feed and every APK check again). Kept until the
+     * update is handed to Android or the app is up to date. It never authorizes anything.
+     */
+    static String heldVersion(Context context) {
+        return prefs(context).getString(HELD_VERSION, null);
+    }
+
+    private static void hold(Context context, Release release) {
+        String name = release.json.optString("versionName", "");
+        if (!name.equals(heldVersion(context))) prefs(context).edit().putString(HELD_VERSION, name).apply();
+    }
+
+    /** Whether the verified update waits only for updates from this app to be allowed (a tap then opens the switch). */
+    static boolean waitsForPermission(Context context) {
+        return heldVersion(context) != null && !context.getPackageManager().canRequestPackageInstalls();
+    }
 
     /**
      * Why a verified update does not install now (it is retried), or null when it may. An automatic one waits while a
      * dash has not been seen to end ({@link Dashing#awaitingEnd}): installing closes Offer Filter, and with it its
-     * half of a split screen beside Dasher and anything it was watching. It also waits while an offer or delivery
-     * is up, or while the user is in the middle of something on Offer Filter's screen an update would lose (typing
-     * rules). The user's own check still installs mid-dash; only Dasher on screen holds it back.
+     * half of a split screen beside Dasher and anything it was watching; that wait ends at its ceiling
+     * ({@link UpdateHold}), logged with its reason. It also waits while an offer or delivery is up, or while the user
+     * is in the middle of something on Offer Filter's screen an update would lose (typing rules). The user's own
+     * check still installs mid-dash; only Dasher on screen holds it back.
      */
     static String heldBack(Context context, boolean manual) {
-        if (!manual && Dashing.awaitingEnd(context)) return AFTER_DASH;
+        if (!manual && Dashing.awaitingEnd(context)) {
+            String ceiling = UpdateHold.ceilingReached(context, System.currentTimeMillis());
+            if (ceiling == null) return AFTER_DASH;
+            DiagnosticLog.log(context, "update", "dash hold reached its ceiling: " + ceiling
+                    + "; the freshly verified update may install");
+        }
         boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
         if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
             return "Update verified; installation deferred while an offer/delivery is active.";
@@ -600,17 +647,21 @@ final class Updater {
         SharedPreferences prefs = prefs(context);
         if (!enabled(context) && !manual) return;
         if (!manual && prefs.getBoolean(MANUAL_RETRY_REQUIRED, false)) {
+            hold(context, checked);
             settle(context, trigger, "Android declined the previous installation. Manual retry is required.", checked);
             return;
         }
         if (manual) prefs.edit().remove(MANUAL_RETRY_REQUIRED).apply();
         if (!context.getPackageManager().canRequestPackageInstalls()) {
-            settle(context, trigger, "Update verified and ready. In Settings, tap Fix beside Updates can't install, "
-                    + "then enable Allow from this source.", checked);
+            hold(context, checked);
+            settle(context, trigger, BLOCKED, checked);
+            // Once per version, a quiet notice whose tap opens the switch; the homepage asks too (Allow updates).
+            UpdateNotices.installsBlocked(context, checked.versionCode());
             return;
         }
         String wait = heldBack(context, manual);
         if (wait != null) {
+            hold(context, checked);
             settle(context, trigger, wait, checked);
             // A dash lasts hours: looked at again every few minutes, not every minute.
             retry(context, AFTER_DASH.equals(wait) ? DASH_RETRY_MS : MIN_RETRY_DELAY_MS, manual);
@@ -702,15 +753,11 @@ final class Updater {
                 != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-        NotificationChannel channel =
-                new NotificationChannel(UPDATE_CHANNEL_ID, "App updates", NotificationManager.IMPORTANCE_LOW);
-        channel.setSound(null, null);
-        channel.enableVibration(false);
-        manager.createNotificationChannel(channel);
+        UpdateNotices.ensureChannel(manager);
         PendingIntent action = PendingIntent.getActivity(context, CONFIRMATION_NOTICE_ID, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UPDATE_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+        manager.notify(CONFIRMATION_NOTICE_ID, new Notification.Builder(context, UpdateNotices.CHANNEL_ID)
+                .setSmallIcon(OfferAlerts.smallIcon(context))
                 .setContentTitle(AppName.NAME + " update ready")
                 .setContentText("Tap to confirm installation.")
                 .setContentIntent(action)
@@ -725,7 +772,8 @@ final class Updater {
      */
     static void installStarted(Context context, boolean onScreen) {
         long now = System.currentTimeMillis();
-        SharedPreferences.Editor edit = prefs(context).edit().putLong(COMMITTED_AT, now);
+        // Handed to Android: no longer an update held back.
+        SharedPreferences.Editor edit = prefs(context).edit().putLong(COMMITTED_AT, now).remove(HELD_VERSION);
         if (onScreen) {
             edit.putLong(RELAUNCH_AT, now).putLong(RELAUNCH_FROM, versionCode(context));
         } else {
@@ -736,10 +784,15 @@ final class Updater {
 
     /** An update is being installed: handed to Android, and neither failed nor finished yet. */
     static boolean installing(Context context) {
+        return installingSince(context) > 0;
+    }
+
+    /** When the update being installed was handed to Android (wall clock), or 0 while none is. */
+    static long installingSince(Context context) {
         SharedPreferences prefs = prefs(context);
         long at = prefs.getLong(COMMITTED_AT, 0);
         long age = System.currentTimeMillis() - at;
-        return at > 0 && prefs.contains(SESSION) && age >= 0 && age < INSTALL_WINDOW_MS;
+        return at > 0 && prefs.contains(SESSION) && age >= 0 && age < INSTALL_WINDOW_MS ? at : 0;
     }
 
     /**
@@ -796,9 +849,13 @@ final class Updater {
                 .remove(RELAUNCH_FROM)
                 .putBoolean(MANUAL_RETRY_REQUIRED, true)
                 .apply();
-        status(context, "Android installation failed (" + code + "): " + detail
-                + ". Tap Updates in Settings to retry.");
+        // Android's code and words go to the log; Settings says it in plain words.
+        DiagnosticLog.log(context, "update", "Android installation failed (" + code + "): " + detail);
+        status(context, INSTALL_FAILED);
     }
+
+    /** What Settings says after Android did not install an update. */
+    static final String INSTALL_FAILED = "The update didn't install. Tap Updates to try again.";
 
     /** Forgets any prepared update: session bookkeeping, the cached APK, and the confirmation notice. */
     static void clearReady(Context context) {
@@ -809,6 +866,7 @@ final class Updater {
                 .remove(SESSION_AT)
                 .remove(COMMITTED_AT)
                 .remove(MANUAL_RETRY_REQUIRED)
+                .remove(HELD_VERSION)
                 // Written by 0.4.5 and earlier but never read; removed here so old installs shed them.
                 .remove("ready")
                 .remove("confirmation_needed")
@@ -821,6 +879,7 @@ final class Updater {
         }
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager != null) manager.cancel(CONFIRMATION_NOTICE_ID);
+        UpdateNotices.cancelBlocked(context);
     }
 
     private Updater() {}

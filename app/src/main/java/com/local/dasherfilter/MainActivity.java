@@ -109,8 +109,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FrameLayout sheet;
     private DrawerCard sheetCard;
     private TextView areaLine;
-    /** Over everything while an update installs: it says so and takes no input until the new version opens. */
-    private LinearLayout updatingCover;
+    /** Over everything while an update installs; after a minute it offers "Still updating? Continue". */
+    private UpdatingCover updatingCover;
     private ScrollView settingsPage;
     private boolean showingSettings;
     /**
@@ -230,6 +230,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FeedbackDialogs feedbackDialogs;
     /** On the homepage after the app stopped unexpectedly, while diagnostics after each dash are off. */
     private Readiness stopNotice;
+    /** On the homepage: a held, verified update while no dash is on. */
+    private UpdateReadyRow updateReady;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
 
@@ -271,7 +273,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
-        buildUpdatingCover(root);
+        updatingCover = new UpdatingCover(this, ui, root);
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
         root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -347,7 +349,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
         // While updating, nothing is to be interrupted; the new version opens by itself.
-        if (updatingCover.getVisibility() == View.VISIBLE) return;
+        if (updatingCover.shown()) return;
         // Back from the notice is Not now: the app closes, and the notice comes again next time.
         if (noticeShown()) super.onBackPressed();
         else if (sheet.getVisibility() == View.VISIBLE) closeSheet();
@@ -607,28 +609,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, weight);
     }
 
-    private void buildUpdatingCover(FrameLayout root) {
-        updatingCover = ui.column();
-        updatingCover.setGravity(Gravity.CENTER);
-        updatingCover.setBackgroundColor(ui.page);
-        updatingCover.setVisibility(View.GONE);
-        // Clickable: every touch lands here and goes no further.
-        updatingCover.setClickable(true);
-        updatingCover.setFocusable(true);
-        updatingCover.addView(new UpdatingView(this, ui), Ui.matchWidth());
-        TextView title = ui.text("Updating " + AppName.NAME + "…", 20, ui.ink, true);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        title.setPadding(0, ui.dp(12), 0, 0);
-        updatingCover.addView(title, Ui.matchWidth());
-        TextView note = ui.text("It opens again by itself in a moment.", 15, ui.inkSecondary, false);
-        note.setGravity(Gravity.CENTER_HORIZONTAL);
-        note.setPadding(ui.dp(24), ui.dp(6), ui.dp(24), 0);
-        updatingCover.addView(note, Ui.matchWidth());
-        updatingCover.setContentDescription("Updating " + AppName.NAME + ". It opens again by itself in a moment.");
-        root.addView(updatingCover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
     private void buildSheet(FrameLayout root) {
         sheet = new FrameLayout(this);
         sheet.setBackground(new android.graphics.drawable.ColorDrawable(0x66000000));
@@ -734,6 +714,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        // A verified update held back while no dash is on: "Update ready · Install now" (the user's own check).
+        updateReady = new UpdateReadyRow(this, ui, problems);
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
@@ -1199,7 +1181,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         LinearLayout connections = group(body);
         // Checks are always automatic; a tap checks now. Public signed updates need no user account.
-        updatesRow = ui.listRow(connections, "Updates", () -> Updater.check(this, true, null));
+        // A verified update that waits only for updates to be allowed: the tap opens that switch instead.
+        updatesRow = ui.listRow(connections, "Updates", () -> {
+            if (Updater.waitsForPermission(this)) open(UpdateNotices.allowUpdates(this));
+            else Updater.check(this, true, null);
+        });
 
         LinearLayout reports = group(body);
         feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
@@ -1360,6 +1346,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading.update(readerConnected);
         backgroundOffers.update(OfferNotificationService.isConnected());
         offerAlerts.update(alertsAllowed.get());
+        updateReady.refresh(installsAllowed.get());
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
@@ -1379,15 +1366,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refreshAreas();
         refreshHero(saved.enabled ? FilterHeroView.State.ON
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
-        boolean updating = Updater.installing(this);
-        if (updating != (updatingCover.getVisibility() == View.VISIBLE)) {
-            updatingCover.setVisibility(updating ? View.VISIBLE : View.GONE);
-            if (updating) {
-                updatingCover.setAlpha(0f);
-                updatingCover.animate().alpha(1f).setDuration(250);
-                updatingCover.announceForAccessibility("Updating " + AppName.NAME);
-            }
-        }
+        updatingCover.refresh();
         refreshSettings();
     }
 
