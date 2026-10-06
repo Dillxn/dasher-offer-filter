@@ -43,6 +43,7 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScoreByAreaAdapterTest {
+    @org.junit.Rule public final VisibleActivityWindows visibleWindows = new VisibleActivityWindows();
     private static final FilterSettings USER = new FilterSettings(true, 1300, 385, 41, 475, 3);
 
     private Application app;

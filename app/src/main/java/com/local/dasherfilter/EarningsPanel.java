@@ -9,6 +9,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.util.List;
 import java.util.Locale;
 
@@ -47,17 +48,17 @@ final class EarningsPanel {
         button(body, "Calculate cost from my entries", () -> {
             Double f = number(fuel), m = number(mpg), w = number(wear);
             if (f == null || m == null || w == null || m <= 0) {
-                status.setText("Enter fuel price, positive observed MPG and wear allowance. Nothing was saved."); return;
+                report("Enter fuel price, positive observed MPG and wear allowance. Nothing was saved."); return;
             }
             double value = f / m + w;
-            if (!Double.isFinite(value) || value > EarningsModel.MAX_COST_CENTS_PER_MILE / 100) { status.setText("Check the cost entries. Nothing was saved."); return; }
+            if (!Double.isFinite(value) || value > EarningsModel.MAX_COST_CENTS_PER_MILE / 100) { report("Check the cost entries. Nothing was saved."); return; }
             cost.setText(String.format(Locale.US, "%.6f", value));
-            status.setText("Calculated in the field only. Tap Save driving cost to use it.");
+            report("Calculated in the field only. Tap Save driving cost to use it.");
         });
         button(body, "Save driving cost", () -> {
             String raw = cost.getText().toString().trim();
             Double dollars = raw.isEmpty() ? null : number(cost);
-            if (!raw.isEmpty() && (dollars == null || dollars * 100 > EarningsModel.MAX_COST_CENTS_PER_MILE)) { status.setText("Enter a nonnegative cost, or leave it blank for unknown."); return; }
+            if (!raw.isEmpty() && (dollars == null || dollars * 100 > EarningsModel.MAX_COST_CENTS_PER_MILE)) { report("Enter a cost from $0 to $10 per mile, or leave it blank for unknown."); return; }
             EarningsModel.Config current = EarningsStore.config(activity);
             save(new EarningsModel.Config(false, dollars == null ? null : dollars * 100,
                     current.floorPercent, current.ceilingPercent), "Driving cost saved. Automatic adjustment is off.");
@@ -65,13 +66,13 @@ final class EarningsPanel {
         ar = input(body, "Reported acceptance rate now (0–100%)", false);
         button(body, "Record reported rate", () -> {
             Integer value = integer(ar);
-            if (value == null || value < 0 || value > 100) { status.setText("Enter a whole reported rate from 0 to 100."); return; }
+            if (value == null || value < 0 || value > 100) { report("Enter a whole reported rate from 0 to 100."); return; }
             if (!EarningsStore.recordAr(activity, value, System.currentTimeMillis())) {
-                status.setText("The rate could not be saved."); return;
+                report("The rate could not be saved."); return;
             }
             ar.setText("");
             loadFields();
-            status.setText("Reported rate recorded locally. It is not read automatically or used as a causal dispatch multiplier.");
+            report("Reported rate recorded locally. It is not read automatically or used as a causal dispatch multiplier.");
             changed();
         });
         button(body, "View reported rate history", this::showHistory);
@@ -81,7 +82,7 @@ final class EarningsPanel {
         button(body, "Save bounds", () -> {
             Integer low = integer(floor), high = integer(ceiling);
             if (low == null || high == null || low < 1 || high > 200 || low > high) {
-                status.setText("Use whole bounds from 1 to 200, with lower no greater than upper."); return;
+                report("Use whole bounds from 1 to 200, with lower no greater than upper."); return;
             }
             EarningsModel.Config current = EarningsStore.config(activity);
             save(new EarningsModel.Config(false, current.vehicleCostCentsPerMile, low, high),
@@ -130,7 +131,7 @@ final class EarningsPanel {
         if (shownConfig == null || current.generation != shownConfig.generation
                 || !current.config.key().equals(shownConfig.config.key())) {
             loadFields();
-            status.setText("Settings changed. Review the current values before saving again.");
+            report("Settings changed. Review the current values before saving again.");
             return false;
         }
         return true;
@@ -138,9 +139,9 @@ final class EarningsPanel {
 
     private void save(EarningsModel.Config config, String message) {
         if (!current()) return;
-        if (!EarningsStore.saveConfigIfCurrent(activity, config, shownConfig)) { status.setText("Settings could not be saved."); return; }
+        if (!EarningsStore.saveConfigIfCurrent(activity, config, shownConfig)) { report("Settings could not be saved."); return; }
         loadFields();
-        status.setText(message);
+        report(message);
         changed();
     }
 
@@ -148,11 +149,11 @@ final class EarningsPanel {
         if (!current()) return;
         EarningsModel.Config selected = EarningsStore.config(activity);
         if (selected.vehicleCostCentsPerMile == null) {
-            status.setText("Save an explicit driving cost before enabling automatic adjustment."); return;
+            report("Save an explicit driving cost before enabling automatic adjustment."); return;
         }
         int currentPercent = FilterStore.load(activity).minimumScalePercent;
         if (currentPercent < selected.floorPercent || currentPercent > selected.ceilingPercent) {
-            status.setText("Your current " + currentPercent + "% minimums are outside the saved bounds. Save bounds that include them before enabling.");
+            report("Your current " + currentPercent + "% minimums are outside the saved bounds. Save bounds that include them before enabling.");
             return;
         }
         closeConfirmation();
@@ -170,17 +171,17 @@ final class EarningsPanel {
                     if (!active() || confirmation != expectedDialog[0] || !confirmation.isShowing() || dialog != parent || !EarningsStore.config(activity).key().equals(expected)) return;
                     int percent = FilterStore.load(activity).minimumScalePercent;
                     if (percent < selected.floorPercent || percent > selected.ceilingPercent) {
-                        status.setText("Current minimums are now outside the saved bounds. Review them before enabling.");
+                        report("Current minimums are now outside the saved bounds. Review them before enabling.");
                         return;
                     }
                     if (!EarningsStore.saveConfigIfCurrent(activity,
                             new EarningsModel.Config(true, selected.vehicleCostCentsPerMile,
                                     selected.floorPercent, selected.ceilingPercent), expectedConfig)) {
-                        status.setText("Settings changed or could not be saved. Review them before enabling again.");
+                        report("Settings changed or could not be saved. Review them before enabling again.");
                         return;
                     }
                     loadFields();
-                    status.setText("Automatic adjustment enabled. It waits for sufficient fresh evidence between offers.");
+                    report("Automatic adjustment enabled. It waits for sufficient fresh evidence between offers.");
                     changed();
                 }).create();
         expectedDialog[0] = confirmation;
@@ -221,6 +222,13 @@ final class EarningsPanel {
         else builder.setItems(labels, null);
         historyDialog = OwnWindowTouches.show(builder);
         loadFields();
+    }
+
+    /** Explicit actions need feedback even when the persistent status is below the current scroll position. */
+    private void report(String message) {
+        if (!active()) return;
+        status.setText(message);
+        Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
     }
 
     private void changed() { if (onChanged != null) onChanged.run(); }

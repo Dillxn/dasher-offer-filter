@@ -3,6 +3,7 @@ package com.local.dasherfilter;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -13,6 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
+import org.robolectric.Shadows;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
@@ -48,6 +50,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
     @Test public void blankIsUnknownAndExplicitZeroIsKnown() throws Exception {
         field("cost").setText("0"); click("Save driving cost");
         assertEquals(0, EarningsStore.config(activity).vehicleCostCentsPerMile, 0);
+        assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("Driving cost saved"));
         field("cost").setText(""); click("Save driving cost");
         assertNull(EarningsStore.config(activity).vehicleCostCentsPerMile);
     }
@@ -83,6 +86,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         AlertDialog confirmation = (AlertDialog) object("confirmation");
         assertNotNull(confirmation);
         confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertTrue(EarningsStore.config(activity).enabled);
     }
     @Test public void canceledConfirmationAndOldPanelButtonsCannotEnable() throws Exception {
@@ -92,6 +96,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         Button oldConfirm = confirmation.getButton(AlertDialog.BUTTON_POSITIVE);
         confirmation.dismiss();
         oldConfirm.performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertFalse(EarningsStore.config(activity).enabled);
         Button oldSave = button(dialog().getWindow().getDecorView(), "Save driving cost");
         panel.dismiss(); panel.show(); field("cost").setText("0"); oldSave.performClick();
@@ -105,6 +110,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         EarningsStore.saveConfig(activity, new EarningsModel.Config(false, 25.0, 90, 110));
         EarningsStore.saveConfig(activity, original);
         confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertFalse(EarningsStore.config(activity).enabled);
     }
     @Test public void boundsSaveDoesNotApplyPercentageOrEnable() throws Exception {
@@ -150,6 +156,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         field("ar").setText("8"); click("Record reported rate");
         assertTrue(EarningsStore.arHistory(activity, System.currentTimeMillis()).isEmpty());
         assertTrue(((android.widget.TextView) object("status")).getText().toString().contains("could not"));
+        assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("could not"));
         activity.failWrites = false;
     }
     @Test public void failedOffAndEnableDoNotFalselyReportSuccess() throws Exception {
@@ -158,15 +165,18 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         AlertDialog confirmation = (AlertDialog) object("confirmation");
         activity.failWrites = true;
         confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertFalse(EarningsStore.config(activity).enabled);
         assertTrue(dialog().isShowing());
         activity.failWrites = false;
         panel.dismiss(); panel.show(); click("Enable automatic adjustment…");
         ((AlertDialog) object("confirmation")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertTrue(EarningsStore.config(activity).enabled);
         activity.failWrites = true; click("Turn automatic adjustment off");
         assertTrue(EarningsStore.config(activity).enabled);
         assertTrue(((android.widget.TextView) object("status")).getText().toString().contains("could not"));
+        assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("could not"));
         activity.failWrites = false;
     }
     @Test public void oldConfirmationCannotUseRefreshedPanelGeneration() throws Exception {
@@ -178,6 +188,7 @@ public class EarningsPanelTest extends AndroidAdapterTestBase {
         java.lang.reflect.Method refresh = EarningsPanel.class.getDeclaredMethod("loadFields");
         refresh.setAccessible(true); refresh.invoke(panel);
         confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); // AlertDialog delivers its listener through a Handler.
         assertFalse(EarningsStore.config(activity).enabled);
     }
     public static class PanelActivity extends Activity {

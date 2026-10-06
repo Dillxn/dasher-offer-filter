@@ -32,6 +32,7 @@ import static org.junit.Assert.*;
 @Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
+    @org.junit.Rule public final VisibleActivityWindows visibleWindows = new VisibleActivityWindows();
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 3)
             .withScoreByArea(true);
 

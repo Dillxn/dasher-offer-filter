@@ -4,7 +4,7 @@ Status: reconstructed candidate; fresh aggregate validation and signed publicati
 
 ## Feature acceptance
 
-- **One simple selectivity control:** native 1–200% one-point slider, accessible current value and explicit lower-minimum/more-offer versus higher-minimum/higher-pay-target labels. Compact windows open the control from the existing chip; roomy windows can show it inline. Strict/area mode remains a separate deliberate choice. Higher pay target is not a promise of more earnings.
+- **One simple selectivity control:** native 1–200% one-point slider, accessible current value and explicit lower-minimum/more-offer versus higher-minimum/more-money-goal labels. Compact windows open the control from the existing chip; roomy windows can show it inline. Strict/area mode remains a separate deliberate choice. Higher pay target is not a promise of more earnings.
 - **Existing minimums:** saved and learned floors, exact scoring, per-item learning, manual takeover and migrations are preserved. A manual scale change disables the optional optimizer before saving the new percentage.
 - **Local costs:** explicitly entered per-mile cost, blank unknown and explicit zero distinct. An optional calculator uses the driver's own fuel price, observed MPG and wear allowance; it does not query a price provider or fabricate a profitable default.
 - **Acceptance-rate history:** bounded, dated, manually entered reported rates, at most 200 over 30 days. This implements inspectable manual history, not automatic platform AR capture. The date may select a sufficiently supported cohort; numeric AR is not a causal dispatch multiplier.

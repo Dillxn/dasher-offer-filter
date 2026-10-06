@@ -34,6 +34,7 @@ import static org.junit.Assert.*;
 @Config(sdk = {26, 35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SelectivityControlTest extends AndroidAdapterTestBase {
+    @org.junit.Rule public final VisibleActivityWindows visibleWindows = new VisibleActivityWindows();
     private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 3)
             .withPerItem(75).withAdaptive(true).withScoreByArea(true);
 
@@ -48,10 +49,10 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             assertTrue(page.slider.getWidth() >= page.ui.dp(48));
             String said = node.getContentDescription().toString();
             assertTrue(said.contains("Left: more offers, lower minimums"));
-            assertTrue(said.contains("Right: higher pay target, higher minimums"));
+            assertTrue(said.contains("Right: more money goal, higher minimums"));
             assertTrue(said.contains("do not guarantee higher earnings"));
             assertNotNull(shownTextContaining(page.control, "More offers"));
-            assertNotNull(shownTextContaining(page.control, "Higher pay target"));
+            assertNotNull(shownTextContaining(page.control, "More money goal"));
             assertNotNull(shownTextContaining(page.control, "100%"));
             assertSame(page.control, page.star.createSelectivityControl());
             assertEquals(0, page.saves);
@@ -60,7 +61,12 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
 
     @Test public void readerUsesOnePointStepsAndExactRangeWithoutEditingFloors() {
         try (Fixture page = new Fixture(RULES)) {
-            assertTrue(page.slider.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
+            assertEquals("positive fixture has a visible app window", View.VISIBLE, page.star.getWindowVisibility());
+            assertTrue("host attached=" + page.star.isAttachedToWindow() + ", shown=" + page.star.isShown()
+                            + ", window=" + page.star.getWindowVisibility() + "; slider attached="
+                            + page.slider.isAttachedToWindow() + ", shown=" + page.slider.isShown()
+                            + ", window=" + page.slider.getWindowVisibility(),
+                    page.slider.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
             assertEquals(101, page.rules.minimumScalePercent);
             assertTrue(page.slider.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null));
             assertEquals(100, page.rules.minimumScalePercent);
@@ -199,7 +205,7 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             SeekBar slider = find(dialog.getWindow().getDecorView(), SeekBar.class);
             assertTrue(slider.getHeight() >= new Ui(app).dp(48));
             assertNotNull(shownTextContaining(dialog.getWindow().getDecorView(), "More offers"));
-            assertNotNull(shownTextContaining(dialog.getWindow().getDecorView(), "Higher pay target"));
+            assertNotNull(shownTextContaining(dialog.getWindow().getDecorView(), "More money goal"));
             assertTrue(setProgress(slider, 97));
             Switch mode = find(dialog.getWindow().getDecorView(), Switch.class);
             assertTrue(mode.isChecked());
@@ -364,6 +370,33 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
         assertFalse(slider.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT,
                 new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)));
         sendTouch(slider, MotionEvent.ACTION_UP, 180);
+    }
+
+    @Test public void actualWindowVisibilityLossCancelsTheGestureAndBlocksAllInputs() {
+        try (Fixture page = new Fixture(RULES)) {
+            assertEquals(View.VISIBLE, page.star.getWindowVisibility());
+            page.touch(MotionEvent.ACTION_DOWN, 100);
+            page.touch(MotionEvent.ACTION_MOVE, 180);
+            Object root = page.star.getRootView().getParent();
+            assertNotNull(root);
+            // Exercise the framework's real window-manager visibility callback, not a fake View.isShown override.
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(root, "handleAppVisibility",
+                    org.robolectric.util.ReflectionHelpers.ClassParameter.from(boolean.class, false));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNotEquals(View.VISIBLE, page.star.getWindowVisibility());
+            assertStaleSlider(page.slider);
+            assertEquals(100, page.rules.minimumScalePercent);
+            assertEquals(0, page.saves);
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(root, "handleAppVisibility",
+                    org.robolectric.util.ReflectionHelpers.ClassParameter.from(boolean.class, true));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals(View.VISIBLE, page.star.getWindowVisibility());
+            page.touch(MotionEvent.ACTION_UP, 180);
+            assertEquals("restored window cannot revive the old gesture", 100, page.rules.minimumScalePercent);
+            assertTrue(setProgress(page.slider, 97));
+            assertEquals(97, page.rules.minimumScalePercent);
+            assertEquals(1, page.saves);
+        }
     }
 
     @Test public void stoppedActivityRejectsInlineInputsAndResumeRequiresAFreshGesture() {

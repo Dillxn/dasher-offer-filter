@@ -3614,7 +3614,7 @@ final class MinimumsStarView extends View {
         selectivityValue.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         labels.addView(selectivityValue, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        TextView higher = ui.text("Higher pay target\nHigher minimums", 12, ui.inkSecondary, false);
+        TextView higher = ui.text("More money goal\nHigher minimums", 12, ui.inkSecondary, false);
         higher.setGravity(Gravity.END);
         higher.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         labels.addView(higher, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -3672,7 +3672,7 @@ final class MinimumsStarView extends View {
         if (selectivitySlider.getProgress() != percent) selectivitySlider.setProgress(percent);
         selectivitySlider.setEnabled(changes != null);
         selectivitySlider.setContentDescription("Minimums " + percent + " percent. "
-                + "Left: more offers, lower minimums. Right: higher pay target, higher minimums. "
+                + "Left: more offers, lower minimums. Right: more money goal, higher minimums. "
                 + "Higher minimums may mean fewer matching offers and do not guarantee higher earnings.");
         if (Build.VERSION.SDK_INT >= 30) selectivitySlider.setStateDescription(percent + " percent");
     }
