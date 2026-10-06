@@ -214,13 +214,13 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
             assertFalse(dialog.isShowing());
             dialog = openCompact(star);
             assertEquals(97, find(dialog.getWindow().getDecorView(), SeekBar.class).getProgress());
             assertFalse(find(dialog.getWindow().getDecorView(), Switch.class).isChecked());
             dialog.onBackPressed();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
             assertFalse(dialog.isShowing());
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
             assertFalse(FilterStore.autoAcceptEnabled(app));
@@ -344,7 +344,10 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             Switch staleMode = find(old.getWindow().getDecorView(), Switch.class);
             sendTouch(stale, MotionEvent.ACTION_DOWN, 100);
             sendTouch(stale, MotionEvent.ACTION_MOVE, 180);
-            controller.recreate();
+            // Recreate explicitly so the new window gets its scheduled first frame before focus.
+            // ActivityController.recreate() focuses immediately, before a paused traversal can attach it.
+            Bundle state = new Bundle();
+            controller.pause().stop().saveInstanceState(state).destroy();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertFalse("host owns and dismisses its panel", old.isShowing());
             assertStaleSlider(stale);
@@ -352,15 +355,22 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             assertFalse(oldNodes.performAction(MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK, null));
             assertEquals(100, FilterStore.load(app).minimumScalePercent);
             assertTrue(FilterStore.load(app).scoreByArea);
-            content = controller.get().findViewById(android.R.id.content);
-            settleSky(content);
-            MinimumsStarView host = find(content, MinimumsStarView.class);
-            if (host.beside()) { host.performClick(); settleSky(content); }
-            AlertDialog fresh = openCompact(host);
-            SeekBar current = find(fresh.getWindow().getDecorView(), SeekBar.class);
-            assertEquals(100, current.getProgress());
-            assertTrue(setProgress(current, 97));
-            fresh.dismiss();
+            try (ActivityController<MainActivity> recreated = Robolectric.buildActivity(MainActivity.class)) {
+                Shadows.shadowOf(recreated.get()).setInMultiWindowMode(true);
+                recreated.create(state).start().restoreInstanceState(state).postCreate(state)
+                        .resume().postResume().visible();
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
+                recreated.windowFocusChanged(true);
+                content = recreated.get().findViewById(android.R.id.content);
+                settleSky(content);
+                MinimumsStarView host = find(content, MinimumsStarView.class);
+                if (host.beside()) { host.performClick(); settleSky(content); }
+                AlertDialog fresh = openCompact(host);
+                SeekBar current = find(fresh.getWindow().getDecorView(), SeekBar.class);
+                assertEquals(100, current.getProgress());
+                assertTrue(setProgress(current, 97));
+                fresh.dismiss();
+            }
         }
     }
 
@@ -382,14 +392,14 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
             // Exercise the framework's real window-manager visibility callback, not a fake View.isShown override.
             org.robolectric.util.ReflectionHelpers.callInstanceMethod(root, "handleAppVisibility",
                     org.robolectric.util.ReflectionHelpers.ClassParameter.from(boolean.class, false));
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
             assertNotEquals(View.VISIBLE, page.star.getWindowVisibility());
             assertStaleSlider(page.slider);
             assertEquals(100, page.rules.minimumScalePercent);
             assertEquals(0, page.saves);
             org.robolectric.util.ReflectionHelpers.callInstanceMethod(root, "handleAppVisibility",
                     org.robolectric.util.ReflectionHelpers.ClassParameter.from(boolean.class, true));
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
             assertEquals(View.VISIBLE, page.star.getWindowVisibility());
             page.touch(MotionEvent.ACTION_UP, 180);
             assertEquals("restored window cannot revive the old gesture", 100, page.rules.minimumScalePercent);
@@ -456,7 +466,8 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
         AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
         assertNotNull(dialog);
         assertTrue(dialog.isShowing());
-        Shadows.shadowOf(Looper.getMainLooper()).idle(); // Attach the native window before reader input.
+        // Deliver the window's first traversal before reader input, using a real scheduled frame.
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
         View decor = dialog.getWindow().getDecorView();
         Ui ui = new Ui(star.getContext());
         decor.measure(View.MeasureSpec.makeMeasureSpec(star.getResources().getDisplayMetrics().widthPixels
@@ -530,6 +541,7 @@ public class SelectivityControlTest extends AndroidAdapterTestBase {
                     ViewGroup.LayoutParams.WRAP_CONTENT));
             root.addView(star, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(200)));
             controller.get().setContentView(root);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
             layOut(root);
             slider = find(control, SeekBar.class);
             assertNotNull(slider);

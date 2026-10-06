@@ -1,8 +1,10 @@
-# Reconstructed 0.4.73 local earnings candidate
+# Offer Filter development
+
+## Reconstructed 0.4.73 local earnings candidate
 
 - One bounded local earnings engine only. Explicit unknown cost is not zero; reported AR is manual context, not a causal dispatch multiplier. No new uploads or report inclusion. Optional adjustment defaults off, requires separate risk confirmation, and changes only the shared percentage between offers under exact final rules/config/history/window guards. Preserve learned/saved migration and every existing action guard. Manual percentage changes disable it. Minimum SDK 26 remains supported. Required release matrix 26/35/36; optional 27 is separately gated and must not be claimed passed without its runtime. See VALIDATION_EARNINGS_0.4.73.md and RECONCILIATION_EARNINGS_0.4.73.md.
 
-# Offer Filter development
+## Existing development constraints
 
 - .71 Peek: only an uninterrupted interval of positively recognized empty Dasher screens can permit a no-offer return. Loading, item-only offer evidence, unavailable foreground and failed/incomplete reads reset that interval. Recheck it after the final fresh read, and preserve the original 20-second Peek deadline through final return dispatch. Never infer the reported handset incident was reproduced from synthetic tests alone.
 

@@ -1,14 +1,14 @@
+# Offer Filter
+
+A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.
+
 ## Local selectivity and cost estimates (0.4.73 candidate)
 
 The native minimums control spans 1–200% without rewriting saved or learned floors. Compact windows open it from the existing chip; mode changes remain separate. Settings → Costs and estimates accepts explicit driving costs and a bounded dated manual acceptance-rate history. Blank cost stays unknown. All new data stays on the phone.
 
 Optional automatic adjustment starts off. After separate confirmation it may move the percentage within chosen bounds, at most five points per fifteen real minutes after sufficient fresh evidence, only between offers during visible unlocked waiting. Changing the percentage manually turns it off. Estimates use displayed offer time/mileage and monitored waiting; they are not completed earnings, a known DoorDash dispatch formula or a promise of profit. See VALIDATION_EARNINGS_0.4.73.md for acceptance, pending verification and remaining phone limitations.
 
-# Offer Filter
-
-A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.
-
-The home page identifies the latest or selected offer and its recorded outcome. Tap that caption for its ticket and learning result; tap a count to inspect its newest matching offer. Only the mascot pauses or resumes filtering. The minimums control says **Area** or **Each** above the active percentage. A numerical wait estimate appears only during positively observed waiting with enough qualifying evidence.
+The home page identifies the latest or selected offer and its recorded outcome. Tap that caption for its ticket and learning result; tap a count to inspect its newest matching offer. Only the mascot pauses or resumes filtering. In roomy windows the mode control says **Area** or **Each** beside the separate percentage slider. In compact windows the **Minimums** chip shows the percentage and opens the slider and separate mode switch. A numerical wait estimate appears only during positively observed waiting with enough qualifying evidence.
 
 **Navigate** remains available in split screen. It opens the best recorded offer-arrival area, nearby gas, or gas-price comparison in Maps/Waze, with a browser fallback. Historical area rates include sample counts and are not live hotspots or earnings predictions; station selection and current prices belong to the map provider. Arrival is not currently detected, so this does not automatically return from a map after arriving.
 
@@ -271,12 +271,12 @@ Run Android tests and builds only in the authorized local workspace. For a memor
 ```sh
 ./gradlew --no-daemon --no-parallel --max-workers=1 \
   '-Dorg.gradle.jvmargs=-Xmx512m -XX:+UseParallelGC -Dfile.encoding=UTF-8' \
-  -Pforks=1 -PtestHeap=768m -PallSdks testDebugUnitTest lintDebug
+  -Pforks=1 -PtestHeap=768m -PtestForkEvery=1 -PallSdks testDebugUnitTest lintDebug
 ```
 
-`org.gradle.jvmargs` caps the Gradle build JVM's heap; `testHeap` separately caps each test JVM's heap. `testHeap` defaults to the existing `1536m` and accepts a positive whole number followed by `m` or `g` (case-insensitive). Empty or malformed values fail configuration instead of silently falling back. `forks` still defaults to 3 when omitted. These opt-in limits do not change the shared defaults in `gradle.properties`.
+`org.gradle.jvmargs` caps the Gradle build JVM's heap; `testHeap` separately caps each test JVM's heap. `testHeap` defaults to the existing `1536m` and accepts a positive whole number followed by `m` or `g` (case-insensitive). Empty or malformed values fail configuration instead of silently falling back. `forks` still defaults to 3 when omitted. `testForkEvery` is a nonnegative whole number (default 0); setting it to 1 recycles the test JVM after each class to bound accumulated framework/native state. These opt-in limits do not change the shared defaults in `gradle.properties`.
 
-The command keeps the existing full test selection: `-PallSdks` removes the day-to-day API 35 restriction so tests use their declared SDKs, including API 26 and 35. It does not add API 36 coverage. Neither the SDK declarations nor test assertions are changed. Lint remains part of this local check; signing, publishing and real-phone verification still require their separate existing gates.
+Use JDK 21 for the full release matrix. `-PallSdks` removes the day-to-day API 35 restriction; the required adapters explicitly cover API 26, 35 and 36. Optional API 27 tests live in a separate source set enabled only with both `-PtestApi27 -PallSdks`; they are not a substitute for the required matrix and must be reported separately if their runtime is unavailable. Lint remains part of the local check; signing, publishing and real-phone verification have separate gates.
 
 To check that the tests actually execute within the smaller heap, add `--rerun-tasks --no-build-cache` to the command. An `UP-TO-DATE` or `FROM-CACHE` result alone does not demonstrate that the lower-memory test run succeeds.
 

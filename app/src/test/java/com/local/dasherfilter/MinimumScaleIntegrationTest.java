@@ -102,12 +102,21 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
             assertFalse("a tap still toggles area mode", FilterStore.load(app).scoreByArea);
             assertEquals("the mode toggle preserves the buffer", 97, FilterStore.load(app).minimumScalePercent);
-            controller.recreate();
-            content = controller.get().findViewById(android.R.id.content);
-            settleSky(content);
-            assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
-            assertEquals(97f, find(content, SeekBar.class).createAccessibilityNodeInfo()
-                    .getRangeInfo().getCurrent(), 0.001f);
+            // Preserve the saved-state recreation path, with a frame before native window focus.
+            // Robolectric's immediate recreate() focus precedes attachment with a paused Choreographer.
+            Bundle state = new Bundle();
+            controller.pause().stop().saveInstanceState(state).destroy();
+            try (ActivityController<MainActivity> recreated = Robolectric.buildActivity(MainActivity.class)) {
+                recreated.create(state).start().restoreInstanceState(state).postCreate(state)
+                        .resume().postResume().visible();
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
+                recreated.windowFocusChanged(true);
+                content = recreated.get().findViewById(android.R.id.content);
+                settleSky(content);
+                assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
+                assertEquals(97f, find(content, SeekBar.class).createAccessibilityNodeInfo()
+                        .getRangeInfo().getCurrent(), 0.001f);
+            }
         }
     }
 
