@@ -139,6 +139,22 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void feedbackStatusIsUntouchedAtHomeAndRefreshesWhenSettingsOpens() throws Exception {
+        FakeFeedbackTransport.installed().down = true;
+        Feedback.sendFeedback(app, Feedback.Category.GENERAL, "Waits for a network.", false, null);
+        Feedback.flush();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            TextView row = field(activity.get(), "feedbackRow");
+            row.setText("not read while hidden");
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
+            assertEquals("not read while hidden", row.getText().toString());
+            settings(activity);
+            assertEquals("Send anonymous feedback\n" + Feedback.status(app), row.getText().toString());
+            assertTrue(Feedback.status(app), Feedback.status(app).startsWith("1 waiting to send"));
+        }
+    }
+
     @Test @Config(sdk = {26, 28})
     public void visiblePausedOlderAndroidKeepsHistoryCurrentUntilStopped() throws Exception {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

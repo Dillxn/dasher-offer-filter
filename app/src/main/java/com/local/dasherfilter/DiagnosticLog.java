@@ -66,8 +66,9 @@ final class DiagnosticLog {
     /** Keeps a shared report comfortably inside Android's intent size limit (strings travel as UTF-16, twice). */
     private static final int MAX_REPORT_LOG_CHARS = 14_000;
     private static final int MAX_REPORT_SCREENS_CHARS = 10_000;
-    private static final int MAX_REPORT_CHARS = 60_000;
-    private static final int REPORT_DECISIONS = 100;
+    static final int MAX_REPORT_CHARS = 60_000;
+    static final String TRUNCATED = "\n[report truncated]";
+    static final int REPORT_DECISIONS = 100;
     /** What every report says about the screen text it carries. */
     static final String MASKED_NOTE = "Screen text is masked on the phone: names, street addresses, phone numbers, "
             + "emails, a customer's own instructions, card numbers and codes, and navigation's streets read [name], "
@@ -444,9 +445,14 @@ final class DiagnosticLog {
      * anonymous feedback.
      */
     static String report(Context context) {
+        // At most MAX_REPORT_CHARS, marker included: the oldest decisions go first, never the logs at its end.
         String report = fullReport(context);
+        for (int decisions = REPORT_DECISIONS - 10; report.length() > MAX_REPORT_CHARS && decisions >= 0;
+             decisions -= 10) {
+            report = fullReport(context, decisions);
+        }
         return report.length() <= MAX_REPORT_CHARS ? report
-                : report.substring(0, MAX_REPORT_CHARS) + "\n[report truncated]";
+                : report.substring(0, MAX_REPORT_CHARS - TRUNCATED.length()) + TRUNCATED;
     }
 
     /**
@@ -454,6 +460,11 @@ final class DiagnosticLog {
      * wrote (kept up to a day) leave masked too; masked text masks to itself.
      */
     static String fullReport(Context context) {
+        return fullReport(context, REPORT_DECISIONS);
+    }
+
+    /** The whole report with the newest {@code decisions} decisions (fewer, when a report must fit a size). */
+    static String fullReport(Context context, int decisions) {
         FilterSettings rules = FilterStore.load(context);
         SharedPreferences updates = Updater.prefs(context);
         String log = fitLog(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS, false);
@@ -493,7 +504,8 @@ final class DiagnosticLog {
                 + "\n"
                 + "In words: " + rules.describe() + "\n\n"
                 + "== Decision history (newest first)\n"
-                + DecisionLog.report(context, REPORT_DECISIONS) + "\n"
+                + (decisions < REPORT_DECISIONS ? "[only the newest " + decisions + " decisions fit]\n" : "")
+                + DecisionLog.report(context, Math.max(0, decisions)) + "\n"
                 + "== Updater\n"
                 + "Status: " + Updater.status(context) + "\n"
                 + "Latest advertised version: " + updates.getString("advertised", "none")
@@ -501,7 +513,8 @@ final class DiagnosticLog {
                 + "\n"
                 + "Last update attempt epoch ms: " + updates.getLong("attempt_at", 0) + "\n"
                 + "Last successful feed check epoch ms: " + updates.getLong("checked_at", 0) + "\n"
-                + Updater.cadenceSummary(context) + "\n\n"
+                + Updater.cadenceSummary(context)
+                + StopReports.section(context) + "\n\n"
                 + "== Latest states (each logged once when it changes, and at least daily)\n"
                 + states(context) + "\n"
                 + "== Raw diagnostic log\n"

@@ -33,9 +33,34 @@ final class Dashing {
         if (onDash && !prefs.getBoolean(PAUSED, false)
                 && now - lastWrite < WRITE_EVERY_MS && now >= lastWrite) return;
         lastWrite = now;
+        long previousStart = prefs.getLong(STARTED_AT, 0);
+        long previousSeen = prefs.getLong(SEEN_AT, 0);
+        boolean previousOpen = open(prefs);
         SharedPreferences.Editor edit = prefs.edit().putLong(SEEN_AT, now).putBoolean(OPEN, true).remove(PAUSED);
         if (!onDash) edit.putLong(STARTED_AT, now);
         edit.apply();
+        // A dash still open but quiet for half an hour ended then: its opt-in summary goes now (cheap when off).
+        if (!onDash && previousOpen && previousStart > 0) {
+            DashSummary.dashStarting(context, previousStart, previousSeen);
+        }
+    }
+
+    /** The dash under way's start (wall clock), or 0 when none is on. */
+    static long currentStart(Context context) {
+        return on(context) ? prefs(context).getLong(STARTED_AT, 0) : 0;
+    }
+
+    /**
+     * A dash still open whose last sighting is half an hour old (the quiet end), as {start, last seen}; else null.
+     * Only for the opt-in summary after each dash: it never ends the hold on automatic installation.
+     */
+    static long[] quietlyEnded(Context context) {
+        SharedPreferences prefs = prefs(context);
+        long started = prefs.getLong(STARTED_AT, 0);
+        long seen = prefs.getLong(SEEN_AT, 0);
+        long now = System.currentTimeMillis();
+        if (started <= 0 || seen <= 0 || !open(prefs) || now - seen < WINDOW_MS) return null;
+        return new long[] {started, seen};
     }
 
     private static boolean onDash(SharedPreferences prefs, long now) {
@@ -61,8 +86,13 @@ final class Dashing {
     /** Dasher positively said the dash ended. A pause is still the same shift. */
     static void ended(Context context) {
         lastWrite = 0;
-        prefs(context).edit().putLong(ENDED_AT, System.currentTimeMillis()).putBoolean(OPEN, false)
-                .remove(PAUSED).apply();
+        SharedPreferences prefs = prefs(context);
+        boolean wasOpen = open(prefs);
+        long started = prefs.getLong(STARTED_AT, 0);
+        long now = System.currentTimeMillis();
+        prefs.edit().putLong(ENDED_AT, now).putBoolean(OPEN, false).remove(PAUSED).apply();
+        // Once per dash (its end screen is read many times): the opt-in summary after each dash (cheap when off).
+        if (wasOpen) DashSummary.dashEnded(context, started, now);
     }
 
     /** A pause keeps the shift open but must release the screen-on lease. */

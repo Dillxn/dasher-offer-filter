@@ -561,6 +561,7 @@ final class Peek {
             flushSkips(context);
             lastSkip = why;
             DiagnosticLog.log(context, "peek", "skipped: " + why + state(context));
+            DashSummary.peek(context, "skipped: " + why);
         }
     }
 
@@ -571,6 +572,7 @@ final class Peek {
             flushSkips(context);
             lastSkip = "";
             DiagnosticLog.log(context, "peek", line + state(context));
+            DashSummary.peek(context, line);
         }
     }
 

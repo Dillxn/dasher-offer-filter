@@ -624,6 +624,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long overlayApprovedTransition;
     /** The last declined offer already logged as stuck. */
     private String reportedStuck = "";
+    /** The last offer counted as unreadable for the opt-in dash summary, so repeated reads count it once. */
+    private String countedUnreadable = "";
     private String lastStatus = "";
     private String lastDiagnosticSignature = "";
     /** This read's cost so far: nodes visited and windows listed. */
@@ -1109,6 +1111,8 @@ public final class OfferFilterService extends AccessibilityService {
         OfferSilencer.restore(this);
         // What an older version kept of Dasher's screens is cleaned up once, off the main thread.
         DiagnosticLog.cleanUpSoon(this);
+        // A crash notes where it happened (never what was on screen), for the next start's summary.
+        StopReports.install(this);
         watchBlockedStarts();
     }
 
@@ -1162,6 +1166,9 @@ public final class OfferFilterService extends AccessibilityService {
         Updater.schedule(this);
         // What the retired GitHub connection and its report queues left goes once, off this thread.
         LegacyReportingCleanup.cleanUpSoon(this);
+        // How the last process ended, and a dash that went quiet meanwhile, are looked at off this thread.
+        StopReports.checkSoon(this);
+        DashSummary.checkSoon(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
         onScanner(() -> {
@@ -3387,6 +3394,7 @@ public final class OfferFilterService extends AccessibilityService {
             endAuthority("screen read failed: " + error.getClass().getSimpleName(), true);
             DiagnosticLog.log(this, "accessibility",
                     "scan rejected; no further action: " + error.getClass().getSimpleName());
+            DashSummary.error(this, "scan", error);
             status("Screen read failed. No automatic action until a new readable screen.");
             return false;
         } finally {
@@ -3828,6 +3836,7 @@ public final class OfferFilterService extends AccessibilityService {
         boolean requested = globalActionHere(GLOBAL_ACTION_BACK);
         DiagnosticLog.log(this, "confirm", "decline error recovery Back " + (requested ? "requested" : "refused")
                 + "; no decline completion inferred");
+        DashSummary.recovery(this, requested ? "Back requested" : "Back refused");
         if (!requested) {
             handBack(HandBack.NOT_TAPPED, "Android refused Back for the failed decline", SystemClock.uptimeMillis());
         } else {
@@ -4542,6 +4551,8 @@ public final class OfferFilterService extends AccessibilityService {
                 peek.countdown(secondsLeft, Peek.now());
                 peekLeavesOffer(decision.result, offer, decision.reason, !settings.enabled);
             }
+            if (decision.result == OfferRule.Result.REVIEW
+                    && !OfferRule.onlyHotspotMissing(offer, addOn, settings)) countUnreadable(scan, offer);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             return settings.enabled && decision.result == OfferRule.Result.REVIEW;
         }
@@ -4866,6 +4877,7 @@ public final class OfferFilterService extends AccessibilityService {
         try {
             step(candidate, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, reason);
             DiagnosticLog.log(this, "auto-accept", "Accept NOT_SENT; reason=" + reason + "; offer left to user");
+            DashSummary.notSent(this, reason);
         } catch (RuntimeException unavailable) {
             // History/log failures cannot retain an armed candidate, its timer or touch watch during cancellation.
         }
@@ -4884,6 +4896,18 @@ public final class OfferFilterService extends AccessibilityService {
         DiagnosticLog.log(this, "accessibility", "decline still showing after " + (now - declinedAt)
                 + " ms; " + stage + "; first-step requests " + declineState.declineAttempts()
                 + "/" + DeclineState.MAX_ATTEMPTS);
+        DashSummary.stuck(this, stage);
+    }
+
+    /** A visible offer the rules could not judge, once per offer, for the opt-in dash summary (nothing when off). */
+    private void countUnreadable(Scan scan, OfferSnapshot offer) {
+        if (!DashSummary.collecting(this)) return;
+        String key = DeclineState.offerKey(offer, scan.text);
+        if (key.equals(countedUnreadable)) return;
+        countedUnreadable = key;
+        List<String> labels = new ArrayList<>(scan.text);
+        labels.addAll(scan.metricParts);
+        DashSummary.unreadable(this, labels);
     }
 
     /** @param peeked whether this offer was read because a peek brought Dasher up for it: its line says so */
@@ -5280,6 +5304,7 @@ public final class OfferFilterService extends AccessibilityService {
         Screen next = new Screen(true, seen.dasherRoot != null, area, seen.split, bounded);
         if (!next.equals(screen)) screen = next;
         readWin = SplitWindows.field(seen.windows, window -> ownerOf(window, seen), display());
+        DashSummary.window(this, readWin);
         noteCover(seen.covered == null ? "" : seen.covered);
         return seen;
     }

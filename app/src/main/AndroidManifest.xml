@@ -76,6 +76,11 @@
             android:name=".UpdateJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- Sends accountless feedback waiting in its outbox once any network is available. -->
+        <service
+            android:name=".FeedbackJobService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver android:name=".UpdateReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

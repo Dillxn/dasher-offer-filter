@@ -62,6 +62,8 @@ final class Consent {
         ConsentReminder.cancel(context);
         DiagnosticLog.log(context, "consent", "notice " + VERSION + " accepted; screen reading and background offers "
                 + "may act");
+        // Feedback the user sent before an updated notice waited for it.
+        FeedbackOutbox.consented(context);
     }
 
     private static SharedPreferences prefs(Context context) {

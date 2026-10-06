@@ -182,6 +182,10 @@ public class LegacyReportingCleanupTest {
         new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_MY_PACKAGE_REPLACED));
         LegacyReportingCleanup.flush();
         assertNothingLeft();
+        Feedback.flush();
+        assertEquals("nothing an older version queued is sent anywhere, the new service included", 0,
+                FakeFeedbackTransport.installed().count());
+        assertFalse(new File(app.getFilesDir(), FeedbackOutbox.DIR).exists());
     }
 
     @Test

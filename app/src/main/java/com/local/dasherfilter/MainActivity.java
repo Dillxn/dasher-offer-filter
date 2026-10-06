@@ -223,6 +223,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Switch areasToggle;
     private Button updatesRow;
     private Button shareReportRow;
+    /** Send anonymous feedback, its line saying what waits or what was last sent. */
+    private Button feedbackRow;
+    private Switch afterDashToggle;
+    /** The feedback and offer-report dialogs, and what this screen shows of a submission's fate. */
+    private FeedbackDialogs feedbackDialogs;
+    /** On the homepage after the app stopped unexpectedly, while diagnostics after each dash are off. */
+    private Readiness stopNotice;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
 
@@ -237,6 +244,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         super.onCreate(state);
         freshScreen = state == null;
         ui = new Ui(this);
+        // A crash notes where it happened (never what was on screen), for the next start's summary.
+        StopReports.install(this);
+        feedbackDialogs = new FeedbackDialogs(this, ui, this::feedbackChanged);
         OfferAlerts.ensureChannel(this);
         FilterStore.forgetRetiredEmail(this);
         // Settings has no Automatic updates switch any more: an "off" kept from an older version is cleared once.
@@ -272,6 +282,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         fitToSystemBars(root);
         showSettings(state != null && state.getBoolean(SHOWING_SETTINGS, false));
         showNotice(!Consent.accepted(this));
+        // How the last process ended, and a dash that went quiet meanwhile, are looked at off this thread.
+        StopReports.checkSoon(this);
+        DashSummary.checkSoon(this);
+        if (Consent.accepted(this)) feedbackDialogs.restore(state);
         Updater.schedule(this);
         refresh();
     }
@@ -324,6 +338,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (feeNotice != null) state.putString(FEE_NOTICE, feeNotice);
         state.putBoolean(FEE_NOTICE + "_asked", feeNoticeAsked);
         state.putBoolean(SKY_CHOSEN, skyChosen);
+        feedbackDialogs.save(state);
     }
 
     /** Back from Settings returns to the main page; back from the main page leaves. */
@@ -343,6 +358,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         started = true;
         handler.removeCallbacks(refresh);
         handler.post(refresh);
+        // Results of submissions reach this screen only while it is started.
+        feedbackDialogs.start();
     }
 
     @Override protected void onResume() {
@@ -461,11 +478,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override protected void onStop() {
         started = false;
         handler.removeCallbacks(refresh);
+        feedbackDialogs.stop();
         super.onStop();
     }
 
     @Override protected void onDestroy() {
         cancelReportShare();
+        feedbackDialogs.destroy();
         super.onDestroy();
     }
 
@@ -713,6 +732,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
         backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
         offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
+        // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
+        stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
+            StopReports.acknowledge(this);
+            feedbackDialogs.feedback(Feedback.Category.BUG, true);
+            refresh();
+        });
         addFeeNotice(problems);
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
@@ -1174,7 +1200,30 @@ public final class MainActivity extends Activity implements Updater.Busy {
         updatesRow = ui.listRow(connections, "Updates", () -> Updater.check(this, true, null));
 
         LinearLayout reports = group(body);
-        ui.listRow(reports, "Send anonymous feedback", this::sendAnonymousFeedback);
+        feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
+        // Off unless the user turns it on (no update does), and only after its own confirmation.
+        afterDashToggle = ui.toggle(reports, "Share anonymous diagnostics after each dash", Feedback.afterDashOn(this));
+        afterDashToggle.setOnCheckedChangeListener((view, on) -> {
+            if (on == Feedback.afterDashOn(this)) return;
+            if (!on) {
+                Feedback.setAfterDash(this, false);
+                refresh();
+                return;
+            }
+            afterDashToggle.setChecked(false);
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
+                    .setTitle("Share diagnostics after each dash?")
+                    .setMessage("After each dash, sends one masked summary to the developer, with no account: the "
+                            + "app and Android versions and phone maker, your switches, counts of offers and problems, "
+                            + "that dash's decisions timed from its start, and masked log lines around problems. No "
+                            + "location, place names or device ID. At most 3 a day; kept 90 days.")
+                    .setNegativeButton("Not now", null)
+                    .setPositiveButton("Turn on", (dialog, which) -> {
+                        Feedback.setAfterDash(this, true);
+                        afterDashToggle.setChecked(true);
+                        refresh();
+                    }));
+        });
         shareReportRow = ui.listRow(reports, "Share report", this::shareReport);
         ui.listRow(reports, "Clear history", this::confirmClearHistory);
 
@@ -1215,41 +1264,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         params.topMargin = ui.dp(18);
         body.addView(group, params);
         return group;
-    }
-
-    /** Accountless feedback. Diagnostics are attached only when explicitly chosen for this submission. */
-    private void sendAnonymousFeedback() {
-        EditText message = new EditText(this);
-        message.setHint("What should we know?");
-        message.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        message.setMaxLines(6);
-        Switch diagnostics = new Switch(this);
-        diagnostics.setText("Attach masked diagnostics");
-        LinearLayout frame = ui.column();
-        frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0);
-        frame.addView(message, Ui.matchWidth());
-        frame.addView(diagnostics, Ui.matchWidth());
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Send anonymous feedback?")
-                .setMessage("No account, name or email is required. The feedback record stores only what you type, "
-                        + "the app version, and masked diagnostics if you explicitly attach them. Network providers still "
-                        + "see ordinary connection metadata such as an IP address; " + AppName.NAME
-                        + " does not store the raw IP with your feedback. Masking can miss details, so review diagnostics before attaching them.")
-                .setView(frame)
-                .setPositiveButton("Send", (dialog, which) -> {
-                    String note = message.getText().toString().trim();
-                    if (note.isEmpty()) {
-                        toast("Write something first.");
-                        return;
-                    }
-                    toast("Sending feedback…");
-                    AnonymousFeedback.send(this, "feedback", "general", note, diagnostics.isChecked(), result ->
-                            toast(result.ok
-                                    ? "Feedback sent" + (result.reference.isEmpty() ? "." : " · " + result.reference)
-                                    : "Feedback not sent: " + result.message));
-                })
-                .setNegativeButton("Cancel", null));
     }
 
     /** The configured ways to tip, to choose from; each opens only at the user's tap. */
@@ -1345,6 +1359,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         screenReading.update(readerConnected);
         backgroundOffers.update(OfferNotificationService.isConnected());
         offerAlerts.update(alertsAllowed.get());
+        stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
@@ -1380,6 +1395,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
         installs.update(installsAllowed.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
+        // What waits to send is read only while Settings shows, and as it opens.
+        if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
+        boolean afterDash = Feedback.afterDashOn(this);
+        if (afterDashToggle.isChecked() != afterDash) afterDashToggle.setChecked(afterDash);
+    }
+
+    /** A submission changed (sent, waiting, refused): Settings' line follows, if the page is up. */
+    private void feedbackChanged() {
+        if (!noticeShown()) refreshSettings();
     }
 
     /**
@@ -1995,37 +2019,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refresh();
     }
 
-    /** Accountless report for one selected offer; its stored evidence is already masked on the phone. */
+    /** Accountless report of one selected offer (OfferReport: masked twice, no learning steps). */
     private void reportOffer(DecisionLog.Entry entry) {
-        EditText note = new EditText(this);
-        note.setHint("What went wrong? (optional)");
-        note.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        note.setMaxLines(4);
-        LinearLayout frame = ui.column();
-        frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0);
-        frame.addView(note, Ui.matchWidth());
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Report this offer?")
-                .setMessage("Sends this offer's masked evidence and your optional note without requiring an account. "
-                        + "Do not put customer, payment or account details in your note. Masking can miss details.")
-                .setView(frame)
-                .setPositiveButton("Send", (dialog, which) -> {
-                    toast("Sending report…");
-                    AnonymousFeedback.sendOffer(this, entry, note.getText().toString(), result ->
-                            toast(result.ok
-                                    ? "Report sent" + (result.reference.isEmpty() ? "." : " · " + result.reference)
-                                    : "Report not sent: " + result.message));
-                })
-                .setNegativeButton("Cancel", null));
+        feedbackDialogs.reportOffer(entry);
     }
 
     /** One confirm for decisions, captured text, offer areas and cached place names. */
     private void confirmClearHistory() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Clear history?")
-                .setMessage("Removes the offer decisions, waiting estimates, captured screen text, offer areas and cached place names "
-                        + "from this phone. Your rules stay.")
+                .setMessage("Removes the offer decisions, waiting estimates, captured screen text, offer areas, cached place "
+                        + "names and unsent automatic diagnostics from this phone. Your rules stay.")
                 .setPositiveButton("Clear", (dialog, which) -> {
                     cancelReportShare();
                     DecisionLog.clear(this);
@@ -2036,6 +2040,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     RestartSuppression.clear(this);
                     AutoAcceptMemory.clear(this);
                     ScannerFailure.clear(this);
+                    // Automatic diagnostics not yet sent, what this dash counted for them, and stop summaries.
+                    FeedbackOutbox.discardAutomatic(this);
+                    DashSummary.clear(this);
+                    StopReports.clear(this);
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;
@@ -2207,15 +2215,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private final class Readiness {
         private final LinearLayout row;
         private final TextView text;
+        private final String action;
 
         Readiness(LinearLayout parent, String problem, Runnable onFix) {
+            this(parent, problem, "Fix", onFix);
+        }
+
+        /** @param action the word at the row's end, that a tap does ("Fix", "Send report") */
+        Readiness(LinearLayout parent, String problem, String action, Runnable onFix) {
+            this.action = action;
             row = ui.row();
             row.setBackground(ui.pressable(16));
             row.setPadding(ui.dp(4), ui.dp(6), ui.dp(4), ui.dp(6));
             row.setMinimumHeight(ui.dp(48));
             row.setClickable(true);
             row.setFocusable(true);
-            row.setContentDescription(problem + ". Fix.");
+            row.setContentDescription(problem + ". " + action + ".");
             row.setOnClickListener(tapped -> onFix.run());
             View sign = new View(MainActivity.this);
             sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
@@ -2224,7 +2239,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             text = ui.text(problem, 15, ui.ink, false);
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
-            row.addView(ui.text("Fix", 15, ui.accent, true));
+            row.addView(ui.text(action, 15, ui.accent, true));
             parent.addView(row, Ui.matchWidth());
         }
 
@@ -2235,7 +2250,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         void problem(String problem) {
             if (problem.contentEquals(text.getText())) return;
             text.setText(problem);
-            row.setContentDescription(problem + ". Fix.");
+            row.setContentDescription(problem + ". " + action + ".");
         }
     }
 }

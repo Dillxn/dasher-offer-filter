@@ -1,0 +1,453 @@
+package com.local.dasherfilter;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.graphics.drawable.StateListDrawable;
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
+import android.widget.Switch;
+import android.widget.TextView;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * The feedback and offer-report dialogs, and what a screen shows of a submission's fate. Owned by one screen: it
+ * listens only while that screen is started, and its dialogs go with it, so no result reaches a screen that is gone.
+ * Every submission is built and sent off the main thread ({@link Feedback}); the dialog stays open while it is sent,
+ * keeps what was typed when it is refused, and shows the reference, copyable, once it is accepted.
+ */
+final class FeedbackDialogs implements Feedback.Listener {
+    /** What the user was writing: kept across a recreated screen and a refused send, until it is accepted. */
+    private static final class Draft {
+        Feedback.Category category = Feedback.Category.GENERAL;
+        String message = "";
+        boolean attach;
+    }
+
+    private static Draft draft = new Draft();
+    private static final String OPEN = "feedback_dialog_open";
+
+    private final Activity activity;
+    private final Ui ui;
+    private final Runnable changed;
+    private AlertDialog dialog;
+    /** The submission the open dialog waits for, or "" while it waits for none. */
+    private String waitingFor = "";
+    private TextView statusLine;
+    private boolean feedbackOpen;
+
+    /** @param changed run on the main thread after any submission changed (Settings' line refreshes) */
+    FeedbackDialogs(Activity activity, Ui ui, Runnable changed) {
+        this.activity = activity;
+        this.ui = ui;
+        this.changed = changed;
+    }
+
+    // ---- The screen's life ----
+
+    void start() {
+        Feedback.listen(this);
+        Feedback.Event unseen = Feedback.takeUnseen();
+        if (unseen != null) changed(unseen);
+    }
+
+    void stop() {
+        Feedback.unlisten(this);
+    }
+
+    void destroy() {
+        Feedback.unlisten(this);
+        if (dialog != null && dialog.isShowing()) dialog.dismiss();
+        dialog = null;
+    }
+
+    /** A recreated screen (a resize, day and night) opens the feedback dialog again, as it was. */
+    void save(Bundle state) {
+        state.putBoolean(OPEN, feedbackOpen && dialog != null && dialog.isShowing() && waitingFor.isEmpty());
+    }
+
+    void restore(Bundle state) {
+        if (state != null && state.getBoolean(OPEN, false)) feedback(null, null);
+    }
+
+    boolean showing() {
+        return dialog != null && dialog.isShowing();
+    }
+
+    // ---- Send anonymous feedback ----
+
+    /**
+     * The feedback dialog: a category, what to say (a counter and its limit), a reminder to leave out customer,
+     * payment and account details, an Attach masked diagnostics switch with a Preview of exactly what goes, and the
+     * references of the last submissions.
+     *
+     * @param category chosen in advance (Bug, for a report after a stop), or null for the draft's
+     * @param attach   attach diagnostics in advance, or null for the draft's
+     */
+    void feedback(Feedback.Category category, Boolean attach) {
+        if (showing()) return;
+        if (category != null) draft.category = category;
+        if (attach != null) draft.attach = attach;
+        LinearLayout frame = frame();
+        RadioGroup chips = chips(frame);
+        for (Feedback.Category one : Feedback.Category.values()) {
+            RadioButton chip = chip(chips, one.label);
+            chip.setTag(one);
+            if (one == draft.category) chip.setChecked(true);
+        }
+        chips.setOnCheckedChangeListener((group, id) -> {
+            View checked = group.findViewById(id);
+            if (checked != null && checked.getTag() instanceof Feedback.Category) {
+                draft.category = (Feedback.Category) checked.getTag();
+            }
+        });
+        EditText message = editor(frame, "What should we know?", draft.message, typed -> draft.message = typed);
+        frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
+        Switch diagnostics = ui.toggle(frame, "Attach masked diagnostics", draft.attach);
+        diagnostics.setOnCheckedChangeListener((view, on) -> draft.attach = on);
+        Feedback.Prepared[] prepared = new Feedback.Prepared[1];
+        boolean[] preparedWith = new boolean[1];
+        Button preview = ui.link("Preview what is sent", () -> {
+            status("Preparing…");
+            boolean with = diagnostics.isChecked();
+            Feedback.prepareFeedback(activity, with, ready -> {
+                if (!showing()) return;
+                status("");
+                if (ready == null) {
+                    status("Couldn't prepare the diagnostics; try again.");
+                    return;
+                }
+                prepared[0] = ready;
+                preparedWith[0] = with;
+                preview(ready.preview(draft.category.wire, message.getText().toString(), Updater.version(activity),
+                        Feedback.versionCode(activity)));
+            });
+        });
+        preview.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        frame.addView(preview, Ui.matchWidth());
+        statusLine = status(frame);
+        references(frame);
+        feedbackOpen = true;
+        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
+                .setTitle("Send anonymous feedback")
+                .setMessage("No account, name or email. It is sent only when you tap Send.")
+                .setView(scroll(frame))
+                .setPositiveButton("Send", null)
+                .setNegativeButton("Cancel", null)
+                .setOnDismissListener(closedDialog -> closed()));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
+            String typed = message.getText().toString();
+            if (Feedback.typed(typed).isEmpty()) {
+                status("Write something first.");
+                return;
+            }
+            boolean with = diagnostics.isChecked();
+            Feedback.Prepared reuse = prepared[0] != null && preparedWith[0] == with ? prepared[0] : null;
+            busy(true, message, diagnostics, preview);
+            status(with && reuse == null ? "Preparing and sending…" : "Sending…");
+            waitingFor = Feedback.sendFeedback(activity, draft.category, typed, with, reuse);
+        });
+    }
+
+    // ---- Report this offer ----
+
+    /**
+     * One offer's report: what went wrong, an optional note, and a Preview; the dialog says what it sends, and tapping
+     * Send is the user's consent to it.
+     */
+    void reportOffer(DecisionLog.Entry entry) {
+        if (showing()) return;
+        LinearLayout frame = frame();
+        RadioGroup chips = chips(frame);
+        OfferReport.Problem[] chosen = {OfferReport.Problem.MISREAD};
+        for (OfferReport.Problem problem : OfferReport.Problem.values()) {
+            RadioButton chip = chip(chips, problem.label);
+            chip.setTag(problem);
+            if (problem == chosen[0]) chip.setChecked(true);
+        }
+        chips.setOnCheckedChangeListener((group, id) -> {
+            View checked = group.findViewById(id);
+            if (checked != null && checked.getTag() instanceof OfferReport.Problem) {
+                chosen[0] = (OfferReport.Problem) checked.getTag();
+            }
+        });
+        EditText note = editor(frame, "What went wrong? (optional)", "", typed -> { });
+        frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
+        Feedback.Prepared[] prepared = new Feedback.Prepared[1];
+        OfferReport.Problem[] preparedFor = new OfferReport.Problem[1];
+        Button preview = ui.link("Preview what is sent", () -> {
+            status("Preparing…");
+            OfferReport.Problem problem = chosen[0];
+            Feedback.prepareOfferReport(activity, entry, problem, ready -> {
+                if (!showing()) return;
+                status("");
+                if (ready == null) {
+                    status("Couldn't prepare the report; try again.");
+                    return;
+                }
+                prepared[0] = ready;
+                preparedFor[0] = problem;
+                preview(ready.preview(problem.category(), note.getText().toString(), Updater.version(activity),
+                        Feedback.versionCode(activity)));
+            });
+        });
+        preview.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        frame.addView(preview, Ui.matchWidth());
+        statusLine = status(frame);
+        feedbackOpen = false;
+        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
+                .setTitle("Report this offer")
+                .setMessage("Sends this offer's figures, decision and masked read lines, your current rules, the "
+                        + "app's and Android's versions and the minute it was decided, with your note. No account. "
+                        + "Masking can miss details.")
+                .setView(scroll(frame))
+                .setPositiveButton("Send", null)
+                .setNegativeButton("Cancel", null)
+                .setOnDismissListener(closedDialog -> closed()));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
+            OfferReport.Problem problem = chosen[0];
+            Feedback.Prepared reuse = prepared[0] != null && preparedFor[0] == problem ? prepared[0] : null;
+            busy(true, note, preview);
+            status("Sending…");
+            waitingFor = Feedback.sendOfferReport(activity, entry, problem, note.getText().toString(), reuse);
+        });
+    }
+
+    // ---- Results ----
+
+    /** A submission changed: the open dialog follows it, and a finished one of the user's says how it went. */
+    @Override public void changed(Feedback.Event event) {
+        if (activity.isFinishing() || activity.isDestroyed()) return;
+        changed.run();
+        boolean mine = showing() && !waitingFor.isEmpty() && waitingFor.equals(event.token);
+        if (mine) {
+            if (event.state == Feedback.State.SENT || event.state.waiting()) {
+                waitingFor = "";
+                if (event.kind == Feedback.Kind.FEEDBACK) draft = new Draft();
+                AlertDialog done = dialog;
+                done.dismiss();
+                if (event.state == Feedback.State.SENT) sent(event);
+                else said(event.state.said);
+            } else if (event.state == Feedback.State.REJECTED || event.state == Feedback.State.NOT_QUEUED) {
+                waitingFor = "";
+                status(event.said);
+                busy(false);
+            }
+            return;
+        }
+        if (!event.user || showing()) return;
+        if (event.state == Feedback.State.SENT) {
+            sent(event);
+        } else if (event.state == Feedback.State.REJECTED) {
+            // Refused after it left the dialog: what was typed comes back as the draft.
+            if (event.kind == Feedback.Kind.FEEDBACK && !event.typed.isEmpty()) draft.message = event.typed;
+            said(event.said + (event.kind == Feedback.Kind.FEEDBACK && !event.typed.isEmpty()
+                    ? " Your words are kept: tap Send anonymous feedback to edit them." : ""));
+        }
+    }
+
+    /** The reference, selectable and copyable, once a submission is accepted. */
+    private void sent(Feedback.Event event) {
+        String what = event.kind == Feedback.Kind.PROBLEM ? "Report sent" : "Feedback sent";
+        LinearLayout frame = frame();
+        TextView reference = ui.text(event.reference.isEmpty() ? "No reference was given."
+                : "Reference: " + event.reference, 18, ui.ink, true);
+        reference.setTextIsSelectable(true);
+        frame.addView(reference, Ui.matchWidth());
+        frame.addView(small("Keep it if you may need to refer to this submission."), Ui.matchWidth());
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity).setTitle(what).setView(frame)
+                .setPositiveButton("OK", null);
+        if (!event.reference.isEmpty()) {
+            builder.setNeutralButton("Copy", (shown, which) -> {
+                ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText(AppName.NAME + " reference", event.reference));
+                }
+            });
+        }
+        dialog = OwnWindowTouches.show(builder);
+        feedbackOpen = false;
+    }
+
+    private void said(String words) {
+        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity).setMessage(words)
+                .setPositiveButton("OK", null));
+        feedbackOpen = false;
+    }
+
+    private void closed() {
+        feedbackOpen = false;
+    }
+
+    // ---- Pieces ----
+
+    private LinearLayout frame() {
+        LinearLayout frame = ui.column();
+        frame.setPadding(ui.dp(20), ui.dp(4), ui.dp(20), ui.dp(4));
+        return frame;
+    }
+
+    private ScrollView scroll(View content) {
+        ScrollView scroll = new ScrollView(activity);
+        scroll.addView(content);
+        return scroll;
+    }
+
+    /** A row of choices, one at a time, scrolling sideways on a narrow screen. */
+    private RadioGroup chips(LinearLayout frame) {
+        HorizontalScrollView row = new HorizontalScrollView(activity);
+        row.setHorizontalScrollBarEnabled(false);
+        RadioGroup group = new RadioGroup(activity);
+        group.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(group);
+        LinearLayout.LayoutParams params = Ui.matchWidth();
+        params.bottomMargin = ui.dp(6);
+        frame.addView(row, params);
+        return group;
+    }
+
+    /** A chip: a native radio button (screen readers hear it and its state) drawn as a rounded label. */
+    private RadioButton chip(RadioGroup group, String label) {
+        RadioButton chip = new RadioButton(activity);
+        chip.setId(View.generateViewId());
+        chip.setText(label);
+        chip.setButtonDrawable(null);
+        chip.setGravity(Gravity.CENTER);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        chip.setTypeface(Ui.MEDIUM);
+        chip.setTextColor(new ColorStateList(new int[][] {{android.R.attr.state_checked}, {}},
+                new int[] {ui.onAccent, ui.ink}));
+        StateListDrawable face = new StateListDrawable();
+        face.addState(new int[] {android.R.attr.state_checked}, ui.rounded(ui.accent, 0, 18));
+        face.addState(new int[] {}, ui.rounded(0x00000000, ui.dark ? 0x40FFFFFF : 0x330B0B0B, 18));
+        chip.setBackground(face);
+        chip.setMinHeight(ui.dp(48));
+        chip.setMinimumHeight(ui.dp(48));
+        chip.setPadding(ui.dp(16), 0, ui.dp(16), 0);
+        RadioGroup.LayoutParams params = new RadioGroup.LayoutParams(RadioGroup.LayoutParams.WRAP_CONTENT,
+                RadioGroup.LayoutParams.WRAP_CONTENT);
+        params.setMarginEnd(ui.dp(8));
+        group.addView(chip, params);
+        return chip;
+    }
+
+    private interface Typed {
+        void changed(String text);
+    }
+
+    /** A text box of at most {@value Feedback#MAX_MESSAGE_CHARS} characters, with a counter under it. */
+    private EditText editor(LinearLayout frame, String hint, String text, Typed typed) {
+        EditText editor = new EditText(activity);
+        editor.setHint(hint);
+        editor.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        editor.setMinLines(3);
+        editor.setMaxLines(8);
+        editor.setGravity(Gravity.TOP | Gravity.START);
+        editor.setFilters(new InputFilter[] {new InputFilter.LengthFilter(Feedback.MAX_MESSAGE_CHARS)});
+        editor.setText(text);
+        frame.addView(editor, Ui.matchWidth());
+        TextView counter = ui.text("", 12, ui.inkSecondary, false);
+        counter.setGravity(Gravity.END);
+        counter.setText(count(text.length()));
+        editor.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+
+            @Override public void afterTextChanged(Editable s) {
+                counter.setText(count(s.length()));
+                typed.changed(s.toString());
+            }
+        });
+        frame.addView(counter, Ui.matchWidth());
+        return editor;
+    }
+
+    /** "120 / 4,000". */
+    static String count(int length) {
+        return String.format(Locale.US, "%,d / %,d", length, Feedback.MAX_MESSAGE_CHARS);
+    }
+
+    private TextView small(String words) {
+        TextView text = ui.text(words, 13, ui.inkSecondary, false);
+        text.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        return text;
+    }
+
+    private TextView status(LinearLayout frame) {
+        TextView line = ui.text("", 14, ui.ink, true);
+        line.setPadding(0, ui.dp(6), 0, ui.dp(2));
+        line.setVisibility(View.GONE);
+        line.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        frame.addView(line, Ui.matchWidth());
+        return line;
+    }
+
+    private void status(String words) {
+        if (statusLine == null) return;
+        statusLine.setText(words);
+        statusLine.setVisibility(words.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** The last submissions' dates and references, selectable, when there are any. */
+    private void references(LinearLayout frame) {
+        List<Feedback.Sent> sent = Feedback.references(activity);
+        if (sent.isEmpty()) return;
+        TextView heading = ui.text("Sent before", 13, ui.inkSecondary, true);
+        heading.setPadding(0, ui.dp(10), 0, ui.dp(2));
+        frame.addView(heading, Ui.matchWidth());
+        StringBuilder lines = new StringBuilder();
+        for (Feedback.Sent one : sent) lines.append(lines.length() == 0 ? "" : "\n").append(one.line());
+        TextView list = ui.text(lines.toString(), 13, ui.ink, false);
+        list.setTextIsSelectable(true);
+        frame.addView(list, Ui.matchWidth());
+    }
+
+    private void preview(String text) {
+        TextView body = ui.text(text, 11, ui.ink, false);
+        body.setTypeface(Typeface.MONOSPACE);
+        body.setTextIsSelectable(true);
+        body.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(8));
+        OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle("What is sent").setView(scroll(body))
+                .setPositiveButton("OK", null));
+    }
+
+    /** While a submission is on its way the dialog takes no new one, and nothing in it changes. */
+    private void busy(boolean on, View... inputs) {
+        if (dialog != null) {
+            Button send = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (send != null) send.setEnabled(!on);
+        }
+        for (View input : inputs) input.setEnabled(!on);
+        busyInputs = on ? inputs : busyInputs;
+        if (!on) {
+            for (View input : busyInputs) input.setEnabled(true);
+            busyInputs = new View[0];
+        }
+    }
+
+    private View[] busyInputs = new View[0];
+
+    /** For tests: as a new process would, forget the draft. */
+    static void forgetDraft() {
+        draft = new Draft();
+    }
+}

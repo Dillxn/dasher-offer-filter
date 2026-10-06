@@ -34,8 +34,10 @@ android {
             // Android 8 runs too.
             if (!project.hasProperty('allSdks')) {
                 systemProperty 'robolectric.enabledSdks', '35'
-                // Quick JIT for day-to-day runs (about 15% faster here); releases keep the full JIT.
-                jvmArgs '-XX:TieredStopAtLevel=1'
+                // Quick JIT for day-to-day runs (about 15% faster here); releases keep the full JIT. C1 alone gets
+                // a 48 MB code cache by default, which a JVM running half the suite (-Pforks=2) fills ("Out of
+                // space in CodeCache for adapters"): it gets the full JIT's 240 MB.
+                jvmArgs '-XX:TieredStopAtLevel=1', '-XX:ReservedCodeCacheSize=240m'
             }
         }
     }

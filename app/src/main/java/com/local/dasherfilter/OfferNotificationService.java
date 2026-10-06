@@ -282,6 +282,9 @@ public final class OfferNotificationService extends NotificationListenerService 
         Updater.schedule(this);
         // What the retired GitHub connection and its report queues left goes once, off this thread.
         LegacyReportingCleanup.cleanUpSoon(this);
+        StopReports.install(this);
+        StopReports.checkSoon(this);
+        DashSummary.checkSoon(this);
         DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting");
         reconcile();
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
@@ -508,6 +511,8 @@ public final class OfferNotificationService extends NotificationListenerService 
             invalidatePeekForKey(source.getKey());
             DiagnosticLog.log(this, "notification",
                     "payload/handler rejected; original retained: " + error.getClass().getSimpleName());
+            // An oversized notification is refused on purpose; only real failures count in the opt-in summary.
+            if (!(error instanceof OversizedNotification)) DashSummary.error(this, "notification", error);
         }
     }
 

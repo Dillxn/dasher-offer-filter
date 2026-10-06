@@ -35,8 +35,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Diagnostics and problem reports, updates, GitHub sign-in, tips and split screen with Dasher, through real Android
- * adapters.
+ * Diagnostics and offer reports, updates, tips and split screen with Dasher, through real Android adapters.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk={26,35})
@@ -145,8 +144,13 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void reportThisOfferIsAlwaysOnTheTicketAndSaysWhatItSends() {
-        DecisionLog.record(app, declinedEntry());
+    public void reportThisOfferIsAlwaysOnTheTicketAndSaysWhatItSends() throws Exception {
+        FakeFeedbackTransport service = FakeFeedbackTransport.installed();
+        DecisionLog.Entry declined = new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
+                false, new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, Arrays.asList("$7.90", "Deliver to Sam P",
+                "2 stops (7.2 mi) • 21 min"));
+        DecisionLog.record(app, declined);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             openTicket(content);
@@ -158,7 +162,60 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertTrue(dialog.isShowing());
             String said = ((TextView) dialog.findViewById(android.R.id.message)).getText().toString();
-            assertTrue(said, said.contains("customer, payment or account details"));
+            assertEquals("the dialog says what it sends, and Send is the consent", "Sends this offer's figures, "
+                    + "decision and masked read lines, your current rules, the app's and Android's versions and the "
+                    + "minute it was decided, with your note. No account. Masking can miss details.", said);
+            View decor = dialog.getWindow().getDecorView();
+            assertNotNull(findText(decor, "Don't include customer, payment or account details."));
+            List<String> chips = new ArrayList<>();
+            android.widget.RadioButton wrongDecline = null;
+            List<android.widget.Button> buttons = new ArrayList<>();
+            collectButtons(decor, buttons);
+            for (android.widget.Button button : buttons) {
+                if (!(button instanceof android.widget.RadioButton)) continue;
+                chips.add(button.getText().toString());
+                if (button.getText().toString().equals("Wrong decline")) {
+                    wrongDecline = (android.widget.RadioButton) button;
+                }
+            }
+            assertEquals(Arrays.asList("Misread", "Wrong decline", "Wrong accept", "Other"), chips);
+            assertEquals("nothing leaves before Send", 0, service.count());
+
+            wrongDecline.performClick();
+            find(decor, EditText.class).setText("It declined an offer above my minimum.");
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            Feedback.flush();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+            assertEquals(1, service.count());
+            org.json.JSONObject request = service.requests().get(0);
+            assertEquals("problem", request.getString("kind"));
+            assertEquals("bug", request.getString("category"));
+            assertEquals("It declined an offer above my minimum.", request.getString("message"));
+            assertTrue(request.getBoolean("diagnosticsConsented"));
+            assertEquals(1, request.getInt("partCount"));
+            org.json.JSONObject sent = new org.json.JSONObject(Feedback.unframed(request.getString("diagnostics")));
+            assertEquals("offer", sent.getString("report"));
+            assertEquals("wrong_decline", sent.getString("problem"));
+            assertTrue(sent.getString("decided").matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}Z"));
+            assertTrue(sent.getString("android").startsWith("Android "));
+            assertEquals("DECLINE — dollars per mile (" + DecisionLog.Action.DECLINE_TAPPED.label + ")",
+                    sent.getString("decision"));
+            org.json.JSONObject entry = sent.getJSONObject("entry");
+            assertFalse("no learning steps", entry.has("steps"));
+            assertFalse("no exact time", entry.has("at"));
+            assertTrue(entry.has("outcome"));
+            String evidence = entry.getJSONArray("evidence").toString();
+            assertTrue(evidence, evidence.contains("$7.90"));
+            assertFalse(evidence, evidence.contains("Sam"));
+            assertTrue(sent.getJSONObject("rules").has("inWords"));
+            assertFalse(request.toString().contains("Sam P"));
+
+            android.app.AlertDialog done = (android.app.AlertDialog)
+                    org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertFalse(dialog.isShowing());
+            assertNotNull(findText(done.getWindow().getDecorView(),
+                    "Reference: " + request.getString("reportToken").substring(0, 8)));
             assertNull("nothing is queued for the old GitHub outbox",
                     new java.io.File(app.getFilesDir(), "report-outbox").listFiles());
         }
