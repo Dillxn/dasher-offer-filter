@@ -456,26 +456,32 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
         Shadows.shadowOf(power).setIsInteractive(false);
         Settings.Global.putInt(app.getContentResolver(), Settings.Global.BOOT_COUNT, 7);
         Dashing.forgetCache();
-        Dashing.seen(app);
-        // Seen a moment ago on this boot's clock, though the wall clock now says nine hours (set forward by hand).
-        app.getSharedPreferences("dashing", 0).edit()
-                .putLong("seen_at", System.currentTimeMillis() - 9 * HOUR).commit();
-        assertTrue(Dashing.awaitingEnd(app));
-        assertTrue("the boot's own clock says moments, not hours", UpdateHold.holds(app));
-        assertEquals(Updater.AFTER_DASH, Updater.heldBack(app, false));
+        try {
+            Dashing.seen(app);
+            // Seen a moment ago on this boot's clock, though the wall clock now says nine hours (set forward by hand).
+            app.getSharedPreferences("dashing", 0).edit()
+                    .putLong("seen_at", System.currentTimeMillis() - 9 * HOUR).commit();
+            assertTrue(Dashing.awaitingEnd(app));
+            assertTrue("the boot's own clock says moments, not hours", UpdateHold.holds(app));
+            assertEquals(Updater.AFTER_DASH, Updater.heldBack(app, false));
 
-        // Nine hours on this boot's clock: the ceiling.
-        app.getSharedPreferences("dashing", 0).edit()
-                .putLong("seen_elapsed", SystemClock.elapsedRealtime() - 9 * HOUR).commit();
-        assertFalse(UpdateHold.holds(app));
+            // Nine hours on this boot's clock: the ceiling.
+            app.getSharedPreferences("dashing", 0).edit()
+                    .putLong("seen_elapsed", SystemClock.elapsedRealtime() - 9 * HOUR).commit();
+            assertFalse(UpdateHold.holds(app));
 
-        // After a reboot only the wall clock can say: nine hours by it reach the ceiling, one does not.
-        Settings.Global.putInt(app.getContentResolver(), Settings.Global.BOOT_COUNT, 8);
-        app.getSharedPreferences("dashing", 0).edit().putLong("seen_elapsed", SystemClock.elapsedRealtime()).commit();
-        assertFalse("across a reboot, by the wall clock", UpdateHold.holds(app));
-        app.getSharedPreferences("dashing", 0).edit()
-                .putLong("seen_at", System.currentTimeMillis() - HOUR).commit();
-        assertTrue(UpdateHold.holds(app));
+            // After a reboot (a new process) only the wall clock can say: nine hours by it reach the ceiling.
+            Settings.Global.putInt(app.getContentResolver(), Settings.Global.BOOT_COUNT, 8);
+            Dashing.forgetCache();
+            app.getSharedPreferences("dashing", 0).edit()
+                    .putLong("seen_elapsed", SystemClock.elapsedRealtime()).commit();
+            assertFalse("across a reboot, by the wall clock", UpdateHold.holds(app));
+            app.getSharedPreferences("dashing", 0).edit()
+                    .putLong("seen_at", System.currentTimeMillis() - HOUR).commit();
+            assertTrue(UpdateHold.holds(app));
+        } finally {
+            Dashing.forgetCache();
+        }
     }
 
     // ---- Helpers ----

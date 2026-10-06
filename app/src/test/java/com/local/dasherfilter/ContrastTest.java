@@ -81,6 +81,14 @@ public class ContrastTest extends AndroidAdapterTestBase {
                 contrast(night.accent, NIGHT_SKY[0]) < 4.5);
     }
 
+    /** "N more to set up", the folded steps' line, is quieter than a step's words, and still reads on the sky. */
+    @Test public void theFoldedStepsQuieterWordsStillReadOnBothSkies() {
+        Ui day = ui(false);
+        Ui night = ui(true);
+        for (int sky : DAY_SKY) atLeast("folded steps on the day sky", day.inkSecondary, sky);
+        for (int sky : NIGHT_SKY) atLeast("folded steps on the night sky", night.inkSecondary, sky);
+    }
+
     @Test public void everyFixWordOnTheHomepageAndInSettingsUsesTheLinkInk() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

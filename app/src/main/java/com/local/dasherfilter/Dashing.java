@@ -25,6 +25,9 @@ final class Dashing {
     private static final String OPEN = "open";
 
     private static volatile long lastWrite;
+    /** Android's boot count as read in this process ({@link #boot}); UNREAD until then. */
+    private static final int UNREAD = Integer.MIN_VALUE;
+    private static volatile int bootCount = UNREAD;
 
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences("dashing", Context.MODE_PRIVATE);
@@ -174,18 +177,24 @@ final class Dashing {
         return quiet >= 0 ? quiet : -1;
     }
 
-    /** Android's count of boots, or -1 when it cannot be read. */
+    /** Android's count of boots, or -1 when it cannot be read: read once per process (no process outlives a boot). */
     private static int boot(Context context) {
+        int known = bootCount;
+        if (known != UNREAD) return known;
+        int read;
         try {
-            return Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+            read = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
         } catch (RuntimeException unavailable) {
-            return -1;
+            read = -1;
         }
+        if (read >= 0) bootCount = read;
+        return read;
     }
 
-    /** For tests: forget the write throttle. */
+    /** For tests: forget the write throttle (and the boot count, which a test may change). */
     static void forgetCache() {
         lastWrite = 0;
+        bootCount = UNREAD;
     }
 
     private Dashing() {}
