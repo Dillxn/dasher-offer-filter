@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -27,6 +28,20 @@ final class NoticePage {
 
     static ScrollView build(Context context, Ui ui, Runnable accept, Runnable notNow,
                             Consumer<LegalTexts.Doc> read) {
+        return build(context, ui, accept, notNow, read, BundledNotes.noticeChanges(acceptedBefore(context)));
+    }
+
+    /** The notice version accepted before this one, 0 for a new install. */
+    static int acceptedBefore(Context context) {
+        return context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE).getInt(Consent.ACCEPTED_VERSION, 0);
+    }
+
+    /**
+     * As above, with {@code changes}: what changed since the notice the reader accepted before, in a short box at the
+     * top (BETA-11); none for a new install, or while the words are not written yet (BundledNotes).
+     */
+    static ScrollView build(Context context, Ui ui, Runnable accept, Runnable notNow,
+                            Consumer<LegalTexts.Doc> read, List<String> changes) {
         LinearLayout page = ui.column();
 
         LinearLayout header = ui.row();
@@ -41,6 +56,11 @@ final class NoticePage {
 
         LinearLayout body = ui.column();
         body.setPadding(ui.dp(20), ui.dp(2), ui.dp(20), ui.dp(16));
+        if (!changes.isEmpty()) {
+            LinearLayout.LayoutParams boxParams = Ui.matchWidth();
+            boxParams.topMargin = ui.dp(14);
+            body.addView(changesBox(ui, changes), boxParams);
+        }
         for (String[] point : Consent.POINTS) {
             SpannableStringBuilder words = new SpannableStringBuilder(point[0]);
             words.setSpan(new StyleSpan(Typeface.BOLD), 0, words.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -88,6 +108,18 @@ final class NoticePage {
         scroll.setClickable(true);
         scroll.addView(page, Ui.matchWidth());
         return scroll;
+    }
+
+    static final String WHAT_CHANGED = "What changed";
+
+    /** "What changed" over its few lines, in a quiet box. */
+    static View changesBox(Ui ui, List<String> lines) {
+        LinearLayout box = OnboardingCard.box(ui);
+        box.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12));
+        TextView words = ui.text("", 15, ui.ink, false);
+        words.setText(OnboardingCard.titled(WHAT_CHANGED, lines));
+        box.addView(words, Ui.matchWidth());
+        return box;
     }
 
     /** The mascot, calm, in a soft ring: decoration only. */

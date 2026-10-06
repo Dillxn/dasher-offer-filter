@@ -19,6 +19,9 @@ public class ConsentedTestApp extends Application {
         accept(this);
         getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
                 .putBoolean(DiagnosticLog.CLEANED_UP, true).commit();
+        // A phone in use has read Peek's one-time introduction; PeekIntroCardTest starts without it.
+        getSharedPreferences(PeekIntroCard.PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(PeekIntroCard.SEEN, true).commit();
         Feedback.transport = new FakeFeedbackTransport();
         Feedback.forgetCache();
         FeedbackOutbox.forgetCache();

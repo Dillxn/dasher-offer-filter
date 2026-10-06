@@ -228,6 +228,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness stopNotice;
     /** On the homepage: a held, verified update while no dash is on. */
     private UpdateReadyRow updateReady;
+    /** One-time cards on the homepage: what Peek does (the first time filtering is on), what is new after an update. */
+    private PeekIntroCard peekIntro;
+    private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
 
@@ -716,6 +719,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             feedbackDialogs.feedback(Feedback.Category.BUG, true);
             refresh();
         });
+        peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
+        whatsNew = new WhatsNewCard(this, ui, problems);
         addFeeNotice(problems);
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
@@ -1341,6 +1346,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         checklist.refresh(readerConnected, alertsAllowed.get());
         updateReady.refresh(checklist.installsAllowed());
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
+        peekIntro.refresh(saved.enabled);
+        whatsNew.refresh();
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
@@ -1820,8 +1827,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!AreaMap.hasPermission(this)) {
             requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
         } else if (!AreaMap.hasBackgroundPermission(this)) {
-            requestPermissions(new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                    BACKGROUND_LOCATION_REQUEST);
+            // One line of why first; Android's request only after Continue.
+            LocationRationale.ask(this, () -> requestPermissions(
+                    new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION}, BACKGROUND_LOCATION_REQUEST));
         }
     }
 
