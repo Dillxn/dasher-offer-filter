@@ -258,6 +258,24 @@ The user-visible name is `AppName.NAME`, with one twin in `res/values/strings.xm
 
 Run `./gradlew --no-daemon testDebugUnitTest`, then `./build-local.sh` with the existing signing environment. The network probe is `python3 tools/verify_channel.py`. The app has minSdk 26 and no core-library desugaring, so Java APIs newer than Android 8 (for example `List.of`) crash on older phones even though the JVM-hosted tests pass; `./gradlew lintDebug` reports these as `NewApi`. Local pure-Java checks are not handset installation tests; Robolectric adapter tests are not a physical phone or the real DoorDash client.
 
+### Low-memory local validation
+
+Run Android tests and builds only in the authorized local workspace. For a memory-constrained machine, run one checkout at a time with one Gradle worker and one test JVM:
+
+```sh
+./gradlew --no-daemon --no-parallel --max-workers=1 \
+  '-Dorg.gradle.jvmargs=-Xmx512m -XX:+UseParallelGC -Dfile.encoding=UTF-8' \
+  -Pforks=1 -PtestHeap=768m -PallSdks testDebugUnitTest lintDebug
+```
+
+`org.gradle.jvmargs` caps the Gradle build JVM's heap; `testHeap` separately caps each test JVM's heap. `testHeap` defaults to the existing `1536m` and accepts a positive whole number followed by `m` or `g` (case-insensitive). Empty or malformed values fail configuration instead of silently falling back. `forks` still defaults to 3 when omitted. These opt-in limits do not change the shared defaults in `gradle.properties`.
+
+The command keeps the existing full test selection: `-PallSdks` removes the day-to-day API 35 restriction so tests use their declared SDKs, including API 26 and 35. It does not add API 36 coverage. Neither the SDK declarations nor test assertions are changed. Lint remains part of this local check; signing, publishing and real-phone verification still require their separate existing gates.
+
+To check that the tests actually execute within the smaller heap, add `--rerun-tasks --no-build-cache` to the command. An `UP-TO-DATE` or `FROM-CACHE` result alone does not demonstrate that the lower-memory test run succeeds.
+
+These are Java heap limits, not a total RAM cap: native memory, metaspace, Android tools and other processes need additional space. A smaller heap can run slower or still run out of memory. If that happens, preserve the failure log and retry locally with a larger explicit heap or more available RAM; do not skip tests or move Android execution to a cloud build service.
+
 ## Current limitations
 
 No official DoorDash API integration, hidden-background UI access, global audio muting, or device-level vibration suppression is implemented. Notification identifiers are not guaranteed unique order IDs. Acceptance is seen from the user's Accept tap (which Dasher may not report) or, without it, from an offer closing with time left into a delivery screen Dasher's words show, after the app read Dasher's wait for offers before that offer; a delivery screen worded in a way the app does not know, an offer that came during a delivery or with no wait for offers read before it (after a restart, say), or one accepted while Dasher was not on screen teaches nothing and may leave route context unknown. Whether Dasher reports finger taps, and its wording after an Accept, are unverified on a real phone until a report shows them. Android may defer periodic/one-shot work or require an update-installation confirmation. Changing these limits needs additional evidence or capabilities, not more optimistic labels in the UI.

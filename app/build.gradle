@@ -1,6 +1,13 @@
 plugins {
     id 'com.android.application'
 }
+
+// -PtestHeap=768m lowers each test JVM's heap without changing the normal default.
+def testHeap = providers.gradleProperty('testHeap').getOrElse('1536m')
+if (!(testHeap ==~ /[1-9][0-9]*[mMgG]/)) {
+    throw new GradleException('Invalid -PtestHeap: use a positive whole number with m or g, e.g. -PtestHeap=768m.')
+}
+
 android {
     namespace 'com.local.dasherfilter'
     compileSdk 36
@@ -18,7 +25,7 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
-            maxHeapSize = '1536m'
+            maxHeapSize = testHeap
             // Test classes run in parallel JVMs; Robolectric keeps no state across them. Gradle deals the classes out
             // to the JVMs in turn, by name, and never splits one, so no class should run much longer than the rest.
             // -Pforks=N sets how many JVMs (e.g. -Pforks=1 when several worktrees build at once).
