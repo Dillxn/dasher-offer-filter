@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds/signs with the original cloud key from this environment. The resulting dist/ APK is an input to
-# tools/publish-repo-feed.py, not an alternate phone installation path. Render may run it in place through
-# render-sign-bridge.sh when a transient workspace has no signer. No key is generated or exported.
+# tools/publish-repo-feed.py, not an alternate phone installation path. Render mirrors already-signed artifacts;
+# the archived remote signing bridge requires a separate explicit exception. No key is generated or exported.
 # Signing material is decoded only into a private temporary directory removed on exit; its certificate must
 # match the one installed phones trust. Nothing in this script publishes the result.
 set -euo pipefail

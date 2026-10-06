@@ -30,10 +30,13 @@ The competing earnings branch is reviewed explicitly in RECONCILIATION_EARNINGS_
 - Python release tools: 46 passed on reconstructed configuration (including 16 matrix-gate cases)
 - Fresh direct JVM earnings-model tests: 14 passed against newly compiled production classes
 - Preserved core safety regressions: 2,008 assertions passed
+- Fresh affected Android/JVM focus: 482 tests across 13 suites, zero failures/errors/skips; native render inspection recorded separately
 - New full Java/Robolectric matrix: pending
 - New lint: pending
 - Original-signer APK: pending; signing input presently unavailable
 - GitHub feed and Render mirror: unchanged 0.4.72/code 78 until final publication
 - Physical handset validation of 0.4.73: not performed
+
+The reconstructed visibility fixtures use Robolectric's explicit app-visible flag and scoped paused 16 ms choreography, restoring prior values per test. This preserves real hide/show and stale-input assertions without a self-advancing legacy frame loop. One diagnosed looping attempt was deliberately canceled with exit 143 and is not counted as a pass. Saved-state recreation waits for the new window's actual traversal before focus.
 
 Earlier successful tests in the unavailable workspace are historical evidence only and do not satisfy this reconstructed candidate's gate.
