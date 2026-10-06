@@ -66,7 +66,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void settingsEndsWithTheRequestedEmblemAndAccessiblePassageAfterLegalLinks() {
+    public void settingsEndsWithTheLinkedEmblemAndAccessiblePassageAfterLegalLinks() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
             layOut(content);
@@ -76,7 +76,6 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertTrue(closing.isShown());
             assertNotNull("the bundled emblem is available offline", closing.getDrawable());
             assertEquals(ImageView.ScaleType.FIT_CENTER, closing.getScaleType());
-            assertFalse("the signature adds no control", closing.isClickable());
             assertFalse(closing.isLongClickable());
             assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, closing.getImportantForAccessibility());
             ViewGroup body = (ViewGroup) closing.getParent();
@@ -102,6 +101,12 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
                         body.indexOfChild(ancestor) < body.indexOfChild(closing));
                 previous = at;
             }
+
+            assertTrue("a tap on the signature opens jesuslovesyou.xyz", closing.performClick());
+            Intent opened = Shadows.shadowOf(activity.get()).getNextStartedActivity();
+            assertNotNull(opened);
+            assertEquals(Intent.ACTION_VIEW, opened.getAction());
+            assertEquals("https://jesuslovesyou.xyz/", opened.getDataString());
         }
     }
 
@@ -143,8 +148,8 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertNotNull(shownButton(content, "Clear history"));
             assertNotNull(shownButton(content, "Tip"));
             assertNull("end-user GitHub is retired", findButton(content, "Connect GitHub"));
-            assertFalse(findButton(content, "Send problem reports").isShown());
-            assertFalse(findButton(content, "Share diagnostics after each dash").isShown());
+            assertNull("problem reports are retired", findButton(content, "Send problem reports"));
+            assertNull("diagnostics after each dash are retired", findButton(content, "Share diagnostics after each dash"));
         }
     }
 

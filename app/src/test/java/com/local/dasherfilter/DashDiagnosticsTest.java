@@ -277,39 +277,16 @@ public class DashDiagnosticsTest {
     }
 
     @Test
-    public void settingsOffersTheSwitchOnlyWithReportsThroughTheConnection() {
-        try (org.robolectric.android.controller.ActivityController<MainActivity> activity =
-                     Robolectric.buildActivity(MainActivity.class).setup()) {
-            idle();
-            View content = activity.get().findViewById(android.R.id.content);
-            android.widget.Switch diagnostics = toggle(content, "Share diagnostics after each dash");
-            assertEquals("hidden until GitHub is connected", View.GONE, diagnostics.getVisibility());
-        }
+    public void settingsNoLongerOffersTheSwitchEvenWithAnOldConnection() {
+        // 0.4.73 retired diagnostics after each dash along with end-user GitHub.
         connectedToGitHub();
         try (org.robolectric.android.controller.ActivityController<MainActivity> activity =
                      Robolectric.buildActivity(MainActivity.class).setup()) {
             idle();
             View content = activity.get().findViewById(android.R.id.content);
-            android.widget.Switch diagnostics = toggle(content, "Share diagnostics after each dash");
-            android.widget.Switch viaGitHub = toggle(content, "Send problem reports");
-            assertEquals(View.VISIBLE, diagnostics.getVisibility());
-            assertFalse("not until reports go through the connection", diagnostics.isEnabled());
-            assertFalse(diagnostics.isChecked());
-
-            viaGitHub.setChecked(true);
-            idle();
-            assertTrue(diagnostics.isEnabled());
-            assertFalse("never on by itself", diagnostics.isChecked());
+            assertNull(toggle(content, "Share diagnostics after each dash"));
+            assertNull(toggle(content, "Send problem reports"));
             assertFalse(DashDiagnostics.on(app));
-            diagnostics.setChecked(true);
-            idle();
-            assertTrue(DashDiagnostics.on(app));
-
-            viaGitHub.setChecked(false);
-            idle();
-            assertFalse(DashDiagnostics.on(app));
-            assertFalse("turned off with reports through the connection", diagnostics.isChecked());
-            assertFalse(diagnostics.isEnabled());
         }
     }
 

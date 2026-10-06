@@ -145,7 +145,7 @@ public class QuietLogAdapterTest {
         assertEquals(log, 1, count(log, "Checking for updates…"));
         assertEquals(log, 1, count(log, "Up to date: "));
         assertTrue(log, log.contains("[update] automatic check (automatic): Up to date: " + versionName
-                + " (installed " + versionName + "; newest feed " + versionName + " via Render; GitHub off)"));
+                + " (installed " + versionName + "; newest feed " + versionName + " via Render)"));
         assertEquals(log, 2, count(log, "Feed is older than this installation"));
         assertEquals("Feed is older than this installation; no downgrade attempted.", Updater.status(app));
     }
@@ -168,7 +168,7 @@ public class QuietLogAdapterTest {
     }
 
     @Test
-    public void theReportCountsQuietChecksByWhatStartedThemAndNamesTheFeedAndGitHub() throws Exception {
+    public void theReportCountsQuietChecksByWhatStartedThemAndNamesTheFeed() throws Exception {
         lastCheck(-1);
         automatic();
         lastCheck(6 * MINUTE);
@@ -177,7 +177,7 @@ public class QuietLogAdapterTest {
         assertTrue(report, report.contains("Automatic checks since the last logged update line: same result 1 "
                 + "(automatic 1); too soon to start 0"));
         assertTrue(report, report.contains("Latest advertised version: " + versionName + " (Render)"));
-        assertTrue(report, report.contains("GitHub connection: off; last ended: never recorded"));
+        assertTrue("end-user GitHub is retired", !report.contains("GitHub connection"));
         int states = report.indexOf("== Latest states");
         assertTrue(report, states >= 0 && report.indexOf("[update] Up to date: " + versionName, states) > states);
     }

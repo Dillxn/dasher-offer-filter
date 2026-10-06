@@ -1,3 +1,9 @@
+## 0.4.74 — the Settings signature links to jesuslovesyou.xyz
+
+- A tap on the Jesus Loves You emblem at the end of Settings opens https://jesuslovesyou.xyz/ in the browser, matching the website footer. Its lettering, size, colors and screen-reader text are unchanged; the app sends nothing with the tap.
+- Brings the unit tests in line with 0.4.73's retirement of end-user GitHub, problem reports and diagnostics after each dash, and regenerates LegalTexts.java so the app compiles again. The feedback dialog names the app through AppName.NAME.
+- Source version is 0.4.74 / code 80. The signed update feed is unchanged until this source completes the local Android/signing release gate.
+
 ## 0.4.73 — accountless feedback and no end-user GitHub
 
 - Removes end-user GitHub sign-in from Settings and updater selection. Phones use the existing public Render mirror while retaining package/version/size/SHA-256/original-signer verification.

@@ -40,8 +40,9 @@ public final class LegalTextsTest {
         assertTrue(terms.contains("without warranties of any kind"));
         assertTrue(terms.contains("Do not handle your phone while driving"));
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        for (String flow : new String[] {"Update checks.", "GitHub connection", "Reports, only if you turn them on",
-                "Diagnostics after each dash", "Share report", "Place names.", "Navigation, only when you tap it.",
+        for (String flow : new String[] {"Update checks.", "No GitHub account is required",
+                "Anonymous feedback, only when you tap Send", "Attach masked diagnostics", "Share report",
+                "Place names.", "Navigation, only when you tap it.",
                 "Tips.", "24-hour retention window",
                 "rounded to about half a kilometre", "masked"}) {
             assertTrue(flow, privacy.contains(flow));
@@ -59,11 +60,10 @@ public final class LegalTextsTest {
     @Test public void privacyDistinguishesRetentionAndDeletionOfLocalAndSharedCopies() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"latest 200 decisions", "history has no age-based expiry",
-                "Aggregate outcome counts are kept separately", "Up to 30 queued reports",
-                "Queued reports have no age-based expiry", "The logs' 24-hour window does not expire these copies",
-                "Older entries are pruned during app use", "It does not remove queued reports or copies already sent",
-                "A request already in flight may still arrive", "Uninstalling removes the app's local data",
-                "It does not remove reports or other copies already shared", "does not run again merely because this notice changes"}) {
+                "Aggregate outcome counts are kept separately", "is not kept in a persistent on-phone outbox",
+                "Feedback records expire after 90 days", "Older entries are pruned during app use",
+                "Neither cleanup can remove copies that were already sent", "Uninstalling removes the app's local data",
+                "It does not remove feedback already submitted or copies you deliberately shared"}) {
             assertTrue(fact, privacy.contains(fact));
         }
         assertFalse(privacy.contains("Uninstalling the app removes everything it kept."));
@@ -72,9 +72,10 @@ public final class LegalTextsTest {
     @Test public void privacyNamesExternalFlowsAndTheLimitsOfMasking() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"historical area's center coordinates", "Maps or Waze", "Gas and gas-price choices",
-                "GitHub, Render, Google, Anthropic and OpenAI", "Masking is pattern-based and can miss unfamiliar wording",
-                "Notes you type with Report this offer are not masked", "A report does not guarantee review or a fix",
-                "masked again with the current rules immediately before sending"}) {
+                "Render, Supabase, Google, Anthropic and OpenAI", "Masking is pattern-based and can miss unfamiliar wording",
+                "Notes you type with Report this offer are not masked", "A submission does not guarantee review or a fix",
+                "masked again with the current rules immediately before an explicitly requested feedback submission",
+                "not a mathematical guarantee of anonymity"}) {
             assertTrue(fact, privacy.contains(fact));
         }
         assertFalse(privacy.contains("no server that collects your data"));
@@ -83,15 +84,14 @@ public final class LegalTextsTest {
     @Test public void draftStatusAndUnresolvedPrivateContactCannotLookLikeLaunchClearance() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         assertTrue(privacy.contains("public project identity is Dillxn"));
-        assertTrue(privacy.contains("https://github.com/Dillxn/offer-filter-site/issues"));
-        assertTrue(privacy.contains("Posts there are public"));
+        assertTrue(privacy.contains("The project issue tracker remains public"));
         assertTrue(privacy.contains("Do not attach diagnostic reports"));
-        assertTrue(privacy.contains("A private contact for privacy, deletion and security requests is not yet configured"));
-        assertTrue(privacy.contains("Public update downloads do not require a GitHub connection"));
-        assertTrue(privacy.contains("retention and deletion schedule for those copies has not yet been confirmed"));
+        assertTrue(privacy.contains("a private privacy contact is not yet configured"));
+        assertTrue(privacy.contains("private identity-verification channel for privacy/deletion/security requests is not yet configured"));
+        assertTrue(privacy.contains("No GitHub account is required"));
         for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
             assertTrue(doc.file, doc.text().startsWith("# " + AppName.NAME));
-            assertTrue(doc.file, doc.text().contains("Draft of 4 October 2026."));
+            assertTrue(doc.file, doc.text().contains("Draft of 6 October 2026."));
             assertTrue(doc.file, doc.text().contains("No attorney review is claimed"));
         }
         assertTrue(LegalTexts.Doc.TERMS.text().contains("To the extent the law allows"));

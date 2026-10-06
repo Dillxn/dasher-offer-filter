@@ -259,8 +259,7 @@ public class GitHubConnectTest {
         // As with Disconnect: reports through the connection stop, and connecting again never turns them back on.
         assertTrue(!ReportOutbox.useGitHubChosen(app));
         String report = DiagnosticLog.report(app);
-        assertTrue(report, report.contains("GitHub connection: off; last ended: "));
-        assertTrue(report, report.contains("(GitHub refused to renew it (bad_refresh_token))"));
+        assertTrue("the report no longer carries a GitHub line", !report.contains("GitHub connection"));
     }
 
     @Test

@@ -139,15 +139,15 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void reportStatusIsUntouchedAtHomeAndRefreshesWhenSettingsOpens() throws Exception {
+    @Test public void settingsShowsNoReportQueueStatusNowThatReportsAreRetired() throws Exception {
         reportsOn();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            TextView status = field(activity.get(), "reportStatus");
-            status.setText("not scanned while hidden");
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
-            assertEquals("not scanned while hidden", status.getText().toString());
-            settings(activity);
-            assertEquals(ReportOutbox.status(app), status.getText().toString());
+            View content = settings(activity);
+            // The old line read "On · no reports sent yet", "On · last report #12 · 2 waiting to send" and so on.
+            for (String part : new String[] {"no reports sent yet", "last report #", "waiting to send"}) {
+                assertNull("0.4.73 retired the GitHub report queue and its status line",
+                        shownTextContaining(content, part));
+            }
         }
     }
 

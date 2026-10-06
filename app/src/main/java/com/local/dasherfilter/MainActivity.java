@@ -58,6 +58,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
+    private static final String SIGNATURE_LINK = "https://jesuslovesyou.xyz/";
     /** A split-screen window shorter than this gets the compact homepage; any window at all under the second. */
     static final int COMPACT_SPLIT_HEIGHT_DP = 600;
     static final int COMPACT_HEIGHT_DP = 400;
@@ -1199,6 +1200,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         closing.setMaxHeight(ui.dp(113)); // Scaled height plus breathing room before the passage.
         closing.setColorFilter(ui.dark ? android.graphics.Color.WHITE : 0xFF776550);
         closing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        // A tap opens the emblem's own page in the browser; the app sends nothing with it.
+        closing.setOnClickListener(v -> open(new Intent(Intent.ACTION_VIEW, Uri.parse(SIGNATURE_LINK))));
         LinearLayout.LayoutParams signature = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         signature.gravity = Gravity.CENTER_HORIZONTAL;
@@ -1242,7 +1245,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .setTitle("Send anonymous feedback?")
                 .setMessage("No account, name or email is required. The feedback record stores only what you type, "
                         + "the app version, and masked diagnostics if you explicitly attach them. Network providers still "
-                        + "see ordinary connection metadata such as an IP address; Offer Filter does not store the raw IP "
+                        + "see ordinary connection metadata such as an IP address; " + AppName.NAME + " does not store the raw IP "
                         + "with your feedback. Masking can miss details, so review diagnostics before attaching them.")
                 .setView(frame)
                 .setPositiveButton("Send", (dialog, which) -> {
