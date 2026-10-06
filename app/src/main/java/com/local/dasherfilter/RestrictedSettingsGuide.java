@@ -96,30 +96,54 @@ final class RestrictedSettingsGuide {
         }
     }
 
+    /** What the app could tell of the restriction: its {@link State}, and whether Android's own record said so. */
+    static final class Reading {
+        final State state;
+        /** Android's access_restricted_settings record was readable and decided it (else the install source did). */
+        final boolean fromRecord;
+
+        Reading(State state, boolean fromRecord) {
+            this.state = state;
+            this.fromRecord = fromRecord;
+        }
+    }
+
     /**
      * Whether the restriction may stand between the user and either access on this phone. Asks Android twice (the
      * app-op and the install source), so callers keep the answer a while.
      */
-    static State state(Context context) {
-        if (Build.VERSION.SDK_INT < 33 || prefs(context).getBoolean(CLEARED_KEY, false)) return State.CLEAR;
+    static Reading read(Context context) {
+        if (Build.VERSION.SDK_INT < 33 || prefs(context).getBoolean(CLEARED_KEY, false)) {
+            return new Reading(State.CLEAR, false);
+        }
         int mode = opMode(context);
-        if (mode == AppOpsManager.MODE_ALLOWED) return State.CLEAR;
-        if (mode == AppOpsManager.MODE_ERRORED) return State.UNTRIED;
-        if (mode == AppOpsManager.MODE_IGNORED) return State.TRIED;
-        if (!sideloaded(context)) return mode < 0 || mode == AppOpsManager.MODE_DEFAULT ? State.UNKNOWN : State.CLEAR;
-        return prefs(context).getBoolean(TRIED_KEY, false) ? State.TRIED : State.UNTRIED;
+        if (mode == AppOpsManager.MODE_ALLOWED) return new Reading(State.CLEAR, true);
+        if (mode == AppOpsManager.MODE_ERRORED) return new Reading(State.UNTRIED, true);
+        if (mode == AppOpsManager.MODE_IGNORED) return new Reading(State.TRIED, true);
+        if (!sideloaded(context)) {
+            return new Reading(mode < 0 || mode == AppOpsManager.MODE_DEFAULT ? State.UNKNOWN : State.CLEAR, false);
+        }
+        return new Reading(prefs(context).getBoolean(TRIED_KEY, false) ? State.TRIED : State.UNTRIED, false);
+    }
+
+    static State state(Context context) {
+        return read(context).state;
     }
 
     /** Whether this phone has the step at all (for the checklist's numbering): still to do, or done here. */
-    static boolean applies(Context context, State state) {
-        return state == State.UNTRIED || state == State.TRIED || prefs(context).getBoolean(CLEARED_KEY, false);
+    static boolean applies(Context context, Reading reading) {
+        return reading.state == State.UNTRIED || reading.state == State.TRIED
+                || prefs(context).getBoolean(CLEARED_KEY, false);
     }
 
     /**
-     * Whether the step shows now ({@code state} as {@link #state} said lately): restricted, with an access still off.
-     * An access that turned on while it showed proves the restriction lifted (kept, and logged once).
+     * Whether the step shows now ({@code reading} as {@link #read} said lately): restricted, with an access still off.
+     * An access that turned on while it showed proves the restriction lifted; so does one already on when only the
+     * install source suggested a restriction (allowed before, say, or granted before Android 13). Both are kept, and
+     * logged once.
      */
-    static boolean needed(Context context, State state, boolean accessibilityOn, boolean listenerOn) {
+    static boolean needed(Context context, Reading reading, boolean accessibilityOn, boolean listenerOn) {
+        State state = reading.state;
         if (state == State.CLEAR || state == State.UNKNOWN || prefs(context).getBoolean(CLEARED_KEY, false)) {
             return false;
         }
@@ -127,13 +151,21 @@ final class RestrictedSettingsGuide {
         int missing = (accessibilityOn ? 0 : 1) | (listenerOn ? 0 : 2);
         int before = prefs.getInt(MISSING_KEY, 0);
         if ((before & ~missing) != 0) {
-            prefs.edit().putBoolean(CLEARED_KEY, true).remove(MISSING_KEY).remove(TRIED_KEY).apply();
-            DiagnosticLog.log(context, "setup", "restricted settings allowed: an access turned on");
+            cleared(context, "an access turned on");
             return false;
         }
         if (missing == 0) return false;
+        if (!reading.fromRecord && missing != 3) {
+            cleared(context, "an access was already on");
+            return false;
+        }
         if (missing != before) prefs.edit().putInt(MISSING_KEY, missing).apply();
         return true;
+    }
+
+    private static void cleared(Context context, String why) {
+        prefs(context).edit().putBoolean(CLEARED_KEY, true).remove(MISSING_KEY).remove(TRIED_KEY).apply();
+        DiagnosticLog.log(context, "setup", "restricted settings allowed: " + why);
     }
 
     /**

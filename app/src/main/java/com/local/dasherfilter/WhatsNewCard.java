@@ -19,9 +19,12 @@ final class WhatsNewCard {
     static final String SEEN = "whats_new_seen";
 
     private final Context context;
-    private final Ui ui;
     private final Function<String, List<String>> notes;
     private final OnboardingCard card;
+    /** This version's name, asked once: the page refreshes every second. */
+    private String version;
+    /** Closed, or nothing to show for this version: no more asking until the page is made again. */
+    private boolean done;
     private String shownFor;
 
     WhatsNewCard(Context context, Ui ui, LinearLayout parent) {
@@ -31,7 +34,6 @@ final class WhatsNewCard {
     /** @param notes what is new in a version, by its name (the bundled notes, or a test's) */
     WhatsNewCard(Context context, Ui ui, LinearLayout parent, Function<String, List<String>> notes) {
         this.context = context;
-        this.ui = ui;
         this.notes = notes;
         card = new OnboardingCard(context, ui, parent);
         card.addAction(ui, "OK", this::dismiss);
@@ -42,7 +44,8 @@ final class WhatsNewCard {
     }
 
     void refresh() {
-        String version = Updater.version(context);
+        if (done) return;
+        if (version == null) version = Updater.version(context);
         List<String> lines = pending(context, version, notes.apply(version));
         boolean show = !lines.isEmpty();
         if (show && !version.equals(shownFor)) {
@@ -50,6 +53,7 @@ final class WhatsNewCard {
             card.setWords(OnboardingCard.titled(title(version), lines));
         }
         card.show(show);
+        done = !show;
     }
 
     boolean shown() {
@@ -82,8 +86,9 @@ final class WhatsNewCard {
     }
 
     private void dismiss() {
-        prefs(context).edit().putString(SEEN, Updater.version(context)).apply();
+        prefs(context).edit().putString(SEEN, version != null ? version : Updater.version(context)).apply();
         card.show(false);
+        done = true;
     }
 
     private static SharedPreferences prefs(Context context) {

@@ -168,6 +168,39 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void anAccessAlreadyOnMeansNoStepWhenOnlyTheInstallSourceSuggestedOne() {
+        // A tester updating from an older version: screen reading allowed long ago, notification access never.
+        sideloaded(PackageInstaller.PACKAGE_SOURCE_UNSPECIFIED);
+        restriction(AppOpsManager.MODE_DEFAULT);
+        Settings.Secure.putString(app.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                new ComponentName(app, OfferFilterService.class).flattenToString());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            assertNull("restricted settings were allowed already (or never applied)",
+                    line(content, SetupChecklist.RESTRICTED));
+            assertTrue(DiagnosticLog.read(app).contains("restricted settings allowed: an access was already on"));
+            line(content, SetupChecklist.NOTIFICATIONS).performClick();
+            assertNull("no guide in the way", ShadowAlertDialog.getLatestAlertDialog());
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
+        }
+    }
+
+    @Test public void androidsOwnRecordStillDecidesWithAnAccessOn() {
+        // Granted through other means while Android's record says restricted: the other switch is still blocked.
+        sideloaded(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE);
+        restriction(AppOpsManager.MODE_IGNORED);
+        Settings.Secure.putString(app.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                new ComponentName(app, OfferFilterService.class).flattenToString());
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            assertNotNull(line(content, SetupChecklist.RESTRICTED));
+            line(content, SetupChecklist.NOTIFICATIONS).performClick();
+            assertEquals(RestrictedSettingsGuide.PATH, message());
+        }
+    }
+
     @Test public void aStoreInstallOrAnAllowedRestrictionHasNoSuchStep() {
         sideloaded(PackageInstaller.PACKAGE_SOURCE_STORE);
         restriction(AppOpsManager.MODE_DEFAULT);

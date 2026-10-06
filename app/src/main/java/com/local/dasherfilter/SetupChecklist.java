@@ -67,7 +67,7 @@ final class SetupChecklist {
     private final MainActivity.Asked<Boolean> accessibilityOn;
     private final MainActivity.Asked<Boolean> listenerOn;
     private final MainActivity.Asked<Boolean> installsAllowed;
-    private final MainActivity.Asked<RestrictedSettingsGuide.State> restriction;
+    private final MainActivity.Asked<RestrictedSettingsGuide.Reading> restriction;
     /** A switch tried from here that stayed off, on Android 13+ (the hint shows only while the restriction is unknown). */
     private boolean accessibilityTried;
     private boolean listenerTried;
@@ -86,7 +86,7 @@ final class SetupChecklist {
         accessibilityOn = new MainActivity.Asked<>(() -> accessibilityEnabled(activity));
         listenerOn = new MainActivity.Asked<>(() -> OfferNotificationService.hasAccess(activity));
         installsAllowed = new MainActivity.Asked<>(() -> activity.getPackageManager().canRequestPackageInstalls());
-        restriction = new MainActivity.Asked<>(() -> RestrictedSettingsGuide.state(activity));
+        restriction = new MainActivity.Asked<>(() -> RestrictedSettingsGuide.read(activity));
         restricted = new SetupRow(activity, ui, parent, () -> guide(firstMissing()));
         accessibility = new SetupRow(activity, ui, parent, this::fixAccessibility);
         notifications = new SetupRow(activity, ui, parent, this::fixNotifications);
@@ -135,13 +135,13 @@ final class SetupChecklist {
         boolean a11y = accessibilityOn.get();
         boolean listenerGranted = listenerOn.get();
         boolean listenerConnected = OfferNotificationService.isConnected();
-        RestrictedSettingsGuide.State state = restriction.get();
-        guideNeeded = RestrictedSettingsGuide.needed(activity, state, a11y, listenerGranted);
-        boolean unknown = state == RestrictedSettingsGuide.State.UNKNOWN;
+        RestrictedSettingsGuide.Reading reading = restriction.get();
+        guideNeeded = RestrictedSettingsGuide.needed(activity, reading, a11y, listenerGranted);
+        boolean unknown = reading.state == RestrictedSettingsGuide.State.UNKNOWN;
         accessibilityHint = unknown && accessibilityTried;
         listenerHint = unknown && listenerTried;
         int step = 0;
-        if (RestrictedSettingsGuide.applies(activity, state)) step++;
+        if (RestrictedSettingsGuide.applies(activity, reading)) step++;
         if (guideNeeded) restricted.show(SetupRow.Mark.STEP, step, RESTRICTED, FIX);
         else restricted.hide();
 
