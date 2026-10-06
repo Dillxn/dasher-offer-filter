@@ -1,0 +1,8 @@
+# Supabase CLI settings for the accountless feedback service. Deploy steps: ../README.md.
+project_id = "offer-filter-feedback"
+
+[functions.offer-filter-feedback]
+# The app and the website call it with no Supabase key and no user session: no JWT is asked for.
+verify_jwt = false
+# The function's code is one folder up (paths here are relative to this file).
+entrypoint = "../index.ts"

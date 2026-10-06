@@ -1,5 +1,6 @@
--- Current production schema for the accountless Offer Filter feedback service.
--- Supabase project: offer-filter-feedback (zlnfvqyyjsltmkmmpgzp).
+-- Production schema of the accountless Offer Filter feedback service as first deployed (reference only; do not
+-- re-run). Supabase project: offer-filter-feedback (zlnfvqyyjsltmkmmpgzp). Changes since are migrations in
+-- supabase/migrations/, applied in order (README.md).
 create table public.offer_filter_feedback (
   id uuid primary key default gen_random_uuid(),
   received_at timestamptz not null default now(),

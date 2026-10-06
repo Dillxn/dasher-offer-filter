@@ -1,21 +1,30 @@
+// The accountless feedback service of Offer Filter (a Supabase Edge Function named offer-filter-feedback).
+// Deploy steps, limits and what it stores: README.md. Never deployed from CI.
+//
+// One JSON POST per part. The app sends no Origin header; the website's form sends its own Origin and may send only
+// feedback. Submissions of several parts share a random report token (32 hex digits), and each part is stored once
+// (a retry of a stored part is answered with the same reference). Only a submission's first part counts toward the
+// per-network rate limit; a global daily cap protects storage. No IP address, user agent or account is stored: the
+// network (an IPv4 address or an IPv6 /64, from Cloudflare's cf-connecting-ip only) is turned into a keyed hash with
+// a random salt that changes every UTC day, used only to count recent submissions, and kept at most an hour.
 
-const ALLOWED_ORIGINS = new Set([
-  "https://offerfilter.org",
-  "https://www.offerfilter.org",
-  "https://dillxn.github.io",
-]);
-
-const CATEGORIES = new Set([
-  "general",
-  "bug",
-  "feature",
-  "ux",
-  "privacy",
-  "update",
-  "other",
-]);
+import {
+  ALLOWED_ORIGINS,
+  Invalid,
+  LIMITS,
+  networkOf,
+  reference,
+  secondsUntilUtcMidnight,
+  type Submission,
+  utcDay,
+  validate,
+} from "./lib.ts";
 
 const encoder = new TextEncoder();
+/** After an upstream failure, the app tries again after this long (it backs off further by itself). */
+const UPSTREAM_RETRY_SECONDS = 60;
+/** The rate limit counts ten minutes. */
+const RATE_RETRY_SECONDS = 600;
 
 function cors(origin: string | null): Record<string, string> {
   if (origin && ALLOWED_ORIGINS.has(origin)) {
@@ -24,55 +33,82 @@ function cors(origin: string | null): Record<string, string> {
       "Vary": "Origin",
       "Access-Control-Allow-Headers": "content-type",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Max-Age": "86400",
     };
   }
   return {};
 }
 
-function json(origin: string | null, status: number, body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...cors(origin),
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+function json(
+  origin: string | null,
+  status: number,
+  body: Record<string, unknown>,
+  retryAfterSeconds?: number,
+): Response {
+  const headers: Record<string, string> = {
+    ...cors(origin),
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (retryAfterSeconds !== undefined) headers["Retry-After"] = String(retryAfterSeconds);
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
-function text(value: unknown, max: number): string | null {
-  if (value == null) return null;
-  if (typeof value !== "string") throw new Error("invalid text");
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > max) throw new Error("text too long");
-  return trimmed;
+/** Storage could not be reached or failed: the request may be retried as it is. */
+class Upstream extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`upstream ${status}`);
+    this.status = status;
+  }
 }
 
-function intField(value: unknown, min: number, max: number): number | null {
-  if (value == null) return null;
-  if (!Number.isInteger(value)) throw new Error("invalid integer");
-  const n = Number(value);
-  if (n < min || n > max) throw new Error("invalid integer");
-  return n;
+async function rpc(name: string, args: Record<string, unknown>): Promise<unknown> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceRole) throw new Upstream(0);
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceRole,
+        "Authorization": `Bearer ${serviceRole}`,
+      },
+      body: JSON.stringify(args),
+    });
+  } catch {
+    throw new Upstream(0);
+  }
+  if (!response.ok) {
+    // Never the body: it could echo what was submitted.
+    await response.body?.cancel();
+    throw new Upstream(response.status);
+  }
+  return await response.json();
 }
 
-function forwardedIp(req: Request): string {
-  const cf = req.headers.get("cf-connecting-ip")?.trim();
-  if (cf) return cf;
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (forwarded) return forwarded;
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real;
-  return "unavailable";
+/** Today's random salt (made by the database on the day's first request, deleted once the day is over). */
+let saltCache: { day: string; salt: string } | null = null;
+
+async function dailySalt(day: string): Promise<string> {
+  if (saltCache && saltCache.day === day) return saltCache.salt;
+  const salt = await rpc("offer_filter_feedback_daily_salt", {});
+  if (typeof salt !== "string" || !/^[0-9a-f]{64}$/.test(salt)) throw new Upstream(502);
+  saltCache = { day, salt };
+  return salt;
 }
 
-async function rateBucket(ip: string, secret: string): Promise<string> {
-  const day = new Date().toISOString().slice(0, 10);
+/** The network's keyed hash for today: counts recent submissions, and cannot be turned back into an address. */
+async function rateBucket(network: string, now: Date): Promise<string> {
+  const day = utcDay(now);
+  const salt = await dailySalt(day);
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(secret),
+    encoder.encode(salt),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -80,11 +116,33 @@ async function rateBucket(ip: string, secret: string): Promise<string> {
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(`offer-filter-feedback\0${day}\0${ip}`),
+    encoder.encode(`offer-filter-feedback\0${day}\0${network}`),
   );
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function store(submission: Submission, bucket: string): Promise<{ outcome: string; id: unknown }> {
+  const result = await rpc("submit_offer_filter_feedback_v2", {
+    p_rate_bucket: bucket,
+    p_kind: submission.kind,
+    p_category: submission.category,
+    p_message: submission.message,
+    p_diagnostics: submission.diagnostics,
+    p_app_version: submission.appVersion,
+    p_app_version_code: submission.appVersionCode,
+    p_source: submission.source,
+    p_diagnostics_consented: submission.diagnosticsConsented,
+    p_report_token: submission.reportToken,
+    p_part_index: submission.partIndex,
+    p_part_count: submission.partCount,
+  });
+  const row = Array.isArray(result) ? result[0] : result;
+  if (!row || typeof row !== "object") throw new Upstream(502);
+  const { outcome, reference: id } = row as Record<string, unknown>;
+  if (typeof outcome !== "string") throw new Upstream(502);
+  return { outcome, id };
 }
 
 Deno.serve(async (req: Request) => {
@@ -106,101 +164,47 @@ Deno.serve(async (req: Request) => {
   }
 
   const declaredLength = Number(req.headers.get("content-length") ?? "0");
-  if (Number.isFinite(declaredLength) && declaredLength > 150_000) {
+  if (Number.isFinite(declaredLength) && declaredLength > LIMITS.bodyBytes) {
     return json(origin, 413, { ok: false, error: "too_large" });
   }
-
   const raw = await req.text();
-  if (encoder.encode(raw).length > 150_000) {
+  if (encoder.encode(raw).length > LIMITS.bodyBytes) {
     return json(origin, 413, { ok: false, error: "too_large" });
   }
 
-  let body: Record<string, unknown>;
+  let submission: Submission;
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("invalid json");
-    body = parsed as Record<string, unknown>;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Invalid("invalid json");
+    submission = validate(parsed as Record<string, unknown>, origin);
   } catch {
-    return json(origin, 400, { ok: false, error: "invalid_json" });
+    return json(origin, 400, { ok: false, error: "invalid_feedback" });
   }
 
   try {
-    const kind = text(body.kind, 24) ?? "feedback";
-    if (!["feedback", "problem", "diagnostics"].includes(kind)) throw new Error("invalid kind");
-
-    const source = origin ? "web" : "android";
-    if (source === "web" && kind !== "feedback") throw new Error("web feedback only");
-
-    const category = text(body.category, 64) ?? "general";
-    if (!CATEGORIES.has(category)) throw new Error("invalid category");
-
-    const message = text(body.message, 4000);
-    const diagnostics = text(body.diagnostics, 60000);
-    const diagnosticsConsented = body.diagnosticsConsented === true;
-
-    if (diagnostics && !diagnosticsConsented) throw new Error("diagnostics consent required");
-    if (kind === "feedback" && !message) throw new Error("feedback message required");
-    if (kind === "diagnostics" && !diagnostics) throw new Error("diagnostics required");
-    if (!message && !diagnostics) throw new Error("empty");
-
-    const appVersion = text(body.appVersion, 32);
-    if (appVersion && !/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(appVersion)) {
-      throw new Error("invalid app version");
+    const now = new Date();
+    const bucket = await rateBucket(networkOf(req.headers.get("cf-connecting-ip")), now);
+    const { outcome, id } = await store(submission, bucket);
+    switch (outcome) {
+      case "stored":
+      case "duplicate":
+        // One reference per submission: its first part's.
+        return json(origin, 201, { ok: true, reference: reference(id) });
+      case "rate_limited":
+        return json(origin, 429, { ok: false, error: "rate_limited" }, RATE_RETRY_SECONDS);
+      case "daily_cap":
+        return json(origin, 503, { ok: false, error: "temporarily_unavailable" }, secondsUntilUtcMidnight(now));
+      case "too_large":
+        return json(origin, 413, { ok: false, error: "too_large" });
+      case "invalid":
+      case "part_mismatch":
+      case "part_out_of_order":
+        return json(origin, 400, { ok: false, error: outcome });
+      default:
+        throw new Upstream(502);
     }
-    const appVersionCode = intField(body.appVersionCode, 1, 10_000_000);
-
-    const reportToken = text(body.reportToken, 32);
-    if (reportToken && !/^[a-f0-9]{32}$/.test(reportToken)) throw new Error("invalid report token");
-    const partIndex = intField(body.partIndex ?? 0, 0, 31) ?? 0;
-    const partCount = intField(body.partCount ?? 1, 1, 32) ?? 1;
-    if (partIndex >= partCount) throw new Error("invalid part");
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceRole) {
-      return json(origin, 503, { ok: false, error: "temporarily_unavailable" });
-    }
-
-    const bucket = await rateBucket(forwardedIp(req), serviceRole);
-
-    const rpc = await fetch(`${supabaseUrl}/rest/v1/rpc/submit_offer_filter_feedback`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": serviceRole,
-        "Authorization": `Bearer ${serviceRole}`,
-        "Prefer": "return=representation",
-      },
-      body: JSON.stringify({
-        p_rate_bucket: bucket,
-        p_kind: kind,
-        p_category: category,
-        p_message: message,
-        p_diagnostics: diagnostics,
-        p_app_version: appVersion,
-        p_app_version_code: appVersionCode,
-        p_source: source,
-        p_diagnostics_consented: diagnosticsConsented,
-        p_report_token: reportToken,
-        p_part_index: partIndex,
-        p_part_count: partCount,
-      }),
-    });
-
-    if (!rpc.ok) {
-      if (rpc.status === 429) return json(origin, 429, { ok: false, error: "rate_limited" });
-      const err = await rpc.text();
-      if (err.includes("rate limit exceeded")) {
-        return json(origin, 429, { ok: false, error: "rate_limited" });
-      }
-      console.error("feedback storage failed", rpc.status);
-      return json(origin, 502, { ok: false, error: "temporarily_unavailable" });
-    }
-
-    const stored = await rpc.json();
-    const id = typeof stored === "string" ? stored : String(stored ?? "");
-    return json(origin, 201, { ok: true, reference: id.replace(/"/g, "").slice(0, 8) });
-  } catch {
-    return json(origin, 400, { ok: false, error: "invalid_feedback" });
+  } catch (failure) {
+    console.error("feedback storage failed", failure instanceof Upstream ? failure.status : "unexpected");
+    return json(origin, 503, { ok: false, error: "temporarily_unavailable" }, UPSTREAM_RETRY_SECONDS);
   }
 });
