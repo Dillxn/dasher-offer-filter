@@ -14,6 +14,8 @@ import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The homepage's setup, in order, each step one quiet line ({@link SetupRow}) only while it is needed, numbered in the
@@ -27,10 +29,15 @@ import android.widget.Toast;
  * <li>Allow updates ("Install unknown apps" for this app), once the steps above are done, or at once while a verified
  * update waits for it.</li>
  * </ol>
- * An access granted but not working gets its own words and fix instead of a page whose switch is already on:
+ * With three or more to do, only the first shows, and the rest fold into one line, "N more to set up", whose tap shows
+ * them all: the lines cross the constellation's lower part, and five of them would shrink it to a sliver under words,
+ * its knobs out of reach just as the start line says to drag one.
+ *
+ * <p>An access granted but not working gets its own words and fix instead of a page whose switch is already on:
  * "Turn Offer Filter off and on in Accessibility" opens the service's page, and "Reconnect notification access" asks
  * Android to bind the listener again (a second tap opens its page). On Android 13+, a switch tried from here that
- * stayed off also offers the old hint ("switch greyed out?") when the restriction could not be told in advance.
+ * stayed off also offers the old hint ("switch greyed out?") when the restriction could not be told in advance. Each
+ * of Android's pages opens with at most one toast, naming what to turn on there.
  */
 final class SetupChecklist {
     /** The prefs older versions kept these answers in (MainActivity's "setup_steps"). */
@@ -51,9 +58,27 @@ final class SetupChecklist {
     static final String GREYED_HELP = "If Android blocks the switch, open App info, tap ⋮ → Allow restricted settings, "
             + "then come back here.";
     static final String FIX = "Fix";
-    /** Where the accessibility list keeps downloaded apps, for phones without the service's own page. */
-    static final String FIND_IN_LIST = "In Accessibility, open Downloaded apps (or Installed apps), then "
-            + AppName.NAME + ".";
+    /** The folded steps' line, and its action. */
+    static final String SHOW = "Show";
+    /** From this many steps to do, the ones after the first fold into one line. */
+    static final int FOLD_FROM = 3;
+    /** The listener's name in Android's list of apps with notification access (strings.xml listener_name). */
+    static final String LISTENER_NAME = AppName.NAME + " background offers";
+    /** Where the accessibility list keeps downloaded apps, for phones that do not let an app open its own page. */
+    static final String FIND_IN_LIST = "In Accessibility, open Downloaded apps (or Installed apps) → " + AppName.NAME
+            + ", and turn it on.";
+    static final String RESTART_ON_PAGE = "Turn " + AppName.NAME + " off, then on again.";
+    static final String RESTART_IN_LIST = "In Accessibility, open Downloaded apps (or Installed apps) → "
+            + AppName.NAME + ", then turn it off and on again.";
+    /** Back from App info, on the service's own page. */
+    static final String NOW_ON_PAGE = "Now turn on " + AppName.NAME + " here.";
+    static final String FIND_LISTENER = "Turn on " + LISTENER_NAME + " here.";
+    static final String NOW_LISTENER = "Now allow " + AppName.NAME + " here.";
+    static final String RECONNECT_ON_PAGE = "Turn notification access for " + AppName.NAME + " off, then on again.";
+    static final String RECONNECT_IN_LIST = "Turn " + LISTENER_NAME + " off, then on again.";
+    /** Android's own name for the switch behind Allow updates ("Install unknown apps" for this app). */
+    static final String ALLOW_SOURCE = "Turn on Allow from this source.";
+    static final String ALLOW_NOTIFICATIONS = "Turn on notifications for " + AppName.NAME + ", every category.";
     /** How long after asking Android to reconnect the listener a second tap opens its page instead. */
     static final long RECONNECT_GRACE_MS = 60_000;
 
@@ -64,17 +89,27 @@ final class SetupChecklist {
     private final SetupRow notifications;
     private final SetupRow alerts;
     private final SetupRow updates;
+    /** "N more to set up": the steps after the first, folded. */
+    private final SetupRow more;
     private final MainActivity.Asked<Boolean> accessibilityOn;
     private final MainActivity.Asked<Boolean> listenerOn;
     private final MainActivity.Asked<Boolean> installsAllowed;
     private final MainActivity.Asked<RestrictedSettingsGuide.Reading> restriction;
-    /** A switch tried from here that stayed off, on Android 13+ (the hint shows only while the restriction is unknown). */
+    /**
+     * A switch tried from here that stayed off, on Android 13+ (the hint shows only while the restriction is unknown,
+     * or Android's record says allowed).
+     */
     private boolean accessibilityTried;
     private boolean listenerTried;
     private boolean guideNeeded;
     private boolean accessibilityHint;
     private boolean listenerHint;
     private long reconnectAskedAt = -1;
+    /** The folded steps were asked for: every step shows, for as long as this page lives. */
+    private boolean unfolded;
+    /** What the page said last time, so a tap on the folded line can lay the steps out at once. */
+    private boolean lastReaderConnected;
+    private boolean lastAlertsAllowed;
 
     /**
      * @param parent        the homepage column the lines go in, in this order
@@ -91,7 +126,11 @@ final class SetupChecklist {
         accessibility = new SetupRow(activity, ui, parent, this::fixAccessibility);
         notifications = new SetupRow(activity, ui, parent, this::fixNotifications);
         alerts = new SetupRow(activity, ui, parent, this::allowAlerts);
-        updates = new SetupRow(activity, ui, parent, () -> open(UpdateNotices.allowUpdates(activity)));
+        updates = new SetupRow(activity, ui, parent, this::allowUpdates);
+        more = new SetupRow(activity, ui, parent, () -> {
+            unfolded = true;
+            refresh(lastReaderConnected, lastAlertsAllowed);
+        });
     }
 
     /** Android is asked again, at the next refresh. */
@@ -104,22 +143,23 @@ final class SetupChecklist {
 
     /**
      * Back on the page, perhaps from Android's settings: everything is asked again, a switch tried from here that
-     * stayed off is noted, and coming back from App info opens the access being set up (the guide's last step).
+     * stayed off is noted, and coming back from App info opens the access being set up (the guide's last step), but
+     * only within minutes of leaving for it, never while a dash is on or beside another app, and never behind the
+     * notice ({@code behindNotice}: nothing behind it refreshes, so what the guide noted waits for the homepage).
      */
-    void resumed() {
+    void resumed(boolean behindNotice) {
         forget();
+        if (behindNotice) return;
         SharedPreferences prefs = prefs();
         boolean a11y = accessibilityOn.get();
         boolean listener = listenerOn.get();
         accessibilityTried = Build.VERSION.SDK_INT >= 33 && prefs.getBoolean(ACCESSIBILITY_OPENED, false) && !a11y;
         listenerTried = Build.VERSION.SDK_INT >= 33 && prefs.getBoolean(LISTENER_OPENED, false) && !listener;
-        RestrictedSettingsGuide.Access next = RestrictedSettingsGuide.resumed(activity, a11y, listener);
+        boolean mayOpen = !activity.isInMultiWindowMode() && !UpdateReadyRow.dashOn(activity);
+        RestrictedSettingsGuide.Access next = RestrictedSettingsGuide.resumed(activity, a11y, listener, mayOpen);
         restriction.forget();
-        if (next != null) {
-            toast(next == RestrictedSettingsGuide.Access.ACCESSIBILITY ? "Now turn on " + AppName.NAME + " here."
-                    : "Now allow " + AppName.NAME + " here.");
-            openAccess(next);
-        }
+        if (next == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility(NOW_ON_PAGE, FIND_IN_LIST);
+        else if (next == RestrictedSettingsGuide.Access.NOTIFICATIONS) openListener(NOW_LISTENER, FIND_LISTENER);
     }
 
     /** Whether this app may install its updates ("Install unknown apps"), as Android said lately. */
@@ -127,51 +167,74 @@ final class SetupChecklist {
         return installsAllowed.get();
     }
 
+    /** One line to show, in the checklist's order. */
+    private static final class Line {
+        final SetupRow row;
+        final SetupRow.Mark mark;
+        final int number;
+        final String words;
+
+        Line(SetupRow row, SetupRow.Mark mark, int number, String words) {
+            this.row = row;
+            this.mark = mark;
+            this.number = number;
+            this.words = words;
+        }
+    }
+
     /**
      * The lines as things stand: {@code readerConnected} is the screen reader running, {@code alertsAllowed} as the
      * page asked Android lately.
      */
     void refresh(boolean readerConnected, boolean alertsAllowed) {
+        lastReaderConnected = readerConnected;
+        lastAlertsAllowed = alertsAllowed;
         boolean a11y = accessibilityOn.get();
         boolean listenerGranted = listenerOn.get();
         boolean listenerConnected = OfferNotificationService.isConnected();
         RestrictedSettingsGuide.Reading reading = restriction.get();
         guideNeeded = RestrictedSettingsGuide.needed(activity, reading, a11y, listenerGranted);
-        boolean unknown = reading.state == RestrictedSettingsGuide.State.UNKNOWN;
-        accessibilityHint = unknown && accessibilityTried;
-        listenerHint = unknown && listenerTried;
+        boolean hint = reading.hintAfterTry();
+        accessibilityHint = hint && accessibilityTried;
+        listenerHint = hint && listenerTried;
+        List<Line> lines = new ArrayList<>();
         int step = 0;
         if (RestrictedSettingsGuide.applies(activity, reading)) step++;
-        if (guideNeeded) restricted.show(SetupRow.Mark.STEP, step, RESTRICTED, FIX);
-        else restricted.hide();
+        if (guideNeeded) lines.add(new Line(restricted, SetupRow.Mark.STEP, step, RESTRICTED));
 
         step++;
-        if (readerConnected) {
-            accessibility.hide();
-        } else if (a11y) {
-            accessibility.show(SetupRow.Mark.PROBLEM, step, ACCESSIBILITY_RESTART, FIX);
-        } else {
-            accessibility.show(SetupRow.Mark.STEP, step, ACCESSIBILITY + (accessibilityHint ? GREYED : ""), FIX);
+        if (!readerConnected) {
+            lines.add(a11y ? new Line(accessibility, SetupRow.Mark.PROBLEM, step, ACCESSIBILITY_RESTART)
+                    : new Line(accessibility, SetupRow.Mark.STEP, step,
+                            ACCESSIBILITY + (accessibilityHint ? GREYED : "")));
         }
 
         step++;
-        if (listenerConnected) {
-            notifications.hide();
-        } else if (listenerGranted) {
-            notifications.show(SetupRow.Mark.PROBLEM, step, NOTIFICATIONS_RECONNECT, FIX);
-        } else {
-            notifications.show(SetupRow.Mark.STEP, step, NOTIFICATIONS + (listenerHint ? GREYED : ""), FIX);
+        if (!listenerConnected) {
+            lines.add(listenerGranted ? new Line(notifications, SetupRow.Mark.PROBLEM, step, NOTIFICATIONS_RECONNECT)
+                    : new Line(notifications, SetupRow.Mark.STEP, step, NOTIFICATIONS + (listenerHint ? GREYED : "")));
         }
 
         step++;
-        if (alertsAllowed) alerts.hide();
-        else alerts.show(SetupRow.Mark.STEP, step, ALERTS, FIX);
+        if (!alertsAllowed) lines.add(new Line(alerts, SetupRow.Mark.STEP, step, ALERTS));
 
         step++;
         // Updates matter once the app works, or at once when a verified update waits for this switch.
         boolean coreDone = readerConnected && listenerConnected && alertsAllowed;
-        if (installsAllowed.get() || (!coreDone && Updater.heldVersion(activity) == null)) updates.hide();
-        else updates.show(SetupRow.Mark.STEP, step, UPDATES, FIX);
+        if (!installsAllowed.get() && (coreDone || Updater.heldVersion(activity) != null)) {
+            lines.add(new Line(updates, SetupRow.Mark.STEP, step, UPDATES));
+        }
+
+        boolean fold = !unfolded && lines.size() >= FOLD_FROM;
+        int showing = fold ? 1 : lines.size();
+        for (SetupRow row : new SetupRow[] {restricted, accessibility, notifications, alerts, updates}) {
+            Line line = null;
+            for (int i = 0; i < showing; i++) if (lines.get(i).row == row) line = lines.get(i);
+            if (line == null) row.hide();
+            else row.show(line.mark, line.number, line.words, FIX);
+        }
+        if (fold) more.show(SetupRow.Mark.MORE, 0, (lines.size() - 1) + " more to set up", SHOW);
+        else more.hide();
     }
 
     // ---- Steps ----
@@ -185,18 +248,29 @@ final class SetupChecklist {
         RestrictedSettingsGuide.show(activity, target, this::openAccess, this::open);
     }
 
+    /**
+     * While the restriction stands: before a try, an access's own Fix leads through the guide; after one, it opens
+     * the switch itself (allowed already, perhaps, as the website's help says to), and the restricted step's line
+     * keeps the guide.
+     */
+    private boolean guideFirst() {
+        return guideNeeded && restriction.get().state == RestrictedSettingsGuide.State.UNTRIED;
+    }
+
     private void fixAccessibility() {
         if (accessibilityOn.get() && !OfferFilterService.isConnected()) {
             // On, but not running (a crash, an update Android did not rebind, a stopped reader): off and on fixes it.
             DiagnosticLog.log(activity, "setup", "screen reading on but not running; opening its page to restart it");
-            toast("Turn " + AppName.NAME + " off, then on again.");
-            openAccessibility();
-        } else if (guideNeeded) {
+            openAccessibility(RESTART_ON_PAGE, RESTART_IN_LIST);
+        } else if (guideFirst()) {
             guide(RestrictedSettingsGuide.Access.ACCESSIBILITY);
+        } else if (guideNeeded) {
+            RestrictedSettingsGuide.trying(activity, RestrictedSettingsGuide.Access.ACCESSIBILITY);
+            openAccess(RestrictedSettingsGuide.Access.ACCESSIBILITY);
         } else if (accessibilityHint) {
             greyedOut(RestrictedSettingsGuide.Access.ACCESSIBILITY);
         } else {
-            openAccessibility();
+            openAccess(RestrictedSettingsGuide.Access.ACCESSIBILITY);
         }
     }
 
@@ -218,14 +292,16 @@ final class SetupChecklist {
                 }
             }
             // Asked already (or refused): the page itself, where turning it off and on reconnects it.
-            toast("Turn notification access for " + AppName.NAME + " off, then on again.");
-            openListener();
-        } else if (guideNeeded) {
+            openListener(RECONNECT_ON_PAGE, RECONNECT_IN_LIST);
+        } else if (guideFirst()) {
             guide(RestrictedSettingsGuide.Access.NOTIFICATIONS);
+        } else if (guideNeeded) {
+            RestrictedSettingsGuide.trying(activity, RestrictedSettingsGuide.Access.NOTIFICATIONS);
+            openAccess(RestrictedSettingsGuide.Access.NOTIFICATIONS);
         } else if (listenerHint) {
             greyedOut(RestrictedSettingsGuide.Access.NOTIFICATIONS);
         } else {
-            openListener();
+            openAccess(RestrictedSettingsGuide.Access.NOTIFICATIONS);
         }
     }
 
@@ -241,13 +317,18 @@ final class SetupChecklist {
                 .setNeutralButton("Cancel", null));
     }
 
+    /** An access's own page, as a step's Fix opens it: the page needs no toast, the list says where to look. */
     private void openAccess(RestrictedSettingsGuide.Access access) {
-        if (access == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility();
-        else openListener();
+        if (access == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility(null, FIND_IN_LIST);
+        else openListener(null, FIND_LISTENER);
     }
 
-    /** The service's own Accessibility page where Android has one (12 and later), else the list. */
-    private void openAccessibility() {
+    /**
+     * The service's own Accessibility page where Android lets an app open it, else the list. Stock Android guards that
+     * page with a permission only system apps hold (OPEN_ACCESSIBILITY_DETAILS_SETTINGS), so the list is what most
+     * phones show; one toast, for the page that opened: {@code onPage} (none when null) or {@code inList}.
+     */
+    private void openAccessibility(String onPage, String inList) {
         prefs().edit().putBoolean(ACCESSIBILITY_OPENED, true).apply();
         if (Build.VERSION.SDK_INT >= 31) {
             // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
@@ -256,25 +337,38 @@ final class SetupChecklist {
                             new ComponentName(activity, OfferFilterService.class).flattenToString());
             try {
                 activity.startActivity(details);
+                if (onPage != null) toast(onPage);
                 return;
-            } catch (RuntimeException unsupported) {
+            } catch (RuntimeException refused) {
                 // The public accessibility list remains available on phones without a direct service screen.
+                DiagnosticLog.log(activity, "setup", "the service's own Accessibility page is not open to apps here ("
+                        + refused.getClass().getSimpleName() + "); the list instead");
             }
         }
-        toast(FIND_IN_LIST);
-        open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        if (open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))) toast(inList);
     }
 
-    /** The listener's own page (Android 11 and later), else the list of apps with notification access. */
-    private void openListener() {
+    /**
+     * The listener's own page (Android 11 and later), else the list of apps with notification access, where it is
+     * {@link #LISTENER_NAME}; one toast, as {@link #openAccessibility}.
+     */
+    private void openListener(String onPage, String inList) {
         prefs().edit().putBoolean(LISTENER_OPENED, true).apply();
-        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
         if (Build.VERSION.SDK_INT >= 30) {
-            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+            Intent detail = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
                     Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
                     new ComponentName(activity, OfferNotificationService.class).flattenToString());
+            try {
+                activity.startActivity(detail);
+                if (onPage != null) toast(onPage);
+                return;
+            } catch (RuntimeException missing) {
+                // A phone without the listener's own page: the list, where the listener has its own name.
+                DiagnosticLog.log(activity, "setup", "no page of its own for notification access here ("
+                        + missing.getClass().getSimpleName() + "); the list instead");
+            }
         }
-        open(intent);
+        if (open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) toast(inList);
     }
 
     /** Android's own question first (13 and later), and the app's notification settings once it was answered. */
@@ -291,8 +385,15 @@ final class SetupChecklist {
             }
         }
         // Passing offers, review cards and the paused-until-opened reminder each have their own channel.
-        open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,
-                activity.getPackageName()));
+        if (open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,
+                activity.getPackageName()))) {
+            toast(ALLOW_NOTIFICATIONS);
+        }
+    }
+
+    /** Android's "Install unknown apps" switch for this app, named as Android names it there. */
+    private void allowUpdates() {
+        if (open(UpdateNotices.allowUpdates(activity))) toast(ALLOW_SOURCE);
     }
 
     // ---- Android ----
@@ -309,13 +410,16 @@ final class SetupChecklist {
         return false;
     }
 
-    private void open(Intent intent) {
+    /** Opens one of Android's pages; whether it opened (a toast says so when it did not). */
+    private boolean open(Intent intent) {
         try {
             activity.startActivity(intent);
+            return true;
         } catch (RuntimeException error) {
             DiagnosticLog.log(activity, "setup", "Android could not open " + intent.getAction() + ": "
                     + error.getClass().getSimpleName());
             toast("Android couldn't open that screen.");
+            return false;
         }
     }
 

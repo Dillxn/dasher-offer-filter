@@ -11,9 +11,10 @@ import android.widget.TextView;
 
 /**
  * One quiet line on the homepage, the whole of it a 48 dp button: a small mark (a setup step's number, a warning sign
- * for something that stopped, or an arrow for an update), a few words, and the word for what a tap does ("Fix",
- * "Install now"). Screen readers hear "words. action." Hidden until shown; words are set only when they change. At
- * the largest font sizes on a narrow phone the words keep to two lines ({@link Words}).
+ * for something that stopped, or an arrow for an update; none for the steps folded away), a few words, and the word
+ * for what a tap does ("Fix", "Install now", "Show"). Screen readers hear "words. action." Hidden until shown; words
+ * are set only when they change. At the largest font sizes on a narrow phone the words keep to two lines
+ * ({@link Words}).
  */
 final class SetupRow {
     enum Mark {
@@ -22,7 +23,9 @@ final class SetupRow {
         /** Something set up that stopped working: the red warning sign. */
         PROBLEM,
         /** An update waiting: an arrow in a blue ring. */
-        UPDATE
+        UPDATE,
+        /** The steps after the first, folded into one line ("3 more to set up"): no mark, quieter words. */
+        MORE
     }
 
     /** The words' size at Android's default font size, as every homepage line. */
@@ -35,6 +38,8 @@ final class SetupRow {
     private final View sign;
     private final TextView text;
     private final TextView action;
+    private final int ink;
+    private final int quiet;
     private String shown = "";
 
     SetupRow(Context context, Ui ui, LinearLayout parent, Runnable onTap) {
@@ -55,8 +60,10 @@ final class SetupRow {
         sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
         sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(sign, new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20)));
+        ink = ui.ink;
+        quiet = ui.inkSecondary;
         text = new Words(context);
-        text.setTextColor(ui.ink);
+        text.setTextColor(ink);
         text.setLineSpacing(0, 1.15f);
         text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
         row.addView(text, Ui.weighted());
@@ -72,9 +79,11 @@ final class SetupRow {
         String key = mark + "/" + number + "/" + words + "/" + actionWord;
         if (!key.equals(shown)) {
             shown = key;
-            badge.setVisibility(mark == Mark.PROBLEM ? View.GONE : View.VISIBLE);
+            // Folded steps keep the badge's room, so their words line up with the step's above.
+            badge.setVisibility(mark == Mark.PROBLEM ? View.GONE : mark == Mark.MORE ? View.INVISIBLE : View.VISIBLE);
             badge.setText(mark == Mark.UPDATE ? "↑" : String.valueOf(number));
             sign.setVisibility(mark == Mark.PROBLEM ? View.VISIBLE : View.GONE);
+            text.setTextColor(mark == Mark.MORE ? quiet : ink);
             text.setText(words);
             action.setText(actionWord);
             row.setContentDescription(words + ". " + actionWord + ".");

@@ -244,6 +244,8 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
+            // Accessibility, notification access and alerts to do: the steps after the first are folded.
+            unfoldSetup(content);
             shownIcon(content, SetupChecklist.ALERTS + ". Fix.").performClick();
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();

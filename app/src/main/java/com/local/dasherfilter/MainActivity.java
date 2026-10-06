@@ -373,8 +373,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.foreground(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
-        // Back from Android's settings: a switch tried and still off is noted; back from App info, the next one opens.
-        checklist.resumed();
+        // Back from Android's settings: a switch tried and still off is noted; back from App info, the next one opens
+        // (never behind the notice).
+        checklist.resumed(noticeShown());
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);

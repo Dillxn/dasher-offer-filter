@@ -316,6 +316,32 @@ abstract class AndroidAdapterTestBase {
         packages.addIntentFilterForActivity(dasher, launcher);
     }
 
+    /**
+     * The homepage's setup with every step showing: with three or more to do, the ones after the first fold into one
+     * line, "N more to set up", whose tap shows them all. Nothing happens when nothing is folded.
+     */
+    static void unfoldSetup(View content) {
+        View folded = folded(content);
+        if (folded == null) return;
+        folded.performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    private static View folded(View view) {
+        CharSequence said = view.getContentDescription();
+        if (view.isShown() && said != null && said.toString().endsWith(" more to set up. "
+                + SetupChecklist.SHOW + ".")) {
+            return view;
+        }
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View found = folded(((ViewGroup) view).getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     /** A shown view with this description, or null. */
     static View shownIcon(View content, String description) {
         View found = iconDescribed(content, description);
