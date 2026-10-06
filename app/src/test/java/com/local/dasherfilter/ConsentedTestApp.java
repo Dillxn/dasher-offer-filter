@@ -19,6 +19,11 @@ public class ConsentedTestApp extends Application {
         accept(this);
         getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
                 .putBoolean(DiagnosticLog.CLEANED_UP, true).commit();
+        // A phone in use has read Peek's one-time introduction (OnboardingCardsTest starts without it) and allows
+        // updates from the app (the setup checklist's last step; the tests of that step turn it off).
+        getSharedPreferences(PeekIntroCard.PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(PeekIntroCard.SEEN, true).commit();
+        org.robolectric.Shadows.shadowOf(getPackageManager()).setCanRequestPackageInstalls(true);
         Feedback.transport = new FakeFeedbackTransport();
         Feedback.forgetCache();
         FeedbackOutbox.forgetCache();

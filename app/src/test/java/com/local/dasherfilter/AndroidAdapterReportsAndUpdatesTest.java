@@ -168,7 +168,10 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         assertEquals("Installing 9.9.9", Updater.status(app));
 
         new UpdateReceiver().onReceive(app, installResult(7, PackageInstaller.STATUS_FAILURE));
-        assertTrue(Updater.status(app).startsWith("Android installation failed"));
+        // Settings says it in plain words; Android's code and words stay in the log (BETA-20).
+        assertEquals(Updater.INSTALL_FAILED, Updater.status(app));
+        assertTrue(DiagnosticLog.read(app).contains("Android installation failed (" + PackageInstaller.STATUS_FAILURE
+                + ")"));
     }
 
     @Test

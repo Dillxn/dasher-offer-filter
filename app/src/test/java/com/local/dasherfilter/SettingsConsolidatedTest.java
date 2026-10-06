@@ -57,6 +57,13 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         return null;
     }
 
+    /** The Settings page itself (the scrolling page holding Share report), apart from the homepage. */
+    private static View settingsPage(View content) {
+        View at = shownButton(content, "Share report");
+        while (!(at instanceof android.widget.ScrollView)) at = (View) at.getParent();
+        return at;
+    }
+
     /** Settings, opened from the header. */
     private static View openSettings(ActivityController<MainActivity> activity) {
         View content = activity.get().findViewById(android.R.id.content);
@@ -123,13 +130,19 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             View content = openSettings(activity);
             assertTrue(settingsShown(content));
             assertNull("no field anywhere: every rule is set on the constellation", find(content, EditText.class));
+            // Nowhere on the screen, homepage and sheet included.
             for (String gone : new String[] {"Minimum pay ($)", "Per mile ($)", "Per minute ($)", "Per stop ($)",
                     "Max stops (1 order = 2)", "0 turns a rule off.", "Save rules", "Adaptive minimum", "Reset",
                     "Score by area", "Automatic updates", "Check for update", "Allow installs", "Forget areas",
-                    "Remember where offers come in", "Accessibility", "Notification access", "Alert settings",
+                    "Remember where offers come in", "Notification access", "Alert settings",
                     "DoorDash channel", "Automatic reports (GitHub token)", "Save token", "Send test",
-                    "Turn off reports", "Disconnect GitHub", "Tip with Cash App"}) {
+                    "Turn off reports", "Disconnect GitHub", "Tip with Cash App", "Updates can't install"}) {
                 assertNull(gone, findTextView(content, gone));
+            }
+            // The homepage's setup steps may name these; Settings' own page never does.
+            View page = settingsPage(content);
+            for (String homepageOnly : new String[] {"Accessibility", SetupChecklist.UPDATES}) {
+                assertNull(homepageOnly, findTextView(page, homepageOnly));
             }
             assertNull("no paragraph about what is kept", findTextView(content, "stays on this phone for reports"));
             assertNull("all is well: no setup row", shownTextContaining(content, "Fix"));
@@ -179,10 +192,11 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
             View dasher = shownIcon(content, "DoorDash's offer alert also sounded. Fix.");
-            View installs = shownIcon(content, "Updates can't install. Fix.");
             View location = shownIcon(content, "The offer map needs location. Fix.");
             assertNotNull("Dasher's offer channel rings", dasher);
-            assertNotNull("installs are not allowed", installs);
+            assertNull("installs not allowed: the homepage's setup asks (Allow updates), Settings does not repeat it",
+                    shownIcon(content, "Updates can't install. Fix."));
+            assertNull(findTextView(settingsPage(content), SetupChecklist.UPDATES));
             assertNotNull("the map is on without location", location);
 
             dasher.performClick();
@@ -190,9 +204,6 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertEquals(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS, opened.getAction());
             assertEquals("com.doordash.driverapp", opened.getStringExtra(android.provider.Settings.EXTRA_APP_PACKAGE));
             assertEquals("orders", opened.getStringExtra(android.provider.Settings.EXTRA_CHANNEL_ID));
-            installs.performClick();
-            assertEquals(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Shadows.shadowOf(app).getNextStartedActivity().getAction());
             location.performClick();
             assertEquals(android.Manifest.permission.ACCESS_COARSE_LOCATION,
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission().requestedPermissions[0]);
@@ -205,7 +216,6 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             activity.pause().resume();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertNull(shownIcon(content, "DoorDash's offer alert also sounded. Fix."));
-            assertNull(shownIcon(content, "Updates can't install. Fix."));
             assertNull("with the map off, location is not needed", shownIcon(content,
                     "The offer map needs location. Fix."));
         }

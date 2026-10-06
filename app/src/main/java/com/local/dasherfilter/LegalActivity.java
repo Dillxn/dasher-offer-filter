@@ -17,8 +17,9 @@ import android.widget.TextView;
 
 /**
  * One of the bundled texts (the terms of use, the privacy text or the licence), read in the app with no connection:
- * opened from the first-run notice and from Settings' footer. Its few marks of Markdown are drawn as headings and
- * bullets; everything else is the file's own words. Back returns to where it was opened.
+ * opened from the first-run notice and from Settings' footer. Its Markdown is drawn ({@link LegalMarkdown}): headings,
+ * lists, bold and italic words and links, never a literal mark; everything else is the file's own words. Back returns
+ * to where it was opened.
  */
 public final class LegalActivity extends Activity {
     static final String DOC = "doc";
@@ -83,41 +84,74 @@ public final class LegalActivity extends Activity {
     }
 
     /**
-     * The text, paragraph by paragraph: "# " is the file's own title (the header already names the page), "## " a
-     * heading, "- " a bullet; a blank line ends a paragraph.
+     * The text, block by block ({@link LegalMarkdown}): the file's own "# " title is left out (the header already names
+     * the page), "## " and deeper headings are headings, "- " and "1. " lines are list items (nested by their
+     * indent), "> " a quote, and the rest paragraphs. Bold, italic, code and links inside them are drawn, never shown
+     * as marks; web addresses and emails are links.
      */
     static void render(Ui ui, LinearLayout body, String text) {
-        StringBuilder paragraph = new StringBuilder();
-        for (String line : (text + "\n").split("\n", -1)) {
-            boolean ends = line.isEmpty() || line.startsWith("#") || line.startsWith("- ");
-            if (ends && paragraph.length() > 0) {
-                body.addView(paragraph(ui, paragraph.toString()), spaced(ui, 12));
-                paragraph.setLength(0);
-            }
-            if (line.isEmpty() || line.startsWith("# ")) continue;
-            if (line.startsWith("## ")) {
-                TextView heading = ui.text(line.substring(3), 17, ui.ink, true);
-                if (Build.VERSION.SDK_INT >= 28) heading.setAccessibilityHeading(true);
-                body.addView(heading, spaced(ui, 26));
-            } else if (line.startsWith("- ")) {
-                LinearLayout bullet = ui.row();
-                bullet.setGravity(android.view.Gravity.TOP);
-                TextView dot = ui.text("•", 15, ui.inkSecondary, false);
-                dot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                bullet.addView(dot, new LinearLayout.LayoutParams(ui.dp(18), ViewGroup.LayoutParams.WRAP_CONTENT));
-                bullet.addView(paragraph(ui, line.substring(2)), Ui.weighted());
-                body.addView(bullet, spaced(ui, 8));
-            } else {
-                if (paragraph.length() > 0) paragraph.append(' ');
-                paragraph.append(line);
+        for (LegalMarkdown.Block block : LegalMarkdown.blocks(text)) {
+            switch (block.kind) {
+                case TITLE:
+                    break;
+                case HEADING:
+                case SUBHEADING: {
+                    boolean top = block.kind == LegalMarkdown.Kind.HEADING;
+                    TextView heading = ui.text("", top ? 17 : 15, ui.ink, true);
+                    heading.setText(LegalMarkdown.inline(block.text));
+                    if (Build.VERSION.SDK_INT >= 28) heading.setAccessibilityHeading(true);
+                    body.addView(heading, spaced(ui, top ? 26 : 18));
+                    break;
+                }
+                case BULLET:
+                case NUMBERED: {
+                    LinearLayout item = ui.row();
+                    item.setGravity(android.view.Gravity.TOP);
+                    item.setPaddingRelative(ui.dp(18) * Math.min(block.depth, 3), 0, 0, 0);
+                    boolean numbered = block.kind == LegalMarkdown.Kind.NUMBERED;
+                    TextView mark = ui.text(numbered ? block.marker : block.depth > 0 ? "◦" : "•", 15,
+                            ui.inkSecondary, false);
+                    mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    item.addView(mark, new LinearLayout.LayoutParams(ui.dp(numbered ? 26 : 18),
+                            ViewGroup.LayoutParams.WRAP_CONTENT));
+                    item.addView(paragraph(ui, block.text, ui.ink), Ui.weighted());
+                    body.addView(item, spaced(ui, 8));
+                    break;
+                }
+                case QUOTE: {
+                    TextView quote = paragraph(ui, block.text, ui.inkSecondary);
+                    quote.setPaddingRelative(ui.dp(14), 0, 0, 0);
+                    body.addView(quote, spaced(ui, 12));
+                    break;
+                }
+                case RULE: {
+                    View rule = new View(ui.context);
+                    rule.setBackgroundColor(ui.baseline);
+                    rule.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    LinearLayout.LayoutParams line = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, ui.dp(1)));
+                    line.topMargin = ui.dp(18);
+                    body.addView(rule, line);
+                    break;
+                }
+                default:
+                    body.addView(paragraph(ui, block.text, ui.ink), spaced(ui, 12));
             }
         }
     }
 
-    private static TextView paragraph(Ui ui, String words) {
-        TextView text = ui.text(words, 15, ui.ink, false);
+    /** Selectable words; a link in them opens at a tap. */
+    private static TextView paragraph(Ui ui, String markdown, int color) {
+        TextView text = ui.text("", 15, color, false);
         text.setTypeface(Typeface.DEFAULT);
+        android.text.SpannableStringBuilder words = LegalMarkdown.inline(markdown);
+        text.setText(words);
+        text.setLinkTextColor(ui.link);
         text.setTextIsSelectable(true);
+        if (words.getSpans(0, words.length(), android.text.style.URLSpan.class).length > 0) {
+            // After making it selectable: long-press still selects, and a tap on a link opens it.
+            text.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        }
         return text;
     }
 

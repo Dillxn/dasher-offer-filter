@@ -170,15 +170,17 @@ an app from outside the Play Store. Keep Play Protect enabled. If Android blocks
 about a warning, stop and review it; this page is not an instruction to bypass a security warning.</li>
 <li>Open {name} and read the notice and linked terms. Tap <b>I understand and accept</b> only if you agree;
 <b>Not now</b> closes the app without accepting.</li>
-<li>The homepage has separate <b>Fix</b> rows for three Android accesses. Enable the ones needed for the features you use:
+<li>The homepage lists the Android steps still to do, in order, each with <b>Fix</b> (with three or more to do, the
+first shows and <b>more to set up</b> shows the rest). Enable the ones needed for the features you use:
 <ul>
-<li><b>Screen reading is off</b>: Accessibility access for on-screen filtering.</li>
-<li><b>Background offers are off</b>: notification access for background offers and Peek.</li>
-<li><b>Alerts are blocked</b>: {name}'s notification permission for its passing/review alerts and notices.</li>
-</ul>
-On Android 13 and later, if Android blocks a switch, open App info for {name}, tap the ⋮ menu and choose
-<b>Allow restricted settings</b> only if you understand and accept that access, then return to that access setting.
-Menus vary by phone.</li>
+<li><b>Allow restricted settings</b> (Android 13 and later, for an app from the web): tap the switch once, then open
+App info for {name}, tap the ⋮ menu and choose <b>Allow restricted settings</b> only if you understand and accept that
+access. Back in {name}, the setting it was for opens. Menus vary by phone.</li>
+<li><b>Turn on {name} in Accessibility</b>: Accessibility access for on-screen filtering.</li>
+<li><b>Allow notification access</b>: notification access for background offers and Peek.</li>
+<li><b>Allow alerts</b>: {name}'s notification permission for its passing/review alerts and notices.</li>
+<li><b>Allow updates</b>: shows once the steps above are done, or at once when an update waits for it.</li>
+</ul></li>
 <li>Drag a knob on the constellation to set a minimum, then tap the mascot to resume filtering. The mascot also pauses
 it. <b>Peek is on by default</b> and can briefly open Dasher for background offers; turn it off in Settings if unwanted.
 <b>Auto-accept is off by default</b> and needs its own explicit confirmation. Optional location is only for the offer map;
@@ -187,10 +189,12 @@ it is not needed for filtering.</li>
 <h2>Updates</h2>
 <p>Already installed? Install over the existing cloud-signed 0.4.x app; don't uninstall for a normal update.
 The retired 0.3.1 signing chain is different.</p>
-<p>In {name}'s Settings, tap <b>Fix</b> beside <b>Updates can't install</b> and enable <b>Allow from this source</b>
-if you want in-app updates. This is separate from your browser's first-install permission. Tap <b>Updates</b> to check
-now. Android may request installation confirmation; review its prompt. Automatic installation waits for an observed
-dash end, while a manual check can update mid-dash when Dasher is not on screen.</p>
+<p>For in-app updates, tap <b>Fix</b> beside <b>Allow updates</b> on {name}'s homepage and enable <b>Allow from this
+source</b>. This is separate from your browser's first-install permission. When an update is ready and no dash is on,
+the homepage shows <b>Update ready · Install now</b>; in Settings, <b>Updates</b> says where updates stand and a tap
+checks now. Android may request installation confirmation; review its prompt. Automatic installation waits for an
+observed dash end (or eight quiet hours with the screen off and nothing of a dash seen), while a manual check can
+update mid-dash when Dasher is not on screen.</p>
 <p><a href="https://offerfilter.org/#help">Help and setup</a> ·
 {legal}.
 The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>

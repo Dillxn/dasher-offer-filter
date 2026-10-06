@@ -15,7 +15,7 @@ public final class UpdateReceiver extends BroadcastReceiver {
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             updated(context);
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-            LauncherAppearance.sync(context, Appearance.resolve(context));
+            LauncherAppearance.keep(context);
             OfferSilencer.restore(context);
             Updater.schedule(context);
         } else if (INSTALL_RESULT.equals(action)) {
@@ -41,7 +41,8 @@ public final class UpdateReceiver extends BroadcastReceiver {
     }
 
     private static void updated(Context context) {
-        LauncherAppearance.sync(context, Appearance.resolve(context));
+        // The launcher entry an older version left (its night icon too) stays; only a missing one is put back.
+        LauncherAppearance.keep(context);
         // What an older version kept of Dasher's screens is cleaned up once, as soon as the update is in.
         DiagnosticLog.cleanUpSoon(context);
         // So is what the retired GitHub connection and its report queues left (a stored token among it).

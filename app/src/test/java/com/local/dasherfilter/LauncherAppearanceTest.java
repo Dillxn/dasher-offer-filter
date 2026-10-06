@@ -15,16 +15,18 @@ import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TimeZone;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
+import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.Implementation;
@@ -32,7 +34,12 @@ import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowApplicationPackageManager;
 import org.robolectric.shadows.ShadowSystemClock;
 
-/** Launcher identity must survive changing color, interrupted switches, reboot and package replacement. */
+/**
+ * BETA-13: the home-screen icon must never vanish. Disabling the alias a pinned icon points to removes that icon on
+ * common launchers, so no theme (Auto at sunset, System, an explicit Day or Night) enables or disables an alias any
+ * more; whichever is enabled stays, through boot and updates, and only a phone with no launcher entry at all gets the
+ * day one back.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, shadows = LauncherAppearanceTest.Packages.class)
 public class LauncherAppearanceTest {
@@ -50,10 +57,26 @@ public class LauncherAppearanceTest {
 
     private ComponentName component(String name) { return new ComponentName(app, name); }
 
+    /**
+     * As an older version's theme switch left the phone: {@code alias} alone enabled. For tests only, written straight
+     * to the package manager (the app itself never disables an alias now).
+     */
+    static void enableOnly(Context context, String alias) {
+        PackageManager packages = context.getPackageManager();
+        String other = LauncherAppearance.DAY.equals(alias) ? LauncherAppearance.NIGHT : LauncherAppearance.DAY;
+        packages.setComponentEnabledSetting(new ComponentName(context, alias),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        packages.setComponentEnabledSetting(new ComponentName(context, other),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+    }
+
+    private List<ResolveInfo> entries() {
+        return packages.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                .setPackage(app.getPackageName()), 0);
+    }
+
     private void only(String name) throws Exception {
-        Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                .setPackage(app.getPackageName());
-        List<ResolveInfo> entries = packages.queryIntentActivities(query, 0);
+        List<ResolveInfo> entries = entries();
         assertEquals("exactly one discoverable launcher", 1, entries.size());
         assertEquals(name, entries.get(0).activityInfo.name);
         assertEquals(MainActivity.class.getName(), entries.get(0).activityInfo.targetActivity);
@@ -76,26 +99,18 @@ public class LauncherAppearanceTest {
                         .setComponent(component(MainActivity.class.getName())), 0));
     }
 
-    @Test public void initialIconAndBothDirectionsKeepOneActualLauncherAndTheStableTarget() throws Exception {
+    @Test public void everyThemeChoiceKeepsTheOneLauncherEntryUntouched() throws Exception {
         only(LauncherAppearance.DAY);
-        Appearance.choose(app, Appearance.Mode.NIGHT);
-        only(LauncherAppearance.NIGHT);
-        Appearance.choose(app, Appearance.Mode.DAY);
-        only(LauncherAppearance.DAY);
-        for (String change : Packages.changes) assertFalse(change.contains(MainActivity.class.getName()));
+        for (Appearance.Mode mode : new Appearance.Mode[] {Appearance.Mode.NIGHT, Appearance.Mode.DAY,
+                Appearance.Mode.SYSTEM, Appearance.Mode.AUTO, Appearance.Mode.NIGHT}) {
+            assertTrue(Appearance.choose(app, mode));
+            only(LauncherAppearance.DAY);
+        }
+        assertTrue("an explicit Day or Night choice changes the app's screens only: " + Packages.changes,
+                Packages.changes.isEmpty());
     }
 
-    @Test public void repeatedDayDefaultAndNightRefreshDoNotChurnPackageState() throws Exception {
-        LauncherAppearance.sync(app, new Appearance.State(Appearance.Mode.DAY, false, false));
-        assertTrue("manifest default day already has the right state", Packages.changes.isEmpty());
-        Appearance.choose(app, Appearance.Mode.NIGHT);
-        only(LauncherAppearance.NIGHT);
-        Packages.changes.clear();
-        for (int i = 0; i < 4; i++) LauncherAppearance.sync(app, Appearance.resolve(app));
-        assertTrue(Packages.changes.isEmpty());
-    }
-
-    @Test public void autoAndSystemUseTheSameResolvedPaletteAsTheApp() throws Exception {
+    @Test public void autoAtSunsetAndSystemNightNeverSwapTheEntry() throws Exception {
         AreaMap.setEnabled(app, false);
         TimeZone old = TimeZone.getDefault();
         try {
@@ -104,77 +119,96 @@ public class LauncherAppearanceTest {
                     "2026-10-04T17:59:00Z", "2026-10-04T18:00:00Z"}) {
                 Appearance.State state = Appearance.resolve(app, Instant.parse(utc).toEpochMilli());
                 assertEquals(Appearance.Mode.AUTO, state.mode);
-                LauncherAppearance.sync(app, state);
-                only(state.night ? LauncherAppearance.NIGHT : LauncherAppearance.DAY);
+                assertTrue(LauncherAppearance.keep(app));
+                only(LauncherAppearance.DAY);
             }
             Appearance.choose(app, Appearance.Mode.SYSTEM);
             RuntimeEnvironment.setQualifiers("night");
-            LauncherAppearance.sync(app, Appearance.resolve(app));
-            only(LauncherAppearance.NIGHT);
+            assertTrue(Appearance.resolve(app).night);
+            assertTrue(LauncherAppearance.keep(app));
+            only(LauncherAppearance.DAY);
             RuntimeEnvironment.setQualifiers("notnight");
-            LauncherAppearance.sync(app, Appearance.resolve(app));
+            assertTrue(LauncherAppearance.keep(app));
             only(LauncherAppearance.DAY);
         } finally { TimeZone.setDefault(old); }
+        assertTrue(Packages.changes.toString(), Packages.changes.isEmpty());
     }
 
-    @Test public void persistedNightOverridesAndInterruptedStatesAreReconciledOnBootAndUpdate() throws Exception {
-        Appearance.choose(app, Appearance.Mode.NIGHT);
+    @Test public void aNightEntryAnOlderVersionLeftIsKeptOnBootUpdateAndEveryTheme() throws Exception {
+        enableOnly(app, LauncherAppearance.NIGHT);
         only(LauncherAppearance.NIGHT);
-        // Android keeps component overrides on upgrade. Boot/update must preserve the chosen night entry.
-        new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_BOOT_COMPLETED));
-        only(LauncherAppearance.NIGHT);
+        Packages.changes.clear();
+        // Never swapped back during the update to this version: its pinned home-screen icon points to it.
         new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_MY_PACKAGE_REPLACED));
         only(LauncherAppearance.NIGHT);
-        for (int broken : new int[] {PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED}) {
-            packages.setComponentEnabledSetting(component(LauncherAppearance.DAY), broken, PackageManager.DONT_KILL_APP);
-            packages.setComponentEnabledSetting(component(LauncherAppearance.NIGHT), broken, PackageManager.DONT_KILL_APP);
-            assertTrue(LauncherAppearance.sync(app, Appearance.resolve(app)));
+        new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_BOOT_COMPLETED));
+        only(LauncherAppearance.NIGHT);
+        for (Appearance.Mode mode : Appearance.Mode.values()) {
+            Appearance.choose(app, mode);
+            ShadowSystemClock.advanceBy(Duration.ofMillis(LauncherAppearance.CHECK_MS));
+            LauncherAppearance.syncIfDue(app);
             only(LauncherAppearance.NIGHT);
         }
+        assertTrue(Packages.changes.toString(), Packages.changes.isEmpty());
     }
 
-    @Test public void existingServiceEventsBoundRefreshWithoutSchedulingTheirOwnWork() throws Exception {
-        RuntimeEnvironment.setQualifiers("notnight");
-        Appearance.choose(app, Appearance.Mode.SYSTEM);
-        RuntimeEnvironment.setQualifiers("night");
+    @Test public void theMainPageFollowingTheSunLeavesTheLauncherAlone() throws Exception {
+        enableOnly(app, LauncherAppearance.NIGHT);
         Packages.changes.clear();
-        for (int i = 0; i < 10; i++) LauncherAppearance.syncIfDue(app);
+        Appearance.choose(app, Appearance.Mode.DAY);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
+            assertFalse("the page itself is in the day palette", new Ui(activity.get()).dark);
+            List<ResolveInfo> entries = entries();
+            assertEquals(1, entries.size());
+            assertEquals("its pinned night entry stays", LauncherAppearance.NIGHT, entries.get(0).activityInfo.name);
+        }
+        assertTrue(Packages.changes.toString(), Packages.changes.isEmpty());
+    }
+
+    @Test public void twoEntriesLeftByAnInterruptedOldSwitchBothStay() throws Exception {
+        packages.setComponentEnabledSetting(component(LauncherAppearance.NIGHT),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        Packages.changes.clear();
+        assertTrue(LauncherAppearance.keep(app));
+        new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_MY_PACKAGE_REPLACED));
+        assertEquals("either may be the one pinned, so neither is disabled", 2, entries().size());
+        assertTrue(Packages.changes.toString(), Packages.changes.isEmpty());
+    }
+
+    @Test public void noEntryAtAllGetsTheDayEntryBackAndNothingElse() throws Exception {
+        for (String alias : new String[] {LauncherAppearance.DAY, LauncherAppearance.NIGHT}) {
+            packages.setComponentEnabledSetting(component(alias), PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP);
+        }
+        assertTrue(entries().isEmpty());
+        Packages.changes.clear();
+        new UpdateReceiver().onReceive(app, new Intent(Intent.ACTION_BOOT_COMPLETED));
         only(LauncherAppearance.DAY);
-        assertTrue(Packages.changes.isEmpty());
+        assertEquals(1, Packages.changes.size());
+        assertEquals(LauncherAppearance.DAY + ":" + PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                Packages.changes.get(0));
+    }
+
+    @Test public void aRefusedRepairChangesNothingElseAndALaterServiceEventRetries() throws Exception {
+        for (String alias : new String[] {LauncherAppearance.DAY, LauncherAppearance.NIGHT}) {
+            packages.setComponentEnabledSetting(component(alias), PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP);
+        }
+        Packages.refuse = LauncherAppearance.DAY;
+        assertFalse(LauncherAppearance.keep(app));
+        assertTrue(entries().isEmpty());
+        Packages.refuse = null;
+        Packages.changes.clear();
+        LauncherAppearance.syncIfDue(app);
+        assertTrue("service events look at most once a minute", Packages.changes.isEmpty());
         ShadowSystemClock.advanceBy(Duration.ofMillis(LauncherAppearance.CHECK_MS));
         LauncherAppearance.syncIfDue(app);
-        only(LauncherAppearance.NIGHT);
+        only(LauncherAppearance.DAY);
         Packages.changes.clear();
+        ShadowSystemClock.advanceBy(Duration.ofMillis(LauncherAppearance.CHECK_MS));
         LauncherAppearance.syncIfDue(app);
-        assertTrue(Packages.changes.isEmpty());
-    }
-
-    @Test @Config(sdk = 26) public void failedEnableCannotRemoveTheWorkingLauncherAndFailedDisableCanRecover() throws Exception {
-        Appearance.State night = new Appearance.State(Appearance.Mode.NIGHT, true, false);
-        Packages.refuse = LauncherAppearance.NIGHT;
-        assertFalse(LauncherAppearance.sync(app, night));
-        only(LauncherAppearance.DAY);
-        assertEquals("no disable after failed enable", 1, Packages.changes.size());
-        Packages.changes.clear();
-        Packages.refuse = LauncherAppearance.DAY;
-        assertFalse(LauncherAppearance.sync(app, night));
-        List<ResolveInfo> entries = packages.queryIntentActivities(new Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LAUNCHER).setPackage(app.getPackageName()), 0);
-        assertEquals("a failed old-entry disable leaves discoverability, never zero entries", 2, entries.size());
-        assertTrue(Packages.changes.get(0).startsWith(LauncherAppearance.NIGHT));
-        Packages.refuse = null;
-        assertTrue(LauncherAppearance.sync(app, night));
-        only(LauncherAppearance.NIGHT);
-    }
-
-    @Test @Config(sdk = 35) public void failedAtomicSwitchLeavesThePreviousLauncherDiscoverable() throws Exception {
-        Packages.refuse = "atomic";
-        assertFalse(LauncherAppearance.sync(app, new Appearance.State(Appearance.Mode.NIGHT, true, false)));
-        only(LauncherAppearance.DAY);
-        Packages.refuse = null;
-        assertTrue(LauncherAppearance.sync(app, new Appearance.State(Appearance.Mode.NIGHT, true, false)));
-        only(LauncherAppearance.NIGHT);
+        assertTrue("a working entry is left as it is", Packages.changes.isEmpty());
     }
 
     @Test public void onlyOurExactHomeComponentsQualifyForTaskReturn() {
@@ -191,9 +225,10 @@ public class LauncherAppearanceTest {
         File directory = new File("build/reports/launcher-appearance");
         assertTrue(directory.isDirectory() || directory.mkdirs());
         for (boolean night : new boolean[] {false, true}) {
-            Appearance.choose(app, night ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
-            only(night ? LauncherAppearance.NIGHT : LauncherAppearance.DAY);
-            Drawable icon = packages.getActivityIcon(component(night ? LauncherAppearance.NIGHT : LauncherAppearance.DAY));
+            String alias = night ? LauncherAppearance.NIGHT : LauncherAppearance.DAY;
+            enableOnly(app, alias);
+            only(alias);
+            Drawable icon = packages.getActivityIcon(component(alias));
             assertTrue(icon instanceof AdaptiveIconDrawable);
             Bitmap bitmap = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888);
             icon.setBounds(0, 0, 432, 432);
@@ -221,10 +256,9 @@ public class LauncherAppearanceTest {
 
         @Implementation(minSdk = 33)
         protected void setComponentEnabledSettings(List<PackageManager.ComponentEnabledSetting> settings) {
-            if ("atomic".equals(refuse)) throw new SecurityException("simulated refusal");
-            assertEquals(2, settings.size());
             for (PackageManager.ComponentEnabledSetting setting : settings) {
                 changes.add(setting.getComponentName().getClassName() + ":" + setting.getEnabledState());
+                // Whichever setter changes a launcher entry, the app is never killed for it.
                 assertEquals(PackageManager.DONT_KILL_APP, setting.getEnabledFlags());
             }
             super.setComponentEnabledSettings(settings);

@@ -3,7 +3,6 @@ package com.local.dasherfilter;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -54,7 +53,8 @@ import java.util.regex.Pattern;
  * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 13;
+    /** The alerts permission's request code (asked by the setup checklist, answered here). */
+    static final int NOTIFICATION_PERMISSION_REQUEST = 13;
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -65,9 +65,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
     private static final String SKY_CHOSEN = "sky_chosen";
-    private static final String SETUP_PREFS = "setup_steps";
-    private static final String NOTIFICATIONS_ASKED = "notifications_asked";
-    private static final String ACCESSIBILITY_OPENED = "accessibility_opened";
     /** With no rule saved, the line under the mascot: the fewest words that say how to begin. */
     static final String START_HINT = "Drag a knob to start";
 
@@ -90,15 +87,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final long HERE_EVERY_MS = 5_000;
     private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.dasher(this) != null);
     private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
-    private final Asked<Boolean> installsAllowed = new Asked<>(() -> getPackageManager().canRequestPackageInstalls());
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
-    private final Asked<Boolean> screenReadingEnabled = new Asked<>(this::screenReadingEnabled);
+    private final Asked<Boolean> batteryRestricted = new Asked<>(() -> BatteryLimits.restricted(this));
     private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
     /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
     private boolean resumed;
     private boolean started;
-    private boolean restrictedSettingsHint;
     private Ui ui;
     private ScrollView mainPage;
     private ScenePage scene;
@@ -109,8 +104,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FrameLayout sheet;
     private DrawerCard sheetCard;
     private TextView areaLine;
-    /** Over everything while an update installs: it says so and takes no input until the new version opens. */
-    private LinearLayout updatingCover;
+    /** Over everything while an update installs; after a minute it offers "Still updating? Continue". */
+    private UpdatingCover updatingCover;
     private ScrollView settingsPage;
     private boolean showingSettings;
     /**
@@ -127,9 +122,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
-    private Readiness screenReading;
-    private Readiness backgroundOffers;
-    private Readiness offerAlerts;
+    /** Setup still to do, in order (restricted settings, Accessibility, notification access, alerts, updates). */
+    private SetupChecklist checklist;
     private LinearLayout routeRow;
     private TextView routeNote;
     /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
@@ -217,7 +211,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Settings page: only what is set nowhere else, one row each.
     /** Setup that needs a fix and has no row on the homepage; each hidden while all is well. */
     private Readiness doorDashAlerts;
-    private Readiness installs;
+    /** Android's "Restricted" battery setting stops the update and feedback jobs (BETA-16). */
+    private Readiness battery;
     private Readiness location;
     private Readiness locationAllTheTime;
     private Switch areasToggle;
@@ -230,6 +225,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FeedbackDialogs feedbackDialogs;
     /** On the homepage after the app stopped unexpectedly, while diagnostics after each dash are off. */
     private Readiness stopNotice;
+    /** On the homepage: a held, verified update while no dash is on. */
+    private UpdateReadyRow updateReady;
+    /** One-time cards on the homepage: what Peek does (the first time filtering is on), what is new after an update. */
+    private PeekIntroCard peekIntro;
+    private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
 
@@ -271,7 +271,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
-        buildUpdatingCover(root);
+        updatingCover = new UpdatingCover(this, ui, root);
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
         root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -347,7 +347,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @SuppressWarnings("deprecation")
     @Override public void onBackPressed() {
         // While updating, nothing is to be interrupted; the new version opens by itself.
-        if (updatingCover.getVisibility() == View.VISIBLE) return;
+        if (updatingCover.shown()) return;
         // Back from the notice is Not now: the app closes, and the notice comes again next time.
         if (noticeShown()) super.onBackPressed();
         else if (sheet.getVisibility() == View.VISIBLE) closeSheet();
@@ -373,9 +373,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.foreground(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
-        restrictedSettingsHint = Build.VERSION.SDK_INT >= 33
-                && getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(ACCESSIBILITY_OPENED, false)
-                && !screenReadingEnabled.get();
+        // Back from Android's settings: a switch tried and still off is noted; back from App info, the next one opens
+        // (never behind the notice).
+        checklist.resumed(noticeShown());
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -424,10 +424,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void forgetAnswers() {
         dasherInstalled.forget();
         alertsAllowed.forget();
-        installsAllowed.forget();
         locationAllowed.forget();
         locationAlways.forget();
-        screenReadingEnabled.forget();
+        batteryRestricted.forget();
+        if (checklist != null) checklist.forget();
         here.forget();
     }
 
@@ -499,6 +499,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             toast(granted ? "Alerts allowed." : "Alerts not allowed.");
         } else if (requestCode == LOCATION_REQUEST && !granted) {
             toast("Location not allowed, so no areas are kept. You can allow it in Android's app settings.");
+        } else if (requestCode == BACKGROUND_LOCATION_REQUEST) {
+            LocationRationale.answered(this, granted);
         }
     }
 
@@ -607,28 +609,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, weight);
     }
 
-    private void buildUpdatingCover(FrameLayout root) {
-        updatingCover = ui.column();
-        updatingCover.setGravity(Gravity.CENTER);
-        updatingCover.setBackgroundColor(ui.page);
-        updatingCover.setVisibility(View.GONE);
-        // Clickable: every touch lands here and goes no further.
-        updatingCover.setClickable(true);
-        updatingCover.setFocusable(true);
-        updatingCover.addView(new UpdatingView(this, ui), Ui.matchWidth());
-        TextView title = ui.text("Updating " + AppName.NAME + "…", 20, ui.ink, true);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        title.setPadding(0, ui.dp(12), 0, 0);
-        updatingCover.addView(title, Ui.matchWidth());
-        TextView note = ui.text("It opens again by itself in a moment.", 15, ui.inkSecondary, false);
-        note.setGravity(Gravity.CENTER_HORIZONTAL);
-        note.setPadding(ui.dp(24), ui.dp(6), ui.dp(24), 0);
-        updatingCover.addView(note, Ui.matchWidth());
-        updatingCover.setContentDescription("Updating " + AppName.NAME + ". It opens again by itself in a moment.");
-        root.addView(updatingCover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
     private void buildSheet(FrameLayout root) {
         sheet = new FrameLayout(this);
         sheet.setBackground(new android.graphics.drawable.ColorDrawable(0x66000000));
@@ -731,9 +711,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         waitParams.gravity = Gravity.CENTER_HORIZONTAL;
         LinearLayout problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
-        screenReading = new Readiness(problems, "Screen reading is off", this::fixScreenReading);
-        backgroundOffers = new Readiness(problems, "Background offers are off", this::openNotificationAccess);
-        offerAlerts = new Readiness(problems, "Alerts are blocked", this::configureOfferAlerts);
+        checklist = new SetupChecklist(this, ui, problems, NOTIFICATION_PERMISSION_REQUEST);
+        // A verified update held back while no dash is on: "Update ready · Install now" (the user's own check).
+        updateReady = new UpdateReadyRow(this, ui, problems);
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
@@ -741,6 +721,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             feedbackDialogs.feedback(Feedback.Category.BUG, true);
             refresh();
         });
+        peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
+        whatsNew = new WhatsNewCard(this, ui, problems);
         addFeeNotice(problems);
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
@@ -1146,8 +1128,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
-        installs = new Readiness(setup, "Updates can't install", () -> open(new Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));
+        battery = new Readiness(setup, BatteryLimits.PROBLEM, () -> BatteryLimits.open(this, this::open));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);
         locationAllTheTime = new Readiness(setup, "The offer map needs location all the time", this::askForLocation);
 
@@ -1199,7 +1180,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         LinearLayout connections = group(body);
         // Checks are always automatic; a tap checks now. Public signed updates need no user account.
-        updatesRow = ui.listRow(connections, "Updates", () -> Updater.check(this, true, null));
+        // A verified update that waits only for updates to be allowed: the tap opens that switch instead.
+        updatesRow = ui.listRow(connections, "Updates", () -> {
+            if (Updater.waitsForPermission(this)) open(UpdateNotices.allowUpdates(this));
+            else Updater.check(this, true, null);
+        });
+        // The website's install and setup help (BETA-22).
+        ui.setRow(ui.listRow(connections, BetaProgram.HELP, () -> open(BetaProgram.help())), BetaProgram.HELP,
+                BetaProgram.HELP_DETAIL);
 
         LinearLayout reports = group(body);
         feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
@@ -1231,8 +1219,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         if (!Support.methods().isEmpty()) ui.listRow(group(body), "Tip", this::chooseTip);
 
-        TextView footer = ui.text(AppName.NAME + " v" + Updater.version(this) + " · Not a DoorDash app.", 12,
-                ui.inkSecondary, false);
+        TextView footer = ui.text("", 12, ui.inkSecondary, false);
+        // The version with a small Beta label beside it (BETA-22).
+        footer.setText(BetaProgram.footer(ui, Updater.version(this)));
+        footer.setContentDescription(BetaProgram.footerSaid(Updater.version(this)));
         footer.setGravity(Gravity.CENTER_HORIZONTAL);
         footer.setPadding(0, ui.dp(28), 0, 0);
         body.addView(footer, Ui.matchWidth());
@@ -1303,7 +1293,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (appearanceCheckedAt >= 0 && now >= appearanceCheckedAt && now - appearanceCheckedAt < 60_000) return false;
         appearanceCheckedAt = now;
         Appearance.State appearance = Appearance.resolve(this);
-        LauncherAppearance.sync(this, appearance);
         if (sunButton != null) sunButton.show(appearance);
         if (appearance.night == ui.dark) return false;
         changingAppearance = true;
@@ -1356,12 +1345,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (showWait && !estimate.label().contentEquals(waitEstimateLine.getText())) {
             waitEstimateLine.setText(estimate.label());
         }
-        screenReading.problem(screenReadingEnabled.get() ? "Screen reading stopped"
-                : restrictedSettingsHint ? "Screen reading is off · switch greyed out?" : "Screen reading is off");
-        screenReading.update(readerConnected);
-        backgroundOffers.update(OfferNotificationService.isConnected());
-        offerAlerts.update(alertsAllowed.get());
+        checklist.refresh(readerConnected, alertsAllowed.get());
+        updateReady.refresh(checklist.installsAllowed());
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
+        peekIntro.refresh(saved.enabled);
+        whatsNew.refresh();
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
@@ -1380,22 +1368,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refreshAreas();
         refreshHero(saved.enabled ? FilterHeroView.State.ON
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
-        boolean updating = Updater.installing(this);
-        if (updating != (updatingCover.getVisibility() == View.VISIBLE)) {
-            updatingCover.setVisibility(updating ? View.VISIBLE : View.GONE);
-            if (updating) {
-                updatingCover.setAlpha(0f);
-                updatingCover.animate().alpha(1f).setDuration(250);
-                updatingCover.announceForAccessibility("Updating " + AppName.NAME);
-            }
-        }
+        updatingCover.refresh();
         refreshSettings();
     }
 
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
     private void refreshSettings() {
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
-        installs.update(installsAllowed.get());
+        battery.update(!batteryRestricted.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
         // What waits to send is read only while Settings shows, and as it opens.
         if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
@@ -1849,8 +1829,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!AreaMap.hasPermission(this)) {
             requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
         } else if (!AreaMap.hasBackgroundPermission(this)) {
-            requestPermissions(new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                    BACKGROUND_LOCATION_REQUEST);
+            // One line of why first; Android's request only after Continue (App info once Android won't ask).
+            LocationRationale.ask(this, () -> requestPermissions(
+                    new String[] {Manifest.permission.ACCESS_BACKGROUND_LOCATION}, BACKGROUND_LOCATION_REQUEST),
+                    this::open);
         }
     }
 
@@ -2077,81 +2059,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (shareReportRow != null) shareReportRow.setEnabled(true);
     }
 
-    private void openNotificationAccess() {
-        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-        if (Build.VERSION.SDK_INT >= 30) {
-            intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                    Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                    new ComponentName(this, OfferNotificationService.class).flattenToString());
-        }
-        open(intent);
-    }
-
-    private boolean screenReadingEnabled() {
-        String enabled = Settings.Secure.getString(getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (enabled == null) return false;
-        ComponentName ours = new ComponentName(this, OfferFilterService.class);
-        for (String component : enabled.split(":")) {
-            if (ours.equals(ComponentName.unflattenFromString(component))) return true;
-        }
-        return false;
-    }
-
-    private void fixScreenReading() {
-        if (restrictedSettingsHint && !screenReadingEnabled.get()) {
-            OwnWindowTouches.show(new AlertDialog.Builder(this)
-                    .setTitle("Switch greyed out?")
-                    .setMessage("If Android blocks the switch, open App info, then its three-dot menu and "
-                            + "Allow restricted settings. Then return to Accessibility to enable screen reading.")
-                    .setPositiveButton("App info", (dialog, which) -> open(new Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))))
-                    .setNegativeButton("Accessibility", (dialog, which) -> openScreenReadingSettings())
-                    .setNeutralButton("Cancel", null));
-        } else {
-            openScreenReadingSettings();
-        }
-    }
-
-    private void openScreenReadingSettings() {
-        getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(ACCESSIBILITY_OPENED, true).apply();
-        if (Build.VERSION.SDK_INT >= 31) {
-            // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
-            Intent details = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                    .putExtra(Intent.EXTRA_COMPONENT_NAME,
-                            new ComponentName(this, OfferFilterService.class).flattenToString());
-            try {
-                startActivity(details);
-                return;
-            } catch (RuntimeException unsupported) {
-                // The public accessibility list remains available on phones without a direct service screen.
-            }
-        }
-        open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-    }
-
-    private void configureOfferAlerts() {
-        OfferAlerts.ensureChannel(this);
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            boolean asked = getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).getBoolean(NOTIFICATIONS_ASKED, false);
-            if (asked && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
-                openAppNotifications();
-                return;
-            }
-            getSharedPreferences(SETUP_PREFS, MODE_PRIVATE).edit().putBoolean(NOTIFICATIONS_ASKED, true).apply();
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
-            return;
-        }
-        openAppNotifications();
-    }
-
-    private void openAppNotifications() {
-        // Passing offers, review cards and the paused-until-opened reminder each have their own channel.
-        open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,
-                getPackageName()));
-    }
-
     private void openDoorDashChannel() {
         String channel = FilterStore.doorDashOfferChannel(this);
         Intent intent = new Intent(channel.isEmpty()
@@ -2165,7 +2072,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         try {
             startActivity(intent);
         } catch (RuntimeException error) {
-            toast("Android could not open this screen: " + error.getClass().getSimpleName());
+            // Plain words for the user; the detail goes to the log (BETA-20).
+            DiagnosticLog.log(this, "ui", "Android could not open " + intent.getAction() + ": "
+                    + error.getClass().getSimpleName());
+            toast("Android couldn't open that screen.");
         }
     }
 
@@ -2241,7 +2151,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             text = ui.text(problem, 15, ui.ink, false);
             text.setPadding(ui.dp(10), 0, ui.dp(8), 0);
             row.addView(text, Ui.weighted());
-            row.addView(ui.text(action, 15, ui.accent, true));
+            // Link ink: the accent itself read at 3.6:1 on the night sky (BETA-21).
+            row.addView(ui.text(action, 15, ui.link, true));
             parent.addView(row, Ui.matchWidth());
         }
 

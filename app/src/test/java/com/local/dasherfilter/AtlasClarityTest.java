@@ -69,11 +69,12 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
             tap(map, info.centerX(), info.centerY());
             AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(dialog);
-            assertEquals("Reading the atlas", Shadows.shadowOf(dialog).getTitle());
+            assertEquals("one plain name: the offer map", "Reading the offer map", Shadows.shadowOf(dialog).getTitle());
             String key = Shadows.shadowOf(dialog).getMessage().toString();
             assertTrue(key, key.contains("including declined offers"));
             assertTrue(key, key.contains("total offered pay divided by total offer miles"));
-            assertTrue(key, key.contains("It does not supply the hotspot spoke"));
+            assertTrue(key, key.contains("It does not measure hotspot distance"));
+            assertFalse(key, key.contains("atlas") || key.contains("spoke"));
             assertTrue(selected.isEmpty());
             assertEquals(0, ordinaryClicks[0]);
             assertNull(Shadows.shadowOf(activity).getLastRequestedPermission());
@@ -97,7 +98,7 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
             assertTrue(map.getContentDescription().toString().startsWith("Tap to allow location."));
             AccessibilityNodeInfo node = map.createAccessibilityNodeInfo();
             assertTrue(node.getActionList().stream().anyMatch(action -> action.getId() == AreaMapView.EXPLAIN_ATLAS
-                    && "Explain atlas".contentEquals(action.getLabel())));
+                    && "Explain offer map".contentEquals(action.getLabel())));
             assertTrue(map.performAccessibilityAction(AreaMapView.EXPLAIN_ATLAS, null));
             AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
             assertTrue(dialog.isShowing());

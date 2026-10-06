@@ -117,7 +117,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         FilterStore.save(app, rules());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            assertNotNull(shownTextContaining(content, "Screen reading is off"));
+            assertNotNull(shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
             assertNull("setup instructions keep their space until filtering can observe offers",
                     shownTextContaining(content, "Learning your wait"));
         }

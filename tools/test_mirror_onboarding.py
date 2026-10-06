@@ -53,19 +53,29 @@ class MirrorOnboardingTest(unittest.TestCase):
         self.assertIn("Drag a knob", self.page.text)
         self.assertIn("mascot", self.page.text)
 
-    def test_three_android_accesses_are_distinct_and_optional_by_feature(self):
-        for phrase in ("Screen reading is off", "Accessibility", "on-screen filtering",
-                       "Background offers are off", "notification access", "background offers and Peek",
-                       "Alerts are blocked", "notification permission", "passing/review alerts",
-                       "Allow restricted settings", "Optional location"):
+    def test_android_steps_are_named_as_the_homepage_names_them_and_optional_by_feature(self):
+        for phrase in ("Allow restricted settings", "Turn on Offer Filter in Accessibility", "on-screen filtering",
+                       "Allow notification access", "background offers and Peek", "Allow alerts",
+                       "notification permission", "passing/review alerts", "Allow updates", "more to set up",
+                       "Optional location"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.page.text)
+        steps = [self.page.text.index(step) for step in ("Allow restricted settings (Android 13",
+                                                          "Turn on Offer Filter in Accessibility",
+                                                          "Allow notification access", "Allow alerts",
+                                                          "Allow updates")]
+        self.assertEqual(sorted(steps), steps, "in the homepage's order")
+        for retired in ("Screen reading is off", "Background offers are off", "Alerts are blocked"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, self.page.text)
 
     def test_updating_is_separate_from_the_browser_first_install(self):
-        for phrase in ("allow your browser", "Updates can't install", "Allow from this source",
-                       "separate from your browser", "installation confirmation", "don't uninstall"):
+        for phrase in ("allow your browser", "Allow updates", "Allow from this source",
+                       "separate from your browser", "Update ready · Install now", "installation confirmation",
+                       "don't uninstall", "eight quiet hours"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.page.text)
+        self.assertNotIn("Updates can't install", self.page.text, "Settings has no such row since 0.5.0")
 
     def test_beta_risks_and_behavior_defaults_are_explicit(self):
         for phrase in ("Experimental beta", "real-phone", "acceptance rate", "deactivate",

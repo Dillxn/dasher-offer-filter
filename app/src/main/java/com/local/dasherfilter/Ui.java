@@ -59,7 +59,9 @@ final class Ui {
         border = dark ? 0x1AFFFFFF : 0x1A0B0B0B;
         ink = dark ? 0xFFFFFFFF : 0xFF0B0B0B;
         inkSecondary = dark ? 0xFFC3C2B7 : 0xFF52514E;
-        inkMuted = 0xFF898781;
+        // At least 4.5:1 for small text on the page, the cards and the day sky alike (BETA-21); the night's
+        // lighter grey reads at 4.7:1 or more on every dark surface.
+        inkMuted = dark ? 0xFF898781 : 0xFF65635D;
         gridline = dark ? 0xFF2C2C2A : 0xFFE1E0D9;
         baseline = dark ? 0xFF383835 : 0xFFC3C2B7;
         accent = 0xFF256ABF;
@@ -268,8 +270,9 @@ final class Ui {
         button.setTextColor(link);
         button.setMinHeight(dp(48));
         button.setMinimumHeight(dp(48));
-        button.setMinWidth(0);
-        button.setMinimumWidth(0);
+        // A 48 dp target however short the word ("OK" alone measured 42 dp across).
+        button.setMinWidth(dp(48));
+        button.setMinimumWidth(dp(48));
         button.setPadding(dp(12), 0, dp(12), 0);
         button.setStateListAnimator(null);
         button.setBackground(pressable(24));

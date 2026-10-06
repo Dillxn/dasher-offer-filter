@@ -547,7 +547,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             assertNotNull("background offers are off: a line to fix", shownTextContaining(content,
-                    "Background offers are off"));
+                    SetupChecklist.NOTIFICATIONS));
             Ui ui = new Ui(activity.get());
             DecisionChartView chart = findChart(content);
             AreaMapView map = find(content, AreaMapView.class);
@@ -605,7 +605,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             // No service is connected in this test, so screen reading is reported off with a Fix button.
-            TextView problem = findText(content, "Screen reading is off");
+            TextView problem = findText(content, SetupChecklist.ACCESSIBILITY);
             assertNotNull(problem);
             assertEquals(View.VISIBLE, ((View) problem.getParent()).getVisibility());
         }
