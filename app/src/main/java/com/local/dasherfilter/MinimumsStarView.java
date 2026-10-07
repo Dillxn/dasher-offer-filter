@@ -1310,8 +1310,8 @@ final class MinimumsStarView extends View {
 
     /**
      * As the sky, the middle and outer rings' dollars along the level line on the right, each just inside its ring,
-     * or just outside it where a shape's edge crosses there; a ring whose dollars would leave the page, run into
-     * another's, or find a shape's edge on both sides goes without.
+     * or just outside it where a shape's edge or a spoke's icon is there; a ring whose dollars would leave the page,
+     * run into another's, or find a shape's edge or an icon on both sides goes without.
      */
     private void drawLevelLabels(Canvas canvas, float cx, float cy, float radius, float glide) {
         placeLevelLabels(cx, cy, radius, glide);
@@ -1348,13 +1348,25 @@ final class MinimumsStarView extends View {
                 if (box.left < before + ui.dp(8) || box.right > getWidth() - ui.dp(6)) continue;
                 boolean onEdge = false;
                 for (float edge : edges) onEdge |= !Float.isNaN(edge) && edge > box.left - clear && edge < box.right + clear;
-                if (onEdge) continue;
+                if (onEdge || onIcon(box, cx, cy, radius)) continue;
                 levelBoxes.add(box);
                 levelWords.add(words);
                 before = box.right;
                 break;
             }
         }
+    }
+
+    /**
+     * Whether {@code box} meets a spoke's icon in the sky: on a small circle the outer ring's dollars would otherwise
+     * stand on the per-hour clock.
+     */
+    private boolean onIcon(RectF box, float cx, float cy, float radius) {
+        if (!backdrop()) return false;
+        for (int i = 0; i < ICONS.length; i++) {
+            if (skyIcon(i, cx, cy, radius, iconBox) && RectF.intersects(iconBox, box)) return true;
+        }
+        return false;
     }
 
     /**

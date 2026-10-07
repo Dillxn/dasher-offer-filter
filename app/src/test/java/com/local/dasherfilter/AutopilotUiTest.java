@@ -746,10 +746,22 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue("the constellation is in the header", star.beside());
             ViewGroup header = (ViewGroup) star.getParent();
-            // 0.4.x's header, unchanged: at least 62 dp, else 4 dp over the constellation (72 dp, 56 under 344 wide).
+            // 0.4.x's header, unchanged: one row of the constellation (72 dp; 56 under 344 wide), the empty title, the
+            // round buttons and the sun, at least 62 dp tall, else 4 dp over the tallest of them (the constellation,
+            // or at a very large font on Android 8 the empty title's one line).
             int widthDp = app.getResources().getConfiguration().screenWidthDp;
             int starDp = widthDp < 344 ? 56 : MainActivity.HEADER_STAR_DP;
-            assertEquals("the header keeps its 0.4.x height", Math.max(ui.dp(62), ui.dp(4) + ui.dp(starDp)),
+            assertEquals(ui.dp(starDp), star.getHeight());
+            TextView title = null;
+            for (int i = 0; i < header.getChildCount(); i++) {
+                View part = header.getChildAt(i);
+                if (part instanceof TextView && !(part instanceof Button) && ((TextView) part).length() == 0) {
+                    title = (TextView) part;
+                }
+            }
+            assertNotNull("the empty title", title);
+            int tallest = Math.max(ui.dp(starDp), Math.max(title.getHeight(), ui.dp(56)));
+            assertEquals("the header keeps its 0.4.x height", Math.max(ui.dp(62), ui.dp(4) + tallest),
                     header.getHeight());
             assertEquals("one row", android.widget.LinearLayout.HORIZONTAL,
                     ((android.widget.LinearLayout) header).getOrientation());
