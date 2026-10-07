@@ -36,7 +36,6 @@ public final class ItemHistoryTest {
         DecisionLog.clear(app);
         DecisionLog.flush();
         ActiveRouteStore.clear(app);
-        ManualDeclines.forget(app);
         RestartSuppression.clear(app);
         Settings.Global.putInt(app.getContentResolver(), Settings.Global.BOOT_COUNT, 7);
     }
@@ -163,17 +162,26 @@ public final class ItemHistoryTest {
         assertFalse(ActiveRouteStore.load(app).itemCountApplicable);
     }
 
-    @Test public void pendingManualDeclineRetainsObservedCountWithoutAStaleCountOnReplacement() {
+    @Test public void aLaterOffersLineNeverTakesAnEarlierOffersCount() {
+        // A decline by hand is a step on the offer's own line (0.5.0 keeps no separate record of it): each line keeps
+        // the count its own offer showed, and a later offer's unread or inapplicable count stays its own.
         long now = System.currentTimeMillis();
-        ManualDeclines.declined(app, offer(12, true), now);
-        assertEquals(Integer.valueOf(12), ManualDeclines.pending(app, now).items);
-        assertTrue(ManualDeclines.pending(app, now).itemCountApplicable);
-        ManualDeclines.declined(app, offer(null, true), now + 1);
-        assertNull(ManualDeclines.pending(app, now + 1).items);
-        assertTrue(ManualDeclines.pending(app, now + 1).itemCountApplicable);
-        ManualDeclines.declined(app, offer(null, false), now + 2);
-        assertFalse(ManualDeclines.pending(app, now + 2).itemCountApplicable);
-        assertFalse(app.getSharedPreferences("offer_filter_manual_declines", Context.MODE_PRIVATE).contains("items"));
+        DecisionLog.record(app, entry(now - 120_000, offer(12, true), 137));
+        assertTrue(DecisionLog.markStep(app, offer(12, true), DecisionLog.StepKind.DECLINE_COUNTED, "", 300_000));
+        DecisionLog.record(app, entry(now - 60_000, new OfferSnapshot(2200, 6.0, 30, 2).withItems(null, true), 120));
+        DecisionLog.record(app, entry(now, new OfferSnapshot(2500, 7.0, 31, 2), 125));
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        java.util.List<DecisionLog.Entry> lines = DecisionLog.recent(app, 10);
+        assertEquals(3, lines.size());
+        assertNull(lines.get(0).facts.items);
+        assertFalse(lines.get(0).facts.itemCountApplicable);
+        assertNull("declared but unread stays unread", lines.get(1).facts.items);
+        assertTrue(lines.get(1).facts.itemCountApplicable);
+        assertEquals(Integer.valueOf(12), lines.get(2).facts.items);
+        assertTrue(DecisionLog.hasStep(lines.get(2), DecisionLog.StepKind.DECLINE_COUNTED));
+        assertFalse("nothing writes the retired record of declines by hand",
+                app.getSharedPreferences("offer_filter_manual_declines", Context.MODE_PRIVATE).contains("items"));
     }
 
     @Test public void restartRecordRetainsCountsButUnreadCountStillCannotEndSuppression() throws Exception {
@@ -200,37 +208,48 @@ public final class ItemHistoryTest {
         assertNull(RestartSuppression.load(app));
     }
 
-    @Test public void unreadItemRereadDoesNotProveANewOfferForManualDeclineLearning() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0).withPerItem(100));
+    @Test public void anUnreadCountOnARereadIsTheSameOfferAndKeepsItsObservedCount() {
+        // The same offer read again with its count unread finds its own line (it is no new offer), and the line keeps
+        // the 12 it showed; another count is another offer.
         long now = System.currentTimeMillis();
-        ManualDeclines.declined(app, offer(12, true), now);
-        ManualDeclines.offerSeen(app, offer(null, true), now + 1);
-        ManualDeclines.offerSeen(app, offer(null, false), now + 2);
-        assertTrue(FilterStore.load(app).declined.isEmpty());
-        assertEquals(Integer.valueOf(12), ManualDeclines.pending(app, now + 2).items);
-        ManualDeclines.offerSeen(app, offer(13, true), now + 3);
-        assertNull(ManualDeclines.pending(app, now + 3));
-        assertEquals(1800, FilterStore.load(app).declined.payCents);
-        assertEquals(100, FilterStore.load(app).perItemCents);
+        DecisionLog.record(app, entry(now, offer(12, true), 137));
+        assertTrue(DecisionLog.markStep(app, offer(null, true), DecisionLog.StepKind.DECLINE_TAPPED, "", 60_000));
+        assertFalse("13 items is not this offer",
+                DecisionLog.markStep(app, offer(13, true), DecisionLog.StepKind.DECLINE_COUNTED, "", 60_000));
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        java.util.List<DecisionLog.Entry> lines = DecisionLog.recent(app, 10);
+        assertEquals(1, lines.size());
+        assertEquals(Integer.valueOf(12), lines.get(0).facts.items);
+        assertTrue(DecisionLog.hasStep(lines.get(0), DecisionLog.StepKind.DECLINE_TAPPED));
+        assertFalse(DecisionLog.hasStep(lines.get(0), DecisionLog.StepKind.DECLINE_COUNTED));
+        assertEquals(137, lines.get(0).scorePercent);
     }
 
-    @Test public void repeatedManualDeclineWithUnreadItemsDoesNotTeachUntilLegacyFactsChange() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0).withPerItem(100));
+    @Test public void declinesByHandTeachNothingWhateverTheirCounts() {
+        // 0.5.0 learns no minimum from what the user declines, with a count read or not: the rules stay as set and
+        // nothing learned is kept, while each decline is an outcome on its own line.
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
+        FilterStore.save(app, rules);
         long now = System.currentTimeMillis();
-        ManualDeclines.declined(app, offer(12, true), now);
-        ManualDeclines.declined(app, offer(null, true), now + 1);
-        assertTrue(FilterStore.load(app).declined.isEmpty());
-        ManualDeclines.offerSeen(app, new OfferSnapshot(1800, 5.0, 25, 2).withItems(null, true), now + 2);
-        assertEquals(1800, FilterStore.load(app).declined.payCents);
-        assertEquals(100, FilterStore.load(app).perItemCents);
+        DecisionLog.record(app, entry(now - 60_000, offer(12, true), 137));
+        assertTrue(DecisionLog.markStep(app, offer(12, true), DecisionLog.StepKind.DECLINE_COUNTED, "", 300_000));
+        DecisionLog.record(app, entry(now, new OfferSnapshot(1800, 5.0, 25, 2).withItems(null, true), 128));
+        assertTrue(DecisionLog.markStep(app, new OfferSnapshot(1800, 5.0, 25, 2).withItems(null, true),
+                DecisionLog.StepKind.DECLINE_COUNTED, "", 300_000));
+        for (DecisionLog.Entry line : DecisionLog.recent(app, 10)) {
+            assertTrue(DecisionLog.hasStep(line, DecisionLog.StepKind.DECLINE_COUNTED));
+        }
+        assertArrayEquals(rules.minimums(), FilterStore.load(app).minimums());
+        java.util.Map<String, ?> stored = app.getSharedPreferences("offer_filter", Context.MODE_PRIVATE).getAll();
+        for (String retired : FilterStore.RETIRED_KEYS) assertFalse("nothing learned is kept: " + retired,
+                stored.containsKey(retired));
     }
 
     @Test public void legacyTemporaryRecordsRemainUnreadAndOutsideDeclaredItemScope() {
         ActiveRouteStore.save(app, offer(null, false));
-        ManualDeclines.declined(app, offer(null, false), System.currentTimeMillis());
         assertTrue(RestartSuppression.remember(app, offer(null, false), 35));
-        for (OfferSnapshot legacy : Arrays.asList(ActiveRouteStore.load(app),
-                ManualDeclines.pending(app, System.currentTimeMillis()), RestartSuppression.load(app).offer)) {
+        for (OfferSnapshot legacy : Arrays.asList(ActiveRouteStore.load(app), RestartSuppression.load(app).offer)) {
             assertNull(legacy.items);
             assertFalse(legacy.itemCountApplicable);
         }

@@ -211,7 +211,7 @@ public final class StalledDeclineTest {
         show(question(confirm));
         pass(3_000);
         assertTrue("a late dialog cannot use the superseded 103% authority", confirmed.isEmpty());
-        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 103% to 100%"));
+        assertTrue(DiagnosticLog.read(app).contains("bar changed from 103% to 100%"));
         assertTrue(Shadows.shadowOf(service).getGlobalActionsPerformed().isEmpty());
 
         AccessibilityNodeInfo next = offer("$7.90", "0:35");
@@ -242,7 +242,7 @@ public final class StalledDeclineTest {
         show(question(confirm));
         pass(3_000);
         assertTrue(confirmed.isEmpty());
-        assertTrue(DiagnosticLog.read(app).contains("minimum scale changed from 103% to 100%"));
+        assertTrue(DiagnosticLog.read(app).contains("bar changed from 103% to 100%"));
     }
 
     @Test public void changingMinimumsStopsRetriesOfAnAlreadyRequestedConfirmation() {
