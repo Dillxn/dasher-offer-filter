@@ -611,8 +611,9 @@ final class AutopilotRuntime {
      * goal-relative state (recovering, the stall correction and its checkpoint) and the plan: a plan worked out
      * before (or still being worked out) is never published or committed from, so it cannot write that state back.
      * Every change but turning off makes the next commit a jump straight to the new plan's target (at a safe point,
-     * like every commit); turning off needs no commit, as the bar is already exactly 100. Then a plan is asked for. It
-     * writes no log line of its own: {@link #setAutopilot} does.
+     * like every commit); turning off needs no commit, as the bar is already exactly 100, and forgets the note of the
+     * last change, which no longer explains the bar. Then a plan is asked for. It writes no log line of its own:
+     * {@link #setAutopilot} does.
      */
     static void userChanged(Context context, UserChange change) {
         if (context == null || change == null) return;
@@ -625,6 +626,8 @@ final class AutopilotRuntime {
             }
             if (change == UserChange.TURNED_OFF) {
                 AutopilotStore.clearJump(app);
+                // The bar is exactly 100 again: the note of Autopilot's last move no longer explains it.
+                AutopilotStore.forgetChange(app);
             } else if (FilterStore.load(app).autopilot) {
                 AutopilotStore.setJump(app, change.jump.name());
             }

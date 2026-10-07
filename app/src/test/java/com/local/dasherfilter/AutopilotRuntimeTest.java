@@ -640,6 +640,38 @@ public class AutopilotRuntimeTest {
         assertNull("the jump it used is cleared", AutopilotStore.jump(app));
     }
 
+    /**
+     * Turning Autopilot off puts the bar back at exactly 100 at once: the note of its last move (100% → 50%) no longer
+     * says why the bar is where it is, so the details, the shared report and an offer report no longer show it, then or
+     * after Autopilot is turned on again (until its next commit). When the bar last rose is kept for the raise limit.
+     */
+    @Test
+    public void turningAutopilotOffForgetsItsLastChangeSoNothingStaleIsShown() {
+        minimums(2040, 400, 48);
+        history(20);
+        reading(9, 1);
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(50, bar());
+        assertNotNull(AutopilotStore.lastChange(app));
+        long raised = AutopilotStore.raisedAt(app);
+
+        AutopilotRuntime.setAutopilot(app, false, 70);
+        assertEquals(100, bar());
+        assertNull("the note of the last move goes with it", AutopilotStore.lastChange(app));
+        assertEquals(raised, AutopilotStore.raisedAt(app));
+        AutopilotText.Status off = AutopilotRuntime.status(app, wall + 4 * MIN, true);
+        assertEquals(AutopilotText.DETAILS_OFF, AutopilotText.detailsLines(off).get(0));
+        for (String line : AutopilotText.detailsLines(off)) assertFalse(line, line.startsWith("Last change"));
+        assertFalse(AutopilotText.reportLine(off), AutopilotText.reportLine(off).contains("last change"));
+
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        AutopilotText.Status on = AutopilotRuntime.status(app, wall + 5 * MIN, true);
+        assertEquals("nothing moved yet", 100, on.bar);
+        assertNull("no stale 100% → 50% beside a bar of 100%", AutopilotText.detailsLastChange(on));
+        assertFalse(AutopilotText.reportLine(on).contains("last change"));
+    }
+
     @Test
     public void turningAutopilotOffAndOnWhileAPlanIsWorkedOutNeverWritesItsStateBack() {
         minimums(400, 100, 25);

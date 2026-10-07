@@ -276,6 +276,19 @@ final class AutopilotStore {
         }
     }
 
+    /**
+     * Forgets the last bar change's note (when the bar last rose stays): turning Autopilot off puts the bar back at
+     * exactly 100, so a note of how Autopilot last moved it would no longer say why the bar is where it is, in the
+     * details, the shared report or an offer report, then or after Autopilot is turned on again.
+     */
+    static void forgetChange(Context context) {
+        synchronized (AutopilotStore.class) {
+            prefs(context).edit().remove(CHANGED_AT).remove(CHANGED_FROM).remove(CHANGED_TO).remove(CHANGED_WHY)
+                    .apply();
+            version++;
+        }
+    }
+
     /** When the bar last rose (wall clock), 0 when never. */
     static long raisedAt(Context context) {
         return prefs(context).getLong(RAISED_AT, 0);
