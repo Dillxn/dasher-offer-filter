@@ -198,6 +198,34 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         }
     }
 
+    /**
+     * Paused (auto-decline off, or no rule set), nothing of Dasher's is read (AGENTS, "Paused is a safe mode"): a card
+     * for a background offer (DoorDash's channel silenced, or its alerting not known) never says Offer Filter will
+     * judge it, nor that the notification lacked something it did not lack.
+     */
+    @Test
+    public void whilePausedACardNeverPromisesThatOfferFilterJudgesTheOffer() {
+        for (FilterSettings rules : new FilterSettings[] {FilterSettings.of(false, 2000, 0, 0, 0),
+                FilterSettings.of(true, 0, 0, 0, 0)}) {
+            FilterStore.save(app, rules);
+            app.getSystemService(NotificationManager.class).cancelAll();
+            ServiceController<OfferNotificationService> controller =
+                    Robolectric.buildService(OfferNotificationService.class).create();
+            try {
+                controller.get().onNotificationPosted(doorDashOffer("New Order: Go to Chick-fil-A"), null);
+                Notification card = notifications().getAllNotifications().get(0);
+                String text = card.extras.getCharSequence(Notification.EXTRA_TEXT).toString();
+                assertEquals(rules.enabled + "", "Offer Filter is paused and won't read or decline this offer. Open "
+                        + "Dasher to check it.", text);
+                assertFalse(text, text.contains("judges it"));
+                assertTrue(FilterStore.lastStatus(app), FilterStore.lastStatus(app).contains(
+                        "Background offer left to you: Offer Filter is paused"));
+            } finally {
+                controller.destroy();
+            }
+        }
+    }
+
     @Test
     public void aBackgroundOfferWithAPlusAmountBesideATotalIsNeverHiddenOrDeclined() {
         // A notification's text may be cut short: the "+$" bound that can decline a screen offer is never used here.

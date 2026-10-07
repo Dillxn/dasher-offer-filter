@@ -854,10 +854,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     private OfferRule.Decision decide(OfferSnapshot facts, List<String> labels, FilterSettings settings) {
-        if (!settings.enabled) {
-            return new OfferRule.Decision(OfferRule.Result.REVIEW, 0,
-                    "auto-decline is off; inspect this offer manually", facts);
-        }
+        if (!settings.enabled) return new OfferRule.Decision(OfferRule.Result.REVIEW, 0, AUTO_DECLINE_OFF, facts);
         // No rule left pauses auto-decline, as the screen reader takes it: with nothing to meet, no offer is shown to
         // pass (never the pass chime for an offer nothing was read of), and no payless card stands beside Dasher's own.
         if (!settings.hasAnyRule()) return new OfferRule.Decision(OfferRule.Result.REVIEW, 0, NO_RULE, facts);
@@ -1125,7 +1122,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         // Dasher's own alert sounding for it uses up its one ring, as ours would have.
         if (posted) offer.state.delivered(signature, decision.result, ring || dasherRings);
         if (review) {
-            FilterStore.setLastStatus(this, "Background offer requires review: " + decision.reason + ".\n" + (peeking
+            FilterStore.setLastStatus(this, paused(decision) ? "Background offer left to you: " + PAUSED_CARD
+                    : "Background offer requires review: " + decision.reason + ".\n" + (peeking
                     ? AppName.NAME + " is opening Dasher to read it (Peek)."
                     : "Open Dasher and " + AppName.NAME + " judges it."));
         }
@@ -1173,6 +1171,8 @@ public final class OfferNotificationService extends NotificationListenerService 
      * else it lacks), and that Offer Filter judges it on Dasher's screen, which it is opening when it peeks.
      */
     static String reviewText(OfferSnapshot facts, OfferRule.Decision decision, boolean peeking) {
+        // Paused (auto-decline off, or no rule set), nothing of Dasher's is read: never a promise that it judges this.
+        if (paused(decision)) return PAUSED_CARD;
         String what = facts.payCents == null && facts.payAtMostCents == null
                 ? "Dasher's notification shows no pay."
                 : "Dasher's notification doesn't show enough to judge it: " + decision.reason + ".";
@@ -1220,6 +1220,17 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /** An offer's notification with no rule set: nothing to meet, so it is left to the user ({@link #decide}). */
     static final String NO_RULE = "no rule is set";
+    /** The reason a notification is left to the user while auto-decline is off (kept as older lines recorded it). */
+    static final String AUTO_DECLINE_OFF = "auto-decline is off; inspect this offer manually";
+    /** A card's words for an offer while paused: nothing of Dasher's is read, so nothing judges or declines it. */
+    static final String PAUSED_CARD = AppName.NAME + " is paused and won't read or decline this offer. Open Dasher to "
+            + "check it.";
+
+    /** A decision the notification path made while paused: auto-decline off, or no rule set. */
+    static boolean paused(OfferRule.Decision decision) {
+        return decision.result == OfferRule.Result.REVIEW
+                && (AUTO_DECLINE_OFF.equals(decision.reason) || NO_RULE.equals(decision.reason));
+    }
 
     /** What the card of an offer a peek opened Dasher for, and Dasher never drew, says. */
     static final String UNSHOWN_TEXT = "Dasher didn't show this offer when it opened. Tap to open it.";
