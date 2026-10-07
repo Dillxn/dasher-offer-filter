@@ -3547,10 +3547,10 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * No request was made under stale rules ({@link #ownTap}'s recheck); the offer is judged again under the rules now
-     * saved. A changed bar hands a decline under way back and reads a fresh screen at once, as before. A pause, or a
-     * minimum or max stops saved during the read, leaves it to the rules' own read ({@link #rulesCheck}: one at a time,
-     * the quiet gap after the last, so a knob stepped over an offer never floods Dasher with reads): a pause turns that
-     * read into none ({@link #notReading}, which ends what was under way), new rules judge the offer afresh.
+     * saved. A changed bar hands a decline under way back first. Then the rules' own read ({@link #rulesCheck}: one at a
+     * time, the quiet gap after the last), so a knob stepped over an offer never floods Dasher with reads, and no
+     * disagreement between this recheck and the hand-back could ever make reads back to back: a pause turns that read
+     * into none ({@link #notReading}, which ends what was under way), new rules or a new bar judge the offer afresh.
      *
      * @param decidedBar the bar the untapped request was decided at
      * @param what "first-step Decline" or "confirmation", for the log
@@ -3560,13 +3560,13 @@ public final class OfferFilterService extends AccessibilityService {
         FilterSettings current = FilterStore.load(this);
         if (current.minimumScalePercent != decidedBar) {
             if (!minimumRulesChanged(current, now)) status(barChange() + " while reading; checking the offer again.");
-            scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "bar changed"); });
-            return;
+        } else {
+            boolean paused = !current.enabled || !current.hasAnyRule();
+            confirmLog(what + " skipped: " + (paused ? "auto-decline was paused" : "your rules changed")
+                    + " while reading");
+            status(paused ? "Auto-decline paused while reading; nothing was tapped."
+                    : "Your rules changed while reading; checking the offer again.");
         }
-        boolean paused = !current.enabled || !current.hasAnyRule();
-        confirmLog(what + " skipped: " + (paused ? "auto-decline was paused" : "your rules changed") + " while reading");
-        status(paused ? "Auto-decline paused while reading; nothing was tapped."
-                : "Your rules changed while reading; checking the offer again.");
         if (rulesCheckQueued.compareAndSet(false, true)) scanner.post(rulesCheck);
     }
 

@@ -26,6 +26,9 @@ android {
         unitTests.includeAndroidResources = true
         unitTests.all {
             maxHeapSize = testHeap
+            // A test that never ends (a read re-posted forever on the paused looper, say) fails the run instead of
+            // stalling the release gate; the whole -PallSdks suite with one JVM takes far less.
+            timeout = java.time.Duration.ofMinutes(90)
             // Test classes run in parallel JVMs; Robolectric keeps no state across them. Gradle deals the classes out
             // to the JVMs in turn, by name, and never splits one, so no class should run much longer than the rest.
             // -Pforks=N sets how many JVMs (e.g. -Pforks=1 when several worktrees build at once).
