@@ -129,8 +129,12 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         FilterStore.save(app, original);
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 97));
+        // Set up (screen reading and background offers on), so no setup line takes the status line's room.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
         service.get().onServiceConnected();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             // The status line stands where the wait would; a tap explains and changes nothing.
@@ -175,6 +179,62 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             assertEquals(original.maxStops, after.maxStops);
             assertTrue("turning Autopilot off does not pause filtering", after.enabled);
         } finally {
+            listener.destroy();
+            service.destroy();
+        }
+    }
+
+    /**
+     * A short window (half a split screen beside another app, then beside Dasher): with Autopilot off Next match works
+     * as before; with it on the ground's line is Autopilot's, and in a short window that is no line at all (its chip, or
+     * beside Dasher its button, says the status), so Next match never takes a row under the chip.
+     */
+    @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
+    public void aShortWindowShowsNoNextMatchWhileAutopilotIsOn() {
+        FilterStore.save(app, rules());
+        java.util.List<QualifyingWait.Sample> samples = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) samples.add(new QualifyingWait.Sample(
+                QualifyingWaitStore.wallClock.getAsLong(), 120_000, new OfferSnapshot(1200, 3.0, 15, 2)));
+        app.getSharedPreferences("qualifying-wait", 0).edit()
+                .putString("numeric-history-v1", QualifyingWaitStore.encode(samples)).commit();
+        QualifyingWaitStore.forgetCache();
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        service.get().onServiceConnected();
+        listener.get().onListenerConnected();
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = page(activity);
+            QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertTrue("a short window", find(content, MinimumsStarView.class).beside());
+            assertNotNull("Autopilot off: Next match as before", shownTextContaining(content, "Next match:"));
+
+            AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            layOut(content);
+            assertNull("Autopilot on: no Next match under the chip", shownTextContaining(content, "Next match:"));
+            assertNull("nor a status line", shownTextContaining(content, "Autopilot 100%"));
+            assertTrue("the chip says it", find(content, AutopilotChip.class).isShown());
+
+            // Beside Dasher: the button says it, and still no Next match.
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            layOut(content);
+            assertFalse("the constellation is the sky beside Dasher", find(content, MinimumsStarView.class).beside());
+            assertNull(shownTextContaining(content, "Next match:"));
+            assertFalse("the button, not the chip", find(content, AutopilotChip.class).isShown());
+
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNotNull("off again: Next match is back", shownTextContaining(content, "Next match:"));
+        } finally {
+            OfferFilterService.sawDasherBeside(0);
+            listener.destroy();
             service.destroy();
         }
     }

@@ -812,6 +812,61 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Pinned with the typical minimums already ($4.00, $1.00 a mile, $15 an hour; max stops 2 against three-stop
+     * offers): the details offer the goal, not typical minimums, whose tap would only have put the bar back at 100%
+     * mid-dash with a "you changed your minimums" note the user never made. Nothing moves until the user changes
+     * something.
+     */
+    @Test
+    public void pinnedWithTheTypicalMinimumsAlreadyTheDetailsOfferTheGoalAndTheBarStays() {
+        setUpForDashing();
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 2));
+        FilterSettings rules = FilterStore.load(app);
+        for (int i = PAY.length - 1; i >= 0; i--) {
+            OfferSnapshot facts = new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 3);
+            DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts,
+                    OfferRule.evaluate(facts, rules), DecisionLog.Action.CONFIRMATION_TAPPED, true,
+                    Collections.<String>emptyList()).withTime(wall - (2 + 3L * i) * MIN));
+        }
+        reading(9, 1);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals("pinned at the lowest bar", 50, FilterStore.load(app).minimumScalePercent);
+        AutopilotStore.Change committed = AutopilotStore.lastChange(app);
+        String logBefore = DiagnosticLog.read(app);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = page(activity);
+            settleSky(content);
+            assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", statusLine(content));
+            shownLineStarting(content, "Autopilot ").performClick();
+            idle();
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            String said = message(details);
+            assertTrue(said, said.endsWith("Even at the lowest bar (50%) only 0 of your last 20 offers pass. Lower a "
+                    + "minimum or turn off max stops."));
+            assertFalse("no typical minimums: they are these already", said.contains("typical"));
+            assertEquals("Change goal", details.getButton(AlertDialog.BUTTON_NEUTRAL).getText().toString());
+
+            details.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
+            idle();
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
+            chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            idle();
+            FilterSettings after = FilterStore.load(app);
+            assertEquals("the bar stays where Autopilot put it", 50, after.minimumScalePercent);
+            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, after.minimums());
+            AutopilotStore.Change last = AutopilotStore.lastChange(app);
+            assertEquals("no change noted that the user never made", committed.at, last.at);
+            assertEquals(committed.why, last.why);
+            assertEquals(committed.to, last.to);
+            assertNull("and no jump pending", AutopilotStore.jump(app));
+            String log = DiagnosticLog.read(app);
+            assertFalse(log, log.substring(Math.min(log.length(), logBefore.length())).contains("typical minimums"));
+        }
+    }
+
     // ---- A short split pane: the chip ----
 
     @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
@@ -1414,6 +1469,20 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
+            // On the homepage it never reads as a full pass: its line, its building and its marks say so.
+            TextView caption = shownTextContaining(content, "Latest · ");
+            assertEquals("Latest · $5.75 · Passed below your minimums", caption.getText().toString());
+            assertTrue(String.valueOf(caption.getContentDescription()),
+                    String.valueOf(caption.getContentDescription()).startsWith(
+                            "Latest · $5.75 · Passed below your minimums."));
+            String skyline = String.valueOf(find(content, DecisionChartView.class).getContentDescription());
+            assertTrue(skyline, skyline.contains("1 passed (1 below your minimums)")
+                    && skyline.contains(": $5.75, 6.6 mi"));
+            assertTrue(skyline, skyline.contains(", passed below your minimums, score 85% of your minimums."));
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            String mark = String.valueOf(star.getAccessibilityNodeProvider()
+                    .createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID).getContentDescription());
+            assertTrue(mark, mark.startsWith("Offer $5.75, 6.6 mi, 27 min, 2 stops, passed below your minimums"));
             openTicket(content);
             idle();
             layOut(content);

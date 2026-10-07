@@ -319,6 +319,39 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Minimums that are the typical ones already, after score by area: the pass check still speaks, but "Use typical
+     * minimums" would change nothing, so the notice offers OK and "Set up Autopilot" instead.
+     */
+    @Test
+    public void typicalMinimumsAlreadyHearThePassCheckButAreNotOfferedThemAgain() {
+        prefs().edit()
+                .putBoolean("enabled", true).putInt("flat", 400).putInt("mile", 100).putInt("minute", 25)
+                .putInt("per_stop", 0).putInt("per_item", 0).putInt("hotspot_proximity_hundredths", 0)
+                .putInt("minimum_scale_percent", 100).putInt("max_stops", 0)
+                .putBoolean("rising_offers", false).putBoolean("score_by_area", true)
+                .commit();
+        // Twenty distinct offers (the same facts within two minutes would be one offer seen twice) that pay $3.00.
+        List<DecisionLog.Entry> low = new ArrayList<>();
+        for (int i = 0; i < 20; i++) low.add(line(300, 5.0, 20 + i, 2 + i));
+        record(low);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            refreshed();
+            AlertDialog notice = notice();
+            assertNotNull(notice);
+            assertEquals("• Score by area is gone: an offer now has to meet each of your minimums."
+                    + "\n\n• Your minimums would have passed 0 of your last 20 offers.", message(notice));
+            assertEquals("OK", notice.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString());
+            assertEquals("Set up Autopilot", notice.getButton(AlertDialog.BUTTON_NEUTRAL).getText().toString());
+            assertFalse("no Keep mine: nothing else is offered", shows(notice, AlertDialog.BUTTON_NEGATIVE));
+            notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            idle();
+            assertNull(FilterStore.peekModelNotice(app));
+            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+            assertFalse(DiagnosticLog.read(app).contains("typical minimums chosen"));
+        }
+    }
+
     @Test
     public void keepMineKeepsTheMovedRulesAndAsksNothingMore() {
         ownerShape(0);

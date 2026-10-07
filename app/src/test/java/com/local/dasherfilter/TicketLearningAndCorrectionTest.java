@@ -39,6 +39,71 @@ public class TicketLearningAndCorrectionTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * The ticket's bold line is the latest observed outcome: a decline by hand counted in 0.5.0 leads it, as an older
+     * version's verdict on one did, and so does an offer seen not accepted; neither is left among the grey steps.
+     */
+    @Test public void aDeclineByHandCountedNowLeadsTheTicketAsAnOlderVersionsVerdictDid() {
+        long at = System.currentTimeMillis() - 30_000;
+        OfferSnapshot facts = new OfferSnapshot(1500, 4.0, 15, 2);
+        String counted = DecisionLog.StepKind.DECLINE_COUNTED.label + ": another offer came";
+        DecisionLog.record(app, new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false, facts, 1000,
+                OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList())
+                .withStep(new DecisionLog.Step(DecisionLog.StepKind.DECLINE_TAPPED, at + 2_000, ""))
+                .withStep(new DecisionLog.Step(DecisionLog.StepKind.DECLINE_COUNTED, at + 4_000, "another offer came")));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            openTicket(content);
+            android.widget.TextView lead = exactText(content, counted);
+            assertNotNull("it leads the ticket, bold, as the 0.4.x verdict did", lead);
+            assertEquals(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 14,
+                    app.getResources().getDisplayMetrics()), lead.getTextSize(), 0.01f);
+            assertEquals("the other steps stay grey below", DecisionLog.StepKind.DECLINE_TAPPED.label,
+                    exactText(content, DecisionLog.StepKind.DECLINE_TAPPED.label).getText().toString());
+        }
+
+        // An older version's verdict on a decline by hand still leads its ticket.
+        DecisionLog.clear(app);
+        DecisionLog.record(app, declinedEntry().withStep(new DecisionLog.Step(DecisionLog.StepKind.DECLINE_TAUGHT,
+                System.currentTimeMillis(), "")));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            openTicket(content);
+            assertNotNull(exactText(content, "Your Decline (older version)"));
+        }
+
+        // A passed offer seen not accepted: that outcome leads.
+        DecisionLog.clear(app);
+        String notAccepted = DecisionLog.StepKind.NOT_ACCEPTED.label + ": Dasher showed the wait for offers 3 s after it"
+                + " left";
+        DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 10_000, DecisionLog.Source.SCREEN,
+                false, facts, 1000, OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList()).withStep(new DecisionLog.Step(DecisionLog.StepKind.NOT_ACCEPTED,
+                System.currentTimeMillis(), "Dasher showed the wait for offers 3 s after it left")));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            openTicket(content);
+            assertNotNull(exactText(content, notAccepted));
+        }
+    }
+
+    /** The shown line whose words are exactly {@code text}, or null. */
+    private static android.widget.TextView exactText(View view, String text) {
+        if (view instanceof android.widget.TextView && view.isShown()
+                && ((android.widget.TextView) view).getText().toString().equals(text)) {
+            return (android.widget.TextView) view;
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.widget.TextView found = exactText(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     @Test public void howThisOfferWasJudgedStaysCollapsedInsideTheSelectedTicket() {
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
         DecisionLog.record(app, declinedEntry());

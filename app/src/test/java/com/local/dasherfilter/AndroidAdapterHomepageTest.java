@@ -526,6 +526,21 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w320dp-h640dp-xhdpi")
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     public void aLargeFontAndALineToFixKeepTheSkylineAndTheMapAtTheirLeast() {
+        largeFontAndALineToFix(false);
+    }
+
+    /**
+     * The same with Autopilot on: the line to fix takes its room first, so Autopilot's status stands in its chip beside
+     * the latest offer's line (no status line in the ground), and the page is still one screen.
+     */
+    @Test
+    @Config(qualifiers = "w320dp-h640dp-xhdpi")
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    public void aLargeFontALineToFixAndAutopilotOnStillFitOneScreen() {
+        largeFontAndALineToFix(true);
+    }
+
+    private void largeFontAndALineToFix(boolean autopilot) {
         RuntimeEnvironment.setFontScale(2f);
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         AreaMap.setEnabled(app, true);
@@ -536,9 +551,9 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         }
         setLocation(37.7749, -122.4194);
         // The busiest constellation the old rules come to: three minimums (the old $1.00 per stop folded into the $7.00
-        // minimum pay, the learning retired) and max stops, with the Autopilot button by them. (Autopilot on adds its
-        // status line to the ground, which a very large font on a phone this small may scroll: AutopilotUiTest.)
+        // minimum pay, the learning retired) and max stops, with the Autopilot button by them.
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 4));
+        if (autopilot) FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -564,6 +579,20 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             View column = page.getChildAt(0);
             assertTrue("one screen: " + column.getHeight() + " in " + page.getHeight(),
                     column.getHeight() <= page.getHeight());
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            if (autopilot) {
+                assertNull("no status line: the line to fix takes the room first",
+                        shownTextContaining(content, "Autopilot 100%"));
+                assertTrue("the chip says it, beside the latest offer's line", chip.isShown());
+                android.graphics.Rect visible = new android.graphics.Rect();
+                assertTrue(chip.getGlobalVisibleRect(visible));
+                assertEquals("whole", chip.getHeight(), visible.height());
+                TextView caption = shownTextContaining(content, "Latest · ");
+                assertTrue(caption.getGlobalVisibleRect(visible));
+                assertEquals("the latest offer's line whole", caption.getHeight(), visible.height());
+            } else {
+                assertFalse("off on a whole screen: the button in the sky is the way in", chip.isShown());
+            }
         } finally {
             service.destroy();
             RuntimeEnvironment.setFontScale(1f);

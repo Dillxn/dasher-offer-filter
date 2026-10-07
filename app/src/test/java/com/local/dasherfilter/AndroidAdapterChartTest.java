@@ -841,6 +841,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("into the sky", star.backdrop());
             assertNotNull("with its knobs", star.knobAt(1));
             assertNotNull("and the Autopilot button", star.autopilotBox());
+            assertFalse("which is Autopilot's one control now: no chip repeats it",
+                    find(content, AutopilotChip.class).isShown());
             assertEquals("the map makes room", View.GONE, find(content, AreaMapView.class).getVisibility());
 
             // A tap on its circle, away from everything on it, puts it back in the header with the map.
@@ -848,6 +850,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             tap(sky, star.skyX() + star.skyRadius() * 0.5f, star.skyY());
             settleSky(content);
             assertTrue("back in the header", star.beside());
+            assertTrue("and the chip with it", find(content, AutopilotChip.class).isShown());
             assertEquals(View.VISIBLE, find(content, AreaMapView.class).getVisibility());
             assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
         }
@@ -1043,9 +1046,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         org.robolectric.shadows.ShadowAccessibilityManager reader = Shadows.shadowOf(
                 app.getSystemService(android.view.accessibility.AccessibilityManager.class));
-        // Autopilot commits only through the screen reading, which is running.
+        // Autopilot commits only through the screen reading, which is running; background offers too, so no setup line
+        // takes the status line's room.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             showWindow(content);
@@ -1084,6 +1091,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         } finally {
             reader.setTouchExplorationEnabled(false);
             reader.setEnabled(false);
+            listener.destroy();
             service.destroy();
         }
     }
