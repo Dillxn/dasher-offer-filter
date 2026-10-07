@@ -1,3 +1,9 @@
+## October 7, 18:58 UTC — 0.5.0 published
+
+- **Live feed is 0.5.0/code 80**: source `a9a1f8a5929cbe23f56b1cc41c5b417f33eebefe`, release commit `e8e4fcc` on main, Render deploy `dep-db39bg0m7kps73dggvj0`. APK 1,336,846 bytes, SHA-256 `eb77df9ec7aa4343bd3e9ae4928943af1021360ac7ea4b19fb784d37be33a9cf`, signer `553994c4…0c703` (the original cloud key). tools/verify_channel.py passed against the live bytes through the production UpdateTransport. The CDN can keep the previous APK for up to five minutes after a deploy (`s-maxage=300`): a channel check that fails within that window should be repeated before anything is changed.
+- Signed in the Claude session with tools/sign-local.sh (its full gate: 3,172 dual-SDK tests, lint, inputs unchanged). Render built nothing; its build minutes are spent, and its plain mirror deploy took about half a minute. The owner chose to publish to every tester before the physical-phone checks; PUBLIC_BETA_PHONE_GATE.md is still unchecked.
+- offerfilter.org serves the 0.5.0 site from main (the /install/ guide, /terms/, /privacy/, /license/), and its assets/release.json names 0.5.0.
+
 ## October 7, 18:15 UTC — 0.5.0 release candidate supersedes .74
 
 - **The candidate is 0.5.0/code 80** on `claude/nifty-fermi-su0qus`, merged with main at `004c647`, so it carries .74's Settings-emblem link and the download page's legal links. .74 was never signed or published: don't sign or publish it, because 0.5.0 replaces it with the same version code. The live feed is still .72/code78.
