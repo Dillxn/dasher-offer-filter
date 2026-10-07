@@ -1325,7 +1325,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * The one-time 0.5.0 notice ({@link FilterStore#peekModelNotice}): what changed, in the owner's order, and, when the
      * minimums would have passed fewer than one in five of the last offers, the pass check and "Use typical minimums"
      * (unless the minimums are the typical ones already: then the check, with OK and "Set up Autopilot"). It stays
-     * until a button is tapped (a recreated screen shows it again).
+     * until a button is tapped (a recreated screen shows it again), and only ever opens over the page, never the
+     * driving strip ({@link #refresh}).
      */
     private void showModelNotice(String json) {
         org.json.JSONObject facts;
@@ -1749,8 +1750,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
         updatingCover.refresh();
         refreshSettings();
-        // The one-time 0.5.0 notice, once the screen is up (never behind the first-run notice).
-        if (started && !modelNoticeAsked) {
+        // The one-time 0.5.0 notice, once the screen is up (never behind the first-run notice), and only with the page:
+        // the driving strip (a third of a split screen) shows none of what it names, and only a button closes it, so
+        // there it waits in the store until the divider gives the page back (the screen is made again).
+        if (started && strip == null && !modelNoticeAsked) {
             modelNoticeAsked = true;
             String notice = FilterStore.peekModelNotice(this);
             if (notice != null) showModelNotice(notice);

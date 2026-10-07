@@ -15,6 +15,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
@@ -215,6 +216,48 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             refreshed();
             assertNull(notice());
+        }
+    }
+
+    /**
+     * A third of a split screen is the driving strip (the mascot, the latest verdict, the status: nothing else, so
+     * Dasher's map keeps two thirds): the notice waits there, kept in the store, since nothing it names is on screen
+     * and a dialog that only a button closes would stand in the strip a driver glances at. Dragging the divider back
+     * makes the screen again with the page, and the notice comes on it.
+     */
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
+    public void inTheDrivingStripTheNoticeWaitsForThePage() {
+        ownerShape(0);
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            refreshed();
+            DrivingStrip strip = find(page(activity), DrivingStrip.class);
+            assertNotNull("a third of a split screen: the strip", strip);
+            assertTrue(strip.isShown());
+            assertNull("no dialog over the strip", ShadowAlertDialog.getLatestAlertDialog());
+            refreshed();
+            assertNull("nor at a later refresh", ShadowAlertDialog.getLatestAlertDialog());
+            assertNotNull("kept for the page", FilterStore.peekModelNotice(app));
+            // The strip's own controls work as ever, nothing in their way.
+            find(strip, DrivingStrip.MascotButton.class).performClick();
+            idle();
+            assertFalse("the mascot pauses", FilterStore.load(app).enabled);
+            assertNull(ShadowAlertDialog.getLatestAlertDialog());
+
+            // The divider dragged back: the screen made again, now with the page, and the notice on it.
+            RuntimeEnvironment.setQualifiers("w411dp-h914dp-420dpi");
+            activity.recreate();
+            refreshed();
+            View content = page(activity);
+            assertNull("the page, not the strip", find(content, DrivingStrip.class));
+            assertTrue(find(content, MinimumsStarView.class).isShown());
+            AlertDialog notice = notice();
+            assertNotNull("the notice, once the page shows", notice);
+            assertEquals(OWNER_LINES, message(notice));
+            notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            idle();
+            assertNull("answered", FilterStore.peekModelNotice(app));
         }
     }
 
