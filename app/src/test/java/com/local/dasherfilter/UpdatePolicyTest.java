@@ -16,7 +16,7 @@ public final class UpdatePolicyTest {
     private static final String RETIRED_BASE64 =
             "https://raw.githubusercontent.com/Dillxn/dasher-offer-filter-updates/main/apks/v0.4.1/OfferFilter.apk.b64";
     private static final String HASH = "a".repeat(64);
-    /** The retired private-repository channel's addresses, which no version from 0.4.73 reads. */
+    /** The retired repository channel's addresses (the public GitHub repository), which no version from 0.5.0 reads. */
     private static final String REPO_APK =
             "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/OfferFilter.apk?ref=main";
     private static final String REPO_FEED =

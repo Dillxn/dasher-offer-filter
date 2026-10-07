@@ -6,7 +6,7 @@ import java.util.Objects;
 
 /** Offline checks of existing recovery and updater guard logic. No Android action, request, or install is sent. */
 public final class PolicySafetyCases {
-    /** The retired private-repository channel's addresses: never trusted, a GitHub connection or not. */
+    /** The retired repository channel's addresses (the public GitHub repository): never trusted, connected or not. */
     private static final String RETIRED_REPO_FEED =
             "https://api.github.com/repos/Dillxn/dasher-offer-filter/contents/release/latest.json?ref=main";
     private static final String RETIRED_REPO_APK =

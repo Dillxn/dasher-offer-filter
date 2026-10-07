@@ -6,8 +6,9 @@ import java.util.regex.Pattern;
 /**
  * Pure update-feed policy, shared with the release probe (no Android dependencies). There is one release origin, the
  * public Render server, with one exact feed and one exact APK address, and it needs no account. The retired GitHub
- * feeds (the old signer's, and the private repository's that a GitHub connection once read) are not trusted. An APK is
- * installed only when it is signed like the installed app.
+ * feeds (the old signer's, and the retired repository channel's: the project's public GitHub repository, which 0.4.72
+ * and older read through a user's GitHub connection) are not trusted. An APK is installed only when it is signed like
+ * the installed app.
  */
 final class UpdatePolicy {
     static final String PACKAGE = "com.local.dasherfilter";

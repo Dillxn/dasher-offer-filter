@@ -7,7 +7,7 @@ import android.os.SystemClock;
 
 /**
  * The app's launcher entry. Two aliases, DayLauncher and NightLauncher, target the permanently enabled MainActivity.
- * Versions 0.4.68 to 0.4.73 swapped them with the theme, but disabling the alias a home-screen icon points to removes
+ * Versions 0.4.68 to 0.4.72 swapped them with the theme, but disabling the alias a home-screen icon points to removes
  * that icon on common launchers (Pixel, One UI): the app seemed to vanish at sunset. So no theme touches them any more:
  * Auto, System and an explicit Day or Night change only the app's own screens, and whichever alias is enabled stays
  * enabled, with its icon, through every update (an older version's night entry included). The one repair: with no

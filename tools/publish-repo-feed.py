@@ -11,7 +11,7 @@ or pushes; commit release/ and push it to main afterwards.
 
 release/latest.json keeps the retired repository address as its apkUrl for one more release: Offer Filter 0.4.72 and
 older, on a phone still connected to GitHub, read release/ directly and require exactly that address (otherwise they
-fall back to Render with a note). 0.4.73 and later never read release/; the mirror ignores this apkUrl.
+fall back to Render with a note). 0.5.0 and later never read release/; the mirror ignores this apkUrl.
 """
 import hashlib, json, os, pathlib, re, subprocess
 from help_page import check_help_page

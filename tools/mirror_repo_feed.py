@@ -3,7 +3,7 @@
 tools/sign-local.sh and checked by tools/publish-repo-feed.py) on Render as public/, without building or signing.
 
 The user's decision ("Render serves the GitHub build"): Render's build minutes ran out at 0.4.13, so Render copies
-the release signed in the local workspace instead of building one. From 0.4.73 every installation reads only Render.
+the release signed in the local workspace instead of building one. From 0.5.0 every installation reads only Render.
 Copying the signed APK takes seconds. Nothing here signs anything or holds a key.
 
 Checks before anything is written (every phone checks size, SHA-256, package, version and signer again):
