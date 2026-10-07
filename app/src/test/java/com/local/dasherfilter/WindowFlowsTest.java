@@ -620,6 +620,12 @@ public class WindowFlowsTest {
                 back.getFlags());
         assertNull("gone once tapped", chip());
         contains(DiagnosticLog.read(app), "[peek] back to map: you tapped it; opened a navigation app");
+        // The tab went with the tap: the map now in front has none of ours over it.
+        assertFalse(tab().getVisibility() == View.VISIBLE);
+        inFront(app(MAPS));
+        pass(OfferFilterService.TAP_SETTLE_MS + OfferFilterService.WINDOW_WATCH_MS);
+        DasherTab tab = tab();
+        assertTrue("no tab over the map", tab == null || tab.getVisibility() != View.VISIBLE);
         for (String line : DiagnosticLog.read(app).split("\n")) {
             assertFalse("never the app's identity: " + line, line.contains(MAPS));
         }
@@ -792,7 +798,15 @@ public class WindowFlowsTest {
         String log = DiagnosticLog.read(app);
         contains(log, "[peek] back to map: you tapped it; not opened (Dasher no longer shows its wait for offers)");
         assertNull(chip());
-        assertEquals("the offer is read as any (and passes)", OfferRule.Result.KEEP, tab().verdict());
+        DecisionLog.Entry read = DecisionLog.recent(app, 1).get(0);
+        assertEquals("the offer is read as any (and passes)", OfferRule.Result.KEEP, read.result);
+        assertEquals(2500, (int) read.facts.payCents);
+        // The tab went with the tap (a map may come in front): Dasher's next change, read, brings it back over the offer.
+        assertFalse(tab().getVisibility() == View.VISIBLE);
+        pass(OfferFilterService.TAP_SETTLE_MS);
+        dasherEvent();
+        assertEquals(View.VISIBLE, tab().getVisibility());
+        assertEquals(OfferRule.Result.KEEP, tab().verdict());
     }
 
     /** Dasher changed its screen (its content), stamped with its own time. */

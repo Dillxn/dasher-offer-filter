@@ -1582,7 +1582,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (click != null) {
             if (ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
                 dasherClicks.incrementAndGet();
-                userTappedDasher(at);
+                putAwayAfterUserTap(at);
             }
             if (autoAcceptWatched && click.at >= autoAcceptBeganAt
                     && ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
@@ -1614,12 +1614,12 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Main thread: the user tapped Dasher. The tap may take them to another app (Navigate opens a map), and Android
-     * tells this screen reader nothing of that app coming in front: the tab, guide and chip are put away now, so none
-     * lingers over that app taking its touches, and only a read begun {@link #TAP_SETTLE_MS} after the tap, finding
-     * Dasher still in front, brings them back.
+     * Main thread: the user tapped Dasher, or the Back to map chip. The tap may take them to another app (Navigate, or the
+     * chip, opens a map), and Android tells this screen reader nothing of that app coming in front: the tab, guide and
+     * chip are put away now, so none lingers over that app taking its touches, and only a read begun
+     * {@link #TAP_SETTLE_MS} after the tap, finding Dasher still in front, brings them back.
      */
-    private void userTappedDasher(long at) {
+    private void putAwayAfterUserTap(long at) {
         long settle = at + TAP_SETTLE_MS;
         userTapSettleAt = settle;
         overlayTransition.incrementAndGet();
@@ -2354,6 +2354,8 @@ public final class OfferFilterService extends AccessibilityService {
      * or one held for the quiet gap) may be under the chip: the tap then opens nothing, and the offer is read as any.
      */
     void backToMapTapped() {
+        // The map it opens comes in front of Dasher, of which this screen reader hears nothing: the tab goes with it.
+        putAwayAfterUserTap(SystemClock.uptimeMillis());
         scanner.postAtFrontOfQueue(() -> {
             BackToMap chip = backToMap;
             backToMap = null;
