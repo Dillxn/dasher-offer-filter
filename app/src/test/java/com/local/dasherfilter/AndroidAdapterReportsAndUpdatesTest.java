@@ -176,20 +176,53 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
 
     @Test
     public void reportIncludesEverySavedRuleAndNotificationAccess() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(2500, 6.0, 25, 2));
+        // Before 0.5.0 these rules had a $1.00 per-stop minimum beside the $20.00 one, folded as max(flat, 2 × per
+        // stop) = $20.00; the adaptive minimum and what it learned are retired, so nothing of them is saved or shown.
+        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 30, 3));
         String report = DiagnosticLog.report(app);
-        for (String field : Arrays.asList("Auto-decline saved: true", "flat cents=2000", "per-mile cents=150",
-                "per-minute cents=30", "per-stop cents=100", "max stops=3", "rising offers=true",
-                "highest accepted cents=2500", "hotspot proximity hundredths/mi=0", "minimum scale percent=100",
-                "learned from manual declines=none", "score by area=false")) {
-            assertTrue("saved rule missing: " + field, report.contains(field));
-        }
-        assertTrue(report.contains("Current when this report was generated; not a reconstructed historical baseline."));
-        assertTrue(report.contains("learning now=on"));
-        assertTrue(report.contains("$1.00 per stop"));
-        assertTrue(report.contains("best accepted=$1.00/min, $4.17/mi, $12.50/stop"));
+        assertTrue(report, report.contains("== Rules\n"
+                + "Current when this report was generated; not a reconstructed historical baseline.\n"
+                + "Auto-decline saved: true; flat cents=2000; per-mile cents=150; per-minute cents=30 "
+                + "(per hour $18.00); max stops=3\n"
+                + "Autopilot: off; goal 70%; bar 100%; AR unknown\n"
+                + "In words: at least $20.00 · $1.50 per mile · $18.00 per hour · at most 3 stops\n"));
         assertTrue(report.contains("Notification access granted: false"));
+        String lower = report.toLowerCase(java.util.Locale.US);
+        for (String retired : Arrays.asList("per-stop", "per stop", "per-item", "per item", "hotspot", "rising",
+                "score by area", "learned", "learning", "highest accepted", "best accepted", "adaptive",
+                "minimum scale", "minimums scale")) {
+            assertFalse("retired: " + retired, lower.contains(retired));
+        }
+    }
+
+    @Test
+    public void theReportsRulesLineAndAutopilotLineDescribeAFixtureState() {
+        // The worked example's starter minimums ($15.00 an hour is 25¢ a minute), Autopilot at 82% for a goal of 70%,
+        // Dasher's 55% seen 12 minutes ago, and the bar's last change 4 minutes ago. No plan yet in this process.
+        long now = System.currentTimeMillis();
+        AutopilotRuntime.forgetCache();
+        AutopilotRuntime.wallClock = () -> now;
+        try {
+            FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+            FilterStore.setAutopilot(app, true, 70);
+            assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+            AutopilotStore.recordReading(app, 55, "", now - 12 * 60_000L - 20_000L);
+            AutopilotStore.recordChange(app, 100, 82, Autopilot.Reason.RECOVERY.name(), now - 4 * 60_000L - 20_000L,
+                    false);
+            String report = DiagnosticLog.report(app);
+            assertTrue(report, report.contains("\nAuto-decline saved: true; flat cents=400; per-mile cents=100; "
+                    + "per-minute cents=25 (per hour $15.00); max stops=0\n"
+                    + "Autopilot: on; goal 70%; bar 82%; AR 55% (Dasher, 12 min ago); last change 100%->82% "
+                    + "(acceptance rate below your goal) 4 min ago\n"
+                    + "In words: at least $4.00 · $1.00 per mile · $15.00 per hour · Autopilot bar 82% (goal 70%)\n"));
+            assertEquals("the report's line is the one Autopilot's own words build", "Autopilot: on; goal 70%; "
+                    + "bar 82%; AR 55% (Dasher, 12 min ago); last change 100%->82% (acceptance rate below your goal) "
+                    + "4 min ago", AutopilotText.reportLine(AutopilotRuntime.status(app, now,
+                    OfferFilterService.isConnected())));
+        } finally {
+            AutopilotRuntime.wallClock = System::currentTimeMillis;
+            AutopilotRuntime.forgetCache();
+        }
     }
 
     @Test
@@ -236,8 +269,9 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             assertTrue(dialog.isShowing());
             String said = ((TextView) dialog.findViewById(android.R.id.message)).getText().toString();
             assertEquals("the dialog says what it sends, and Send is the consent", "Sends this offer's figures, "
-                    + "decision and masked read lines, your current rules and what the adaptive minimum learned from "
-                    + "offers you accepted or declined, the app's and Android's versions and the minute it was "
+                    + "decision and masked read lines, your current rules and Autopilot's state (on or off, goal, "
+                    + "bar, mode and last change, and the acceptance rate it counts with: Dasher's latest, carried "
+                    + "forward, or its own estimate), the app's and Android's versions and the minute it was "
                     + "decided, with your note. No account. Masking can miss details.", said);
             View decor = dialog.getWindow().getDecorView();
             assertNotNull(findText(decor, "Don't include customer, payment or account details."));
@@ -283,11 +317,15 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             assertTrue(evidence, evidence.contains("$7.90"));
             assertFalse(evidence, evidence.contains("Sam"));
             org.json.JSONObject rules = sent.getJSONObject("rules");
-            assertTrue(rules.has("inWords"));
-            // What the dialog discloses: the learned minimums go with the rules.
-            for (String learned : new String[] {"lastAcceptedCents", "declinedByHand", "bestAccepted"}) {
-                assertTrue(learned, rules.has(learned));
-            }
+            // What the dialog discloses: the rules and Autopilot's state, under exactly these keys; nothing learned.
+            List<String> keys = new ArrayList<>();
+            for (java.util.Iterator<String> names = rules.keys(); names.hasNext(); ) keys.add(names.next());
+            Collections.sort(keys);
+            List<String> expected = new ArrayList<>(Arrays.asList("enabled", "flatCents", "perMileCents",
+                    "perMinuteCents", "maxStops", "autopilot", "autopilotGoal", "barPercent", "autopilotMode",
+                    "recovering", "extra", "arPercent", "arSource", "arAgeMinutes", "lastChange", "context"));
+            Collections.sort(expected);
+            assertEquals(expected, keys);
             assertFalse(request.toString().contains("Sam P"));
 
             android.app.AlertDialog done = (android.app.AlertDialog)

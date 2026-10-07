@@ -43,10 +43,16 @@ final class FeedbackDialogs implements Feedback.Listener {
         String message = "";
     }
 
-    /** What Report this offer says it sends: all of what OfferReport carries, the learned minimums among it. */
+    /**
+     * What Report this offer says it sends, and Send is the consent to it: all of what OfferReport carries
+     * ({@link OfferReport#rulesJson}), Autopilot's whole state among it: its switch, goal, bar, mode (recovering and
+     * its stall correction with it) and last change, and the acceptance rate it counts with, which is Dasher's latest
+     * as shown (with how long ago), carried forward over the offers since, or the app's own estimate.
+     */
     static final String OFFER_REPORT_SAYS = "Sends this offer's figures, decision and masked read lines, your current "
-            + "rules and what the adaptive minimum learned from offers you accepted or declined, the app's and Android's "
-            + "versions and the minute it was decided, with your note. No account. Masking can miss details.";
+            + "rules and Autopilot's state (on or off, goal, bar, mode and last change, and the acceptance rate it "
+            + "counts with: Dasher's latest, carried forward, or its own estimate), the app's and Android's versions "
+            + "and the minute it was decided, with your note. No account. Masking can miss details.";
     /** A page of the preview: a whole report in one view would stall the screen. */
     static final int PREVIEW_PAGE_CHARS = 12_000;
     private static Draft draft = new Draft();

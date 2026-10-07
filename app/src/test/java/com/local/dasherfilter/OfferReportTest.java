@@ -1,8 +1,12 @@
 package com.local.dasherfilter;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,15 +23,28 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * What "Report this offer" sends about one offer: its figures, decision and fixed outcome category, its read lines
- * masked twice, the current rules, the app's and Android's versions and the minute it was decided; never its learning
- * steps, the exact time or anything typed. The masking cases come from the retired GitHub problem reports.
+ * masked twice, the current rules and Autopilot's state (exactly the spec's keys, numbers and fixed words only), the
+ * app's and Android's versions and the minute it was decided; never its outcome steps, the exact time or anything
+ * typed. The masking cases come from the retired GitHub problem reports.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class OfferReportTest {
-    private static final FilterSettings RULES = new FilterSettings(true, 1200, 150, 60, 0, 4);
+    private static final FilterSettings RULES = FilterSettings.of(true, 1200, 150, 60, 4);
     /** 2026-10-06 21:02:37.123 UTC. */
     private static final long AT = 1_791_320_557_123L;
+    private static final long MIN = 60_000L;
+    /** The rules object's keys (finalSpec.privacyConsent, REPORTS), and nothing else. */
+    private static final List<String> KEYS = Arrays.asList("enabled", "flatCents", "perMileCents", "perMinuteCents",
+            "maxStops", "autopilot", "autopilotGoal", "barPercent", "autopilotMode", "recovering", "extra", "arPercent",
+            "arSource", "arAgeMinutes", "lastChange", "context");
+    /** The worked example's 20 offers, newest first: pay in cents, miles, minutes; two stops each. */
+    private static final int[] PAY = {1625, 975, 700, 1350, 575, 800, 2250, 600, 1100, 350, 925, 1490, 400, 1050,
+            725, 1700, 875, 500, 1225, 650};
+    private static final double[] MILES = {6.2, 11.8, 2.2, 7.0, 6.6, 3.0, 12.6, 7.9, 5.1, 4.8, 6.3, 9.9, 2.6, 4.4,
+            5.5, 8.8, 7.4, 3.2, 6.0, 4.1};
+    private static final int[] MINUTES = {26, 41, 14, 28, 27, 16, 44, 29, 23, 19, 25, 38, 15, 20, 24, 33, 31, 18, 26,
+            22};
 
     private static DecisionLog.Entry unreadable(String pay) {
         return new DecisionLog.Entry(AT, DecisionLog.Source.SCREEN, false, new OfferSnapshot(null, 7.2, 21, 2), 0,
@@ -166,5 +183,144 @@ public class OfferReportTest {
     @Test
     public void aPaymentScreenLeavesNoLineAtAll() throws JSONException {
         assertTrue(OfferReport.redact(Arrays.asList("Card details", "CVV", "731", "$123.45")).isEmpty());
+    }
+
+    // ---- The rules object: the three minimums, max stops and Autopilot's state ----
+
+    private static Set<String> keys(JSONObject json) {
+        Set<String> keys = new TreeSet<>();
+        for (Iterator<String> names = json.keys(); names.hasNext(); ) keys.add(names.next());
+        return keys;
+    }
+
+    private static JSONObject rules(AutopilotText.Status autopilot) throws JSONException {
+        return OfferReport.json(OfferReport.Problem.WRONG_DECLINE, "0.5.0", 80, "Android 15 (API 35)", autopilot,
+                unreadable("Guaranteed pay")).getJSONObject("rules");
+    }
+
+    @Test
+    public void theRulesAreTheThreeMinimumsMaxStopsAndAutopilotUnderExactlyTheSpecsKeys() throws JSONException {
+        assertEquals(KEYS, OfferReport.RULES_KEYS);
+        String text = OfferReport.text(OfferReport.Problem.MISREAD, "0.5.0", 80, "Android 15 (API 35)", RULES,
+                unreadable("Guaranteed pay"));
+        JSONObject rules = new JSONObject(text).getJSONObject("rules");
+        assertEquals("exactly these keys", new TreeSet<>(KEYS), keys(rules));
+        assertTrue(rules.getBoolean("enabled"));
+        assertEquals(1200, rules.getInt("flatCents"));
+        assertEquals(150, rules.getInt("perMileCents"));
+        assertEquals("cents per minute as stored ($36.00 per hour)", 60, rules.getInt("perMinuteCents"));
+        assertEquals(4, rules.getInt("maxStops"));
+        // Rules alone: Autopilot as they say (off, the default goal, exactly the minimums), nothing worked out or read.
+        assertFalse(rules.getBoolean("autopilot"));
+        assertEquals(70, rules.getInt("autopilotGoal"));
+        assertEquals(100, rules.getInt("barPercent"));
+        assertTrue(rules.isNull("autopilotMode"));
+        assertFalse(rules.getBoolean("recovering"));
+        assertEquals(0, rules.getInt("extra"));
+        assertEquals(-1, rules.getInt("arPercent"));
+        assertEquals("UNKNOWN", rules.getString("arSource"));
+        assertEquals(-1, rules.getInt("arAgeMinutes"));
+        assertTrue(rules.isNull("lastChange"));
+        assertEquals("current rules when report was built; historical baselines are not reconstructed",
+                rules.getString("context"));
+        // No retired rule and no learned minimum, under any name, anywhere in the report.
+        for (String retired : new String[] {"perStop", "perItem", "hotspot", "rising", "scoreByArea", "lastAccepted",
+                "minimumScale", "declinedByHand", "bestAccepted", "learned", "adaptive"}) {
+            assertFalse(retired, text.contains(retired));
+        }
+    }
+
+    @Test
+    public void autopilotsStateGoesAsNumbersAndFixedNamesWithNoTextFingerprintOrTimeOfDay() throws JSONException {
+        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, 50, 82);
+        // No plan yet for these rules: recovering and the stall correction as last stored; Dasher's reading as shown.
+        AutopilotText.Status status = new AutopilotText.Status(rules, true, null,
+                new AutopilotStore.Reading(55, AT - 12 * MIN - 20_000, "4242|9.9|99|2"),
+                new AutopilotStore.Change(AT - 4 * MIN - 20_000, 100, 82, "RECOVERY"), true, 2, AT);
+        JSONObject json = rules(status);
+        assertEquals(new TreeSet<>(KEYS), keys(json));
+        assertEquals(400, json.getInt("flatCents"));
+        assertEquals(25, json.getInt("perMinuteCents"));
+        assertTrue(json.getBoolean("autopilot"));
+        assertEquals(50, json.getInt("autopilotGoal"));
+        assertEquals(82, json.getInt("barPercent"));
+        assertTrue("no plan for these rules yet", json.isNull("autopilotMode"));
+        assertTrue(json.getBoolean("recovering"));
+        assertEquals(2, json.getInt("extra"));
+        assertEquals(55, json.getInt("arPercent"));
+        assertEquals("DASHER", json.getString("arSource"));
+        assertEquals(12, json.getInt("arAgeMinutes"));
+        JSONObject change = json.getJSONObject("lastChange");
+        assertEquals(new TreeSet<>(Arrays.asList("from", "to", "reason", "minutesAgo")), keys(change));
+        assertEquals(100, change.getInt("from"));
+        assertEquals(82, change.getInt("to"));
+        assertEquals("a fixed name, never words", "RECOVERY", change.getString("reason"));
+        assertEquals(4, change.getInt("minutesAgo"));
+        String text = json.toString();
+        assertFalse("the reading's offer stays on the phone", text.contains("4242"));
+        assertFalse("no clock time", Pattern.compile("\\d{12,}").matcher(text).find());
+
+        // Pay first, and no reading at all: the rate is unknown, with no age.
+        JSONObject payFirst = rules(new AutopilotText.Status(new FilterSettings(true, 400, 100, 25, 3, true, 0, 119),
+                true, null, null, null, AT));
+        assertEquals(0, payFirst.getInt("autopilotGoal"));
+        assertEquals(119, payFirst.getInt("barPercent"));
+        assertEquals(3, payFirst.getInt("maxStops"));
+        assertEquals(-1, payFirst.getInt("arPercent"));
+        assertEquals("UNKNOWN", payFirst.getString("arSource"));
+        assertEquals(-1, payFirst.getInt("arAgeMinutes"));
+    }
+
+    @Test
+    public void theAcceptanceRateIsTheOneAutopilotCountsWithToTheHundredth() throws JSONException {
+        // The worked example at 400 / 100 / 25 with Autopilot on (goal 70%), and Dasher's 55% twelve minutes ago.
+        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, 70, 100);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < PAY.length; i++) {
+            OfferSnapshot facts = new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 2);
+            boolean declined = OfferRule.evaluate(facts, rules).result == OfferRule.Result.DECLINE;
+            lines.add(new Autopilot.OfferRecord(facts, AT - (2 + 3L * i) * MIN, false, false, false, declined, false));
+        }
+        Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, null,
+                new Autopilot.Reading(55, AT - 12 * MIN), null, AT, 0));
+        JSONObject json = rules(new AutopilotText.Status(rules, true, plan,
+                new AutopilotStore.Reading(55, AT - 12 * MIN, ""), null, AT));
+        assertEquals("RECOVERY", json.getString("autopilotMode"));
+        assertTrue(json.getBoolean("recovering"));
+        assertEquals(0, json.getInt("extra"));
+        // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280 hundredths, exactly.
+        assertEquals(52.8, json.getDouble("arPercent"), 0);
+        assertEquals("DASHER", json.getString("arSource"));
+        assertEquals("when Dasher showed it", 12, json.getInt("arAgeMinutes"));
+        assertTrue(json.isNull("lastChange"));
+    }
+
+    @Test
+    public void anEstimatedRateCarriesNoAgeOfAReadingItDidNotUse() throws JSONException {
+        // Dasher's 55% two and a half hours ago, then 120 offers, each accepted or declined: DoorDash's window has
+        // turned over since that reading, so Autopilot counts with its own estimate, though the reading is still kept.
+        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, 70, 100);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 6 * PAY.length; i++) {
+            int k = i % PAY.length;
+            OfferSnapshot facts = new OfferSnapshot(PAY[k], MILES[k], MINUTES[k], 2);
+            boolean declined = OfferRule.evaluate(facts, rules).result == OfferRule.Result.DECLINE;
+            lines.add(new Autopilot.OfferRecord(facts, AT - (1 + i) * MIN, false, false, !declined, declined, false));
+        }
+        long readAt = AT - 150 * MIN;
+        Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, null, new Autopilot.Reading(55, readAt),
+                null, AT, 0));
+        assertEquals(Autopilot.ArSource.ESTIMATE, plan.arSource);
+        JSONObject json = rules(new AutopilotText.Status(rules, true, plan,
+                new AutopilotStore.Reading(55, readAt, ""), null, AT));
+        assertEquals("ESTIMATE", json.getString("arSource"));
+        assertEquals(plan.arHundredths / 100.0, json.getDouble("arPercent"), 0);
+        assertEquals("the estimate owes nothing to Dasher's reading, so no age of it", -1,
+                json.getInt("arAgeMinutes"));
+
+        // No rate at all, a reading or not: no age either.
+        JSONObject unknown = rules(new AutopilotText.Status(rules, true, null, null, null, AT));
+        assertEquals("UNKNOWN", unknown.getString("arSource"));
+        assertEquals(-1, unknown.getInt("arAgeMinutes"));
     }
 }
