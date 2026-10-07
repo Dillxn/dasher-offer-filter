@@ -6934,6 +6934,11 @@ public final class OfferFilterService extends AccessibilityService {
     /** {@link #RESIZE_FACTS_MS} after Dasher resized with no read since: none of an offer showed. */
     private final Runnable resizeCheck = () -> {
         if (stopped || resizedAt == NEVER || Peek.now() - resizedAt < RESIZE_FACTS_MS) return;
+        // Paused, nothing was read since: no line can say whether an offer's facts showed.
+        if (passive) {
+            resizedAt = NEVER;
+            return;
+        }
         DiagnosticLog.log(this, "split", "Dasher resized " + resizedFrom + "; offer facts none within "
                 + RESIZE_FACTS_MS / 1000 + " s");
         resizedAt = NEVER;

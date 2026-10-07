@@ -119,9 +119,16 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = splitScreen()) {
             DrivingStrip strip = find(content(activity), DrivingStrip.class);
             assertEquals("No offers yet", strip.verdictText());
-            assertEquals("Background offers are off", strip.statusText());
-            TextView status = shownTextContaining(content(activity), "Background offers are off");
+            // The homepage's own first setup step, in its words (SetupChecklist): notification access is missing.
+            assertEquals(SetupChecklist.NOTIFICATIONS, strip.statusText());
+            TextView status = shownTextContaining(content(activity), SetupChecklist.NOTIFICATIONS);
             assertTrue("its tap goes to the fix", status.isClickable());
+            status.performClick();
+            Intent fix = started();
+            assertNotNull("the step's own Fix: Android's notification access", fix);
+            assertTrue(fix.getAction(), android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS
+                    .equals(fix.getAction())
+                    || android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS.equals(fix.getAction()));
         }
     }
 
