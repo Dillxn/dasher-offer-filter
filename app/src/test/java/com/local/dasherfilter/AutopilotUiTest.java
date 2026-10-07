@@ -98,6 +98,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         AutopilotRuntime.executorForTests = null;
         AutopilotRuntime.forgetCache();
         RuntimeEnvironment.setFontScale(1f);
+        Peek.resumeNow(app);
     }
 
     // ---- Fixtures ----
@@ -660,6 +661,126 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", statusLine(content));
         } finally {
             listener.destroy();
+        }
+    }
+
+    /**
+     * The window flows' own line in the sky, "Peek paused: …" with Resume, needs the user as a setup line does: it
+     * takes the room first, so Autopilot's status stands in its chip beside the latest offer's line (no status line
+     * beside the chip, no Next match) and the page stays one screen; Resume takes the line away and the status line is
+     * back in Next match's place, the chip gone.
+     */
+    @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
+    public void aPeekPausedLineTakesTheRoomFirstAndTheStatusStandsInTheChipUntilResume() {
+        setUpForDashing();
+        minimums(400, 100, 25);
+        history(0, 20);
+        reading(55, 12);
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = page(activity);
+            settleSky(content);
+            refreshed();
+            TextView paused = shownTextContaining(content, "Peek paused: ");
+            assertNotNull("Peek paused itself: a line that needs the user", paused);
+            assertNull("no status line: the line takes the room first", shownLineStarting(content, "Autopilot "));
+            assertNull("and never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertTrue("the chip says it", chip.isShown());
+            assertEquals("Auto 100% ▲", chip.getText().toString());
+            layOut(content);
+            assertFalse("beside the latest offer's line", ((AutopilotChip.Row) chip.getParent()).stacked());
+            ScenePage scene = find(content, ScenePage.class);
+            assertTrue("one screen: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
+                    scene.getHeight() <= ((View) scene.getParent()).getHeight());
+
+            // Resume: the line goes, and the status line is back in Next match's place.
+            ((View) paused.getParent()).performClick();
+            refreshed();
+            assertNull(Peek.pausedWhy(app));
+            assertNull(shownTextContaining(content, "Peek paused: "));
+            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", statusLine(content));
+        }
+    }
+
+    @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
+    public void inA360DpTallSplitBesideAMapTheLayoutNoteTakesTheSkyAndTheChipCostsNothing() {
+        layoutNoteInAShortPane(1f);
+    }
+
+    @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
+    public void atTwiceTheFontTheLayoutNoteAndTheChipCostNoMoreThanTheChipsRowAtItsLeast() {
+        layoutNoteInAShortPane(2f);
+    }
+
+    /**
+     * A 360 dp-tall split beside a map during a dash: the window flows' layout note (with Swap) is a line in the sky,
+     * and the constellation is up in the header, so the chip is Autopilot's one control there, beside the latest
+     * offer's line (no button, no status line, no Next match). What the chip costs the page is only what its row
+     * grows: nothing at the normal size, and at twice the font only once the words are at their least size (as without
+     * the note). The note's tap is still Swap.
+     */
+    private void layoutNoteInAShortPane(float fontScale) {
+        RuntimeEnvironment.setFontScale(fontScale);
+        setUpForDashing();
+        dasherInstalled();
+        minimums(400, 100, 25);
+        history(0, 20);
+        reading(55, 12);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        Dashing.seen(app);
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = page(activity);
+            settleSky(content);
+            refreshed();
+            layOut(content);
+            TextView note = shownTextContaining(content, "need a tap in this layout");
+            assertNotNull("during a dash beside a map: the layout note", note);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue("the constellation is in the header", star.beside());
+            assertNull("so no Autopilot button is on screen", star.autopilotBox());
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertTrue("the chip is the one control", chip.isShown());
+            assertEquals("Auto 100% ▲", chip.getText().toString());
+            assertNull(shownLineStarting(content, "Autopilot "));
+            assertNull(shownLineStarting(content, "Next match"));
+            AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
+            assertFalse("never a line of its own", row.stacked());
+            TextView caption = shownTextContaining(content, "Latest · ");
+            ScenePage scene = find(content, ScenePage.class);
+            int withChip = scene.getHeight();
+            int rowWith = row.getHeight();
+            float shrunk = caption.getTextSize();
+            chip.setVisibility(View.GONE);
+            layOut(content);
+            int withoutChip = scene.getHeight();
+            int rowAlone = row.getHeight();
+            float full = caption.getTextSize();
+            chip.setVisibility(View.VISIBLE);
+            layOut(content);
+            String measured = "page " + withChip + " (" + withoutChip + " without the chip), row " + rowWith + " ("
+                    + rowAlone + "), caption " + shrunk + " of " + full;
+            assertTrue("the chip costs the page no more than its row grows: " + measured,
+                    withChip - withoutChip <= Math.max(0, rowWith - rowAlone));
+            if (fontScale <= 1f) {
+                assertEquals("at the normal size nothing: " + measured, rowAlone, rowWith);
+                assertEquals(measured, withoutChip, withChip);
+            } else if (rowWith > rowAlone) {
+                float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full, TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP, 13, app.getResources().getDisplayMetrics())));
+                assertEquals("taller than the words alone only at their least size: " + measured, least, shrunk, 0.5f);
+            }
+
+            // The note's tap is still Swap: Dasher into this half, so the map beside it stays.
+            ((View) note.getParent()).performClick();
+            android.content.Intent swap = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(swap);
+            assertEquals("com.doordash.driverapp", swap.getComponent().getPackageName());
+        } finally {
+            DasherSplit.forget();
         }
     }
 
