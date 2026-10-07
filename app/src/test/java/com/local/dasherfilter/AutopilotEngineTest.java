@@ -328,6 +328,30 @@ public final class AutopilotEngineTest {
                 plan(starters(70), window(), busy(), dasher(71), true, 84).target);
     }
 
+    /**
+     * Recovering lasts until the rate reaches the goal + 2 (72% for a 70% goal), but from 70% on the rate is not below
+     * the goal: a move then keeps enough offers for the goal, and never says the rate is below it (the status line
+     * says "At or above your goal" at the same moment).
+     */
+    @Test
+    public void aMoveWhileStillRecoveringAtOrAboveTheGoalSaysItKeepsEnoughOffersForIt() {
+        FilterSettings high = rules(500, 125, 35, 70, 100);
+        Autopilot.Plan below = plan(high, window(), busy(), dasher(69), true, 100);
+        assertEquals(Autopilot.Mode.RECOVERY, below.mode);
+        assertEquals("acceptance rate below your goal",
+                Autopilot.commitReason(below, 100, below.target, null).words);
+        for (int percent : new int[] {70, 71}) {
+            Autopilot.Plan band = plan(high, window(), busy(), dasher(percent), true, 100);
+            assertTrue(percent + "%: still recovering", band.recovering);
+            assertEquals(percent + "%", Autopilot.Mode.RECOVERY, band.mode);
+            assertFalse(band.belowGoal());
+            assertEquals(percent + "%", Autopilot.Reason.GOAL, Autopilot.commitReason(band, 100, band.target, null));
+        }
+        Autopilot.Plan out = plan(high, window(), busy(), dasher(72), true, 100);
+        assertFalse("72%: recovery is over", out.recovering);
+        assertEquals(Autopilot.Reason.GOAL, Autopilot.commitReason(out, 100, out.target, null));
+    }
+
     // ---- Plans: slow market ----
 
     @Test

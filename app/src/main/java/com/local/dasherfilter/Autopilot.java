@@ -1154,7 +1154,9 @@ final class Autopilot {
         }
         switch (plan.mode) {
             case PINNED: return Reason.PINNED;
-            case RECOVERY: return Reason.RECOVERY;
+            // Recovering lasts until the rate reaches the goal + 2 (need's hysteresis): from the goal on it is no longer
+            // below the goal, and the move keeps enough offers for it.
+            case RECOVERY: return plan.belowGoal() ? Reason.RECOVERY : Reason.GOAL;
             case GOAL: return Reason.GOAL;
             case PASS_FLOOR: return Reason.PASS_FLOOR;
             case LEARNING: return Reason.LEARNING;
