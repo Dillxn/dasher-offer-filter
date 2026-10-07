@@ -47,7 +47,8 @@ final class DrivingStrip extends ScrollView {
     private Runnable statusAction;
 
     /**
-     * @param toggle the mascot's tap: pause or resume auto-decline (or, with no rule yet, say how to begin)
+     * @param toggle the mascot's tap: pause or resume auto-decline (or, with no rule yet, offer the typical minimums,
+     *               whose "Set my own" says how to reach the knobs, which the strip does not have)
      * @param chip   Autopilot's chip, wired by the page ({@code MainActivity.newAutopilotChip}), which shows it
      *               Autopilot's status as it shows its own
      */

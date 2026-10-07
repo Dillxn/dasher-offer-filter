@@ -79,6 +79,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String STARTER_OWN = "Set my own";
     /** Said with the knobs' beckoning, when the user chose to set a first minimum by hand. */
     static final String KNOBS_HINT = "Drag a knob to start. Each knob sets a minimum.";
+    /**
+     * "Set my own" in the driving strip, which has no knobs: how to reach them, as the strip's own line says it
+     * ({@link DrivingStrip}: "drag the divider to set one").
+     */
+    static final String KNOBS_BEYOND_STRIP = "Drag the divider to give " + AppName.NAME + " more room, then drag a "
+            + "knob to set a minimum.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your rules are simpler now";
@@ -1282,7 +1288,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * With no rule yet: "Start with typical minimums?" "Use these" saves $4.00, $1.00 a mile and $15 an hour (auto-decline
-     * stays paused; the mascot turns it on) and asks for Autopilot's goal; "Set my own" makes the hollow knobs beckon.
+     * stays paused; the mascot turns it on) and asks for Autopilot's goal; "Set my own" makes the hollow knobs beckon
+     * (in the driving strip, which has none, it says how to reach them).
      */
     private void showStarter() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
@@ -2501,9 +2508,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * "Set my own": the constellation's hollow knobs beckon (in a short window it first leaves the header for the
-     * sky, where they are), and screen readers hear how to begin.
+     * sky, where they are), and screen readers hear how to begin. The driving strip has no knobs: there it says how to
+     * reach them (a toast, which screen readers hear too) and leaves the page it stands in for as it was.
      */
     private void beckonKnobs() {
+        if (strip != null) {
+            toast(KNOBS_BEYOND_STRIP);
+            return;
+        }
         if (compact && !besideDasher && !skyChosen) chooseSky(true);
         else minimums.beckon();
         hero.announceForAccessibility(KNOBS_HINT);

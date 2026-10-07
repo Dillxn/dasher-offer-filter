@@ -27,6 +27,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowToast;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -217,6 +218,80 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertEquals(DASHER_HOME, swap.getComponent());
             assertEquals("into this half: no adjacent launch, nothing cleared", Intent.FLAG_ACTIVITY_NEW_TASK,
                     swap.getFlags());
+        }
+    }
+
+    /**
+     * With no rule yet the strip's mascot offers the typical minimums, as the homepage's does. The strip has no knobs,
+     * so "Set my own" says how to reach them and leaves the page it stands in for as it was: the constellation stays
+     * in a short page's header (nothing chose the sky for it), and nothing is saved. "Use these" works from the strip
+     * as from the page: the minimums saved with auto-decline paused, then the goal chooser, and the strip's mascot is
+     * the one that turns it on.
+     */
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
+    public void withNoRuleYetTheStripsSetMyOwnSaysHowToReachTheKnobs() {
+        servicesUp();
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            DrivingStrip strip = find(content, DrivingStrip.class);
+            View mascot = find(strip, DrivingStrip.MascotButton.class);
+            assertEquals("Set up rules", String.valueOf(mascot.getContentDescription()));
+            mascot.performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog starter = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(starter);
+            assertEquals(MainActivity.STARTER_TITLE, title(starter));
+            assertOwnsItsTouches(starter);
+            assertEquals(MainActivity.STARTER_OWN, starter.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
+            starter.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            refreshed();
+            assertEquals("how to reach the knobs, which are not in the strip",
+                    "Drag the divider to give Offer Filter more room, then drag a knob to set a minimum.",
+                    ShadowToast.getTextOfLatestToast());
+            assertTrue(strip.isShown());
+            assertFalse("nothing saved", FilterStore.load(app).hasAnyRule());
+            assertSame("nothing else opens", starter, ShadowAlertDialog.getLatestAlertDialog());
+
+            // The page this strip stands in for is as it was: made again in a short window (as a dragged divider
+            // makes it), its constellation is in the header beside the map, not spread across the sky.
+            RuntimeEnvironment.setQualifiers("w411dp-h380dp-420dpi");
+            activity.recreate();
+            View page = content(activity);
+            refreshed();
+            layOut(page);
+            assertNull("the page now", find(page, DrivingStrip.class));
+            assertEquals(380, activity.get().getResources().getConfiguration().screenHeightDp);
+            MinimumsStarView star = find(page, MinimumsStarView.class);
+            assertTrue(star.isShown());
+            assertTrue("the constellation up in the header", star.beside());
+            assertTrue("the map beside it: the sky was never chosen", find(page, AreaMapView.class).isShown());
+        }
+
+        // "Use these" from the strip: the typical minimums, paused, then the goal chooser.
+        RuntimeEnvironment.setQualifiers("w411dp-h300dp-420dpi");
+        ShadowAlertDialog.reset();
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            DrivingStrip strip = find(content, DrivingStrip.class);
+            find(strip, DrivingStrip.MascotButton.class).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            refreshed();
+            FilterSettings saved = FilterStore.load(app);
+            assertEquals(400, saved.flatCents);
+            assertEquals(100, saved.perMileCents);
+            assertEquals(25, saved.perMinuteCents);
+            assertFalse("auto-decline stays paused: the mascot turns it on", saved.enabled);
+            assertEquals(MainActivity.FIRST_RULE, ShadowToast.getTextOfLatestToast());
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
+            assertOwnsItsTouches(chooser);
+            chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            refreshed();
+            assertEquals("Resume auto-decline", String.valueOf(find(strip, DrivingStrip.MascotButton.class)
+                    .getContentDescription()));
         }
     }
 
