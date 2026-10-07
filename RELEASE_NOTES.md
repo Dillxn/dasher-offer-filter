@@ -19,7 +19,7 @@ Version 0.5.1 (code 81). It follows 0.5.0. Everyone sees the notice once more (n
 - **The terms and the privacy text** describe the growth, its limits, Undo and the switch. Autopilot keeps its last growth on the phone (when, by how much, on how many offers and days, your minimums and its bar before and after, and whether its note is waiting), and when your current minimums took effect is kept with your rules; numbers only. The 24-hour logs note each growth, its Undo and the switch. Clear history removes the note of the last growth and its Undo; your rules and Autopilot's settings stay.
 
 ### Evidence boundaries
-- **Simulation only:** plain Java tests and simulated Android 8 and 15 (Robolectric), with synthetic offer histories. No phone has shown a growth yet. The 103% bar, the 30 offers, the 2 days and the 10% limit are the owner's choices, not tuned on real dashes.
+- **Simulation only:** plain Java tests and simulated Android 8 and 15 (Robolectric), with synthetic offer histories. No phone has shown a growth yet. The 103% bar, the 30 offers, the 2 days and the 10% limit are first settings from the design the owner approved, not tuned on real dashes.
 
 ## 0.5.0 — three minimums and Autopilot; Dasher stays responsive; smoother Peek and driving layouts; accountless feedback
 
