@@ -82,6 +82,7 @@ Autopilot is off unless you turn it on. While it is on, it moves the bar (how mu
 - Place names. To name the squares on the map and the place you are in, the app asks Android's own place lookup (Google's servers on most phones) about positions rounded to about half a kilometre, the phone's own approximate position among them, once while a position remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes with them.
 - Navigation, only when you tap it. Opening an offer area hands that historical area's center coordinates to your chosen Maps or Waze app, or to Google Maps in a browser. Gas and gas-price choices hand a search phrase to the map provider. A Back to map tap opens your navigation app the way its own icon does. The receiving app or website handles the request under its own privacy practices; these actions do not upload your offer history or establish your arrival.
 - Help, only when you tap it in Settings: your browser opens the install and setup page on offerfilter.org, and that website receives the ordinary information any web request carries.
+- The Jesus Loves You signature at the end of Settings, only when you tap it: your browser opens jesuslovesyou.xyz, and that website receives the ordinary information any web request carries. The app sends nothing with the tap.
 - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for them and counts nothing.
 - Web and email addresses in these texts open in your browser or email app only when you tap them.
 

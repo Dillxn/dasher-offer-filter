@@ -135,10 +135,11 @@ public class LegalMarkdownTest {
             }
         }
         for (String url : urls) {
-            // The site, the update server, the private contact, and the public source code the texts link (the
-            // owner's decision, 6 October 2026: the repository is public, and the source is linked there).
+            // The site, the update server, the private contact, the public source code the texts link (the
+            // owner's decision, 6 October 2026: the repository is public, and the source is linked there), and the
+            // page the Settings signature opens (Privacy names it with the other links out of Settings).
             assertTrue(url, url.endsWith("offerfilter.org") || url.endsWith(".onrender.com") || url.contains("@")
-                    || url.equals("https://github.com/Dillxn/dasher-offer-filter"));
+                    || url.equals("https://github.com/Dillxn/dasher-offer-filter") || url.equals("jesuslovesyou.xyz"));
         }
     }
 

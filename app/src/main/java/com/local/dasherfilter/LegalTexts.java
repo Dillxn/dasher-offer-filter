@@ -524,6 +524,9 @@ final class LegalTexts {
             actions do not upload your offer history or establish your arrival.
             - Help, only when you tap it in Settings: your browser opens the install and setup page on \
             offerfilter.org, and that website receives the ordinary information any web request carries.
+            - The Jesus Loves You signature at the end of Settings, only when you tap it: your browser opens \
+            jesuslovesyou.xyz, and that website receives the ordinary information any web request carries. The app \
+            sends nothing with the tap.
             - Tips. The Cash App, Venmo and PayPal links open only when you tap them; the app sends nothing for \
             them and counts nothing.
             - Web and email addresses in these texts open in your browser or email app only when you tap them.
