@@ -23,7 +23,8 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekSettingsTest extends AndroidAdapterTestBase {
-    private static final String ROW = "Peek at background offers";
+    /** Its name, and under it that a locked phone is never peeked at (the owner's lock rule). */
+    private static final String ROW = "Peek at background offers\n" + Peek.LOCKED_NOTE;
 
     private Switch peekSwitch(ActivityController<MainActivity> activity) {
         View content = activity.get().findViewById(android.R.id.content);
@@ -48,6 +49,7 @@ public class PeekSettingsTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             Switch peek = peekSwitch(activity);
             assertTrue("on by default", peek.isChecked());
+            assertTrue(peek.getText().toString().endsWith("Peek pauses while your phone is locked"));
             peek.performClick();
             assertFalse(peek.isChecked());
             assertFalse("saved at once", stored());

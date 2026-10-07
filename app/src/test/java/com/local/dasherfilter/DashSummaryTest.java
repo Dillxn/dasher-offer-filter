@@ -538,6 +538,15 @@ public class DashSummaryTest {
         assertEquals("opened Dasher", DashSummary.peekCategory("opening Dasher for Chipotle (was in front: x)"));
     }
 
+    /** A peek's cost line is all figures: one fixed category, never one per count of digits. */
+    @Test
+    public void aPeeksCostLineIsOneFixedCategory() {
+        assertEquals("cost", DashSummary.peekCategory("cost: 3 reads, 1204 nodes, 2 remote fetches ≥2 ms, slowest 412 ms, "
+                + "57 Dasher events"));
+        assertEquals("cost", DashSummary.peekCategory("cost: 12 reads, 98 nodes, 0 remote fetches ≥2 ms, slowest 9 ms, "
+                + "3 Dasher events"));
+    }
+
     // ---- Dasher on screen ----
 
     private AccessibilityNodeInfo node(String text, boolean clickable) {

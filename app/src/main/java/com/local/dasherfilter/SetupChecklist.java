@@ -110,6 +110,8 @@ final class SetupChecklist {
     /** What the page said last time, so a tap on the folded line can lay the steps out at once. */
     private boolean lastReaderConnected;
     private boolean lastAlertsAllowed;
+    /** The first step still to do as the last refresh found it, Allow updates aside; null when none. */
+    private Line first;
 
     /**
      * @param parent        the homepage column the lines go in, in this order
@@ -165,6 +167,20 @@ final class SetupChecklist {
     /** Whether this app may install its updates ("Install unknown apps"), as Android said lately. */
     boolean installsAllowed() {
         return installsAllowed.get();
+    }
+
+    /**
+     * The first step still to do, in its line's words, as the last {@link #refresh} found it; Allow updates aside (an
+     * update waits for the dash's end anyway). The driving strip in a third of a split screen shows it alone. Null when
+     * none.
+     */
+    String firstStep() {
+        return first == null ? null : first.words;
+    }
+
+    /** The first step's Fix ({@link #firstStep}), as a tap on its line runs it. */
+    void fixFirst() {
+        if (first != null) first.row.tap();
     }
 
     /** One line to show, in the checklist's order. */
@@ -228,6 +244,12 @@ final class SetupChecklist {
         // Allowed (from this line, the notice or Settings): the notice goes and Settings stops asking for it.
         if (allowed) Updater.installsAllowed(activity);
 
+        first = null;
+        for (Line line : lines) {
+            if (line.row == updates) continue;
+            first = line;
+            break;
+        }
         boolean fold = !unfolded && lines.size() >= FOLD_FROM;
         int showing = fold ? 1 : lines.size();
         for (SetupRow row : new SetupRow[] {restricted, accessibility, notifications, alerts, updates}) {

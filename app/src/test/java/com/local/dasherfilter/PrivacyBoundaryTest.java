@@ -81,6 +81,8 @@ public class PrivacyBoundaryTest {
 
     @Test public void partialPaymentScreenWithoutHeadingKeepsOnlyStructure() {
         assertFalse(PersonalText.recognizedDashScreen(Arrays.asList("731", "12/34", "Copy")));
+        // Auto-decline on with a rule: paused, nothing of Dasher's would be read at all.
+        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
         OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         org.robolectric.android.controller.ServiceController<OfferFilterService> service =
                 org.robolectric.Robolectric.buildService(OfferFilterService.class).create();

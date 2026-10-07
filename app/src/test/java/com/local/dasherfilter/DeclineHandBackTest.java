@@ -224,7 +224,9 @@ public class DeclineHandBackTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }

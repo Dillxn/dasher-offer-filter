@@ -226,6 +226,8 @@ public class PeekTest {
         inFront(root);
         AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
         event.setPackageName(DASHER);
+        // As Android stamps every event it sends.
+        event.setEventTime(SystemClock.uptimeMillis());
         screen.get().onAccessibilityEvent(event);
         idle();
     }
@@ -258,7 +260,8 @@ public class PeekTest {
         nativeAlerts.addActiveNotification(source);
         listener.get().onNotificationPosted(source, sounded ? SameOfferAdapterTest.ranking(source,
                 new android.app.NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_HIGH),
-                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime()) : null);
+                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime())
+                : SameOfferAdapterTest.dashersOwnChannel(source));
         idle();
         return source;
     }
@@ -271,15 +274,39 @@ public class PeekTest {
         assertEquals("the native alert was never dismissed", 1, listener.get().getActiveNotifications().length);
     }
 
-    @Test public void skippedQuietPeekStillRingsOnceWhenNativeWasSilent() throws Exception {
+    @Test public void skippedQuietPeekPostsNoPaylessCardBesideATappableNativeEvenIfItWasNotHeard() throws Exception {
         connect(app(MAPS));
         postTappableNative(false);
         assertEquals(0, cards());
         for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
         pass(600);
         assertNull(started());
-        assertEquals("silent native cannot consume the app's necessary fallback bell", 1, cards());
+        assertEquals("Dasher's own tappable notification is the way in, and it pops up by itself: no payless card "
+                + "beside it (the owner, 0.4.72), whatever Android's record of its sound says", 0, cards());
         assertEquals(1, listener.get().getActiveNotifications().length);
+    }
+
+    /**
+     * Dasher's offer channel silenced: its notification cannot alert by itself, so when the peek does not happen the
+     * offer's card rings once, as before: never no alert at all.
+     */
+    @Test public void skippedQuietPeekBesideASilencedTappableNativeRingsTheCardOnce() throws Exception {
+        connect(app(MAPS));
+        StatusBarNotification source = offerNotification("Taco Bell");
+        source.getNotification().contentIntent = android.app.PendingIntent.getActivity(app, 7,
+                new Intent().setComponent(DASHER_HOME), android.app.PendingIntent.FLAG_IMMUTABLE);
+        ShadowNotificationListenerService nativeAlerts = Shadow.extract(listener.get());
+        nativeAlerts.addActiveNotification(source);
+        listener.get().onNotificationPosted(source, SameOfferAdapterTest.ranking(source,
+                new android.app.NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_LOW),
+                NotificationManager.IMPORTANCE_LOW, true, 0));
+        idle();
+        for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
+        pass(600);
+        assertNull(started());
+        assertEquals(1, cards());
+        assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("audibleRequested=true"));
+        assertEquals("Dasher's own is kept", 1, listener.get().getActiveNotifications().length);
     }
 
     @Test public void skippedQuietPeekDoesNotDuplicateAnAlreadyHeardNativeAlert() throws Exception {
@@ -355,7 +382,9 @@ public class PeekTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }
@@ -470,8 +499,9 @@ public class PeekTest {
     }
 
     @Test
-    public void whenNoOfferShowsWithin4SecondsItGoesBack() {
+    public void whenNoOfferShowsWithin4SecondsAndItsNotificationIsGoneItGoesBack() {
         connect(app(MAPS));
+        // Dasher withdrew the offer: its notification is no longer listed.
         post("Taco Bell");
         dasherOpened();
         // The offer expired before Dasher came up: Dasher shows the wait for offers.
@@ -482,7 +512,8 @@ public class PeekTest {
         Intent back = started();
         assertNotNull("back after 4 s with no offer", back);
         assertEquals(MAPS_HOME, back.getComponent());
-        contains(log(app), "[peek] returned to a navigation app: no offer showed within 4 s of Dasher's screen");
+        contains(log(app), "[peek] returned to a navigation app: offer withdrawn: no offer showed within 4 s");
+        contains(log(app), "offer notification=gone");
     }
 
     @Test
@@ -630,15 +661,16 @@ public class PeekTest {
     }
 
     @Test
-    public void aTouchWhileDasherComesUpLeavesItUpAfterTheDecline() {
+    public void aTouchOnlyBeforeDasherAppearedDoesNotCancelTheReturnAfterTheAutomaticDecline() {
         connect(app(MAPS));
         post("Taco Bell");
         dasherOpened();
-        // The user touches the screen as Dasher opens (in Maps, or on Dasher).
+        // The user touches the screen as Dasher opens, before its window appeared: the touch was meant for Maps.
         pass(100);
         touchNow();
+        pass(50);
 
-        // The offer is still declined at once, as any offer on screen; but the user is not taken anywhere.
+        // The offer is declined at once, as any offer on screen, and the user is taken back (the user's approval, A5).
         offerRoot = offer("$7.90");
         List<Long> declines = taps(decline);
         dasherShows(offerRoot);
@@ -650,9 +682,40 @@ public class PeekTest {
         assertEquals(1, confirms.size());
         pass(300);
         dasherShows(finding());
+        Intent back = started();
+        assertNotNull("back to Maps after the completed automatic decline: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+        contains(log(app), "a touch before Dasher appeared was meant for a navigation app");
+    }
+
+    @Test
+    public void aTouchAfterDasherAppearedLeavesItUpAfterTheDecline() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        // Dasher's window appears (its event), and only then the user touches, before Peek read it.
+        AccessibilityEvent appeared = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        appeared.setPackageName(DASHER);
+        pass(100);
+        appeared.setEventTime(SystemClock.uptimeMillis());
+        Shadows.shadowOf(screen.get()).setWindows(Collections.emptyList());
+        screen.get().onAccessibilityEvent(appeared);
+        pass(50);
+        touchNow();
+
+        offerRoot = offer("$7.90");
+        List<Long> declines = taps(decline);
+        dasherShows(offerRoot);
+        assertEquals("still declined at once, as any offer on screen", 1, declines.size());
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        dasherShows(question(confirm));
+        pass(300);
+        dasherShows(finding());
         pass(25_000);
-        assertNull("never back after anything of the user's", started());
+        assertNull("never back after the user touched Dasher", started());
         assertTrue(globalActions().isEmpty());
+        contains(log(app), "[peek] left Dasher up because you touched the screen as it opened");
     }
 
     @Test
@@ -919,6 +982,30 @@ public class PeekTest {
         assertNull(started());
         pass(14_100);
         assertNull("deadline leaves Dasher where it is", started());
+        contains(log(app), "[peek] ended because 20 s passed");
+    }
+
+    @Test
+    public void aScreenTooBigToReadIsNeverTakenForAnEmptyPeek() throws Exception {
+        // Dasher comes up on a screen too big to read in full, its first part the wait for offers: an offer may be in
+        // the part not read. The peek does not go back over it, and it is not a peek that found no offer (three of
+        // those turn Peek off); its deadline leaves Dasher up, as always.
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        AccessibilityNodeInfo root = node(DASHER, null, false);
+        Shadows.shadowOf(root).addChild(node(DASHER, "Finding offers", false));
+        AccessibilityNodeInfo list = node(DASHER, null, false);
+        for (int i = 0; i < 2_000; i++) Shadows.shadowOf(list).addChild(node(DASHER, null, false));
+        Shadows.shadowOf(root).addChild(list);
+        dasherShows(root);
+        java.lang.reflect.Field peek = OfferFilterService.class.getDeclaredField("peek");
+        peek.setAccessible(true);
+        assertTrue("a possible offer", ((Peek) peek.get(screen.get())).sawOffer());
+        pass(6_000);
+        assertNull("not back over a possible offer", started());
+        pass(14_100);
+        assertNull("its deadline leaves Dasher where it is", started());
         contains(log(app), "[peek] ended because 20 s passed");
     }
 

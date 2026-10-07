@@ -60,16 +60,16 @@ public class NavigationShortcutsTest extends AndroidAdapterTestBase {
         assertEquals(Intent.ACTION_VIEW, intent.getAction());
         assertNull(intent.getPackage());
         assertEquals("https", intent.getData().getScheme());
-        assertEquals(0, intent.getFlags());
+        assertEquals("its own task, nothing cleared or reset", Intent.FLAG_ACTIVITY_NEW_TASK, intent.getFlags());
         assertNotNull(intent.resolveActivity(app.getPackageManager()));
     }
 
-    @Test public void onlyInstalledWazeGetsItsDocumentedLinkWithoutTaskPlacementFlags() {
+    @Test public void onlyInstalledWazeGetsItsDocumentedLinkInItsOwnTaskWithoutClearingFlags() {
         installHandler(NavigationShortcuts.WAZE, "waze.com");
         Intent intent = NavigationShortcuts.intent(app.getPackageManager(), NavigationShortcuts.gas(false));
         assertEquals(NavigationShortcuts.WAZE, intent.getPackage());
         assertEquals("waze.com", intent.getData().getHost());
-        assertEquals(0, intent.getFlags());
+        assertEquals("its own task, nothing cleared or reset", Intent.FLAG_ACTIVITY_NEW_TASK, intent.getFlags());
     }
 
     @Test public void twoInstalledMapAppsOfferBothAndNoInventedDefault() {

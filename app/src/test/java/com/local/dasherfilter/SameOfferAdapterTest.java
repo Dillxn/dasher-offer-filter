@@ -171,8 +171,10 @@ public class SameOfferAdapterTest {
         return Shadows.shadowOf(app.getSystemService(NotificationManager.class));
     }
 
+    /** Neither a quiet group child nor a card on the silent pop-up channel ("Offer details"): it makes a sound. */
     private static boolean rings(Notification card) {
-        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY;
+        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY
+                && !OfferAlerts.SHOWN_CHANNEL_ID.equals(card.getChannelId());
     }
 
     /** A notification of an earlier offer, recorded {@code agoMs} before now. */
@@ -559,6 +561,25 @@ public class SameOfferAdapterTest {
     /** A loud offer channel, as Dasher's is unless the user silenced it. */
     private static NotificationChannel loudChannel() {
         return new NotificationChannel("dasher-offers", "New offers", NotificationManager.IMPORTANCE_HIGH);
+    }
+
+    /**
+     * Android's ranking of a post on DoorDash's own offer channel as phones report it (every field report:
+     * "dasher-notification-channel-nexus-new-offer-no-sound-haptics", importance 5, no sound, no vibration): it pops
+     * up on screen and never sounds (Dasher rings by itself), Do Not Disturb lets it through, and Android never records
+     * an audible alert for it.
+     */
+    static NotificationListenerService.RankingMap dashersOwnChannel(StatusBarNotification source) {
+        NotificationChannel channel = new NotificationChannel(
+                "dasher-notification-channel-nexus-new-offer-no-sound-haptics", "New offers",
+                NotificationManager.IMPORTANCE_MAX);
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        try {
+            return ranking(source, channel, NotificationManager.IMPORTANCE_MAX, true, 0);
+        } catch (Exception unavailable) {
+            throw new AssertionError(unavailable);
+        }
     }
 
     /**

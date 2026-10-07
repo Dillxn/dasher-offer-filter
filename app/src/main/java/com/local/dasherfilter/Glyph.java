@@ -20,7 +20,9 @@ import android.graphics.drawable.Drawable;
  */
 final class Glyph extends Drawable {
     enum Shape {
-        CLOCK, ROAD, PIN, HOTSPOT, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA
+        CLOCK, ROAD, PIN, HOTSPOT, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA,
+        /** A whole phone with a pin in its middle: Dasher's map filling the screen (Open Dasher). */
+        PHONE
     }
 
     private final Shape shape;
@@ -184,6 +186,19 @@ final class Glyph extends Drawable {
                 canvas.drawLine(6, 12, 18, 12, stroke);
                 canvas.drawCircle(12, 16.3f, 1.8f, fill);
                 canvas.drawLine(9, 7.2f, 15, 7.2f, stroke);
+                break;
+            case PHONE:
+                // The same phone whole, a pin in its middle: Dasher's map filling the screen.
+                oval.set(6, 2.5f, 18, 21.5f);
+                canvas.drawRoundRect(oval, 2.5f, 2.5f, stroke);
+                path.moveTo(12, 16.5f);
+                path.cubicTo(12, 16.5f, 9, 13.6f, 9, 11.6f);
+                path.cubicTo(9, 9.9f, 10.3f, 8.6f, 12, 8.6f);
+                path.cubicTo(13.7f, 8.6f, 15, 9.9f, 15, 11.6f);
+                path.cubicTo(15, 13.6f, 12, 16.5f, 12, 16.5f);
+                path.close();
+                canvas.drawPath(path, stroke);
+                canvas.drawCircle(12, 11.6f, 1.1f, fill);
                 break;
             case ADOPT: {
                 // The learned (dashed) shape passing into the set (solid) one, as on the constellation: dashed and

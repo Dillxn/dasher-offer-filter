@@ -155,7 +155,8 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
             shownButton(content, PeekIntroCard.SETTINGS).performClick();
             tick();
             assertTrue("the link opens Settings, where its switch is", settingsShown(content));
-            assertNotNull(findButton(content, "Peek at background offers"));
+            // Its switch, with its one line under it (window flows: "Peek pauses while your phone is locked").
+            assertNotNull(findButton(content, "Peek at background offers\n" + Peek.LOCKED_NOTE));
             iconButton(content, "Back").performClick();
             tick();
             assertNull("once", shownTextContaining(content, PeekIntroCard.LEAD));

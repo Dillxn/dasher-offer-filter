@@ -219,7 +219,9 @@ public class ScannerThreadTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         return watches;
     }
@@ -262,8 +264,10 @@ public class ScannerThreadTest {
         return Build.VERSION.SDK_INT >= 28 ? audio().getStreamMinVolume(AudioManager.STREAM_ALARM) : 0;
     }
 
+    /** Neither a quiet group child nor a card on the silent pop-up channel ("Offer details"): it makes a sound. */
     private static boolean rings(Notification card) {
-        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY;
+        return card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY
+                && !OfferAlerts.SHOWN_CHANNEL_ID.equals(card.getChannelId());
     }
 
     /** A window list that fails as it is gone through, as a look at the windows can on a real phone. */
@@ -288,7 +292,8 @@ public class ScannerThreadTest {
         @Implementation
         @Override
         public void addView(View view, ViewGroup.LayoutParams params) {
-            if (refuse && !(view instanceof DasherTab) && !(view instanceof DasherGuide)) {
+            if (refuse && !(view instanceof DasherTab) && !(view instanceof DasherGuide)
+                    && !(view instanceof BackToMapChip)) {
                 refusedAttempts.incrementAndGet();
                 throw new WindowManager.BadTokenException("refused");
             }
@@ -967,7 +972,10 @@ public class ScannerThreadTest {
         before = service.rootFetches;
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());
-        assertEquals("ours, the first time, then Dasher's", 2, service.rootFetches - before);
+        // Ours, the first time; then Dasher's half, which no event of Dasher's named yet: its root alone, to learn whose
+        // it is, and (from Android 13, for this read taken at once) again with Dasher's nodes.
+        assertEquals("ours, the first time, then Dasher's", Build.VERSION.SDK_INT >= 33 ? 3 : 2,
+                service.rootFetches - before);
         before = service.rootFetches;
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());
