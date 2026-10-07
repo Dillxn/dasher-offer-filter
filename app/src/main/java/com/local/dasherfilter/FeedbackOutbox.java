@@ -36,9 +36,8 @@ import org.json.JSONObject;
  * cleanup must have finished, and an automatic summary (the opt-in after each dash) needs that opt-in still on, in the
  * epoch it was begun in (else it is discarded). The part's text is masked again with the current rules right before it
  * is sent, and an automatic summary is filtered again for Dasher's acceptance rate ({@link DashSummary#remask}). A 201
- * crosses the part off at once (in memory, so this process never sends it again, and on disk); a retry
- * sends only the parts still owed, under the same token, so a reply lost after the service stored a part never stores
- * it twice.
+ * crosses the part off at once (in memory, so this process never sends it again, and on disk); a retry sends only the
+ * parts still owed, under the same token, so a reply lost after the service stored a part never stores it twice.
  *
  * <p>Each pass looks at each submission once, oldest first, and one that has to wait never holds back another: every
  * one hears how it went. 429 or a Retry-After keeps a submission back until then, whatever else is sent meanwhile; a
