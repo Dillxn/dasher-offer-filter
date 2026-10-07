@@ -2,7 +2,6 @@ package com.local.dasherfilter;
 
 import android.app.Application;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -23,17 +22,26 @@ import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowAccessibilityRecord;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-/** Missing-event outcome observations with synthetic same-window Android trees; no handset success claimed. */
+/**
+ * Missing-event outcome observations with synthetic same-window Android trees; no handset success claimed. What became
+ * of an offer is a step on its own history line (0.5.0 learns nothing from it): ACCEPTED for the user's acceptance,
+ * ACCEPTED_AUTOMATIC for one after the app's own Accept request, and no step at all when the evidence is not enough.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceObservationTest {
-    /** The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops. */
-    private static final FilterSettings RULES = new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0);
+    /**
+     * The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute ($24.60 an hour), at most 3 stops. Their $4.75 a
+     * stop folds into minimum pay as 2 × $4.75 = $9.50, below the $13 already asked.
+     */
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3);
 
     private Application app;
     private ServiceController<OfferFilterService> controller;
@@ -47,7 +55,6 @@ public class AcceptanceObservationTest {
         DiagnosticLog.setEnabled(app, true);
         DiagnosticLog.clear(app);
         FilterStore.save(app, RULES);
-        FilterStore.resetAccepted(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
         OfferSilencer.forgetCache();
@@ -102,7 +109,7 @@ public class AcceptanceObservationTest {
         return root;
     }
 
-    /** $16.75 for 3 stops, 3.9 mi and 30 min: it passes those rules. */
+    /** $16.75 for 3 stops, 3.9 mi and 30 min: it passes those rules (it needs $15.02, for its miles). */
     private AccessibilityNodeInfo passing(String countdown) {
         return offer("$16.75", "3 stops (3.9 mi) • 30 min", countdown);
     }
@@ -162,47 +169,107 @@ public class AcceptanceObservationTest {
         assertTrue(part + " in:\n" + text, text.contains(part));
     }
 
-    @Test public void deliveryWithoutAnotherEventAfterPartialFactsIsObservedAndLearned() {
+    // ---- What became of an offer: steps on its own line ----
+
+    /** The newest screen line of the offer with this pay, as the history has it now. */
+    private DecisionLog.Entry line(int payCents) {
+        DecisionLog.flush();
+        for (DecisionLog.Entry entry : DecisionLog.recent(app, 20)) {
+            if (entry.source == DecisionLog.Source.SCREEN && entry.facts.payCents != null
+                    && entry.facts.payCents == payCents) {
+                return entry;
+            }
+        }
+        throw new AssertionError("no line for pay " + payCents + " in:\n" + history());
+    }
+
+    private static boolean has(DecisionLog.Entry line, DecisionLog.StepKind kind) {
+        return DecisionLog.hasStep(line, kind);
+    }
+
+    /** The detail of the line's step of this kind; fails when the line has none. */
+    private static String detail(DecisionLog.Entry line, DecisionLog.StepKind kind) {
+        for (DecisionLog.Step step : line.steps) if (step.kind == kind) return step.detail;
+        throw new AssertionError("no " + kind + " step on the line");
+    }
+
+    /** The user accepted it: counted as accepted, as the user's (never the app's automatic request). */
+    private void assertAcceptedByTheUser(int payCents) {
+        DecisionLog.Entry line = line(payCents);
+        assertTrue(history(), DecisionLog.accepted(line));
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(line));
+        assertTrue(history(), has(line, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+    }
+
+    /** Accepted after the app's own automatic Accept request: counted, with that provenance, never as the user's. */
+    private void assertAcceptedAutomatically(int payCents) {
+        DecisionLog.Entry line = line(payCents);
+        assertTrue(history(), DecisionLog.accepted(line));
+        assertTrue(history(), has(line, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED));
+    }
+
+    /** Nothing counted the offer as accepted: no acceptance step of any kind, and no route kept from it. */
+    private void assertNotAccepted(int payCents) {
+        DecisionLog.Entry line = line(payCents);
+        assertFalse(history(), DecisionLog.accepted(line));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+    }
+
+    /** No acceptance learns anything: the minimums stay exactly as set. */
+    private void assertRulesUnchanged(FilterSettings set) {
+        FilterSettings now = FilterStore.load(app);
+        assertArrayEquals(set.minimums(), now.minimums());
+        assertEquals(set.maxStops, now.maxStops);
+        assertEquals(set.minimumScalePercent, now.minimumScalePercent);
+    }
+
+    @Test public void deliveryWithoutAnotherEventAfterPartialFactsIsObservedAndCounted() {
         show(waiting());
         show(passing("0:35"));
         later(1_000);
         show(screen("$16.75", "3 stops (3.9 mi) • 30 min"));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
         // Dasher finishes the transition, but sends no accessibility event for the completed frame.
         replaceWithoutEvent(delivery());
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Accepted; the adaptive minimum learned from it");
+        assertAcceptedByTheUser(1675);
+        contains(detail(line(1675), DecisionLog.StepKind.ACCEPTED),
+                "it closed with about 0:34 left on its countdown, and Dasher showed a delivery screen");
+        contains(history(), "Accepted: it closed with about 0:34 left on its countdown");
+        assertRulesUnchanged(RULES);
         contains(DiagnosticLog.read(app), "progress=false; route=false");
         contains(DiagnosticLog.read(app), "outcome=ROUTE; observation=eligible");
     }
 
-    @Test public void qualifyingShoppingOfferUpdatesSupportedIndependentBestsAfterEventlessPickup() {
-        // Captured numeric offer shape, synthetic explicit rule setup: this is not the missing phone node tree.
-        FilterStore.recordAccepted(app, new OfferSnapshot(940, 2.3, 16, 2));
-        FilterStore.save(app, new FilterSettings(true, 1950, 0, 0, 0, 3, true, 940,
-                new AcceptedBest(940, 16, 940, 2.3, 940, 2), DeclinedFloor.NONE, true, 0, 100, 100));
+    @Test public void qualifyingShoppingOfferAcceptedThroughAnEventlessPickupKeepsItsItemsAndChangesNoRule() {
+        // Captured numeric offer shape, synthetic rule setup: this is not the missing phone node tree. $14.70 for
+        // 6.8 mi and 33 min needs $10.00 (its minimum pay) under these.
+        FilterSettings rules = FilterSettings.of(true, 1000, 100, 20, 3);
+        FilterStore.save(app, rules);
         show(waiting());
         AccessibilityNodeInfo shopping = offer("$14.70", "2 stops (6.8 mi) • 33 min", "0:35");
         Shadows.shadowOf(shopping).addChild(node("Shop & deliver", false));
         Shadows.shadowOf(shopping).addChild(node("2 items", false));
         show(shopping);
-        assertTrue("the synthetic area offer passes", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertTrue("the offer passes", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         later(1_000);
         show(screen("$14.70", "Order (2 items)"));
         replaceWithoutEvent(screen("Pick up by 7:52 PM", "Pickup from", "Directions", "Order (2 items)",
                 "Arrived at store"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        FilterSettings learned = FilterStore.load(app);
-        assertEquals(1470, learned.lastAcceptedCents);
-        assertEquals(735, learned.best.forStops(1));
-        assertEquals(735, learned.best.forItems(1));
-        assertEquals(940, learned.best.minutePay);
-        assertEquals(940, learned.best.milePay);
-        assertEquals(1950, learned.flatCents);
+        assertAcceptedByTheUser(1470);
+        assertEquals(Integer.valueOf(2), line(1470).facts.items);
+        OfferSnapshot route = ActiveRouteStore.load(app);
+        assertNotNull("the accepted route is kept for the deliveries to come", route);
+        assertEquals(Integer.valueOf(1470), route.payCents);
+        assertEquals(Integer.valueOf(2), route.items);
+        assertRulesUnchanged(rules);
     }
 
-    @Test public void observedAcceptFollowedByEventlessExplicitPickupIsLearned() {
+    @Test public void observedAcceptFollowedByEventlessExplicitPickupIsCounted() {
         show(waiting());
         show(passing("0:35"));
         clicked(accept);
@@ -211,13 +278,18 @@ public class AcceptanceObservationTest {
         replaceWithoutEvent(screen("Pick up by 7:52 PM", "Pickup from", "Directions",
                 "Order (2 items)", "Arrived at store"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(1675);
+        assertTrue(has(line(1675), DecisionLog.StepKind.ACCEPT_TAPPED));
+        assertEquals("you tapped Accept, and Dasher showed a delivery screen",
+                detail(line(1675), DecisionLog.StepKind.ACCEPTED));
         contains(history(), "you tapped Accept, and Dasher showed a delivery screen");
+        assertRulesUnchanged(RULES);
     }
 
-    @Test public void automaticRequestObservedWithoutAnotherEventConfirmsButNeverTeaches() {
+    @Test public void automaticRequestObservedWithoutAnotherEventIsCountedAsAutomatic() {
         controller.get().onServiceConnected();
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
+        FilterStore.save(app, rules);
         FilterStore.setAutoAcceptEnabled(app, true);
         show(waiting());
         AccessibilityNodeInfo shopping = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
@@ -228,21 +300,22 @@ public class AcceptanceObservationTest {
         show(screen("$20.00", "Order (2 items)"));
         replaceWithoutEvent(screen("Arrived at store", "Order (2 items)"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertTrue(FilterStore.load(app).best.isEmpty());
+        assertAcceptedAutomatically(2000);
+        assertEquals("automatic Accept was requested, and Dasher showed a delivery screen",
+                detail(line(2000), DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertRulesUnchanged(rules);
         assertEquals(1, Shadows.shadowOf(accept).getPerformedActions().size());
     }
 
-    @Test public void provenUnsentAfterPersistenceDoesNotSuppressLaterManualLearning() {
+    @Test public void provenUnsentAfterPersistenceLeavesALaterManualAcceptanceTheUsers() {
         finalGuardRefusal(null);
         assertFalse("restart suppression remains present", app.getSharedPreferences("restart_suppression", 0)
                 .getAll().isEmpty());
         clicked(accept);
         show(screen("Arrived at store"));
-        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(1675);
         assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertRulesUnchanged(RULES);
     }
 
     @Test public void provenUnsentRollbackPreservesEarlierAutomaticRequestForTheSameOffer() {
@@ -251,8 +324,12 @@ public class AcceptanceObservationTest {
         assertTrue(AutoAcceptMemory.covers(app, prior));
         clicked(accept);
         show(screen("Arrived at store"));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        // The earlier automatic request for this very offer is kept: its acceptance is marked automatic, never the
+        // user's own.
+        assertAcceptedAutomatically(1675);
+        contains(detail(line(1675), DecisionLog.StepKind.ACCEPTED_AUTOMATIC),
+                "an automatic Accept was requested for this offer moments before");
+        assertRulesUnchanged(RULES);
     }
 
     @Test public void provenUnsentRollbackRestoresDifferentEarlierRequestInsteadOfErasingIt() {
@@ -314,23 +391,25 @@ public class AcceptanceObservationTest {
         show(waiting()); show(passing("0:35")); later(1_000);
         show(screen("Shop & deliver", "2 items"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(61));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned:");
+        assertNotAccepted(1675);
+        assertTrue(history(), has(line(1675), DecisionLog.StepKind.NOT_LEARNED));
+        contains(history(), "Not counted from what followed: Dasher showed neither a delivery nor the wait for offers "
+                + "within 60 s");
     }
 
-    @Test public void explicitPickupWithUnexplainedPayStillCannotTeach() {
+    @Test public void explicitPickupWithUnexplainedPayStillCannotCount() {
         show(waiting());
         show(passing("0:35"));
         later(1_000);
         show(screen("$16.75", "Order (2 items)"));
         replaceWithoutEvent(screen("Pick up by 7:52 PM", "Arrived at store", "$9.99", "Order (2 items)"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
         contains(DiagnosticLog.read(app), "progress=true; route=true");
         contains(DiagnosticLog.read(app), "outcome=OFFER_FACTS");
     }
 
-    @Test public void explicitPickupRetainingTheExactWatchedPayAndItemsLearnsOriginalFacts() {
+    @Test public void explicitPickupRetainingTheExactWatchedPayAndItemsCountsTheOriginalOffer() {
         show(waiting());
         AccessibilityNodeInfo shopping = passing("0:35");
         Shadows.shadowOf(shopping).addChild(node("2 items", false));
@@ -339,13 +418,16 @@ public class AcceptanceObservationTest {
         show(screen("$16.75", "2 items"));
         replaceWithoutEvent(screen("Pick up by 7:52 PM", "Arrived at store", "$16.75", "2 items"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        FilterSettings learned = FilterStore.load(app);
-        assertEquals(1675, learned.lastAcceptedCents);
-        assertEquals(1675, learned.best.itemPay);
-        assertEquals(2, learned.best.items);
-        assertEquals("the retained screen cannot replace the original route", Double.valueOf(3.9),
-                ActiveRouteStore.load(app).miles);
-        contains(history(), "Accepted; the adaptive minimum learned from it");
+        assertAcceptedByTheUser(1675);
+        DecisionLog.Entry accepted = line(1675);
+        assertEquals("the original offer's line is the one counted", Double.valueOf(3.9), accepted.facts.miles);
+        assertEquals(Integer.valueOf(2), accepted.facts.items);
+        OfferSnapshot route = ActiveRouteStore.load(app);
+        assertEquals("the retained screen cannot replace the original route", Double.valueOf(3.9), route.miles);
+        assertEquals(Integer.valueOf(1675), route.payCents);
+        assertEquals(Integer.valueOf(2), route.items);
+        contains(history(), "Accepted: it closed with about 0:34 left on its countdown");
+        assertRulesUnchanged(RULES);
         String diagnostics = DiagnosticLog.read(app);
         contains(diagnostics, "progress_kind=arrived_at_store; pay_relation=matched; money_malformed=false");
         for (String line : diagnostics.split("\\n")) if (line.contains("outcome evidence:")) {
@@ -353,7 +435,7 @@ public class AcceptanceObservationTest {
         }
     }
 
-    @Test public void uncertainAutomaticProvenanceStillExcludesRetainedPayFromLearning() {
+    @Test public void uncertainAutomaticProvenanceMarksTheRetainedPayAcceptanceAutomatic() {
         OfferSnapshot original = new OfferSnapshot(1675, 3.9, 30, 3).withItems(2, true);
         assertTrue(AutoAcceptMemory.remember(app, original));
         show(waiting());
@@ -362,19 +444,18 @@ public class AcceptanceObservationTest {
         show(shopping);
         later(1_000);
         show(screen("Arrived at store", "$16.75", "2 items"));
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertTrue(FilterStore.load(app).best.isEmpty());
+        assertAcceptedAutomatically(1675);
+        assertRulesUnchanged(RULES);
         assertTrue(AutoAcceptMemory.covers(app, original));
     }
 
-    @Test public void provenUnsentCancellationAllowsLaterManualLearningWithMatchingRetainedPay() {
+    @Test public void provenUnsentCancellationLeavesALaterManualAcceptanceWithMatchingRetainedPayTheUsers() {
         finalGuardRefusal(null);
         clicked(accept);
         show(screen("Arrived at store", "$16.75"));
-        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(1675);
         assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertRulesUnchanged(RULES);
     }
 
     @Test public void malformedMoneyAndCountdownCannotTurnAPartialOfferIntoAnAcceptance() {
@@ -382,8 +463,7 @@ public class AcceptanceObservationTest {
         show(passing("0:35"));
         later(1_000);
         show(screen("Arrived at store", "$16.750", "0:30"));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertNotAccepted(1675);
         contains(DiagnosticLog.read(app), "pay_relation=ambiguous; money_malformed=true");
     }
 
@@ -393,13 +473,13 @@ public class AcceptanceObservationTest {
         later(1_000);
         show(screen("$16.75", "Order (2 items)"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(61));
-        contains(history(), "Not learned:");
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        contains(history(), "Not counted from what followed:");
+        assertNotAccepted(1675);
         int roots = controller.get().rootFetches;
         replaceWithoutEvent(delivery());
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
         assertEquals("the ended watch no longer reads through numeric-remnant busy state", roots, controller.get().rootFetches);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
     }
 
     @Test public void lockedPhoneCancelsObservationBeforeReadingAPickup() {
@@ -410,10 +490,10 @@ public class AcceptanceObservationTest {
         int roots = controller.get().rootFetches;
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
         assertEquals(roots, controller.get().rootFetches);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
     }
 
-    @Test public void lockDuringTheFinalChildFetchCannotTurnAStaleObservationIntoALesson() {
+    @Test public void lockDuringTheFinalChildFetchCannotTurnAStaleObservationIntoAnAcceptance() {
         show(waiting()); show(passing("0:35")); later(1_000);
         show(screen("$16.75"));
         replaceWithoutEvent(screen("Arrived at store"));
@@ -422,7 +502,7 @@ public class AcceptanceObservationTest {
             Shadows.shadowOf(app.getSystemService(android.app.KeyguardManager.class)).setKeyguardLocked(true);
         };
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
     }
 
@@ -431,7 +511,7 @@ public class AcceptanceObservationTest {
         show(screen("$16.75"));
         replaceWithoutEvent(offer("$19.00", "2 stops (4 mi) • 30 min", "0:35"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_100));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
         assertEquals(Integer.valueOf(1900), DecisionLog.recent(app, 1).get(0).facts.payCents);
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
     }
@@ -444,7 +524,7 @@ public class AcceptanceObservationTest {
         int roots = controller.get().rootFetches;
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
         assertEquals(roots, controller.get().rootFetches);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
     }
 
     @Test public void interruptDiscardsPendingObservation() {
@@ -455,18 +535,18 @@ public class AcceptanceObservationTest {
         int roots = controller.get().rootFetches;
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
         assertEquals(roots, controller.get().rootFetches);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
     }
 
-    @Test public void hiddenDasherIsNotReadAndDoesNotTeach() {
+    @Test public void hiddenDasherIsNotReadAndCountsNothing() {
         show(waiting()); show(passing("0:35")); later(1_000);
         show(screen("$16.75"));
         AccessibilityNodeInfo other = node("Arrived at store", false);
         other.setPackageName("another.app");
         replaceWithoutEvent(other);
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertFalse(history(), history().contains("Accepted;"));
+        assertNotAccepted(1675);
+        assertFalse(history(), history().contains("Accepted:"));
     }
 
     @Test public void countdownOrOneOfferControlKeepsObservationOff() {
@@ -476,7 +556,9 @@ public class AcceptanceObservationTest {
             replaceWithoutEvent(delivery());
             // Normal incomplete-control retries may still run; only assert no extra observation timer.
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900));
-            assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+            for (DecisionLog.Entry entry : DecisionLog.recent(app, 20)) {
+                assertFalse(blocker + ":\n" + history(), DecisionLog.accepted(entry));
+            }
             contains(DiagnosticLog.read(app), "observation=blocked");
         }
     }
@@ -494,6 +576,29 @@ public class AcceptanceObservationTest {
             assertFalse(line, line.contains("Private") || line.contains("12.34") || line.contains("Anything"));
         }
         assertEquals(8, count);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
+        assertRulesUnchanged(RULES);
+    }
+
+    @Test public void theUsersOwnAcceptanceIsCountedOnceAndNothingIsKeptOfItButItsLine() {
+        // The step goes on the offer's own line only: no other record of accepted offers is kept (0.5.0 keeps no
+        // learned minimum), and the line keeps the facts it was decided on.
+        show(waiting());
+        show(passing("0:35"));
+        clicked(accept);
+        show(delivery());
+        DecisionLog.Entry accepted = line(1675);
+        long acceptances = accepted.steps.stream().filter(step -> step.kind == DecisionLog.StepKind.ACCEPTED).count();
+        assertEquals(history(), 1, acceptances);
+        assertEquals(Collections.emptyMap(), app.getSharedPreferences(FilterStore.RETIRED_MANUAL_DECLINES, 0).getAll());
+        for (String retired : FilterStore.RETIRED_KEYS) {
+            assertFalse(retired, app.getSharedPreferences("offer_filter", 0).contains(retired));
+        }
+        assertRulesUnchanged(RULES);
+        // What came after the offer gives it no second acceptance: the tap path counted it already.
+        later(1_000);
+        show(waiting());
+        assertEquals(history(), 1, line(1675).steps.stream()
+                .filter(step -> step.kind == DecisionLog.StepKind.ACCEPTED).count());
     }
 }

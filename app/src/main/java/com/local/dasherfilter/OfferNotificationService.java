@@ -1068,6 +1068,11 @@ public final class OfferNotificationService extends NotificationListenerService 
                                         OfferRule.Decision decision, String signature, boolean replay,
                                         boolean foreground, boolean dasherSounds, boolean peeking) {
         boolean review = decision.result == OfferRule.Result.REVIEW;
+        // An offer passing only because Autopilot's bar is below 100 is the user's to accept: its card goes as one to
+        // check (its channel, ring and title; never the pass chime) and says why, with the figures the notification
+        // showed. Unlike a payless card it carries what was read, so it never gives way to Dasher's own as one would.
+        boolean belowMinimums = decision.result == OfferRule.Result.KEEP && decision.belowMinimums;
+        OfferRule.Result shown = announced(decision);
         if (review && offer.unshownCard && OfferAlerts.showing(this, offer.alertTag)) {
             // Its card already says Dasher didn't show this offer when it opened: a later post of the offer that still
             // cannot be judged changes nothing (never a payless card in its place).
@@ -1076,7 +1081,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (foreground) OfferFilterService.requestCheckFromNotification();
             return DecisionLog.Action.SILENT_CARD;
         }
-        boolean ring = !peeking && offer.state.shouldRing(decision.result, foreground, replay);
+        boolean ring = !peeking && offer.state.shouldRing(shown, foreground, replay);
         boolean dasherRings = ring && dasherSounds;
         // The native sound counts even while a pending Peek has not asked its own card to ring.
         offer.state.rang |= dasherSounds;
@@ -1107,9 +1112,12 @@ public final class OfferNotificationService extends NotificationListenerService 
                     : "actionable native alert retained; duplicate generic card omitted");
             return DecisionLog.Action.NATIVE_ALERT;
         }
-        String detail = review ? reviewText(facts, decision, peeking) : facts.summary() + "; " + decision.summary();
-        boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, contentIntent, decision.result,
-                detail, ring, offer.store);
+        String detail = review ? reviewText(facts, decision, peeking)
+                : belowMinimums ? AutopilotText.belowMinimumsCard(facts, decision.scorePercent,
+                        decision.minimumScalePercent)
+                : facts.summary() + "; " + decision.summary();
+        boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, contentIntent, shown, detail, ring,
+                offer.store);
         if (posted) {
             offer.nativeCard = false;
             offer.ownAlerted |= ring;
@@ -1125,8 +1133,21 @@ public final class OfferNotificationService extends NotificationListenerService 
         if (!posted) return DecisionLog.Action.CARD_BLOCKED;
         if (peeking) return DecisionLog.Action.PEEK_CARD;
         if (dasherRings) return DecisionLog.Action.DASHER_SOUNDS;
-        if (review) return ring ? DecisionLog.Action.CHECK_BELL : DecisionLog.Action.SILENT_CARD;
+        if (shown == OfferRule.Result.REVIEW) {
+            return ring ? DecisionLog.Action.CHECK_BELL : DecisionLog.Action.SILENT_CARD;
+        }
         return ring ? DecisionLog.Action.BELL : DecisionLog.Action.QUIET_PASS_CARD;
+    }
+
+    /**
+     * How an offer's decision is announced (its card's channel, ring and title; the slim bar's tint over Dasher): as
+     * decided, except that an offer passing only because Autopilot's bar is below 100
+     * ({@link OfferRule.Decision#belowMinimums}) is announced as REVIEW. It is the user's to accept: never the pass
+     * chime on {@link OfferAlerts#CHANNEL_ID}, never green, and never accepted automatically ({@link AutoAccept}).
+     */
+    static OfferRule.Result announced(OfferRule.Decision decision) {
+        return decision.result == OfferRule.Result.KEEP && decision.belowMinimums ? OfferRule.Result.REVIEW
+                : decision.result;
     }
 
     private enum NativeAlert { ACTIONABLE, UNTAPPABLE, ABSENT, UNKNOWN }

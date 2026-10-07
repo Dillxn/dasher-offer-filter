@@ -956,12 +956,17 @@ final class Peek {
      * "Unclear: $9.60 · 2 stops (pay not found)".
      */
     static String cardText(OfferRule.Result result, OfferSnapshot read, String reason) {
+        String line = cardFacts(read);
+        return result == OfferRule.Result.KEEP ? "Passes: " + line
+                : "Unclear: " + line + (reason == null || reason.isEmpty() ? "" : " (" + reason + ")");
+    }
+
+    /** A peeked offer's figures as its card shows them: "$12.50 · 5.1 mi · 22 min", "pay not read · 2 stops". */
+    static String cardFacts(OfferSnapshot read) {
         String pay = read.payCents != null ? DecisionLog.money(read.payCents)
                 : read.payAtMostCents != null ? "up to " + DecisionLog.money(read.payAtMostCents) : "pay not read";
         String facts = DecisionLog.facts(read);
-        String line = pay + (read.miles == null && read.minutes == null && read.stops == null ? "" : " · " + facts);
-        return result == OfferRule.Result.KEEP ? "Passes: " + line
-                : "Unclear: " + line + (reason == null || reason.isEmpty() ? "" : " (" + reason + ")");
+        return pay + (read.miles == null && read.minutes == null && read.stops == null ? "" : " · " + facts);
     }
 
     /**
@@ -970,6 +975,18 @@ final class Peek {
      * details unclear)". Nothing is inferred: what the add-on does not say is not on its card.
      */
     static String addOnCardText(OfferRule.Result result, OfferSnapshot added, String reason) {
+        String line = addOnFacts(added);
+        if (result == OfferRule.Result.KEEP) return "Add-on passes: " + line;
+        String why = reason == null || reason.isEmpty() ? "" : MainActivity.plainReason(reason);
+        return "Add-on unclear: " + line + (why.isEmpty() ? "" : " (" + why.substring(0, 1).toLowerCase(Locale.US)
+                + why.substring(1) + ")");
+    }
+
+    /**
+     * A peeked add-on's own figures as its card shows them, "+$3.50 · +2.1 mi · +8 min", "added pay not read · +2 mi":
+     * only what the add-on says.
+     */
+    static String addOnFacts(OfferSnapshot added) {
         java.util.List<String> parts = new java.util.ArrayList<>();
         parts.add(added.payCents != null ? "+" + DecisionLog.money(added.payCents) : "added pay not read");
         if (added.miles != null) {
@@ -978,11 +995,7 @@ final class Peek {
         }
         if (added.minutes != null) parts.add("+" + added.minutes + " min");
         if (added.stops != null) parts.add("+" + added.stops + (added.stops == 1 ? " stop" : " stops"));
-        String line = String.join(" · ", parts);
-        if (result == OfferRule.Result.KEEP) return "Add-on passes: " + line;
-        String why = reason == null || reason.isEmpty() ? "" : MainActivity.plainReason(reason);
-        return "Add-on unclear: " + line + (why.isEmpty() ? "" : " (" + why.substring(0, 1).toLowerCase(Locale.US)
-                + why.substring(1) + ")");
+        return String.join(" · ", parts);
     }
 
     // ---- Pausing itself (any thread) ----

@@ -26,6 +26,7 @@ import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowAccessibilityRecord;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -34,18 +35,25 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Learning from what the user does with an offer the app left alone, on screens shaped like Dasher's (Jetpack
- * Compose: a clickable node with no text holding its label, the countdown a label of its own). Accepted without a
- * seen tap when it closes with time left into a delivery screen (the user's decision); declined by hand when Dasher
- * asks to confirm a decline the app never made. Every step is a line under the offer in the history. Only existing
- * API is used, so this compiles, and fails, on the code before these steps were kept. Simulated Android only.
+ * What the user does with an offer the app left alone, on screens shaped like Dasher's (Jetpack Compose: a clickable
+ * node with no text holding its label, the countdown a label of its own). Accepted without a seen tap when it closes
+ * with time left into a delivery screen (the user's decision); declined by hand when Dasher asks to confirm a decline
+ * the app never made. Every step is a line under the offer in the history, and counts toward the acceptance rate;
+ * nothing is learned from any of them (0.5.0: no rule changes). Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceEvidenceTest {
-    /** The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute, $4.75 a stop, at most 3 stops. */
-    private static final FilterSettings RULES = new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0);
+    /**
+     * The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute ($24.60 an hour), at most 3 stops. Their $4.75 a
+     * stop folds into minimum pay as 2 × $4.75 = $9.50, below the $13 already asked.
+     */
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3);
+    /** $7, $1.50 a mile: a $14.00 offer for 7.2 mi passes (it needs $10.80). */
+    private static final FilterSettings PER_MILE = FilterSettings.of(true, 700, 150, 0, 0);
+    /** $20 at least: a $7.90 offer fails, a $25.00 one passes. */
+    private static final FilterSettings TWENTY = FilterSettings.of(true, 2000, 0, 0, 0);
 
     private Application app;
     private ServiceController<OfferFilterService> controller;
@@ -59,7 +67,6 @@ public class AcceptanceEvidenceTest {
         DiagnosticLog.setEnabled(app, true);
         DiagnosticLog.clear(app);
         FilterStore.save(app, RULES);
-        FilterStore.resetAccepted(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
         OfferSilencer.forgetCache();
@@ -172,8 +179,56 @@ public class AcceptanceEvidenceTest {
         assertTrue(part + " in:\n" + text, text.contains(part));
     }
 
+    // ---- What became of an offer: steps on its own line ----
+
+    /** The newest screen line of the offer with this pay, as the history has it now. */
+    private DecisionLog.Entry line(int payCents) {
+        DecisionLog.flush();
+        for (DecisionLog.Entry entry : DecisionLog.recent(app, 20)) {
+            if (entry.source == DecisionLog.Source.SCREEN && entry.facts.payCents != null
+                    && entry.facts.payCents == payCents) {
+                return entry;
+            }
+        }
+        throw new AssertionError("no line for pay " + payCents + " in:\n" + history());
+    }
+
+    private static boolean has(DecisionLog.Entry line, DecisionLog.StepKind kind) {
+        return DecisionLog.hasStep(line, kind);
+    }
+
+    /** The user accepted it: counted as accepted, as the user's (never the app's automatic request). */
+    private void assertAcceptedByTheUser(int payCents) {
+        DecisionLog.Entry line = line(payCents);
+        assertTrue(history(), DecisionLog.accepted(line));
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(line));
+        assertTrue(history(), has(line, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+    }
+
+    /** Nothing counted the offer as accepted. */
+    private void assertNotAccepted(int payCents) {
+        DecisionLog.Entry line = line(payCents);
+        assertFalse(history(), DecisionLog.accepted(line));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(history(), has(line, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+    }
+
+    /** Nothing was counted as the user's Decline of the offer. */
+    private void assertNoDeclineCounted(int payCents) {
+        assertFalse(history(), has(line(payCents), DecisionLog.StepKind.DECLINE_COUNTED));
+    }
+
+    /** No outcome teaches anything: the minimums stay exactly as set. */
+    private void assertRulesUnchanged(FilterSettings set) {
+        FilterSettings now = FilterStore.load(app);
+        assertArrayEquals(set.minimums(), now.minimums());
+        assertEquals(set.maxStops, now.maxStops);
+        assertEquals(set.minimumScalePercent, now.minimumScalePercent);
+    }
+
     @Test
-    public void anOfferThatClosesWithTimeLeftIntoADeliveryIsLearnedWithoutATap() {
+    public void anOfferThatClosesWithTimeLeftIntoADeliveryIsCountedWithoutATap() {
         // The user was waiting for offers as it came: positive evidence no delivery was under way.
         show(waiting());
         show(passing("0:35"));
@@ -183,24 +238,23 @@ public class AcceptanceEvidenceTest {
         later(1_000);
         show(delivery());
 
-        FilterSettings saved = FilterStore.load(app);
-        assertEquals(1675, saved.lastAcceptedCents);
-        String history = history();
-        contains(history, "learning ");
-        contains(history, "Accepted; the adaptive minimum learned from it: it closed with about 0:30 left on its "
-                + "countdown, and Dasher showed a delivery screen 0 s after it left");
+        assertAcceptedByTheUser(1675);
+        contains(history(), "Accepted: it closed with about 0:30 left on its countdown, and Dasher showed a delivery "
+                + "screen 0 s after it left");
         String log = DiagnosticLog.read(app);
         contains(log, "[accept] Accepted without a seen tap: Pay $16.75");
-        contains(log, "[accept] Learned from accepted Pay $16.75");
+        assertFalse("nothing is learned from it", log.contains("Learned from"));
+        FilterSettings saved = FilterStore.load(app);
+        assertRulesUnchanged(RULES);
         // The steps stay on the phone: a report of the offer carries none of them, only its outcome category.
         String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test", saved,
                 DecisionLog.recent(app, 1).get(0));
-        assertFalse(report, report.contains("steps") || report.contains("Accepted;"));
+        assertFalse(report, report.contains("steps") || report.contains("it closed with about"));
         assertTrue(report, report.contains("\"outcome\": \"ACCEPTED\""));
     }
 
     @Test
-    public void anOfferThatClosesIntoTheWaitForOffersTeachesNothing() {
+    public void anOfferThatClosesIntoTheWaitForOffersIsNotAccepted() {
         show(passing("0:35"));
         later(3_000);
         show(screen("Sam T", "120 orders completed", "Home", "Schedule", "Account"));
@@ -208,45 +262,46 @@ public class AcceptanceEvidenceTest {
         later(2_000);
         show(waiting());
 
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertNotAccepted(1675);
+        assertTrue(has(line(1675), DecisionLog.StepKind.NOT_ACCEPTED));
         contains(history(), "Not accepted: Dasher went back to the wait for offers 2 s after it left");
-        // Learning still uses the raw transition; an unrecognized menu keeps none of its labels in diagnostics.
+        // The outcome still uses the raw transition; an unrecognized menu keeps none of its labels in diagnostics.
         String screens = DiagnosticLog.readScreens(app);
         contains(screens, PersonalText.UNKNOWN_NOT_KEPT);
         assertFalse(screens, screens.contains("Sam T") || screens.contains("120 orders completed"));
     }
 
     @Test
-    public void anOfferThatMayHaveRunOutOrCameDuringADeliveryTeachesNothing() {
+    public void anOfferThatMayHaveRunOutOrCameDuringADeliveryIsNotCounted() {
         show(waiting());
         show(passing("0:04"));
         later(2_000);
         show(delivery());
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: it may have run out: its countdown showed 0:04, 2 s before a read found it "
-                + "gone");
+        assertNotAccepted(1675);
+        contains(history(), "Not counted from what followed: it may have run out: its countdown showed 0:04, 2 s "
+                + "before a read found it gone");
 
         // A delivery was under way when the next one came: the delivery screen after it proves nothing.
         later(5_000);
         show(offer("$18.00", "2 stops (4.0 mi) • 20 min", "0:40"));
         later(2_000);
         show(delivery());
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: a delivery was already under way when it came, so the delivery screen "
-                + "after it proves nothing");
+        assertNotAccepted(1800);
+        contains(history(), "Not counted from what followed: a delivery was already under way when it came, so the "
+                + "delivery screen after it proves nothing");
     }
 
     @Test
-    public void aNextScreenThatIsNeitherIsLoggedAndTeachesNothing() {
+    public void aNextScreenThatIsNeitherIsLoggedAndCountsNothing() {
         show(passing("0:35"));
         later(2_000);
         show(screen("Order details", "Store A", "Items 3"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6));
         show(delivery());
 
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: Dasher's next screen was neither a delivery nor the wait for offers (its "
-                + "words are in the screens log)");
+        assertNotAccepted(1675);
+        contains(history(), "Not counted from what followed: Dasher's next screen was neither a delivery nor the wait "
+                + "for offers (its words are in the screens log)");
         String screens = DiagnosticLog.readScreens(app);
         contains(screens, "after an offer left, neither a delivery nor the wait for offers: labels=["
                 + PersonalText.UNKNOWN_NOT_KEPT + "]");
@@ -262,37 +317,48 @@ public class AcceptanceEvidenceTest {
         show(screen("New Delivery!", "New Order: Go to Store A", "Deliver by 9:45 PM"));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(61));
 
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: Dasher showed neither a delivery nor the wait for offers within 60 s");
+        assertNotAccepted(1675);
+        contains(history(), "Not counted from what followed: Dasher showed neither a delivery nor the wait for offers "
+                + "within 60 s");
     }
 
     @Test
-    public void dashersDeclineQuestionForAPassingOfferTeachesOnceTheNextOfferComes() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+    public void dashersDeclineQuestionForAPassingOfferCountsAsTheUsersDeclineOnceDasherGoesOn() {
+        FilterStore.save(app, PER_MILE);
         show(offer("$14.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         assertTrue("it passes", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         later(1_000);
         AccessibilityNodeInfo declineOffer = node("Decline offer", true);
         show(question(declineOffer));
+        assertFalse("held until Dasher moves on", has(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
         later(1_000);
         show(screen("Finding offers"));
-        assertTrue("held until the dash goes on", FilterStore.load(app).declined.isEmpty());
         later(5_000);
         show(offer("$20.00", "2 stops (7.2 mi) • 21 min", "0:40"));
 
         assertTrue("Dasher's question is never answered for the user",
                 Shadows.shadowOf(declineOffer).getPerformedActions().isEmpty());
-        assertEquals("$1.94/mi", FilterStore.load(app).declined.rates.perMileLabel());
+        DecisionLog.Entry declined = line(1400);
+        assertTrue(history(), has(declined, DecisionLog.StepKind.DECLINE_QUESTION));
+        assertTrue(history(), has(declined, DecisionLog.StepKind.DECLINE_COUNTED));
         String history = history();
         contains(history, "Dasher asked to confirm declining it; Offer Filter did not decline it");
-        contains(history, "Counted as your Decline: Dasher went back to the wait for offers 1 s after it left; it "
-                + "teaches once the next offer comes");
-        contains(history, "Your Decline raised the adaptive minimum: learned from declines by hand: $1.94/mi");
+        contains(history, "Counted as your Decline: Dasher went back to the wait for offers 1 s after it left");
+        // Nothing is learned from it: the rules stay as set, and the next offer like it passes as before.
+        assertFalse(history, history.contains("raised") || history.contains("learned"));
+        assertRulesUnchanged(PER_MILE);
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        // Dasher's question showed its acceptance rate: kept as one number, and the offer it asked about marked as
+        // free to decline (on the main thread, after its line).
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(50, AutopilotStore.reading(app, System.currentTimeMillis()).percent);
+        assertTrue(history(), has(line(1400), DecisionLog.StepKind.AR_EXEMPT));
+        assertFalse(history(), has(line(2000), DecisionLog.StepKind.AR_EXEMPT));
     }
 
     @Test
     public void goingBackToTheOfferFromDashersQuestionCountsNothing() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+        FilterStore.save(app, PER_MILE);
         show(offer("$14.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         later(1_000);
         show(question(node("Decline offer", true)));
@@ -303,13 +369,14 @@ public class AcceptanceEvidenceTest {
         later(5_000);
         show(offer("$20.00", "2 stops (7.2 mi) • 21 min", "0:40"));
 
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertNoDeclineCounted(1400);
         contains(history(), "Not counted as your Decline: you went back to the offer");
+        assertRulesUnchanged(PER_MILE);
     }
 
     @Test
     public void offerFiltersOwnDeclineAndItsLateEchoAreNeverTheUsers() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        FilterStore.save(app, TWENTY);
         show(offer("$7.90", "2 stops (7.2 mi) • 21 min", "0:35"));
         AccessibilityNodeInfo ours = decline;
         assertEquals("the app declines it", 1, Shadows.shadowOf(ours).getPerformedActions().size());
@@ -324,7 +391,8 @@ public class AcceptanceEvidenceTest {
         later(5_000);
         show(offer("$25.00", "2 stops (7.2 mi) • 21 min", "0:40"));
 
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertNoDeclineCounted(790);
+        assertFalse(has(line(790), DecisionLog.StepKind.DECLINE_TAPPED));
         String history = history();
         assertFalse(history, history.contains("Dasher asked to confirm declining it"));
         assertFalse(history, history.contains("Decline on it"));
@@ -332,14 +400,15 @@ public class AcceptanceEvidenceTest {
     }
 
     @Test
-    public void aComposeAcceptTapIsSeenAndLearned() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+    public void aComposeAcceptTapIsSeenAndCounted() {
+        FilterStore.save(app, TWENTY);
         show(offer("$25.00", "2 stops (7.2 mi) • 21 min", null));
         later(3_000);
         clicked(accept);
         show(screen("Arrived at store"));
 
-        assertEquals(2500, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(2500);
+        assertRulesUnchanged(TWENTY);
         contains(DiagnosticLog.read(app), "Accept tap seen on Pay $25.00");
         String screens = DiagnosticLog.readScreens(app);
         contains(screens, "tap (not Offer Filter's) ");
@@ -349,29 +418,29 @@ public class AcceptanceEvidenceTest {
         assertFalse(screens, screens.contains("above=") || screens.contains("below="));
         String history = history();
         contains(history, "You tapped Accept: waiting for a delivery screen");
-        contains(history, "Accepted; the adaptive minimum learned from it: you tapped Accept, and Dasher showed a "
-                + "delivery screen");
+        contains(history, "Accepted: you tapped Accept, and Dasher showed a delivery screen");
     }
 
     @Test
-    public void aComposeDeclineTapOnAPassingOfferTeaches() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+    public void aComposeDeclineTapOnAPassingOfferCountsAsTheUsersDecline() {
+        FilterStore.save(app, PER_MILE);
         show(offer("$14.00", "2 stops (7.2 mi) • 21 min", null));
         later(3_000);
         clicked(decline);
-        assertTrue("held until the dash goes on", FilterStore.load(app).declined.isEmpty());
+        assertFalse("held until the dash goes on", has(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
         later(5_000);
         show(offer("$20.00", "2 stops (7.2 mi) • 21 min", null));
 
-        assertEquals("$1.94/mi", FilterStore.load(app).declined.rates.perMileLabel());
+        assertTrue(history(), has(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
         contains(history(), "You tapped Decline on it: it counts once Dasher goes back to the wait for offers or another "
                 + "offer comes");
-        contains(history(), "Counted as your Decline: another offer came; it teaches once the next offer comes");
+        contains(history(), "Counted as your Decline: another offer came");
+        assertRulesUnchanged(PER_MILE);
     }
 
     @Test
     public void aHeldDeclineIsDroppedByDashersHomeBeforeADash() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+        FilterStore.save(app, PER_MILE);
         show(offer("$14.00", "2 stops (7.2 mi) • 21 min", null));
         later(3_000);
         AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
@@ -385,24 +454,24 @@ public class AcceptanceEvidenceTest {
         later(60_000);
         show(offer("$20.00", "2 stops (7.2 mi) • 21 min", null));
 
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertNoDeclineCounted(1400);
+        assertTrue(history(), has(line(1400), DecisionLog.StepKind.DECLINE_DROPPED));
         contains(history(), "Not counted as your Decline: the dash ended or paused");
     }
 
     @Test
-    public void theReportSaysWhenLearningWasOnAndWhenTheAdaptiveMinimumWasReset() {
-        FilterStore.save(app, new FilterSettings(false, 1300, 0, 0, 0, 0, false, 0));
+    public void theReportCarriesTheRulesAndNoLearningOfAnyKind() {
+        // 0.5.0 learns nothing from what the user does: the report has no learning times and no learned minimums.
+        FilterStore.save(app, RULES.withEnabled(false));
         FilterStore.save(app, RULES);
-        FilterStore.resetAccepted(app);
         String report = DiagnosticLog.report(app);
-        assertTrue(report, Pattern.compile("learning \\(auto-decline and Adaptive minimum both on\\) since=\\d{4}-")
+        contains(report, "flat cents=1300");
+        assertFalse(report, Pattern.compile("(?i)learning \\(|learning last turned|adaptive minimum|last reset=")
                 .matcher(report).find());
-        contains(report, "learning last turned off=");
-        assertTrue(report, Pattern.compile("adaptive minimums last reset=\\d{4}-").matcher(report).find());
     }
 
     @Test
-    public void anOfferAfterARestartWithNothingReadBeforeItTeachesNothing() {
+    public void anOfferAfterARestartWithNothingReadBeforeItIsNotCounted() {
         // S1: the service starts mid-delivery; a stacked offer DoorDash pulls; Dasher back on its delivery screen.
         show(passing("0:35"));
         later(4_000);
@@ -410,14 +479,14 @@ public class AcceptanceEvidenceTest {
         later(1_000);
         show(delivery());
 
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: Dasher's wait for offers wasn't seen before it");
+        assertNotAccepted(1675);
+        contains(history(), "Not counted from what followed: Dasher's wait for offers wasn't seen before it");
     }
 
     @Test
-    public void aSeenDeclineThenBackToTheOfferThenAPickupTeachesNothing() {
+    public void aSeenDeclineThenBackToTheOfferThenAPickupCountsNothing() {
         // S5: the user taps Decline, cancels Dasher's question, then accepts (a tap Dasher does not report).
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+        FilterStore.save(app, PER_MILE);
         show(waiting());
         show(offer("$14.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         later(1_000);
@@ -431,10 +500,13 @@ public class AcceptanceEvidenceTest {
         later(5_000);
         show(offer("$20.00", "2 stops (7.2 mi) • 21 min", "0:40"));
 
-        assertTrue("nothing learned from a decline the user backed out of", FilterStore.load(app).declined.isEmpty());
+        assertNoDeclineCounted(1400);
+        assertNotAccepted(1400);
         String history = history();
         contains(history, "Not counted as your Decline: you went back to the offer");
-        contains(history, "Not learned: you began to decline it, so the delivery screen after it is no Accept");
+        contains(history, "Not counted from what followed: you began to decline it, so the delivery screen after it "
+                + "is no Accept");
+        assertRulesUnchanged(PER_MILE);
     }
 
     @Test
@@ -445,21 +517,21 @@ public class AcceptanceEvidenceTest {
         show(passing("0:31"));
         later(1_000);
         show(delivery());
-        assertEquals(1675, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(1675);
         assertNotNull("the accepted route is kept during its delivery", ActiveRouteStore.load(app));
         later(20 * 60_000L);
         // Back to the wait for offers (the dash's own screen, without "Finding offers"): that route is over.
         show(waiting());
         assertNull(ActiveRouteStore.load(app));
 
-        // So the next offer can teach again (with the route kept, the delivery screen after it proved nothing).
+        // So the next offer can count again (with the route kept, the delivery screen after it proved nothing).
         later(60_000);
         show(offer("$18.00", "2 stops (4.0 mi) • 20 min", "0:40"));
         later(3_000);
         show(offer("$18.00", "2 stops (4.0 mi) • 20 min", "0:37"));
         later(1_000);
         show(delivery());
-        assertEquals(1800, FilterStore.load(app).lastAcceptedCents);
+        assertAcceptedByTheUser(1800);
 
         // Dasher's home before a dash ends it too.
         assertNotNull(ActiveRouteStore.load(app));
@@ -488,7 +560,7 @@ public class AcceptanceEvidenceTest {
 
     @Test
     public void aClickAfterTheOfferLeftIsNotOnItsControls() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        FilterStore.save(app, TWENTY);
         show(waiting());
         // Accept's label four levels below its clickable node: only the control the read found names a click on it.
         AccessibilityNodeInfo root = node(null, false);
@@ -519,7 +591,7 @@ public class AcceptanceEvidenceTest {
 
     @Test
     public void offerFiltersOwnTapCountedByWhenItHappenedNotWhenItsEventArrived() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        FilterStore.save(app, TWENTY);
         show(waiting());
         show(offer("$7.90", "2 stops (7.2 mi) • 21 min", "0:35"));
         long tappedAt = SystemClock.uptimeMillis();
@@ -552,14 +624,14 @@ public class AcceptanceEvidenceTest {
         later(1_000);
         show(delivery());
 
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        contains(history(), "Not learned: a decline was requested through Dasher's notification");
+        assertNotAccepted(1675);
+        contains(history(), "Not counted from what followed: a decline was requested through Dasher's notification");
     }
 
     @Test
     public void aNotificationDeclineIsMarkedBeforeItIsSent() {
         // Marked first: Dasher may react (and the screen reader read it) before send() returns. A send that fails
-        // stays marked, which only means nothing is learned for a minute.
+        // stays marked, which only means no delivery screen counts an offer as accepted for a minute.
         PendingIntent decline = PendingIntent.getBroadcast(app, 0, new Intent("test.decline"),
                 PendingIntent.FLAG_IMMUTABLE);
         decline.cancel();

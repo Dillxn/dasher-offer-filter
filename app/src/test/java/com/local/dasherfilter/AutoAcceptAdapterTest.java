@@ -43,7 +43,7 @@ public final class AutoAcceptAdapterTest {
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         FilterStore.setAutoAcceptEnabled(app, true);
         ActiveRouteStore.clear(app); RestartSuppression.clear(app); AutoAcceptMemory.clear(app);
         DiagnosticLog.clear(app); DecisionLog.forgetCache(); DecisionLog.clear(app);
@@ -67,7 +67,7 @@ public final class AutoAcceptAdapterTest {
         assertEquals(0, clicks(accept)); pass(500); assertEquals(0, clicks(accept));
         pass(400); assertEquals(1, clicks(accept)); assertEquals(0, clicks(decline));
         assertNull(ActiveRouteStore.load(app));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
         assertTrue(DiagnosticLog.read(app).contains("Accept REQUESTED"));
         assertFalse(DiagnosticLog.read(app).contains("Accept NOT_SENT"));
         assertEquals(DecisionLog.Action.PASSES, DecisionLog.recent(app, 1).get(0).action);
@@ -208,19 +208,23 @@ public final class AutoAcceptAdapterTest {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29"));
         pass(1500); assertEquals(0, clicks(accept));
     }
-    @Test public void observedDeliveryUpdatesRouteAndOutcomeWithoutTeachingAdaptiveMinimums() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 1500));
-        assertTrue(FilterStore.recordAccepted(app, new OfferSnapshot(1500, null, null, null)));
+    @Test public void observedDeliveryUpdatesRouteAndOutcomeAsAnAutomaticAcceptanceChangingNoRule() {
         show(node("Finding offers", false));
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900); assertEquals(1, clicks(accept));
         click(accept); show(node("Arrived at store", true));
         assertNotNull(ActiveRouteStore.load(app)); assertEquals(Integer.valueOf(2000), ActiveRouteStore.load(app).payCents);
-        assertEquals(1500, FilterStore.load(app).lastAcceptedCents);
-        assertTrue(FilterStore.load(app).best.isEmpty());
-        assertTrue(DiagnosticLog.read(app).contains("automatic choices never raise your learned minimums"));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        // Accepted after the app's own request: counted, with that provenance, never as the user's own acceptance.
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(entry));
+        assertTrue(DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertFalse(DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPT_TAPPED));
+        assertRulesUnchanged();
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[accept] Accepted after an automatic Accept request: Pay $20.00"));
+        assertFalse(log, log.contains("Learned from") || log.contains("learned minimums"));
     }
-    @Test public void automaticShoppingAcceptanceNeverTeachesAnObservedItemRate() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0).withAdaptive(true));
+    @Test public void automaticShoppingAcceptanceKeepsTheObservedItemsOnItsRouteAndChangesNoRule() {
         show(node("Finding offers", false));
         AccessibilityNodeInfo shopping = offer("$20.00", "2 stops (4 mi) • 20 min", "0:30");
         Shadows.shadowOf(shopping).addChild(node("Shop and deliver", false));
@@ -229,24 +233,39 @@ public final class AutoAcceptAdapterTest {
         click(accept); show(node("Arrived at store", true));
         assertNotNull(ActiveRouteStore.load(app));
         assertEquals(Integer.valueOf(2), ActiveRouteStore.load(app).items);
-        assertTrue(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertFalse(FilterStore.load(app).best.hasPerItem());
-        assertTrue(DiagnosticLog.read(app).contains("automatic choices never raise your learned minimums"));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(DecisionLog.accepted(entry));
+        assertTrue(DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertFalse(DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPTED));
+        assertEquals(Integer.valueOf(2), entry.facts.items);
+        assertRulesUnchanged();
+        assertTrue(DiagnosticLog.read(app).contains("automatic Accept was requested, and Dasher showed a delivery screen"));
     }
-    @Test public void serviceRestartSuppressesRepeatAndRetainsAutomaticLearningProvenance() {
+    @Test public void serviceRestartSuppressesRepeatAndRetainsAutomaticProvenance() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900); assertEquals(1, clicks(accept));
         controller.destroy(); connect();
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29")); pass(900);
         assertEquals(0, clicks(accept)); assertEquals(0, clicks(decline));
         assertTrue(AutoAcceptMemory.covers(app, new OfferSnapshot(2000, 4.0, 20, 2)));
     }
-    @Test public void ownClickEchoIsNotAUserLessonAndFailedTransitionNeverLearns() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 1500));
-        assertTrue(FilterStore.recordAccepted(app, new OfferSnapshot(1500, null, null, null)));
+    @Test public void ownClickEchoIsNotTheUsersAcceptAndAFailedTransitionCountsNothing() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900); click(accept);
         show(node("Map", false)); pass(16_000);
-        assertNull(ActiveRouteStore.load(app)); assertEquals(1500, FilterStore.load(app).lastAcceptedCents);
+        assertNull(ActiveRouteStore.load(app));
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertFalse("its own click's echo is no Accept of the user's",
+                DecisionLog.hasStep(entry, DecisionLog.StepKind.ACCEPT_TAPPED));
+        assertFalse(DecisionLog.accepted(entry));
+        assertTrue(DecisionLog.hasStep(entry, DecisionLog.StepKind.AUTO_ACCEPT_UNCONFIRMED));
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entry));
+        assertRulesUnchanged();
+    }
+    /** No acceptance changes any rule (0.5.0): the $10 minimum and its bar stay exactly as set. */
+    private void assertRulesUnchanged() {
+        FilterSettings now = FilterStore.load(app);
+        assertArrayEquals(new int[] {1000, 0, 0, 0, 0, 0}, now.minimums());
+        assertEquals(0, now.maxStops);
+        assertEquals(100, now.minimumScalePercent);
     }
     @Test public void genericDirectionsCannotPromoteAutomaticRequestThroughManualInference() {
         show(node("Finding offers", false));
@@ -258,7 +277,7 @@ public final class AutoAcceptAdapterTest {
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
         pass(16_000);
         assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
     }
     @Test public void idleEndsAutomaticConfirmationBeforeALaterUnrelatedDelivery() {
         show(node("Finding offers", false));
@@ -299,7 +318,7 @@ public final class AutoAcceptAdapterTest {
         show(node("Arrived at store", true));
         assertNull(ActiveRouteStore.load(app));
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
     }
     @Test public void confirmedAutomaticRequestNeverSaysTheUserTappedAccept() {
         show(node("Finding offers", false));

@@ -56,10 +56,17 @@ import java.util.function.Supplier;
  * instead: every look at the windows, every read, every tap, the decline confirmation, the touch takeover and the
  * sound guard. The main thread only notes each event and hands it over; a read already queued is not queued again.
  * What other threads may ask (whether Dasher is on screen, whether the user took an offer over) is published by the
- * scanner as immutable snapshots. What touches the history, the last status, the declines learned by hand and our
- * cards goes back to the main thread in order, where Dasher's notifications are handled, so a screen reading and a
- * notification of the same offer are folded one after the other, never at once. Views (the tab, the guide, the touch
- * watch) and toasts are only ever touched on the main thread.
+ * scanner as immutable snapshots. What touches the history, the last status and our cards goes back to the main thread
+ * in order, where Dasher's notifications are handled, so a screen reading and a notification of the same offer are
+ * folded one after the other, never at once. Views (the tab, the guide, the touch watch) and toasts are only ever
+ * touched on the main thread.
+ *
+ * <p>Autopilot ({@link AutopilotRuntime}). Autopilot plans on a thread of its own and moves the bar only here, on the
+ * scanner thread, between offers: its commit runs only at a safe point ({@link #safeForBarChange}), never while an
+ * offer is up or was seen in the last {@link #BAR_CHANGE_QUIET_MS}, a decline, its question, an automatic acceptance, a
+ * peek or a decline-error recovery is under way, or a takeover still holds, so no decision under way ever meets a bar
+ * it was not made at. Dasher's decline question is handed to Autopilot as it is read (a copy of its labels, parsed on
+ * Autopilot's thread): the tap is never delayed for it.
  *
  * <p>Offer reads first. Every call into Dasher waits for Dasher's own UI thread, which is busiest exactly while an offer
  * animates in, so the scanner never makes an offer's read wait for work that can wait. A window change, and any event
@@ -230,6 +237,8 @@ public final class OfferFilterService extends AccessibilityService {
     static final long STUCK_MS = 5_000;
     /** How long a takeover lasts at most; offers expire well before this. */
     static final long TAKEOVER_MS = 120_000;
+    /** Autopilot moves the bar only this long after the last offer or decline was seen at the soonest. */
+    static final long BAR_CHANGE_QUIET_MS = 10_000;
     /** Taps that prove delivery progress, making stored travel estimates stale. */
     private static final List<String> PROGRESS_TAPS = Arrays.asList(
             "confirm pickup", "complete pickup", "complete delivery", "confirm dropoff");
@@ -684,6 +693,14 @@ public final class OfferFilterService extends AccessibilityService {
     private long lastLookWindows;
     /** When a read last showed an offer or confirmation, or a decline was under way (uptime). */
     private long offerSeenAt = Long.MIN_VALUE / 2;
+    /**
+     * Whether a complete read of Dasher's own screen said what it shows since screen reading connected, and since a
+     * pause that began with an offer on screen (nothing of Dasher's is read while paused). Until then an offer that a
+     * read before the connection or the pause decided at the bar it was shown under may still be up, and nothing says
+     * otherwise, so Autopilot's bar does not move ({@link #safeForBarChange}). A look at the windows alone says nothing
+     * of it. Set on the scanner thread; cleared as screen reading connects, or pauses over an offer.
+     */
+    private volatile boolean dasherScreenKnown;
     /** When a read last found a readable offer, its Accept and Decline both (uptime); on the scanner. */
     private long offerReadAt = NEVER;
     /** Clicks still to be read around, after the read their events asked for. */
@@ -700,10 +717,8 @@ public final class OfferFilterService extends AccessibilityService {
     private long readWaitedMs;
     /** Notification generation when the last decline was requested; a newer offer revokes confirmation. */
     private long declineGeneration;
-    /** The global minimum scale that authorized the last first-step request. */
+    /** The bar that authorized the last first-step request: the decline is pinned to it. */
     private int declineMinimumScale = 100;
-    /** The item floor used by the last first-step request, including when that rule was off. */
-    private int declinePerItemCents;
     /** The offer whose Decline was last tapped: only its own confirmation may be tapped. */
     private OfferSnapshot declinedOffer = OfferSnapshot.UNKNOWN;
     /** Its decision-log entry, upgraded when the confirmation is tapped too. */
@@ -1163,7 +1178,7 @@ public final class OfferFilterService extends AccessibilityService {
         @Override public void run() {
             if (stopped) return;
             long now = SystemClock.uptimeMillis();
-            // Timeout proves only that nothing was learned; a new offer's urgent reads must not postpone it forever.
+            // Timeout proves only that nothing was counted; a new offer's urgent reads must not postpone it forever.
             if (acceptedTracker.expire(now)) {
                 applyNotes();
                 return;
@@ -1213,6 +1228,88 @@ public final class OfferFilterService extends AccessibilityService {
         long now = SystemClock.uptimeMillis();
         long due = Math.max(now + ACCEPTANCE_OBSERVATION_MS, lastScanEndAt + ACCEPTANCE_OBSERVATION_MS);
         if (due < acceptedTracker.outcomeObservationDeadline()) scanner.postAtTime(acceptanceObservation, due);
+    }
+
+    // ---- Autopilot's bar (scanner thread) ----
+
+    /**
+     * Autopilot's tick, every {@link Autopilot#TICK_MS} while screen reading runs: a plan is asked for (Autopilot plans
+     * on its tick only with the notice accepted, Autopilot and auto-decline on and a dash under way, not paused), and a
+     * commit Autopilot wants, or one no safe point has come for yet, is tried. Nothing of Dasher's is read for it.
+     */
+    private final Runnable autopilotTick = new Runnable() {
+        @Override public void run() {
+            if (stopped || scannerFaulted) return;
+            AutopilotRuntime.requestPlan(OfferFilterService.this, AutopilotRuntime.Trigger.TICK);
+            if (autopilotCommitPending || AutopilotRuntime.commitWanted(OfferFilterService.this)) {
+                postAutopilotCommit();
+            }
+            scanner.postDelayed(this, Autopilot.TICK_MS);
+        }
+    };
+    /** Autopilot's commit is in the scanner's queue: asking again adds nothing. */
+    private final AtomicBoolean autopilotCommitQueued = new AtomicBoolean();
+    /** Autopilot asked for a commit that no safe point has come for yet: the next tick tries it again. */
+    private volatile boolean autopilotCommitPending;
+    /**
+     * Autopilot's commit ({@link AutopilotRuntime#commitIfDue}), made only at a safe point ({@link #safeForBarChange}):
+     * otherwise it waits for the next tick, and "commit deferred" is logged at most once a minute. Between reads, on
+     * the thread that reads, declines and taps, so a commit never lands inside a decision.
+     */
+    private final Runnable autopilotCommit = new Runnable() {
+        @Override public void run() {
+            autopilotCommitQueued.set(false);
+            if (stopped || scannerFaulted) return;
+            if (!safeForBarChange(SystemClock.uptimeMillis())) {
+                autopilotCommitPending = true;
+                AutopilotRuntime.commitDeferred(OfferFilterService.this);
+                return;
+            }
+            // Whatever it did (moved the bar, held it, found its plan stale): done for now. A plan still wanting a move
+            // asks again.
+            autopilotCommitPending = false;
+            AutopilotRuntime.commitIfDue(OfferFilterService.this);
+        }
+    };
+
+    /**
+     * Autopilot's commit requester ({@link AutopilotRuntime#setCommitRequester}), called on Autopilot's own thread: the
+     * commit is queued on the scanner thread of the screen reader running now, which makes it at a safe point.
+     */
+    static void requestAutopilotCommit() {
+        OfferFilterService service = active;
+        if (service == null || service.stopped || service.scannerFaulted) return;
+        service.autopilotCommitPending = true;
+        service.postAutopilotCommit();
+    }
+
+    private void postAutopilotCommit() {
+        if (stopped || scanner == null) return;
+        if (autopilotCommitQueued.compareAndSet(false, true)) scanner.post(autopilotCommit);
+    }
+
+    /**
+     * Whether Autopilot may move the bar now (finalSpec updateTiming): screen reading running with the notice accepted;
+     * Dasher's own screen read since it connected, and since a pause that began over an offer
+     * ({@link #dasherScreenKnown}: until then an offer decided before may still be up); nothing of an offer up, nor
+     * seen in the last {@link #BAR_CHANGE_QUIET_MS}; no decline under way, no question of one awaited or held for the
+     * touch watch, no decline-error recovery; no read or settling queued; no takeover still holding, nor a restart
+     * record of one; no automatic acceptance waiting, watched or requested in the last {@link AutoAccept#SUPPRESS_MS};
+     * no peek; no offer's notification tracked; no late completion watched. Scanner thread. A user's own change of the
+     * bar (turning Autopilot off) never waits for this: it hands an offer under way back ({@link #minimumScaleChanged}).
+     */
+    private boolean safeForBarChange(long now) {
+        return !stopped && !scannerFaulted && Consent.accepted(this) && dasherScreenKnown
+                && !busy(now) && !hot(now) && now - offerSeenAt >= BAR_CHANGE_QUIET_MS
+                && !declineUnderWay(now) && !episode.active(now) && !declineState.hasPendingConfirmation(now)
+                && heldConfirmation == null && !declineError.pending()
+                && !recheckPending && queued.get() == QUEUED_NONE
+                && (takeover == Takeover.NONE || now - takeover.at >= TAKEOVER_MS)
+                && RestartSuppression.load(this) == null
+                && autoAccept.candidate() == null && !autoAcceptWatched
+                && (autoRequestedAt == 0 || now - autoRequestedAt > AutoAccept.SUPPRESS_MS)
+                && !peek.active() && !OfferNotificationService.hasActiveOffer()
+                && now >= lateCompletionUntil;
     }
 
     static boolean isConnected() {
@@ -1579,6 +1676,19 @@ public final class OfferFilterService extends AccessibilityService {
         FeedbackOutbox.resume(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
+        // Autopilot moves the bar only through this screen reader, at a safe point between offers: its commits are
+        // asked of it, a plan is asked for now, and its tick runs from now on (Autopilot itself does nothing before the
+        // notice is accepted or while it is off). Nothing of Dasher's screen is known to this connection yet: no commit
+        // before a read of it says what it shows. Autopilot's thread starts here, on the main thread, so the decline
+        // question's hand-over later only queues its parse (never starts a thread between finding it and the tap).
+        dasherScreenKnown = false;
+        autopilotCommitQueued.set(false);
+        autopilotCommitPending = false;
+        AutopilotRuntime.setCommitRequester(OfferFilterService::requestAutopilotCommit);
+        AutopilotRuntime.warm();
+        AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.CONNECT);
+        scanner.removeCallbacks(autopilotTick);
+        scanner.postDelayed(autopilotTick, Autopilot.TICK_MS);
         onScanner(() -> {
             if (stopped) return;
             if (!Consent.accepted(this)) {
@@ -2050,7 +2160,12 @@ public final class OfferFilterService extends AccessibilityService {
         boolean first = !stopped;
         stopped = true;
         if (screenAwake != null) screenAwake.stop();
-        if (active == this) active = null;
+        if (active == this) {
+            active = null;
+            // No commit of Autopilot's is asked of a stopped screen reader (Autopilot then waits for the next one); its
+            // tick and any commit queued go with the scanner's callbacks below.
+            AutopilotRuntime.setCommitRequester(null);
+        }
         if (screenStateWatched) {
             screenStateWatched = false;
             try {
@@ -2854,23 +2969,23 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.logScreen(this, () -> "tap (not " + AppName.NAME + "'s) " + tap.describe(false));
         }
         // A tap within a second of Dasher appearing in a peek may have been meant for the app the user was in: it
-        // teaches nothing (it still blocks peeks for a minute, as any Accept does).
+        // counts nothing (it still blocks peeks for a minute, as any Accept does).
         boolean early = (tap.accept() || tap.decline()) && peek.earlyTap(elapsedOf(now));
         if (tap.accept()) lastAcceptAt = Peek.now();
         // The offer accepted, as far as it was read: the notification path never declines a post of it.
         OfferSnapshot accepting = null;
         if (early) {
             Peek.log(this, "your " + (tap.accept() ? "Accept" : "Decline") + " tap within "
-                    + Peek.EARLY_TAP_MS / 1000 + " s of Dasher appearing teaches nothing");
+                    + Peek.EARLY_TAP_MS / 1000 + " s of Dasher appearing counts nothing");
         } else if (tap.accept()) {
             accepting = acceptedTracker.acceptClicked(now);
-            // Each step toward learning from an accepted offer goes in the log, so a report shows where it stops.
+            // Each step toward counting an accepted offer goes in the log, so a report shows where it stops.
             DiagnosticLog.log(this, "accept", accepting != null
                     ? "Accept tap seen on " + accepting.summary() + "; waiting up to 15 s for a delivery screen"
-                    : "Accept tap seen, but no offer with readable pay was on screen in the last 90 s: nothing to learn");
+                    : "Accept tap seen, but no offer with readable pay was on screen in the last 90 s: nothing to count");
         } else if (tap.decline()) {
-            // The user's own Decline: held until Dasher moves on (the wait for offers, or another offer), then it may
-            // teach that the rules were too lenient; going back to the offer or accepting it counts nothing.
+            // The user's own Decline: held until Dasher moves on (the wait for offers, or another offer), then it counts
+            // as their Decline; going back to the offer or accepting it counts nothing.
             acceptedTracker.declineTapped(now);
         } else if (tap.endDash()) {
             // The user's "End dash" on Dasher's "End your current dash?": the dash ends once its screen goes away.
@@ -3285,10 +3400,11 @@ public final class OfferFilterService extends AccessibilityService {
         BACK_TO_OFFER,
         /** Dasher's question could not be tapped, or Dasher did not act on it: the app gives up. */
         NOT_TAPPED,
-        /** The user's new minimum scale superseded the rules that authorized this decline. */
+        /**
+         * The bar the decline was made at changed (only the user does that while a decline is under way: turning
+         * Autopilot off; Autopilot moves it only at a safe point): it no longer authorizes this decline.
+         */
         MINIMUMS_CHANGED,
-        /** A changed item floor superseded the rules that authorized this decline. */
-        ITEM_MINIMUM_CHANGED,
         /** A screen-off or lock boundary invalidated the visible offer and its pending taps. */
         SCREEN_OFF,
         /** Dasher explicitly reported a failed request; no later idle frame can upgrade it optimistically. */
@@ -3310,7 +3426,6 @@ public final class OfferFilterService extends AccessibilityService {
         RestartSuppression.remember(this, declinedOffer, previousCountdown);
         takeoverGeneration = OfferNotificationService.generation();
         takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED
-                && why != HandBack.ITEM_MINIMUM_CHANGED
                 && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
@@ -3334,11 +3449,8 @@ public final class OfferFilterService extends AccessibilityService {
         // The user's own, unless the decline was confirmed before they acted. Given up, the decline did not go through
         // (Dasher still asks, or still shows the offer), whether or not its confirmation was tapped: left to the user.
         if (declinedEntry != null && (givenUp || !alreadyConfirmed)) {
-            recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
-                    declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                    declinedEntry.reason, givenUp ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED
-                            : DecisionLog.Action.USER_TOOK_OVER, true, declinedEntry.evidence)
-                    .withScore(declinedEntry.scorePercent).peeked(declinedEntry.peeked), -1, false);
+            recordRead(declinedLine(givenUp ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED
+                    : DecisionLog.Action.USER_TOOK_OVER), -1, false);
         }
         long since = touchSinceOwnAction;
         String after = since >= 0 ? " (" + since + " ms after " + AppName.NAME + "'s last tap)" : "";
@@ -3364,15 +3476,15 @@ public final class OfferFilterService extends AccessibilityService {
                 status("You went back to the offer, so auto-decline stopped for it.");
                 toast = AppName.NAME + " stopped tapping this offer";
                 break;
-            case MINIMUMS_CHANGED:
-            case ITEM_MINIMUM_CHANGED:
-                DiagnosticLog.log(this, "rules", (why == HandBack.MINIMUMS_CHANGED
-                        ? "minimum scale changed " : "per-item minimum changed ") + detail + halted);
+            case MINIMUMS_CHANGED: {
+                DiagnosticLog.log(this, "rules", "bar changed " + detail + halted);
+                String change = barChange();
                 status(alreadyConfirmed
-                        ? "Minimums changed after a confirmation was requested; nothing more will be tapped."
-                        : "Minimums changed; this earlier decline is left to you.");
-                toast = "Minimums changed; automatic taps stopped for this offer";
+                        ? change + " after a confirmation was requested; nothing more will be tapped."
+                        : change + "; this earlier decline is left to you.");
+                toast = change + "; automatic taps stopped for this offer";
                 break;
+            }
             case DASHER_ERROR:
                 DiagnosticLog.log(this, "confirm", "Dasher reported a decline error; completion is unconfirmed");
                 status("Dasher reported an error; this decline is unconfirmed and left to you.");
@@ -3397,13 +3509,16 @@ public final class OfferFilterService extends AccessibilityService {
         peekOver("left Dasher up because " + (why == HandBack.TOUCH ? "you touched the screen during the decline"
                 : why == HandBack.CLICK ? "you tapped Dasher during the decline"
                 : why == HandBack.BACK_TO_OFFER ? "you went back to the offer from Dasher's question"
-                : why == HandBack.MINIMUMS_CHANGED ? "the minimum scale changed"
-                : why == HandBack.ITEM_MINIMUM_CHANGED ? "the per-item minimum changed"
+                : why == HandBack.MINIMUMS_CHANGED ? "the bar changed"
                 : why == HandBack.DASHER_ERROR ? "Dasher reported a decline error"
                 : "Dasher's question was not confirmed"), Peek.Outcome.LEFT_WITH_USER);
     }
 
-    /** A new global buffer never inherits the old scale's in-flight decline authority. */
+    /**
+     * A new bar never inherits the old bar's in-flight decline authority: the decline under way is handed back
+     * ("bar changed from 103% to 100%"). Autopilot never moves the bar while a decline is under way
+     * ({@link #safeForBarChange}), so only the user's own change (turning Autopilot off) does this.
+     */
     private boolean minimumScaleChanged(int currentScale, long now) {
         if (currentScale == declineMinimumScale
                 || (!declineState.hasPendingConfirmation(now) && !episode.active(now))) return false;
@@ -3411,23 +3526,45 @@ public final class OfferFilterService extends AccessibilityService {
         return true;
     }
 
-    /** A new scoped item rule cannot reuse a decline authorized under a different rate. */
+    /**
+     * Whether the rules that authorized the decline under way changed so it must be handed back: the bar is what a
+     * decline is pinned to (its first Decline tap's), compared alone ({@link #minimumScaleChanged}).
+     */
     private boolean minimumRulesChanged(FilterSettings current, long now) {
-        if (minimumScaleChanged(current.minimumScalePercent, now)) return true;
-        if (current.perItemCents == declinePerItemCents
-                || (!declineState.hasPendingConfirmation(now) && !episode.active(now))) return false;
-        handBack(HandBack.ITEM_MINIMUM_CHANGED,
-                "from " + declinePerItemCents + " to " + current.perItemCents + " cents per item", now);
-        return true;
+        return minimumScaleChanged(current.minimumScalePercent, now);
     }
 
-    /** No initial request was made with stale minimums; judge a fresh screen with the newly saved rules. */
+    /**
+     * The declined offer's line recorded again with {@code action}, as it was decided: its score, the bar it was
+     * decided at (and whether Autopilot set it), and whether a peek read it, kept.
+     */
+    private DecisionLog.Entry declinedLine(DecisionLog.Action action) {
+        DecisionLog.Entry line = declinedEntry;
+        return new DecisionLog.Entry(line.at, line.source, line.addOn, line.facts, line.requiredCents, line.result,
+                line.reason, action, true, line.evidence).withScore(line.scorePercent)
+                .withBar(line.barPercent, line.autopilot).peeked(line.peeked);
+    }
+
+    /** No initial request was made at a stale bar; judge a fresh screen at the bar now saved. */
     private void staleMinimumScaleRead() {
         long now = SystemClock.uptimeMillis();
         if (!minimumRulesChanged(FilterStore.load(this), now)) {
-            status("Minimums changed while reading; checking the offer again.");
+            status(barChange() + " while reading; checking the offer again.");
         }
-        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "minimums changed"); });
+        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "bar changed"); });
+    }
+
+    /**
+     * What moved the bar under a decision, in the user's words: only the user's own change does that while a decision
+     * is under way (Autopilot moves it only at a safe point, {@link #safeForBarChange}). Turning Autopilot off puts it
+     * back at exactly the minimums ("Autopilot turned off (bar back to 100%)"); with Autopilot still on, it was put back
+     * at the minimums with typical minimums chosen ("Autopilot's bar changed to 100%"). Never "minimums changed": the
+     * minimums alone never change the bar.
+     */
+    private String barChange() {
+        FilterSettings now = FilterStore.load(this);
+        return now.autopilot ? "Autopilot's bar changed to " + now.minimumScalePercent + "%"
+                : "Autopilot turned off (bar back to " + now.minimumScalePercent + "%)";
     }
 
     /**
@@ -4681,19 +4818,29 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * A passing or unclear offer the peek read: while navigating, back to the map at once and the offer's card carries
      * what was read and rings once (the user's decision), or pops up without a sound of its own when Dasher's alert
-     * already rang; otherwise Dasher stays up for the user.
+     * already rang; otherwise Dasher stays up for the user. An offer that passes only because Autopilot's bar is below
+     * 100 ({@link OfferRule.Decision#belowMinimums}) is the user's to accept: its card is a review card (never the
+     * pass chime) that says so ({@link AutopilotText#belowMinimumsCard}).
      *
      * @param addOn the add-on read, whose own figures its card carries; null for a standalone offer
      * @param endsAt when the offer's countdown runs out (wall clock), as read; 0 when none was read
      * @param folded the notification incarnation the reading folded in: the card goes on that offer's card
      */
-    private void peekLeavesOffer(OfferRule.Result result, OfferSnapshot read, AddOnOffer addOn, String reason,
-                                 boolean paused, long endsAt, FoldedTag folded) {
+    private void peekLeavesOffer(OfferRule.Decision decision, OfferSnapshot read, AddOnOffer addOn, boolean paused,
+                                 long endsAt, FoldedTag folded) {
         peek.leftWithUser();
-        String why = paused ? "auto-decline is paused" : result == OfferRule.Result.KEEP
-                ? "the offer passes your rules" : "the offer needs your review";
+        OfferRule.Result result = OfferNotificationService.announced(decision);
+        String reason = decision.reason;
+        String why = paused ? "auto-decline is paused"
+                : decision.belowMinimums ? "the offer passes only Autopilot's bar, below your minimums"
+                : result == OfferRule.Result.KEEP ? "the offer passes your rules" : "the offer needs your review";
         if (!paused && navigating()) {
-            String text = addOn != null ? Peek.addOnCardText(result, addOn.incremental, reason)
+            // Below the minimums, the card says so with the figures Peek's other cards give (an add-on's own: what it
+            // adds), never "unclear": every figure was read.
+            String text = decision.belowMinimums
+                    ? AutopilotText.belowMinimumsCard(addOn != null ? Peek.addOnFacts(addOn.incremental)
+                            : Peek.cardFacts(read), decision.scorePercent, decision.minimumScalePercent)
+                    : addOn != null ? Peek.addOnCardText(result, addOn.incremental, reason)
                     : Peek.cardText(result, read, reason);
             OfferSnapshot facts = addOn != null ? addOn.incremental : read;
             // The peeked post's own card, when the reading folded none in (and the peek follows no newer offer).
@@ -4732,7 +4879,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Whether a read is a delivery, pickup or route screen whose figures are its own ({@link #explainedFigures}: its one
      * amount, its time and distance, with no offer control or label, new offer's headline, question about declining,
      * countdown, stops, items or "+$" on it). Only for a peek's return to the route a declined offer came during
-     * ({@link Peek#routeAfter}); decisions and learning keep every figure as always.
+     * ({@link Peek#routeAfter}); decisions and outcomes keep every figure as always.
      */
     private static boolean routeOwnFigures(Scan scan) {
         List<String> labels = withParts(scan);
@@ -5447,9 +5594,13 @@ public final class OfferFilterService extends AccessibilityService {
         // never tinted with the one before.
         OfferRule.Result verdictBefore = offerVerdict;
         offerVerdict = null;
+        // Whether this read went through Dasher's own screen whole and judged it (not skipped, cut short, too big or
+        // failed): from then on what is up there is known (for Autopilot's bar, dasherScreenKnown).
+        boolean judged = false;
         try {
             boolean more = checkReadableOffer();
             if (readSkipped) offerVerdict = verdictBefore;
+            judged = !readSkipped && sceneLabels != null;
             return more;
         } catch (RuntimeException error) {
             acceptanceObservationEligible = false;
@@ -5465,6 +5616,7 @@ public final class OfferFilterService extends AccessibilityService {
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
             readEvidence = schedulingEvidence();
+            if (judged) dasherScreenKnown = true;
             // The read's decision and tap are done: Peek's lines of it now.
             flushPeekLines();
             if (readEvidence && readWaitedMs > 0 && lastReadDurationMs > 0) {
@@ -5534,7 +5686,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Whether the figures a read found are the screen's own, for scheduling only (decisions and learning go by
+     * Whether the figures a read found are the screen's own, for scheduling only (decisions and outcomes go by
      * {@link #offerEvidence} as always): a screen Dasher's own words name ({@link #namedScreen}) that shows no offer
      * control or label, no new offer's headline, no question about declining and no countdown, and among whose figures
      * are no stops, no items and no "+$" bound. Its one amount (the dash's earnings, "This dash $0.00"; a pickup's "$9.30
@@ -5710,6 +5862,9 @@ public final class OfferFilterService extends AccessibilityService {
             lateClicksPending = false;
             lateClicks.clear();
             offerOnScreen = false;
+            // The offer the last read showed (decided at the bar it was shown under) may still be up when the pause
+            // ends, and nothing read says otherwise meanwhile: Autopilot's bar waits for the first read after it.
+            if (readEvidence) dasherScreenKnown = false;
             offerEvidence = false;
             readEvidence = false;
             quietTakenOver = false;
@@ -6065,10 +6220,7 @@ public final class OfferFilterService extends AccessibilityService {
             authorityEndReason = "offer countdown expired";
             confirmLog("authority ended: " + authorityEndReason);
             if (episode.questionWasSeen() && !episode.wasConfirmed() && declinedEntry != null) {
-                DecisionLog.Entry expired = new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
-                        declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_NOT_TAPPED, true, declinedEntry.evidence)
-                        .withScore(declinedEntry.scorePercent).peeked(declinedEntry.peeked);
+                DecisionLog.Entry expired = declinedLine(DecisionLog.Action.CONFIRMATION_NOT_TAPPED);
                 onMain(() -> DecisionLog.record(this, expired));
             }
         }
@@ -6385,8 +6537,7 @@ public final class OfferFilterService extends AccessibilityService {
                 || OfferNotificationService.generation() != attempt.generation
                 || !declineState.hasPendingConfirmation(now)) return false;
         FilterSettings current = FilterStore.load(this);
-        return current.enabled && current.minimumScalePercent == attempt.scale
-                && current.perItemCents == attempt.perItemCents;
+        return current.enabled && current.minimumScalePercent == attempt.scale;
     }
 
     /**
@@ -6493,6 +6644,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (consumeDeclineError()) return declineError.pending();
         if (minimumRulesChanged(FilterStore.load(this), SystemClock.uptimeMillis())) return false;
         diagnostic("confirmation", confirmation, null, null);
+        // Dasher's question shows the acceptance rate (and whether declining this offer lowers it): Autopilot keeps
+        // that one number, and the offer's mark, from a copy of the labels this read already has, parsed on its own
+        // thread. Nothing more is read for it, and nothing here waits for it (the tap below included).
+        AutopilotRuntime.confirmationSeen(this, confirmation.text, questionOffer(confirmation, now));
         declinedOfferShowing = true;
         if (!declineState.hasPendingConfirmation(now)) {
             if (episode.active(now) && !OfferParser.parse(confirmation.text, confirmation.metricParts)
@@ -6580,9 +6735,9 @@ public final class OfferFilterService extends AccessibilityService {
         boolean readable = dasherStillReadable(target);
         if (consumeDeclineError()) return declineError.pending();
         ErrorAttempt confirmationRequest = new ErrorAttempt(declineGeneration, userActions.get(), declineMinimumScale,
-                declinePerItemCents, SystemClock.uptimeMillis(), true);
+                SystemClock.uptimeMillis(), true);
         errorAttempt = confirmationRequest;
-        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale, declinePerItemCents) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
         if (tap == Tap.TAPPED) confirmationRequest.accepted = true;
         else if (errorAttempt == confirmationRequest) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
@@ -6611,10 +6766,7 @@ public final class OfferFilterService extends AccessibilityService {
                         + readTrigger + (watchState == WATCH_UP ? "" : "; touch watch not up") + ")");
             }
             if (declinedEntry != null) {
-                recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source,
-                        declinedEntry.addOn, declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result,
-                        declinedEntry.reason, DecisionLog.Action.CONFIRMATION_TAPPED, true, declinedEntry.evidence)
-                        .withScore(declinedEntry.scorePercent).peeked(declinedEntry.peeked), -1, false);
+                recordRead(declinedLine(DecisionLog.Action.CONFIRMATION_TAPPED), -1, false);
             }
             status("Decline confirmation requested; waiting for Dasher to close the offer.");
         } else {
@@ -6630,6 +6782,30 @@ public final class OfferFilterService extends AccessibilityService {
         // Read again when a retry is due, whether or not Dasher sends an event: closed, retried, or given up.
         scheduleConfirmRetry();
         return true;
+    }
+
+    /**
+     * The offer Dasher's decline question is about, for the acceptance-rate reading and its mark on the offer's line:
+     * the offer the app is declining while its decline is under way (its authority, or the episode's wait over a
+     * question it confirmed); the offer it handed back to the user while that takeover holds and the question shows
+     * nothing against it (the question its own Decline tap brought up comes after the user's touch or click, its line
+     * now "you took over"); otherwise, only when the question is the user's as their decline by hand is counted (no tap
+     * of the app's within its echo window, no decline sent through Dasher's notification in the last minute), the offer
+     * it left alone that the user is declining, by the acceptance tracker's own rule (on screen, or read at most
+     * {@link AcceptedOfferTracker#QUESTION_AGE_MS} before). Null when none: the reading is kept without an offer.
+     */
+    private OfferSnapshot questionOffer(Scan confirmation, long now) {
+        if (declineState.hasPendingConfirmation(now) || episode.active(now)) return declinedOffer;
+        Takeover held = takeover;
+        if (held != Takeover.NONE
+                && held.covers(OfferParser.parse(confirmation.text, confirmation.metricParts), now)) {
+            return held.offer;
+        }
+        if (now - ownTapAt <= OWN_TARGET_ECHO_MS
+                || OfferNotificationService.declineActionWithin(NOTIFICATION_DECLINE_MS)) {
+            return null;
+        }
+        return acceptedTracker.watchedLine(now);
     }
 
     /** A fresh read when the last try's refusal/closing interval ends, whatever else reads before it. */
@@ -6731,10 +6907,7 @@ public final class OfferFilterService extends AccessibilityService {
                 || OfferEvidence.isDashOver(scan.text)) {
             if (episode.questionWasSeen() && !episode.wasConfirmed() && declineState.confirmationLapsed(now)
                     && declinedEntry != null) {
-                recordRead(new DecisionLog.Entry(declinedEntry.at, declinedEntry.source, declinedEntry.addOn,
-                        declinedEntry.facts, declinedEntry.requiredCents, declinedEntry.result, declinedEntry.reason,
-                        DecisionLog.Action.CONFIRMATION_NOT_TAPPED, true, declinedEntry.evidence)
-                        .withScore(declinedEntry.scorePercent).peeked(declinedEntry.peeked), -1, false);
+                recordRead(declinedLine(DecisionLog.Action.CONFIRMATION_NOT_TAPPED), -1, false);
             }
             // No offer is up: a re-post of a notification for an offer read before is a new offer.
             OfferNotificationService.screenOfferEnded();
@@ -6788,7 +6961,7 @@ public final class OfferFilterService extends AccessibilityService {
         OfferSnapshot missed = acceptedTracker.missedAcceptance(now);
         if (missed != null) {
             List<String> shown = new ArrayList<>(scan.text);
-            DiagnosticLog.log(this, "accept", () -> "Not learned: no delivery screen recognized within 15 s after "
+            DiagnosticLog.log(this, "accept", () -> "Not counted: no delivery screen recognized within 15 s after "
                     + "Accept on " + missed.summary() + "; screen now: " + PersonalText.kept(shown));
         }
         long outcomeAt = SystemClock.uptimeMillis();
@@ -6819,17 +6992,14 @@ public final class OfferFilterService extends AccessibilityService {
         // A stale wait/home label drawn with pickup/delivery evidence is contradictory, not route completion.
         // Use the same no-route guard for lifecycle effects as for clearing the stored route above.
         if (noRoute && OfferEvidence.isDashOver(scan.text)) {
-            onMain(() -> ManualDeclines.dashEnded(this));
             Dashing.ended(this);
         } else if (noRoute && OfferEvidence.isPaused(scan.text)) {
             Dashing.paused(this);
         } else if (OfferEvidence.isIdle(scan.text) || AcceptedOfferTracker.isDeliveryScreen(scan.text)) {
             Dashing.seen(this);
         } else if (noRoute && OfferEvidence.isPreDashHome(scan.text)) {
-            // Dasher's home before a dash (its "Dash" button): a decline held until the dash goes on was about
-            // stopping, and the screen is not held for a dash until one is seen again. Whether a dash is on is left
-            // to the screens that say so.
-            onMain(() -> ManualDeclines.dashEnded(this));
+            // Dasher's home before a dash (its "Dash" button): the screen is not held for a dash until one is seen
+            // again. Whether a dash is on is left to the screens that say so.
             Dashing.homeSeen();
         }
         if (noRoute && OfferEvidence.isIdle(scan.text)) {
@@ -6854,7 +7024,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (DasherScene.showsRoute(scan.text) && !facts && !scan.acceptLabel && !scan.declineLabel) {
             if (takeoverDisplayEligible && now <= takeoverDisplayUntil && takeover != Takeover.NONE) {
                 step(takeover.offer, DecisionLog.StepKind.ACCEPTED_OBSERVED,
-                        "delivery screen followed the offer you took over; display only, nothing learned");
+                        "delivery screen followed the offer you took over; display only");
             }
             takeoverDisplayEligible = false;
             endAuthority("delivery", false);
@@ -6979,13 +7149,12 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The user ended the dash in Dasher: the dash is over ({@link Dashing#ended}: the screen is no longer held for it,
-     * and an update waiting for the dash's end may install), and a decline held until the dash goes on counts nothing.
-     * A lifecycle step only: nothing is read, tapped or learned for it.
+     * and an update waiting for the dash's end may install). A lifecycle step only: nothing is read, tapped or counted
+     * for it.
      */
     private void userEndedDash(String how) {
         forgetEndQuestion();
         DiagnosticLog.log(this, "dash", "ended: " + how);
-        onMain(() -> ManualDeclines.dashEnded(this));
         Dashing.ended(this);
     }
 
@@ -7154,8 +7323,10 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * An accepted offer: learned from (while auto-decline and the adaptive minimum are both on), its route kept, and
-     * its history line told how it was seen and what it taught.
+     * An accepted offer: its history line says so and how it was seen (ACCEPTED; ACCEPTED_AUTOMATIC after the app's own
+     * Accept request for it, ACCEPTED_ADD_ON for an add-on), its route is kept for the deliveries to come, and peeks
+     * and the notification path leave it alone for a minute. Nothing is learned from any acceptance (0.5.0): no rule
+     * changes; the line counts toward the acceptance rate and the outcome tallies.
      *
      * @param how how the acceptance was seen, in fixed words and numbers
      */
@@ -7165,55 +7336,35 @@ public final class OfferFilterService extends AccessibilityService {
         // Nor a Decline of a post of it through Dasher's notification (an add-on's own figures are not what its
         // notification shows: any offer then).
         acceptSeen = new AcceptSeen(lastAcceptAt, accepted.addOn ? null : accepted.acceptedOffer);
-        // Accepting after all means an earlier Decline of this offer was backed out of.
-        onMain(() -> ManualDeclines.dropped(this, "you accepted it after all"));
         DecisionLog.StepKind kind;
-        String taught;
+        String detail = how;
         boolean requestedHere = autoRequestedOffer != null
                 && SystemClock.uptimeMillis() - autoRequestedAt <= AutoAccept.SUPPRESS_MS
                 && autoRequestedOffer.fingerprint().equals(accepted.acceptedOffer.fingerprint());
+        // Provenance only: an automatic Accept request for this very offer (this run's, or one persisted before it),
+        // never the user's acceptance.
         boolean automatic = requestedHere || AutoAcceptMemory.covers(this, accepted.acceptedOffer);
         if (automatic) {
-            kind = DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
-            if (requestedHere) how = "automatic Accept was requested, and Dasher showed a delivery screen";
-            taught = requestedHere ? "; automatic choices never raise your learned minimums"
-                    : "; recent automatic-acceptance provenance is uncertain, so personal minimums stay unchanged";
-            DiagnosticLog.log(this, "accept", how + taught);
+            kind = DecisionLog.StepKind.ACCEPTED_AUTOMATIC;
+            detail = requestedHere ? "automatic Accept was requested, and Dasher showed a delivery screen"
+                    : how + "; an automatic Accept was requested for this offer moments before";
+            DiagnosticLog.log(this, "accept", "Accepted after an automatic Accept request: "
+                    + accepted.acceptedOffer.summary() + "; " + detail);
         } else if (accepted.addOn) {
             kind = DecisionLog.StepKind.ACCEPTED_ADD_ON;
-            taught = "";
-            DiagnosticLog.log(this, "accept", "Accepted an add-on: the standalone minimums do not learn from it");
-        } else if (accepted.acceptedOffer.payCents != null) {
-            FilterStore.AcceptedLesson lesson = FilterStore.recordAcceptedLesson(this, accepted.acceptedOffer);
-            boolean learned = lesson == FilterStore.AcceptedLesson.RAISED;
-            kind = learned ? DecisionLog.StepKind.ACCEPTED_LEARNED
-                    : lesson == FilterStore.AcceptedLesson.RECORDED ? DecisionLog.StepKind.ACCEPTED_BEST_SAVED
-                    : lesson == FilterStore.AcceptedLesson.NOTHING_NEW
-                            ? DecisionLog.StepKind.ACCEPTED_MINIMUMS_UNCHANGED : DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
-            taught = "; " + lesson.reason;
+            DiagnosticLog.log(this, "accept", "Accepted an add-on: " + accepted.acceptedOffer.summary());
+        } else {
+            kind = DecisionLog.StepKind.ACCEPTED;
             if (!accepted.tapSeen) {
                 DiagnosticLog.log(this, "accept", "Accepted without a seen tap: " + accepted.acceptedOffer.summary()
                         + "; " + how);
+            } else {
+                DiagnosticLog.log(this, "accept", "Accepted " + accepted.acceptedOffer.summary() + "; " + how);
             }
-            DiagnosticLog.log(this, "accept", learned
-                    ? "Learned from accepted " + accepted.acceptedOffer.summary()
-                    : "Accepted " + accepted.acceptedOffer.summary()
-                            + (lesson.considered() ? "; " : " but not learned: ") + lesson.reason);
-        } else {
-            kind = DecisionLog.StepKind.ACCEPTED_NOT_LEARNED;
-            taught = "; its pay was not read";
-            DiagnosticLog.log(this, "accept", "Accepted " + accepted.acceptedOffer.summary()
-                    + " but not learned: its pay was not read");
         }
-        step(accepted.line, kind, how + taught);
+        step(accepted.line, kind, detail);
         ActiveRouteStore.save(this, accepted.routeAfter);
-        status("Acceptance observed. " + (accepted.addOn
-                ? "Add-on route updated; standalone baseline unchanged."
-                : kind == DecisionLog.StepKind.ACCEPTED_LEARNED
-                        ? "Standalone minimums learned from this offer."
-                        : kind == DecisionLog.StepKind.ACCEPTED_BEST_SAVED
-                                ? "New accepted best saved; this offer's requirement stays the same."
-                                : "Standalone minimums unchanged."));
+        status("Acceptance observed.");
     }
 
     private static Set<String> payBoundLabels(List<String> lines) {
@@ -7234,8 +7385,8 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     private static OfferSnapshot withUnknownPay(OfferSnapshot offer, Integer ceiling) {
-        return new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, ceiling,
-                offer.finalStopHotspotMiles, offer.items, offer.itemCountApplicable);
+        return new OfferSnapshot(null, offer.miles, offer.minutes, offer.stops, ceiling)
+                .withItems(offer.items, offer.itemCountApplicable);
     }
 
     /** A readable offer with distinct Accept and Decline targets. Only a known failure is declined, at once. */
@@ -7343,8 +7494,9 @@ public final class OfferFilterService extends AccessibilityService {
             noteAutoAcceptNotSent("candidate_replaced");
         }
         boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE;
-        // The slim bar over the offer: green for a pass, amber for review (presentation only; never a decision).
-        offerVerdict = settings.enabled && !declines ? decision.result : null;
+        // The slim bar over the offer: green for a pass, amber for review or for a pass below the user's own minimums
+        // (Autopilot's bar let it through; it is the user's to accept): presentation only, never a decision.
+        offerVerdict = settings.enabled && !declines ? OfferNotificationService.announced(decision) : null;
         // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
         if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
@@ -7352,7 +7504,7 @@ public final class OfferFilterService extends AccessibilityService {
             cancelAutoAccept(true, "user_takeover");
             if (declines) diagnostic(phase, scan, offer, decision);
             declinedOfferShowing = false;
-            // Its decline was ours, even though the user has it now: a seen Accept tap is still learned from.
+            // Its decline was ours, even though the user has it now: a seen Accept tap on it still counts.
             acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
             applyNotes();
             boolean wasPeeked = peekReads(offer);
@@ -7388,7 +7540,7 @@ public final class OfferFilterService extends AccessibilityService {
 
         if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
             endAuthority("offer does not fail active rules", true);
-            // Left alone: what the user does with it, and what Dasher shows after it, may teach. The step of the
+            // Left alone: what the user does with it, and what Dasher shows after it, may count. The step of the
             // offer before (another offer came first) goes to the main thread ahead of this offer's line.
             acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn,
                     settings.enabled && decision.result == OfferRule.Result.KEEP, secondsLeft, routeStored, now);
@@ -7408,11 +7560,10 @@ public final class OfferFilterService extends AccessibilityService {
                 peek.countdown(secondsLeft, Peek.now());
                 // An add-on's card carries the add-on's own figures (its "+$" and what it adds), never the standalone
                 // parse, which ignores them; the offer's countdown, as read, runs on the card.
-                peekLeavesOffer(decision.result, offer, isAddOn ? addOn : null, decision.reason, !settings.enabled,
+                peekLeavesOffer(decision, offer, isAddOn ? addOn : null, !settings.enabled,
                         secondsLeft >= 0 ? System.currentTimeMillis() + secondsLeft * 1000L : 0, lastFolded);
             }
-            if (decision.result == OfferRule.Result.REVIEW
-                    && !OfferRule.onlyHotspotMissing(offer, addOn, settings)) countUnreadable(scan, offer);
+            if (decision.result == OfferRule.Result.REVIEW) countUnreadable(scan, offer);
             status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
             // The same offer as the read before, decided and left to the user, nothing of the app's under way on it:
             // nothing more to do with it, so its changes get the quiet gap (as an unchanged decided offer under
@@ -7482,11 +7633,11 @@ public final class OfferFilterService extends AccessibilityService {
         ErrorAttempt attempt = !isAddOn && !routeStored && scene != DasherScene.ROUTE
                 && !episode.questionWasSeen() && !episode.wasConfirmed()
                 ? new ErrorAttempt(generation, userActions.get(), settings.minimumScalePercent,
-                        settings.perItemCents, SystemClock.uptimeMillis(), false)
+                        SystemClock.uptimeMillis(), false)
                 : null;
         errorAttempt = attempt;
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
-        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent, settings.perItemCents) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
         if (tap != Tap.TAPPED && errorAttempt == attempt) errorAttempt = null;
         if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
         long tappedAt = SystemClock.uptimeMillis();
@@ -7519,7 +7670,6 @@ public final class OfferFilterService extends AccessibilityService {
             authorityEndReason = "";
             declineGeneration = generation;
             declineMinimumScale = settings.minimumScalePercent;
-            declinePerItemCents = settings.perItemCents;
             declinedOffer = offer;
             declinedOfferShowing = true;
             if (firstTap) {
@@ -7714,7 +7864,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (!autoAccept.current(offer, key, current, OfferNotificationService.generation(), now)) {
             return "offer_rules_or_deadline_changed";
         }
-        if (OfferRule.evaluate(offer, current).result != OfferRule.Result.KEEP) return "offer_no_longer_passes";
+        // As the candidate was armed: never below 100% of the user's own minimums, whatever Autopilot's bar is.
+        if (OfferRule.evaluate(offer, AutoAccept.acceptRules(current)).result != OfferRule.Result.KEEP) {
+            return "offer_no_longer_passes";
+        }
         return null;
     }
 
@@ -7951,7 +8104,7 @@ public final class OfferFilterService extends AccessibilityService {
      * Its click event, arriving just after, is not mistaken for the user's. While a touch in split screen is being
      * judged, nothing is tapped on the offer being declined.
      */
-    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale, int perItemCents) {
+    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale) {
         // Before the touches are taken: a touch judged the user's is counted before it stops being held.
         boolean held = touchesHeld > 0;
         takeOverIfTouched();
@@ -7966,10 +8119,10 @@ public final class OfferFilterService extends AccessibilityService {
             lastRefusal = refusal;
             return Tap.REFUSED;
         }
+        // The bar this tap was decided at, checked again right before it: a bar changed since (only by the user while
+        // a decline is under way) leaves it untapped.
         FilterSettings current = FilterStore.load(this);
-        if (current.minimumScalePercent != minimumScale || current.perItemCents != perItemCents) {
-            return Tap.RULES_CHANGED;
-        }
+        if (current.minimumScalePercent != minimumScale) return Tap.RULES_CHANGED;
         if (!phoneReadable() || scannerFaulted) return Tap.REFUSED;
         ownTapAt = now;
         ownTapTarget = node;
@@ -8456,8 +8609,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The steps the acceptance tracker noted: each onto its offer's history line (on the main thread, after that
-     * line) and into the log; an acceptance is learned from, a decline by hand held until the dash goes on, and an
-     * unrecognised screen after an offer goes to the screens log. Then the tracker's next deadline is set.
+     * line) and into the log; an acceptance is recorded ({@link #recordAcceptance}), and an unrecognised screen after
+     * an offer goes to the screens log. Nothing is learned from any of them. Then the tracker's next deadline is set.
      */
     private void applyNotes() {
         for (AcceptedOfferTracker.Note note : acceptedTracker.takeNotes()) {
@@ -8466,17 +8619,12 @@ public final class OfferFilterService extends AccessibilityService {
                 continue;
             }
             step(note.line, note.kind, note.detail);
-            DiagnosticLog.log(this, "learn", note.line.summary() + ": " + note);
+            DiagnosticLog.log(this, "outcome", note.line.summary() + ": " + note);
             if (note.screen != null) {
                 List<String> screen = new ArrayList<>(note.screen);
                 DiagnosticLog.logScreen(this, () -> PersonalText.accountScreen(screen) ? DiagnosticLog.NOT_KEPT
                         : "after an offer left, neither a delivery nor the wait for offers: labels="
                                 + PersonalText.kept(screen));
-            }
-            if (note.declined != null) {
-                OfferSnapshot declined = note.declined;
-                long wall = System.currentTimeMillis();
-                onMain(() -> ManualDeclines.declined(this, declined, wall));
             }
         }
         scanner.removeCallbacks(aftermathTick);
@@ -8494,7 +8642,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
-    /** A learning step onto an offer's history line, on the main thread after that line. */
+    /** An outcome step onto an offer's history line, on the main thread after that line. */
     private void step(OfferSnapshot line, DecisionLog.StepKind kind, String detail) {
         if (line == null) return;
         onMain(() -> DecisionLog.markStep(this, line, kind, detail, STEP_WINDOW_MS));
@@ -8642,16 +8790,16 @@ public final class OfferFilterService extends AccessibilityService {
     /** What a look at the windows found, for any thread. */
     private static final class ErrorAttempt {
         final long generation, actions, at;
-        final int scale, perItemCents;
+        /** The bar the request was made at. */
+        final int scale;
         final boolean confirmation;
         volatile boolean accepted;
         /** The first validated toast timestamp; no message or Android event is retained. */
         final AtomicLong errorAt = new AtomicLong(-1);
         /** Scanner-owned: each latched signal is applied at most once, including while a read is under way. */
         boolean errorConsumed;
-        ErrorAttempt(long generation, long actions, int scale, int perItemCents, long at, boolean confirmation) {
+        ErrorAttempt(long generation, long actions, int scale, long at, boolean confirmation) {
             this.generation = generation; this.actions = actions; this.scale = scale; this.at = at;
-            this.perItemCents = perItemCents;
             this.confirmation = confirmation;
         }
     }

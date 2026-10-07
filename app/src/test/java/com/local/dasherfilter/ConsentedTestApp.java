@@ -34,6 +34,11 @@ public class ConsentedTestApp extends Application {
         StopReports.forgetCache();
         // The signs of a dash kept in memory for the screen hold: no test inherits an earlier one's.
         Dashing.forgetCache();
+        // Autopilot plans, and takes Dasher's acceptance rate from its decline question, on a thread of its own on a
+        // phone: here on the calling thread, so no test leaves that work running into the next one, and nothing an
+        // earlier test planned or read is remembered (the tests of that thread set their own executor).
+        AutopilotRuntime.executorForTests = Runnable::run;
+        AutopilotRuntime.forgetCache();
     }
 
     static void accept(Context context) {

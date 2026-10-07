@@ -31,6 +31,7 @@ import org.robolectric.shadows.ShadowToast;
 import org.robolectric.shadows.ShadowWindowManagerImpl;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -52,7 +53,7 @@ public class AccessibilityAdapterTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.forgetCache();
         OfferSilencer.forgetCache();
         // Reads run on the main looper here, so each event is read before show() returns; ScannerThreadTest runs
@@ -845,7 +846,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void pauseRevokesPendingConfirmation() {
         show(offer("$7.90"));
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
 
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
@@ -891,7 +892,7 @@ public class AccessibilityAdapterTest {
     public void pausedNothingOfDasherIsReadSoNothingIsDeclinedOrRecorded() {
         // Paused is the safe mode (the 6 October 2026 incident): not one node of Dasher's is read, so an offer is
         // neither declined nor written to the history, and the status says so.
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         AccessibilityNodeInfo root = offer("$7.90");
         show(root);
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
@@ -940,9 +941,40 @@ public class AccessibilityAdapterTest {
         assertTrue(Shadows.shadowOf(nextDecline).getPerformedActions().isEmpty());
     }
 
+    /** The newest screen line of the offer with this pay. */
+    private DecisionLog.Entry line(int payCents) {
+        DecisionLog.flush();
+        for (DecisionLog.Entry entry : DecisionLog.recent(app, 20)) {
+            if (entry.source == DecisionLog.Source.SCREEN && entry.facts.payCents != null
+                    && entry.facts.payCents == payCents) {
+                return entry;
+            }
+        }
+        throw new AssertionError("no line for pay " + payCents + " in:\n" + DecisionLog.report(app, 20));
+    }
+
+    /** The steps 0.5.0 retired: no line is ever given one of them again (nothing is learned). */
+    private static final DecisionLog.StepKind[] RETIRED_LESSONS = {DecisionLog.StepKind.ACCEPTED_LEARNED,
+            DecisionLog.StepKind.ACCEPTED_NOT_LEARNED, DecisionLog.StepKind.ACCEPTED_BEST_SAVED,
+            DecisionLog.StepKind.ACCEPTED_MINIMUMS_UNCHANGED, DecisionLog.StepKind.DECLINE_TAUGHT,
+            DecisionLog.StepKind.DECLINE_NOT_TAUGHT};
+
+    private static void assertNoLesson(DecisionLog.Entry line) {
+        for (DecisionLog.StepKind kind : RETIRED_LESSONS) assertFalse(kind.name(), DecisionLog.hasStep(line, kind));
+    }
+
+    /** The minimums stay exactly as set, whatever the user accepts or declines. */
+    private void assertRulesUnchanged(FilterSettings set) {
+        FilterSettings now = FilterStore.load(app);
+        assertArrayEquals(set.minimums(), now.minimums());
+        assertEquals(set.maxStops, now.maxStops);
+        assertEquals(set.minimumScalePercent, now.minimumScalePercent);
+    }
+
     @Test
-    public void acceptingAStandaloneOfferRecordsItsPayoutAndBestRates() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+    public void acceptingAStandaloneOfferRecordsItsAcceptanceAndRoute() {
+        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterStore.save(app, rules);
         show(offer("$25.00"));
         AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
         tap.setPackageName("com.doordash.driverapp");
@@ -950,74 +982,100 @@ public class AccessibilityAdapterTest {
         controller.get().onAccessibilityEvent(tap);
         show(node("Arrived at store", false));
 
-        FilterSettings saved = FilterStore.load(app);
-        assertEquals(2500, saved.lastAcceptedCents);
-        // $25.00 for 21 min, 7.2 mi and 2 stops.
-        assertEquals("$1.19/min, $3.47/mi, $12.50/stop", saved.best.summary());
+        DecisionLog.Entry accepted = line(2500);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(accepted));
+        assertTrue(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED));
+        assertNoLesson(accepted);
+        // $25.00 for 21 min, 7.2 mi and 2 stops: its route is kept for the deliveries to come.
+        OfferSnapshot route = ActiveRouteStore.load(app);
+        assertEquals(Integer.valueOf(2500), route.payCents);
+        assertEquals(7.2, route.miles, 0.001);
+        assertEquals(Integer.valueOf(21), route.minutes);
+        assertEquals(Integer.valueOf(2), route.stops);
+        assertRulesUnchanged(rules);
         // Each step is in the log, for a report to show.
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("Accept tap seen on Pay $25.00"));
-        assertTrue(log, log.contains("Learned from accepted Pay $25.00"));
+        assertTrue(log, log.contains("[accept] Accepted Pay $25.00"));
+        assertFalse(log, log.contains("Learned from"));
     }
 
     @Test
-    public void aConfirmedAcceptanceBelowExistingBestsDoesNotClaimMinimumsRose() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0)
-                .withMinimumScalePercent(75));
-        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 7.2, 21, 2));
+    public void aConfirmedAcceptanceTeachesNothingAndStillCountsAfterReload() {
+        // Autopilot's bar at 75%: an acceptance changes neither it nor the minimums.
+        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterStore.save(app, rules);
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 75));
         show(offer("$25.00"));
         userTaps("Accept");
         show(node("Arrived at store", false));
-        assertEquals(3000, FilterStore.load(app).lastAcceptedCents);
-        StringBuilder learnedSteps = new StringBuilder();
-        for (DecisionLog.Step step : DecisionLog.recent(app, 1).get(0).steps) learnedSteps.append(step.text());
-        String history = learnedSteps.toString();
-        assertTrue(history, history.contains("no new accepted best; your existing minimums stay unchanged"));
-        assertFalse(history, history.contains("the adaptive minimum learned from it"));
+        StringBuilder steps = new StringBuilder();
+        for (DecisionLog.Step step : line(2500).steps) steps.append(step.text()).append('\n');
+        String history = steps.toString();
+        assertTrue(history, history.contains("Accepted: you tapped Accept, and Dasher showed a delivery screen"));
+        assertFalse(history, history.contains("learned") || history.contains("minimums"));
+        assertNoLesson(line(2500));
+        assertRulesUnchanged(rules.withMinimumScalePercent(75));
         DecisionLog.flush();
         DecisionLog.forgetCache();
-        assertTrue("confirmed acceptance still counts after reload",
-                DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
+        assertTrue("confirmed acceptance still counts after reload", DecisionLog.accepted(line(2500)));
     }
 
     @Test
-    public void aNewBestBelowSavedFloorsIsReportedAsSavedAndSurvivesHistoryReload() {
-        FilterStore.save(app, new FilterSettings(true, 3000, 1000, 1000, 3000, 0, true, 0)
-                .withMinimumScalePercent(10));
-        FilterStore.recordAccepted(app, new OfferSnapshot(2000, 7.2, 21, 2));
+    public void anAcceptanceBelowTheMinimumsIsTheUsersAndSurvivesHistoryReload() {
+        // $25.00 against a $30 minimum is 83% of it: it passes only Autopilot's 82% bar, so it is left to the user,
+        // whose own Accept is counted as theirs, at the bar it was decided at.
+        FilterSettings rules = FilterSettings.of(true, 3000, 0, 0, 0);
+        FilterStore.save(app, rules);
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         show(offer("$25.00"));
+        assertTrue("left to the user", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertTrue("never taken for the user", Shadows.shadowOf(accept).getPerformedActions().isEmpty());
         userTaps("Accept");
         show(node("Arrived at store", false));
-        assertEquals(2500, FilterStore.load(app).lastAcceptedCents);
         DecisionLog.flush();
         DecisionLog.forgetCache();
-        DecisionLog.Entry accepted = DecisionLog.recent(app, 1).get(0);
+        DecisionLog.Entry accepted = line(2500);
+        assertEquals(OfferRule.Result.KEEP, accepted.result);
+        assertEquals(83, accepted.scorePercent);
+        assertEquals(82, accepted.barPercent);
+        assertTrue(accepted.autopilot);
         assertTrue(DecisionLog.accepted(accepted));
-        assertTrue(accepted.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_BEST_SAVED));
-        assertFalse(accepted.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_NOT_LEARNED));
+        assertTrue(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertNoLesson(accepted);
+        assertRulesUnchanged(rules.withMinimumScalePercent(82));
     }
 
     @Test
-    public void anAcceptanceThatCannotTeachSaysWhyInTheLog() {
-        // Adaptive minimum off: accepted, but not learned.
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, false, 0));
+    public void anAcceptanceThatCannotBeCountedSaysWhyInTheLog() {
+        // Counted: the log says how it was seen, and nothing of learning.
+        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterStore.save(app, rules);
         show(offer("$25.00"));
         userTaps("Accept");
         show(node("Arrived at store", false));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
-        assertTrue(DiagnosticLog.read(app).contains("but not learned: auto-decline or Adaptive minimum was off"));
+        assertTrue(DecisionLog.accepted(line(2500)));
+        assertTrue(DiagnosticLog.read(app).contains(
+                "[accept] Accepted Pay $25.00, miles 7.2, minutes 21, stops 2; you tapped Accept, and Dasher showed a "
+                        + "delivery screen"));
+        assertFalse(DiagnosticLog.read(app).contains("not learned"));
 
-        // Adaptive on, but Dasher never shows a delivery screen we know within 15 s.
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+        // Dasher never shows a delivery screen we know within 15 s: nothing is counted, and the log says so.
         show(offer("$26.00"));
         userTaps("Accept");
         ShadowSystemClock.advanceBy(Duration.ofSeconds(16));
         show(node("Heading to Kroger", false));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertFalse(DecisionLog.hasStep(line(2600), DecisionLog.StepKind.ACCEPTED));
+        OfferSnapshot route = ActiveRouteStore.load(app);
+        assertTrue("no route kept from it", route == null || !Integer.valueOf(2600).equals(route.payCents));
         String log = DiagnosticLog.read(app);
-        assertTrue(log, log.contains("Not learned: no delivery screen recognized within 15 s after Accept on Pay $26.00"));
+        assertTrue(log, log.contains("Not counted: no delivery screen recognized within 15 s after Accept on Pay $26.00"));
         assertTrue(log, log.contains(PersonalText.UNKNOWN_NOT_KEPT));
         assertFalse("unknown screen text is excluded from acceptance diagnostics", log.contains("Heading to Kroger"));
+        assertRulesUnchanged(rules);
 
         // A tap with no readable offer on screen is noted too.
         ShadowSystemClock.advanceBy(Duration.ofSeconds(120));
@@ -1034,51 +1092,62 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void aManualDeclineTeachesTheClosestMinimumOnceTheNextOfferArrives() {
-        // For $14.00 over 7.2 mi, $1.50/mi asks $10.80 and the $7 minimum asks $7: per mile came closest.
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+    public void aManualDeclineCountsAsTheUsersOnceTheNextOfferArrivesAndTeachesNothing() {
+        // For $14.00 over 7.2 mi, $1.50/mi asks $10.80 and the $7 minimum asks $7: it passes.
+        FilterSettings rules = FilterSettings.of(true, 700, 150, 0, 0);
+        FilterStore.save(app, rules);
         show(offer("$14.00"));
         assertTrue("it passes the rules", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         userTaps("Decline");
-        assertTrue("held until the dash goes on", FilterStore.load(app).declined.isEmpty());
+        assertFalse("held until the dash goes on", DecisionLog.hasStep(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
 
         show(offer("$20.00"));
-        DeclinedFloor learned = FilterStore.load(app).declined;
-        assertEquals("$1.94/mi", learned.rates.perMileLabel());
-        assertEquals("only that rule rises", 0, learned.payCents);
+        assertTrue("counted as the user's decline", DecisionLog.hasStep(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
+        assertNoLesson(line(1400));
+        assertRulesUnchanged(rules);
 
-        // An offer like the declined one is now declined; the better one still passes.
+        // Nothing was learned from it: an offer like the declined one still passes, and so does the better one.
         show(offer("$14.00"));
-        assertFalse(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         show(offer("$20.00"));
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
     }
 
     @Test
-    public void aDeclineJustBeforeEndingTheDashTeachesNothing() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, true, 0));
+    public void aDeclineJustBeforeEndingTheDashCountsNothing() {
+        FilterSettings rules = FilterSettings.of(true, 700, 150, 0, 0);
+        FilterStore.save(app, rules);
         show(offer("$14.00"));
         userTaps("Decline");
         show(node("Dash now", false));
         show(offer("$20.00"));
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertFalse(DecisionLog.hasStep(line(1400), DecisionLog.StepKind.DECLINE_COUNTED));
+        assertTrue("dropped: the decline was about stopping",
+                DecisionLog.hasStep(line(1400), DecisionLog.StepKind.DECLINE_DROPPED));
+        assertRulesUnchanged(rules);
     }
 
     @Test
-    public void theAppsOwnDeclinesAndDeclinesWhileLearningIsOffTeachNothing() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0, true, 0));
+    public void theAppsOwnDeclinesAreNeverTheUsersAndNothingIsReadWhilePaused() {
+        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterStore.save(app, rules);
         show(offer("$7.90"));
         assertFalse("the app declines the failing offer", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         userTaps("Decline");
         show(offer("$25.00"));
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertFalse(DecisionLog.hasStep(line(790), DecisionLog.StepKind.DECLINE_COUNTED));
+        assertFalse(DecisionLog.hasStep(line(790), DecisionLog.StepKind.DECLINE_TAPPED));
+        assertNoLesson(line(790));
 
-        // With the adaptive minimum off, a manual decline of a passing offer is not learned either.
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 0, 0, 0, false, 0));
+        // Auto-decline paused: nothing of Dasher's is read, so a decline by hand then has no line to count on.
+        FilterSettings paused = FilterSettings.of(false, 700, 150, 0, 0);
+        FilterStore.save(app, paused);
+        int lines = DecisionLog.recent(app, 50).size();
         show(offer("$14.00"));
         userTaps("Decline");
         show(offer("$20.00"));
-        assertTrue(FilterStore.load(app).declined.isEmpty());
+        assertEquals("nothing read while paused", lines, DecisionLog.recent(app, 50).size());
+        assertRulesUnchanged(paused);
     }
 
     @Test
@@ -1205,7 +1274,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void anOfferWhoseTotalAndPlusAmountTogetherStillFailIsDeclinedAtOnce() {
         // The report's rules and its "+$1 · $7.35" screen: pay is $7.35, $8.35 or $1, all below $10.
-        FilterStore.save(app, new FilterSettings(true, 1000, 100, 0, 0, 3, true, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 100, 0, 3));
         show(partialOffer("+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min",
                 "Guaranteed earnings for completing the offer."));
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
@@ -1218,16 +1287,22 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void anOfferWithAPlusAmountThatMayPassIsLeftToTheDasher() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 100, 0, 0, 3, true, 0));
+        FilterSettings rules = FilterSettings.of(true, 1000, 100, 0, 3);
+        FilterStore.save(app, rules);
         show(partialOffer("+$1", "$10.60", "incl. tips", "2 stops (5.3 mi) • 30 min"));
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
         assertEquals(OfferRule.Result.REVIEW, entry.result);
         assertEquals("pay unclear beside a +$ amount", entry.reason);
 
-        // Accepting it teaches the adaptive minimum nothing: its pay was never read.
+        // Accepting it records no acceptance of its own and keeps no route: its pay was never read.
         userTaps("Accept");
         show(node("Arrived at store", false));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertFalse(DecisionLog.hasStep(line, DecisionLog.StepKind.ACCEPTED));
+        assertNull("no route kept from unread pay", ActiveRouteStore.load(app));
+        assertTrue(DecisionLog.report(app, 5), DecisionLog.report(app, 5).contains("its pay was not read"));
+        assertNoLesson(line);
+        assertRulesUnchanged(rules);
     }
 }

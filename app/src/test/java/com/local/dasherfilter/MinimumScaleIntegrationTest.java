@@ -4,12 +4,10 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.RectF;
-import android.os.Bundle;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.accessibility.AccessibilityNodeInfo;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.time.Duration;
@@ -26,50 +24,67 @@ import org.robolectric.annotation.LooperMode;
 
 import static org.junit.Assert.*;
 
-/** A global buffer changes the active boundary without editing the user's five minima or past offers. */
+/**
+ * The bar (0.5.0: what the minimums scale became) changes the active boundary without editing the user's minimums or
+ * past offers. Only Autopilot moves it, between offers ({@link FilterStore#commitAutopilotBar}); a rule save never
+ * writes it, no gesture on the homepage moves it, and turning Autopilot off puts it back at exactly 100%.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 3)
-            .withScoreByArea(true);
+    /** $10, $2 a mile, $0.30 a minute, at most 3 stops (their $1 a stop folds into minimum pay: 2 × $1 < $10). */
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1000, 2 * 100), 200, 30, 3);
 
-    @Test public void oldPreferencesDefaultToFullMinimumsAndTheNewScalePersists() {
+    /** Autopilot on, and the bar it moved to: as a commit between offers leaves it. */
+    private void autopilotBarAt(int bar) {
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, FilterStore.load(app).minimumScalePercent, bar));
+        assertEquals(bar, FilterStore.load(app).minimumScalePercent);
+    }
+
+    @Test public void oldPreferencesDefaultToExactlyTheMinimumsAndOnlyAutopilotMovesTheBar() {
         app.getSharedPreferences("offer_filter", Context.MODE_PRIVATE).edit().clear()
                 .putBoolean("enabled", true).putInt("flat", 1000).commit();
         FilterSettings legacy = FilterStore.load(app);
         assertEquals(100, legacy.minimumScalePercent);
+        assertFalse(legacy.autopilot);
         int[] before = legacy.minimums();
+        // A rule save never writes the bar.
         FilterStore.save(app, legacy.withMinimumScalePercent(97));
+        assertEquals(100, FilterStore.load(app).minimumScalePercent);
+        // Autopilot's commit does, and the bar persists.
+        autopilotBarAt(97);
         Context freshContext = app.createConfigurationContext(app.getResources().getConfiguration());
         FilterSettings reloaded = FilterStore.load(freshContext);
         assertEquals(97, reloaded.minimumScalePercent);
-        assertArrayEquals("the buffer does not overwrite individual floors", before, reloaded.minimums());
+        assertArrayEquals("the bar does not overwrite individual minimums", before, reloaded.minimums());
+        // Off, the bar is exactly the minimums again, and they are as they were.
+        FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+        assertEquals(100, FilterStore.load(freshContext).minimumScalePercent);
+        assertArrayEquals(before, FilterStore.load(freshContext).minimums());
     }
 
-    @Test public void learningAdoptionAndRuleCopiesKeepTheChosenBuffer() {
-        FilterSettings settings = RULES.withAdaptive(true).withMinimumScalePercent(97);
-        FilterStore.save(app, settings);
-        assertTrue(FilterStore.recordAccepted(app, new OfferSnapshot(2000, 6.0, 25, 2)));
-        FilterSettings learned = FilterStore.load(app);
-        assertEquals(97, learned.minimumScalePercent);
-        assertEquals("the actual accepted payout, not a scaled value, is learned", 2000,
-                learned.lastAcceptedCents);
-        for (FilterSettings copy : new FilterSettings[] {learned.withEnabled(false), learned.withScoreByArea(false),
-                learned.withMaxStops(2), learned.withAdaptive(false), learned.withoutRisingBaseline(),
-                learned.withHotspotProximity(50), learned.withMinimums(new int[] {1100, 250, 40, 200, 0}),
-                learned.adoptAdaptive()}) {
+    @Test public void ruleCopiesAndSavesKeepTheBarAutopilotSet() {
+        FilterStore.save(app, RULES);
+        autopilotBarAt(97);
+        FilterSettings current = FilterStore.load(app);
+        for (FilterSettings copy : new FilterSettings[] {current.withEnabled(false), current.withMaxStops(2),
+                current.withMinimums(1100, 250, 40), current.withMinimums(new int[] {1100, 250, 40})}) {
             assertEquals(97, copy.minimumScalePercent);
+            assertTrue(copy.autopilot);
         }
-        FilterStore.save(app, learned.adoptAdaptive());
-        assertEquals(2001, FilterStore.load(app).flatCents);
-        assertEquals(97, FilterStore.load(app).minimumScalePercent);
-        FilterStore.resetAccepted(app);
-        assertEquals(97, FilterStore.load(app).minimumScalePercent);
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        // Saving other minimums or max stops keeps the bar: only Autopilot (or turning it off) moves it.
+        FilterStore.save(app, current.withMinimums(1100, 250, 40).withMaxStops(2));
+        FilterSettings saved = FilterStore.load(app);
+        assertEquals(97, saved.minimumScalePercent);
+        assertArrayEquals(new int[] {1100, 250, 40, 0, 0, 0}, saved.minimums());
+        assertEquals(2, saved.maxStops);
+        FilterStore.save(app, saved.withEnabled(false));
+        assertEquals("pausing keeps the bar", 97, FilterStore.load(app).minimumScalePercent);
     }
 
-    @Test public void accessibleScaleRefreshesBothChartLinesAndSurvivesActivityRecreation() throws Exception {
+    @Test public void aBarAutopilotCommittedMovesBothChartLinesAndSurvivesActivityRecreation() throws Exception {
         FilterStore.save(app, RULES);
         DecisionLog.Entry recorded = entry(System.currentTimeMillis(), 970, 97);
         DecisionLog.record(app, recorded);
@@ -77,38 +92,31 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            AccessibilityNodeInfo score = node(star, MinimumsStarView.SCORE_ID);
-            assertNotNull(score.getRangeInfo());
-            assertEquals(100f, score.getRangeInfo().getCurrent(), 0.001f);
-            assertEquals(1f, score.getRangeInfo().getMin(), 0.001f);
-            assertEquals(200f, score.getRangeInfo().getMax(), 0.001f);
-            setScale(star, 97);
+            assertEquals("exactly the minimums", 1000L, find(content, DecisionChartView.class).payoutThresholdCents());
+        }
+        autopilotBarAt(97);
+        try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = controller.get().findViewById(android.R.id.content);
+            settleSky(content);
             DecisionChartView chart = find(content, DecisionChartView.class);
             assertEquals(970L, chart.payoutThresholdCents());
             assertEquals("a recorded 97% tree meets the new 97% reference", chart.treeAt(0)[1],
                     chart.scoreThresholdY(), 0.01f);
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
-            assertEquals(before, DecisionLog.recent(app, 1).get(0).toJson().toString());
-            assertTrue(chart.getContentDescription().toString(), chart.getContentDescription().toString()
-                    .contains("97%"));
-            assertTrue(node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString()
-                    .contains("97%"));
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
-            assertFalse("a tap still toggles area mode", FilterStore.load(app).scoreByArea);
-            assertEquals("the mode toggle preserves the buffer", 97, FilterStore.load(app).minimumScalePercent);
+            assertEquals("the past offer is not rewritten", before, DecisionLog.recent(app, 1).get(0).toJson().toString());
             controller.recreate();
             content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
-            assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
-            assertEquals(97f, node(find(content, MinimumsStarView.class), MinimumsStarView.SCORE_ID)
-                    .getRangeInfo().getCurrent(), 0.001f);
+            chart = find(content, DecisionChartView.class);
+            assertEquals(970L, chart.payoutThresholdCents());
+            assertEquals(chart.treeAt(0)[1], chart.scoreThresholdY(), 0.01f);
         }
     }
 
-    @Test public void horizontalDragChangesTheScaleWithoutTogglingTheModeOrChangingKnobs() {
+    @Test public void aDragAcrossTheAutopilotControlMovesNeitherTheBarNorTheMinimums() {
         FilterStore.save(app, RULES);
+        autopilotBarAt(97);
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -119,15 +127,16 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             dragThrough(content, new float[][] {{control.centerX(), control.centerY()},
                     {control.centerX() - ui.dp(24), control.centerY()}}, null);
             FilterSettings saved = FilterStore.load(app);
-            assertEquals(97, saved.minimumScalePercent);
-            assertTrue("a drag is not also a mode toggle", saved.scoreByArea);
+            assertEquals("only Autopilot moves the bar", 97, saved.minimumScalePercent);
+            assertTrue("a drag is not a tap that turns Autopilot off", saved.autopilot);
             assertArrayEquals(RULES.minimums(), saved.minimums());
             assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
         }
     }
 
-    @Test public void interruptedScaleGestureLeavesSavedRulesAlone() {
-        FilterStore.save(app, RULES.withMinimumScalePercent(97));
+    @Test public void anInterruptedGestureOnTheAutopilotControlLeavesTheRulesAlone() {
+        FilterStore.save(app, RULES);
+        autopilotBarAt(97);
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -141,7 +150,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             send(star, now, now + 120, MotionEvent.ACTION_CANCEL, x - new Ui(app).dp(40), y);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
-            assertTrue(FilterStore.load(app).scoreByArea);
+            assertTrue(FilterStore.load(app).autopilot);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
         }
     }
@@ -164,23 +173,27 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
     }
 
     private void render(String name, boolean night) throws Exception {
-        // Equal $10 baseline asks on every monetary spoke make the skyline's recorded score and the
-        // constellation's current score directly comparable in this synthetic preview.
-        FilterSettings previewRules = new FilterSettings(true, 1000, 250, 50, 500, 3)
-                .withScoreByArea(true).withMinimumScalePercent(97);
+        // Equal $10 asks from minimum pay, per mile (4 mi × $2.50) and per minute (20 min × $0.50) make the skyline's
+        // recorded score and the bar directly comparable in this synthetic preview; their $5 a stop folds into minimum
+        // pay (2 × $5 = $10).
+        FilterSettings previewRules = FilterSettings.of(true, Math.max(1000, 2 * 500), 250, 50, 3);
         FilterStore.save(app, previewRules);
+        autopilotBarAt(97);
+        FilterSettings atBar = FilterStore.load(app);
         int[] scores = {60, 82, 97, 125, 185, -1, 96, 210, 120, 101, 80, 140, 430, 97};
         long start = System.currentTimeMillis() - scores.length * 61_000L;
         for (int i = 0; i < scores.length; i++) {
             OfferSnapshot facts = new OfferSnapshot(scores[i] < 0 ? null : scores[i] * 10, 4.0, 20, 2);
-            OfferRule.Decision decision = OfferRule.evaluate(facts, previewRules);
+            OfferRule.Decision decision = OfferRule.evaluate(facts, atBar);
             DecisionLog.Action action = decision.result == OfferRule.Result.REVIEW ? DecisionLog.Action.NEEDS_REVIEW
                     : decision.result == OfferRule.Result.DECLINE ? DecisionLog.Action.DECLINE_TAPPED
                     : DecisionLog.Action.PASSES;
             DecisionLog.record(app, new DecisionLog.Entry(start + i * 61_000L, DecisionLog.Source.SCREEN, false,
                     facts, decision.requiredCents, decision.result, decision.reason, action, true,
-                    Collections.emptyList()).withScore(decision.scorePercent));
+                    Collections.emptyList()).withScore(decision.scorePercent)
+                    .withBar(decision.minimumScalePercent, decision.autopilot));
         }
+        assertEquals("pay as a percent of the $10 the minimums ask", 97, DecisionLog.recent(app, 1).get(0).scorePercent);
         populateSyntheticAtlas();
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
@@ -232,14 +245,6 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         return new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false,
                 new OfferSnapshot(payout, 4.0, 18, 2), 1000, result, "synthetic historical chart fixture", action, true,
                 Collections.emptyList()).withScore(score);
-    }
-
-    private static void setScale(MinimumsStarView star, int percent) {
-        Bundle value = new Bundle();
-        value.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, percent);
-        assertTrue(star.getAccessibilityNodeProvider().performAction(MinimumsStarView.SCORE_ID,
-                android.R.id.accessibilityActionSetProgress, value));
-        Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 
     private static void send(View view, long start, long at, int action, float x, float y) {

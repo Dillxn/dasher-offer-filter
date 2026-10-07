@@ -204,6 +204,21 @@ final class AutopilotRuntime {
         commitRequester = requester;
     }
 
+    /**
+     * Starts the "offer-autopilot" thread now if it has not started yet (the screen reader calls this as it connects, on
+     * the main thread), so that {@link #confirmationSeen}, called on the screen reader's thread between finding Dasher's
+     * decline question and tapping it, only ever queues its parse: it never creates and starts a thread there. Once per
+     * process; nothing while the tests run Autopilot elsewhere ({@link #executorForTests}).
+     */
+    static void warm() {
+        if (executorForTests != null) return;
+        try {
+            Worker.EXECUTOR.execute(() -> { });
+        } catch (RejectedExecutionException stopped) {
+            // No thread to start: the hand-over finds the same.
+        }
+    }
+
     static void listen(Listener listener) {
         if (listener != null && !listeners.contains(listener)) listeners.add(listener);
     }
