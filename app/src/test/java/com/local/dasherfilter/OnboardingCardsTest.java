@@ -137,6 +137,41 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
         assertTrue("0.4.72 kept no record of it: an update all the same", some.shown());
     }
 
+    @Test public void anUpdateWhoseNoticeSaidWhatChangedShowsItsNewsOnceNotAgainAsACard() {
+        org.junit.Assume.assumeTrue("the bundled words are written", BundledNotes.WRITTEN);
+        String version = Updater.version(app);
+        assertFalse("this version has news to tell", BundledNotes.whatsNew(version).isEmpty());
+        installedAt(1000, 2000);
+        app.getSharedPreferences(WhatsNewCard.PREFS, Context.MODE_PRIVATE).edit()
+                .putString(WhatsNewCard.SEEN, "0.0.1").commit();
+        ConsentedTestApp.forget(app);
+        app.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(Consent.ACCEPTED_VERSION, Consent.VERSION - 1).commit();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull("the notice says what changed", shownTextContaining(content, NoticePage.WHAT_CHANGED));
+            shownButton(content, Consent.ACCEPT).performClick();
+            tick();
+            assertNull("the card would only say it again", shownTextContaining(content, WhatsNewCard.title(version)));
+        }
+        assertEquals("counted as seen for this version", version, app.getSharedPreferences(WhatsNewCard.PREFS,
+                Context.MODE_PRIVATE).getString(WhatsNewCard.SEEN, null));
+    }
+
+    @Test public void anUpdateThatLeavesTheNoticeAsItWasStillShowsTheCard() {
+        org.junit.Assume.assumeTrue("the bundled words are written", BundledNotes.WRITTEN);
+        String version = Updater.version(app);
+        installedAt(1000, 2000);
+        app.getSharedPreferences(WhatsNewCard.PREFS, Context.MODE_PRIVATE).edit()
+                .putString(WhatsNewCard.SEEN, "0.0.1").commit();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            assertNull("no notice to accept", shownTextContaining(content, NoticePage.WHAT_CHANGED));
+            assertNotNull("the update's news, once", shownTextContaining(content, WhatsNewCard.title(version)));
+        }
+    }
+
     // ---- Peek's introduction ----
 
     @Test public void peeksCardShowsOnceWhenFilteringFirstRunsAndLeadsToItsSwitch() {

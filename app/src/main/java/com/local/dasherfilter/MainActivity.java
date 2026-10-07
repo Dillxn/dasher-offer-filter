@@ -416,7 +416,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * are replayed (a replay never rings, declines or hides anything).
      */
     private void acceptNotice() {
+        // A re-accepting reader just read what changed in the notice's box: the What is new card stays away.
+        boolean toldWhatChanged = !BundledNotes.noticeChanges(NoticePage.acceptedBefore(this)).isEmpty();
         Consent.accept(this);
+        if (toldWhatChanged) WhatsNewCard.toldByNotice(this);
         showNotice(false);
         forgetAnswers();
         OfferNotificationService.rulesChanged();

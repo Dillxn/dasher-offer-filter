@@ -11,7 +11,8 @@ import java.util.function.Function;
 /**
  * Once after an update: "What is new in <version>", a few bundled lines ({@link BundledNotes}) and OK, which closes it
  * for good. Not after a new install (nothing is new to it), never behind the notice (the homepage then refreshes
- * nothing), and never with placeholder words: until the docs package writes them, there is nothing to show.
+ * nothing), and never with placeholder words: until the docs package writes them, there is nothing to show. Not after
+ * an update whose notice already said what changed either ({@link #toldByNotice}): the update's news shows once.
  */
 final class WhatsNewCard {
     static final String PREFS = "onboarding";
@@ -80,6 +81,15 @@ final class WhatsNewCard {
             return Collections.emptyList();
         }
         return lines;
+    }
+
+    /**
+     * The notice's What changed box told this update's news, and the reader accepted it: the card would only say it
+     * again, so it counts as seen for this version (the owner, 7 October 2026: "we don't need to show new features
+     * update twice").
+     */
+    static void toldByNotice(Context context) {
+        prefs(context).edit().putString(SEEN, Updater.version(context)).apply();
     }
 
     /** Whether this install was ever updated (an older version was on the phone before). */
