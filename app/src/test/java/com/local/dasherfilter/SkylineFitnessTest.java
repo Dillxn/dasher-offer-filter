@@ -30,7 +30,7 @@ import static org.junit.Assert.*;
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SkylineFitnessTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 30, 100, 0);
+    private static final FilterSettings RULES = FilterSettings.of(true, 1000, 200, 30, 0);
 
     @Test public void payoutAndFitnessHaveIndependentHeightsAndScales() {
         DecisionLog.Entry low = offer(1, 1200, 1000, 50);
@@ -80,7 +80,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         chart.setRules(learned.withAdaptive(false));
         assertEquals("turning learning off leaves only the fixed overall payout floor", 1000L,
                 chart.payoutThresholdCents());
-        chart.setRules(new FilterSettings(true, 0, 9999, 0, 0, 0));
+        chart.setRules(FilterSettings.of(true, 0, 9999, 0, 0));
         assertEquals("a per-mile rule is not a horizontal overall payout floor", 0L,
                 chart.payoutThresholdCents());
         assertTrue("off draws no misleading zero-dollar minimum line", Float.isNaN(chart.payoutThresholdY()));
@@ -116,7 +116,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue("score is only advisory in strict mode: " + strict, strict.contains("advisory"));
         assertTrue(chart.choose(known));
 
-        chart.setRules(new FilterSettings(true, 6000, 2000, 500, 1000, 0).withScoreByArea(true));
+        chart.setRules(FilterSettings.of(true, 6000, 2000, 500, 0).withScoreByArea(true));
         assertEquals("historical fitness is not re-scored by today's minimums", treeY, chart.treeAt(0)[1], 0.01f);
         assertEquals(123, known.scorePercent);
         assertEquals(OfferRule.Result.KEEP, known.result);

@@ -36,7 +36,7 @@ import org.robolectric.annotation.LooperMode;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferCaptionUiTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 100, 20, 100, 3)
+    private static final FilterSettings RULES = FilterSettings.of(true, 1000, 100, 20, 3)
             .withPerItem(735).withAdaptive(true).withScoreByArea(true);
 
     @Before public void palette() { Appearance.choose(app, Appearance.Mode.NIGHT); }

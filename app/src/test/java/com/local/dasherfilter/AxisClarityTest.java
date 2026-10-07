@@ -21,7 +21,7 @@ import static org.junit.Assert.*;
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AxisClarityTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 200, 50, 500, 3)
+    private static final FilterSettings RULES = FilterSettings.of(true, 1000, 200, 50, 3)
             .withHotspotProximity(50);
 
     @Test public void expandedConstellationNamesEveryMeasureWithoutCollidingWithOtherNames() {

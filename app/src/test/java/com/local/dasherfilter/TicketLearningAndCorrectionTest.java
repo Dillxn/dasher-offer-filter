@@ -50,7 +50,7 @@ public class TicketLearningAndCorrectionTest extends AndroidAdapterTestBase {
     }
 
     @Test public void laterEvidenceCorrectsTheSameFreshOffersAnimation() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             FilterHeroView hero = find(activity.get().findViewById(android.R.id.content), FilterHeroView.class);
             OfferSnapshot facts = new OfferSnapshot(1500, 4.0, 15, 2);

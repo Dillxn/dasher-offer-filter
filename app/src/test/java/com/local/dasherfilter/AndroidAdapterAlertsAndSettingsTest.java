@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -79,7 +80,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void aBackgroundOfferWithoutPayRingsOnceSoItIsNotMissed() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -130,7 +131,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void realPayloadProducesReviewCardWithoutOpeningDasher() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -164,7 +165,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void tappingTheMascotPausesWithoutPressingSave() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
@@ -184,7 +185,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void reviewCardSaysWhichEvidenceIsMissing() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -200,7 +201,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     public void aBackgroundOfferWithAPlusAmountBesideATotalIsNeverHiddenOrDeclined() {
         // A notification's text may be cut short: the "+$" bound that can decline a screen offer is never used here.
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -226,7 +227,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void freshOfferOnAReusedKeyIsAnnouncedEvenWhenTheExpiryCallbackIsLate() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -249,7 +250,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void trackedOfferAndItsCardExpireTogether() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -313,7 +314,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
                 .putInt("max_stops", 3).commit();
 
         FilterSettings loaded = FilterStore.load(app);
-        assertEquals("the fee is not a per-stop minimum, so per stop starts off", 0, loaded.perStopCents);
+        assertArrayEquals("the fee is no minimum of any kind: only the minimums that were set", new int[] {700, 150, 0,
+                0, 0, 0}, loaded.minimums());
         assertFalse("the old key is gone", prefs.contains("stop"));
         assertFalse(prefs.contains("per_stop"));
         // Everything else is as it was.
@@ -338,7 +340,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
         // Per stop is retired as well (0.5.0): rules saved now write neither key, so nothing brings the fee back.
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 0, 3));
-        assertEquals(0, FilterStore.load(app).perStopCents);
+        assertArrayEquals(new int[] {700, 150, 0, 0, 0, 0}, FilterStore.load(app).minimums());
         assertFalse(prefs.contains("per_stop"));
         assertFalse(prefs.contains("stop"));
     }
@@ -353,7 +355,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertFalse("the old key is gone all the same", prefs.contains("stop"));
         assertTrue(loaded.enabled);
         assertEquals(700, loaded.flatCents);
-        assertEquals(0, loaded.perStopCents);
+        assertArrayEquals(new int[] {700, 0, 0, 0, 0, 0}, loaded.minimums());
         assertFalse(DiagnosticLog.read(app).contains("extra-stop fee"));
         assertEquals("No offer evaluated yet.", FilterStore.lastStatus(app));
         assertNull(FilterStore.takeStopFeeNotice(app));
@@ -395,7 +397,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             TextView shown = shownTextContaining(content, notice);
             assertNotNull("on the homepage, the first time it opens after the update", shown);
-            assertEquals("per stop starts off", 0, FilterStore.load(app).perStopCents);
+            assertArrayEquals("the fee became no minimum", new int[] {700, 0, 0, 0, 0, 0},
+                    FilterStore.load(app).minimums());
             assertNull("taken from the store as it is shown", FilterStore.takeStopFeeNotice(app));
 
             iconButton(content, "Settings").performClick();
@@ -422,7 +425,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void resumeTurnsAutoDeclineBackOnWithTheSavedRules() {
-        FilterStore.save(app, new FilterSettings(false, 2000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 150, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
@@ -441,18 +444,26 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void withoutAnyRuleTheMascotPointsToTheHollowKnobs() {
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+    public void withoutAnyRuleTheMascotOffersTypicalMinimumsOrTheHollowKnobs() {
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Set up rules", mascot.action());
-            assertNotNull(shownTextContaining(content, MainActivity.START_HINT));
+            assertNotNull(shownTextContaining(content, "Tap to start with typical minimums"));
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertFalse(star.beckoned());
             mascot.performClick();
             settle();
+            android.app.AlertDialog starter = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("Start with typical minimums?",
+                    Shadows.shadowOf(starter).getTitle().toString());
+            assertFalse("nothing is saved by asking", FilterStore.load(app).hasAnyRule());
+            // "Set my own": the hollow knobs beckon, as the mascot's tap used to make them.
+            starter.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+            settle();
             assertFalse(FilterStore.load(app).enabled);
+            assertFalse(FilterStore.load(app).hasAnyRule());
             assertTrue("the hollow knobs beckon", star.beckoned());
             assertFalse("no page opens", settingsShown(content));
         }
@@ -492,7 +503,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void savingRulesKeepsAutoDeclinePaused() {
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -508,7 +519,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void everyButtonOnTheScreenHasALabel() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             List<Button> buttons = new ArrayList<>();
@@ -564,7 +575,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void whatTheExampleNeedsFollowsTheRulesAsTheyAreSet() {
-        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -638,7 +649,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void backgroundDecisionsAreRecorded() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {

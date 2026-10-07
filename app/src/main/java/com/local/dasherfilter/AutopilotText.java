@@ -11,8 +11,11 @@ import java.util.List;
  * a {@link Autopilot.Plan}, or plain numbers.
  *
  * <p>The words never promise earnings: pay per hour is only ever history ("paid"), the accepts still needed are "about"
- * and called an estimate, and no tier rule is claimed beyond "check the Dasher app". The acceptance rate is shown in
- * whole percent rounded down, so it never reads as the goal while it is still below it. Log lines ({@code log*}) are
+ * and called an estimate, and no tier rule is claimed beyond "check the Dasher app". Wherever the acceptance rate is
+ * shown (the status line, the chip, the details, the shared report's line and the plan's log line) it is the
+ * carried-forward rate in whole percent, rounded half up ({@link #shownPercent}), so no two of them ever disagree by a
+ * point; "below the goal" and the accepts still needed ({@code goal − shown}) follow that shown rate, so they never
+ * contradict it ("AR 70% → 70%"). Display only: the engine keeps its exact arithmetic. Log lines ({@code log*}) are
  * fixed words and numbers only, never screen text.
  */
 final class AutopilotText {
@@ -184,9 +187,13 @@ final class AutopilotText {
             return plan.mode == Autopilot.Mode.PASS_FLOOR ? Kind.PASS_FLOOR : Kind.PAY_FIRST;
         }
 
-        /** Autopilot is on with a goal, and the acceptance rate is known and below it (the amber ring and chip). */
+        /**
+         * Autopilot is on with a goal, and the acceptance rate is known and, as shown ({@link #arPercent}), below it
+         * (the amber ring and chip).
+         */
         boolean belowGoal() {
-            return on && goal > 0 && arHundredths >= 0 && arHundredths < 100 * goal;
+            int shown = arPercent();
+            return on && goal > 0 && shown >= 0 && shown < goal;
         }
 
         /** Even the lowest bar passes too few offers for the goal. */
@@ -194,14 +201,20 @@ final class AutopilotText {
             return plan != null && plan.pinned;
         }
 
-        /** About how many more accepts reach the goal; 0 at or above it, or when unknown. */
+        /**
+         * About how many more accepts reach the goal: the goal less the rate as shown ("AR 9% → 70%: about 61 more
+         * accepts"); 0 at or above it, or when unknown. An estimate for display; the engine keeps its exact need.
+         */
         int acceptsNeeded() {
-            return Autopilot.acceptsNeeded(goal, arHundredths);
+            return belowGoal() ? goal - arPercent() : 0;
         }
 
-        /** The acceptance rate in whole percent, rounded down; -1 when unknown. */
+        /**
+         * The acceptance rate as every Autopilot text shows it: whole percent, rounded half up (55.90% shows as 56%,
+         * 54.90% as 55%); -1 when unknown.
+         */
         int arPercent() {
-            return arHundredths < 0 ? -1 : arHundredths / 100;
+            return shownPercent(arHundredths);
         }
 
         /** Whole minutes since Dasher's latest reading was seen; -1 without one. */
@@ -330,9 +343,9 @@ final class AutopilotText {
         return "AR " + arShort(s) + " → " + s.goal + "%: about " + accepts + " more " + plural(accepts, "accept");
     }
 
-    /** "55%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded down. */
+    /** "56%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded half up. */
     private static String arShort(Status s) {
-        return (s.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + s.arHundredths / 100 + "%";
+        return (s.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + s.arPercent() + "%";
     }
 
     // ---- The compact / split chip ----
@@ -403,7 +416,7 @@ final class AutopilotText {
      */
     static String detailsAcceptanceRate(Status s) {
         if (s.arSource == Autopilot.ArSource.UNKNOWN || s.arHundredths < 0) return s.on ? DETAILS_AR_NOT_SEEN : null;
-        int percent = s.arHundredths / 100;
+        int percent = s.arPercent();
         if (s.arSource == Autopilot.ArSource.ESTIMATE) {
             return "Acceptance rate: about " + percent + "%, estimated from " + s.arCounted + " of your recent offers.";
         }
@@ -590,7 +603,7 @@ final class AutopilotText {
 
     private static String reportAcceptanceRate(Status s) {
         if (s.arSource == Autopilot.ArSource.UNKNOWN || s.arHundredths < 0) return "AR unknown";
-        int percent = s.arHundredths / 100;
+        int percent = s.arPercent();
         if (s.arSource == Autopilot.ArSource.ESTIMATE) {
             return "AR ~" + percent + "% (estimate, " + s.arCounted + " " + plural(s.arCounted, "offer") + ")";
         }
@@ -639,7 +652,7 @@ final class AutopilotText {
 
     private static String logAcceptanceRate(Autopilot.Plan plan, long readingAt, long wallNow) {
         if (plan.arSource == Autopilot.ArSource.UNKNOWN || plan.arHundredths < 0) return "unknown";
-        int percent = plan.arHundredths / 100;
+        int percent = shownPercent(plan.arHundredths);
         if (plan.arSource == Autopilot.ArSource.ESTIMATE) {
             return "~" + percent + "% estimate (" + plan.arCounted + " counted)";
         }
@@ -673,6 +686,14 @@ final class AutopilotText {
     }
 
     // ---- Helpers ----
+
+    /**
+     * An acceptance rate in hundredths of a percent as Autopilot shows it: whole percent, rounded half up (5,590 → 56,
+     * 5,490 → 55, 6,950 → 70); -1 when unknown (negative).
+     */
+    static int shownPercent(int hundredths) {
+        return hundredths < 0 ? -1 : (hundredths + 50) / 100;
+    }
 
     /** "goal 70%" or "pay first". */
     private static String goalWords(int goal) {

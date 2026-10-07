@@ -21,18 +21,18 @@ import java.util.Map;
 
 /**
  * Recent offers as a little skyline, oldest left: each offer is a building as tall as the pay read, in the color of
- * what the rules said, with a tree beside it as tall as its recorded score. Dollars and percentages have independent
- * scales and share the street as zero. A solid pay rail marks the scaled current overall payout minimum and a dashed
- * tree rail marks the configured minimums percentage. The short ink tick across each building is the pay its
- * historical rules required. Its flag says what
- * became of it ({@link DecisionLog#outcome}): ✓ passed, ✕ declined (the app's decline went through), ? review, a
- * shopping bag accepted, and a person left to you (taken over, paused, refused, its confirmation not tapped, or only
- * its notification hidden), in a neutral grey. Passed offers have their windows lit. The guides never replace the
- * outcome: the score rail is only a reference in strict mode, and the payout spoke is compensable in area mode. Unread score
- * gets an open street-level marker, never a fabricated tree. An offer whose pay was not read
- * is a signpost at street level. Tapping a building selects it (a spotlight picks it out) and reports it to the
- * listener; an offer picked on the constellation is selected the same way ({@link #choose}). The line under the
- * chart gives the chosen offer's values. Buildings and trees rise together; with Android's animations off they rest.
+ * what the rules said, with a tree beside it as tall as its recorded score (pay as a percent of the minimums).
+ * Dollars and percentages have independent scales and share the street as zero. A dashed rail marks the current bar
+ * ("Bar 82%"), and a solid one, only with a minimum pay, what that minimum asks at the bar ("Pay $3.28 min",
+ * {@code ⌈bar × flat ÷ 100⌉}). The short ink tick across each building is the pay its rules required when decided. Its
+ * flag says what became of it ({@link DecisionLog#outcome}): ✓ passed, ✕ declined (the app's decline went through),
+ * ? review, a shopping bag accepted, and a person left to you (taken over, paused, refused, its confirmation not
+ * tapped, or only its notification hidden), in a neutral grey. Passed offers have their windows lit. The guides never
+ * replace the outcome. An unread score, and a score from the retired rules (a line an older version decided), gets an
+ * open street-level marker, never a tree. An offer whose pay was not read is a signpost at street level. Tapping a
+ * building selects it (a spotlight picks it out) and reports it to the listener; an offer picked on the constellation
+ * is selected the same way ({@link #choose}). Buildings and trees rise together; with Android's animations off they
+ * rest.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -64,7 +64,7 @@ final class DecisionChartView extends View {
     private long selectedAt;
     private OnSelect listener;
     private long payoutMinimumCents;
-    private boolean scoreByArea;
+    private int flatCents;
     private int minimumScalePercent = 100;
     /** When each shown offer (by its time) began to rise. */
     private final Map<Long, Long> risingSince = new HashMap<>();
@@ -85,21 +85,26 @@ final class DecisionChartView extends View {
         this.listener = listener;
     }
 
-    /** Current overall payout spoke, including only the enabled learned overall-pay floors (never offer rates). */
+    /**
+     * The rails for these rules: the dashed one at the bar, and the solid one, only with a minimum pay, at what it
+     * asks at the bar ({@code ⌈bar × flat ÷ 100⌉}).
+     */
     void setRules(FilterSettings rules) {
-        long payout = Math.max(0, rules.flatCents);
-        if (rules.risingOffers) {
-            if (rules.lastAcceptedCents > 0) payout = Math.max(payout, rules.lastAcceptedCents + 1L);
-            if (rules.declined.payCents > 0) payout = Math.max(payout, rules.declined.beatPay());
+        int flat = Math.max(0, rules.flatCents);
+        long payout = flat > 0 ? OfferRule.scaledCost(flat, rules.minimumScalePercent) : 0;
+        if (payoutMinimumCents == payout && flatCents == flat && minimumScalePercent == rules.minimumScalePercent) {
+            return;
         }
-        payout = OfferRule.scaledCost(payout, rules.minimumScalePercent);
-        if (payoutMinimumCents == payout && scoreByArea == rules.scoreByArea
-                && minimumScalePercent == rules.minimumScalePercent) return;
         payoutMinimumCents = payout;
-        scoreByArea = rules.scoreByArea;
+        flatCents = flat;
         minimumScalePercent = rules.minimumScalePercent;
         setContentDescription(describe(entries));
         invalidate();
+    }
+
+    /** A tree stands only for a score this version's rules worked out: never a retired one. */
+    private static boolean tree(DecisionLog.Entry entry) {
+        return entry.scorePercent >= 0 && entry.model >= DecisionLog.MODEL;
     }
 
     /** @param newestFirst recent entries, newest first; only the latest {@link #SLOTS} are drawn */
@@ -194,7 +199,7 @@ final class DecisionChartView extends View {
                 line.setStrokeCap(Paint.Cap.ROUND);
                 canvas.drawLine(center - barWidth / 2f, rope, center + barWidth / 2f, rope, line);
             }
-            if (entry.scorePercent >= 0) {
+            if (tree(entry)) {
                 float tip = bottom - (bottom - y(entry.scorePercent, maxScore, top, bottom)) * rise;
                 if (rise > 0) {
                     drawTree(canvas, treeCenter, tip, bottom, treeWidth(slot));
@@ -207,7 +212,7 @@ final class DecisionChartView extends View {
                     }
                 }
             } else {
-                // Unavailable and measured zero are distinct: open ring versus a flat filled mark.
+                // Unavailable (or from the retired rules) and measured zero are distinct: open ring versus a flat mark.
                 line.setColor(ui.inkSecondary);
                 line.setStrokeWidth(Math.max(1, ui.dp(1)));
                 canvas.drawCircle(treeCenter, bottom - ui.dp(2), Math.min(ui.dp(2), treeWidth(slot) / 3f), line);
@@ -270,12 +275,9 @@ final class DecisionChartView extends View {
     }
 
     private void drawThresholdLabels(Canvas canvas, float left, float right) {
-        if (payoutMinimumCents > 0) {
-            drawRailLabel(canvas, "Pay " + DecisionLog.shortMoney(payoutMinimumCents)
-                    + (scoreByArea ? " spoke" : " min"), left, false, payoutColor());
-        }
-        drawRailLabel(canvas, "Score " + minimumScalePercent + (scoreByArea ? "% min" : "% ref"), right,
-                true, treeColor());
+        String pay = AutopilotText.skylinePayRail(flatCents, minimumScalePercent);
+        if (payoutMinimumCents > 0 && pay != null) drawRailLabel(canvas, pay, left, false, payoutColor());
+        drawRailLabel(canvas, AutopilotText.skylineBarRail(minimumScalePercent), right, true, treeColor());
     }
 
     /** A reserved caption strip keeps every roof flag and tree visible, even in the 52dp skyline. */
@@ -364,16 +366,17 @@ final class DecisionChartView extends View {
         return new float[] {center, Math.max(roof - ui.dp(12), ui.dp(10))};
     }
 
-    /** Settled score tree: center X, tip Y, baseline Y and width. Unknown score has no tree. */
+    /** Settled score tree: center X, tip Y, baseline Y and width. An unknown or retired score has no tree. */
     float[] treeAt(int index) {
-        if (index < 0 || index >= entries.size() || getWidth() <= 0 || entries.get(index).scorePercent < 0) return null;
+        if (index < 0 || index >= entries.size() || getWidth() <= 0 || !tree(entries.get(index))) return null;
         float slot = slotWidth();
         return new float[] {treeCenter(index, slot), y(entries.get(index).scorePercent, scoreScaleMax(),
                 plotTop(), plotBottom()), plotBottom(), treeWidth(slot)};
     }
 
     boolean treeClippedAt(int index) {
-        return index >= 0 && index < entries.size() && entries.get(index).scorePercent > SCORE_DISPLAY_CAP;
+        return index >= 0 && index < entries.size() && tree(entries.get(index))
+                && entries.get(index).scorePercent > SCORE_DISPLAY_CAP;
     }
 
     long payoutThresholdCents() { return payoutMinimumCents; }
@@ -453,7 +456,9 @@ final class DecisionChartView extends View {
     /** Percent scale does not depend on payouts or dollar requirements. Unknowns contribute nothing. */
     private long scoreScaleMax() {
         int max = Math.max(100, minimumScalePercent);
-        for (DecisionLog.Entry entry : entries) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, entry.scorePercent));
+        for (DecisionLog.Entry entry : entries) {
+            if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, entry.scorePercent));
+        }
         for (int ceiling : new int[] {150, 200, 250, 300, SCORE_DISPLAY_CAP}) {
             if (ceiling >= max) return ceiling;
         }
@@ -568,19 +573,20 @@ final class DecisionChartView extends View {
                         + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
                 counts[DecisionLog.Outcome.REVIEW.ordinal()]);
         int unknown = 0;
+        int retired = 0;
         int clipped = 0;
         for (DecisionLog.Entry entry : entries) {
             if (entry.scorePercent < 0) unknown++;
-            if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
+            else if (!tree(entry)) retired++;
+            else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
-        return summary + selectedDescription() + " Building height is payout in dollars; tree height is the recorded score in percent,"
-                + " on separate scales. Dashed score line: " + minimumScalePercent + "%" + (scoreByArea ? " minimum for area scoring."
-                : " advisory reference only; strict mode checks each rule.")
-                + (payoutMinimumCents > 0 ? " Solid payout line: " + DecisionLog.money(payoutMinimumCents)
-                + (scoreByArea ? " current payout spoke; other spokes may compensate."
-                : " current overall payout minimum.") : " No current overall payout minimum is set.")
-                + " Short building ticks are each offer's historical required payout."
+        return summary + selectedDescription() + " Building height is pay in dollars. "
+                + AutopilotText.SKYLINE_DESCRIPTION + " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
+                + "." + (payoutMinimumCents > 0 ? " Solid line: your minimum pay at the bar, "
+                + DecisionLog.money(payoutMinimumCents) + "." : " No minimum pay is set.")
+                + " Short building ticks are each offer's required pay when decided."
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: open markers, no trees." : "")
+                + (retired > 0 ? " " + retired + " scores from retired rules: open markers, no trees." : "")
                 + (clipped > 0 ? " " + clipped + " trees exceed " + SCORE_DISPLAY_CAP
                 + "% and end in an overflow chevron; tap for the recorded score." : "");
     }
@@ -594,6 +600,7 @@ final class DecisionChartView extends View {
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
                 + ", " + DecisionLog.facts(entry.facts) + ", " + state
-                + (entry.scorePercent >= 0 ? ", " + entry.scorePercent + "% fitness." : ", fitness unknown.");
+                + (tree(entry) ? ", score " + entry.scorePercent + "% of your minimums."
+                : entry.scorePercent >= 0 ? ", score from retired rules." : ", score unknown.");
     }
 }

@@ -73,7 +73,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
     @Test
     public void theFilterPictureShowsThisDashWithAllTimeTotalsAndTheState() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         // One offer from hours before this dash began.
         Dashing.forgetCache();
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 3 * 3_600_000L,
@@ -570,7 +570,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
     @Test
     public void theMascotAloneOwnsThePauseActionOnTheMainPage() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

@@ -200,18 +200,19 @@ public final class AutopilotTextTest {
 
     @Test
     public void recoveryAtFiftyFiveWithTwoOffersSinceTheReading() {
-        // Dasher showed 55% 12 minutes ago; the two offers since were both accepted: 5,500 + 200 − 110 = 5,590.
+        // Dasher showed 55% 12 minutes ago; of the two offers since, the newer was accepted: 5,500 + 100 − 110 =
+        // 5,490, which every Autopilot text shows as 55% (rounded half up), Dasher's own figure.
         AutopilotStore.Reading reading = dasher(55, 12);
-        List<Autopilot.OfferRecord> lines = window(twoAfterTwelveMinutes(), 2);
+        List<Autopilot.OfferRecord> lines = window(twoAfterTwelveMinutes(), 1);
         Autopilot.Plan plan = plan(starters(70, 100), lines, reading, 100);
         assertEquals(Autopilot.Mode.RECOVERY, plan.mode);
-        assertEquals(5_590, plan.arHundredths);
+        assertEquals(5_490, plan.arHundredths);
         AutopilotText.Status s = status(starters(70, 82), plan, reading,
                 change(4, 100, 82, Autopilot.Reason.RECOVERY));
 
         assertEquals(AutopilotText.Status.Kind.BELOW_GOAL, s.kind);
-        // What the reports' rules JSON takes.
-        assertEquals(55, s.arPercent());
+        assertEquals("the rate as shown", 55, s.arPercent());
+        assertEquals("the goal less the rate as shown", 15, s.acceptsNeeded());
         assertEquals(12, s.arAgeMinutes());
         assertEquals("RECOVERY", s.modeName());
         assertTrue(s.recovering);
@@ -238,6 +239,52 @@ public final class AutopilotTextTest {
         assertEquals("plan 100% RECOVERY: need 80%, pass 16/20 at 100%, share bar 100%, ar 55% dasher (12 min ago, 2 "
                 + "since), recovering yes, extra 0, lambda 17.1/h, mix 20, best 86%, ok 86-100%",
                 AutopilotText.logPlan(plan, reading.at, NOW));
+    }
+
+    @Test
+    public void theRateIsShownRoundedHalfUpTheSameWayEverywhere() {
+        assertEquals(56, AutopilotText.shownPercent(5_590));
+        assertEquals(55, AutopilotText.shownPercent(5_549));
+        assertEquals("half up", 56, AutopilotText.shownPercent(5_550));
+        assertEquals(70, AutopilotText.shownPercent(6_950));
+        assertEquals(0, AutopilotText.shownPercent(0));
+        assertEquals(100, AutopilotText.shownPercent(10_000));
+        assertEquals("unknown", -1, AutopilotText.shownPercent(-1));
+
+        // Dasher showed 55% 12 minutes ago and both offers since were accepted: 5,500 + 200 − 110 = 5,590, so the
+        // status line, the chip, the details, the shared report and the plan's log line all say 56%, never 55%.
+        AutopilotStore.Reading reading = dasher(55, 12);
+        Autopilot.Plan plan = plan(starters(70, 100), window(twoAfterTwelveMinutes(), 2), reading, 100);
+        assertEquals(5_590, plan.arHundredths);
+        AutopilotText.Status s = status(starters(70, 100), plan, reading, null);
+        assertEquals(56, s.arPercent());
+        assertEquals("70 − 56", 14, s.acceptsNeeded());
+        assertEquals("Autopilot 100% · AR 56% → 70%: about 14 more accepts", AutopilotText.statusLine(s));
+        assertEquals("Auto 100% ▲", AutopilotText.chip(s));
+        assertEquals("Acceptance rate: about 56% (Dasher showed 55% 12 min ago; 2 offers since).",
+                AutopilotText.detailsAcceptanceRate(s));
+        assertTrue(AutopilotText.detailsGoalProgress(s).startsWith("Below your goal: about 14 more accepts"));
+        assertTrue(AutopilotText.reportLine(s), AutopilotText.reportLine(s)
+                .endsWith("; AR 56% (Dasher, 12 min ago, 2 offers since)"));
+        assertTrue(AutopilotText.logPlan(plan, reading.at, NOW).contains(", ar 56% dasher (12 min ago, 2 since), "));
+
+        // 16 of 23 counted offers accepted: ⌊10,000 × 16 ÷ 23⌋ = 6,956, just under the goal in the engine's exact
+        // arithmetic, shows as 70%: at the goal, so no amber, no "▲" and no "0 more accepts".
+        Autopilot.Plan close = plan(starters(70, 100), outcomes(23, 16), null, 100);
+        assertEquals(6_956, close.arHundredths);
+        assertTrue("the engine still counts it below the goal", close.recovering);
+        AutopilotText.Status shown = status(starters(70, 100), close, null, null);
+        assertEquals(70, shown.arPercent());
+        assertFalse(shown.belowGoal());
+        assertEquals(0, shown.acceptsNeeded());
+        assertEquals(AutopilotText.Status.Kind.AT_GOAL, shown.kind);
+        assertEquals("Autopilot 100% · AR ~70%, goal 70%", AutopilotText.statusLine(shown));
+        assertEquals("Auto 100%", AutopilotText.chip(shown));
+        assertEquals("Acceptance rate: about 70%, estimated from 23 of your recent offers.",
+                AutopilotText.detailsAcceptanceRate(shown));
+        assertEquals(AutopilotText.DETAILS_AT_GOAL, AutopilotText.detailsGoalProgress(shown));
+        assertTrue(AutopilotText.reportLine(shown).contains("; AR ~70% (estimate, 23 offers)"));
+        assertTrue(AutopilotText.logPlan(close, -1, NOW).contains(", ar ~70% estimate (23 counted), "));
     }
 
     @Test

@@ -114,7 +114,7 @@ public final class ItemHistoryTest {
                 true, Collections.emptyList()).withScore(-1);
         DecisionLog.record(app, entry(1000, offer(12, true), 137).withNotification(notification));
         DecisionLog.flush();
-        FilterStore.save(app, new FilterSettings(true, 0, 0, 0, 0, 0).withPerItem(9999));
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 0).withPerItem(9999));
         DecisionLog.forgetCache();
         DecisionLog.Entry loaded = DecisionLog.recent(app, 1).get(0);
         assertEquals(Integer.valueOf(12), loaded.facts.items);
@@ -126,7 +126,7 @@ public final class ItemHistoryTest {
     }
 
     @Test public void reportsCarryNumericItemsAndAnEmptyBestWithoutLearningFromHistory() throws Exception {
-        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0).withPerItem(150);
+        FilterSettings rules = FilterSettings.of(true, 0, 0, 0, 0).withPerItem(150);
         FilterStore.save(app, rules);
         DecisionLog.Entry original = entry(1000, offer(12, true), 137);
         DecisionLog.record(app, original);

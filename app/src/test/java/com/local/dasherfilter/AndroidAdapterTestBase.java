@@ -121,12 +121,6 @@ abstract class AndroidAdapterTestBase {
                     LoneSky.this.rules = LoneSky.this.rules.withMinimums(rates);
                     show();
                 }
-
-                @Override public int[] adoptLearned() {
-                    return null;
-                }
-
-                @Override public void restore(int[] cents) {}
             });
             star.setOnClickListener(tapped -> clicks++);
             scroll = new android.widget.ScrollView(activity);
