@@ -663,25 +663,26 @@ final class AutopilotRuntime {
     }
 
     /**
-     * The growth note's Undo: the minimums from before the last growth come back, only while they are still exactly
-     * the grown ones ({@link FilterStore#undoGrowth}, compare-and-set). It is the user's change: the minimums take
-     * effect now, the growth's record and note go, it is logged, and the bar is Autopilot's to move (other minimums: a
-     * jump at the next safe point, {@link #rulesChanged}). With nothing left to undo (the minimums changed since) the
-     * note goes and nothing else changes.
+     * The growth note's Undo, for the growth made at {@code at} (the note shown): the minimums from before it come
+     * back, only while they are still exactly the grown ones ({@link FilterStore#undoGrowth}, compare-and-set). It is
+     * the user's change: the minimums take effect now, the growth's record and note go, it is logged, and the bar is
+     * Autopilot's to move (other minimums: a jump at the next safe point, {@link #rulesChanged}). With nothing left to
+     * undo (the minimums changed since) the note goes and nothing else changes; a later growth than the one shown is
+     * never undone for it.
      *
      * @return whether the minimums were put back
      */
-    static boolean undoGrowth(Context context) {
+    static boolean undoGrowth(Context context, long at) {
         if (context == null) return false;
         Context app = app(context);
         AutopilotStore.Grew grew;
         boolean undone;
         synchronized (LOCK) {
             grew = AutopilotStore.lastGrowth(app);
-            if (grew == null || !grew.note) return false;
+            if (grew == null || !grew.note || grew.at != at) return false;
             undone = FilterStore.undoGrowth(app, grew.grown, grew.at, wallClock.getAsLong());
             if (undone) AutopilotStore.forgetGrowth(app);
-            else AutopilotStore.forgetGrowthNote(app);
+            else AutopilotStore.forgetGrowthNote(app, grew.at);
         }
         if (!undone) {
             notifyListeners();
@@ -692,10 +693,14 @@ final class AutopilotRuntime {
         return true;
     }
 
-    /** The growth note's OK: the note (and its Undo) goes; the growth stays, and the details still say when it was. */
-    static void growthNoted(Context context) {
+    /**
+     * The growth note's OK, for the growth made at {@code at}: the note (and its Undo) goes; the growth stays, and the
+     * details still say when it was.
+     */
+    static void growthNoted(Context context, long at) {
         if (context == null) return;
-        AutopilotStore.forgetGrowthNote(app(context));
+        AutopilotStore.forgetGrowthNote(app(context), at);
+        notifyListeners();
     }
 
     /**
@@ -714,7 +719,7 @@ final class AutopilotRuntime {
                 && FilterStore.minimumsSince(app) == grew.at) {
             return grew;
         }
-        AutopilotStore.forgetGrowthNote(app);
+        AutopilotStore.forgetGrowthNote(app, grew.at);
         return null;
     }
 

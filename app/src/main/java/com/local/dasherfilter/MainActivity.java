@@ -1337,9 +1337,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * The growth note's Undo ({@link GrowthCard}): the minimums from before the growth come back, only while they are
      * still the grown ones. It is the user's change: applied to any offer on screen like a knob's, and said in a toast.
      */
-    private void undoGrowth() {
+    private void undoGrowth(long at) {
         AutopilotStore.Grew grew = AutopilotRuntime.growthNote(this);
-        if (grew != null && AutopilotRuntime.undoGrowth(this)) {
+        if (grew != null && grew.at == at && AutopilotRuntime.undoGrowth(this, at)) {
             rulesChanged();
             updateMeter();
             toast(AutopilotText.growthUndoneToast(grew.grown));

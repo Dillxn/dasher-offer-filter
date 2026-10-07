@@ -377,11 +377,14 @@ final class AutopilotStore {
         }
     }
 
-    /** The homepage's note of the last growth is answered (OK) or no longer applies: it and its Undo go. */
-    static void forgetGrowthNote(Context context) {
+    /**
+     * The homepage's note of the growth made at {@code at} is answered (OK) or no longer applies: it and its Undo go.
+     * Compare-and-clear: the note of a later growth is never taken for it.
+     */
+    static void forgetGrowthNote(Context context, long at) {
         synchronized (AutopilotStore.class) {
             SharedPreferences prefs = prefs(context);
-            if (!prefs.getBoolean(GREW_NOTE, false)) return;
+            if (!prefs.getBoolean(GREW_NOTE, false) || prefs.getLong(GREW_AT, 0) != at) return;
             prefs.edit().remove(GREW_NOTE).apply();
             version++;
         }

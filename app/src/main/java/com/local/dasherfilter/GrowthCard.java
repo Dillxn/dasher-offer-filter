@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import android.content.Context;
 import android.widget.LinearLayout;
+import java.util.function.LongConsumer;
 
 /**
  * The homepage's one-time note that the minimums grew ({@link Growth}, 0.5.1), a card in the sky like the other
@@ -17,16 +18,19 @@ final class GrowthCard {
     /** The growth shown, by when it was; 0 while none is. */
     private long shownAt;
 
-    /** @param undo the page's Undo: puts the minimums back ({@link AutopilotRuntime#undoGrowth}) and follows them */
-    GrowthCard(Context context, Ui ui, LinearLayout parent, Runnable undo) {
+    /**
+     * @param undo the page's Undo of the growth made at the time it is given: puts the minimums back
+     *     ({@link AutopilotRuntime#undoGrowth}) and follows them
+     */
+    GrowthCard(Context context, Ui ui, LinearLayout parent, LongConsumer undo) {
         this.context = context;
         card = new OnboardingCard(context, ui, parent);
         card.addAction(ui, AutopilotText.GROWTH_UNDO, () -> {
-            undo.run();
+            if (shownAt != 0) undo.accept(shownAt);
             refresh();
         });
         card.addAction(ui, AutopilotText.GROWTH_OK, () -> {
-            AutopilotRuntime.growthNoted(context);
+            if (shownAt != 0) AutopilotRuntime.growthNoted(context, shownAt);
             refresh();
         });
     }
