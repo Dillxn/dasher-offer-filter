@@ -259,6 +259,116 @@ public final class StalledDeclineTest {
         assertTrue(DiagnosticLog.read(app).contains("automatic decline stopped after its confirmation was tapped"));
     }
 
+    // ---- The saved rules, not only the bar, are checked again right before each tap (AGENTS: "Recheck the saved rules
+    // and the bar immediately before each tap so a slow read cannot act under an obsolete cutoff"; "A pause ends what
+    // was under way"). Each change is saved while the offer, or its question, is being read, as a slow Dasher allows.
+
+    @Test public void aPauseSavedDuringTheFirstReadSendsNoDecline() {
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        // Saved alone: the tap's own recheck asks for the read that turns into the pause.
+        duringNextRead(() -> FilterStore.save(app, FilterStore.load(app).withEnabled(false)));
+        show(offered);
+        pass(3_000);
+        assertTrue("a pause saved while the offer was read leaves its Decline untapped", declined.isEmpty());
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        List<Long> confirmed = taps(confirm);
+        show(question(confirm));
+        pass(3_000);
+        assertTrue(confirmed.isEmpty());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("first-step Decline skipped: auto-decline was paused while reading"));
+        assertTrue(log, log.contains("not reading Dasher while paused (auto-decline is off)"));
+        assertFalse(log, log.contains("first-step Decline REQUESTED"));
+        for (DecisionLog.Entry line : DecisionLog.recent(app, 5)) {
+            assertNotEquals(DecisionLog.Action.DECLINE_TAPPED, line.action);
+        }
+    }
+
+    @Test public void theLastRuleClearedDuringTheFirstReadSendsNoDecline() {
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        duringNextRead(() -> {
+            FilterStore.save(app, FilterStore.load(app).withMinimums(0, 0, 0));
+            OfferFilterService.requestCheckForRules();
+        });
+        show(offered);
+        pass(3_000);
+        assertTrue("no rule left is paused: nothing is tapped under the rule the read began with", declined.isEmpty());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("first-step Decline skipped: auto-decline was paused while reading"));
+        assertTrue(log, log.contains("not reading Dasher while paused (no rule is set)"));
+    }
+
+    @Test public void aMinimumLoweredDuringTheFirstReadJudgesTheOfferAgainUnderIt() {
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        // As the homepage's knob does: save, then ask for the rules' read (queued behind the read under way).
+        duringNextRead(() -> {
+            FilterStore.save(app, FilterStore.load(app).withMinimums(500, 0, 0));
+            OfferFilterService.requestCheckForRules();
+        });
+        show(offered);
+        pass(3_000);
+        assertTrue("$7.90 meets the $5.00 minimum saved while it was read", declined.isEmpty());
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Action.PASSES, line.action);
+        assertEquals(500, line.requiredCents);
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("first-step Decline skipped: your rules changed while reading"));
+        assertTrue(log, log.contains("Your rules changed while reading; checking the offer again."));
+        assertFalse(log, log.contains("first-step Decline REQUESTED"));
+    }
+
+    @Test public void aStricterMinimumSavedDuringTheFirstReadStillDeclinesUnderIt() {
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        duringNextRead(() -> FilterStore.save(app, FilterStore.load(app).withMinimums(2500, 0, 0)));
+        show(offered);
+        pass(300);
+        assertEquals("declined once, by the read under the rules now saved, within the quiet gap", 1, declined.size());
+        assertTrue(DiagnosticLog.read(app).contains("first-step Decline skipped: your rules changed while reading"));
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Action.DECLINE_TAPPED, line.action);
+        assertEquals(2500, line.requiredCents);
+    }
+
+    @Test public void maxStopsSavedDuringTheFirstReadIsCheckedBeforeTheTap() {
+        // $7.90 is declined under $20.00; max stops saved mid-read is a new rule: the offer is judged again under it.
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        duringNextRead(() -> FilterStore.save(app, FilterStore.load(app).withMaxStops(3)));
+        show(offered);
+        pass(300);
+        assertTrue(DiagnosticLog.read(app).contains("first-step Decline skipped: your rules changed while reading"));
+        assertEquals("declined once, by the read under the rules now saved", 1, declined.size());
+    }
+
+    @Test public void aPauseSavedWhileTheQuestionIsReadTapsNoConfirmation() {
+        AccessibilityNodeInfo offered = offer("$7.90", "0:35");
+        List<Long> declined = taps(decline);
+        show(offered);
+        assertEquals(1, declined.size());
+        pass(300);
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        List<Long> confirmed = taps(confirm);
+        // As the tab and the mascot do: save, then ask for the rules' read (queued behind the read under way).
+        duringNextRead(() -> {
+            FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+            OfferFilterService.requestCheckForRules();
+        });
+        show(question(confirm));
+        pass(3_000);
+        assertTrue("a pause saved while the question was read ends the decline before its confirmation",
+                confirmed.isEmpty());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("confirmation skipped: auto-decline was paused while reading"));
+        assertTrue(log, log.contains("not reading Dasher while paused (auto-decline is off)"));
+        for (DecisionLog.Entry line : DecisionLog.recent(app, 5)) {
+            assertNotEquals(DecisionLog.Action.CONFIRMATION_TAPPED, line.action);
+        }
+    }
+
     /**
      * Since 0.5.0 only Autopilot moves the bar, and only between offers; the one change mid-decline is the user's own,
      * turning Autopilot off (back to exactly the minimums). Here Autopilot set 103% before the offer came: the $20.00
@@ -271,9 +381,14 @@ public final class StalledDeclineTest {
     }
 
     private void turnAutopilotOffDuringNextRead() {
+        duringNextRead(() -> FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER));
+    }
+
+    /** {@code change} is saved as the next read fetches its first node: after the read began, before it decides. */
+    private static void duringNextRead(Runnable change) {
         OfferFilterService.nodeFetchForTests = () -> {
             OfferFilterService.nodeFetchForTests = null;
-            FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            change.run();
         };
     }
 

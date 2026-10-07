@@ -3545,13 +3545,29 @@ public final class OfferFilterService extends AccessibilityService {
                 .withBar(line.barPercent, line.autopilot).peeked(line.peeked);
     }
 
-    /** No initial request was made at a stale bar; judge a fresh screen at the bar now saved. */
-    private void staleMinimumScaleRead() {
+    /**
+     * No request was made under stale rules ({@link #ownTap}'s recheck); the offer is judged again under the rules now
+     * saved. A changed bar hands a decline under way back and reads a fresh screen at once, as before. A pause, or a
+     * minimum or max stops saved during the read, leaves it to the rules' own read ({@link #rulesCheck}: one at a time,
+     * the quiet gap after the last, so a knob stepped over an offer never floods Dasher with reads): a pause turns that
+     * read into none ({@link #notReading}, which ends what was under way), new rules judge the offer afresh.
+     *
+     * @param decidedBar the bar the untapped request was decided at
+     * @param what "first-step Decline" or "confirmation", for the log
+     */
+    private void staleRulesRead(int decidedBar, String what) {
         long now = SystemClock.uptimeMillis();
-        if (!minimumRulesChanged(FilterStore.load(this), now)) {
-            status(barChange() + " while reading; checking the offer again.");
+        FilterSettings current = FilterStore.load(this);
+        if (current.minimumScalePercent != decidedBar) {
+            if (!minimumRulesChanged(current, now)) status(barChange() + " while reading; checking the offer again.");
+            scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "bar changed"); });
+            return;
         }
-        scanner.post(() -> { if (!stopped) scanNow(SystemClock.uptimeMillis(), "bar changed"); });
+        boolean paused = !current.enabled || !current.hasAnyRule();
+        confirmLog(what + " skipped: " + (paused ? "auto-decline was paused" : "your rules changed") + " while reading");
+        status(paused ? "Auto-decline paused while reading; nothing was tapped."
+                : "Your rules changed while reading; checking the offer again.");
+        if (rulesCheckQueued.compareAndSet(false, true)) scanner.post(rulesCheck);
     }
 
     /**
@@ -6738,10 +6754,10 @@ public final class OfferFilterService extends AccessibilityService {
         ErrorAttempt confirmationRequest = new ErrorAttempt(declineGeneration, userActions.get(), declineMinimumScale,
                 SystemClock.uptimeMillis(), true);
         errorAttempt = confirmationRequest;
-        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(target, declinedOffer, declineMinimumScale, null) : Tap.REFUSED;
         if (tap == Tap.TAPPED) confirmationRequest.accepted = true;
         else if (errorAttempt == confirmationRequest) errorAttempt = null;
-        if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
+        if (tap == Tap.RULES_CHANGED) { staleRulesRead(declineMinimumScale, "confirmation"); return false; }
         if (tap == Tap.HELD) {
             // A touch in split screen is being judged: tapped once it is found to be on Offer Filter's half (the
             // offer is handed back if it was on Dasher's), its authority checked again then.
@@ -7638,9 +7654,13 @@ public final class OfferFilterService extends AccessibilityService {
                 : null;
         errorAttempt = attempt;
         // Re-check that Dasher is still on screen just before acting: the screen can change while it is being read.
-        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent) : Tap.REFUSED;
+        Tap tap = readable ? ownTap(scan.decline, offer, settings.minimumScalePercent, AutoAccept.rulesKey(settings))
+                : Tap.REFUSED;
         if (tap != Tap.TAPPED && errorAttempt == attempt) errorAttempt = null;
-        if (tap == Tap.RULES_CHANGED) { staleMinimumScaleRead(); return false; }
+        if (tap == Tap.RULES_CHANGED) {
+            staleRulesRead(settings.minimumScalePercent, "first-step Decline");
+            return false;
+        }
         long tappedAt = SystemClock.uptimeMillis();
         if (stopped) return false;
         diagnostic(phase, scan, offer, decision);
@@ -8104,8 +8124,13 @@ public final class OfferFilterService extends AccessibilityService {
      * theirs, and nothing is tapped. Checked right before the tap, so a touch in the middle of a read counts too.
      * Its click event, arriving just after, is not mistaken for the user's. While a touch in split screen is being
      * judged, nothing is tapped on the offer being declined.
+     *
+     * @param minimumScale the bar the tap was decided at
+     * @param decidedRules for an offer's first Decline, {@link AutoAccept#rulesKey} of the rules its read decided under
+     *     (every minimum, max stops, the switch and the bar), else null: a decline under way stays pinned to its bar
+     *     alone, so its question is confirmed under a minimum changed after its first tap, but never past a pause
      */
-    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale) {
+    private Tap ownTap(AccessibilityNodeInfo node, OfferSnapshot offer, int minimumScale, String decidedRules) {
         // Before the touches are taken: a touch judged the user's is counted before it stops being held.
         boolean held = touchesHeld > 0;
         takeOverIfTouched();
@@ -8120,10 +8145,15 @@ public final class OfferFilterService extends AccessibilityService {
             lastRefusal = refusal;
             return Tap.REFUSED;
         }
-        // The bar this tap was decided at, checked again right before it: a bar changed since (only by the user while
-        // a decline is under way) leaves it untapped.
+        // The rules this tap was decided under, checked again right before it, so a slow read never acts under an
+        // obsolete cutoff: a bar changed since (only by the user while a decision is under way), a pause (auto-decline
+        // off, or no rule left) saved during the read, or, for a first Decline, any minimum or max stops saved during
+        // its read, leaves it untapped, and the offer is judged again under the rules now saved (staleRulesRead).
         FilterSettings current = FilterStore.load(this);
-        if (current.minimumScalePercent != minimumScale) return Tap.RULES_CHANGED;
+        if (current.minimumScalePercent != minimumScale || !current.enabled || !current.hasAnyRule()
+                || (decidedRules != null && !decidedRules.equals(AutoAccept.rulesKey(current)))) {
+            return Tap.RULES_CHANGED;
+        }
         if (!phoneReadable() || scannerFaulted) return Tap.REFUSED;
         ownTapAt = now;
         ownTapTarget = node;
