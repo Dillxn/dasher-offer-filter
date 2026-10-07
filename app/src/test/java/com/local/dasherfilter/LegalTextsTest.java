@@ -23,6 +23,12 @@ public final class LegalTextsTest {
             Pattern.CASE_INSENSITIVE);
     private static final String CONTACT = "privacy@offerfilter.org";
     private static final String SOURCE = "<https://github.com/Dillxn/dasher-offer-filter>";
+    /**
+     * The beta texts' effective date, the one place the tests name it (ConsentGateTest reads it here). The release
+     * that ships 0.5.0 sets it to the day the texts are published: in TERMS.md's and PRIVACY.md's second line and here,
+     * then runs tools/legal_texts.py.
+     */
+    static final String EFFECTIVE = "7 October 2026";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -34,10 +40,10 @@ public final class LegalTextsTest {
     @Test public void theTermsAndPrivacyArePublishedBetaTextsAndTheLicenseIsStandardMIT() {
         String terms = LegalTexts.Doc.TERMS.text();
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        assertTrue(terms, terms.startsWith("# " + AppName.NAME + " terms of use\n\nBeta terms, effective 7 October 2026 "
-                + "· for " + AppName.NAME + " 0.5.0\n\n"));
-        assertTrue(privacy, privacy.startsWith("# " + AppName.NAME + " privacy\n\nBeta privacy policy, effective 7 "
-                + "October 2026 · for " + AppName.NAME + " 0.5.0\n\n"));
+        assertTrue(terms, terms.startsWith("# " + AppName.NAME + " terms of use\n\nBeta terms, effective " + EFFECTIVE
+                + " · for " + AppName.NAME + " 0.5.0\n\n"));
+        assertTrue(privacy, privacy.startsWith("# " + AppName.NAME + " privacy\n\nBeta privacy policy, effective "
+                + EFFECTIVE + " · for " + AppName.NAME + " 0.5.0\n\n"));
         assertTrue("honest that this is a beta", terms.contains(AppName.NAME + " is beta software"));
         assertTrue(privacy.contains(AppName.NAME + " is beta software"));
         for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
@@ -79,6 +85,8 @@ public final class LegalTextsTest {
                 + "per hour of Dasher's time estimate, plus an optional maximum number of stops.",
                 "Autopilot is off until you turn it on.", "between 50% and 150%",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
+                // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
+                "Above 100% it declines offers that meet your minimums.",
                 "Offers it lets through below your minimums are left to you.",
                 "a complete standalone offer that meets 100% of your minimums and any higher Autopilot bar",
                 "Autopilot's acceptance-rate goal is a best effort, not a promise: Autopilot cannot accept offers for "
@@ -169,20 +177,29 @@ public final class LegalTextsTest {
                         + "shows, and whether Dasher says declining that offer does not lower your acceptance rate.",
                 "Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and the offer it was "
                         + "shown for as a numeric fingerprint",
-                "It is kept whether Autopilot is on or off, and a reading older than 7 days is discarded.",
+                "It is kept whether Autopilot is on or off.",
+                // AutopilotStore.reading deletes an old reading only when something next reads it.
+                "A reading older than 7 days is never used or sent: it is deleted the next time the app looks at it "
+                        + "(when you open the app, Autopilot plans or a report is built), and until then stays on the "
+                        + "phone unused.",
                 "no text of the question is kept with it",
                 "that offer's line in the decision history is marked so, and Autopilot leaves that offer out of its "
                         + "acceptance-rate count",
                 "a note of its last change (time, old and new bar, a fixed reason)",
+                "a pending reason for its next change (a fixed word, such as that you turned it on)",
                 "the acceptance rate it carried forward from Dasher's reading at its last checkpoint",
                 "they can also hold the decline question's masked words with its percentage",
+                // The offer rate Autopilot works out from the wait records rides in its plan lines.
+                "Autopilot's plans with the acceptance rate and the offer rate (offers an hour) they count with",
+                "Autopilot's log lines carry only the offer rate (offers an hour) it works out from them",
                 "Your acceptance rate leaves the phone only in a report you share (**Share report**), in masked "
                         + "diagnostics you attach to feedback, and in **Report this offer**",
                 "It is never in the summary after each dash",
                 "Autopilot's bar and why it changed (never your acceptance rate)",
                 "The fingerprint kept with a reading never leaves the phone.",
                 "Report this offer leaves it out.",
-                "Clear history removes the reading, Autopilot's working figures and its last-change note.",
+                "Clear history removes the reading, Autopilot's working figures, its last-change note and its other "
+                        + "notes above.",
                 // The rules, the history's new fields and the 0.5.0 migration.
                 "Autopilot's settings: whether it is on, your acceptance goal (70%, 50% or pay first), its current bar",
                 "the bar it was judged at and whether Autopilot set that bar",
@@ -193,9 +210,11 @@ public final class LegalTextsTest {
                 // Where the reading travels.
                 "your current rules and Autopilot's state, including the latest acceptance-rate reading",
                 "with the latest acceptance-rate reading", "plus Autopilot's acceptance-rate reading",
-                "Your rules and Autopilot settings remain."}) {
+                "Your rules, Autopilot's settings and the app's last status line"}) {
             assertTrue(fact, privacy.contains(fact));
         }
+        assertFalse("an old reading is deleted only when next looked at",
+                privacy.contains("reading older than 7 days is discarded"));
         assertTrue("Report this offer in its dialog's words", privacy.contains(reportThisOffer()));
         assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains(reportThisOffer()));
         assertTrue("Clear history's own words name the reading too",
@@ -214,10 +233,14 @@ public final class LegalTextsTest {
     @Test public void privacyCoversThePathsThisReleaseAdds() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {
-                // Never starve Dasher: paused reads nothing; maps are skipped.
+                // Never starve Dasher: paused reads nothing; only the maps it recognizes are skipped (MapNodes.isMap),
+                // never while a decline-error recovery or an automatic Accept is verified (pruneMaps), and whether
+                // Dasher's maps are recognized is unverified on phones.
                 "While auto-decline is paused, or no rule is set, it reads nothing of Dasher's screen; Android's list "
                         + "of windows alone places its tab.",
-                "The inside of a map that Dasher draws is normally skipped, not read.",
+                "Map views it recognizes inside Dasher's screens are skipped, not read, except while it checks a failed "
+                        + "decline or an automatic Accept, or when a map's own label shows a sign of an offer; whether "
+                        + "Dasher's maps are recognized depends on how Dasher draws them.",
                 // Peek: the previous app in memory only, Dasher's own notification tap once, the unlock catch-up.
                 "or one that arrived while the phone was locked, right after you unlock it (within 40 seconds of its "
                         + "notification, while that notification is still up)",
@@ -229,16 +252,43 @@ public final class LegalTextsTest {
                         + "Waze)",
                 "until it has shown for 12 seconds, the offer did not end within 90 seconds",
                 "A peek held for the unlock keeps them at most 60 seconds.",
+                // The post kept for the unlock has no timer of its own: it waits in memory for the next unlock.
+                "in memory until the next unlock (looked at then only if its notification is still up and at most 40 "
+                        + "seconds old), or until you tap one of the app's cards, a newer offer takes its place or "
+                        + "screen reading stops.",
+                // The touch watch: a time only, in memory.
+                "When a finger lands on the screen, as a time only.",
+                "It never learns a touch's position or what was touched",
+                "Touch times stay in memory; the logs say only that a touch came",
                 // The screen hold with any app in front.
                 "the screen is kept from timing out whatever app is in front, but only while something of the dash was "
                         + "seen in the last 15 minutes or Dasher shows it",
                 "the battery at 20% or less and not charging", "pausing auto-decline ends the hold",
-                // After an update; the notification's ranking.
+                // After an update; the notification's ranking, and what the logs note of Dasher's channel
+                // (OfferNotificationService.logChannel).
                 "to reopen Offer Filter only over its own screen or the home screen",
                 "whether it can pop up or sound, whether it sounded, and whether Do Not Disturb lets it through",
+                "Its logs note that channel's sound, vibration and importance settings, whether the notification asks "
+                        + "to fill the screen, and the names (never the values) of the notification's fields.",
                 // Onboarding's reads, its kept progress, and the update hold.
                 "how Offer Filter was installed", "Android's restricted-settings record for Offer Filter",
-                "whether Android limits its background battery use", "It reads no other app's settings.",
+                "whether Android limits its background battery use",
+                "Apart from how Android ranks and sets up Dasher's offer notifications (above) and, for reports, "
+                        + "Dasher's version and how its launcher screen starts, it reads no other app's settings.",
+                // What else is kept: the latest states, the last status line, the offer map's squares, the route's
+                // lazy expiry, the sound to put back, the downloaded update, the after-dash summary's dash length.
+                "A few latest states, in fixed words, for reports", "At most 12 are kept",
+                "The app's last status line, with its date and time", "Clear history does not remove it.",
+                "each with its number of offers, their total and best pay",
+                "A route is never used more than three hours after it was observed; it is deleted the next time the "
+                        + "app looks at it after that.",
+                "the level to put back, so the sound is restored even after a crash",
+                "which notice you accepted and when", "and the downloaded update itself",
+                "the app's readiness, settings and last status line, the offer map's counts (never a position)",
+                "how long the dash lasted (to the nearest 5 minutes) and how it ended",
+                // The privacy contact's mail goes through mail services.
+                "and the email services that carry a message you send to the privacy contact below",
+                "Your message passes through your own email provider",
                 "Setup progress on this phone", "acted on only within ten minutes",
                 "so a changed clock cannot release an update held for a dash early",
                 "why it waits (a dash, Android's confirmation, or an installation Android blocked)",
@@ -248,6 +298,10 @@ public final class LegalTextsTest {
                 "since updates are checked for and installed before the notice is accepted too",
                 "or for 8 hours with nothing of a dash seen, Dasher not in front and the screen off"}) {
             assertTrue(fact, privacy.contains(fact));
+        }
+        for (String wrong : new String[] {"normally skipped", "or after 40 seconds", "It reads no other app's settings.",
+                "for at most three hours since the route was observed"}) {
+            assertFalse(wrong, privacy.contains(wrong));
         }
     }
 
@@ -285,7 +339,9 @@ public final class LegalTextsTest {
         String terms = LegalTexts.Doc.TERMS.text();
         String privacy = LegalTexts.Doc.PRIVACY.text();
         assertEquals(7L * 24 * 60 * 60_000, AutopilotStore.AR_MAX_AGE_MS);
-        assertTrue(privacy.contains("older than 7 days is discarded"));
+        assertTrue(privacy.contains("older than 7 days is never used or sent"));
+        assertEquals(300, AreaMap.MAX_CELLS);
+        assertTrue(privacy.contains("up to 300 historical squares"));
         assertEquals(50, FilterStore.BAR_MIN);
         assertEquals(150, FilterStore.BAR_MAX);
         assertTrue(terms.contains("between 50% and 150%"));

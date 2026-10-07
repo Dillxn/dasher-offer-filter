@@ -70,10 +70,11 @@ final class LegalTexts {
             estimate, plus an optional maximum number of stops. When an offer is below them, it can tap Decline, \
             and then Dasher's confirmation, for you. Autopilot is off until you turn it on. It then moves how much \
             of your minimums an offer must pay, between 50% and 150%, using your recent offers, how often they come \
-            and the acceptance rate Dasher shows when you decline. Offers it lets through below your minimums are \
-            left to you. Auto-accept starts off. If you separately enable it in Settings, it can tap Accept on a \
-            complete standalone offer that meets 100% of your minimums and any higher Autopilot bar, committing you \
-            to that delivery. Add-ons and unclear offers are left to you.
+            and the acceptance rate Dasher shows when you decline. Above 100% it declines offers that meet your \
+            minimums. Offers it lets through below your minimums are left to you. Auto-accept starts off. If you \
+            separately enable it in Settings, it can tap Accept on a complete standalone offer that meets 100% of \
+            your minimums and any higher Autopilot bar, committing you to that delivery. Add-ons and unclear offers \
+            are left to you.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -185,7 +186,9 @@ final class LegalTexts {
             a split screen: each offer's pay, miles, time, stops and displayed total item count, and the other text \
             Dasher shows, which can include store names, customer names and addresses. While auto-decline is \
             paused, or no rule is set, it reads nothing of Dasher's screen; Android's list of windows alone places \
-            its tab. The inside of a map that Dasher draws is normally skipped, not read.
+            its tab. Map views it recognizes inside Dasher's screens are skipped, not read, except while it checks \
+            a failed decline or an automatic Accept, or when a map's own label shows a sign of an offer; whether \
+            Dasher's maps are recognized depends on how Dasher draws them.
             - On Dasher's decline question ("Are you sure you want to decline this offer?"), whether the decline is \
             the app's or yours and whether Autopilot is on or off: the acceptance-rate percentage Dasher shows, and \
             whether Dasher says declining that offer does not lower your acceptance rate. See Autopilot and your \
@@ -194,7 +197,9 @@ final class LegalTexts {
             notification; it ignores every app but Dasher. To decide whether a card of its own is needed, it also \
             checks how Android ranks Dasher's offer notification: whether it can pop up or sound, whether it \
             sounded, and whether Do Not Disturb lets it through. It remembers which of Dasher's notification \
-            channels its offers came on and whether that channel alerts by itself.
+            channels its offers came on and whether that channel alerts by itself. Its logs note that channel's \
+            sound, vibration and importance settings, whether the notification asks to fill the screen, and the \
+            names (never the values) of the notification's fields.
             - Dasher's short error messages (toasts), through accessibility, only to recognize a failed decline. \
             Their wording is not stored or sent; recovery logs keep a fixed error category and attempt counts.
             - Peek, on by default after the current notice is accepted, can briefly bring Dasher forward to read a \
@@ -213,6 +218,13 @@ final class LegalTexts {
             (Google Maps, Google Maps Go or Waze). After an update installed while {app}'s screen was open, it \
             checks which app is in front the same way (window information and that app's identifier, never its \
             text), to reopen {app} only over its own screen or the home screen.
+            - When a finger lands on the screen, as a time only. While it declines an offer (and for a few seconds \
+            after), while it checks an offer before an automatic Accept, and before and during a peek, an invisible \
+            one-pixel watch notes when a finger lands, so your touch hands the offer back or keeps Peek from \
+            opening Dasher; the touch still goes where you touched. It never learns a touch's position or what was \
+            touched; {app}'s own screens note when they are touched, so in split screen a touch on {app}'s half is \
+            not taken for one on Dasher's. Touch times stay in memory; the logs say only that a touch came, how \
+            soon after the app's own tap, and whether it was on {app}'s half.
             - For the screen hold during a dash (see Your choices): whether the phone is on and unlocked, whether a \
             call is under way, the battery level, whether it is charging and whether battery saver is on. It looks \
             at no other app's windows or words for it.
@@ -227,7 +239,8 @@ final class LegalTexts {
             read it; whether Accessibility and notification access are on for {app} and connected; whether its \
             notifications are allowed; whether it may install its own updates; and whether Android limits its \
             background battery use (the Restricted battery setting, or the restricted standby bucket on Android 11 \
-            and later). It reads no other app's settings.
+            and later). Apart from how Android ranks and sets up Dasher's offer notifications (above) and, for \
+            reports, Dasher's version and how its launcher screen starts, it reads no other app's settings.
 
             Before you accept the current first-run notice, it reads none of this and sends no feedback or \
             diagnostics, with three exceptions that read no words: the channel a new notification of Dasher's came \
@@ -252,12 +265,13 @@ final class LegalTexts {
             observation time, positively observed waiting duration and any observed offer's pay, miles, minutes, \
             stops and item count/applicability, used for the wait estimate and by Autopilot to estimate how often \
             offers arrive. These separate records contain no merchant names, screen text, addresses or coordinates \
-            and are never included in reports or uploaded. Only visible, unlocked, eligible waiting is measured; \
-            rejected-offer handling counts only after a later recognized wait or standalone offer confirms it \
-            continued. Hidden, unknown, delivery, locked, paused and stopped-service time is excluded. A restart \
-            does not resume an old waiting timer. The estimate rechecks these numeric offers against your current \
-            rules and stays unavailable until enough readable observations exist; old decision timestamps alone are \
-            not treated as waiting time.
+            and are never included in reports or uploaded; Autopilot's log lines carry only the offer rate (offers \
+            an hour) it works out from them. Only visible, unlocked, eligible waiting is measured; rejected-offer \
+            handling counts only after a later recognized wait or standalone offer confirms it continued. Hidden, \
+            unknown, delivery, locked, paused and stopped-service time is excluded. A restart does not resume an \
+            old waiting timer. The estimate rechecks these numeric offers against your current rules and stays \
+            unavailable until enough readable observations exist; old decision timestamps alone are not treated as \
+            waiting time.
             - Two rolling logs of screen text, one for offers and the app's status and one for other dash screens. \
             Other screens are captured only during a dash or within ten minutes of a readable offer, and only when \
             positively recognized as offer, confirmation, idle, delivery or navigation screens. \
@@ -272,17 +286,30 @@ final class LegalTexts {
             when pay could not be read (counts only, never amounts), how much of the screen Dasher had when it was \
             resized, and what happened to Dasher's own notification tap and to an offer that arrived while the \
             phone was locked.
+            - A few latest states, in fixed words, for reports: Dasher's version and how its launcher screen \
+            starts, the settings of Dasher's offer notification channel and the names of its notification's fields, \
+            whether the touch watch could be put up, that Dasher reported an error after a decline, and the last \
+            update result. At most 12 are kept, each replaced when it changes, until Clear history; reports carry \
+            those from the last day.
+            - The app's last status line, with its date and time: what it last did or found, which can include the \
+            last offer's figures (pay, miles, minutes, stops and item count) and the pay it required. The next \
+            status replaces it; Clear history does not remove it.
             - The offer map, if it is on and location is allowed: up to 300 historical squares of about 2 km where \
-            offers came in, with no age-based expiry. The separate place-name cache holds at most 300 rounded \
-            positions, also without age-based expiry; older names are removed as others are used. Clear history or \
-            uninstalling removes both.
+            offers came in, each with its number of offers, their total and best pay, the pay and miles of those \
+            whose miles were read, and when it last had one, with no age-based expiry; also the last offer's pay, \
+            miles, minutes and stops and when it came, so one offer seen twice counts once, and a count of offers \
+            that came with no location. The separate place-name cache holds at most 300 rounded positions, also \
+            without age-based expiry; older names are removed as others are used. Clear history or uninstalling \
+            removes all of it.
             - While you are dashing: whether a dash is on, when it started and was last seen (also on the phone's \
             since-boot clock with its boot number, so a changed clock cannot release an update held for a dash \
             early: an update the app finds by itself waits for the dash to end, or for 8 hours with nothing of a \
             dash seen, Dasher not in front and the screen off), when it ended and whether Dasher showed it paused; \
-            and the current route's pay, miles, time, stops and observed item count/applicability, for at most \
-            three hours since the route was observed. For the screen hold, when something of the dash was last seen \
-            is also kept in memory only.
+            and the current route's pay, miles, time, stops and observed item count/applicability, until Dasher \
+            shows the wait for offers, the dash's end or its home screen, or you tap Forget on the homepage. A \
+            route is never used more than three hours after it was observed; it is deleted the next time the app \
+            looks at it after that. For the screen hold, when something of the dash was last seen is also kept in \
+            memory only.
             - One temporary record that prevents automatic taps on a possibly taken-over or automatically accepted \
             offer after a restart: numeric pay, miles, minutes, stops, observed item count/applicability, \
             countdown, and device uptime/boot number. It can suppress taps for at most two minutes; the app \
@@ -294,7 +321,8 @@ final class LegalTexts {
             history; it never proves acceptance or restores tap authority. Clear history removes it.
             - The state of updates: the version last advertised; when updates were last checked; a verified update \
             still waiting (its version name) and why it waits (a dash, Android's confirmation, or an installation \
-            Android blocked); and the newest version an "allow updates" notice was shown for.
+            Android blocked); the newest version an "allow updates" notice was shown for; and the downloaded update \
+            itself, until it installs, a newer one replaces it or it is no longer needed.
             - Setup progress on this phone: which setup switches were opened or tried from the homepage; which \
             switch you were turning on when you left for Android's settings or App info (acted on only within ten \
             minutes); whether restricted settings were found allowed; and whether Android was already asked for \
@@ -321,6 +349,11 @@ final class LegalTexts {
             separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
             to 6 pm. Existing explicit day/night choices are preserved. Also where you moved the filter tab over \
             Dasher, and whether one-time hints, such as the split-screen divider hint, were shown.
+            - While it has turned media or alarm sound down during a decline, the level to put back, so the sound \
+            is restored even after a crash; it goes once the sound is back.
+            - Your other switches (such as Peek, the offer map and the sound turn-down), which notice you accepted \
+            and when, and small flags about what it has already done (one-time cleanups, the paused reminder), as \
+            numbers and fixed words.
             - During Peek, the previous app's identifier and launcher component stay only in memory. They are \
             cleared when Peek ends without a return, when a return fails, or after the return check (up to 1.5 \
             seconds after returning), with one exception. When Peek leaves Dasher up, or a card's tap opens Dasher, \
@@ -329,10 +362,11 @@ final class LegalTexts {
             accepted, a delivery starts, the phone locks or the screen goes off, another app comes in front, you \
             tap it, auto-decline is paused, or screen reading stops. A peek held for the unlock keeps them at most \
             60 seconds. An offer kept for the unlock holds no app at all: only its notification's key and post \
-            time, the store name it shows and its card, in memory, forgotten at the unlock, when you tap one of the \
-            app's cards, or after 40 seconds. The previous app's identity is never saved or sent; Peek and Back to \
-            map logs describe only the kind of previous app, such as a navigation app or the home screen. Its \
-            screen text is never kept.
+            time, the store name it shows and its card, in memory until the next unlock (looked at then only if its \
+            notification is still up and at most 40 seconds old), or until you tap one of the app's cards, a newer \
+            offer takes its place or screen reading stops. The previous app's identity is never saved or sent; Peek \
+            and Back to map logs describe only the kind of previous app, such as a navigation app or the home \
+            screen. Its screen text is never kept.
 
             Item counts on shopping offers are kept only as offer figures; no rule uses them. An unread declared \
             count stays unknown; no quantity is inferred from product names, unique-item counts, stops or orders. \
@@ -382,22 +416,25 @@ final class LegalTexts {
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
-            shopping offers, the item count). It is kept whether Autopilot is on or off, and a reading older than 7 \
-            days is discarded. A percentage counts only when exactly one stands beside acceptance-rate wording on \
-            Dasher's decline question; no text of the question is kept with it.
+            shopping offers, the item count). It is kept whether Autopilot is on or off. A reading older than 7 \
+            days is never used or sent: it is deleted the next time the app looks at it (when you open the app, \
+            Autopilot plans or a report is built), and until then stays on the phone unused. A percentage counts \
+            only when exactly one stands beside acceptance-rate wording on Dasher's decline question; no text of \
+            the question is kept with it.
             - When Dasher says declining an offer does not lower your acceptance rate, that offer's line in the \
             decision history is marked so, and Autopilot leaves that offer out of its acceptance-rate count (unless \
             Dasher says so of most of your recent declines, which Autopilot then takes as Dasher's general \
             wording).
-            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason) and when the \
-            bar last rose, and, while it is on, its working figures: whether it is recovering toward your goal, a \
-            correction of at most 10 points and, for that correction, the acceptance rate it carried forward from \
-            Dasher's reading at its last checkpoint (replaced after 25 more counted offers, and dropped when you \
-            change the goal or turn Autopilot off or on). All of this is numbers and fixed words, never screen \
-            text.
-            - The 24-hour logs note each new reading, and Autopilot's plans with the acceptance rate they count \
-            with, as numbers; as for other recognized screens, they can also hold the decline question's masked \
-            words with its percentage.
+            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason), when the bar \
+            last rose, a pending reason for its next change (a fixed word, such as that you turned it on) and when \
+            it last noted that Dasher's "does not lower" wording looked general, and, while it is on, its working \
+            figures: whether it is recovering toward your goal, a correction of at most 10 points and, for that \
+            correction, the acceptance rate it carried forward from Dasher's reading at its last checkpoint \
+            (replaced after 25 more counted offers, and dropped when you change the goal or turn Autopilot off or \
+            on). All of this is numbers and fixed words, never screen text.
+            - The 24-hour logs note each new reading, and Autopilot's plans with the acceptance rate and the offer \
+            rate (offers an hour) they count with, as numbers; as for other recognized screens, they can also hold \
+            the decline question's masked words with its percentage.
             - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Share report**), \
             in masked diagnostics you attach to feedback, and in **Report this offer**, which sends Autopilot's \
             state and the acceptance rate it counts with. It is never in the summary after each dash: that summary \
@@ -406,8 +443,8 @@ final class LegalTexts {
             kept with a reading never leaves the phone. The mark that declining an offer does not lower your \
             acceptance rate is part of that offer's history line and goes with it in Share report, attached \
             diagnostics and the summary after each dash; Report this offer leaves it out.
-            - Clear history removes the reading, Autopilot's working figures and its last-change note. Your rules \
-            and Autopilot's settings stay.
+            - Clear history removes the reading, Autopilot's working figures, its last-change note and its other \
+            notes above. Your rules and Autopilot's settings stay.
 
             ## What leaves the phone, and when
 
@@ -418,10 +455,11 @@ final class LegalTexts {
             - **Send anonymous feedback**, only when you tap Send: the category you pick, what you type (at most \
             4,000 characters), and the app's version. With **Attach masked diagnostics** on (off by default, chosen \
             for each submission), it also sends the masked diagnostic report Share report builds: the Android \
-            version and phone maker, the app's readiness and settings, your current rules and Autopilot's state, \
-            including the latest acceptance-rate reading, the decision history, the bounded masked logs described \
-            above and any recent stop summary. Long diagnostics go in at most 4 parts; Preview shows exactly what \
-            will be sent.
+            version and phone maker, the app's readiness, settings and last status line, the offer map's counts \
+            (never a position), your current rules and Autopilot's state, including the latest acceptance-rate \
+            reading, the decision history, the state of updates, the latest states, the bounded masked logs \
+            described above and any recent stop summary. Long diagnostics go in at most 4 parts; Preview shows \
+            exactly what will be sent.
             - **Report this offer**, only when you tap Send: what went wrong (Misread, Wrong decline, Wrong accept \
             or Other), your optional note, and that offer's report: its figures, decision and outcome, the bar it \
             was judged at, its masked read lines (with every word that is not offer vocabulary reduced to its \
@@ -433,15 +471,16 @@ final class LegalTexts {
             - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings (it starts off, \
             and no update turns it on). After each dash ends (Dasher shows the dash ended, you end it in Dasher \
             with its End dash, or nothing of the dash was seen for 30 minutes), it sends one masked summary of at \
-            most 30,000 characters: the app and Android version and phone maker; your switches and which rules are \
-            set, and whether screen reading, background offers and alerts were ready; Autopilot's bar and why it \
-            changed (never your acceptance rate); counts of offers by result, action and outcome; unreadable \
-            offers; declines still showing, by stage; decline-error recoveries; automatic accepts not sent, and \
-            why; the types of screen-read and notification errors with the place in the app's code where they \
-            happened; how Dasher's window was laid out; what Peek did, by fixed category; that dash's decisions, \
-            with times counted from the dash's start; masked log lines only around those problems; and any recent \
-            stop summary. Never coordinates, place names, or an install or device identifier. At most one a dash \
-            and three a day. Turning it off discards summaries not yet sent.
+            most 30,000 characters: the app and Android version and phone maker; how long the dash lasted (to the \
+            nearest 5 minutes) and how it ended; your switches and which rules are set, and whether screen reading, \
+            background offers and alerts were ready; Autopilot's bar and why it changed (never your acceptance \
+            rate); counts of offers by result, action and outcome; unreadable offers; declines still showing, by \
+            stage; decline-error recoveries; automatic accepts not sent, and why; the types of screen-read and \
+            notification errors with the place in the app's code where they happened; how Dasher's window was laid \
+            out; what Peek did, by fixed category; that dash's decisions, with times counted from the dash's start; \
+            masked log lines only around those problems; and any recent stop summary. Never coordinates, place \
+            names, or an install or device identifier. At most one a dash and three a day. Turning it off discards \
+            summaries not yet sent.
             - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
             goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
             report, which opens the feedback dialog with Bug chosen and diagnostics attached, for that report only; \
@@ -483,9 +522,9 @@ final class LegalTexts {
             them and counts nothing.
             - Web and email addresses in these texts open in your browser or email app only when you tap them.
 
-            Render, Cloudflare, Supabase, Google, Anthropic and OpenAI handle what reaches them under their own \
-            terms and privacy policies. Copies you deliberately share through another app are controlled by that \
-            app and recipient.
+            Render, Cloudflare, Supabase, Google, Anthropic and OpenAI, and the email services that carry a message \
+            you send to the privacy contact below, handle what reaches them under their own terms and privacy \
+            policies. Copies you deliberately share through another app are controlled by that app and recipient.
 
             ## What it never collects
 
@@ -508,12 +547,14 @@ final class LegalTexts {
             ends the hold. Peek pauses while your phone is locked.
             - Autopilot is off unless you turn it on, and turning it off puts the bar back to exactly your \
             minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear history removes it.
-            - Clear history (Settings) removes the decisions, both logs, the observed-wait records, the offer map \
-            and cached place names, the temporary restart/error records above, stop summaries, the current dash's \
-            problem counts and after-dash summaries not yet sent, plus Autopilot's acceptance-rate reading, its \
-            working figures and its last-change note. Lookups and wait-record writes already in progress cannot \
-            restore cleared history. Feedback and offer reports you sent and that still wait to go stay until they \
-            are sent or 7 days pass. Your rules and Autopilot settings remain.
+            - Clear history (Settings) removes the decisions, both logs and the latest states, the observed-wait \
+            records, the offer map and cached place names, the temporary restart/error records above, stop \
+            summaries, the current dash's problem counts and after-dash summaries not yet sent, plus Autopilot's \
+            acceptance-rate reading, its working figures, its last-change note and its other notes. Lookups and \
+            wait-record writes already in progress cannot restore cleared history. Feedback and offer reports you \
+            sent and that still wait to go stay until they are sent or 7 days pass. Your rules, Autopilot's \
+            settings and the app's last status line (which can show the last offer's figures until the next status \
+            replaces it) remain.
             - Feedback and offer reports leave only after you tap Send. Leave **Attach masked diagnostics** off to \
             send only your words, the category and the app's version.
             - **Share anonymous diagnostics after each dash** is off unless you turn it on, and you can turn it off \
@@ -530,10 +571,11 @@ final class LegalTexts {
             accepted; Settings' feedback dialog lists the last ten.
 
             For privacy, data-deletion and security requests only, email privacy@offerfilter.org. Unlike feedback, \
-            email is not anonymous: the developer sees your address and uses it only to answer you. Feedback \
-            carries no name or account, so to ask about a submission you sent, include its reference; without it \
-            the developer may be unable to tell which anonymous submission is yours. Send everything else as \
-            anonymous feedback.
+            email is not anonymous: the developer sees your address and uses it only to answer you. Your message \
+            passes through your own email provider and the email services that deliver mail for offerfilter.org to \
+            the developer. Feedback carries no name or account, so to ask about a submission you sent, include its \
+            reference; without it the developer may be unable to tell which anonymous submission is yours. Send \
+            everything else as anonymous feedback.
 
             The project's public issue tracker is suitable only for public, non-sensitive development discussion; \
             posts there are public. Do not attach diagnostic reports, customer details, payment or account \

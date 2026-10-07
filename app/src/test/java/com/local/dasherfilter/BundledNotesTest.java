@@ -63,7 +63,9 @@ public class BundledNotesTest {
     /**
      * The 0.5.0 words are written: two or three lines for whoever accepted notice 13 (the last one published), two or
      * three for the 0.5.0 card, the headline changes in each; and no card for 0.4.73, which never shipped though the
-     * build carries its name until the release takes 0.5.0's.
+     * build carries its name until the release takes 0.5.0's. Whoever read notice 13 was told reports went to a private
+     * repository: the box corrects it (it is public). The card says what the code does, never an outcome no phone has
+     * shown (Dasher kept responsive, fewer missed offers), and only the maps it recognizes are skipped.
      */
     @Test public void theWordsFor050AreWrittenAnd0473ShowsNothing() {
         assertTrue(BundledNotes.WRITTEN);
@@ -71,16 +73,20 @@ public class BundledNotesTest {
         assertTrue(changed.toString(), changed.size() >= 2 && changed.size() <= 3);
         assertEquals(changed, BundledNotes.noticeChanges(Consent.VERSION - 1));
         String notice = String.join(" ", changed);
-        for (String headline : new String[] {"Feedback needs no account", "Autopilot", "acceptance rate", "7 days",
-                "screen won't time out", "Peek", "Ohio"}) {
+        for (String headline : new String[] {"Feedback needs no account", "GitHub is gone",
+                "public GitHub repository, not a private one", "Autopilot", "up or down", "acceptance rate",
+                "7 days", "screen won't time out", "Peek", "Dash diagnostics are opt-in", "Ohio"}) {
             assertTrue(headline, notice.contains(headline));
         }
         List<String> news = BundledNotes.whatsNew("0.5.0");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
         for (String headline : new String[] {"Autopilot", "acceptance rate 70%, 50%, or pay first", "Peek",
-                "while locked", "screen stays on", "Dasher stays responsive", "Send anonymous feedback"}) {
+                "while locked", "screen won't time out", "recognized maps are skipped", "Send anonymous feedback"}) {
             assertTrue(headline, card.contains(headline));
+        }
+        for (String outcome : new String[] {"stays responsive", "Fewer missed", "aren't read", "catches offers"}) {
+            assertFalse(outcome, card.contains(outcome) || notice.contains(outcome));
         }
         assertTrue("0.4.73 opts out", BundledNotes.hasRelease("0.4.73"));
         assertTrue(BundledNotes.whatsNew("0.4.73").isEmpty());

@@ -137,14 +137,17 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "What you type is sent as written, not masked",
                 "No feedback or diagnostics leave before you accept this notice",
                 "clearing this phone does not erase sent copies",
-                // Autopilot and Dasher's acceptance rate (finalSpec.privacyConsent; WP5: kept even with it off).
+                // Autopilot and Dasher's acceptance rate (finalSpec.privacyConsent; WP5: kept even with it off, with
+                // the offer's numeric fingerprint; AutopilotStore deletes an old reading only when it next reads it).
                 "The wait estimate and Autopilot use up to 200 numeric offer and observed-wait records in a rolling "
                         + "24-hour window, which are not shared",
-                "the app keeps the latest acceptance rate Dasher showed (one number, up to 7 days), even with "
-                        + "Autopilot off",
-                "it leaves only in reports you share or send yourself, never in the summary after a dash"}) {
+                "the app keeps the latest acceptance rate Dasher showed, with the offer it was shown for (used up to 7 "
+                        + "days, then deleted when the app next looks), even with Autopilot off",
+                "the rate leaves only in reports you share or send yourself, never in the summary after a dash"}) {
             assertTrue(fact, data.contains(fact));
         }
+        assertEquals(7L * 24 * 60 * 60_000, AutopilotStore.AR_MAX_AGE_MS);
+        assertFalse("more than one number is kept", data.contains("one number"));
         assertFalse("no account of any kind", data.contains("GitHub"));
         assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
         assertFalse(data.contains("cleared by this update"));
@@ -162,8 +165,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers below your minimums.",
-                "Optional Autopilot moves that cutoff by itself, using your recent offers, how often they come and the "
-                        + "acceptance rate Dasher shows when you decline",
+                // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
+                // meet the minimums, which the acceptance-rate warning covers too.
+                "Optional Autopilot moves that cutoff up or down by itself (" + FilterStore.BAR_MIN + "% to "
+                        + FilterStore.BAR_MAX + "% of your minimums), using your recent offers, how often they come "
+                        + "and the acceptance rate Dasher shows when you decline",
+                "raised, it declines offers that meet your minimums",
                 "to protect your acceptance goal it can let offers below your minimums through for you to decide",
                 "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
                         + "offers that meet your minimums and commit you to a delivery.",
@@ -378,7 +385,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             if (doc != LegalTexts.Doc.LICENSE) {
                 // Dated beta texts, never drafts.
                 String dated = (doc == LegalTexts.Doc.TERMS ? "Beta terms" : "Beta privacy policy")
-                        + ", effective 7 October 2026 · for " + AppName.NAME + " 0.5.0";
+                        + ", effective " + LegalTextsTest.EFFECTIVE + " · for " + AppName.NAME + " 0.5.0";
                 assertNotNull(doc.title + ": " + dated, shownTextContaining(shown, dated));
                 assertNull(shownTextContaining(shown, "Not legal advice"));
             }
