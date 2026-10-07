@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -40,6 +42,11 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
     /** The offer on the user's ticket: $26.30 for 29.2 mi, 71 min and 4 stops, at most 3 stops allowed. */
     private static final OfferSnapshot REPORTED = new OfferSnapshot(2630, 29.2, 71, 4);
     private static final String TOO_MANY = "4 stops exceeds maximum 3";
+    /**
+     * The README's rules as 0.5.0 keeps them: $13.00, $3.85 a mile, 41¢ a minute, at most 3 stops. Their $4.75 per stop
+     * folds into minimum pay as max($13.00, 2 × $4.75) = $13.00, as the 0.5.0 migration folds it.
+     */
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3);
 
     /** The reported offer's line as the screen recorded it, with {@code action}. */
     private static DecisionLog.Entry reported(long at, DecisionLog.Action action, boolean autoDecline) {
@@ -58,21 +65,50 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
 
     /** The user's own case: declined by the rules, Decline tapped, then taken over. */
     private void recordTakenOver() {
+        recordTakenOver(false);
+    }
+
+    /** @param byOlderVersion recorded as 0.4.45 recorded it, under the retired rules ({@link #asOlderVersionWroteIt}) */
+    private void recordTakenOver(boolean byOlderVersion) {
         long at = System.currentTimeMillis();
         // Dasher's notification of it came 13 s before the screen read it, and is folded into its line.
         DecisionLog.Entry notice = new DecisionLog.Entry(at - 13_000, DecisionLog.Source.NOTIFICATION, false,
                 REPORTED, 0, OfferRule.Result.DECLINE, TOO_MANY, DecisionLog.Action.SEEN_ON_SCREEN, true,
                 Collections.emptyList());
-        DecisionLog.record(app, reported(at, DecisionLog.Action.DECLINE_TAPPED, true).withNotification(notice));
-        DecisionLog.record(app, reported(at, DecisionLog.Action.USER_TOOK_OVER, true));
+        DecisionLog.Entry tapped = reported(at, DecisionLog.Action.DECLINE_TAPPED, true).withNotification(notice);
+        DecisionLog.Entry tookOver = reported(at, DecisionLog.Action.USER_TOOK_OVER, true);
+        DecisionLog.record(app, byOlderVersion ? asOlderVersionWroteIt(tapped) : tapped);
+        DecisionLog.record(app, byOlderVersion ? asOlderVersionWroteIt(tookOver) : tookOver);
+    }
+
+    /**
+     * {@code entry} as a version before 0.5.0 wrote it: no rules model, bar or Autopilot (its notification's line too),
+     * so it reads as decided under the retired rules, its score the retired area score.
+     */
+    private static DecisionLog.Entry asOlderVersionWroteIt(DecisionLog.Entry entry) {
+        try {
+            JSONObject json = entry.toJson();
+            for (JSONObject line : new JSONObject[] {json, json.optJSONObject("notification")}) {
+                if (line == null) continue;
+                line.remove("model");
+                line.remove("bar");
+                line.remove("auto");
+            }
+            DecisionLog.Entry older = DecisionLog.Entry.fromJson(json);
+            assertEquals(DecisionLog.LEGACY_MODEL, older.model);
+            return older;
+        } catch (JSONException unreadable) {
+            throw new AssertionError(unreadable);
+        }
     }
 
     @Test
     public void anOfferTheUserTookOverIsStampedYoursAndKeepsTheRulesVerdictAsALine() {
         // This fixture checks the day palette; Auto legitimately changes after 6 pm on the test machine.
         assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
-        recordTakenOver();
+        FilterStore.save(app, RULES);
+        // The user's line as 0.4.45 recorded it, decided under the rules 0.5.0 retired.
+        recordTakenOver(true);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             openTicket(content);
@@ -86,8 +122,16 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
                     findText(content, "Rules: decline — too many stops (4, max 3)"));
             assertNotNull(shownTextContaining(content,
                     "You touched the screen and took over; nothing more tapped · on screen"));
+            // The score it was decided with, named as the retired rules' area score, never as today's rules' score;
+            // today's rules are worked out apart from it, on demand ("How this offer was judged").
             assertNotNull("the original score is distinguished from today's rule preview",
-                    findText(content, "Score reference · 124% at decision"));
+                    shownTextContaining(content, "Area score (retired rules) 124%"));
+            assertNull("0.5.0 has no score reference", shownTextContaining(content, "Score reference"));
+            assertNull(shownTextContaining(content, MinimumsDetails.LEGACY));
+            shownButton(content, AutopilotText.TICKET_KEY).performClick();
+            // $112.42: 29.2 mi × $3.85 asks the most of today's minimums.
+            assertNotNull(shownTextContaining(content, MinimumsDetails.LEGACY + " Now: needs $112.42 at 100%."));
+            assertNotNull(shownTextContaining(content, "Required $112.42: the highest set amount · score 23%"));
             assertNotNull(shownTextContaining(content, "Dasher's notification 13 s earlier"));
             assertTrue(findChart(content).getContentDescription().toString().startsWith("Chart of the last 1 offers: 0 passed, 0 declined, 1 left to you, 0 need review."));
         }
@@ -96,7 +140,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
     @Test
     public void anOfferAcceptedLaterIsStampedAcceptedInGreen() {
         assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
+        FilterStore.save(app, RULES);
         recordTakenOver();
         // The user's Accept tap was seen and Dasher showed a delivery screen: the acceptance tracker's step.
         assertTrue(DecisionLog.markStep(app, REPORTED, DecisionLog.StepKind.ACCEPTED_NOT_LEARNED,
@@ -153,7 +197,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
     @Test
     public void onlyADeclineThatWentThroughIsStampedDeclined() {
         assertTrue(Appearance.choose(app, Appearance.Mode.DAY));
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
+        FilterStore.save(app, RULES);
         DecisionLog.record(app, reported(System.currentTimeMillis(), DecisionLog.Action.DECLINE_TAPPED, true));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -198,7 +242,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
     @Test
     public void nightTicketsKeepTheObservedOutcomeWithReadableNightInks() {
         assertTrue(Appearance.choose(app, Appearance.Mode.NIGHT));
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3));
+        FilterStore.save(app, RULES);
         long now = System.currentTimeMillis();
         DecisionLog.Entry takenOver = reported(now, DecisionLog.Action.USER_TOOK_OVER, true);
         DecisionLog.Entry[] entries = {

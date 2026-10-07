@@ -65,7 +65,7 @@ public final class AdversarialSafetyTest {
     @Test
     public void routeCostCannotOverflowAnIntegerAndPass() {
         OfferSnapshot offer = new OfferSnapshot(100, 1.0, 100000, 2);
-        FilterSettings settings = new FilterSettings(true, 0, 0, 100000, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 0, 0, 100000, 0);
         OfferRule.Decision decision = OfferRule.evaluate(offer, settings);
         assertEquals(10_000_000_000L, decision.requiredCents);
         assertEquals(OfferRule.Result.DECLINE, decision.result);

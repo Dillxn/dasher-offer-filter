@@ -87,7 +87,7 @@ public class WindowFlowsTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -417,7 +417,7 @@ public class WindowFlowsTest {
 
     @Test
     public void aPassingAddOnsCardCarriesTheAddOnsOwnFiguresNotPayNotRead() {
-        FilterStore.save(app, new FilterSettings(true, 500, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 500, 0, 0, 0));
         connect(app(MAPS));
         ActiveRouteStore.save(app, new OfferSnapshot(500, 3.0, 12, 2));
         post("Taco Bell");
@@ -655,7 +655,7 @@ public class WindowFlowsTest {
 
     @Test
     public void whilePausedTheBarKeepsThePausedColour() {
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         connect(finding());
         dasherShows(offer("$25.00"));
         assertNull(tab().verdict());

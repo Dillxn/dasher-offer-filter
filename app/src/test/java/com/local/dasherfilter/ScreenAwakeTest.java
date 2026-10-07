@@ -52,7 +52,7 @@ public class ScreenAwakeTest {
         app = RuntimeEnvironment.getApplication();
         ConsentedTestApp.accept(app);
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 500, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 500, 0, 0, 0));
         Dashing.forgetCache();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         Dashing.seen(app);
@@ -225,13 +225,13 @@ public class ScreenAwakeTest {
     @Test public void pauseNoRulesDashEndAndPendingConsentEachRelease() {
         awake.start();
         PowerManager.WakeLock lock = lock();
-        FilterStore.save(app, new FilterSettings(false, 500, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 500, 0, 0, 0));
         advanceCheck();
         assertFalse("paused filter", lock.isHeld());
-        FilterStore.save(app, new FilterSettings(true, 0, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 0));
         advanceCheck();
         assertFalse("no filtering rule", lock.isHeld());
-        FilterStore.save(app, new FilterSettings(true, 500, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 500, 0, 0, 0));
         advanceCheck();
         assertTrue(lock.isHeld());
         ConsentedTestApp.forget(app);
@@ -351,10 +351,10 @@ public class ScreenAwakeTest {
             activity.resume();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertTrue(keepsScreenOn(activity));
-            FilterStore.save(app, new FilterSettings(false, 500, 0, 0, 0, 0));
+            FilterStore.save(app, FilterSettings.of(false, 500, 0, 0, 0));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
             assertFalse("pause releases the visible activity flag", keepsScreenOn(activity));
-            FilterStore.save(app, new FilterSettings(true, 500, 0, 0, 0, 0));
+            FilterStore.save(app, FilterSettings.of(true, 500, 0, 0, 0));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
             assertTrue(keepsScreenOn(activity));
             ConsentedTestApp.forget(app);

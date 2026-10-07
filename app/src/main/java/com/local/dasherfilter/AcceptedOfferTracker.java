@@ -132,22 +132,14 @@ final class AcceptedOfferTracker {
         final String detail;
         /** Accepted without the tap path: the acceptance to record. Null otherwise. */
         final Acceptance accepted;
-        /**
-         * Retired (0.5.0): an offer declined by hand was once held here to teach the adaptive minimum. Nothing is
-         * taught any more, so it is always null.
-         */
-        @Deprecated
-        final OfferSnapshot declined;
         /** Dasher's next screen, when it was neither a delivery nor the wait for offers: for the screens log. */
         final List<String> screen;
 
-        Note(DecisionLog.StepKind kind, OfferSnapshot line, String detail, Acceptance accepted, OfferSnapshot declined,
-             List<String> screen) {
+        Note(DecisionLog.StepKind kind, OfferSnapshot line, String detail, Acceptance accepted, List<String> screen) {
             this.kind = kind;
             this.line = line;
             this.detail = detail == null ? "" : detail;
             this.accepted = accepted;
-            this.declined = declined;
             this.screen = screen;
         }
 
@@ -1072,8 +1064,7 @@ final class AcceptedOfferTracker {
             case ROUTE:
                 break;
             default:
-                notes.add(new Note(DecisionLog.StepKind.NOT_LEARNED, w.line, describe(end) + when, null, null,
-                        screen));
+                notes.add(new Note(DecisionLog.StepKind.NOT_LEARNED, w.line, describe(end) + when, null, screen));
                 return;
         }
         String reason = notAcceptedBecause(w);
@@ -1089,7 +1080,7 @@ final class AcceptedOfferTracker {
                 : "it closed with about " + clock(left) + " left on its countdown, and Dasher showed a delivery screen"
                         + when;
         notes.add(new Note(DecisionLog.StepKind.ACCEPTED_LEARNED, w.line, detail,
-                new Acceptance(w.learn, w.routeAfter, w.addOn, w.line, w.acceptTapped), null, null));
+                new Acceptance(w.learn, w.routeAfter, w.addOn, w.line, w.acceptTapped), null));
     }
 
     /**
@@ -1131,12 +1122,12 @@ final class AcceptedOfferTracker {
                 break;
         }
         if (drop != null) {
-            notes.add(new Note(DecisionLog.StepKind.DECLINE_DROPPED, w.line, drop, null, null, screen));
+            notes.add(new Note(DecisionLog.StepKind.DECLINE_DROPPED, w.line, drop, null, screen));
             return;
         }
         String outcome = end == End.ANOTHER_OFFER ? "another offer came"
                 : end == End.ROUTE ? "Dasher went back to the delivery under way" : describe(end) + when;
-        notes.add(new Note(DecisionLog.StepKind.DECLINE_COUNTED, w.line, outcome, null, null, null));
+        notes.add(new Note(DecisionLog.StepKind.DECLINE_COUNTED, w.line, outcome, null, null));
     }
 
     /** Why a delivery screen after this offer does not show it was accepted; null when it does. */
@@ -1233,7 +1224,7 @@ final class AcceptedOfferTracker {
 
     private void note(DecisionLog.StepKind kind, OfferSnapshot line, String detail) {
         if (line == null) return;
-        notes.add(new Note(kind, line, detail, null, null, null));
+        notes.add(new Note(kind, line, detail, null, null));
     }
 
     /** Dasher left the screen for a moment (the shade, recent apps, another app): what was seen is kept. */

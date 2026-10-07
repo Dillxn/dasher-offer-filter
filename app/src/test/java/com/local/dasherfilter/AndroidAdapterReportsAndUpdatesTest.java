@@ -178,8 +178,16 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     public void reportIncludesEverySavedRuleAndNotificationAccess() {
         // Before 0.5.0 these rules had a $1.00 per-stop minimum beside the $20.00 one, folded as max(flat, 2 × per
         // stop) = $20.00; the adaptive minimum and what it learned are retired, so nothing of them is saved or shown.
-        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 30, 3));
+        FilterSettings rules = FilterSettings.of(true, 2000, 150, 30, 3);
+        FilterStore.save(app, rules);
+        // One offer in the history with a step under it, so the retired words are looked for in step lines too.
+        OfferSnapshot facts = new OfferSnapshot(2500, 7.2, 21, 2);
+        DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts,
+                OfferRule.evaluate(facts, rules), DecisionLog.Action.PASSES, true, Arrays.asList("$25.00")));
+        assertTrue(DecisionLog.markStep(app, facts, DecisionLog.StepKind.ACCEPTED,
+                "you tapped Accept, and Dasher showed a delivery screen", 600_000));
         String report = DiagnosticLog.report(app);
+        assertTrue(report, report.contains(" Accepted: you tapped Accept, and Dasher showed a delivery screen\n"));
         assertTrue(report, report.contains("== Rules\n"
                 + "Current when this report was generated; not a reconstructed historical baseline.\n"
                 + "Auto-decline saved: true; flat cents=2000; per-mile cents=150; per-minute cents=30 "
@@ -506,7 +514,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
 
     @Test
     public void whileUpdatingTheScreenSaysSoAndTakesNoInputUntilItFails() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertNull(shownTextContaining(content, "Updating Offer Filter"));

@@ -1,7 +1,6 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
-import java.util.List;
 import org.junit.Test;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -38,15 +37,11 @@ public final class AreaScoreTest {
         assertArrayEquals(new float[] {-150, -30, 30, 150, -90, 90}, AreaScore.ANGLES, 0f);
         assertArrayEquals(new int[] {AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE,
                 AreaScore.ITEM, AreaScore.STOP}, AreaScore.DRAW_ORDER);
-        // Drawing geometry only: three spokes join pay–mile and mile–minute; minute and pay stand opposite.
-        List<int[]> three = AreaScore.pairs(new int[] {0, 1, 2});
-        assertEquals(2, three.size());
-        assertArrayEquals(new int[] {AreaScore.PAY, AreaScore.MILE}, three.get(0));
-        assertArrayEquals(new int[] {AreaScore.MILE, AreaScore.MINUTE}, three.get(1));
+        // Drawing geometry only: pay–mile and mile–minute are neighbours; minute and pay stand opposite, so the shape
+        // closes through the centre there.
         assertTrue(AreaScore.closesThroughCenter(AreaScore.MINUTE, AreaScore.PAY));
         assertFalse(AreaScore.closesThroughCenter(AreaScore.PAY, AreaScore.MILE));
-        assertEquals(1, AreaScore.pairs(new int[] {0, 2}).size());
-        assertEquals(0, AreaScore.pairs(new int[] {1}).size());
+        assertFalse(AreaScore.closesThroughCenter(AreaScore.MILE, AreaScore.MINUTE));
     }
 
     @Test
@@ -114,7 +109,11 @@ public final class AreaScoreTest {
         same(cents("1025"), AreaScore.fixedFloor(AreaScore.MINUTE, 41, offer));
         assertNull("off", AreaScore.fixedFloor(AreaScore.MILE, 0, offer));
         assertNull("unread", AreaScore.fixedFloor(AreaScore.MINUTE, 41, new OfferSnapshot(1500, 6.0, null, 3)));
-        assertNull("the reserved hotspot axis asks nothing", AreaScore.fixedFloor(AreaScore.HOTSPOT, 100, offer));
+        // The retired axes keep their reserved indexes and ask nothing, whatever a stale caller passes.
+        OfferSnapshot shopping = new OfferSnapshot(1500, 6.0, 25, 3).withItems(12, true);
+        for (int retired : new int[] {AreaScore.STOP, AreaScore.HOTSPOT, AreaScore.ITEM}) {
+            assertNull("the reserved axis " + retired + " asks nothing", AreaScore.fixedFloor(retired, 100, shopping));
+        }
         same(BigDecimal.ZERO, AreaScore.required100(FilterSettings.of(true, 0, 385, 0, 0),
                 new OfferSnapshot(1500, 0.0, 25, 2)));
     }

@@ -208,28 +208,5 @@ final class OfferRule {
         return AreaScore.roundedCents(BigDecimal.valueOf(cents), minimumScalePercent);
     }
 
-    // ---- Deprecated compatibility surface (inert) ----
-
-    /** How a reason recorded by the retired score by area begins ("score 87% (needs 100%)"); history only. */
-    @Deprecated
-    static final String SCORE_REASON = "score ";
-
-    /** The retired area-score reason, for older history lines only. */
-    @Deprecated
-    static String scoreReason(int percent) {
-        return scoreReason(percent, 100);
-    }
-
-    @Deprecated
-    static String scoreReason(int percent, int minimumScalePercent) {
-        return SCORE_REASON + percent + "% (needs " + minimumScalePercent + "%)";
-    }
-
-    /** The hotspot rule is retired, so no unreadable offer is ever "only the hotspot missing". */
-    @Deprecated
-    static boolean onlyHotspotMissing(OfferSnapshot offer, AddOnOffer addOn, FilterSettings settings) {
-        return false;
-    }
-
     private OfferRule() {}
 }

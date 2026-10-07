@@ -95,7 +95,7 @@ public class PeekTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -777,7 +777,7 @@ public class PeekTest {
     @Test
     public void notWhileAutoDeclineIsPaused() {
         connect(app(MAPS));
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         notPeeked("auto-decline is paused");
     }
 
@@ -1240,17 +1240,19 @@ public class PeekTest {
     }
 
     @Test
-    public void deferredCardDoesNotReviveDecisionFromBeforeItemMinimumChanged() {
-        FilterStore.save(app, new FilterSettings(true, 0, 0, 10, 0, 0).withPerItem(50));
+    public void deferredCardDoesNotReviveDecisionFromBeforeTheMinimumsChanged() {
+        // 10¢ a minute ($6.00 an hour) and no minimum pay: the notification shows $25.00 but no minutes.
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 10, 0));
         connect(app(MAPS));
         listener.get().onNotificationPosted(notification("$25.00", "New Order: 10 items",
                 System.currentTimeMillis()), null);
         idle();
         NotificationManager notifications = app.getSystemService(NotificationManager.class);
         android.service.notification.StatusBarNotification card = notifications.getActiveNotifications()[0];
-        // Initially REVIEW for unread time; the new item floor is a known failure. The queued rules callback
-        // has not run yet, so the old quiet review card must not ring when Peek is cancelled.
-        FilterStore.save(app, FilterStore.load(app).withPerItem(300));
+        // Initially REVIEW for unread time; a $30.00 minimum pay set meanwhile makes $25.00 a known failure. The
+        // queued rules callback has not run yet, so the old quiet review card must not ring when Peek is cancelled.
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before.withMinimums(3000, before.perMileCents, before.perMinuteCents));
         int historyBefore = DecisionLog.recent(app, 200).size();
         OfferNotificationService.peekNotTaken(card.getTag());
         idle();

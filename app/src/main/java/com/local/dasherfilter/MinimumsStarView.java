@@ -2689,15 +2689,6 @@ final class MinimumsStarView extends View {
         return autopilotShown() ? new RectF(scoreBox) : null;
     }
 
-    /**
-     * The old score toggle's box, which the Autopilot button took over (its slot and {@link #SCORE_ID}). Kept for
-     * the minimums-scale tests until their package retires them.
-     */
-    @Deprecated
-    RectF scoreToggleBox() {
-        return autopilotBox();
-    }
-
     /** Recent offer {@code m}'s polygon (newest first) where it is heading, in this view's pixels (for tests). */
     List<float[]> offerShape(int m) {
         return offerPolygon(skyX, skyY, skyRadius, m, 1);

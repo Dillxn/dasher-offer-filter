@@ -52,7 +52,7 @@ public class MaskedCaptureAdapterTest {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
         DiagnosticLog.setEnabled(app, true);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.forgetCache();
         OfferSilencer.forgetCache();
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();

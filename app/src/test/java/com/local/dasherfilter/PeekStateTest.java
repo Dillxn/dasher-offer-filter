@@ -126,7 +126,7 @@ public class PeekStateTest {
     }
     @Test public void stalePostsAndReplaysCannotTriggerAnOpening() {
         Context app = RuntimeEnvironment.getApplication();
-        FilterSettings settings = new FilterSettings(true, 2_000, 0, 0, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 2_000, 0, 0, 0);
         Peek.Request old = new Peek.Request("old", System.currentTimeMillis()-10_001,
                 "Store", false, true, "old");
         assertTrue(Peek.refusal(app, old, settings, false, -1).contains("old"));

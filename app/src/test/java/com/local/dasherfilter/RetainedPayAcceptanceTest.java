@@ -172,7 +172,6 @@ public final class RetainedPayAcceptanceTest {
         show(tracker, progress("2 items"), true, 2_000);
         for (AcceptedOfferTracker.Note note : tracker.takeNotes()) {
             assertNull(note.accepted);
-            assertNull(note.declined);
             assertNotEquals(DecisionLog.StepKind.DECLINE_COUNTED, note.kind);
         }
     }

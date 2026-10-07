@@ -126,6 +126,10 @@ final class AutopilotRuntime {
     static volatile Runnable afterInputsForTests;
     /** Runs inside a commit right before its compare-and-set (tests). */
     static volatile Runnable beforeWriteForTests;
+    /** Runs right before a decline question's "ar reading" line is logged, under {@link #LOCK} (tests). */
+    static volatile Runnable beforeReadingLogForTests;
+    /** Runs right before a published plan's line is logged, under {@link #LOCK} (tests). */
+    static volatile Runnable beforePlanLogForTests;
 
     // ---- State ----
 
@@ -143,8 +147,12 @@ final class AutopilotRuntime {
     /**
      * Publishing a plan (and its state), a commit's last checks and writes, and resetting for a user's change or
      * Clear history happen under this lock, so a plan worked out before such a change can never write its stale state
-     * back, and a commit never lands its bar, change note or jump clearing across one. Taken before FilterStore's and
-     * AutopilotStore's own locks (in that order), never the other way; nothing under it waits on another thread.
+     * back, and a commit never lands its bar, change note or jump clearing across one. The lines that carry the
+     * acceptance rate (a question's reading, a plan's line) are logged under it too, in the same hold as their
+     * generation check: Clear history moves the generation on under this lock before it clears the log, so such a line
+     * is always queued before that clear and goes with the old log, never into the new one. Taken before FilterStore's
+     * and AutopilotStore's own locks (in that order), never the other way; nothing under it waits on another thread
+     * (a log line is only queued for the log's writer).
      */
     private static final Object LOCK = new Object();
 
@@ -284,13 +292,11 @@ final class AutopilotRuntime {
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
                     planned));
-            String dropped = publish(app, plan, state, epoch);
+            String dropped = publish(app, plan, state, epoch, stored, wall);
             if (dropped != null) {
                 log(app, dropped);
                 return;
             }
-            logPlan(app, plan, stored, wall);
-            logValve(app, plan, wall);
             notifyListeners();
             Runnable requester = commitRequester;
             if (requester != null && wanted(app, plan)) requester.run();
@@ -300,13 +306,17 @@ final class AutopilotRuntime {
     }
 
     /**
-     * Keeps what the plan changed of the acceptance-rate state and publishes it, unless Clear history, a change of
-     * rules, or Autopilot turned off or on or another goal (which forget that state) came while it was worked out.
+     * Keeps what the plan changed of the acceptance-rate state, publishes it and logs it (its line and the exemption
+     * valve's), unless Clear history, a change of rules, or Autopilot turned off or on or another goal (which forget
+     * that state) came while it was worked out. The plan's line names the acceptance rate it counted with, so it is
+     * logged here, under {@link #LOCK} with the generation check (see there), never after the lock is let go.
      *
      * @param epoch {@link #goalEpoch} as the plan began, before it read the state
+     * @param stored the reading the plan counted with, as stored (for its age in the line)
      * @return null when published; otherwise the log line saying why it was dropped
      */
-    private static String publish(Context app, Autopilot.Plan plan, Autopilot.State before, long epoch) {
+    private static String publish(Context app, Autopilot.Plan plan, Autopilot.State before, long epoch,
+                                  AutopilotStore.Reading stored, long wall) {
         synchronized (LOCK) {
             if (plan.generation != generation.get()) return AutopilotText.DISCARD_CLEARED;
             if (!plan.rulesKey.equals(FilterStore.load(app).rulesKey())) return AutopilotText.DISCARD_RULES;
@@ -318,6 +328,10 @@ final class AutopilotRuntime {
                         checkpoint ? plan.checkpointAr : -1);
             }
             latest.set(plan);
+            Runnable hook = beforePlanLogForTests;
+            if (hook != null) hook.run();
+            logPlan(app, plan, stored, wall);
+            logValve(app, plan, wall);
             return null;
         }
     }
@@ -691,8 +705,14 @@ final class AutopilotRuntime {
                 stored = parsed.hasPercent() && AutopilotStore.recordReading(app, parsed.percent, fingerprint, wall);
                 // A percent counts as new when the store kept it as new (that survives a restart); none, when unseen.
                 distinct = parsed.hasPercent() ? stored : !same;
+                // Logged in the same hold as the generation check above, never after the lock is let go: a Clear
+                // history in between would otherwise let this rate line into the log it just cleared (see LOCK).
+                if (distinct || newlyExempt) {
+                    Runnable hook = beforeReadingLogForTests;
+                    if (hook != null) hook.run();
+                    log(app, AutopilotText.logReading(parsed.percent, parsed.exempt));
+                }
             }
-            if (distinct || newlyExempt) log(app, AutopilotText.logReading(parsed.percent, parsed.exempt));
             if (newlyExempt && known) {
                 onMain(() -> {
                     DecisionLog.markStep(app, facts, DecisionLog.StepKind.AR_EXEMPT, "", STEP_WINDOW_MS);

@@ -121,7 +121,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            RectF control = star.scoreToggleBox();
+            RectF control = star.autopilotBox();
             assertNotNull(control);
             Ui ui = new Ui(app);
             dragThrough(content, new float[][] {{control.centerX(), control.centerY()},
@@ -141,7 +141,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            RectF control = star.scoreToggleBox();
+            RectF control = star.autopilotBox();
             assertNotNull(control);
             float x = control.centerX(), y = control.centerY();
             long now = SystemClock.uptimeMillis();

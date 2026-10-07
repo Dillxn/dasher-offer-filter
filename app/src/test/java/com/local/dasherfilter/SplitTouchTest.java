@@ -139,7 +139,7 @@ public class SplitTouchTest extends AndroidAdapterTestBase {
     // ---- The service and Offer Filter's page ----
 
     private OfferFilterService start() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.clear(app);
         controller = Robolectric.buildService(OfferFilterService.class).create();

@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -67,6 +70,8 @@ public class AutopilotRuntimeTest {
         AutopilotRuntime.executorForTests = Runnable::run;
         AutopilotRuntime.afterInputsForTests = null;
         AutopilotRuntime.beforeWriteForTests = null;
+        AutopilotRuntime.beforeReadingLogForTests = null;
+        AutopilotRuntime.beforePlanLogForTests = null;
         AutopilotRuntime.forgetCache();
         QualifyingWaitStore.wallClock = () -> wall;
         QualifyingWaitStore.forgetCache();
@@ -85,6 +90,8 @@ public class AutopilotRuntimeTest {
         AutopilotRuntime.executorForTests = null;
         AutopilotRuntime.afterInputsForTests = null;
         AutopilotRuntime.beforeWriteForTests = null;
+        AutopilotRuntime.beforeReadingLogForTests = null;
+        AutopilotRuntime.beforePlanLogForTests = null;
         AutopilotRuntime.wallClock = System::currentTimeMillis;
         AutopilotRuntime.elapsedClock = SystemClock::elapsedRealtime;
         QualifyingWaitStore.wallClock = System::currentTimeMillis;
@@ -879,6 +886,94 @@ public class AutopilotRuntimeTest {
         for (Runnable task : new ArrayList<>(queued)) task.run();
         assertNull(AutopilotStore.reading(app, wall));
         assertTrue(autopilotLog().isEmpty());
+    }
+
+    // ---- Clear history and the lines that carry the rate ----
+
+    /** Clear history's own steps, in Settings' order, on a thread of their own; {@code done} counts down after. */
+    private Thread clearHistoryOnItsOwnThread(CountDownLatch done) {
+        Thread clear = new Thread(() -> {
+            DecisionLog.clear(app);
+            QualifyingWaitStore.clear(app);
+            AutopilotRuntime.cleared(app);
+            DiagnosticLog.clear(app);
+            done.countDown();
+        }, "clear-history");
+        clear.start();
+        return clear;
+    }
+
+    private static boolean awaitQuietly(CountDownLatch latch, long ms) {
+        try {
+            return latch.await(ms, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Clear history comes just as a decline question's reading is about to be logged. The line carries the rate, so it
+     * is logged in the same hold of the runtime's lock as its generation check: Clear history (Autopilot's part, then
+     * the logs) waits for that hold, so the line is queued before the logs are cleared and goes with them. Neither the
+     * new log nor Autopilot's store keeps the rate.
+     */
+    @Test
+    public void aReadingLoggedJustAsClearHistoryComesNeverReachesTheClearedLog() throws Exception {
+        CountDownLatch cleared = new CountDownLatch(1);
+        AtomicBoolean clearedFirst = new AtomicBoolean();
+        Thread[] clear = new Thread[1];
+        AutopilotRuntime.beforeReadingLogForTests = () -> {
+            AutopilotRuntime.beforeReadingLogForTests = null;
+            clear[0] = clearHistoryOnItsOwnThread(cleared);
+            // However long the line is held up here, Clear history cannot get past it.
+            clearedFirst.set(awaitQuietly(cleared, 300));
+        };
+        Thread question = new Thread(() -> AutopilotRuntime.confirmationSeen(app,
+                Arrays.asList(QUESTION, "Your acceptance rate", "37%"), null), "question");
+        question.start();
+        question.join(10_000);
+        assertNotNull("the reading was about to be logged", clear[0]);
+        assertTrue("Clear history ran", cleared.await(10, TimeUnit.SECONDS));
+        clear[0].join(10_000);
+        String log = DiagnosticLog.read(app);
+        assertFalse(log, log.contains("ar reading"));
+        assertFalse(log, log.contains("37%"));
+        assertNull(AutopilotStore.reading(app, wall));
+        assertFalse("Clear history waited for the line's hold", clearedFirst.get());
+    }
+
+    /**
+     * The same for a plan: its line names the acceptance rate it counted with, so it is logged in the hold of the lock
+     * that published it. Clear history coming just then waits; the plan's line goes with the old log, and so does the
+     * line of the plan Clear history asks for, which starts again from nothing (learning).
+     */
+    @Test
+    public void aPlanLoggedJustAsClearHistoryComesNeverPutsItsRateInTheClearedLog() throws Exception {
+        minimums(400, 100, 25);
+        history(20);
+        reading(55, 12);
+        FilterStore.setAutopilot(app, true, 70);
+        CountDownLatch cleared = new CountDownLatch(1);
+        AtomicBoolean clearedFirst = new AtomicBoolean();
+        Thread[] clear = new Thread[1];
+        AutopilotRuntime.beforePlanLogForTests = () -> {
+            AutopilotRuntime.beforePlanLogForTests = null;
+            clear[0] = clearHistoryOnItsOwnThread(cleared);
+            clearedFirst.set(awaitQuietly(cleared, 300));
+        };
+        Thread planner = new Thread(() -> AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME),
+                "planner");
+        planner.start();
+        planner.join(10_000);
+        assertNotNull("the plan was about to be logged", clear[0]);
+        assertTrue("Clear history ran", cleared.await(10, TimeUnit.SECONDS));
+        clear[0].join(10_000);
+        assertEquals(DiagnosticLog.read(app), Collections.<String>emptyList(), autopilotLog());
+        assertNull(AutopilotStore.reading(app, wall));
+        assertFalse("Clear history waited for the plan line's hold", clearedFirst.get());
+        assertEquals("the plan Clear history asked for starts from nothing", Autopilot.Mode.LEARNING,
+                AutopilotRuntime.latest().mode);
     }
 
     // ---- Status and the history as Autopilot counts it ----

@@ -116,7 +116,7 @@ public class PrivacyBoundaryTest {
     @Test public void partialPaymentScreenWithoutHeadingKeepsOnlyStructure() {
         assertFalse(PersonalText.recognizedDashScreen(Arrays.asList("731", "12/34", "Copy")));
         // Auto-decline on with a rule: paused, nothing of Dasher's would be read at all.
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         org.robolectric.android.controller.ServiceController<OfferFilterService> service =
                 org.robolectric.Robolectric.buildService(OfferFilterService.class).create();
@@ -144,7 +144,7 @@ public class PrivacyBoundaryTest {
     }
 
     @Test public void oneControlOnPartialPaymentPageCannotPersistItsAmountThroughStatus() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         org.robolectric.android.controller.ServiceController<OfferFilterService> service =
                 org.robolectric.Robolectric.buildService(OfferFilterService.class).create();
@@ -231,7 +231,7 @@ public class PrivacyBoundaryTest {
                 false, new OfferSnapshot(750, 2.0, 10, 2), 2000, OfferRule.Result.DECLINE, "synthetic",
                 DecisionLog.Action.DECLINE_TAPPED, true, payment);
         String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test",
-                new FilterSettings(true, 2000, 0, 0, 0, 0), old);
+                FilterSettings.of(true, 2000, 0, 0, 0), old);
         assertFalse(report, report.contains("Card details"));
         assertFalse(report, report.contains("731"));
         assertFalse(report, report.contains("123.45"));

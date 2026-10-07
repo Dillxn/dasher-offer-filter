@@ -148,7 +148,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void aThirdOfASplitScreenIsOneStripTheMascotTheLatestVerdictAndTheStatus() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         try (ActivityController<MainActivity> activity = splitScreen()) {
@@ -183,7 +183,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void theStripSaysWhatNeedsTheUserAndItsTapIsTheFix() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         screen = Robolectric.buildService(OfferFilterService.class).create();
         screen.get().onServiceConnected();
         settle();
@@ -206,7 +206,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void aThirdOfASplitScreenBesideAMapDuringADashSaysSoAndItsTapSwapsInDasher() {
         dasherInstalled();
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         servicesUp();
         Dashing.seen(app);
         try (ActivityController<MainActivity> activity = splitScreen()) {
