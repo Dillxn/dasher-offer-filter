@@ -184,6 +184,13 @@ public class FeedbackOutboxTest {
         assertEquals("one token, three parts", 3, rows.size());
         assertEquals(0, queued().length);
         assertEquals("aaaa1111", last().reference);
+        // PRIVACY: the token ties only a submission's own parts together. Its reference stays in Settings' list, never
+        // in the log a later report with diagnostics attached would carry.
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[feedback] feedback sent: 3 parts"));
+        assertFalse(log, log.contains("aaaa1111"));
+        assertFalse(log, log.contains("bbbb2222"));
+        assertFalse(log, log.contains("reference"));
     }
 
     @Test

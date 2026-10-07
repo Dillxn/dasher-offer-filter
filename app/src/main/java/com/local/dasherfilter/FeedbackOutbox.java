@@ -514,8 +514,9 @@ final class FeedbackOutbox {
         int count = Math.max(1, item.optJSONArray("parts") == null ? 1 : item.optJSONArray("parts").length());
         if (state == Feedback.State.SENT) {
             Feedback.remember(app, new Feedback.Sent(clock.getAsLong(), reference, kind, automatic));
-            DiagnosticLog.log(app, "feedback", kind.wire + " sent: " + count + (count == 1 ? " part" : " parts")
-                    + (reference.isEmpty() ? "" : "; reference " + reference));
+            // Never the reference: a later report with diagnostics attached carries this log, and the reference would
+            // tie this submission (words only, say) to that report's phone. Settings keeps the last 10 references.
+            DiagnosticLog.log(app, "feedback", kind.wire + " sent: " + count + (count == 1 ? " part" : " parts"));
         } else {
             DiagnosticLog.log(app, "feedback", kind.wire + " not accepted by the feedback service and dropped");
         }
