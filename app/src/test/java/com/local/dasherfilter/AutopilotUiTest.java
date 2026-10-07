@@ -459,6 +459,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("Autopilot waits for screen reading. Opens Autopilot details.",
                     String.valueOf(waits.getContentDescription()));
 
+            // From here plans wait to be worked out, the one screen reading asks for as it connects included.
+            AutopilotRuntime.executorForTests = queued::add;
             connectReader();
             FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 3));
             assertEquals("Autopilot needs a pay, per-mile or hourly minimum", statusLine(content));
@@ -466,13 +468,13 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
             assertEquals("Autopilot 100% · auto-decline paused", statusLine(content));
 
-            // No plan yet for these rules.
-            AutopilotRuntime.executorForTests = queued::add;
+            // No plan yet for these rules: the connection's still waits to be worked out.
             minimums(400, 100, 25);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
             assertEquals("Autopilot 100% · checking your offers", statusLine(content));
 
             history(8, 20);
+            assertEquals("one plan waits, however often one was asked for", 1, queued.size());
             queued.remove(0).run();
             assertEquals("Autopilot 100% · learning (12 of 20 offers)", statusLine(content));
             AutopilotRuntime.executorForTests = Runnable::run;
