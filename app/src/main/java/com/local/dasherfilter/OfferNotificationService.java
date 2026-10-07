@@ -26,7 +26,8 @@ import java.util.Map;
 /**
  * Classifies DoorDash offer notifications in the background. Never launches an activity itself: notification evidence
  * and screen evidence are separate authorities. An offer that cannot be judged is left to the user; with Peek on
- * ({@link Peek}), the screen reader is asked to bring Dasher up for a moment to read it. It gets a card of its own, which
+ * ({@link Peek}), the screen reader is asked to bring Dasher up for a moment to read it, never for DoorDash's re-post of
+ * an offer the user had in Dasher ({@link TrackedOffer#heldInDasherUntil}). It gets a card of its own, which
  * rings once while Dasher is in the background (silently when Android shows Dasher's own alert for it sounded), unless
  * Dasher's own notification of it really alerts the user: listed, tappable, and ranked by Android to pop up or sound by
  * itself ({@link #alertsByItself}). Never a payless card beside Dasher's own that alerts (the owner's request), and

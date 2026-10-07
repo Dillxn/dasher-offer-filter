@@ -26,7 +26,8 @@ import java.util.function.LongSupplier;
  * exception to "the app never opens Dasher by itself", and only while the Peek switch (Settings) is on.
  *
  * <p>Before Dasher is opened, the touch watch goes up and must see the phone quiet for {@link #QUIET_MS} (no touch, no
- * keyboard; the user's decision), {@link #QUIET_WAIT_MS} at most. A peek ends with Dasher left as it is after anything
+ * keyboard; the user's decision), {@link #QUIET_WAIT_MS} at most; a touch it saw counts as under way for
+ * {@link #GESTURE_MS} (the watch never hears a finger kept down), so Dasher never opens mid-gesture. A peek ends with Dasher left as it is after anything
  * of the user's, a decline handed back, refused or not confirmed, a call, or {@link #MAX_MS}. It goes back only on
  * positive proof: the app's own decline of the peeked offer completed (its question confirmed, or an add-on's single
  * Decline) and a read shows a screen Dasher's own words explain (the wait for offers, the dash over, or the route the

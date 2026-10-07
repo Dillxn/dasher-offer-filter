@@ -1628,9 +1628,18 @@ public final class OfferFilterService extends AccessibilityService {
         scanner.postAtTime(afterUserTap, settle);
     }
 
-    /** {@link #TAP_SETTLE_MS} after the user's last tap on Dasher: a read, which brings the tab back over Dasher. */
+    /**
+     * {@link #TAP_SETTLE_MS} after the user's last tap on Dasher: a read, which brings the tab back over Dasher. Not
+     * when a read is due anyway (Dasher's events asked for one, or a recheck or the quiet gap's read is pending: begun
+     * after the tap settled, it brings the tab back), nor while an offer or confirmation is up or a decline is under
+     * way (offer reads first; the tab is only a slim bar there, and Dasher's next event's read brings it back).
+     */
     private final Runnable afterUserTap = () -> {
         if (stopped || scannerFaulted || !phoneReadable() || !Consent.accepted(this)) return;
+        if (queued.get() != QUEUED_NONE || recheckPending || quietScanPending
+                || busy(SystemClock.uptimeMillis())) {
+            return;
+        }
         scanNow(SystemClock.uptimeMillis(), "after your tap");
     };
 

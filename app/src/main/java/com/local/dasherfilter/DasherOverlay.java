@@ -31,7 +31,9 @@ import android.widget.Toast;
  * offer area, only while Dasher's screen positively shows the wait for offers ({@link DasherScene#WAITING}): never
  * over an offer, a confirmation, a delivery or a screen not recognised. Touches pass through it. Under the tab, over
  * the wait for offers only and while Dasher fills the screen, the {@link BackToMapChip} offers a way back to the map
- * the user was in when the screen reader says so.
+ * the user was in when the screen reader says so; from any change of Dasher's until a read sees it, it takes no
+ * touches ({@link #dasherChanged}). A tap on the tab acts only while Android's list of windows still has Dasher on
+ * screen: the screen reader hears nothing of another app coming in front.
  *
  * <p>All are laid out in screen coordinates (as Android reports Dasher's window bounds), not below the status bar,
  * so they land where they are placed over Dasher. All of it runs on the main thread.
