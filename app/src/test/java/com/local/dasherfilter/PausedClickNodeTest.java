@@ -7,10 +7,10 @@ import android.os.SystemClock;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.view.accessibility.AccessibilityRecord;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -21,8 +21,6 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
-import org.robolectric.annotation.Implementation;
-import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowAccessibilityRecord;
@@ -36,26 +34,15 @@ import static org.junit.Assert.assertTrue;
  * AGENTS ("Paused is a safe mode"): while paused nothing of Dasher's is read, "not one node and not a click's node
  * either". A click event's node is Android's lookup, which on a phone Dasher's own UI thread must serve
  * ({@code event.getSource()}); NeverStarveStressTest's paused click carries no node, so this one does, and counts every
- * lookup. A control shows the count works: reading again, the same click's node is asked for.
+ * lookup ({@link OfferFilterService#clickSourceForTests}). A control shows the count works: reading again, the same
+ * click's node is asked for.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = PausedClickNodeTest.CountingRecord.class)
+@Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class PausedClickNodeTest {
-    /** Counts every node an event is asked for: on a phone, a call into the app that sent it. */
-    @Implements(AccessibilityRecord.class)
-    public static class CountingRecord extends ShadowAccessibilityRecord {
-        static int sources;
-
-        @Implementation
-        @Override
-        protected AccessibilityNodeInfo getSource() {
-            sources++;
-            return super.getSource();
-        }
-    }
-
     private static final String DASHER = "com.doordash.driverapp";
+    private final AtomicInteger sources = new AtomicInteger();
     private Application app;
     private ServiceController<OfferFilterService> controller;
     private OfferFilterService service;
@@ -70,6 +57,7 @@ public final class PausedClickNodeTest {
         DecisionLog.clear(app);
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         OfferFilterService.forgetScreenState();
+        OfferFilterService.clickSourceForTests = sources::incrementAndGet;
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         controller = Robolectric.buildService(OfferFilterService.class).create();
         service = controller.get();
@@ -78,6 +66,7 @@ public final class PausedClickNodeTest {
     }
 
     @After public void teardown() {
+        OfferFilterService.clickSourceForTests = null;
         controller.destroy();
         OfferFilterService.scanLooperForTests = null;
         OfferFilterService.forgetScreenState();
@@ -85,20 +74,21 @@ public final class PausedClickNodeTest {
 
     @Test public void pausedAClicksNodeIsNeverAskedFor() {
         show(offer());
-        CountingRecord.sources = 0;
+        sources.set(0);
         click();
         pass(2_000);
-        assertEquals("paused: not a click's node either", 0, CountingRecord.sources);
+        assertEquals("paused: not a click's node either", 0, sources.get());
         assertTrue(DiagnosticLog.read(app).contains("not reading Dasher while paused (auto-decline is off)"));
 
         // Reading again, the same click's node is asked for (the count is real).
         FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         OfferFilterService.requestCheckForRules();
         pass(500);
-        CountingRecord.sources = 0;
+        assertTrue(DiagnosticLog.read(app).contains("reading Dasher again"));
+        sources.set(0);
         click();
         pass(2_000);
-        assertTrue("reading, a click's node is looked up", CountingRecord.sources > 0);
+        assertTrue("reading, a click's node is looked up", sources.get() > 0);
     }
 
     private void click() {

@@ -957,6 +957,8 @@ public final class OfferFilterService extends AccessibilityService {
     static volatile java.util.function.Consumer<AccessibilityNodeInfo> childFetchForTests;
     /** For tests: runs before each root is asked for (a call into the window's app), with its prefetch flags. */
     static volatile java.util.function.IntConsumer rootFetchForTests;
+    /** For tests: runs before a click event is asked for its node (on a phone, a call into the app that clicked). */
+    static volatile Runnable clickSourceForTests;
     private final Runnable loadTick = this::logReadLoad;
 
     /** Re-scans while a screen is still settling or a decline confirmation is pending. */
@@ -8775,6 +8777,8 @@ public final class OfferFilterService extends AccessibilityService {
             CharSequence description = event.getContentDescription();
             AccessibilityNodeInfo source = null;
             try {
+                Runnable hook = clickSourceForTests;
+                if (hook != null) hook.run();
                 source = event.getSource();
             } catch (RuntimeException unavailable) {
                 // The click still counts by its text.
