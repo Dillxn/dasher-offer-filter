@@ -21,11 +21,11 @@ import org.json.JSONObject;
  * One offer the user reports from its ticket ("Report this offer"), as it leaves the phone: the decision's figures,
  * reason, action and fixed outcome category, the lines read from the offer masked twice, the current rules and
  * Autopilot's state as one compact object ({@link #rulesJson}: the three minimums, max stops, Autopilot's switch, goal,
- * bar and mode, and the acceptance rate it counts with), the app's and Android's versions, and when it was decided, to
- * the minute (UTC). Never its outcome steps, the exact time, the notification's own time, any screen text beyond its
- * masked read lines, or any account or device identifier. It is JSON so that a misread can become a test; the user's
- * own note travels beside it, never inside it. It leaves only when the user taps Send on a dialog that says what it
- * sends ({@link FeedbackDialogs#OFFER_REPORT_SAYS}).
+ * bar, mode and last change, and the acceptance rate it counts with), the app's and Android's versions, and when it
+ * was decided, to the minute (UTC). Never its outcome steps, the exact time, the notification's own time, any screen
+ * text beyond its masked read lines, or any account or device identifier. It is JSON so that a misread can become a
+ * test; the user's own note travels beside it, never inside it. It leaves only when the user taps Send on a dialog
+ * that says what it sends ({@link FeedbackDialogs#OFFER_REPORT_SAYS}).
  *
  * <p>The read lines are masked as the phone keeps them ({@link PersonalText}: "Order for Jane D." reads "Order for
  * [name]"), then every word that is not offer vocabulary is reduced to its shape ("Chick-fil-A" reads "Xxxxx-xxx-A")
@@ -186,9 +186,10 @@ final class OfferReport {
      * stops; Autopilot's switch, goal (70, 50, or 0 for pay first) and bar; the mode of its latest plan for these rules
      * (null before one), whether it is recovering toward the goal and its stall correction; the acceptance rate it
      * counts with (carried forward from Dasher's latest reading, or its own estimate, to the hundredth; -1 when
-     * unknown), where that came from (DASHER, ESTIMATE or UNKNOWN) and how many minutes ago Dasher showed it (-1
-     * without a reading); and the last bar change ({from, to, reason, minutesAgo}, the reason a fixed name such as
-     * RECOVERY; null when none). Numbers and fixed words only: no screen text, no time of day.
+     * unknown), where that came from (DASHER, ESTIMATE or UNKNOWN) and, when it is Dasher's, how many minutes ago
+     * Dasher showed it (-1 otherwise: an estimate or an unknown rate owes nothing to a reading, even one still kept);
+     * and the last bar change ({from, to, reason, minutesAgo}, the reason a fixed name such as RECOVERY; null when
+     * none). Numbers and fixed words only: no screen text, no time of day.
      */
     static JSONObject rulesJson(AutopilotText.Status autopilot) throws JSONException {
         FilterSettings rules = autopilot.rules;
@@ -208,7 +209,7 @@ final class OfferReport {
                 .put("extra", autopilot.extra)
                 .put("arPercent", autopilot.arHundredths < 0 ? -1 : autopilot.arHundredths / 100.0)
                 .put("arSource", autopilot.arSource.name())
-                .put("arAgeMinutes", autopilot.arAgeMinutes())
+                .put("arAgeMinutes", autopilot.arSource == Autopilot.ArSource.DASHER ? autopilot.arAgeMinutes() : -1)
                 .put("lastChange", change == null ? JSONObject.NULL : new JSONObject()
                         .put("from", change.from)
                         .put("to", change.to)

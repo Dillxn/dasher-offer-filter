@@ -338,7 +338,9 @@ public class PrivacyBoundaryTest {
         String offer = Feedback.sendOfferReport(app, DecisionLog.recent(app, 1).get(0),
                 OfferReport.Problem.WRONG_DECLINE, "It declined this one.", null);
         settle();
-        assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains("your latest acceptance rate"));
+        assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains("Autopilot's state (on or off, goal, bar, mode and last "
+                + "change, and the acceptance rate it counts with: Dasher's latest, carried forward, or its own "
+                + "estimate)"));
         int seen = 0;
         for (JSONObject request : service.requests()) {
             String token = request.getString("reportToken");
@@ -367,9 +369,25 @@ public class PrivacyBoundaryTest {
         app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
         Dashing.seen(app);
         long start = Dashing.currentStart(app);
+        // The same question as other screen readers or another Dasher may hand it over: the rate written out, split
+        // into two labels, abbreviated, or among an offer's own labels with no screen line of its own.
+        for (String rate : new String[] {"37 percent", "37, %", "37 pct", "３７％"}) {
+            DiagnosticLog.log(app, "screen", "confirmation|||false|true win=full/-/dasher/100 labels=[" + QUESTION
+                    + ", " + WARNING + ", " + rate + ", Decline offer, Go back] metricParts=[]");
+        }
+        DiagnosticLog.log(app, "screen", "offer|1625:6.2:26:2|KEEP: passes|true|true win=full/-/dasher/100 "
+                + "labels=[$16.25, " + WARNING + ", 37 percent, 0:35] metricParts=[2 stops (6.2 mi) • 26 min]");
         DashSummary.stuck(app, "waiting for the question");
         DashSummary.unreadable(app, ASKED);
+        DashSummary.unreadable(app, Arrays.asList(QUESTION, "AR 37 %", "Decline offer"));
+        DashSummary.unreadable(app, Arrays.asList(QUESTION, "37", "%", "Decline offer", "Go back"));
         DashSummary.flush();
+        // A line whose kept evidence merged pay with the question, as a card's description can.
+        long now = System.currentTimeMillis();
+        DecisionLog.record(app, new DecisionLog.Entry(now, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(575, 6.6, 27, 2), 675, OfferRule.Result.DECLINE, "dollars per hour",
+                DecisionLog.Action.CONFIRMATION_TAPPED, true, Arrays.asList("$5.75",
+                "Declining this $5.75 offer may lower your acceptance rate to 37 percent")));
         int before = service.count();
         DashSummary.summarize(app, start, System.currentTimeMillis() + 1_000L, DashSummary.End.DASH_OVER);
         settle();
@@ -379,7 +397,15 @@ public class PrivacyBoundaryTest {
         String summary = Feedback.unframed(sent.getString("diagnostics"));
         assertTrue(summary, summary.contains(" · bar 100% (Autopilot on) · "));
         assertTrue("the question's screen line stays, its rate masked", summary.contains(WARNING + ", #%"));
-        assertFalse(summary, java.util.regex.Pattern.compile("37 ?%|(?i)\\bar ~?37\\b").matcher(summary).find());
+        assertTrue("split in two, both masked", summary.contains(WARNING + ", #, %, Decline offer"));
+        assertTrue("the offer's pay and countdown stay",
+                summary.contains("labels=[$16.25, " + WARNING + ", #%, 0:35]"));
+        assertTrue(summary, summary.contains("read: [" + QUESTION + ", XX #%, Decline offer]"));
+        assertTrue(summary, summary.contains("read: [$5.75, Declining this $5.75 offer xxx lower your acceptance rate "
+                + "to # xxxxxxx]"));
+        // Not one 37 anywhere, written however: a clock's ":37" alone would not be the rate.
+        assertFalse(summary, java.util.regex.Pattern.compile("(?<![:\\d])37(?!\\d)|３７").matcher(summary)
+                .find());
         assertFalse(summary, summary.contains("ar reading"));
         assertFalse(summary, java.util.regex.Pattern.compile("\\[autopilot\\] plan \\d").matcher(summary).find());
         assertTrue("Autopilot's lines without the rate stay", summary.contains("[autopilot] on; goal 70%"));
@@ -389,13 +415,16 @@ public class PrivacyBoundaryTest {
 
     @Test public void clearingHistoryLeavesNoReadingAndNoCopyOfItOnThePhone() throws Exception {
         dasherShowedTheRate();
-        // Clear history's own steps, in its order: the decisions and the watched waiting, the logs, then Autopilot
-        // (AutopilotRuntime.cleared runs after the history it plans from is gone).
+        // Clear history's own steps, in the order Settings must take them: the decisions and the watched waiting,
+        // then Autopilot (AutopilotRuntime.cleared runs after the history it plans from is gone, and moves its
+        // generation on, so a reading or plan worked out from before is dropped instead of logged), and the logs
+        // last, so a line Autopilot queued just before is deleted with them rather than landing in the new log.
         DecisionLog.clear(app);
         QualifyingWaitStore.clear(app);
-        DiagnosticLog.clear(app);
         AutopilotRuntime.cleared(app);
+        DiagnosticLog.clear(app);
 
+        assertFalse("no copy of the rate in the log either", DiagnosticLog.read(app).contains("37"));
         assertNull(AutopilotStore.reading(app, wall));
         assertFalse(app.getSharedPreferences(AutopilotStore.PREFS, Context.MODE_PRIVATE).contains("ar_percent"));
         assertTrue("the switch, goal and minimums stay", FilterStore.load(app).autopilot);

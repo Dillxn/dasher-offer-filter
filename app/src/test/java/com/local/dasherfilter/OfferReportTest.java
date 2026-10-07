@@ -294,4 +294,33 @@ public class OfferReportTest {
         assertEquals("when Dasher showed it", 12, json.getInt("arAgeMinutes"));
         assertTrue(json.isNull("lastChange"));
     }
+
+    @Test
+    public void anEstimatedRateCarriesNoAgeOfAReadingItDidNotUse() throws JSONException {
+        // Dasher's 55% two and a half hours ago, then 120 offers, each accepted or declined: DoorDash's window has
+        // turned over since that reading, so Autopilot counts with its own estimate, though the reading is still kept.
+        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, 70, 100);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 6 * PAY.length; i++) {
+            int k = i % PAY.length;
+            OfferSnapshot facts = new OfferSnapshot(PAY[k], MILES[k], MINUTES[k], 2);
+            boolean declined = OfferRule.evaluate(facts, rules).result == OfferRule.Result.DECLINE;
+            lines.add(new Autopilot.OfferRecord(facts, AT - (1 + i) * MIN, false, false, !declined, declined, false));
+        }
+        long readAt = AT - 150 * MIN;
+        Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, null, new Autopilot.Reading(55, readAt),
+                null, AT, 0));
+        assertEquals(Autopilot.ArSource.ESTIMATE, plan.arSource);
+        JSONObject json = rules(new AutopilotText.Status(rules, true, plan,
+                new AutopilotStore.Reading(55, readAt, ""), null, AT));
+        assertEquals("ESTIMATE", json.getString("arSource"));
+        assertEquals(plan.arHundredths / 100.0, json.getDouble("arPercent"), 0);
+        assertEquals("the estimate owes nothing to Dasher's reading, so no age of it", -1,
+                json.getInt("arAgeMinutes"));
+
+        // No rate at all, a reading or not: no age either.
+        JSONObject unknown = rules(new AutopilotText.Status(rules, true, null, null, null, AT));
+        assertEquals("UNKNOWN", unknown.getString("arSource"));
+        assertEquals(-1, unknown.getInt("arAgeMinutes"));
+    }
 }

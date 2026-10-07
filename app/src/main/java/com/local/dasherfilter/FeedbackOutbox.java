@@ -35,7 +35,8 @@ import org.json.JSONObject;
  * <p>Before every part: the current notice must be accepted (else nothing is sent and it waits), the one-time privacy
  * cleanup must have finished, and an automatic summary (the opt-in after each dash) needs that opt-in still on, in the
  * epoch it was begun in (else it is discarded). The part's text is masked again with the current rules right before it
- * is sent. A 201 crosses the part off at once (in memory, so this process never sends it again, and on disk); a retry
+ * is sent, and an automatic summary is filtered again for Dasher's acceptance rate ({@link DashSummary#remask}). A 201
+ * crosses the part off at once (in memory, so this process never sends it again, and on disk); a retry
  * sends only the parts still owed, under the same token, so a reply lost after the service stored a part never stores
  * it twice.
  *
@@ -389,7 +390,7 @@ final class FeedbackOutbox {
             if (!file.isFile()) return;
             String text = null;
             if (parts.length() > 0) {
-                text = remask(item.optString("format"), parts.optString(index, ""));
+                text = remask(item.optString("format"), automatic, parts.optString(index, ""));
                 if (text == null || text.isEmpty()) {
                     finish(app, file, item, kind, automatic, Feedback.State.REJECTED, "", pass);
                     return;
@@ -445,8 +446,18 @@ final class FeedbackOutbox {
 
     /** Masks a part again with the current rules; null when it cannot be (an offer report this app did not write). */
     static String remask(String format, String text) {
+        return remask(format, false, text);
+    }
+
+    /**
+     * Masks a part again with the current rules; null when it cannot be (an offer report this app did not write). An
+     * automatic summary (the opt-in after each dash) also goes through the summary's own filter again
+     * ({@link DashSummary#remask}), so one an older version queued never carries Dasher's acceptance rate that this
+     * version's filter would have kept out; what the user sends themselves keeps it, as they chose.
+     */
+    static String remask(String format, boolean automatic, String text) {
         if (OFFER.equals(format)) return OfferReport.remask(text);
-        return PersonalText.maskLine(text);
+        return PersonalText.maskLine(automatic ? DashSummary.remask(text) : text);
     }
 
     private static void waitAndRetry(Context app, File file, JSONObject item, Feedback.Kind kind, boolean automatic,

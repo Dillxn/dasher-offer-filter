@@ -7,6 +7,7 @@ import java.text.Normalizer;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
@@ -18,6 +19,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -36,9 +38,13 @@ import org.json.JSONObject;
  * and never more than one summary a dash or {@value #MAX_PER_DAY} a day. The old automatic problem reports (an
  * unreadable offer, a decline still showing, a read or notification error) live on here as counts and excerpts.
  *
- * <p>Dasher's acceptance rate never leaves the phone in this summary ({@link #withoutAcceptanceRate}): the settings
- * name Autopilot's bar and switch only, Autopilot's plan and reading lines stay out of the excerpts, and any other line
- * or read label that names the acceptance rate (Dasher's decline question) has its percentages masked. The rate goes
+ * <p>Dasher's acceptance rate itself never leaves the phone in this summary ({@link #withoutAcceptanceRate}), however
+ * it is written: Autopilot's plan and reading lines stay out of the excerpts, and wherever the rate could be (Dasher's
+ * decline question, on its own screen line or among another read's labels, and any line, read label or step that
+ * names the rate) every number is masked but money and clock times; the accepts a goal still needs are masked
+ * everywhere. A summary waiting to be sent is filtered again right before it goes ({@link #remask}). What the summary
+ * does carry are Autopilot's bar (in the settings and the decisions' "needed") and why it moved ("acceptance rate below
+ * your goal" on a kept commit line): they can show that the rate was below the goal, never what it was. The rate goes
  * only in what the user sends: Share report, feedback with masked diagnostics attached, or Report this offer.
  *
  * <p>The hooks are cheap on the screen reader's thread: nothing is counted while the opt-in is off; what is (and every
@@ -59,35 +65,77 @@ final class DashSummary {
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS XXX";
     private static final Pattern DIGITS = Pattern.compile("\\d");
     /**
-     * Words naming the acceptance rate, as Dasher's decline question shows them, in any case, or the rate as
-     * Autopilot's own words abbreviate it ("AR 55%", "AR ~31%", "ar reading 55%"); looked for in the NFKC form, as
-     * {@link AcceptanceRate} reads the question.
+     * Words naming the acceptance rate, as Dasher's decline question shows them, in any case ("acceptance rate",
+     * "Acceptance-rate"), or "AR" before a figure, as Autopilot's own words abbreviate it ("AR 55%", "AR ~31%", "ar
+     * reading 55%", "AR: 9"); looked for in the NFKC form, as {@link AcceptanceRate} reads the question.
      */
-    private static final Pattern RATE_WORDS = Pattern.compile("(?i)acceptance[\\s\\p{Pd}]+rate"
-            + "|\\bar[ :]+(?:reading[ :]+)?~?\\p{Nd}+(?:[.,]\\p{Nd}+)?\\s?%");
-    /** Any percentage ("9%", "9 %", "100%", "8.5%"), in any digits, before or after NFKC. */
-    private static final Pattern PERCENT = Pattern.compile(
-            "(?<![\\p{Nd}.,])\\p{Nd}+(?:[.,]\\p{Nd}+)?[\\s\\u00A0\\u202F]?[%\\uFF05]");
+    private static final Pattern RATE_WORDS = Pattern.compile("(?i)acceptance[\\s\\p{Pd}]*rate"
+            + "|\\bar\\b[\\s:~]*(?:reading[\\s:~]+)?\\p{N}");
+    /**
+     * A percentage however it is written: digits of any script, with or without a decimal part, any spacing, then
+     * "%", its full-width, small or Arabic form, or the word "percent", "per cent" or "pct", in any case ("9%", "9 %",
+     * "９％", "9 percent", "9 Pct").
+     */
+    private static final String PERCENT = "(?<![\\p{N}.,])\\p{N}+(?:[.,]\\p{N}+)?[\\p{Z}\\s]*"
+            + "(?:[%\\uFF05\\uFE6A\\u066A]|(?i:per[\\p{Z}\\s]?cent|pct)(?![\\p{L}\\p{N}]))";
+    /** A spelled-out number ("nine", "Thirty"), which could spell the rate too. */
+    private static final String NUMBER_WORD = "(?i:\\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten"
+            + "|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty"
+            + "|fifty|sixty|seventy|eighty|ninety|hundred)\\b)";
+    /**
+     * Where the acceptance rate could be, every number goes, however it is written ({@link #numbersMasked}). Group 1
+     * is what cannot be a rate and stays: the window field ("win=split/top/dasher/48"), money ("$7.90", "+$1") and a
+     * clock or countdown ("0:35", "9:45"). Group 2 is a percentage ({@link #PERCENT}), group 3 any other number (a
+     * lone "9" beside a lone "%", "9 of 100") or a spelled-out one.
+     */
+    private static final Pattern NUMBERS = Pattern.compile("(\\bwin=[\\w/-]+"
+            + "|[+-]?\\$[\\p{Z}\\s]?\\p{N}+(?:[.,]\\p{N}+)*"
+            + "|(?<![\\p{N}:.,])\\p{N}{1,2}:\\p{N}{2}(?![\\p{N}:]))"
+            + "|(" + PERCENT + ")"
+            + "|(\\p{N}+(?:[.,]\\p{N}+)*|" + NUMBER_WORD + ")");
     /** A percentage as a summary keeps it where it could be the acceptance rate: no digit, so not even its size. */
     static final String MASKED_PERCENT = "#%";
+    /** Any other number where the acceptance rate could be, and the accepts a goal still needs. */
+    static final String MASKED_NUMBER = "#";
     /**
-     * "about 15 more accepts": the accepts a goal still needs, which beside that goal give the rate away; masked with
-     * the percentages ("about # more accepts").
+     * "about 15 more accepts": the accepts a goal still needs, which beside that goal give the rate away (Autopilot's
+     * "about 61 more accepts to reach 70%" never names the rate): masked on every line ("about # more accepts").
      */
     private static final Pattern ACCEPTS_NEEDED =
-            Pattern.compile("(?i)(?<!\\p{Nd})\\p{Nd}+(?=\\s+more\\s+accepts?\\b)");
+            Pattern.compile("(?i)(?<!\\p{N})\\p{N}+(?=[\\p{Z}\\s]+more[\\p{Z}\\s]+accepts?\\b)");
     /** A log line's source tag, after its time: "[autopilot] ", "[screen] ". */
     private static final String AUTOPILOT_TAG = "[" + AutopilotRuntime.LOG + "] ";
     /**
-     * The Autopilot log lines a summary may carry ({@link AutopilotText}'s fixed lines that never name the acceptance
-     * rate): on, off, a goal, a commit (or its deferral or failure), a discarded or failed plan, and the exemption
-     * valve. Every other Autopilot line (its plans and Dasher's readings carry the rate) stays on the phone, as does
-     * any line a later version adds until it is listed here.
+     * The Autopilot log lines a summary may carry, each whole ({@link AutopilotText}'s fixed lines that never name the
+     * acceptance rate): on, off, a goal, a commit with one of its fixed reasons (or its deferral or failure), a
+     * discarded or failed plan, and the exemption valve. Every other Autopilot line (its plans and Dasher's readings
+     * carry the rate) stays on the phone, as does any line a later version adds, or one that adds to a listed line,
+     * until it is listed here.
      */
-    private static final Pattern AUTOPILOT_KEPT = Pattern.compile("^(?:on; |off; |goal \\d|pay first \\(was |commit "
-            + "|plan discarded: |plan failed: |ar exemptions ignored: )");
-    /** The decline question's own screen line ("[screen] confirmation|…"): its percentages are the rate. */
+    private static final Pattern AUTOPILOT_KEPT = Pattern.compile("on; (?:goal \\d{1,3}%|pay first)"
+            + "|" + Pattern.quote(AutopilotText.LOG_OFF)
+            + "|(?:goal \\d{1,3}%|pay first) \\(was (?:\\d{1,3}%|pay first)\\)"
+            + "|commit \\d{1,3}% -> \\d{1,3}% \\((?:" + commitReasons() + ")\\)"
+            + "|" + Pattern.quote(AutopilotText.LOG_DEFERRED)
+            + "|commit failed: [\\w$]+"
+            + "|" + Pattern.quote(AutopilotText.DISCARD_RULES)
+            + "|" + Pattern.quote(AutopilotText.DISCARD_OLD)
+            + "|" + Pattern.quote(AutopilotText.DISCARD_CLEARED)
+            + "|" + Pattern.quote(AutopilotText.DISCARD_AUTOPILOT_CHANGED)
+            + "|plan failed: [\\w$]+"
+            + "|ar exemptions ignored: \\d+ of \\d+ declines flagged");
+    /**
+     * The decline question's own screen line ("[screen] confirmation|…", OfferFilterService's "confirmation" phase):
+     * all of its labels' numbers go, whatever its words. Any other line whose labels show the question goes the same.
+     */
     private static final String QUESTION_TAG = "[screen] confirmation|";
+    /** Where a screen line's labels begin ("… labels=[…] metricParts=[…]"): its head before them is the app's own. */
+    private static final String LABELS = "labels=[";
+    private static final String METRIC_PARTS = "metricParts=[";
+    /** A summary's lines, as {@link #remask} tells them apart: a log excerpt's, a read list's and an outcome step's. */
+    private static final Pattern EXCERPT_LINE = Pattern.compile("([+-]\\d+:\\d{2}:\\d{2})( \\[.*)");
+    private static final Pattern READ_LINE = Pattern.compile("( {3,4}read: )\\[(.*)\\]");
+    private static final Pattern STEP_LINE = Pattern.compile("( {4}then [+-]\\d+:\\d{2}:\\d{2} )(.*)");
 
     private static final String PREFS = "dash_summary";
     private static final String START = "start";
@@ -193,57 +241,171 @@ final class DashSummary {
 
     /**
      * An offer's read lines as a summary keeps them: masked twice when recognized, else only a not-kept note; with
-     * Dasher's decline question among them, without the acceptance rate it shows ({@link #withoutAcceptanceRate}).
+     * Dasher's decline question among them, or a label naming the acceptance rate, without a single number but money
+     * and clock times ({@link #withoutAcceptanceRate(List, List)}, decided on these raw labels).
      */
     static List<String> readLines(List<String> labels) {
-        return PersonalText.recognizedDashScreen(labels) ? withoutAcceptanceRate(OfferReport.redact(labels))
+        return PersonalText.recognizedDashScreen(labels) ? withoutAcceptanceRate(labels, OfferReport.redact(labels))
                 : Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
     }
 
     /**
-     * Read labels as a summary may carry them: when any of them names the acceptance rate (Dasher's decline question
-     * says "acceptance rate" beside the rate it shows), every percentage among them is masked
-     * ({@value #MASKED_PERCENT}); otherwise they are as they were.
+     * {@code redacted} ({@link OfferReport#redact} of {@code raw}) as a summary may carry it. Decided on the raw labels
+     * as well, before redaction reduced "AR" or "percent" to a shape: when they ask Dasher's question or name the rate,
+     * every number among the redacted ones goes but money and clock times ({@link #numbersMasked}); otherwise as
+     * {@link #withoutAcceptanceRate(List)}.
+     */
+    static List<String> withoutAcceptanceRate(List<String> raw, List<String> redacted) {
+        if (redacted == null) return null;
+        return raw != null && asksOrNamesTheRate(raw) ? masked(redacted, true) : withoutAcceptanceRate(redacted);
+    }
+
+    /**
+     * Read labels as a summary may carry them (a problem's, kept since it was counted, or a decision's): when they show
+     * Dasher's decline question (its rate may be any label, with or without words beside it) or any of them names the
+     * acceptance rate, every number among them is masked but money and clock times ({@link #numbersMasked}); otherwise
+     * only the accepts a goal still needs.
      */
     static List<String> withoutAcceptanceRate(List<String> labels) {
-        if (labels == null) return null;
-        boolean question = false;
-        for (String label : labels) question |= label != null && namesAcceptanceRate(label);
-        if (!question) return labels;
+        return labels == null ? null : masked(labels, asksOrNamesTheRate(labels));
+    }
+
+    private static List<String> masked(List<String> labels, boolean rate) {
         List<String> out = new ArrayList<>(labels.size());
-        for (String label : labels) out.add(label == null ? null : maskPercentages(label));
+        for (String label : labels) {
+            out.add(label == null ? null : rate ? numbersMasked(label) : acceptsNeededMasked(label));
+        }
         return out;
     }
 
     /**
      * A log line's text (after its time: " [source] message") as a summary may carry it, or null when it stays on the
      * phone. The acceptance rate Dasher shows on its decline question leaves the phone only in what the user sends
-     * (Share report, feedback with masked diagnostics attached, Report this offer), never in this automatic summary:
-     * of Autopilot's lines only those that never name it are kept ({@link #AUTOPILOT_KEPT}: not its plans, not
-     * Dasher's readings, nothing unlisted), and any other line that names the acceptance rate, or is the decline
-     * question's own screen line, has every percentage masked ({@value #MASKED_PERCENT}).
+     * (Share report, feedback with masked diagnostics attached, Report this offer), never in this automatic summary,
+     * whatever its form ("9%", "9 percent", "9 pct", a lone "9" beside a lone "%"):
+     * <ul>
+     *   <li>of Autopilot's lines only those that never name it are kept, each whole ({@link #AUTOPILOT_KEPT}: not its
+     *   plans, not Dasher's readings, nothing unlisted);</li>
+     *   <li>a screen line's labels ("labels=[…] metricParts=[…]") lose every number but money and clock times when the
+     *   line is the decline question's own ({@link #QUESTION_TAG}) or its labels show the question or name the rate;
+     *   its head, the app's own (the phase, the offer's figures, the decision, the window field), stays;</li>
+     *   <li>any other line that shows the question or names the rate loses every such number too;</li>
+     *   <li>and every line loses the accepts a goal still needs ("about # more accepts").</li>
+     * </ul>
      */
     static String withoutAcceptanceRate(String text) {
         if (text == null) return null;
         String line = text.trim();
         if (line.startsWith(AUTOPILOT_TAG)) {
-            return AUTOPILOT_KEPT.matcher(line.substring(AUTOPILOT_TAG.length())).find() ? text : null;
+            return AUTOPILOT_KEPT.matcher(line.substring(AUTOPILOT_TAG.length())).matches() ? text : null;
         }
-        return line.startsWith(QUESTION_TAG) ? maskPercentages(text) : maskedWhereItNamesTheRate(text);
+        boolean question = line.startsWith(QUESTION_TAG);
+        int labels = text.indexOf(LABELS);
+        String head = labels < 0 ? text : text.substring(0, labels);
+        String shown = labels < 0 ? "" : text.substring(labels);
+        if (labels >= 0 && (question || asksOrNamesTheRate(labelsOf(shown)))) shown = numbersMasked(shown);
+        // The head is the app's own words; were it ever to name the rate (or a question line carry no labels), it
+        // loses its numbers too.
+        if (asksOrNamesTheRate(Collections.singletonList(head)) || (question && labels < 0)) head = numbersMasked(head);
+        return acceptsNeededMasked(head + shown);
     }
 
-    /** {@code text} with every percentage masked when it names the acceptance rate; as it was otherwise. */
+    /** {@code text} (an outcome step's words) with every number masked when it names the rate; as it was otherwise. */
     private static String maskedWhereItNamesTheRate(String text) {
-        return text != null && namesAcceptanceRate(text) ? maskPercentages(text) : text;
+        if (text == null) return null;
+        return asksOrNamesTheRate(Collections.singletonList(text)) ? numbersMasked(text) : acceptsNeededMasked(text);
     }
 
-    private static boolean namesAcceptanceRate(String text) {
-        return RATE_WORDS.matcher(Normalizer.normalize(text, Normalizer.Form.NFKC)).find();
+    /**
+     * Whether {@code labels} show Dasher's decline question ({@link DeclineConfirmation#hasPrompt}: its rate may stand
+     * alone, with no words beside it) or any of them names the acceptance rate ({@link #RATE_WORDS}).
+     */
+    static boolean asksOrNamesTheRate(List<String> labels) {
+        List<String> present = new ArrayList<>(labels.size());
+        for (String label : labels) if (label != null) present.add(label);
+        if (DeclineConfirmation.hasPrompt(present)) return true;
+        for (String label : present) {
+            if (RATE_WORDS.matcher(Normalizer.normalize(label, Normalizer.Form.NFKC)).find()) return true;
+        }
+        return false;
     }
 
-    /** Every percentage masked ({@value #MASKED_PERCENT}), and with them the accepts a goal still needs. */
-    private static String maskPercentages(String text) {
-        return ACCEPTS_NEEDED.matcher(PERCENT.matcher(text).replaceAll(MASKED_PERCENT)).replaceAll("#");
+    /** A screen line's labels, as nearly as their printed form ("labels=[a, b] metricParts=[c]") tells them. */
+    private static List<String> labelsOf(String shown) {
+        String inner = shown.replace(LABELS, "").replace("] " + METRIC_PARTS, ", ").replace(METRIC_PARTS, ", ");
+        if (inner.endsWith("]")) inner = inner.substring(0, inner.length() - 1);
+        return Arrays.asList(inner.split(", "));
+    }
+
+    /**
+     * Every number in {@code text} masked, however it is written: a percentage ("9%", "9 %", "９％", "9 percent",
+     * "9 pct") as {@value #MASKED_PERCENT}, any other figure or a spelled-out number as {@value #MASKED_NUMBER}. Only
+     * what cannot be a rate stays: money ("$7.90"), a clock or countdown ("0:35") and the window field.
+     */
+    static String numbersMasked(String text) {
+        if (text == null) return null;
+        Matcher number = NUMBERS.matcher(text);
+        StringBuffer out = new StringBuffer(text.length());
+        while (number.find()) {
+            String replacement = number.group(1) != null ? number.group(1)
+                    : number.group(2) != null ? MASKED_PERCENT : MASKED_NUMBER;
+            number.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        number.appendTail(out);
+        return out.toString();
+    }
+
+    /** "about # more accepts": the accepts a goal still needs, masked wherever they are. */
+    private static String acceptsNeededMasked(String text) {
+        return ACCEPTS_NEEDED.matcher(text).replaceAll(MASKED_NUMBER);
+    }
+
+    /** {@link AutopilotText}'s commit reasons, each quoted, for {@link #AUTOPILOT_KEPT} (and none at all). */
+    private static String commitReasons() {
+        StringBuilder out = new StringBuilder();
+        for (Autopilot.Reason reason : Autopilot.Reason.values()) {
+            out.append(Pattern.quote(AutopilotText.reasonWords(reason))).append('|');
+        }
+        return out.toString();
+    }
+
+    /**
+     * A summary waiting to be sent, filtered again right before it goes ({@link FeedbackOutbox}), so a summary an
+     * older version queued gets this version's filter: each log excerpt's line goes through
+     * {@link #withoutAcceptanceRate(String)} (an Autopilot line not listed as safe is dropped), each read list through
+     * {@link #withoutAcceptanceRate(List)}, each outcome step as it is written, and every line loses the accepts a goal
+     * still needs. What this version built comes back as it was.
+     */
+    static String remask(String text) {
+        if (text == null) return null;
+        StringBuilder out = new StringBuilder(text.length());
+        int start = 0;
+        while (start < text.length()) {
+            int end = text.indexOf('\n', start);
+            String line = text.substring(start, end < 0 ? text.length() : end);
+            String kept = remaskLine(line);
+            if (kept != null) {
+                out.append(kept);
+                if (end >= 0) out.append('\n');
+            }
+            start = end < 0 ? text.length() : end + 1;
+        }
+        return out.toString();
+    }
+
+    private static String remaskLine(String line) {
+        Matcher excerpt = EXCERPT_LINE.matcher(line);
+        if (excerpt.matches()) {
+            String kept = withoutAcceptanceRate(excerpt.group(2));
+            return kept == null ? null : excerpt.group(1) + kept;
+        }
+        Matcher read = READ_LINE.matcher(line);
+        if (read.matches()) {
+            return read.group(1) + withoutAcceptanceRate(Arrays.asList(read.group(2).split(", ", -1)));
+        }
+        Matcher step = STEP_LINE.matcher(line);
+        if (step.matches()) return step.group(1) + maskedWhereItNamesTheRate(step.group(2));
+        return acceptsNeededMasked(line);
     }
 
     /** A declined offer or its confirmation still showing seconds after the first Decline: counted by stage. */
@@ -523,7 +685,8 @@ final class DashSummary {
     /**
      * The switches, the bar and which rules are set (never their amounts): "auto-decline on · Peek on · quiet while
      * declining off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set: pay, per mile, per hour".
-     * Never Autopilot's acceptance-rate reading or anything worked out from it.
+     * Never Autopilot's acceptance-rate reading, its goal or its plan. The bar is Autopilot's, and Autopilot moves it
+     * for the goal, so a bar below 100% can say the rate was below the goal; it never says what the rate was.
      */
     private static String settings(Context app, FilterSettings rules) {
         List<String> set = new ArrayList<>();
@@ -628,7 +791,8 @@ final class DashSummary {
                     .append(" | outcome ").append(DecisionLog.outcome(entry).word)
                     .append(entry.autoDecline ? "" : " | auto-decline paused")
                     .append('\n');
-            List<String> read = OfferReport.redact(entry.evidence);
+            // As a problem's read lines: a label that merged pay and Dasher's question keeps the pay, never the rate.
+            List<String> read = withoutAcceptanceRate(entry.evidence, OfferReport.redact(entry.evidence));
             if (!read.isEmpty()) {
                 line.append("    read: ").append(read.subList(0, Math.min(4, read.size()))).append('\n');
             }
@@ -641,7 +805,7 @@ final class DashSummary {
             for (DecisionLog.Step step : entry.steps) {
                 // Fixed words; one that ever named the acceptance rate beside a figure would carry it masked.
                 line.append("    then ").append(relative(step.at - start)).append(' ')
-                        .append(maskedWhereItNamesTheRate(step.text())).append('\n');
+                        .append(maskedWhereItNamesTheRate(step.text().replace('\n', ' '))).append('\n');
             }
             out.add(line.toString());
         }
@@ -689,7 +853,8 @@ final class DashSummary {
                 // As a plain list: JSON's quoting is what the masking reads as a quoted name, and would mangle it.
                 List<String> shown = new ArrayList<>();
                 for (int k = 0; k < read.length(); k++) shown.add(read.optString(k));
-                // Masked as they were counted; again here for lines an older version counted.
+                // Masked as they were counted (on the raw labels); again here, on what was kept, for lines an older
+                // version counted: the question's words survive redaction, and so does "acceptance rate".
                 out.append("   read: ").append(withoutAcceptanceRate(shown)).append('\n');
             }
             StringBuilder excerpt = new StringBuilder();

@@ -269,8 +269,9 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             assertTrue(dialog.isShowing());
             String said = ((TextView) dialog.findViewById(android.R.id.message)).getText().toString();
             assertEquals("the dialog says what it sends, and Send is the consent", "Sends this offer's figures, "
-                    + "decision and masked read lines, your current rules and Autopilot's state (its bar, goal and "
-                    + "your latest acceptance rate), the app's and Android's versions and the minute it was "
+                    + "decision and masked read lines, your current rules and Autopilot's state (on or off, goal, "
+                    + "bar, mode and last change, and the acceptance rate it counts with: Dasher's latest, carried "
+                    + "forward, or its own estimate), the app's and Android's versions and the minute it was "
                     + "decided, with your note. No account. Masking can miss details.", said);
             View decor = dialog.getWindow().getDecorView();
             assertNotNull(findText(decor, "Don't include customer, payment or account details."));

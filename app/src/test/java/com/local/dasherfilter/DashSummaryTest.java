@@ -499,9 +499,12 @@ public class DashSummaryTest {
         // Any other line, percentages and all, as it was.
         for (String other : new String[] {" [scan] read took 230 ms", " [screen] offer|a|b labels=[$7.90, 100% of "
                 + "tips] metricParts=[]", " [accessibility] decline still showing after 5012 ms",
-                " [status] Autopilot bar 82% (goal 70%)", " [screen] other labels=[Car 50% charged, 3 more accepts]"}) {
+                " [status] Autopilot bar 82% (goal 70%)", " [screen] other labels=[Car 50% charged, 3 stops]"}) {
             assertEquals(other, DashSummary.withoutAcceptanceRate(other));
         }
+        // Except the accepts a goal still needs, wherever they are: beside the goal they give the rate away.
+        assertEquals(" [screen] other labels=[Car 50% charged, # more accepts]",
+                DashSummary.withoutAcceptanceRate(" [screen] other labels=[Car 50% charged, 3 more accepts]"));
 
         // Read labels of a problem: masked only where they name the acceptance rate.
         assertEquals(Arrays.asList("Are you sure you want to decline this offer?", "Declining this offer xxx lower "
@@ -510,6 +513,194 @@ public class DashSummaryTest {
                         "Declining this offer may lower your acceptance rate", "37%", "Decline offer", "Go back")));
         assertEquals(Arrays.asList("$7.90", "100% of tips"),
                 DashSummary.withoutAcceptanceRate(Arrays.asList("$7.90", "100% of tips")));
+    }
+
+    /** Dasher's question as the screen reader logs it, its labels in between. */
+    private static String questionLine(String labels) {
+        return " [screen] confirmation|||false|true win=full/-/dasher/100 labels=[Are you sure you want to decline "
+                + "this offer?, Declining this offer may lower your acceptance rate, " + labels + ", Decline offer, "
+                + "Go back] metricParts=[]";
+    }
+
+    @Test
+    public void theRateNeverLeavesInAnyWayItCanBeWritten() {
+        // Dasher's question, its rate written every way a screen reader may hand it over: never a digit of it.
+        String masked = questionLine("#%");
+        for (String rate : new String[] {"9%", "9 %", "9 %", "9 %", "９％", "9﹪", "9 percent",
+                "9 Percent", "9percent", "9 per cent", "9 pct", "9 PCT", "9.5%"}) {
+            assertEquals(rate, masked, DashSummary.withoutAcceptanceRate(questionLine(rate)));
+        }
+        assertEquals("a lone 9 beside a lone %", questionLine("#, %"),
+                DashSummary.withoutAcceptanceRate(questionLine("9, %")));
+        assertEquals("spelled out", questionLine("# percent"),
+                DashSummary.withoutAcceptanceRate(questionLine("nine percent")));
+        assertEquals("in the rate's own words", questionLine("Your acceptance rate is #%"),
+                DashSummary.withoutAcceptanceRate(questionLine("Your acceptance rate is 9 percent")));
+        assertEquals(questionLine("Acceptance rate: #%"),
+                DashSummary.withoutAcceptanceRate(questionLine("Acceptance rate: 9 pct")));
+        assertEquals("joined from its sibling nodes", " [screen] confirmation|x|y labels=[Sure?] metricParts=[#%]",
+                DashSummary.withoutAcceptanceRate(" [screen] confirmation|x|y labels=[Sure?] metricParts=[9 %]"));
+
+        // The question's labels among another read's: the question alone is enough, with or without the rate's words,
+        // and every number goes but money and clock times; the line's head (the app's own) stays as it was.
+        assertEquals(" [screen] offer|790:7.2:21:2|DECLINE: required at least $10.80 (dollars per mile)|true|true "
+                + "win=full/-/dasher/100 labels=[$7.90, Declining this offer may lower your acceptance rate, #%, 0:35, "
+                + "# mi] metricParts=[# stops (# mi) • # min]",
+                DashSummary.withoutAcceptanceRate(" [screen] offer|790:7.2:21:2|DECLINE: required at least $10.80 "
+                + "(dollars per mile)|true|true win=full/-/dasher/100 labels=[$7.90, Declining this offer may lower "
+                + "your acceptance rate, 9 percent, 0:35, 7.2 mi] metricParts=[2 stops (7.2 mi) • 21 min]"));
+        assertEquals("no rate words, only the question", " [screen] offer|a|b labels=[Are you sure you want to "
+                + "decline this offer?, #%, Decline offer, Go back] metricParts=[]",
+                DashSummary.withoutAcceptanceRate(" [screen] offer|a|b labels=[Are you sure you want to decline this "
+                + "offer?, 9%, Decline offer, Go back] metricParts=[]"));
+        assertEquals(" [screen] incomplete-controls|a|b labels=[Decline offer?, #, %] metricParts=[]",
+                DashSummary.withoutAcceptanceRate(" [screen] incomplete-controls|a|b labels=[Decline offer?, 9, %] "
+                + "metricParts=[]"));
+
+        // Any other line that names the rate: every number on it goes, written however.
+        assertEquals(" [status] AR: #", DashSummary.withoutAcceptanceRate(" [status] AR: 9"));
+        assertEquals(" [status] Your acceptance rate is #%",
+                DashSummary.withoutAcceptanceRate(" [status] Your acceptance rate is 9 percent"));
+        // Autopilot's own words that never name the rate: the accepts a goal still needs go all the same.
+        assertEquals(" [status] Below your goal: about # more accepts to reach 70% (an estimate)",
+                DashSummary.withoutAcceptanceRate(" [status] Below your goal: about 61 more accepts to reach 70% (an "
+                + "estimate)"));
+        assertEquals(" [status] about # more accept",
+                DashSummary.withoutAcceptanceRate(" [status] about 1 more accept"));
+
+        // Autopilot's safe lines are kept only whole: one that adds to a listed line stays on the phone.
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] on; goal 70%; AR 9%"));
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] commit 100% -> 82% (acceptance rate below your "
+                + "goal) AR 9%"));
+        assertNull(DashSummary.withoutAcceptanceRate(" [autopilot] goal 70%: about 61 more accepts"));
+        for (Autopilot.Reason reason : Autopilot.Reason.values()) {
+            String commit = " [autopilot] " + AutopilotText.logCommit(100, 82, reason);
+            assertEquals("every commit reason is a fixed one", commit, DashSummary.withoutAcceptanceRate(commit));
+        }
+        for (String kept : new String[] {AutopilotText.DISCARD_OLD, AutopilotText.DISCARD_CLEARED,
+                AutopilotText.DISCARD_AUTOPILOT_CHANGED, AutopilotText.LOG_OFF, AutopilotText.logGoal(70, 0),
+                AutopilotText.logOn(0)}) {
+            assertEquals(kept, " [autopilot] " + kept, DashSummary.withoutAcceptanceRate(" [autopilot] " + kept));
+        }
+    }
+
+    @Test
+    public void aProblemsReadLabelsAreJudgedBeforeRedactionReducesThem() {
+        String question = "Are you sure you want to decline this offer?";
+        // "AR" and "percent" are no offer words, so redaction reduces them to a shape: they are judged before that.
+        assertEquals(Arrays.asList(question, "XX #%", "Decline offer"),
+                DashSummary.readLines(Arrays.asList(question, "AR 9 %", "Decline offer")));
+        assertEquals(Arrays.asList(question, "Your acceptance rate is # xxxxxxx", "Decline offer"),
+                DashSummary.readLines(Arrays.asList(question, "Your acceptance rate is 9 percent", "Decline offer")));
+        assertEquals("the question's own percent, no rate words beside it", Arrays.asList(question, "#%",
+                "Decline offer", "Go back"), DashSummary.readLines(Arrays.asList(question, "9%", "Decline offer",
+                "Go back")));
+        assertEquals(Arrays.asList(question, "acceptance rate", "#", "%", "Decline offer"),
+                DashSummary.readLines(Arrays.asList(question, "acceptance rate", "9", "%", "Decline offer")));
+        // On an offer's own screen, only where a label names the rate; its pay and countdown stay.
+        assertEquals(Arrays.asList("Guaranteed pay", "$7.90", "XX #%", "0:35", "Accept", "Decline"),
+                DashSummary.readLines(Arrays.asList("Guaranteed pay", "$7.90", "AR 9 %", "0:35", "Accept",
+                        "Decline")));
+        assertEquals(Arrays.asList("Guaranteed pay", "$7.90", "2 stops (7.2 mi) • 21 min", "Accept", "Decline"),
+                DashSummary.readLines(Arrays.asList("Guaranteed pay", "$7.90", "2 stops (7.2 mi) • 21 min", "Accept",
+                        "Decline")));
+        // Labels kept as an older version counted them (already redacted): the question still shows, so they go too.
+        assertEquals(Arrays.asList(question, "XX #%", "Decline offer"),
+                DashSummary.withoutAcceptanceRate(Arrays.asList(question, "XX 9 %", "Decline offer")));
+        assertEquals(Arrays.asList("Your acceptance rate is # xxxxxxx"),
+                DashSummary.withoutAcceptanceRate(Arrays.asList("Your acceptance rate is 9 xxxxxxx")));
+    }
+
+    @Test
+    public void aDecisionsReadLinesAndStepsNeverCarryTheRate() throws Exception {
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        long now = System.currentTimeMillis();
+        // A card whose description merged its pay and Dasher's question: kept as evidence for its "$".
+        DecisionLog.record(app, new DecisionLog.Entry(now, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(575, 6.6, 27, 2), 625, OfferRule.Result.DECLINE, "dollars per hour",
+                DecisionLog.Action.CONFIRMATION_TAPPED, true, Arrays.asList("$5.75",
+                "Declining this $5.75 offer may lower your acceptance rate to 37%", "$5.75 · AR 37 pct"))
+                .withStep(new DecisionLog.Step(DecisionLog.StepKind.NOT_LEARNED, now + 1_000L,
+                        "acceptance rate 37 percent")));
+        String summary = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        // Redaction reduces "pct" to a shape before the numbers go: "# xxx", never the figure.
+        assertTrue(summary, summary.contains("\n    read: [$5.75, Declining this $5.75 offer xxx lower your acceptance "
+                + "rate to #%, $5.75 · XX # xxx]\n"));
+        assertTrue(summary, summary.contains("\n    then " + DashSummary.relative(now + 1_000L - start)
+                + " Not counted from what followed: acceptance rate #%\n"));
+        assertTrue("the decision's own figures stay", summary.contains("| DECLINE | pay $5.75 | needed $6.25"));
+        assertFalse(summary, summary.contains("37"));
+    }
+
+    @Test
+    public void aSummaryAnOlderVersionQueuedIsFilteredAgainBeforeItIsSent() throws Exception {
+        Feedback.setAfterDash(app, true);
+        service.down = true;
+        // Queued as a version with a weaker filter would have built it: the rate in a question's line written out,
+        // Autopilot's reading, and a problem's and a decision's read labels and a step that name it.
+        String older = "Diagnostics after a dash, sent because Share anonymous diagnostics after each dash is on.\n"
+                + "== This dash's decisions (oldest first)\n"
+                + "+0:00:01 | screen | DECLINE | pay $5.75 | needed $6.25 | score 92% | 6.6 mi · 27 min · 2 stops "
+                + "| dollars per hour | Decline and its confirmation tapped | outcome DECLINED\n"
+                + "    read: [$5.75, Declining this $5.75 offer xxx lower your acceptance rate to 37%]\n"
+                + "    then +0:00:03 Your acceptance rate is 37 percent\n"
+                + "\n== Log lines around those problems (masked)\n"
+                + "-- +0:00:05 decline still showing (waiting for the question)\n"
+                + "   read: [Are you sure you want to decline this offer?, XX 37 %, Decline offer]\n"
+                + "+0:00:04" + questionLine("37 percent") + "\n"
+                + "+0:00:04" + questionLine("37, %") + "\n"
+                + "+0:00:04 [autopilot] ar reading 37% (exempt no)\n"
+                + "+0:00:04 [autopilot] plan 82% RECOVERY: need 80%, ar 37% dasher (0 min ago, 0 since)\n"
+                + "+0:00:04 [status] Autopilot 82% · AR 37% → 70%: about 33 more accepts\n"
+                + "+0:00:04 [autopilot] commit 100% -> 82% (acceptance rate below your goal)\n"
+                + "+0:00:05 [accessibility] decline still showing after 5012 ms; waiting for the question\n";
+        String token = Feedback.newToken();
+        assertTrue(FeedbackOutbox.submitAutomatic(app, FeedbackOutbox.automatic(token,
+                Collections.singletonList(older), Feedback.automaticEpoch(app))));
+        settle();
+        int tried = service.count();
+        service.down = false;
+        FeedbackOutbox.sendSoon(app);
+        settle();
+        assertEquals(tried + 1, service.count());
+        String sent = summarySent(tried);
+        assertEquals(token, service.requests().get(tried).getString("reportToken"));
+        assertFalse(sent, sent.contains("37"));
+        assertFalse(sent, sent.contains("33 more"));
+        assertFalse(sent, sent.contains("ar reading"));
+        assertFalse(sent, sent.contains("RECOVERY: need"));
+        for (String kept : new String[] {"| DECLINE | pay $5.75 | needed $6.25 | score 92% |",
+                "    read: [$5.75, Declining this $5.75 offer xxx lower your acceptance rate to #%]\n",
+                "    then +0:00:03 Your acceptance rate is #%\n",
+                "   read: [Are you sure you want to decline this offer?, XX #%, Decline offer]\n",
+                "+0:00:04" + questionLine("#%") + "\n", "+0:00:04" + questionLine("#, %") + "\n",
+                "+0:00:04 [status] Autopilot #% · AR #% → #%: about # more accepts\n",
+                "+0:00:04 [autopilot] commit 100% -> 82% (acceptance rate below your goal)\n",
+                "decline still showing after 5012 ms"}) {
+            assertTrue(kept, sent.contains(kept));
+        }
+
+        // What this version builds comes back from that second filter as it was.
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        DiagnosticLog.log(app, "screen", questionLine("37 pct").substring(" [screen] ".length()));
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.unreadable(app, Arrays.asList("Are you sure you want to decline this offer?", "AR 37 %",
+                "Decline offer"));
+        DashSummary.flush();
+        String built = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        assertFalse(built, built.contains("37"));
+        assertEquals(built, DashSummary.remask(built));
+        assertEquals(built, FeedbackOutbox.remask(FeedbackOutbox.TEXT, true, built));
+        // What the user sends themselves keeps what they chose to send: only the personal masking applies to it.
+        String shared = "+0:00:04 [autopilot] ar reading 37% (exempt no)\n";
+        assertEquals(shared, FeedbackOutbox.remask(FeedbackOutbox.TEXT, false, shared));
     }
 
     @Test
