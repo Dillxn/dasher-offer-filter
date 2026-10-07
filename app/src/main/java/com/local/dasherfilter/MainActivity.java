@@ -48,8 +48,9 @@ import java.util.regex.Pattern;
  * screen, a map of where offers pay best. Every rule lives on the constellation and saves at once: the knobs (pay, per
  * mile and per hour, hollow until set), the max stops badge by the pin, and the Autopilot button (a tap turns it off,
  * or on with the goal chooser; a long press changes the goal), whose status line stands under the skyline's caption
- * (a chip beside the caption in a short window). Settings holds only what exists
- * nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip, each one row. Pause and
+ * (a chip beside the caption where no button is on screen, or where the page has no room for the line). Settings holds
+ * only what exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a
+ * tip, each one row. Pause and
  * Resume take effect at once. The drawings move gently and shift with the phone's tilt while the app fills the screen,
  * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
  */
@@ -160,7 +161,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The ground's one line: the start, Autopilot's status line, or the wait ({@code slot} says which). */
     private TextView waitEstimateLine;
     private int slot = SLOT_NONE;
-    /** Autopilot's chip, beside the caption in a short window (no header row); the chips another strip hosts too. */
+    /**
+     * Autopilot's chip beside the caption (never a row of its own): where no Autopilot button is on screen, or where
+     * a whole screen has no room for the status line ({@link #chipOnGround}); the chips another strip hosts too.
+     */
     private AutopilotChip chip;
     private final List<AutopilotChip> chips = new java.util.ArrayList<>();
     /** What Autopilot is doing, as last shown. */
@@ -178,6 +182,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private String shownHero = "";
     /** Setup still to do, in order (restricted settings, Accessibility, notification access, alerts, updates). */
     private SetupChecklist checklist;
+    /** The sky's lines that need the user: setup, an update, a stop, the one-time cards and note. */
+    private LinearLayout problems;
     private LinearLayout routeRow;
     private TextView routeNote;
     /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
@@ -796,8 +802,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (chart.selectedEntry() != null) setTicketOpen(true);
         });
         // One line under the caption, 13 sp and at least 48 dp: with no rule, the start; with Autopilot on (a whole
-        // page), its status, a tap opening its details; else the wait for a matching offer, as before. Never a live
-        // region: Autopilot moving its bar by itself is never announced.
+        // page with room for it), its status, a tap opening its details; else, with Autopilot off, the wait for a
+        // matching offer, as before. Never a live region: Autopilot moving its bar by itself is never announced.
         waitEstimateLine = ui.text("", 13, ui.inkSecondary, false);
         waitEstimateLine.setMinHeight(ui.dp(48));
         waitEstimateLine.setGravity(Gravity.CENTER);
@@ -817,7 +823,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout.LayoutParams waitParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         waitParams.gravity = Gravity.CENTER_HORIZONTAL;
-        LinearLayout problems = ui.column();
+        problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
         checklist = new SetupChecklist(this, ui, problems, NOTIFICATION_PERMISSION_REQUEST);
         // A verified update held back while no dash is on: "Update ready · Install now" (the user's own check).
@@ -857,11 +863,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout body = body(page, new LeastColumn(this));
         groundParams = share(1);
         body.setLayoutParams(groundParams);
-        // A stable target identifies the displayed shape and opens its ticket, clear of the minimum knobs. In a short
-        // window Autopilot's chip stands at its start, under the mascot (above it when both do not fit), so the header
-        // gains no row.
+        // A stable target identifies the displayed shape and opens its ticket, clear of the minimum knobs. Autopilot's
+        // chip stands at its start, under the mascot, where the page shows it (refresh): beside the words, costing the
+        // page no height, so the header gains no row and the ground keeps its 0.4.x height.
         chip = newAutopilotChip();
-        chip.setVisibility(compact ? View.VISIBLE : View.GONE);
+        chip.setVisibility(View.GONE);
         body.addView(new AutopilotChip.Row(this, ui, chip, offerCaption), Ui.matchWidth());
         body.addView(waitEstimateLine, waitParams);
         addOffers(body);
@@ -1152,8 +1158,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * "What matters more?", a single-choice list with the stored goal checked (70% at first): one tap applies it and
      * closes (Autopilot on with it, or its goal changed while on); "About acceptance rate" explains, leaving the choice
-     * open; "Not now" (or Back) leaves Autopilot as it was. Any answer counts as asked. With Autopilot off and no money
-     * minimum, it cannot be on: the toast says what is needed.
+     * open; "Not now" (or Back) leaves Autopilot as it was. While Autopilot is off, one line under the choices says an
+     * answer turns it on (the chooser also opens after the starter and the first resume, when no one asked for
+     * Autopilot by name). Any answer counts as asked. With Autopilot off and no money minimum, it cannot be on: the
+     * toast says what is needed.
      */
     private void chooseAutopilotGoal() {
         FilterSettings saved = FilterStore.load(this);
@@ -1162,7 +1170,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         String[] items = AutopilotText.chooserItems().toArray(new String[0]);
-        AlertDialog chooser = OwnWindowTouches.show(new AlertDialog.Builder(this)
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle(AutopilotText.CHOOSER_TITLE)
                 .setSingleChoiceItems(items, AutopilotText.chooserIndex(saved.autopilotGoalPercent), (dialog, which) -> {
                     dialog.dismiss();
@@ -1170,7 +1178,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 })
                 .setNeutralButton(AutopilotText.CHOOSER_ABOUT, null)
                 .setNegativeButton(AutopilotText.CHOOSER_NOT_NOW, (dialog, which) -> FilterStore.setGoalAsked(this, true))
-                .setOnCancelListener(dialog -> FilterStore.setGoalAsked(this, true)));
+                .setOnCancelListener(dialog -> FilterStore.setGoalAsked(this, true));
+        if (!saved.autopilot) {
+            TextView turnsOn = ui.text(AutopilotText.CHOOSER_TURNS_ON, 14, ui.inkSecondary, false);
+            turnsOn.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(4));
+            builder.setView(turnsOn);
+        }
+        AlertDialog chooser = OwnWindowTouches.show(builder);
         // About explains without closing the choice.
         android.widget.Button about = chooser.getButton(AlertDialog.BUTTON_NEUTRAL);
         if (about != null) about.setOnClickListener(tapped -> OwnWindowTouches.show(new AlertDialog.Builder(this)
@@ -1188,25 +1202,36 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known; "Change goal"
-     * ("Use typical minimums" while even the lowest bar passes too few), "Turn off" or "Turn on", and "Close".
+     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known; its buttons
+     * ({@link AutopilotText#detailsButtons}): while on, "Change goal" ("Use typical minimums" while even the lowest bar
+     * passes too few and the minimums are not those already), "Turn off" and "Close"; while off, "Turn on" (the goal
+     * chooser) and "Close".
      */
     private void showAutopilotDetails() {
         AutopilotText.Status status = autopilotStatus();
-        List<String> buttons = AutopilotText.detailsButtons(status);
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle(AutopilotText.DETAILS_TITLE)
-                .setMessage(String.join("\n\n", AutopilotText.detailsLines(status)))
-                .setNeutralButton(buttons.get(0), (dialog, which) -> {
-                    if (status.pinned()) {
-                        useTypicalMinimums("Autopilot's details");
-                        toast(typicalSet());
-                    } else {
-                        chooseAutopilotGoal();
-                    }
-                })
-                .setNegativeButton(buttons.get(1), (dialog, which) -> toggleAutopilot())
-                .setPositiveButton(buttons.get(2), null));
+                .setMessage(String.join("\n\n", AutopilotText.detailsLines(status)));
+        for (String button : AutopilotText.detailsButtons(status)) {
+            switch (button) {
+                case AutopilotText.DETAILS_TYPICAL_MINIMUMS:
+                    builder.setNeutralButton(button, (dialog, which) -> {
+                        if (useTypicalMinimums("Autopilot's details")) toast(typicalSet());
+                    });
+                    break;
+                case AutopilotText.DETAILS_CHANGE_GOAL:
+                    builder.setNeutralButton(button, (dialog, which) -> chooseAutopilotGoal());
+                    break;
+                case AutopilotText.DETAILS_TURN_OFF:
+                case AutopilotText.DETAILS_TURN_ON:
+                    builder.setNegativeButton(button, (dialog, which) -> toggleAutopilot());
+                    break;
+                default:
+                    builder.setPositiveButton(button, null);
+                    break;
+            }
+        }
+        OwnWindowTouches.show(builder);
     }
 
     /**
@@ -1227,14 +1252,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * Typical minimums ($4.00, $1.00 a mile, $15 an hour), max stops and the switch as they are, logged as chosen from
-     * {@code where}. With Autopilot on its bar goes back to exactly 100% first, so its plan for them starts there.
+     * {@code where}. With Autopilot on its bar goes back to exactly 100% first, so its plan for them starts there (the
+     * owner's decision D1). Minimums that are the typical ones already change nothing: the bar stays where Autopilot
+     * has it and no change is noted (nothing was changed).
+     *
+     * @return whether the minimums changed
      */
-    private void useTypicalMinimums(String where) {
+    private boolean useTypicalMinimums(String where) {
         FilterSettings saved = FilterStore.load(this);
+        if (AutopilotText.typicalMinimums(saved)) return false;
         AutopilotRuntime.barBackToMinimums(this);
         storeRules(saved, saved.withMinimums(Autopilot.STARTER_FLAT_CENTS, Autopilot.STARTER_PER_MILE_CENTS,
                 Autopilot.STARTER_PER_MINUTE_CENTS));
         DiagnosticLog.log(this, "rules", "typical minimums chosen from " + where);
+        return true;
     }
 
     /** "Typical minimums set: $4 · $1/mi · $15/hr". */
@@ -1246,8 +1277,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * The one-time 0.5.0 notice ({@link FilterStore#peekModelNotice}): what changed, in the owner's order, and, when the
-     * minimums would have passed fewer than one in five of the last offers, the pass check and "Use typical minimums".
-     * It stays until a button is tapped (a recreated screen shows it again).
+     * minimums would have passed fewer than one in five of the last offers, the pass check and "Use typical minimums"
+     * (unless the minimums are the typical ones already: then the check, with OK and "Set up Autopilot"). It stays
+     * until a button is tapped (a recreated screen shows it again).
      */
     private void showModelNotice(String json) {
         org.json.JSONObject facts;
@@ -1258,7 +1290,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         List<String> lines = modelNoticeLines(facts);
-        int[] check = passCheck(FilterStore.load(this), DecisionLog.recent(this, DecisionLog.MAX_ENTRIES));
+        FilterSettings saved = FilterStore.load(this);
+        int[] check = passCheck(saved, DecisionLog.recent(this, DecisionLog.MAX_ENTRIES));
         if (check != null) {
             lines.add("Your minimums would have passed " + check[0] + " of your last " + check[1] + " offers.");
         }
@@ -1266,11 +1299,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .setTitle(NOTICE_TITLE)
                 .setMessage("• " + String.join("\n\n• ", lines))
                 .setCancelable(false);
-        if (check != null) {
+        if (check != null && !AutopilotText.typicalMinimums(saved)) {
             builder.setPositiveButton(NOTICE_TYPICAL, (dialog, which) -> {
                 noticeAnswered();
-                useTypicalMinimums("the 0.5.0 notice");
-                toast(typicalSet());
+                if (useTypicalMinimums("the 0.5.0 notice")) toast(typicalSet());
                 chooseAutopilotGoal();
             }).setNegativeButton(NOTICE_KEEP, (dialog, which) -> noticeAnswered());
         } else {
@@ -1608,19 +1640,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 && QualifyingWaitStore.observingWaiting(this);
         AutopilotText.Status status = autopilotStatus();
         refreshAutopilot(status);
-        // The ground's one line: the start with no rule (while the knobs are in the sky); Autopilot's status while it
-        // is on (the chip says it in a short window); else the wait, as before.
-        if (!saved.hasAnyRule()) {
-            if (startOnGround) showSlot(SLOT_START, START_LINE, null, ui.link);
-            else showSlot(SLOT_NONE, null, null, ui.inkSecondary);
-        } else if (saved.autopilot && !compact) {
-            showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
-                    ui.inkSecondary);
-        } else if (showWait) {
-            showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
-        } else {
-            showSlot(SLOT_NONE, null, null, ui.inkSecondary);
-        }
+        // The sky's lines first: one that needs the user takes its room before Autopilot's status line does.
         checklist.refresh(readerConnected, alertsAllowed.get());
         updateReady.refresh(checklist.installsAllowed());
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
@@ -1630,6 +1650,28 @@ public final class MainActivity extends Activity implements Updater.Busy {
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("On a route: " + route.summary());
+        boolean chipShown = chipOnGround(saved);
+        if (chipShown != (chip.getVisibility() == View.VISIBLE)) {
+            chip.setVisibility(chipShown ? View.VISIBLE : View.GONE);
+        }
+        // The ground's one line: the start with no rule (while the knobs are in the sky). While Autopilot is on, the
+        // line is Autopilot's: its status on a whole screen with room for it, else nothing (its chip, or beside Dasher
+        // its button, says it), never Next match. With Autopilot off, the wait, as before.
+        if (!saved.hasAnyRule()) {
+            if (startOnGround) showSlot(SLOT_START, START_LINE, null, ui.link);
+            else showSlot(SLOT_NONE, null, null, ui.inkSecondary);
+        } else if (saved.autopilot) {
+            if (compact || chipShown) {
+                showSlot(SLOT_NONE, null, null, ui.inkSecondary);
+            } else {
+                showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
+                        ui.inkSecondary);
+            }
+        } else if (showWait) {
+            showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
+        } else {
+            showSlot(SLOT_NONE, null, null, ui.inkSecondary);
+        }
 
         refreshHistory();
         refreshOfferCaption(chart.selectedEntry());
@@ -1655,13 +1697,37 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot as everything on the page shows it: the constellation's button (and its dashed shape), and the chips.
-     * Quiet: nothing is announced when Autopilot moves the bar by itself.
+     * Autopilot as everything on the page shows it: the constellation's button (and its dashed shape), and the chips,
+     * amber by one rule (below the goal). Quiet: nothing is announced when Autopilot moves the bar by itself.
      */
     private void refreshAutopilot(AutopilotText.Status status) {
         autopilotStatus = status;
-        minimums.setAutopilot(status.on, status.bar, status.belowGoal(), status.pinned());
+        minimums.setAutopilot(status.on, status.bar, status.belowGoal());
         for (AutopilotChip each : chips) each.show(status);
+    }
+
+    /**
+     * Whether Autopilot's chip stands beside the latest offer's line now. One Autopilot control on screen: in a short
+     * window with the constellation up in the header no Autopilot button shows, so the chip is Autopilot's control
+     * there, on or off ("Auto off" being the way in); beside Dasher, or with the constellation chosen into a short
+     * window's sky, its button is, and the chip would only repeat it (and cost the ground its room). On a whole screen
+     * the button is in the sky and, while Autopilot is on, its status line stands in Next match's place; the chip takes
+     * the status over only where the page has no room for that line: at a very large font, where the road is gone and
+     * nothing else gives way, or while a line in the sky needs the user (a setup step, an update, a note), which takes
+     * its room first. Beside the line the chip costs no height ({@link AutopilotChip.Row}).
+     */
+    private boolean chipOnGround(FilterSettings saved) {
+        if (compact) return !knobsInSky();
+        return saved.autopilot && (road.getVisibility() != View.VISIBLE || skyLineShown());
+    }
+
+    /** A line in the sky needs the user: a setup step, an update, a stop, a one-time card or note, a route. */
+    private boolean skyLineShown() {
+        if (routeRow.getVisibility() != View.GONE) return true;
+        for (int i = 0; i < problems.getChildCount(); i++) {
+            if (problems.getChildAt(i).getVisibility() != View.GONE) return true;
+        }
+        return false;
     }
 
     /** The ground's one line, as {@code which} says ({@link #SLOT_NONE} hides it). */
@@ -1903,10 +1969,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * Qualify acceptance only when the stored observation distinguishes its source: "Automatically accepted" after the
-     * app's own Accept request, "Accepted by you" after the user's; older lines by their old steps.
+     * app's own Accept request, "Accepted by you" after the user's; older lines by their old steps. An offer that
+     * passed only by Autopilot's lowered bar never reads as a full pass: "Passed below your minimums" (left to the
+     * user).
      */
     private static String captionOutcome(DecisionLog.Entry entry) {
-        if (DecisionLog.outcome(entry) != DecisionLog.Outcome.ACCEPTED) return DecisionLog.outcome(entry).said;
+        DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
+        if (outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)) {
+            return AutopilotText.PASSED_BELOW_MINIMUMS;
+        }
+        if (outcome != DecisionLog.Outcome.ACCEPTED) return outcome.said;
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
             DecisionLog.Step step = entry.steps.get(i);
             if (step.kind == DecisionLog.StepKind.ACCEPTED_AUTOMATIC) return "Automatically accepted";
@@ -2037,14 +2109,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * saying so): left to the user, never auto-accepted. Only a line this version decided.
      */
     static boolean passedBelowMinimums(DecisionLog.Entry entry) {
-        if (entry.result != OfferRule.Result.KEEP || entry.model < DecisionLog.MODEL
-                || entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
-        return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
-                || entry.reason.contains("below your minimums");
+        return AutopilotText.passedBelowMinimums(entry);
     }
 
-    /** Keep the most recent observed outcome prominent, without inventing one from a passed rule. */
-    private static DecisionLog.Step latestOutcomeStep(DecisionLog.Entry entry) {
+    /**
+     * Keep the most recent observed outcome prominent, without inventing one from a passed rule: accepted (by the
+     * user, after an automatic request, or as an older version recorded it), not accepted (Dasher went back to the
+     * wait for offers or the dash ended), counted as the user's own Decline (and an older version's verdict on one),
+     * or not counted from what followed.
+     */
+    static DecisionLog.Step latestOutcomeStep(DecisionLog.Entry entry) {
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
             DecisionLog.Step step = entry.steps.get(i);
             switch (step.kind) {
@@ -2056,7 +2130,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 case ACCEPTED_BEST_SAVED:
                 case ACCEPTED_MINIMUMS_UNCHANGED:
                 case ACCEPTED_ADD_ON:
+                case NOT_ACCEPTED:
                 case NOT_LEARNED:
+                case DECLINE_COUNTED:
                 case DECLINE_TAUGHT:
                 case DECLINE_NOT_TAUGHT:
                     return step;

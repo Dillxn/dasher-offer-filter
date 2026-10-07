@@ -64,7 +64,7 @@ import java.util.Locale;
  * little past the outer ring) and settles to fit when it is let go.
  *
  * <p>One round 48 dp button is Autopilot: "Auto" over its bar ("82%"), or over "Off", ringed in purple while on (amber
- * while the acceptance rate is below the goal, or the goal is out of reach at any bar), in grey while off. A tap is the
+ * while the acceptance rate is below the goal, as the page's chip is), in grey while off. A tap is the
  * page's ({@link Changes#toggleAutopilot}: off while on; while off, the goal chooser), a long press asks for the goal
  * at any time; it has no drag. The button's words and ring follow the bar quietly: nothing is announced when Autopilot
  * moves it. Screen readers reach each knob and the badge as adjustable controls and the button as a switch, with the
@@ -220,11 +220,10 @@ final class MinimumsStarView extends View {
 
     // ---- Autopilot, as the button shows it. ----
 
-    /** Autopilot on, the bar deciding offers now, the acceptance rate below the goal, and the goal out of reach. */
+    /** Autopilot on, the bar deciding offers now, and the acceptance rate below the goal. */
     private boolean autopilotOn;
     private int autopilotBar = FilterSettings.BAR_AT_MINIMUMS;
     private boolean belowGoal;
-    private boolean pinned;
 
     // ---- Knobs, the badge and the Autopilot button (as the sky only). ----
 
@@ -522,18 +521,18 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Autopilot as the button shows it: on or off, the bar deciding offers now, the acceptance rate below the goal (an
-     * amber ring), and the goal out of reach even at the lowest bar (amber too). Quiet: the button and the dashed shape
-     * follow, and nothing is announced, as Autopilot moves the bar by itself while the user drives.
+     * Autopilot as the button shows it: on or off, the bar deciding offers now, and the acceptance rate below the goal
+     * (an amber ring: the one rule the page's chip follows too, {@link AutopilotText.Status#belowGoal}). Quiet: the
+     * button and the dashed shape follow, and nothing is announced, as Autopilot moves the bar by itself while the user
+     * drives.
      */
-    void setAutopilot(boolean on, int bar, boolean belowGoal, boolean pinned) {
+    void setAutopilot(boolean on, int bar, boolean belowGoal) {
         int clamped = Math.max(1, Math.min(200, bar));
-        if (on == autopilotOn && clamped == autopilotBar && belowGoal == this.belowGoal && pinned == this.pinned) return;
+        if (on == autopilotOn && clamped == autopilotBar && belowGoal == this.belowGoal) return;
         boolean moved = clamped != autopilotBar;
         autopilotOn = on;
         autopilotBar = clamped;
         this.belowGoal = belowGoal;
-        this.pinned = pinned;
         if (moved) {
             barShape();
             rescale();
@@ -2818,8 +2817,7 @@ final class MinimumsStarView extends View {
 
     /**
      * The Autopilot button, a round 48 dp button like the header's: "Auto" (9 sp) over its bar ("82%") or "Off";
-     * ringed 2 dp in Autopilot's purple while on, amber while below the goal (or the goal out of reach), 1 dp grey
-     * while off.
+     * ringed 2 dp in Autopilot's purple while on, amber while below the goal (as the chip), 1 dp grey while off.
      */
     private void drawAutopilot(Canvas canvas) {
         float x = scoreBox.centerX();
@@ -2827,8 +2825,7 @@ final class MinimumsStarView extends View {
         float radius = scoreBox.width() / 2;
         fill.setColor(autoPressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
         canvas.drawCircle(x, y, radius, fill);
-        int ring = !autopilotOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B)
-                : belowGoal || pinned ? AutopilotChip.amber(ui) : AutopilotChip.purple(ui);
+        int ring = buttonRing();
         line.setPathEffect(null);
         line.setColor(ring);
         line.setStrokeWidth(autopilotOn ? ui.dp(2) : Math.max(1, ui.dp(1)));
@@ -2842,6 +2839,15 @@ final class MinimumsStarView extends View {
         buttonText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
         fitButtonText(label, room);
         canvas.drawText(label, x, y + ui.dp(12), buttonText);
+    }
+
+    /**
+     * The button's ring color: grey while off, amber while the acceptance rate is below the goal, else Autopilot's
+     * purple; the chip's colors, by the chip's rule (also for tests).
+     */
+    int buttonRing() {
+        return !autopilotOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B)
+                : belowGoal ? AutopilotChip.amber(ui) : AutopilotChip.purple(ui);
     }
 
     /** Shrinks the button's text, if it must, to fit {@code room} across (a large font, "150%"). */
@@ -2980,7 +2986,8 @@ final class MinimumsStarView extends View {
 
     /**
      * "Offer $9.75, 3.3 mi, 18 min, 2 stops, declined, scores 49% of your minimums": what is known of it, and its
-     * outcome; where that is not what the rules said, the rules' verdict too ("left to you, rules said decline").
+     * outcome; where that is not what the rules said, the rules' verdict too ("left to you, rules said decline"). An
+     * offer that passed only by Autopilot's lowered bar says so ("passed below your minimums").
      */
     private String offerSaid(int m) {
         OfferSnapshot offer = markFacts.get(m);
@@ -2992,7 +2999,9 @@ final class MinimumsStarView extends View {
         OfferRule.Result result = markResults.get(m);
         DecisionLog.Outcome outcome = DecisionLog.outcome(markEntries.get(m));
         if (outcome.isVerdict(result)) {
-            parts.add(result == OfferRule.Result.KEEP ? "passed"
+            parts.add(result == OfferRule.Result.KEEP
+                    ? (AutopilotText.passedBelowMinimums(markEntries.get(m))
+                            ? AutopilotText.PASSED_BELOW_MINIMUMS.toLowerCase(Locale.US) : "passed")
                     : result == OfferRule.Result.DECLINE ? "declined" : "left for review");
         } else {
             parts.add(outcome.said.toLowerCase(Locale.US));

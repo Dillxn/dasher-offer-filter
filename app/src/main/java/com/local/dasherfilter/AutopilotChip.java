@@ -7,10 +7,11 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.TextView;
@@ -21,11 +22,12 @@ import android.widget.TextView;
  * below the goal, grey while off) inside a target at least 48 dp each way. A tap opens the details and a long press the
  * goal chooser: the page that holds it says how ({@link #setOnClickListener}, {@link #setOnLongClickListener}).
  *
- * <p>Screen readers hear the whole status line and what a tap does ({@link AutopilotText#chipDescription}), and the
- * long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar change
- * never interrupts TalkBack while driving. The compact homepage shows it under the mascot, beside the latest offer's
- * line ({@link Row}), so the header gains no row; a driving strip of a short split screen can host the same view
- * ({@code MainActivity.newAutopilotChip}).
+ * <p>Screen readers hear the whole status in words and what a tap does ({@link AutopilotText#chipDescription}), and
+ * the long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar
+ * change never interrupts TalkBack while driving. The homepage shows it beside the latest offer's line ({@link Row}),
+ * where no Autopilot button is on screen (a short window with the constellation up in the header), or where a whole
+ * screen has no room for the status line; the header gains no row. A driving strip of a short split screen can host
+ * the same view ({@code MainActivity.newAutopilotChip}).
  */
 @SuppressLint("ViewConstructor")
 final class AutopilotChip extends TextView {
@@ -108,25 +110,55 @@ final class AutopilotChip extends TextView {
     }
 
     /**
-     * The chip beside a line of words (the latest offer's), the chip at the start: side by side while the words keep
-     * to two lines beside it, else the chip on a line of its own above them (a large font, a narrow window), so
-     * neither is squeezed. A chip that is gone leaves the words the whole width.
+     * The chip beside a line of words (the latest offer's), the chip at the start, costing the page no height: the row
+     * keeps the height the words have alone across its whole width (their 0.4.x height). Where the words would wrap
+     * onto more lines beside the chip (a large font, a narrow window), the chip's words and the line's shrink together
+     * by the least that keeps the row that tall, never below three quarters of the user's size nor below the default
+     * size (as a setup line's words do, {@link SetupRow.Words}); where even that is not enough (twice the font on the
+     * narrowest pane) they stay at that least size, their lines closing up to single spacing (as the map's line does at
+     * a large font), and the row grows by the least it can. The chip goes on a line of its own above the words only
+     * where that is shorter still (a window too narrow for both side by side). A chip that is gone leaves the words the
+     * whole width, at their full size and spacing.
      */
     @SuppressLint("ViewConstructor")
     static final class Row extends ViewGroup {
-        /** The most lines the words may take beside the chip before the chip goes above them. */
-        static final int MOST_LINES_BESIDE = 2;
+        /** Size steps tried between the full size and the least, as {@link SetupRow.Words} does. */
+        private static final int STEPS = 40;
 
-        private final View chip;
+        private final TextView chip;
         private final TextView words;
         private final int gap;
+        /** The two's text sizes as the page made them (the user's font size), and the least they shrink to. */
+        private final float chipFull;
+        private final float wordsFull;
+        private final float least;
+        /** The words' line spacing as the page made it, closed up to single only at the least size. */
+        private final float wordsSpacing;
+        private final TextPaint measuring = new TextPaint();
+        /** How the row stands now: the chip above the words, the share of the full sizes, the lines closed up. */
         private boolean stacked;
+        private float scale = 1f;
+        private boolean tight;
+        /** What the last fitting was worked out for, and its answer (kept while the chip is gone). */
+        private int fittedWidth = -1;
+        private String fittedChip;
+        private String fittedWords;
+        private boolean fitStacked;
+        private float fitScale = 1f;
+        private boolean fitTight;
 
-        Row(Context context, Ui ui, View chip, TextView words) {
+        Row(Context context, Ui ui, TextView chip, TextView words) {
             super(context);
             this.chip = chip;
             this.words = words;
             gap = ui.dp(4);
+            chipFull = chip.getTextSize();
+            wordsFull = words.getTextSize();
+            // Both are 13 sp: the least is three quarters of the user's size, never below the default size.
+            float unscaled = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 13,
+                    context.getResources().getDisplayMetrics());
+            least = Math.min(1f, Math.max(SetupRow.LEAST_SCALE, unscaled / wordsFull));
+            wordsSpacing = words.getLineSpacingMultiplier();
             addView(chip);
             addView(words);
         }
@@ -136,36 +168,135 @@ final class AutopilotChip extends TextView {
             return stacked;
         }
 
+        /** The share of the user's text size the chip and the words are drawn at now (1: full; for tests). */
+        float textScale() {
+            return scale;
+        }
+
+        /** The words' lines are closed up to single spacing (the last resort at the least size; for tests). */
+        boolean tight() {
+            return tight;
+        }
+
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
             int width = MeasureSpec.getSize(widthSpec);
             int inner = Math.max(0, width - getPaddingLeft() - getPaddingRight());
             int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
-            stacked = false;
             if (chip.getVisibility() == GONE) {
+                stacked = false;
+                scale = 1f;
+                tight = false;
+                size(words, wordsFull);
+                spacing(words, wordsSpacing);
                 words.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.EXACTLY), any);
                 setMeasuredDimension(width, words.getMeasuredHeight() + getPaddingTop() + getPaddingBottom());
                 return;
             }
+            fit(inner);
+            stacked = fitStacked;
+            scale = fitScale;
+            tight = fitTight;
+            size(chip, chipFull * scale);
+            size(words, wordsFull * scale);
+            spacing(words, tight ? 1f : wordsSpacing);
             chip.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.AT_MOST), any);
-            int beside = inner - chip.getMeasuredWidth() - gap;
-            if (beside > 0) {
-                // Its lines are read from the layout this measure makes: never one Android's measure cache skipped
-                // (the chip's words changing back to an earlier width would otherwise read the wider layout's lines).
-                words.forceLayout();
-                words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY), any);
-                Layout layout = words.getLayout();
-                stacked = layout != null && layout.getLineCount() > MOST_LINES_BESIDE;
-            } else {
-                stacked = true;
-            }
             int height;
             if (stacked) {
                 words.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.EXACTLY), any);
                 height = chip.getMeasuredHeight() + words.getMeasuredHeight();
             } else {
+                int beside = Math.max(0, inner - chip.getMeasuredWidth() - gap);
+                words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY), any);
                 height = Math.max(chip.getMeasuredHeight(), words.getMeasuredHeight());
             }
             setMeasuredDimension(width, height + getPaddingTop() + getPaddingBottom());
+        }
+
+        /**
+         * Works out, without touching either view, the largest size (the user's, else down to {@link #least}) at which
+         * the chip and the words side by side are no taller than the words alone across {@code inner}; failing that,
+         * the shorter of the two side by side at the least size with the words' lines closed up, and the chip above
+         * the words at the full size.
+         */
+        private void fit(int inner) {
+            String chipText = chip.getText().toString();
+            String wordsText = words.getText().toString();
+            if (inner == fittedWidth && chipText.equals(fittedChip) && wordsText.equals(fittedWords)) return;
+            fittedWidth = inner;
+            fittedChip = chipText;
+            fittedWords = wordsText;
+            int alone = wordsHeight(wordsText, wordsFull, inner, wordsSpacing);
+            fitStacked = false;
+            fitTight = false;
+            float step = (1f - least) / STEPS;
+            for (int i = 0; i <= STEPS; i++) {
+                float s = i == STEPS ? least : 1f - i * step;
+                if (besideHeight(chipText, wordsText, s, inner, wordsSpacing) <= alone) {
+                    fitScale = s;
+                    return;
+                }
+                if (step <= 0) break;
+            }
+            int beside = besideHeight(chipText, wordsText, least, inner, 1f);
+            int above = chipHeight(chipFull) + alone;
+            fitStacked = above < beside;
+            fitTight = !fitStacked;
+            fitScale = fitStacked ? 1f : least;
+        }
+
+        /**
+         * The row's height with the chip and the words side by side at {@code s} of their full sizes, the words' lines
+         * {@code spacing} apart.
+         */
+        private int besideHeight(String chipText, String wordsText, float s, int inner, float spacing) {
+            int room = inner - chipWidth(chipText, chipFull * s, inner) - gap;
+            if (room <= 0) return Integer.MAX_VALUE;
+            return Math.max(chipHeight(chipFull * s), wordsHeight(wordsText, wordsFull * s, room, spacing));
+        }
+
+        /** The chip's width with its words at {@code px} (one line, as wide as the row allows). */
+        private int chipWidth(String text, float px, int inner) {
+            measuring.set(chip.getPaint());
+            measuring.setTextSize(px);
+            int wide = (int) Math.ceil(measuring.measureText(text)) + chip.getCompoundPaddingLeft()
+                    + chip.getCompoundPaddingRight();
+            return Math.min(inner, Math.max(chip.getMinWidth(), wide));
+        }
+
+        /** The chip's height with its words at {@code px}: its 48 dp target, or its one line if that is taller. */
+        private int chipHeight(float px) {
+            measuring.set(chip.getPaint());
+            measuring.setTextSize(px);
+            android.graphics.Paint.FontMetricsInt line = measuring.getFontMetricsInt();
+            int tall = line.bottom - line.top + chip.getCompoundPaddingTop() + chip.getCompoundPaddingBottom();
+            return Math.max(chip.getMinHeight(), tall);
+        }
+
+        /** The words' height at {@code px} in {@code width}, lines {@code spacing} apart, as their view lays them out. */
+        private int wordsHeight(String text, float px, int width, float spacing) {
+            int across = Math.max(1, width - words.getCompoundPaddingLeft() - words.getCompoundPaddingRight());
+            measuring.set(words.getPaint());
+            measuring.setTextSize(px);
+            Layout layout = StaticLayout.Builder.obtain(text, 0, text.length(), measuring, across)
+                    .setLineSpacing(words.getLineSpacingExtra(), spacing)
+                    .setIncludePad(words.getIncludeFontPadding())
+                    .setBreakStrategy(words.getBreakStrategy())
+                    .setHyphenationFrequency(words.getHyphenationFrequency())
+                    .build();
+            int tall = layout.getHeight() + words.getCompoundPaddingTop() + words.getCompoundPaddingBottom();
+            return Math.max(words.getMinHeight(), tall);
+        }
+
+        /** {@code view}'s text at {@code px}, set only when it changes (no layout pass for nothing). */
+        private static void size(TextView view, float px) {
+            if (Math.abs(view.getTextSize() - px) > 0.01f) view.setTextSize(TypedValue.COMPLEX_UNIT_PX, px);
+        }
+
+        /** {@code view}'s lines {@code multiplier} apart, set only when it changes. */
+        private static void spacing(TextView view, float multiplier) {
+            if (Math.abs(view.getLineSpacingMultiplier() - multiplier) > 0.001f) {
+                view.setLineSpacing(view.getLineSpacingExtra(), multiplier);
+            }
         }
 
         @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {

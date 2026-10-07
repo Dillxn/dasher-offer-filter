@@ -557,17 +557,25 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * "Chart of the last 5 offers: 1 passed, 1 accepted, 1 declined, 1 left to you, 1 need review.": as the flags say,
-     * what became of each offer; accepted and left to you only when there are any.
+     * "Chart of the last 5 offers: 2 passed (1 below your minimums), 1 accepted, 1 declined, 1 left to you, 1 need
+     * review.": as the flags say, what became of each offer; accepted, left to you and passes only by Autopilot's
+     * lowered bar only when there are any.
      */
     private String describe(List<DecisionLog.Entry> entries) {
         int[] counts = new int[DecisionLog.Outcome.values().length];
-        for (DecisionLog.Entry entry : entries) counts[DecisionLog.outcome(entry).ordinal()]++;
+        int below = 0;
+        for (DecisionLog.Entry entry : entries) {
+            DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
+            counts[outcome.ordinal()]++;
+            if (outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)) below++;
+        }
         int accepted = counts[DecisionLog.Outcome.ACCEPTED.ordinal()];
         int yours = counts[DecisionLog.Outcome.YOURS.ordinal()];
         int requested = counts[DecisionLog.Outcome.REQUESTED.ordinal()];
-        String summary = String.format(Locale.US, "Chart of the last %d offers: %d passed, %s%d declined, %s%d need review.",
+        String summary = String.format(Locale.US,
+                "Chart of the last %d offers: %d passed%s, %s%d declined, %s%d need review.",
                 entries.size(), counts[DecisionLog.Outcome.PASSED.ordinal()],
+                below > 0 ? " (" + below + " below your minimums)" : "",
                 accepted > 0 ? accepted + " accepted, " : "", counts[DecisionLog.Outcome.DECLINED.ordinal()],
                 (yours > 0 ? yours + " left to you, " : "")
                         + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
@@ -595,7 +603,10 @@ final class DecisionChartView extends View {
         DecisionLog.Entry entry = selectedEntry();
         if (entry == null) return "";
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
+        // Passed only by Autopilot's lowered bar: said so, never as a full pass.
         String state = outcome == DecisionLog.Outcome.YOURS ? "left to you"
+                : outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)
+                ? AutopilotText.PASSED_BELOW_MINIMUMS.toLowerCase(Locale.US)
                 : outcome.name().toLowerCase(Locale.US);
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
