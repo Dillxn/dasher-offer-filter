@@ -260,7 +260,8 @@ public class PeekTest {
         nativeAlerts.addActiveNotification(source);
         listener.get().onNotificationPosted(source, sounded ? SameOfferAdapterTest.ranking(source,
                 new android.app.NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_HIGH),
-                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime()) : null);
+                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime())
+                : SameOfferAdapterTest.dashersOwnChannel(source));
         idle();
         return source;
     }
@@ -280,9 +281,32 @@ public class PeekTest {
         for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
         pass(600);
         assertNull(started());
-        assertEquals("Dasher's own tappable notification is the way in: no payless card beside it (the owner, "
-                + "0.4.72), whatever Android says of its sound", 0, cards());
+        assertEquals("Dasher's own tappable notification is the way in, and it pops up by itself: no payless card "
+                + "beside it (the owner, 0.4.72), whatever Android's record of its sound says", 0, cards());
         assertEquals(1, listener.get().getActiveNotifications().length);
+    }
+
+    /**
+     * Dasher's offer channel silenced: its notification cannot alert by itself, so when the peek does not happen the
+     * offer's card rings once, as before: never no alert at all.
+     */
+    @Test public void skippedQuietPeekBesideASilencedTappableNativeRingsTheCardOnce() throws Exception {
+        connect(app(MAPS));
+        StatusBarNotification source = offerNotification("Taco Bell");
+        source.getNotification().contentIntent = android.app.PendingIntent.getActivity(app, 7,
+                new Intent().setComponent(DASHER_HOME), android.app.PendingIntent.FLAG_IMMUTABLE);
+        ShadowNotificationListenerService nativeAlerts = Shadow.extract(listener.get());
+        nativeAlerts.addActiveNotification(source);
+        listener.get().onNotificationPosted(source, SameOfferAdapterTest.ranking(source,
+                new android.app.NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_LOW),
+                NotificationManager.IMPORTANCE_LOW, true, 0));
+        idle();
+        for (int i = 0; i < 4; i++) { pass(600); touchNow(); }
+        pass(600);
+        assertNull(started());
+        assertEquals(1, cards());
+        assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("audibleRequested=true"));
+        assertEquals("Dasher's own is kept", 1, listener.get().getActiveNotifications().length);
     }
 
     @Test public void skippedQuietPeekDoesNotDuplicateAnAlreadyHeardNativeAlert() throws Exception {

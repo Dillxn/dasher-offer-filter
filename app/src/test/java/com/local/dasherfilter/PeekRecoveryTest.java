@@ -305,12 +305,16 @@ public class PeekRecoveryTest {
         nativeAlerts().addActiveNotification(source);
     }
 
-    /** Dasher's offer notification, still listed by Android, with its own tap (sounded or not). */
+    /**
+     * Dasher's offer notification, still listed by Android, with its own tap: sounded, or (as DoorDash's own offer
+     * channel is on phones) popping up without a sound of its own. Either way it alerts by itself: no payless card.
+     */
     private StatusBarNotification postListed(String store, boolean sounded) {
         StatusBarNotification source = offerNotification(store);
         source.getNotification().contentIntent = dashersOwn();
         listOnly(source);
-        listener.get().onNotificationPosted(source, sounded ? soundedRanking(source) : null);
+        listener.get().onNotificationPosted(source, sounded ? soundedRanking(source)
+                : SameOfferAdapterTest.dashersOwnChannel(source));
         idle();
         return source;
     }
@@ -813,6 +817,9 @@ public class PeekRecoveryTest {
         }
         Notification card = card();
         assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card));
+        assertEquals("with Dasher left up showing no offer, it still pops up (no sound of its own), never a stale card "
+                + "in the shade", OfferAlerts.SHOWN_CHANNEL_ID, card.getChannelId());
+        assertTrue(card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
         Intent tap = Shadows.shadowOf(card.contentIntent).getSavedIntent();
         assertTrue("its tap tries Dasher's own notification first",
                 tap.getBooleanExtra(OpenDasherActivity.EXTRA_PREFER_DASHER_OWN, false));
@@ -880,8 +887,12 @@ public class PeekRecoveryTest {
         String log = log(app);
         assertTrue(ownTaps.isEmpty());
         contains(log, "[peek] ended because 20 s passed");
-        contains(log, "[peek] the offer's card after 20 s: silent");
-        assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
+        contains(log, "[peek] the offer's card after 20 s (unread): silent");
+        Notification card = card();
+        assertEquals("perhaps the offer was there, unread: never \"didn't show\"", OfferNotificationService.UNREAD_TEXT,
+                text(card));
+        assertEquals("it pops up (no sound of its own) though Dasher is up: never a stale card in the shade",
+                OfferAlerts.SHOWN_CHANNEL_ID, card.getChannelId());
         assertNull("no return after the deadline", started());
         assertNull(Peek.pausedWhy(app));
     }
@@ -1021,6 +1032,63 @@ public class PeekRecoveryTest {
         assertTrue(FilterStore.peek(app));
     }
 
+    /**
+     * The power button pressed just after Dasher came up, and the offer gone while the phone was locked: back to the map
+     * after the unlock, but never an empty peek (the owner ruled out Peek pausing itself over locks).
+     */
+    @Test
+    public void offersThatWentWhileThePeekWasHeldForTheUnlockNeverPausePeek() {
+        connect(app(MAPS));
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                inFront(app(MAPS));
+                pass(Peek.GAP_MS);
+            }
+            StatusBarNotification source = postListedAt("Store " + i, System.currentTimeMillis());
+            dasherOpened();
+            dasherShows(finding());
+            pass(500);
+            lockScreen();
+            withdraw(source);
+            pass(5_000);
+            inFront(finding());
+            unlock();
+            pass(Peek.QUIET_MS + Peek.NO_OFFER_MS + 1_500);
+            Intent back = started();
+            assertNotNull("back to the map: " + log(app), back);
+            assertEquals(MAPS_HOME, back.getComponent());
+            assertEquals(i + 1, count(log(app), "[peek] returned to a navigation app: offer withdrawn"));
+        }
+        assertNull("the lock came between: never an empty peek", Peek.pausedWhy(app));
+        assertFalse(log(app).contains("[peek] paused"));
+    }
+
+    /** A post the lock kept back, pulled up after the unlock, whose offer went before Dasher showed it: not counted. */
+    @Test
+    public void catchUpsWhoseOfferWentBeforeDasherShowedItNeverPausePeek() {
+        connect(app(MAPS));
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                inFront(app(MAPS));
+                pass(Peek.GAP_MS);
+            }
+            lockScreen();
+            StatusBarNotification source = postListedAt("Store " + i, System.currentTimeMillis());
+            pass(20_000);
+            inFront(app(MAPS));
+            unlock();
+            dasherOpened();
+            dasherShows(finding());
+            withdraw(source);
+            pass(Peek.NO_OFFER_MS + 1_000);
+            Intent back = started();
+            assertNotNull("back to the map: " + log(app), back);
+            assertEquals(MAPS_HOME, back.getComponent());
+        }
+        assertEquals(3, count(log(app), "[peek] returned to a navigation app: offer withdrawn"));
+        assertNull("the lock came between: never an empty peek", Peek.pausedWhy(app));
+    }
+
     // ---- The lock ----
 
     @Test
@@ -1102,6 +1170,68 @@ public class PeekRecoveryTest {
         contains(log(app), "[peek] left Dasher up because you touched the screen");
         pass(Peek.MAX_MS);
         assertNull(started());
+    }
+
+    /** The user's tap on Dasher, as Dasher reports it: on "Dash preferences", stamped {@code at} (uptime). */
+    private void tapOnDasher(long at) {
+        AccessibilityEvent click = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
+        click.setPackageName(DASHER);
+        click.setEventTime(at);
+        click.getText().add("Dash preferences");
+        screen.get().onAccessibilityEvent(click);
+        idle();
+    }
+
+    /**
+     * The keyguard goes and the user taps Dasher before Android's word that they are present is handled: the read that
+     * tap brings is the one that would resume the peek. Dasher stays up, and the declined offer's return never goes
+     * over the user's tap.
+     */
+    @Test
+    public void aTapOnDasherAtTheUnlockLeavesDasherUpBeforeTheResume() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        declined(offer("$7.90"));
+        lockScreen();
+        contains(log(app), "[peek] held for the unlock");
+        pass(5_000);
+        inFront(finding());
+        OfferFilterService service = screen.get();
+        Shadows.shadowOf(service.getSystemService(PowerManager.class)).setIsInteractive(true);
+        app.sendBroadcast(new Intent(Intent.ACTION_SCREEN_ON));
+        idle();
+        Shadows.shadowOf(service.getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
+        tapOnDasher(SystemClock.uptimeMillis());
+        app.sendBroadcast(new Intent(Intent.ACTION_USER_PRESENT));
+        idle();
+        contains(log(app), "[peek] left Dasher up because you tapped Dasher at the unlock");
+        assertFalse(log(app).contains("resumed after unlock"));
+        pass(Peek.QUIET_MS + Peek.MAX_MS);
+        assertNull("never back to the map over the user's tap: " + log(app), started());
+    }
+
+    /**
+     * The same tap, reported by Dasher only after the unlock resumed the peek, stamped with its own earlier time (after
+     * the hold began: nothing reaches Dasher behind the keyguard). It still counts: Dasher stays up.
+     */
+    @Test
+    public void aTapOnDasherReportedJustAfterTheResumeStillLeavesDasherUp() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        declined(offer("$7.90"));
+        lockScreen();
+        pass(5_000);
+        long tappedAt = SystemClock.uptimeMillis();
+        pass(50);
+        inFront(finding());
+        unlock();
+        contains(log(app), "[peek] resumed after unlock");
+        tapOnDasher(tappedAt);
+        contains(log(app), "[peek] left Dasher up because you t");
+        pass(Peek.QUIET_MS + Peek.MAX_MS);
+        assertNull("never back to the map over the user's tap: " + log(app), started());
     }
 
     @Test
@@ -1213,10 +1343,88 @@ public class PeekRecoveryTest {
         listOnly(newer);
         inFront(app(MAPS));
         unlock();
-        contains(log(app), "[peek] unlocked: offer notification replaced since; left to its card");
+        contains(log(app), "[peek] unlocked: offer notification replaced since; left to Dasher's notification");
         assertFalse(log(app).contains("unlocked too late"));
         pass(Peek.QUIET_MS + 100);
         assertNull(started());
+    }
+
+    /**
+     * Dasher re-posts the same offer while the phone is locked (its words change, still no pay), and again during the
+     * quiet after the unlock: the offer is still pulled up (the owner: "if the user has locked their phone and then it
+     * dings and they unlock it it should automatically pull it up if unlocked in time"). The post is matched by its
+     * offer's incarnation, not by its post time alone.
+     */
+    @Test
+    public void anOfferDasherUpdatesWhileLockedIsStillPulledUpAfterTheUnlock() {
+        connect(app(MAPS));
+        lockScreen();
+        StatusBarNotification first = postListed("Taco Bell", false);
+        contains(log(app), "[peek] offer arrived while locked; waiting for unlock");
+        pass(3_000);
+        sameOfferUpdated(first, 1_000);
+        contains(log(app), "[peek] skipped: an update of an offer already announced");
+        pass(2_000);
+        inFront(app(MAPS));
+        unlock();
+        contains(log(app), "[peek] unlocked in time: checking it");
+        assertFalse(log(app).contains("replaced since"));
+        pass(300);
+        // And again, its words changed once more, during the quiet after the unlock.
+        StatusBarNotification again = notification("New Delivery! Last chance", "New Order: Go to Taco Bell",
+                first.getPostTime() + 2_000);
+        again.getNotification().contentIntent = dashersOwn();
+        listOnly(again);
+        listener.get().onNotificationPosted(again, SameOfferAdapterTest.dashersOwnChannel(again));
+        idle();
+        assertEquals(2, count(log(app), "[peek] skipped: an update of an offer already announced"));
+        dasherOpened();
+        contains(log(app), "[peek] opening Dasher for Taco Bell (was in front: a navigation app)");
+        assertEquals("never a payless card beside Dasher's own", 0, cards());
+    }
+
+    /** A different offer on the key while locked is a new incarnation: the kept post is not the one Android lists. */
+    @Test
+    public void aNewOfferOnTheKeyWhileLockedIsNotTakenForTheKeptOne() {
+        connect(app(MAPS));
+        lockScreen();
+        StatusBarNotification first = postListed("Taco Bell", false);
+        pass(1_000);
+        // Dasher reuses the notification for another store's offer.
+        StatusBarNotification other = notification("New Delivery!", "New Order: Go to Burger Barn",
+                first.getPostTime() + 1_000);
+        other.getNotification().contentIntent = dashersOwn();
+        listOnly(other);
+        listener.get().onNotificationPosted(other, SameOfferAdapterTest.dashersOwnChannel(other));
+        idle();
+        pass(1_000);
+        inFront(app(MAPS));
+        unlock();
+        // The newer offer is the one kept now (the latest fresh post refused for the lock), and is pulled up.
+        dasherOpened();
+        contains(log(app), "[peek] opening Dasher for Burger Barn");
+        assertFalse(log(app).contains("opening Dasher for Taco Bell"));
+    }
+
+    /**
+     * Dasher's offer channel silenced (as Settings' Fix row for it may lead to) and the phone locked: Peek cannot read
+     * the offer, and Dasher's own notification cannot alert by itself, so our card rings once: never no alert at all.
+     */
+    @Test
+    public void besideDashersSilencedNotificationAnOfferWhileLockedStillRingsOnce() throws Exception {
+        connect(app(MAPS));
+        lockScreen();
+        StatusBarNotification source = offerNotification("Taco Bell");
+        source.getNotification().contentIntent = dashersOwn();
+        listOnly(source);
+        NotificationChannel silenced = new NotificationChannel("dasher_offers", "Dasher",
+                NotificationManager.IMPORTANCE_LOW);
+        listener.get().onNotificationPosted(source, SameOfferAdapterTest.ranking(source, silenced,
+                NotificationManager.IMPORTANCE_LOW, true, 0));
+        idle();
+        contains(log(app), "[peek] skipped: the screen is off");
+        assertEquals("our card is how the offer is heard: it rings once", 1, count(log(app), "audibleRequested=true"));
+        assertEquals(OfferAlerts.REVIEW_CHANNEL_ID, card().getChannelId());
     }
 
     @Test
@@ -1306,6 +1514,29 @@ public class PeekRecoveryTest {
         assertTrue("Dasher opened", launchedAt[0] > 0);
         assertTrue("700 ms of quiet the watch saw, not " + (launchedAt[0] - watchUp),
                 launchedAt[0] - watchUp >= Peek.QUIET_MS);
+    }
+
+    /**
+     * Writing a Peek line asks Android about the phone (car mode, the keyguard): the lines a read makes (Dasher up, the
+     * offer's facts read) are written once its decision and tap are done, so nothing delays a peeked offer's first
+     * Decline tap.
+     */
+    @Test
+    public void aPeeksOwnLinesAreWrittenAfterTheFirstDeclineTap() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        AccessibilityNodeInfo shown = offer("$7.90");
+        List<Long> declines = taps(decline);
+        dasherShows(shown);
+        assertEquals("declined at once", 1, declines.size());
+        String log = log(app);
+        int requested = log.indexOf("first-step Decline REQUESTED");
+        int up = log.indexOf("[peek] Dasher up ");
+        int facts = log.indexOf("[peek] offer facts read ");
+        assertTrue(log, requested >= 0 && up >= 0 && facts >= 0);
+        assertTrue("Dasher up is written after the tap:\n" + log, up > requested);
+        assertTrue("the facts line too:\n" + log, facts > up);
     }
 
     // ---- The return ----
@@ -1573,12 +1804,15 @@ public class PeekRecoveryTest {
 
     // ---- Review fixes: an update of the same offer, card taps, the unlock, the opening touch, one own tap ----
 
-    /** Dasher's offer notification, still listed by Android, posted at {@code postedAt}, with its own tap. */
+    /**
+     * Dasher's offer notification, still listed by Android, posted at {@code postedAt}, with its own tap, popping up
+     * without a sound of its own as DoorDash's offer channel does on phones.
+     */
     private StatusBarNotification postListedAt(String store, long postedAt) {
         StatusBarNotification source = notification("New Delivery!", "New Order: Go to " + store, postedAt);
         source.getNotification().contentIntent = dashersOwn();
         listOnly(source);
-        listener.get().onNotificationPosted(source, null);
+        listener.get().onNotificationPosted(source, SameOfferAdapterTest.dashersOwnChannel(source));
         idle();
         return source;
     }
@@ -1593,7 +1827,7 @@ public class PeekRecoveryTest {
                 first.getPostTime() + after);
         update.getNotification().contentIntent = dashersOwn();
         listOnly(update);
-        listener.get().onNotificationPosted(update, null);
+        listener.get().onNotificationPosted(update, SameOfferAdapterTest.dashersOwnChannel(update));
         idle();
         return update;
     }

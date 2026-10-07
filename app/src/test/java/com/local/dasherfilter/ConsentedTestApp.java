@@ -27,6 +27,8 @@ public class ConsentedTestApp extends Application {
         FeedbackDialogs.forgetDraft();
         DashSummary.forgetCache();
         StopReports.forgetCache();
+        // The signs of a dash kept in memory for the screen hold: no test inherits an earlier one's.
+        Dashing.forgetCache();
     }
 
     static void accept(Context context) {

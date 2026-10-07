@@ -264,6 +264,12 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** What the last look at the windows found. */
     private volatile Screen screen = Screen.UNKNOWN;
+    /**
+     * Whether the last complete read of Dasher found a screen of the dash: an offer, its wait for offers, or a pickup or
+     * delivery screen by its own words (a stored route alone is not one). The screen hold goes by it while Dasher is in
+     * front ({@link ScreenAwake}).
+     */
+    private volatile boolean dashOnScreen;
     /** The offer the user took over by touching the screen: nothing automatic happens to it again. */
     private volatile Takeover takeover = Takeover.NONE;
     /** The offer whose decline is under way (the touch watch is wanted), else null. */
@@ -495,6 +501,13 @@ public final class OfferFilterService extends AccessibilityService {
     private long lockedPostDasherWindows;
     /** Dasher's own window changes as the peek under way was armed (or, for a catch-up, as its post was kept). */
     private long armedDasherWindows;
+    /**
+     * The user's clicks on Dasher as the peek under way was held for the unlock, and when (uptime) it was held: none can
+     * reach Dasher behind the keyguard, so one counted since, or one Dasher reports later with its own time after the
+     * hold began, came after the unlock (its read may be the very one that resumes the peek), and Dasher stays up.
+     */
+    private long heldClicks;
+    private long heldUptime = NEVER;
     /** Whether the peek armed now is a post kept for the unlock, looked at again after it (the catch-up). */
     private boolean catchUpArming;
     /**
@@ -1361,7 +1374,9 @@ public final class OfferFilterService extends AccessibilityService {
         active = this;
         // During an active dash the screen is not let time out, whatever app is in front (the owner: "Don't let it lock
         // mid-dash"), so Peek can still bring Dasher up; it never wakes or unlocks the phone, and the power button wins.
-        if (screenAwake == null) screenAwake = new ScreenAwake(this, () -> !stopped && !scannerFaulted);
+        // Only on fresh signs of the dash, or Dasher in front (window metadata only) showing a screen of it now.
+        if (screenAwake == null) screenAwake = new ScreenAwake(this, () -> !stopped && !scannerFaulted,
+                () -> !stopped && dashOnScreen && screen.dasherReadable && knownDasherVisible(-1));
         screenAwake.start();
         watchScreenState();
         watchCameras();
@@ -2093,6 +2108,12 @@ public final class OfferFilterService extends AccessibilityService {
         final long acceptAt;
         /** Dasher was seen in front since it was armed: another app in front after that means the user left it. */
         boolean dasherSeen;
+        /**
+         * The offer was shown (any of its figures read, or Dasher's question about it): only then can Dasher's wait for
+         * offers mean it ended. Before that, the wait is what Dasher shows before it draws the offer (the 0.4.72
+         * report: the wait first, the offer 3.6 s later).
+         */
+        boolean offerSeen;
         /** When it first showed (Peek's clock); {@link #NEVER} before. */
         long shownAt = NEVER;
 
@@ -2126,16 +2147,18 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Armed for a navigation app the user was in (only one with a launcher): the chip waits for the offer to end
-     * without an acceptance, over Dasher's wait for offers.
+     * Armed for a navigation app the user was in (only one with a launcher): the chip waits for the offer to show and
+     * then end without an acceptance, over Dasher's wait for offers.
      *
      * @param dasherUp whether Dasher is up already (a peek's): another app in front from now on means the user left it
+     * @param offerSeen whether the offer was shown already (the peek read its figures)
      * @param how what left Dasher up, for the log
      */
-    private void armBackToMap(Peek.Front front, boolean dasherUp, String how) {
+    private void armBackToMap(Peek.Front front, boolean dasherUp, boolean offerSeen, String how) {
         if (front == null || !front.navigation() || front.launcher == null) return;
         backToMap = new BackToMap(front, Peek.now(), lastAcceptAt);
         backToMap.dasherSeen = dasherUp;
+        backToMap.offerSeen = offerSeen;
         scanner.removeCallbacks(backToMapExpiry);
         scanner.postDelayed(backToMapExpiry, CHIP_ARMED_MS);
         Peek.log(this, "back to map: armed (" + how + "; was in front: " + front.kind() + ")");
@@ -2150,9 +2173,10 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Whether the chip shows now: armed, never over an offer, its confirmation or a delivery, only over Dasher's wait for
-     * offers while Dasher fills the screen (not split: the map is beside it then), and no acceptance since it was armed.
-     * Its {@link #CHIP_SHOW_MS} start the first time it shows.
+     * Whether the chip shows now: armed, the offer shown since (never the wait Dasher shows before it draws the offer),
+     * never over an offer, its confirmation or a delivery, only over Dasher's wait for offers while Dasher fills the
+     * screen (not split: the map is beside it then), and no acceptance since it was armed. Its {@link #CHIP_SHOW_MS}
+     * start the first time it shows.
      */
     private boolean backToMapShows(Screen seen) {
         if (expireBackToMap()) return false;
@@ -2166,7 +2190,7 @@ public final class OfferFilterService extends AccessibilityService {
             forgetBackToMap("a delivery is under way");
             return false;
         }
-        if (!seen.dasherReadable || seen.split || scene != DasherScene.WAITING) return false;
+        if (!chip.offerSeen || !seen.dasherReadable || seen.split || scene != DasherScene.WAITING) return false;
         if (chip.shownAt == NEVER) {
             chip.shownAt = now;
             scanner.removeCallbacks(backToMapExpiry);
@@ -2189,14 +2213,38 @@ public final class OfferFilterService extends AccessibilityService {
         if (owner == SplitWindows.Owner.OTHER) forgetBackToMap("another app came in front");
     }
 
-    /** The user tapped the chip (main thread): that navigation app, as its launcher opens it. */
+    /** A read (scanner thread) showed the offer while the chip is armed: its end can now bring the chip up. */
+    private void noteBackToMapRead() {
+        BackToMap chip = backToMap;
+        if (chip != null && !chip.offerSeen && (readFigures || readShowsQuestion)) chip.offerSeen = true;
+    }
+
+    /**
+     * The user tapped the chip (main thread): that navigation app, as its launcher opens it, only once a fresh read
+     * still finds Dasher's wait for offers in front. An offer Dasher drew since the last read (by a change not read yet,
+     * or one held for the quiet gap) may be under the chip: the tap then opens nothing, and the offer is read as any.
+     */
     void backToMapTapped() {
         scanner.postAtFrontOfQueue(() -> {
             BackToMap chip = backToMap;
             backToMap = null;
             scanner.removeCallbacks(backToMapExpiry);
-            syncOverlay();
-            if (chip == null || stopped || scannerFaulted || !phoneReadable()) return;
+            if (chip == null || stopped || scannerFaulted || !phoneReadable() || !Consent.accepted(this)
+                    || peekReturning) {
+                syncOverlay();
+                return;
+            }
+            // One fresh read: it takes in every change Dasher made since the last (and hides the chip).
+            scanNow(SystemClock.uptimeMillis(), "back to map tapped");
+            if (stopped || scannerFaulted) return;
+            String not = !phoneReadable() ? "the phone locked"
+                    : lastAcceptAt != chip.acceptAt ? "an offer was accepted"
+                    : readSkipped || !screen.dasherReadable || screen.split || offerOnScreen || offerEvidence
+                            || scene != DasherScene.WAITING ? "Dasher no longer shows its wait for offers" : null;
+            if (not != null) {
+                Peek.log(this, "back to map: you tapped it; not opened (" + not + ")");
+                return;
+            }
             boolean opened = startHere(launcherIntent(chip.front.launcher));
             Peek.log(this, "back to map: you tapped it; " + (opened ? "opened " : "could not open ") + chip.front.kind());
         });
@@ -2235,7 +2283,7 @@ public final class OfferFilterService extends AccessibilityService {
             String pkg = name.toString();
             if (pkg.equals(getPackageName()) || isDasherPackage(pkg)) continue;
             if (!Peek.NAVIGATION.contains(pkg)) return;
-            armBackToMap(new Peek.Front(Peek.Back.APP, pkg, launcher(pkg), window.getId()), false,
+            armBackToMap(new Peek.Front(Peek.Back.APP, pkg, launcher(pkg), window.getId()), false, false,
                     "you opened Dasher from an offer's card");
             return;
         }
@@ -2872,9 +2920,10 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Peek, from the notification path (main thread), once {@link #peekRefusal} allowed it and its card was posted
-     * silently: the scanner looks at the rest and, the phone quiet, opens Dasher ({@link #startPeek}). When it does not,
-     * one "[peek] skipped" line says why and the card rings once, as it would have.
+     * Peek, from the notification path (main thread), once {@link #peekRefusal} allowed it and its card (when one is
+     * due) was posted silently: the scanner looks at the rest and, the phone quiet, opens Dasher ({@link #startPeek}).
+     * When it does not, one "[peek] skipped" line says why and the offer is announced as it would have been: its card,
+     * when one is due under the no-payless-card rule ({@link OfferNotificationService#peekNotTaken}), rings once.
      */
     static void peekAt(Context context, Peek.Request request) {
         OfferFilterService service = active;
@@ -3119,7 +3168,12 @@ public final class OfferFilterService extends AccessibilityService {
             long now = Peek.now();
             String why = Peek.refusal(this, request, FilterStore.load(this), screen.dasherReadable, -1,
                     afterUnlock ? Peek.UNLOCK_POST_MS : Peek.POST_AGE_MS);
-            if (why == null && !OfferNotificationService.peekCurrent(request)) why = "the offer notification was removed or replaced";
+            // A post kept for the unlock: Dasher's update of the same offer while the phone was locked revokes nothing
+            // (only what would revoke any peek does).
+            if (why == null && !(afterUnlock ? OfferNotificationService.renewForUnlock(request)
+                    : OfferNotificationService.peekCurrent(request))) {
+                why = "the offer notification was removed or replaced";
+            }
             // The lock or the screen, when it is why (all before it allowed the peek): the post waits for the unlock.
             String phone = null;
             if (why == null && peek.suspended()) {
@@ -3170,6 +3224,8 @@ public final class OfferFilterService extends AccessibilityService {
             // count toward the quiet the touch watch has to see. A post looked at again after the unlock keeps its
             // own age limit while the quiet is waited for.
             peek.arm(request, front, dasher, Peek.now(), afterUnlock ? Peek.UNLOCK_POST_MS : Peek.POST_AGE_MS);
+            // The lock came between the offer and this look at it: its offer gone by then is never an empty peek.
+            if (afterUnlock) peek.lockDelayed();
             // The touch watch goes up now, before Dasher is opened: the phone must be quiet first.
             syncAutomation();
             schedulePeekTick();
@@ -3179,7 +3235,10 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
-    /** No peek for this post: one counted "[peek] skipped" line, and its card rings once as it would have. */
+    /**
+     * No peek for this post: one counted "[peek] skipped" line, and the offer is announced as it would have been (its
+     * card, when one is due under the no-payless-card rule, rings once).
+     */
     private void peekNotTaken(Peek.Request request, String why) {
         Peek.skipped(this, why);
         OfferNotificationService.peekNotTaken(request.alertTag);
@@ -3607,25 +3666,29 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The whole peek's time ran out: Dasher stays as it is. Only an offer withdrawn (its notification gone, Dasher's
-     * empty screen read, nothing of an offer seen, and Dasher up the whole time: never a peek the lock held) counts as
-     * empty; with the offer's notification still posted and none of its figures read, its card says Dasher did not
-     * show it (none when the screen read the offer: the card path refuses then). No return after the deadline.
+     * empty screen read, nothing of an offer seen, and Dasher up the whole time: never a peek the lock held, or one for
+     * a post the lock kept back) counts as empty; with the offer's notification still posted and none of its figures
+     * read, its card says Dasher did not show it, or, over a screen too big to read or Dasher's question, that it could
+     * not be read (none when the screen read the offer: the card path refuses then). No return after the deadline.
      */
     private void peekTimedOut() {
         Peek.Request request = peek.request();
         OfferNotificationService.Posted posted = OfferNotificationService.offerPosted(request);
         boolean unread = !peek.sawOffer() && !peek.factsRead();
         boolean withdrawn = posted == OfferNotificationService.Posted.GONE && unread && peek.recognisedSeen()
-                && peek.resumedAt() == NEVER;
+                && !peek.lockCameBetween();
         noteNoOffer(Peek.now(), posted);
         boolean noFigures = !peek.factsRead();
+        boolean unreadOffer = peek.offerUnread();
         peekOver("ended because " + Peek.MAX_MS / 1000 + " s passed",
                 withdrawn ? Peek.Outcome.WITHDRAWN : Peek.Outcome.TIMEOUT);
         // The offer's notification still up and none of its figures read (nothing of it, or only signs of it drawing,
-        // as controls without figures): never a stale, silent card.
+        // as controls without figures): never a stale, silent card. Over a screen too big to read, or Dasher's
+        // question, the offer may have been there: its card says it couldn't be read, not that it never showed.
         if (posted == OfferNotificationService.Posted.POSTED && noFigures && request != null) {
-            OfferNotificationService.peekUnshown(request.alertTag,
-                    card -> Peek.log(this, "the offer's card after " + Peek.MAX_MS / 1000 + " s: " + card));
+            OfferNotificationService.peekUnshown(request.alertTag, unreadOffer,
+                    card -> Peek.log(this, "the offer's card after " + Peek.MAX_MS / 1000 + " s"
+                            + (unreadOffer ? " (unread)" : "") + ": " + card));
         }
     }
 
@@ -3731,7 +3794,7 @@ public final class OfferFilterService extends AccessibilityService {
             return;
         }
         String why = Peek.refusal(this, request, FilterStore.load(this), false, -1, peek.maxPostAge());
-        if (why == null && !OfferNotificationService.peekCurrent(request)) why = "the offer notification was removed or replaced";
+        if (why == null && !stillCurrent(request)) why = "the offer notification was removed or replaced";
         if (why == null) why = phoneRefusal();
         if (why == null) why = busyRefusal(now);
         if (why != null) {
@@ -3783,7 +3846,7 @@ public final class OfferFilterService extends AccessibilityService {
         String finalPhone = phoneRefusal();
         if (!Consent.accepted(this) || !FilterStore.peek(this) || !FilterStore.load(this).enabled
                 || finalPhone != null || watchState != WATCH_UP || keyboardListed()
-                || !OfferNotificationService.peekCurrent(request)) {
+                || !stillCurrent(request)) {
             abandonArming(request, "the phone or Peek settings changed before opening");
             return;
         }
@@ -3824,13 +3887,27 @@ public final class OfferFilterService extends AccessibilityService {
         schedulePeekTick();
     }
 
-    /** No peek after all, before Dasher was opened: one skip line, the card rings once, the watch goes down. */
+    /**
+     * No peek after all, before Dasher was opened: one skip line, the offer announced as usual (its card, when one is
+     * due, rings once), the watch goes down.
+     */
     private void abandonArming(Peek.Request request, String why) {
         finishPeek(Peek.Outcome.INTERRUPTED, false);
         peekNotTaken(request, why);
     }
 
     private static final String OPENED_BY_USER = "you are opening Dasher";
+
+    /**
+     * Whether the post armed now may still open Dasher: its incarnation still current for a peek; for a post kept for
+     * the unlock (the catch-up), Dasher's update of the same offer since revokes nothing (the owner: "if the user has
+     * locked their phone and then it dings and they unlock it it should automatically pull it up if unlocked in time"),
+     * only what would revoke any peek does.
+     */
+    private boolean stillCurrent(Peek.Request request) {
+        return catchUpArming ? OfferNotificationService.renewForUnlock(request)
+                : OfferNotificationService.peekCurrent(request);
+    }
 
     /**
      * A post kept for the unlock, waiting for the quiet: whether Dasher's own window changed since it was kept. The
@@ -3858,8 +3935,9 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * While Dasher opens: only Android's list of windows is looked at, never an app's content. A new application
      * window in front of the one the user was in is read (Dasher's, or not); with none {@link Peek#OPEN_MS} after the
-     * launch, the peek ends: the phone may block apps opening from the background. Its card rings once then, no key is
-     * held, and nothing the user touched meanwhile is taken for a choice about Dasher.
+     * launch, the peek ends: the phone may block apps opening from the background. The offer is announced as usual then
+     * (its card, when one is due under the no-payless-card rule, rings once), no key is held, and nothing the user
+     * touched meanwhile is taken for a choice about Dasher.
      */
     private void opening(long now) {
         String interrupted = !Consent.accepted(this) ? "the notice isn't accepted yet"
@@ -3983,7 +4061,7 @@ public final class OfferFilterService extends AccessibilityService {
                     return;
                 }
                 peek.openingTouched(actions);
-                Peek.log(this, "a touch before Dasher appeared was meant for " + peek.front().kind()
+                peekLineAfterRead("a touch before Dasher appeared was meant for " + peek.front().kind()
                         + ": only the automatic decline may still go back");
             }
             logDasherUp(look);
@@ -3992,9 +4070,27 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
+     * Peek's lines of a read (Dasher up, the offer's facts read), said once the read's decision and tap are done
+     * (scanner thread): writing a line asks Android about the phone, and nothing may delay a first Decline tap.
+     */
+    private final List<String> peekLinesAfterRead = new ArrayList<>();
+
+    private void peekLineAfterRead(String line) {
+        peekLinesAfterRead.add(line);
+    }
+
+    /** The read's Peek lines, now: after its tap, or as the peek ends (so they come before its end's lines). */
+    private void flushPeekLines() {
+        if (peekLinesAfterRead.isEmpty()) return;
+        List<String> lines = new ArrayList<>(peekLinesAfterRead);
+        peekLinesAfterRead.clear();
+        for (String line : lines) Peek.log(this, line);
+    }
+
+    /**
      * "[peek] Dasher up 2.6 s after it was opened (win=full/-/dasher/100; Dasher windows 1; top window active yes)":
      * where Dasher came up, how many of its windows Android listed (by the IDs reads found, or this look's roots), and
-     * whether the front-most application window is the active one.
+     * whether the front-most application window is the active one; said after the read's decision and tap.
      */
     private void logDasherUp(Look look) {
         int dasherWindows = 0;
@@ -4007,8 +4103,8 @@ public final class OfferFilterService extends AccessibilityService {
             if (dasher) dasherWindows++;
             if (top == null || window.getLayer() > top.getLayer()) top = window;
         }
-        Peek.log(this, "Dasher up " + Peek.seconds(peek.upAt() - peek.openedAt()) + " after it was opened (" + readWin
-                + "; Dasher windows " + dasherWindows + "; top window active "
+        peekLineAfterRead("Dasher up " + Peek.seconds(peek.upAt() - peek.openedAt()) + " after it was opened ("
+                + readWin + "; Dasher windows " + dasherWindows + "; top window active "
                 + (top != null && top.isActive() ? "yes" : "no") + ")");
     }
 
@@ -4073,8 +4169,9 @@ public final class OfferFilterService extends AccessibilityService {
             Peek.Request request = peek.request();
             String own = request != null && peek.followingSince() == peek.openedAt() ? request.alertTag : null;
             peekBack(why + "; you are navigating, so its card carries it", true, Peek.Outcome.LEFT_WITH_USER, how -> {
-                // A cancelled return leaves the user in Dasher with the offer showing: no card for it then.
-                if (how == Returned.CANCELLED) return;
+                // A cancelled or refused return leaves the user in Dasher with the offer showing: no card for it then
+                // (never one popping up, or ringing, over the offer Dasher shows).
+                if (how != Returned.RETURNED) return;
                 // Asked on the main thread, after the history took the reading (and so knows what it folded in).
                 OfferNotificationService.peekCard(this, () -> folded != null && folded.tag != null ? folded.tag : own,
                         facts, result, text, endsAt);
@@ -4515,7 +4612,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * The peek is over without going back: Dasher stays as it is. One line with its timing; nothing when none. Before
-     * Dasher was opened it is no peek at all: the skip line says why and the card rings once.
+     * Dasher was opened it is no peek at all: the skip line says why and the offer is announced as usual (its card,
+     * when one is due under the no-payless-card rule, rings once).
      *
      * @param outcome what it counts as ({@link Peek#end}): only a withdrawn offer, or Dasher never coming up, counts
      *     toward pausing Peek
@@ -4527,6 +4625,7 @@ public final class OfferFilterService extends AccessibilityService {
             abandonArming(peek.request(), why);
             return;
         }
+        flushPeekLines();
         Peek.log(this, line + peek.timing(Peek.now()));
         finishPeek(outcome, false);
     }
@@ -4536,6 +4635,7 @@ public final class OfferFilterService extends AccessibilityService {
      * when withdrawn offers or launches Dasher never came up for keep coming in a row ({@link Peek#end}).
      */
     private void finishPeek(Peek.Outcome outcome, boolean wentBack) {
+        flushPeekLines();
         long now = Peek.now();
         peekReturning = false;
         lastPeekTiming = peek.timing(now);
@@ -4545,14 +4645,16 @@ public final class OfferFilterService extends AccessibilityService {
                     + " remote fetches ≥2 ms, slowest " + peekSlowest + " ms, " + (dasherEvents.get() - peekEventsAtOpen)
                     + " Dasher events");
         }
-        // Left up over Dasher while the user was in a navigation app: the Back to map chip waits for the offer to end
-        // (memory only; never while the phone is locked, the screen off or a call under way).
+        // Left up over Dasher while the user was in a navigation app: the Back to map chip waits for the offer to show
+        // (unless the peek read it) and end (memory only; never while the phone is locked, the screen off or a call
+        // under way).
         Peek.Front leftFrom = opened && !wentBack && outcome != Peek.Outcome.OPEN_FAILED && peek.upAt() != NEVER
                 ? peek.front() : null;
+        boolean offerShown = peek.factsRead();
         String pause = peek.end(outcome, wentBack, now, Dashing.currentStart(this));
         if (!wentBack) peek.forgetFront();
         if (leftFrom != null && leftFrom.navigation() && phoneRefusal() == null) {
-            armBackToMap(leftFrom, true, "a peek left Dasher up");
+            armBackToMap(leftFrom, true, offerShown, "a peek left Dasher up");
         }
         peekBeganAt = Long.MAX_VALUE;
         postCheckAfter = NEVER;
@@ -4577,6 +4679,8 @@ public final class OfferFilterService extends AccessibilityService {
             return;
         }
         long now = Peek.now();
+        heldClicks = dasherClicks.get();
+        heldUptime = SystemClock.uptimeMillis();
         peek.suspend(now);
         Peek.log(this, "held for the unlock: the screen went off or the phone locked (kept "
                 + Peek.RESUME_MS / 1000 + " s)" + peek.timing(now));
@@ -4587,8 +4691,9 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * Scanner thread, as the phone is unlocked (Android's word that the user is present, the screen on with no
      * keyguard, or a read finding the phone unlocked): a peek held for the lock resumes ({@link #resumeAfterUnlock});
-     * else the latest fresh post refused only for the lock is looked at again, its notification still posted with the
-     * same post time, at most {@link Peek#UNLOCK_POST_MS} after it was posted, and only when the user did not open
+     * else the latest fresh post refused only for the lock is looked at again, its notification still posted (that very
+     * post, or Dasher's update of the same offer, never another post on its key), at most {@link Peek#UNLOCK_POST_MS}
+     * after it was posted, and only when the user did not open
      * Dasher themselves since it was kept (one of our cards, Dasher's own window). Every other refusal applies to it as
      * to any post, and it counts toward the gap and the cap; the quiet starts after the unlock. Android's word that
      * the user is present can come while the keyguard still says locked: the unlock is looked at again then, every
@@ -4628,13 +4733,14 @@ public final class OfferFilterService extends AccessibilityService {
         // or older when the wall clock says so.
         long age = Math.max(System.currentTimeMillis() - kept.postTime,
                 lockedPostAgeWhenKept + Math.max(0, Peek.now() - lockedPostKeptAt));
+        // Dasher's update of the same offer is that offer still posted; another post on its key replaced it.
         OfferNotificationService.Posted posted = OfferNotificationService.postStillUp(kept);
         if (posted == OfferNotificationService.Posted.REPLACED) {
-            Peek.log(this, "unlocked: offer notification replaced since; left to its card");
+            Peek.log(this, "unlocked: offer notification replaced since; left to Dasher's notification");
             return;
         }
         if (posted == OfferNotificationService.Posted.UNKNOWN) {
-            Peek.log(this, "unlocked: offer notification not known; left to its card");
+            Peek.log(this, "unlocked: offer notification not known; left as it is");
             return;
         }
         if (posted != OfferNotificationService.Posted.POSTED) {
@@ -4667,6 +4773,13 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private boolean resumeAfterUnlock(boolean read) {
         if (!peek.suspended()) return false;
+        // A click of the user's on Dasher since it was held came after the unlock (none reaches Dasher behind the
+        // keyguard), perhaps the very event whose read resumes it now: never a resume over it, and no card either (the
+        // user is in Dasher).
+        if (dasherClicks.get() != heldClicks) {
+            peekOver("left Dasher up because you tapped Dasher at the unlock", Peek.Outcome.INTERRUPTED);
+            return false;
+        }
         long now = Peek.now();
         String why = null;
         if (now - peek.suspendedAt() >= Peek.RESUME_MS) why = "not unlocked within " + Peek.RESUME_MS / 1000 + " s";
@@ -4686,12 +4799,20 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
         peek.resume(now);
-        // Nothing of the user's could be seen while locked (the watch was down): what they do is counted from now.
+        // Nothing of the user's could be seen while locked (the watch was down): what they do is counted from now, and
+        // so is a click Dasher reports later with its own time after the hold began (none reaches Dasher behind the
+        // keyguard: it came after the unlock).
         peek.rebase(peekActions.get());
-        peekBeganAt = SystemClock.uptimeMillis();
+        peekBeganAt = heldUptime != NEVER ? heldUptime : SystemClock.uptimeMillis();
         postCheckAfter = NEVER;
-        Peek.log(this, "resumed after unlock");
         syncAutomation();
+        // A click counted after the look above but before the peek was watched again: Dasher stays up for it too. Any
+        // later one is the watch's (a click of the user's during a peek).
+        if (dasherClicks.get() != heldClicks) {
+            peekOver("left Dasher up because you tapped Dasher at the unlock", Peek.Outcome.INTERRUPTED);
+            return false;
+        }
+        Peek.log(this, "resumed after unlock");
         schedulePeekTick();
         if (read) {
             if (checkOffer("peek: resumed after unlock", SystemClock.uptimeMillis(), MAX_SCAN_NODES)) {
@@ -4704,7 +4825,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * A peek held for the unlock ends (not unlocked in time, or something at the unlock refused it): Dasher stays as
-     * it is. One that never saw Dasher come up rings its card once, as a launch Dasher never came up for does.
+     * it is. One that never saw Dasher come up announces the offer as a launch Dasher never came up for does (its card,
+     * when one is due under the no-payless-card rule, rings once).
      */
     private void endHeld(String line) {
         Peek.Request request = peek.request();
@@ -4797,6 +4919,8 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
+            // The read's decision and tap are done: Peek's lines of it now.
+            flushPeekLines();
             if (offerEvidence && readWaitedMs > 0 && lastReadDurationMs > 0) {
                 DiagnosticLog.log(this, "scan", "offer read waited " + readWaitedMs + " ms behind a "
                         + lastCompletedTrigger + " read of " + lastReadDurationMs + " ms");
@@ -4814,6 +4938,8 @@ public final class OfferFilterService extends AccessibilityService {
             }
             // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
+            noteDashOnScreen();
+            noteBackToMapRead();
             noteResized();
             noteCardOpenRead();
             syncWaitRead();
@@ -4854,6 +4980,26 @@ public final class OfferFilterService extends AccessibilityService {
     private void syncWaitHeartbeat() {
         try { QualifyingWaitStore.heartbeat(this, waitCoverageEligible()); }
         catch (RuntimeException unavailable) { /* Optional display-only estimate. */ }
+    }
+
+    /**
+     * After a read (scanner thread), for the screen hold ({@link ScreenAwake}): whether it read a screen of the dash
+     * whole: an offer (its Accept or Decline, its question, or Dasher's "New Delivery!" headline; figures alone may be an
+     * earnings page), Dasher's wait for offers, or a pickup or delivery screen by its own words; never a stored route
+     * alone, a screen too big to read, a skipped read, Dasher's home before a dash, the dash paused or its end. Such a
+     * screen is a sign of the dash seen now ({@link Dashing#sawDash}).
+     */
+    private void noteDashOnScreen() {
+        List<String> labels = sceneLabels;
+        boolean dash = false;
+        if (!readSkipped && labels != null) {
+            boolean notOn = OfferEvidence.isDashOver(labels) || OfferEvidence.isPaused(labels)
+                    || OfferEvidence.isPreDashHome(labels);
+            dash = offerOnScreen || DasherScene.showsNewOffer(labels) || AcceptedOfferTracker.isDeliveryScreen(labels)
+                    || DasherScene.showsRoute(labels) || (!notOn && DasherScene.showsWaiting(labels));
+        }
+        if (dash) Dashing.sawDash();
+        if (dashOnScreen != dash) dashOnScreen = dash;
     }
 
     /**
@@ -5654,8 +5800,10 @@ public final class OfferFilterService extends AccessibilityService {
             Dashing.seen(this);
         } else if (noRoute && OfferEvidence.isPreDashHome(scan.text)) {
             // Dasher's home before a dash (its "Dash" button): a decline held until the dash goes on was about
-            // stopping. Whether a dash is on is left to the screens that say so.
+            // stopping, and the screen is not held for a dash until one is seen again. Whether a dash is on is left
+            // to the screens that say so.
             onMain(() -> ManualDeclines.dashEnded(this));
+            Dashing.homeSeen();
         }
         if (noRoute && OfferEvidence.isIdle(scan.text)) {
             boolean pending = declineState.hasPendingConfirmation(now);
@@ -5756,12 +5904,13 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Once per peek, as the offer's first facts (or both its controls) are read: "[peek] offer facts read N s after
-     * Dasher came up (after launcher)", or "(… s after Dasher's notification tap)".
+     * Dasher came up (after launcher)", or "(… s after Dasher's notification tap)", said after the read's decision and
+     * tap ({@link #flushPeekLines}).
      */
     private void notePeekFacts() {
         long now = Peek.now();
         if (!peek.facts(now) || peek.upAt() == NEVER) return;
-        Peek.log(this, "offer facts read " + Peek.seconds(now - peek.upAt()) + " after Dasher came up ("
+        peekLineAfterRead("offer facts read " + Peek.seconds(now - peek.upAt()) + " after Dasher came up ("
                 + (peek.ownTapRequested() ? Peek.seconds(now - peek.ownTapAt()) + " after Dasher's notification tap"
                 : "after launcher") + ")");
     }

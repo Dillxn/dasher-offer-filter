@@ -1186,6 +1186,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout body = body(page);
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
+        // DoorDash's offer channel sounded for an offer (so for declined ones too): its own page lets the user silence
+        // it. Silenced (Silent, its sound and pop-up off, or held back by Do Not Disturb), an offer Offer Filter cannot
+        // judge gets Offer Filter's own card, ringing once, instead (OfferNotificationService.alertsByItself): following
+        // this Fix never leaves an offer with no alert at all.
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
         installs = new Readiness(setup, "Updates can't install", () -> open(new Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))));

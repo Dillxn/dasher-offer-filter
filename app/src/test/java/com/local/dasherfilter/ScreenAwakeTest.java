@@ -152,6 +152,76 @@ public class ScreenAwakeTest {
         assertTrue("the dash goes on", lock.isHeld());
     }
 
+    /**
+     * A stale route or a dash whose end was never seen must never keep an unlocked phone on for long: with no sign of
+     * the dash for 15 minutes (an offer or its notification, Dasher's wait for offers, a pickup or delivery screen), the
+     * hold lets go though the dash itself still counts as on (its route stored); a new sign holds it again.
+     */
+    @Test public void aStoredRouteAloneNeverHoldsTheScreenOnceNothingOfTheDashWasSeenFor15Minutes() {
+        ActiveRouteStore.save(app, new OfferSnapshot(800, 3.0, 12, 2));
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        assertTrue(lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS - 3_000));
+        advanceCheck();
+        assertTrue("within 15 minutes of the last sign", lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+        advanceCheck();
+        assertTrue("the dash itself is still on (a route is stored)", Dashing.on(app));
+        assertFalse("a route alone holds nothing", lock.isHeld());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[awake] screen timeout released: nothing of the dash seen for 15 minutes"));
+        Dashing.sawDash();
+        advanceCheck();
+        assertTrue("a fresh sign of the dash holds it again", lock.isHeld());
+        // Hours later, the route still stored and never ended: let go well before.
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(150));
+        advanceCheck();
+        assertFalse(lock.isHeld());
+        ActiveRouteStore.clear(app);
+    }
+
+    @Test public void dashersHomeBeforeADashLetsGoUntilTheDashIsSeenAgain() {
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        Dashing.homeSeen();
+        advanceCheck();
+        assertFalse(lock.isHeld());
+        assertTrue(DiagnosticLog.read(app).contains("[awake] screen timeout released: Dasher's home shows no dash"));
+        Dashing.seen(app);
+        advanceCheck();
+        assertTrue("the dash seen again", lock.isHeld());
+    }
+
+    /**
+     * With Dasher in front showing the dash (its wait for offers, read once and unchanged since), the hold goes on
+     * however long ago the dash was last seen to change; with another app in front, only within 15 minutes of a sign of
+     * the dash.
+     */
+    @Test public void dasherShowingTheDashHoldsAndAnotherAppNeedsAFreshSignOfIt() {
+        service = Robolectric.buildService(OfferFilterService.class).create();
+        OfferFilterService reader = service.get();
+        reader.onServiceConnected();
+        showWaiting(reader);
+        advanceCheck();
+        PowerManager.WakeLock lock = lock();
+        assertTrue(lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS + 60_000));
+        advanceCheck();
+        assertTrue("Dasher in front still shows the dash's wait for offers", lock.isHeld());
+        showWindow(reader, "com.google.android.apps.maps", "Head north on Main St");
+        advanceCheck();
+        assertFalse("another app in front, nothing of the dash seen for 15 minutes", lock.isHeld());
+        Dashing.seen(app);
+        advanceCheck();
+        assertTrue("an offer's notification (a sign of the dash) holds it again", lock.isHeld());
+        // Dasher's own earnings page (figures, no offer or dash screen) is no sign of the dash.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS + 60_000));
+        showWindow(reader, "com.doordash.driverapp", "Earnings this week $412.50");
+        advanceCheck();
+        assertFalse(lock.isHeld());
+    }
+
     @Test public void pauseNoRulesDashEndAndPendingConsentEachRelease() {
         awake.start();
         PowerManager.WakeLock lock = lock();

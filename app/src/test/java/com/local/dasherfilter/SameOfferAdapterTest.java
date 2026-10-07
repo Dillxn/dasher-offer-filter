@@ -564,6 +564,25 @@ public class SameOfferAdapterTest {
     }
 
     /**
+     * Android's ranking of a post on DoorDash's own offer channel as phones report it (every field report:
+     * "dasher-notification-channel-nexus-new-offer-no-sound-haptics", importance 5, no sound, no vibration): it pops
+     * up on screen and never sounds (Dasher rings by itself), Do Not Disturb lets it through, and Android never records
+     * an audible alert for it.
+     */
+    static NotificationListenerService.RankingMap dashersOwnChannel(StatusBarNotification source) {
+        NotificationChannel channel = new NotificationChannel(
+                "dasher-notification-channel-nexus-new-offer-no-sound-haptics", "New offers",
+                NotificationManager.IMPORTANCE_MAX);
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        try {
+            return ranking(source, channel, NotificationManager.IMPORTANCE_MAX, true, 0);
+        } catch (Exception unavailable) {
+            throw new AssertionError(unavailable);
+        }
+    }
+
+    /**
      * Android's ranking of {@code source}, built by reflection. From Android 10 Android says when it last alerted
      * audibly for it ({@code alertedAt}, 0 for never); before that only the post's interruption filter, importance
      * and channel can be read.

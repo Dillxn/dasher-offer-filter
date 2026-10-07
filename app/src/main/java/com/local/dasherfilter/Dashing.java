@@ -20,6 +20,15 @@ final class Dashing {
     private static final String OPEN = "open";
 
     private static volatile long lastWrite;
+    /**
+     * When (elapsed time, which runs in deep sleep) something of the dash was last seen, in this process only: an
+     * offer or its notification, Dasher's wait for offers, a pickup or delivery screen ({@link #sawDash}).
+     * {@link #NO_SIGN} for none yet, {@link #HOME} once Dasher's home before a dash was read since. Only the screen hold
+     * ({@link ScreenAwake}) goes by it; nothing about offers or the dash's own start and end does.
+     */
+    private static volatile long dashSignAt = Long.MIN_VALUE;
+    private static final long NO_SIGN = Long.MIN_VALUE;
+    private static final long HOME = Long.MIN_VALUE + 1;
 
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences("dashing", Context.MODE_PRIVATE);
@@ -27,6 +36,7 @@ final class Dashing {
 
     /** Something only seen during a dash: an offer, the search for one, or a delivery. */
     static void seen(Context context) {
+        sawDash();
         long now = System.currentTimeMillis();
         SharedPreferences prefs = prefs(context);
         boolean onDash = onDash(prefs, now);
@@ -140,9 +150,45 @@ final class Dashing {
         return recent || (open(prefs) && ActiveRouteStore.load(context) != null);
     }
 
-    /** For tests: forget the write throttle. */
+    /**
+     * A positive sign of the dash under way, seen now (any thread): an offer or its notification ({@link #seen}),
+     * Dasher's wait for offers, or one of its pickup or delivery screens. Memory only, for the screen hold.
+     */
+    static void sawDash() {
+        dashSignAt = android.os.SystemClock.elapsedRealtime();
+    }
+
+    /**
+     * Whether something of the dash was seen within {@code ms} (elapsed time) and Dasher's home before a dash was not
+     * read since: the screen is held with any app in front only then ({@link ScreenAwake}). A stored route alone, or a
+     * dash only remembered from before a restart, is no such sign.
+     */
+    static boolean sawDashWithin(long ms) {
+        long at = dashSignAt;
+        if (at == NO_SIGN || at == HOME) return false;
+        long age = android.os.SystemClock.elapsedRealtime() - at;
+        return age >= 0 && age < ms;
+    }
+
+    /**
+     * Dasher's home before a dash (its "Dash" button, no delivery on it) was read: until the dash is seen again, the
+     * screen is not held for it. Whether a dash is on is still left to the screens that say so.
+     */
+    static void homeSeen() {
+        dashSignAt = HOME;
+        // The next sighting of the dash is written at once, so its time counts from then.
+        lastWrite = 0;
+    }
+
+    /** Whether Dasher's home before a dash was read since the dash was last seen (this process). */
+    static boolean homeShown() {
+        return dashSignAt == HOME;
+    }
+
+    /** For tests: forget the write throttle and the signs of the dash kept in memory. */
     static void forgetCache() {
         lastWrite = 0;
+        dashSignAt = NO_SIGN;
     }
 
     private Dashing() {}

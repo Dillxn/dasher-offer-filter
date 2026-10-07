@@ -220,10 +220,12 @@ final class DashSummary {
     /**
      * A Peek line's category: its words up to the first parenthesis, semicolon, timing or the per-line phone state
      * (" car="), digits masked, at most 60 characters. Peek's lines name kinds of apps, never an app; the one line that
-     * names the offer's store ("opening Dasher for …") is only "opened Dasher".
+     * names the offer's store ("opening Dasher for …") is only "opened Dasher", and a peek's cost line, all figures,
+     * is only "cost".
      */
     static String peekCategory(String line) {
         if (line.startsWith("opening Dasher")) return "opened Dasher";
+        if (line.startsWith("cost:")) return "cost";
         int cut = line.length();
         for (String stop : new String[] {" car=", " (", ";", " after ", " within "}) {
             int at = line.indexOf(stop);

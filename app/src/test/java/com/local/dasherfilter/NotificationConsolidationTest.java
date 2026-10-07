@@ -91,17 +91,87 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
 
     /**
      * The owner (0.4.72): "still gives redundant notifications on dashes (says dasher notification didn't have price
-     * info...etc)". A payless card never stands beside Dasher's own tappable notification, whatever Android says (or
-     * does not say) of its sound.
+     * info...etc)". A payless card never stands beside Dasher's own tappable notification that alerts by itself: as
+     * DoorDash's own offer channel is on phones, it pops up with no sound of its own (Dasher rings by itself) and
+     * Android records no audible alert for it.
      */
-    @Test public void aTappableNativeAndroidDoesNotSaySoundedStillGetsNoPaylessCard() {
+    @Test public void aTappableNativeThatPopsUpWithoutASoundGetsNoPaylessCard() {
         StatusBarNotification source = source(true, false, System.currentTimeMillis());
         nativeAlerts.addActiveNotification(source);
-        listener.onNotificationPosted(source, null);
+        listener.onNotificationPosted(source, SameOfferAdapterTest.dashersOwnChannel(source));
         nativeOnly(source);
         assertEquals(DecisionLog.Action.NATIVE_ALERT, DecisionLog.recent(app, 1).get(0).action);
         assertTrue(DiagnosticLog.read(app).contains(
-                "payless card omitted, whatever Android says of its sound"));
+                "payless card omitted: Dasher's own alerts by itself"));
+    }
+
+    /** Dasher's offer channel as the user may set it: silenced, or its pop-up off with no sound. */
+    private NotificationListenerService.RankingMap ranked(StatusBarNotification source, int importance,
+                                                          boolean sound, boolean throughDoNotDisturb) {
+        NotificationChannel channel = new NotificationChannel("source", "Dasher", Math.max(importance,
+                NotificationManager.IMPORTANCE_MIN));
+        if (!sound) channel.setSound(null, null);
+        try {
+            return SameOfferAdapterTest.ranking(source, channel, importance, throughDoNotDisturb, 0);
+        } catch (Exception failure) { throw new AssertionError(failure); }
+    }
+
+    /**
+     * Whenever Dasher's own alert cannot alert (its channel silenced, its pop-up off with no sound, Do Not Disturb
+     * holding it back, or Android not ranking it), an offer that cannot be judged gets our card, ringing once as
+     * before: never an offer with no alert at all (Settings' Fix row for DoorDash's channel leads users to silence it).
+     */
+    @Test public void besideDashersNotificationThatCannotAlertTheCardRingsOnce() {
+        int[][] cases = {
+                {NotificationManager.IMPORTANCE_LOW, 1, 1},      // Silent: no sound, no pop-up
+                {NotificationManager.IMPORTANCE_DEFAULT, 0, 1},  // pop-up off and no sound
+                {NotificationManager.IMPORTANCE_MAX, 0, 0},      // held back by Do Not Disturb
+                {NotificationManager.IMPORTANCE_NONE, 1, 1},     // blocked
+        };
+        long at = System.currentTimeMillis() - 30_000;
+        int key = 0;
+        for (int[] setting : cases) {
+            DiagnosticLog.clear(app);
+            StatusBarNotification source = new StatusBarNotification("com.doordash.driverapp",
+                    "com.doordash.driverapp", 30 + key, "NEW_ORDER_" + key, 10001, 0, 0,
+                    source(true, false, at).getNotification(), android.os.Process.myUserHandle(), at + key * 1_000);
+            key++;
+            nativeAlerts.addActiveNotification(source);
+            listener.onNotificationPosted(source, ranked(source, setting[0], setting[1] == 1, setting[2] == 1));
+            assertEquals("a card for importance " + setting[0], key, notifications().size());
+            Notification card = cardFor(source);
+            assertEquals("it rings once on Offers to check", OfferAlerts.REVIEW_CHANNEL_ID, card.getChannelId());
+            assertTrue(card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
+            assertEquals(DecisionLog.Action.CHECK_BELL, DecisionLog.recent(app, 1).get(0).action);
+            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains(
+                    "card beside Dasher's notification: Android does not show it alerting by itself"));
+            assertEquals("Dasher's own is never dismissed", 0, nativeAlerts.cancellations);
+        }
+    }
+
+    @Test public void besideDashersNotificationAndroidDoesNotRankTheCardRingsOnce() {
+        StatusBarNotification source = source(true, false, System.currentTimeMillis());
+        nativeAlerts.addActiveNotification(source);
+        listener.onNotificationPosted(source, null);
+        assertEquals("not known to alert: our card is how the offer is heard", 1, notifications().size());
+        assertEquals(OfferAlerts.REVIEW_CHANNEL_ID, notifications().getAllNotifications().get(0).getChannelId());
+        assertEquals(DecisionLog.Action.CHECK_BELL, DecisionLog.recent(app, 1).get(0).action);
+        // The same offer again, unchanged, now ranked as alerting by itself: the payless card gives way to Dasher's own,
+        // which stays.
+        listener.onNotificationPosted(source, SameOfferAdapterTest.dashersOwnChannel(source));
+        nativeOnly(source);
+    }
+
+    /** Our card for the offer on this notification's key, as Android shows it. */
+    private Notification cardFor(StatusBarNotification source) {
+        Notification found = null;
+        for (StatusBarNotification posted : app.getSystemService(NotificationManager.class).getActiveNotifications()) {
+            if (posted.getTag() != null && posted.getTag().endsWith("-" + source.getKey())) {
+                found = posted.getNotification();
+            }
+        }
+        assertNotNull("a card for " + source.getKey(), found);
+        return found;
     }
 
     @Test public void silentNativeStillGetsTheSelectivePassingChime() {

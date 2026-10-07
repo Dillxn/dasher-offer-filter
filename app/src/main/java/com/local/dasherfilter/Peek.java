@@ -248,7 +248,11 @@ final class Peek {
         DECLINED_BACK,
         /** An offer was read and left with the user: on screen, or on its card after going back to the map. */
         LEFT_WITH_USER,
-        /** Dasher removed the offer's notification and showed a recognised empty screen: an empty peek. */
+        /**
+         * Dasher removed the offer's notification and showed a recognised empty screen: an empty peek, unless the lock
+         * came between the offer and the peek's look at it ({@link #lockCameBetween}: the offer may have gone while the
+         * phone was locked), which neither counts nor resets the run.
+         */
         WITHDRAWN,
         /** Dasher never drew the offer, even after its own notification tap: its card says so. */
         UNSHOWN,
@@ -303,6 +307,8 @@ final class Peek {
     private long suspendedAt = NEVER;
     /** When an unlock resumed it; {@link #NEVER} for a peek never suspended. */
     private long resumedAt = NEVER;
+    /** A post the lock kept back, looked at after the unlock (up to {@link #UNLOCK_POST_MS} old): the lock delayed it. */
+    private boolean lockDelayed;
     /** A return held for the quiet after the unlock. */
     private boolean returnWaiting;
     private boolean noOfferLogged;
@@ -414,6 +420,7 @@ final class Peek {
         this.watchUpAt = NEVER;
         this.suspendedAt = NEVER;
         this.resumedAt = NEVER;
+        this.lockDelayed = false;
         this.returnWaiting = false;
         this.noOfferLogged = false;
         this.factsLogged = false;
@@ -751,6 +758,19 @@ final class Peek {
         return resumedAt;
     }
 
+    /** This peek opens Dasher for a post the lock kept back, looked at after the unlock. */
+    void lockDelayed() {
+        lockDelayed = true;
+    }
+
+    /**
+     * Whether the lock came between the offer and this peek's look at it: the peek was held for the unlock, or it is for
+     * a post the lock kept back. Its offer may have gone while the phone was locked, so it is never an empty peek.
+     */
+    boolean lockCameBetween() {
+        return resumedAt != NEVER || lockDelayed;
+    }
+
     /** A return held until the touch watch has seen the phone quiet after the unlock. */
     void returnWaiting(boolean waiting) {
         returnWaiting = waiting;
@@ -859,7 +879,9 @@ final class Peek {
                             + "block apps opening from the background)";
                     failedStreak.clear();
                 }
-            } else if (outcome == Outcome.WITHDRAWN) {
+            } else if (outcome == Outcome.WITHDRAWN && !lockCameBetween()) {
+                // A peek the lock held, or one for a post the lock kept back, never counts (nor resets the run): the
+                // offer may have gone while the phone was locked.
                 if (counted(emptyStreak, now) >= EMPTY_TO_PAUSE) {
                     pause = emptyStreak.size() + " offers in a row were gone by the time Dasher showed";
                     emptyStreak.clear();

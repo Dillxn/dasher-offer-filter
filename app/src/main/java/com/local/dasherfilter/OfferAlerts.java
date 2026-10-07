@@ -15,12 +15,13 @@ import android.service.notification.StatusBarNotification;
 
 /**
  * Passing offers may ring on their own channel. An offer that cannot be judged (DoorDash's background notification
- * shows no pay, or auto-decline is paused) gets a card on "Offers to check", ringing once, only while DoorDash's own
- * notification of it is gone or cannot be tapped (the owner: never a payless card beside DoorDash's own); it is never
- * judged, declined or opened for you. A card that carries what was read of the offer, or why it could not be read, and
- * need not ring (Dasher's own alert, or an earlier card, already rang for it) still pops up, with no sound of its own,
- * on "Offer details" ({@link #SHOWN_CHANNEL_ID}); with the offer's countdown read on Dasher's screen, it counts down
- * and goes when the offer does.
+ * shows no pay, or auto-decline is paused) gets a card on "Offers to check", ringing once, unless DoorDash's own
+ * notification of it is there to be tapped and alerts by itself (the owner: never a payless card beside DoorDash's
+ * own; never an offer with no alert at all when DoorDash's is silenced); it is never judged, declined or opened for
+ * you. A card that carries what was read of the offer, or why it could not be read, and need not ring (Dasher's own
+ * alert, or an earlier card, already rang for it, or Dasher is in front) still pops up, with no sound of its own, on
+ * "Offer details" ({@link #SHOWN_CHANNEL_ID}); with that channel blocked it goes quietly in the shade instead. With the
+ * offer's countdown read on Dasher's screen, it counts down and goes when the offer does.
  */
 final class OfferAlerts {
     /** New id: Android keeps a channel's first sound forever, so the passing chime needs a fresh channel. */
@@ -83,12 +84,13 @@ final class OfferAlerts {
         return Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.offer_pass_chime);
     }
 
-    /** Readiness covers the three offer channels and a notice channel the user has already blocked. */
+    /**
+     * Readiness covers the two offer channels that ring and a notice channel the user has already blocked. "Offer
+     * details" is not part of it: blocked, its cards go quietly on their own channel, so a user who turned its pop-ups
+     * off is never told their alerts are blocked.
+     */
     static boolean canNotify(Context context) {
-        if (!canNotify(context, CHANNEL_ID) || !canNotify(context, REVIEW_CHANNEL_ID)
-                || !canNotify(context, SHOWN_CHANNEL_ID)) {
-            return false;
-        }
+        if (!canNotify(context, CHANNEL_ID) || !canNotify(context, REVIEW_CHANNEL_ID)) return false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         NotificationChannel reminder = manager.getNotificationChannel(ConsentReminder.CHANNEL_ID);
         // This channel is created only when a notice waits. Its absence before then is not a missing permission.

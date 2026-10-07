@@ -232,7 +232,10 @@ public class WindowFlowsTest {
                 android.os.Process.myUserHandle(), System.currentTimeMillis());
     }
 
-    /** Dasher's offer notification, listed by Android with its own tap; Android says it sounded, or does not say. */
+    /**
+     * Dasher's offer notification, listed by Android with its own tap; Android says it sounded, or (as DoorDash's own
+     * offer channel is on phones) that it pops up without a sound of its own.
+     */
     private StatusBarNotification postTappableNative(boolean sounded) throws Exception {
         StatusBarNotification source = offerNotification("Taco Bell");
         source.getNotification().contentIntent = PendingIntent.getActivity(app, 7,
@@ -241,7 +244,8 @@ public class WindowFlowsTest {
         nativeAlerts.addActiveNotification(source);
         listener.get().onNotificationPosted(source, sounded ? SameOfferAdapterTest.ranking(source,
                 new NotificationChannel("dasher_offers", "Dasher", NotificationManager.IMPORTANCE_HIGH),
-                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime()) : null);
+                NotificationManager.IMPORTANCE_HIGH, true, source.getPostTime())
+                : SameOfferAdapterTest.dashersOwnChannel(source));
         idle();
         return source;
     }
@@ -390,6 +394,25 @@ public class WindowFlowsTest {
         assertEquals(OfferAlerts.SHOWN_CHANNEL_ID, card.getChannelId());
     }
 
+    /**
+     * The return to the map refused (Android would not open it): Dasher stays up showing the offer, so no card pops up
+     * (or rings) over it; the user has the offer in front of them.
+     */
+    @Test
+    public void aPassingOffersCardIsNotPostedWhenTheReturnToTheMapFails() throws Exception {
+        OfferFilterService service = connect(app(MAPS));
+        service.peekStarter = intent -> {
+            if (MAPS_HOME.equals(intent.getComponent())) throw new android.content.ActivityNotFoundException("no map");
+            service.startActivity(intent);
+        };
+        postTappableNative(true);
+        dasherOpened();
+        dasherShows(offer("$25.00"));
+        assertNull("Dasher stays up", started());
+        contains(DiagnosticLog.read(app), "[peek] could not go back to a navigation app: Dasher stays up");
+        assertTrue("no card over the offer Dasher shows", cards().isEmpty());
+    }
+
     // ---- An add-on's card (S6) ----
 
     @Test
@@ -448,17 +471,23 @@ public class WindowFlowsTest {
     }
 
     @Test
-    public void theSilentDetailsChannelIsPartOfReadinessAndBlockedItsCardsGoQuietlyInstead() {
+    public void theSilentDetailsChannelIsNotPartOfReadinessAndBlockedItsCardsGoQuietlyInstead() {
         NotificationManager manager = app.getSystemService(NotificationManager.class);
         assertTrue(OfferAlerts.canNotify(app));
         NotificationChannel shown = manager.getNotificationChannel(OfferAlerts.SHOWN_CHANNEL_ID);
         shown.setImportance(NotificationManager.IMPORTANCE_NONE);
         manager.createNotificationChannel(shown);
-        assertFalse("a blocked details channel needs fixing", OfferAlerts.canNotify(app));
+        assertTrue("the user's choice to turn its pop-ups off is never called blocked alerts",
+                OfferAlerts.canNotify(app));
         assertTrue(OfferAlerts.post(app, new OfferAlerts.Card("q", OfferRule.Result.KEEP, "Passes").shown(true)));
         Notification card = cards().get(0);
         assertEquals("its own channel, quietly", OfferAlerts.CHANNEL_ID, card.getChannelId());
         assertEquals(Notification.GROUP_ALERT_SUMMARY, card.getGroupAlertBehavior());
+        // A ringing channel blocked is still alerts to fix.
+        NotificationChannel review = manager.getNotificationChannel(OfferAlerts.REVIEW_CHANNEL_ID);
+        review.setImportance(NotificationManager.IMPORTANCE_NONE);
+        manager.createNotificationChannel(review);
+        assertFalse(OfferAlerts.canNotify(app));
     }
 
     @Test
@@ -709,9 +738,67 @@ public class WindowFlowsTest {
         assertEquals(MAPS_HOME, started().getComponent());
     }
 
+    /**
+     * Dasher brought up from a card shows its wait for offers first and draws the offer after (the 0.4.72 report: 3.6 s
+     * later): the chip waits for the offer to show and end, never offering the map before the offer appeared.
+     */
+    @Test
+    public void aCardTappedFromMapsOffersNoChipOverTheWaitBeforeItsOfferShows() {
+        cardTappedFromMaps();
+        dasherShows(finding());
+        assertNull("the offer has not shown yet: no way back over the wait before it", chip());
+        assertFalse(DiagnosticLog.read(app).contains("back to map: offered"));
+        pass(1_000);
+        dasherShows(finding());
+        assertNull(chip());
+        declinedOnScreen(offer("$7.90"));
+        dasherShows(finding());
+        assertNotNull("shown, then ended: back to the map in one tap", chip());
+    }
+
+    @Test
+    public void aPeekLeftUpBeforeItsOfferShowedOffersNoChipUntilAnOfferShowsAndEnds() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        pass(100);
+        touchNow();
+        contains(DiagnosticLog.read(app), "[peek] left Dasher up because you touched the screen");
+        contains(DiagnosticLog.read(app), "[peek] back to map: armed (a peek left Dasher up; was in front: a "
+                + "navigation app)");
+        dasherShows(finding());
+        assertNull("no offer shown yet", chip());
+        declinedOnScreen(offer("$7.90"));
+        dasherShows(finding());
+        assertNotNull(chip());
+    }
+
+    /**
+     * The chip is touchable, and an offer Dasher draws by a content change is read only after the quiet gap: a tap on
+     * the chip as an offer draws under it reads the screen again first, and opens nothing over the offer.
+     */
+    @Test
+    public void backToMapTappedAsAnOfferDrawsUnderItReadsAgainAndOpensNothing() {
+        peekLeftUpFromMaps();
+        dasherShows(finding());
+        BackToMapChip chip = chip();
+        assertNotNull(chip);
+        // Dasher draws the next offer; no read has seen it yet.
+        inFront(offer("$25.00"));
+        chip.performClick();
+        idle();
+        assertNull("the map is not opened over the offer", started());
+        String log = DiagnosticLog.read(app);
+        contains(log, "[peek] back to map: you tapped it; not opened (Dasher no longer shows its wait for offers)");
+        assertNull(chip());
+        assertEquals("the offer is read as any (and passes)", OfferRule.Result.KEEP, tab().verdict());
+    }
+
     @Test
     public void aCardTappedFromMapsThenAnotherAppInFrontEndsTheChip() {
         cardTappedFromMaps();
+        declinedOnScreen(offer("$7.90"));
         dasherShows(finding());
         assertNotNull(chip());
         // The user goes back to the map by themselves.
