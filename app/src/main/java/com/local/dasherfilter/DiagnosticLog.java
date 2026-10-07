@@ -288,6 +288,44 @@ final class DiagnosticLog {
     }
 
     /**
+     * Tags only versions before 0.5.0 wrote, which this version never uses: their GitHub reporting ("[report] filed
+     * issue #12", an issue its author's GitHub account filed on the public repository; "[github]") and the adaptive
+     * minimum's notes ("[learn]", naming learned amounts). Such lines can stay in the 24-hour log after the update.
+     */
+    private static final String[] RETIRED_TAGS = {"report", "github", "learn"};
+
+    /**
+     * What every report and the summary after a dash read of the offers log: {@link #withoutAccountScreens}, and none
+     * of the lines an older version wrote under a {@link #RETIRED_TAGS retired tag}.
+     */
+    static String reportable(String log) {
+        return withoutAccountScreens(withoutRetiredTags(log));
+    }
+
+    /** {@code log} without its lines tagged with a {@link #RETIRED_TAGS retired tag}. */
+    static String withoutRetiredTags(String log) {
+        if (log == null || log.isEmpty()) return log;
+        boolean any = false;
+        for (String tag : RETIRED_TAGS) any |= log.contains(" [" + tag + "] ");
+        if (!any) return log;
+        StringBuilder out = new StringBuilder(log.length());
+        int start = 0;
+        while (start < log.length()) {
+            int end = log.indexOf('\n', start);
+            end = end < 0 ? log.length() : end + 1;
+            String line = log.substring(start, end);
+            int source = line.indexOf(" [");
+            int close = source < 0 ? -1 : line.indexOf("] ", source);
+            String tag = close < 0 ? "" : line.substring(source + 2, close);
+            boolean retired = false;
+            for (String old : RETIRED_TAGS) retired |= old.equals(tag);
+            if (!retired) out.append(line);
+            start = end;
+        }
+        return out.toString();
+    }
+
+    /**
      * The screens log without a line of a payment, account or earnings screen (each one {@link #NOT_KEPT} line, with
      * its time): what a report carries of it, whatever wrote it.
      */
@@ -479,7 +517,7 @@ final class DiagnosticLog {
                 OfferFilterService.isConnected());
         FilterSettings rules = autopilot.rules;
         SharedPreferences updates = Updater.prefs(context);
-        String log = fitLog(PersonalText.maskLine(withoutAccountScreens(read(context))), MAX_REPORT_LOG_CHARS, false);
+        String log = fitLog(PersonalText.maskLine(reportable(read(context))), MAX_REPORT_LOG_CHARS, false);
         String screens = newestScreens(PersonalText.maskLine(withoutAccountScreens(readScreens(context))),
                 System.currentTimeMillis());
         return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"

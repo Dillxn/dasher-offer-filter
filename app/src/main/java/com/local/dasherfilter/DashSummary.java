@@ -831,8 +831,9 @@ final class DashSummary {
     private static String excerpts(Context app, long start, JSONObject model) {
         JSONArray anomalies = model.optJSONArray(ANOMALIES);
         if (anomalies == null || anomalies.length() == 0) return "";
-        // As every report reads the log: a line of a payment, account or earnings screen is a not-kept note.
-        String log = DiagnosticLog.withoutAccountScreens(DiagnosticLog.read(app));
+        // As every report reads the log: a line of a payment, account or earnings screen is a not-kept note, and an
+        // older version's retired reporting and learning lines are left out.
+        String log = DiagnosticLog.reportable(DiagnosticLog.read(app));
         List<long[]> times = new ArrayList<>();
         List<String> texts = new ArrayList<>();
         SimpleDateFormat format = new SimpleDateFormat(TIME_PATTERN, Locale.US);

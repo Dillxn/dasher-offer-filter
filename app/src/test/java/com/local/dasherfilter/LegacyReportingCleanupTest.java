@@ -188,6 +188,42 @@ public class LegacyReportingCleanupTest {
         assertFalse(new File(app.getFilesDir(), FeedbackOutbox.DIR).exists());
     }
 
+    /**
+     * 0.4.72's GitHub reporting logged "[report] filed issue #123", and an issue's author on the public repository is
+     * the tester's own GitHub account; its adaptive minimum logged learned amounts under "[learn]". Such lines can stay
+     * in the 24-hour log after the update; none goes into Share report, attached diagnostics or the summary after a
+     * dash. Lines 0.5.0 writes still go.
+     */
+    @Test
+    public void anOlderVersionsReportingAndLearningLinesNeverGoIntoAReport() throws Exception {
+        DiagnosticLog.log(app, "report", "filed issue #123");
+        DiagnosticLog.log(app, "report", "filed diagnostics issue #124");
+        DiagnosticLog.log(app, "github", "connection ended: disconnected in Settings");
+        DiagnosticLog.log(app, "learn", "$7.50 · 4.1 mi: new best accepted $0.45/min");
+        DiagnosticLog.log(app, "accept", "Accept tap seen on $9.35 · 4.1 mi; waiting up to 15 s for a delivery screen");
+        String log = DiagnosticLog.read(app);
+        assertTrue("on the phone the lines age out with the log", log.contains("filed issue #123"));
+
+        String report = DiagnosticLog.fullReport(app);
+        for (String retired : new String[] {"filed issue #123", "filed diagnostics issue #124", "connection ended",
+                "best accepted $0.45/min", "[report]", "[github]", "[learn]"}) {
+            assertFalse(retired + " in the report", report.contains(retired));
+        }
+        assertTrue("0.5.0's own lines still go", report.contains("Accept tap seen on $9.35"));
+        String reportable = DiagnosticLog.reportable(log);
+        assertFalse(reportable, reportable.contains("issue #"));
+        assertTrue(reportable, reportable.contains("[accept] Accept tap seen"));
+
+        long now = System.currentTimeMillis();
+        org.json.JSONObject model = new org.json.JSONObject().put("counts", new org.json.JSONObject())
+                .put("anomalies", new org.json.JSONArray().put(new org.json.JSONObject().put("t", now)
+                        .put("what", "decline still showing (question seen; not confirmed)")));
+        String summary = DashSummary.build(app, now - 60_000, now + 60_000, DashSummary.End.DASH_OVER, model);
+        assertTrue("the summary has its excerpt: " + summary, summary.contains("Accept tap seen"));
+        assertFalse(summary, summary.contains("issue #"));
+        assertFalse(summary, summary.contains("best accepted"));
+    }
+
     @Test
     public void theOneTimePrivacyCleanupAlsoRemovesHalfWrittenReportFiles() throws IOException {
         File outbox = new File(app.getFilesDir(), LegacyReportingCleanup.OUTBOX);
