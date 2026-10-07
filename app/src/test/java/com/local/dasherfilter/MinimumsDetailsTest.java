@@ -1,127 +1,194 @@
 package com.local.dasherfilter;
 
+import java.util.Collections;
+import org.json.JSONObject;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 
 import static org.junit.Assert.*;
 
-/** The disclosure uses current shared floors and the selected offer's facts, including unavailable amounts. */
+/**
+ * The ticket's "How this offer was judged" (finalSpec explainability): each of the three minimums as the selected
+ * offer's own miles and minutes made it, what the bar used, the requirement and the score, and nothing of the retired
+ * rules (learned minimums, score by area, per stop, per item, the hotspot). Unread amounts stay unread.
+ */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = 35)
 public final class MinimumsDetailsTest {
-    private static FilterSettings learned() {
-        return new FilterSettings(true, 500, 100, 25, 300, 0, true, 1000,
-                new AcceptedBest(900, 15, 1200, 4, 1400, 4),
-                new DeclinedFloor(1100, new AcceptedBest(1000, 20, 1200, 5, 1000, 2)), true);
+    /** The typical starter minimums: $4.00, $1.00 a mile, $15 an hour (25¢ a minute), at most 3 stops. */
+    private static FilterSettings starters() {
+        return FilterSettings.of(true, 400, 100, 25, 3);
     }
 
-    private static OfferSnapshot offer() {
-        return new OfferSnapshot(1600, 5.0, 20, 2);
+    /** The spec's worked offer: $5.75 for 6.6 mi and 27 min, 2 stops. */
+    private static OfferSnapshot worked() {
+        return new OfferSnapshot(575, 6.6, 27, 2);
     }
 
-    @Test public void knownOfferShowsMaximumAcceptedOrDeclinedRequirementsForEachSpoke() {
-        String text = MinimumsDetails.describe(learned(), offer());
-        assertTrue(text.contains("Payout — Saved $5.00 · Learned $11.01 · Used $11.01"));
-        assertTrue(text.contains("Pay/mile — Saved $5.00 · Learned $15.00 · Used $15.00"));
-        assertTrue(text.contains("Pay/min — Saved $5.00 · Learned $12.00 · Used $12.00"));
-        assertTrue(text.contains("Pay/stop — Saved $6.00 · Learned $10.01 · Used $10.01"));
-        assertTrue(text.contains("payout-dollar requirements"));
-        assertTrue(text.contains("not per-unit rates"));
-        assertTrue(text.contains("Blue is Saved; purple is Learned"));
-        assertTrue(text.contains("Stronger spokes can compensate"));
-        assertTrue(text.contains("increased learning need not expand the purple outline"));
+    /** A line this version decided for {@code facts} at {@code bar} (Autopilot on below or above 100). */
+    private static DecisionLog.Entry decided(OfferSnapshot facts, FilterSettings rules) {
+        OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
+        return DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision, DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList());
     }
 
-    @Test public void selectedOfferAmountsChangeRequirementsWithoutInventingUnknownPay() {
-        String text = MinimumsDetails.describe(learned(), new OfferSnapshot(null, 2.0, 10, 4));
-        assertTrue(text.contains("Pay/mile — Saved $2.00 · Learned $6.00 · Used $6.00"));
-        assertTrue(text.contains("Pay/min — Saved $2.50 · Learned $6.00 · Used $6.00"));
-        assertTrue(text.contains("Pay/stop — Saved $12.00 · Learned $20.01 · Used $20.01"));
-        assertFalse(text.contains("Offer $"));
+    private static FilterSettings atBar(FilterSettings rules, int bar) {
+        return new FilterSettings(rules.enabled, rules.flatCents, rules.perMileCents, rules.perMinuteCents,
+                rules.maxStops, bar != FilterSettings.BAR_AT_MINIMUMS, FilterSettings.GOAL_TOP_TIER, bar);
     }
 
-    @Test public void unknownAmountsAreUnavailableAndDisabledSavedFloorsAreOff() {
-        FilterSettings rules = learned().withMinimums(new int[] {0, 100, 0, 300, 0, 75});
-        String text = MinimumsDetails.describe(rules, OfferSnapshot.UNKNOWN.withItems(null, true));
-        assertTrue(text.contains("Payout — Saved off · Learned $11.01 · Used $11.01"));
-        assertTrue(text.contains("Pay/mile — Saved unavailable · Learned unavailable · Used unavailable"));
-        assertTrue(text.contains("Pay/min — Saved off · Learned unavailable · Used unavailable"));
-        assertTrue(text.contains("Pay/stop — Saved unavailable · Learned unavailable · Used unavailable"));
-        assertTrue(text.contains("Pay/item — Saved unavailable · Learned off · Used unavailable"));
-        assertTrue(text.contains("Hotspot — distance unavailable"));
-        assertTrue(text.contains("actual distance from this offer's final stop"));
+    private static void assertNothingRetired(String text) {
+        for (String retired : new String[] {"Learned", "learned", "Saved", "blue", "purple", "area", "Area", "Pay/stop",
+                "per stop", "item", "Hotspot", "hotspot", "baseline", "Score reference", "strict"}) {
+            assertFalse("no retired words (" + retired + "): " + text, text.contains(retired));
+        }
     }
 
-    @Test public void turningAdaptiveOffPreservesLearnedValuesButUsesOnlySavedValues() {
-        FilterSettings rules = learned().withAdaptive(false).withMinimums(new int[] {500, 0, 25, 300, 0, 0});
-        String text = MinimumsDetails.describe(rules, offer());
-        assertTrue(text.contains("Payout — Saved $5.00 · Learned $11.01 (not applied) · Used $5.00"));
-        assertTrue(text.contains("Pay/mile — Saved off · Learned $15.00 (not applied) · Used off"));
-        assertTrue(text.contains("Pay/min — Saved $5.00 · Learned $12.00 (not applied) · Used $5.00"));
-        String missing = MinimumsDetails.describe(rules, OfferSnapshot.UNKNOWN);
-        assertTrue(missing.contains("Pay/mile — Saved off · Learned unavailable (not applied) · Used off"));
+    @Test public void aKnownOfferShowsEachMinimumAsItsMilesAndMinutesMadeItAndWhatTheBarUsed() {
+        // The spec's ticket, word for word: decided at Autopilot's 82% bar.
+        DecisionLog.Entry entry = decided(worked(), atBar(starters(), 82));
+        assertEquals(82, entry.barPercent);
+        assertTrue(entry.autopilot);
+        String text = MinimumsDetails.describe(atBar(starters(), 82), entry);
+        assertEquals("Your minimums · bar 82% (Autopilot)\n"
+                + "Pay — set $4.00 · used ≈$3.28\n"
+                + "Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42\n"
+                + "Per hour — set $6.75 (27 min × $15/hr) · used ≈$5.54\n"
+                + "Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%\n"
+                + "Max stops 3 (never scaled). Below 100%, offers pass only because Autopilot lowered the bar and are "
+                + "never auto-accepted. ≈ means rounded up to the next cent.", text);
+        assertNothingRetired(text);
     }
 
-    @Test public void itemRequirementUsesOnlyObservedItemsAndTheGlobalScale() {
-        FilterSettings rules = learned().withPerItem(75).withMinimumScalePercent(97);
-        String text = MinimumsDetails.describe(rules, offer().withItems(4, true));
-        assertTrue(text.contains("Pay/item — Saved $3.00 · Learned off · Used $2.91"));
-        assertTrue(text.contains("Only confirmed manual choices train Payout, Pay/mile, Pay/min and Pay/stop"));
-        assertTrue(MinimumsDetails.describe(rules, offer())
-                .contains("Pay/item — Saved not applicable · Learned off · Used not applicable"));
+    @Test public void theSelectedOffersOwnAmountsChangeWhatEachMinimumAsksWithoutInventingPay() {
+        // Another offer, its pay unread, at exactly the minimums: the per-mile and per-hour amounts follow its own miles
+        // and minutes, the highest set amount is the requirement, and there is no score without pay.
+        OfferSnapshot unpaid = new OfferSnapshot(null, 2.0, 10, 4);
+        DecisionLog.Entry entry = decided(unpaid, starters());
+        String text = MinimumsDetails.describe(starters(), entry);
+        assertTrue(text, text.startsWith("Your minimums · bar 100%\n"));
+        assertTrue(text, text.contains("Pay — set $4.00\n"));
+        assertTrue(text, text.contains("Per mile — set $2.00 (2 mi × $1.00)\n"));
+        assertTrue(text, text.contains("Per hour — set $2.50 (10 min × $15/hr)\n"));
+        assertTrue(text, text.contains("Required $4.00: the highest set amount\n"));
+        assertFalse("nothing used at a bar of exactly 100%: " + text, text.contains("used"));
+        assertFalse("no score without pay: " + text, text.contains("score"));
+        assertFalse(text, text.contains("Offer $"));
+        assertFalse("no Autopilot below 100% to explain: " + text, text.contains("Below 100%"));
+        assertTrue(text, text.endsWith("Max stops 3 (never scaled)."));
+        assertNothingRetired(text);
     }
 
-    @Test public void learnedItemUsesTheActualCountAndTheSameBufferedFloorAsDecisions() {
-        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer().withItems(4, true));
-        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best)
-                .withPerItem(75).withMinimumScalePercent(97);
-        String text = MinimumsDetails.describe(rules, offer().withItems(2, true));
-        assertTrue(text, text.contains("Pay/item — Saved $1.50 · Learned $8.00 · Used $7.76"));
-        assertTrue(text, text.contains("Pay/item learns from confirmed manual accepts with an observed total count"));
-        assertFalse(text, text.contains("Pay/item is fixed only"));
-        String disabled = MinimumsDetails.describe(rules.withAdaptive(false), offer().withItems(2, true));
-        assertTrue(disabled, disabled.contains("Pay/item — Saved $1.50 · Learned $8.00 (not applied) · Used ≈$1.46"));
+    @Test public void unreadMilesAndMinutesStayUnreadAndTheRequirementIsOnlyAFloor() {
+        OfferSnapshot unread = new OfferSnapshot(900, null, null, 2);
+        String text = MinimumsDetails.describe(starters(), decided(unread, starters()));
+        assertTrue(text, text.contains("Per mile — $1.00 a mile; miles not read"));
+        assertTrue(text, text.contains("Per hour — $15/hr; minutes not read"));
+        assertTrue("what is known is a floor, never a requirement: " + text,
+                text.contains("Required at least $4.00: the highest set amount"));
+        assertFalse("no score from what is missing: " + text, text.contains("score"));
+
+        // With only rate minimums and nothing to apply them to, nothing is required yet.
+        FilterSettings rates = FilterSettings.of(true, 0, 100, 25, 0);
+        String none = MinimumsDetails.describe(rates, decided(OfferSnapshot.UNKNOWN, rates));
+        assertTrue(none, none.contains("Required: not known until this offer's miles and minutes are read."));
+        assertFalse(none, none.contains("Pay —"));
+        String off = MinimumsDetails.describe(FilterSettings.of(true, 0, 0, 0, 3), decided(worked(),
+                FilterSettings.of(true, 0, 0, 0, 3)));
+        assertTrue(off, off.contains("No pay, per-mile or hourly minimum is set."));
+        assertNothingRetired(text + none + off);
     }
 
-    @Test public void learnedItemNeedsTheCurrentOfferCountEvenWhenTheSavedItemFloorIsOff() {
-        AcceptedBest best = AcceptedBest.NONE.raisedBy(offer().withItems(4, true));
-        FilterSettings rules = new FilterSettings(true, 0, 0, 0, 0, 0, true, 0, best);
-        String unknown = MinimumsDetails.describe(rules, offer().withItems(null, true));
-        assertTrue(unknown, unknown.contains("Pay/item — Saved off · Learned unavailable · Used unavailable"));
-        String inapplicable = MinimumsDetails.describe(rules, offer());
-        assertTrue(inapplicable, inapplicable.contains("Pay/item — Saved off · Learned not applicable · Used not applicable"));
-        String disabled = MinimumsDetails.describe(rules.withAdaptive(false), offer().withItems(null, true));
-        assertTrue(disabled, disabled.contains("Pay/item — Saved off · Learned unavailable (not applied) · Used off"));
+    @Test public void aLineDecidedUnderTheRetiredRulesSaysSoAndWhatItNeedsNow() throws Exception {
+        // Written by 0.4.x: no "model" in its JSON, a learned-minimum reason and an area score.
+        JSONObject json = new JSONObject().put("at", 1_000L).put("source", "SCREEN").put("addOn", false)
+                .put("required", 1101).put("result", "DECLINE").put("reason", "must beat highest accepted payout $11.00")
+                .put("action", "DECLINE_TAPPED").put("autoDecline", true).put("evidence", new org.json.JSONArray())
+                .put("pay", 575).put("miles", 6.6).put("minutes", 27).put("stops", 2).put("score", 121);
+        DecisionLog.Entry legacy = DecisionLog.Entry.fromJson(json);
+        assertEquals(DecisionLog.LEGACY_MODEL, legacy.model);
+        String text = MinimumsDetails.describe(atBar(starters(), 82), legacy);
+        assertTrue(text, text.startsWith("Decided under retired rules (score by area or learned minimums). Now: needs "
+                + "$5.54 at 82%.\nYour minimums · bar 82% (Autopilot)\n"));
+        assertTrue("worked out again at today's bar: " + text,
+                text.contains("Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%"));
+        assertFalse("an old requirement is not compared with today's: " + text, text.contains("When decided"));
+
+        String plain = MinimumsDetails.describe(starters(), legacy);
+        assertTrue(plain, plain.startsWith("Decided under retired rules (score by area or learned minimums). Now: needs "
+                + "$6.75 at 100%.\nYour minimums · bar 100%\n"));
     }
 
-    @Test public void scaleIsSeparateAndFractionalCentDisplayDoesNotRoundBeforeScaling() {
-        FilterSettings rules = new FilterSettings(true, 0, 100, 0, 0, 0).withMinimumScalePercent(97);
-        String text = MinimumsDetails.describe(rules, new OfferSnapshot(100, 1.0301, null, null));
-        assertTrue(text.contains("Pay/mile — Saved ≈$1.04 · Learned off · Used ≈$1.00"));
-        assertTrue(text.contains("Scale 97%"));
-        assertTrue(text.contains("stored minimums stay unchanged"));
-        assertTrue(text.contains("≈ means rounded up to the next cent"));
-        assertEquals(100, rules.perMileCents);
-        assertTrue(MinimumsDetails.describe(learned().withMinimumScalePercent(97), offer())
-                .contains("Payout — Saved $5.00 · Learned $11.01 · Used ≈$10.68"));
+    @Test public void itemsAreAFactOfTheOfferNeverAMinimum() {
+        // A shopping offer with 4 items read: nothing per item is asked, used or explained; only the three minimums.
+        OfferSnapshot shopping = worked().withItems(4, true);
+        String text = MinimumsDetails.describe(starters(), decided(shopping, starters()));
+        assertEquals(MinimumsDetails.describe(starters(), decided(worked(), starters())), text);
+        assertTrue(text, text.contains("Required $6.75: the highest set amount · score 85%"));
+        String unread = MinimumsDetails.describe(starters(), decided(worked().withItems(null, true), starters()));
+        assertEquals("an unread count changes nothing either", text, unread);
+        assertNothingRetired(text);
     }
 
-    @Test public void strictExplanationAndKnownZeroRouteKeepExistingDifferentAreaPolicy() {
-        FilterSettings strict = new FilterSettings(true, 0, 100, 0, 0, 0);
+    @Test public void whatTheBarUsedIsExactlyWhatTheRuleDecidedWith() {
+        // At every bar Autopilot can hold, the ticket's "used" requirement is the decision's own, cent for cent.
+        for (int bar = 50; bar <= 150; bar += 7) {
+            FilterSettings rules = atBar(starters(), bar);
+            OfferRule.Decision decision = OfferRule.evaluate(worked(), rules);
+            String text = MinimumsDetails.describe(rules, decided(worked(), rules));
+            String required = bar == 100 ? "Required " + DecisionLog.money(decision.requiredCents) + ":"
+                    : "Required ≈" + DecisionLog.money(decision.requiredCents) + ": " + bar + "% of the highest set "
+                    + "amount ($6.75)";
+            assertTrue(bar + "%: " + text, text.contains(required));
+            assertFalse("the decision's own requirement: " + text, text.contains("When decided"));
+        }
+    }
+
+    @Test public void minimumsChangedSinceTheDecisionAreSaidWithWhatItNeededThen() {
+        DecisionLog.Entry entry = decided(worked(), starters());
+        assertEquals(675, entry.requiredCents);
+        FilterSettings raised = FilterSettings.of(true, 400, 150, 25, 3);
+        String text = MinimumsDetails.describe(raised, entry);
+        assertTrue(text, text.contains("Per mile — set $9.90 (6.6 mi × $1.50)\n"));
+        assertTrue(text, text.contains("Required $9.90: the highest set amount · score 58%\n"));
+        assertTrue(text, text.contains("When decided it needed $6.75; your minimums have changed since."));
+        assertFalse(MinimumsDetails.describe(starters(), entry).contains("When decided"));
+    }
+
+    @Test public void theBarIsSeparateAndAFractionalCentIsNeverRoundedBeforeTheBarApplies() {
+        FilterSettings rules = atBar(FilterSettings.of(true, 0, 100, 0, 0), 97);
+        OfferSnapshot offer = new OfferSnapshot(100, 1.0301, null, null);
+        String text = MinimumsDetails.describe(rules, decided(offer, rules));
+        // $1.0301 a mile asks 103.01¢: shown as ≈$1.04, but 97% of the exact amount is 99.92¢, ≈$1.00 (not 97% of
+        // $1.04, which would be $1.01).
+        assertTrue(text, text.contains("Per mile — set ≈$1.04 (1.0301 mi × $1.00) · used ≈$1.00"));
+        assertTrue(text, text.contains("Required ≈$1.00: 97% of the highest set amount (≈$1.04) · score 97%"));
+        assertTrue(text, text.endsWith("≈ means rounded up to the next cent."));
+        assertEquals("the stored minimum stays as set", 100, rules.perMileCents);
+        assertEquals(100, OfferRule.evaluate(offer, rules).requiredCents);
+    }
+
+    @Test public void aKnownZeroMileRouteAsksNothingOfThePerMileMinimum() {
+        FilterSettings mile = FilterSettings.of(true, 0, 100, 0, 0);
         OfferSnapshot zero = new OfferSnapshot(100, 0.0, null, null);
-        String text = MinimumsDetails.describe(strict, zero);
-        assertTrue(text.contains("In strict mode, every active Used amount must be met"));
-        assertTrue(text.contains("area score is only a reference"));
-        assertTrue(text.contains("Pay/mile — Saved $0.00 · Learned off · Used $0.00"));
-        assertTrue(MinimumsDetails.describe(strict.withScoreByArea(true), zero)
-                .contains("Pay/mile — Saved $0.00 · Learned off · Used unavailable"));
+        String text = MinimumsDetails.describe(mile, decided(zero, mile));
+        assertTrue(text, text.contains("Per mile — set $0.00 (0 mi × $1.00)"));
+        assertTrue(text, text.contains("Required $0.00: the highest set amount"));
+        assertFalse("nothing asked, no score: " + text, text.contains("score"));
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(zero, mile).result);
+        assertNothingRetired(text);
     }
 
-    @Test public void hotspotNeverBecomesDollarsOrUsesRouteMileageAsItsDistance() {
-        FilterSettings rules = learned().withHotspotProximity(40).withMinimumScalePercent(125);
-        String missing = MinimumsDetails.describe(rules, offer());
-        assertTrue(missing.contains("Hotspot — distance unavailable"));
-        assertTrue(missing.contains("Saved 0.4 /mi; Used 0.5 /mi reciprocal proximity"));
-        String known = MinimumsDetails.describe(rules, offer().withFinalStopHotspotMiles(0.0));
-        assertTrue(known.contains("Hotspot — 0 mi from this offer's final stop"));
-        assertFalse(known.contains("Hotspot — 5"));
-        assertTrue(known.contains("Independent of payout, fixed only"));
+    @Test public void aFinalStopDistanceIsNeverPartOfHowAnOfferIsJudged() {
+        // An older line could carry a final stop's distance to a hotspot; 0.5.0 has no hotspot rule, so it is no
+        // requirement, no dollars and no words, whatever the distance (an exact zero included).
+        OfferSnapshot near = new OfferSnapshot(575, 6.6, 27, 2, null, 0.0, null, false);
+        OfferSnapshot far = new OfferSnapshot(575, 6.6, 27, 2, null, 12.5, null, false);
+        String plain = MinimumsDetails.describe(starters(), decided(worked(), starters()));
+        assertEquals(plain, MinimumsDetails.describe(starters(), decided(near, starters())));
+        assertEquals(plain, MinimumsDetails.describe(starters(), decided(far, starters())));
+        assertNothingRetired(plain);
     }
 }

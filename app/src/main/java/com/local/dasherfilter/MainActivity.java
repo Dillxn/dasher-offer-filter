@@ -906,7 +906,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!compact || besideDasher || skyChosen == on) return;
         skyChosen = on;
         arrangeForSplit();
+        // The start line follows the knobs (see refresh).
+        refresh();
         if (on) minimums.beckon();
+    }
+
+    /** The constellation is the sky, with its knobs (a whole screen, beside Dasher, or chosen into a short window's sky). */
+    private boolean knobsInSky() {
+        return !compact || noMap;
     }
 
     /** The constellation in the header's left (drawn with its icons beside the circle), or spread across the sky. */
@@ -1533,6 +1540,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
+        // With no rule yet, the start line: on the ground, under the latest offer's line, while the constellation's
+        // knobs are in the sky, so it never covers one; in the sky under the mascot while a short window's header holds
+        // the constellation (no knob in the sky to cover, and its ground has no row to spare).
+        boolean startOnGround = knobsInSky();
         if (saved.enabled) {
             stateLine.setText("");
             hero.setAction("Pause auto-decline");
@@ -1540,11 +1551,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             stateLine.setText("Paused");
             hero.setAction("Resume auto-decline");
         } else {
-            // With no rule the start line stands on the ground, clear of the hollow knobs.
-            stateLine.setText("");
+            stateLine.setText(startOnGround ? "" : START_LINE);
             hero.setAction("Set up rules");
         }
-        stateLine.setVisibility(saved.enabled || !saved.hasAnyRule() ? View.GONE : View.VISIBLE);
+        stateLine.setVisibility(saved.enabled || (!saved.hasAnyRule() && startOnGround) ? View.GONE : View.VISIBLE);
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
             String label = DasherSplit.label(this);
@@ -1562,10 +1572,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 && QualifyingWaitStore.observingWaiting(this);
         AutopilotText.Status status = autopilotStatus();
         refreshAutopilot(status);
-        // The ground's one line: the start with no rule; Autopilot's status while it is on (the chip says it in a
-        // short window); else the wait, as before.
+        // The ground's one line: the start with no rule (while the knobs are in the sky); Autopilot's status while it
+        // is on (the chip says it in a short window); else the wait, as before.
         if (!saved.hasAnyRule()) {
-            showSlot(SLOT_START, START_LINE, null, ui.link);
+            if (startOnGround) showSlot(SLOT_START, START_LINE, null, ui.link);
+            else showSlot(SLOT_NONE, null, null, ui.inkSecondary);
         } else if (saved.autopilot && !compact) {
             showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                     ui.inkSecondary);

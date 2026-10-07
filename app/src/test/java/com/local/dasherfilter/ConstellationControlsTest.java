@@ -1,5 +1,6 @@
 package com.local.dasherfilter;
 
+import android.app.AlertDialog;
 import android.graphics.RectF;
 import android.os.Looper;
 import android.view.MotionEvent;
@@ -12,6 +13,8 @@ import android.widget.Switch;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -22,6 +25,7 @@ import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowToast;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -31,39 +35,55 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The rules' new homes on the constellation, now that Settings has none: the max stops badge by the per-stop spoke and
- * the adaptive minimum's toggle (Reset on a long press, with a confirm), each saved at once through FilterStore, by
- * touch and by screen readers.
+ * The rules' controls on the constellation besides the knobs, now that Settings has none: the max stops badge by the
+ * per-stop pin, and the one Autopilot button where the row of round buttons stood (a tap turns Autopilot off, or on
+ * through the goal chooser; a long press changes the goal; no drag), each saved at once, by touch and by screen
+ * readers.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ConstellationControlsTest extends AndroidAdapterTestBase {
+    @Before public void plansOnThisThread() {
+        AutopilotRuntime.forgetCache();
+        AutopilotRuntime.executorForTests = Runnable::run;
+    }
+
+    @After public void plansOnTheirOwnThread() {
+        AutopilotRuntime.executorForTests = null;
+        AutopilotRuntime.forgetCache();
+    }
+
     private static float[] middle(RectF box) {
         return new float[] {box.centerX(), box.centerY()};
     }
 
     @Test
     public void theMaxStopsBadgeStepsOffTwoToTenByTapAndSavesAtOnce() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 150, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
             RectF badge = star.stopsBox();
-            assertNotNull("a badge by the per-stop spoke", badge);
+            assertNotNull("a badge by the per-stop pin", badge);
             assertEquals("hollow, with no limit", "≤∞", star.stopsWords());
             Ui ui = new Ui(app);
+            RectF pin = star.stopsPinBox();
+            assertNotNull("the per-stop pin stays, as the badge's anchor", pin);
+            float dx = Math.max(0, Math.max(badge.left - pin.right, pin.left - badge.right));
+            float dy = Math.max(0, Math.max(badge.top - pin.bottom, pin.top - badge.bottom));
+            assertTrue("the badge stands right by its pin: " + badge + " / " + pin, Math.hypot(dx, dy) <= ui.dp(12));
             android.graphics.Rect target = new android.graphics.Rect();
             node(star, MinimumsStarView.STOPS_ID).getBoundsInParent(target);
             assertTrue("a full touch target: " + target, target.height() >= ui.dp(48) - 1
                     && target.width() >= ui.dp(48) - 1);
-            for (int axis = 0; axis < 5; axis++) {
+            for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
-                float dx = Math.max(0, Math.max(badge.left - knob[0], knob[0] - badge.right));
-                float dy = Math.max(0, Math.max(badge.top - knob[1], knob[1] - badge.bottom));
-                assertTrue("clear of the knobs' reach", Math.hypot(dx, dy) >= ui.dp(24) - 1);
+                float kx = Math.max(0, Math.max(badge.left - knob[0], knob[0] - badge.right));
+                float ky = Math.max(0, Math.max(badge.top - knob[1], knob[1] - badge.bottom));
+                assertTrue("clear of the knobs' reach", Math.hypot(kx, ky) >= ui.dp(24) - 1);
             }
             List<RectF> icons = new ArrayList<>();
             star.iconsAt(icons);
@@ -94,7 +114,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
 
     @Test
     public void aDragAcrossTheBadgeStepsItEitherWayAndSavesWhenLetGo() {
-        FilterStore.save(app, new FilterSettings(false, 1000, 0, 0, 0, 3));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -128,7 +148,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
 
     @Test
     public void screenReadersAdjustMaxStopsAsOneControl() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 2));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 2));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -156,148 +176,218 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
 
     @Test
     public void onAFreshPageTheBadgeSavesTheFirstRuleAndAutoDeclineStaysPaused() {
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
+            assertNotNull("with no rule, the start line", shownTextContaining(content, MainActivity.START_LINE));
             MinimumsStarView star = find(content, MinimumsStarView.class);
             RectF badge = star.stopsBox();
             tap((ViewGroup) star.getParent(), badge.centerX(), badge.centerY());
             FilterSettings saved = FilterStore.load(app);
             assertEquals(2, saved.maxStops);
             assertFalse(saved.enabled);
-            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.",
-                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
-            assertNull("the start hint goes once there is a rule", shownTextContaining(content,
-                    MainActivity.START_HINT));
+            assertFalse("max stops alone never turns Autopilot on", saved.autopilot);
+            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.", ShadowToast.getTextOfLatestToast());
+            assertNull("the start line goes once there is a rule", shownTextContaining(content,
+                    MainActivity.START_LINE));
             assertNotNull(shownTextContaining(content, "Paused"));
         }
     }
 
     @Test
-    public void theAdaptiveToggleTurnsTheMinimumOnAndOffKeepingWhatItLearned() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+    public void theAutopilotButtonTurnsAutopilotOnThroughTheGoalChooserAndOffAgainKeepingTheRules() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
-            RectF toggle = star.adaptiveBox();
-            assertNotNull("an icon-only toggle by the chart", toggle);
+            RectF button = star.autopilotBox();
+            assertNotNull("one round button by the chart", button);
             Ui ui = new Ui(app);
-            assertTrue("a full touch target", toggle.width() >= ui.dp(48) - 1);
-            RectF adopt = star.adoptBox();
-            RectF score = star.scoreToggleBox();
-            assertTrue("in the row of round buttons, between score by area and adopt",
-                    score.centerX() < toggle.centerX() && toggle.centerX() < adopt.centerX()
-                            && Math.abs(toggle.centerY() - adopt.centerY()) < 1);
-            for (int axis = 0; axis < 5; axis++) {
+            assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
+            assertEquals("where the row of three had its middle: on the circle's upright line", star.skyX(),
+                    button.centerX(), 1);
+            assertTrue("below the middle", button.centerY() > star.skyY());
+            for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
-                assertTrue("clear of the knobs", Math.hypot(knob[0] - toggle.centerX(), knob[1] - toggle.centerY())
-                        >= ui.dp(24) + toggle.width() / 2 - 1);
+                assertTrue("clear of the knobs", Math.hypot(knob[0] - button.centerX(), knob[1] - button.centerY())
+                        >= ui.dp(24) + button.width() / 2 - 1);
             }
+            assertNull("the retired buttons are gone", node(star, MinimumsStarView.ADOPT_ID));
+            assertNull(node(star, MinimumsStarView.ADAPTIVE_ID));
 
-            tap(sky, toggle.centerX(), toggle.centerY());
-            FilterSettings saved = FilterStore.load(app);
-            assertFalse("off, saved at once", saved.risingOffers);
-            assertEquals("what it learned is kept", 1420, saved.lastAcceptedCents);
-            assertEquals("$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
-            assertTrue(saved.enabled);
-            assertArrayEquals(new int[] {700, 150, 30, 100, 0, 0}, saved.minimums());
-            assertEquals(3, saved.maxStops);
-            assertTrue(star.lastSaid(), star.lastSaid().startsWith("Adaptive minimum off."));
-            assertTrue(star.getContentDescription().toString()
-                    .contains("Adaptive minimum is off, so the adaptive values are not applied."));
-            assertNull("nothing to adopt with it off", star.adoptBox());
-            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] adaptive minimum off"));
-
-            settleSky(content);
-            toggle = star.adaptiveBox();
-            tap(sky, toggle.centerX(), toggle.centerY());
-            assertTrue("on again", FilterStore.load(app).risingOffers);
-            assertTrue(star.lastSaid(), star.lastSaid().startsWith("Adaptive minimum on."));
+            // Off: a tap asks for the goal first, and asking changes nothing.
+            tap(sky, button.centerX(), button.centerY());
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull("the goal chooser", chooser);
+            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
+            assertFalse(FilterStore.load(app).autopilot);
+            // One tap on a goal applies it and closes.
+            Shadows.shadowOf(chooser).clickOnItem(1);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertFalse(chooser.isShowing());
+            FilterSettings on = FilterStore.load(app);
+            assertTrue("on, saved at once", on.autopilot);
+            assertEquals(FilterSettings.GOAL_TIER, on.autopilotGoalPercent);
+            assertEquals("Autopilot on · goal: acceptance rate 50% or more", ShadowToast.getTextOfLatestToast());
+            assertTrue(on.enabled);
+            assertArrayEquals("the minimums stay", new int[] {700, 150, 30, 0, 0, 0}, on.minimums());
+            assertEquals(3, on.maxStops);
+            assertEquals("the bar starts at exactly the minimums", 100, on.minimumScalePercent);
+            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] on; goal 50%"));
             assertFalse("no page opens", settingsShown(content));
+
+            // On: its words follow ("Auto" over "100%"), and a tap turns it off, back to exactly the minimums.
+            settleSky(content);
+            assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a tier, acceptance rate 50 percent "
+                    + "or more.", node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
+            button = star.autopilotBox();
+            tap(sky, button.centerX(), button.centerY());
+            FilterSettings off = FilterStore.load(app);
+            assertFalse(off.autopilot);
+            assertEquals(100, off.minimumScalePercent);
+            assertEquals("the goal is kept for next time", FilterSettings.GOAL_TIER, off.autopilotGoalPercent);
+            assertEquals("Autopilot off · back to exactly your minimums", ShadowToast.getTextOfLatestToast());
+            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, off.minimums());
+            assertTrue(off.enabled);
+            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] off; bar back to 100%"));
         }
     }
 
     @Test
-    public void holdingTheAdaptiveToggleAsksBeforeResettingWhatItLearned() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+    public void holdingTheAutopilotButtonChangesTheGoalAndTogglesNothing() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
 
-            // Held: a confirm asks first; Cancel leaves everything; the finger lifting toggles nothing.
-            hold(sky, star.adaptiveBox());
-            ShadowAlertDialog asked = Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog());
-            assertEquals("Reset learned minimums?", asked.getTitle().toString());
-            assertTrue("the hold does not toggle it", FilterStore.load(app).risingOffers);
-            ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+            // Held: the chooser, with the stored goal checked; Not now leaves everything, and the lift is no tap.
+            ShadowAlertDialog.reset();
+            hold(sky, star.autopilotBox());
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(chooser);
+            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
+            assertEquals("the stored goal is checked", 0, chooser.getListView().getCheckedItemPosition());
+            assertTrue("the hold does not turn it off", FilterStore.load(app).autopilot);
+            chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertEquals("cancelled: nothing forgotten", 1420, FilterStore.load(app).lastAcceptedCents);
+            assertTrue(FilterStore.load(app).autopilot);
+            assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
 
+            // Held again: pay first, while it stays on.
             settleSky(content);
-            hold(sky, star.adaptiveBox());
-            ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            hold(sky, star.autopilotBox());
+            chooser = ShadowAlertDialog.getLatestAlertDialog();
+            Shadows.shadowOf(chooser).clickOnItem(2);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             FilterSettings saved = FilterStore.load(app);
-            assertEquals("reset: the highest accepted pay forgotten", 0, saved.lastAcceptedCents);
-            assertTrue("and every best rate", saved.best.isEmpty());
-            assertTrue("the switch stays as it was", saved.risingOffers);
-            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 100, 0, 0}, saved.minimums());
-            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[rules] adaptive minimum reset"));
-            assertTrue(FilterStore.learningTimes(app)[2] > 0);
+            assertTrue(saved.autopilot);
+            assertEquals(FilterSettings.GOAL_PAY_FIRST, saved.autopilotGoalPercent);
+            assertEquals("Autopilot goal: pay first", ShadowToast.getTextOfLatestToast());
+            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] pay first (was 70%)"));
+            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 0, 0, 0}, saved.minimums());
+
+            // A finger that moves off the button is neither a tap nor a hold: the button has no drag.
+            settleSky(content);
+            RectF button = star.autopilotBox();
+            ShadowAlertDialog.reset();
+            long now = android.os.SystemClock.uptimeMillis();
+            sky.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, button.centerX(),
+                    button.centerY(), 0));
+            for (int step = 1; step <= 6; step++) {
+                sky.dispatchTouchEvent(MotionEvent.obtain(now, now + step * 16L, MotionEvent.ACTION_MOVE,
+                        button.centerX() + step * new Ui(app).dp(12), button.centerY(), 0));
+            }
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(
+                    Duration.ofMillis(ViewConfiguration.getLongPressTimeout() + 100));
+            sky.dispatchTouchEvent(MotionEvent.obtain(now, android.os.SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_UP, button.centerX() + new Ui(app).dp(72), button.centerY(), 0));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNull("no chooser", ShadowAlertDialog.getLatestAlertDialog());
+            FilterSettings after = FilterStore.load(app);
+            assertTrue("still on", after.autopilot);
+            assertEquals("and the bar not dragged", 100, after.minimumScalePercent);
+            assertEquals(FilterSettings.GOAL_PAY_FIRST, after.autopilotGoalPercent);
         }
     }
 
     @Test
-    public void screenReadersHearTheAdaptiveToggleAsASwitchWithResetAmongItsActions() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+    public void screenReadersHearTheAutopilotButtonAsASwitchWithItsActionsAndNoRange() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            AccessibilityNodeInfo toggle = node(star, MinimumsStarView.ADAPTIVE_ID);
-            assertNotNull(toggle);
-            assertEquals("Adaptive minimum", toggle.getContentDescription().toString());
-            assertEquals(Switch.class.getName(), toggle.getClassName().toString());
-            assertTrue(toggle.isCheckable());
-            assertTrue(toggle.isChecked());
+            AccessibilityNodeInfo button = node(star, MinimumsStarView.SCORE_ID);
+            assertNotNull(button);
+            assertEquals("Autopilot, off. Offers are judged at exactly your minimums.",
+                    button.getContentDescription().toString());
+            assertEquals(Switch.class.getName(), button.getClassName().toString());
+            assertTrue(button.isCheckable());
+            assertFalse(button.isChecked());
+            assertNull("nothing to drag: no range", button.getRangeInfo());
             List<String> actions = new ArrayList<>();
-            for (AccessibilityNodeInfo.AccessibilityAction action : toggle.getActionList()) {
+            for (AccessibilityNodeInfo.AccessibilityAction action : button.getActionList()) {
                 if (action.getLabel() != null) actions.add(action.getId() + "=" + action.getLabel());
+                assertTrue("no adjusting it: " + action, action.getId() != AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                        && action.getId() != AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                        && action.getId() != android.R.id.accessibilityActionSetProgress);
             }
-            assertTrue(actions.toString(), actions.contains(MinimumsStarView.TOGGLE_ACTION
-                    + "=Turn adaptive minimum off"));
-            assertTrue(actions.toString(), actions.contains(MinimumsStarView.RESET_ACTION
-                    + "=Reset learned minimums"));
+            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_CLICK + "=Turn Autopilot on"));
+            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_LONG_CLICK
+                    + "=Change acceptance goal"));
+            assertTrue(actions.toString(), actions.contains(0x4F460003 + "=Autopilot details"));
+            assertEquals(0x4F460003, AutopilotText.DETAILS_ACTION_ID);
+            assertEquals("no other node shows for the retired spokes", null, node(star, AreaScore.STOP));
+            assertNull(node(star, AreaScore.HOTSPOT));
+            assertNull(node(star, AreaScore.ITEM));
 
-            assertTrue(act(star, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.TOGGLE_ACTION));
-            assertFalse(FilterStore.load(app).risingOffers);
-            assertFalse(node(star, MinimumsStarView.ADAPTIVE_ID).isChecked());
-            assertTrue(act(star, MinimumsStarView.ADAPTIVE_ID, AccessibilityNodeInfo.ACTION_CLICK));
-            assertTrue(FilterStore.load(app).risingOffers);
-
-            // Reset asks first, as the hold does.
-            assertTrue(act(star, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.RESET_ACTION));
-            assertEquals(1420, FilterStore.load(app).lastAcceptedCents);
-            ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            // Its details action opens the details; a double-tap asks for the goal; choosing turns it on.
+            ShadowAlertDialog.reset();
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(details);
+            assertEquals(AutopilotText.DETAILS_TITLE, Shadows.shadowOf(details).getTitle().toString());
+            details.dismiss();
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
+            Shadows.shadowOf(chooser).clickOnItem(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+            assertTrue(FilterStore.load(app).autopilot);
+            AccessibilityNodeInfo on = node(star, MinimumsStarView.SCORE_ID);
+            assertTrue(on.isChecked());
+            assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
+                    + "percent or more.", on.getContentDescription().toString());
+            List<String> now = new ArrayList<>();
+            for (AccessibilityNodeInfo.AccessibilityAction action : on.getActionList()) {
+                if (action.getLabel() != null) now.add(action.getId() + "=" + action.getLabel());
+            }
+            assertTrue(now.toString(), now.contains(AccessibilityNodeInfo.ACTION_CLICK + "=Turn Autopilot off"));
+
+            // A long click asks for the goal, the stored one checked.
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
+            assertEquals(0, chooser.getListView().getCheckedItemPosition());
+            chooser.dismiss();
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
+            assertFalse("and a double-tap turns it off", FilterStore.load(app).autopilot);
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherTheBadgeAndTheButtonsFitClearOfEachOtherAndTheCounts() {
+    public void besideDasherTheBadgeAndTheButtonFitClearOfEachOtherAndTheCounts() {
         Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(2250, 5.2, 28, 2));
+        // The README's rules after the 0.5.0 update folded its $4.75 per stop into the $13.00 minimum pay.
+        FilterStore.save(app, FilterSettings.of(true, 1300, 385, 41, 3));
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -312,17 +402,15 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             RectF counts = new RectF();
             mascot.countsAt(counts);
             counts.offset(mascot.getLeft(), mascot.getTop());
-            RectF[] controls = {star.stopsBox(), star.adaptiveBox(), star.scoreToggleBox(), star.adoptBox()};
+            RectF[] controls = {star.stopsBox(), star.autopilotBox()};
             for (int i = 0; i < controls.length; i++) {
                 assertNotNull("shown " + i, controls[i]);
                 assertTrue("inside the page " + controls[i], controls[i].left >= 0
                         && controls[i].right <= star.getWidth() && controls[i].top >= 0
                         && controls[i].bottom <= star.getHeight());
                 assertFalse("clear of the counts " + controls[i], RectF.intersects(controls[i], counts));
-                for (int j = i + 1; j < controls.length; j++) {
-                    assertFalse("apart " + i + "/" + j, RectF.intersects(controls[i], controls[j]));
-                }
             }
+            assertFalse("apart", RectF.intersects(controls[0], controls[1]));
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);

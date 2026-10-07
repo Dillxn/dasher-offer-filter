@@ -2458,6 +2458,13 @@ final class MinimumsStarView extends View {
         return stopsShown() ? new RectF(stopsBox) : null;
     }
 
+    /** Where the per-stop pin the badge is anchored to stands, in this view's pixels (for tests); null without it. */
+    RectF stopsPinBox() {
+        if (!stopsShown()) return null;
+        RectF pin = new RectF();
+        return skyIcon(AreaScore.STOP, skyX, skyY, skyRadius, pin) ? pin : null;
+    }
+
     /** What the max stops badge says now: "≤3", or "≤∞" with no limit (for tests too). */
     String stopsWords() {
         return stopsWords(stopsDragging ? stopsValue : maxStops);

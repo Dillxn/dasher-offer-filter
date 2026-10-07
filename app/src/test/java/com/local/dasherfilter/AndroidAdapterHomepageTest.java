@@ -45,7 +45,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull("no line of words under the skyline", shownTextContaining(content, "Below your per-mile rate"));
+            assertNull("no line of words under the skyline", shownTextContaining(content, "Below your per-mile minimum"));
             assertNull("the ticket stays folded until asked for", find(content, OfferCardView.class));
 
             openTicket(content);
@@ -54,16 +54,16 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
                     card.getContentDescription().toString());
             assertEquals("Declined", find(content, Decor.Stamp.class).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "Below your per-mile minimum"));
 
             // While no older offer is picked, the ticket follows each new one.
             DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
                     DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
-                    OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                    OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
                     Collections.emptyList()));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertEquals("Passed", find(content, Decor.Stamp.class).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Meets your rules"));
+            assertNotNull(shownTextContaining(content, "Meets your minimums"));
 
             // Back folds the ticket away.
             activity.get().onBackPressed();
@@ -84,7 +84,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         Dashing.seen(app);
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
-                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
+                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets your minimums",
                 DecisionLog.Action.PASSES, true, Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -291,10 +291,10 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(find(content, AreaMapView.class).isShown());
 
             openTicket(content);
-            assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile minimum"));
             activity.get().onBackPressed();
             assertFalse(activity.get().isFinishing());
-            assertNull("folded again", shownTextContaining(content, "Below your per-mile rate"));
+            assertNull("folded again", shownTextContaining(content, "Below your per-mile minimum"));
         }
     }
 
@@ -474,7 +474,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             DecisionLog.record(app, new DecisionLog.Entry(now - (DecisionChartView.SLOTS - i) * 60_000L,
                     DecisionLog.Source.SCREEN, false, new OfferSnapshot(pay, 5.0, 20, 2), 1000,
                     pay >= 1000 ? OfferRule.Result.KEEP : OfferRule.Result.DECLINE,
-                    pay >= 1000 ? "meets enabled rules" : "flat minimum", DecisionLog.Action.PASSES, true,
+                    pay >= 1000 ? "meets your minimums" : "flat minimum", DecisionLog.Action.PASSES, true,
                     Collections.emptyList()));
         }
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -535,8 +535,11 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             for (int pay : new int[] {1000, 1500, 1200}) noteOfferAt(spot[0], spot[1], pay, 5.0);
         }
         setLocation(37.7749, -122.4194);
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 4, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+        // The busiest constellation: three minimums (the old $1.00 per stop folded into the $7.00 minimum pay), max
+        // stops, and Autopilot on with its bar below 100% (its button and its dashed shape).
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 4));
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();

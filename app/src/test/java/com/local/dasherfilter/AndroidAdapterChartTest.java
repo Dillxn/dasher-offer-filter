@@ -432,22 +432,23 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w360dp-h800dp-xxhdpi")
-    public void atTwiceTheFontSizeEveryKnobUnderASetupLineStillTakesADragAndTheLineItsTap() {
-        everyKnobTakesADragUnderTheLines(false);
+    public void atTwiceTheFontSizeEveryKnobStaysInReachOfTheSetupLinesAndTheStartLine() {
+        everyKnobStaysInReachOfTheLines(false);
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherAtTwiceTheFontSizeEveryKnobUnderTheLineStillTakesADrag() {
-        everyKnobTakesADragUnderTheLines(true);
+    public void besideDasherAtTwiceTheFontSizeEveryKnobStaysInReachOfTheLines() {
+        everyKnobStaysInReachOfTheLines(true);
     }
 
     /**
-     * A fresh page at twice the font size with setup lines to do, which cross the constellation where hollow knobs
-     * rest: a drag that sets out from a knob along its spoke saves that minimum, whether or not a line covers it, and
-     * a tap where a line covers a knob is still the line's.
+     * A fresh page at twice the font size with setup still to do. The start line stands on the ground, so neither it
+     * nor a setup line covers a hollow knob, and each knob takes a drag along its spoke. A set knob that does stand
+     * under a setup line (a high per-hour minimum near the outer ring, low on the right) still takes a drag that sets
+     * out from it along its spoke, while a tap there stays the line's.
      */
-    private void everyKnobTakesADragUnderTheLines(boolean beside) {
+    private void everyKnobStaysInReachOfTheLines(boolean beside) {
         RuntimeEnvironment.setFontScale(2f);
         FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -463,56 +464,86 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             Ui ui = new Ui(app);
-            // Where a line covers a knob, a tap there is the line's: it opens what the line fixes and sets nothing.
-            int covered = 0;
+            assertNotNull("a setup line to do", lineAt(content, star, null, SETUP_LINES));
+            TextView start = shownTextContaining(content, MainActivity.START_LINE);
+            assertNotNull("the start line", start);
+            int[] startAt = new int[2];
+            int[] skyAt = new int[2];
+            start.getLocationInWindow(startAt);
+            ((View) star.getParent()).getLocationInWindow(skyAt);
+            assertTrue("the start line stands on the ground, below the sky and its knobs",
+                    startAt[1] >= skyAt[1] + ((View) star.getParent()).getHeight());
             for (int axis : MinimumsStarView.SPOKES) {
-                float[] knob = star.knobAt(axis);
-                View line = setupLineAt(content, star, knob);
-                if (line == null) continue;
-                covered++;
-                Shadows.shadowOf(app).clearNextStartedActivities();
-                tap((ViewGroup) content, inContent(content, star, knob)[0], inContent(content, star, knob)[1]);
-                Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
-                assertTrue("the covering line's tap: " + axis, opened != null
-                        || ShadowAlertDialog.getLatestAlertDialog() != null);
-                assertFalse("a tap sets nothing", FilterStore.load(app).hasAnyRule());
-                activity.get().onWindowFocusChanged(true);
-                settleSky(content);
-            }
-            assertTrue("this layout puts a line over a knob", covered > 0);
-            if (beside) assertEquals("beside Dasher the line covers all three", 3, covered);
-            // Each knob in turn, from where it rests, along its spoke: saved.
-            for (int axis : MinimumsStarView.SPOKES) {
-                settleSky(content);
                 float[] knob = star.knobAt(axis);
                 assertNotNull(knob);
+                assertNull("no line covers hollow knob " + axis, lineAt(content, star, knob, SETUP_LINES));
+            }
+            // Each hollow knob in turn, from where it rests, along its spoke: saved.
+            for (int axis : MinimumsStarView.SPOKES) {
+                settleSky(content);
+                float[] knob = star.knobAt(axis);
                 dragKnob(content, star, knob, alongSpoke(knob, axis, ui.dp(40), 0), null);
                 assertTrue("knob " + axis + " took its drag: " + java.util.Arrays.toString(
                         FilterStore.load(app).minimums()), FilterStore.load(app).minimums()[axis] > 0);
             }
             assertFalse("auto-decline stays paused", FilterStore.load(app).enabled);
+
+            // A per-hour minimum high enough that its knob stands under a setup line.
+            View covering = null;
+            float[] knob = null;
+            for (int cents = 10; cents <= 400 && covering == null; cents += 2) {
+                FilterStore.save(app, FilterSettings.of(false, 0, 0, cents, 0));
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+                settleSky(content);
+                knob = star.knobAt(AreaScore.MINUTE);
+                covering = lineAt(content, star, knob, SETUP_LINES);
+            }
+            assertNotNull("a per-hour knob can stand under a setup line here", covering);
+            int before = FilterStore.load(app).perMinuteCents;
+            // A tap there is the line's: it opens what the line fixes and sets nothing.
+            Shadows.shadowOf(app).clearNextStartedActivities();
+            ShadowAlertDialog.reset();
+            float[] point = inContent(content, star, knob);
+            tap((ViewGroup) content, point[0], point[1]);
+            assertTrue("the covering line's tap", Shadows.shadowOf(app).getNextStartedActivity() != null
+                    || ShadowAlertDialog.getLatestAlertDialog() != null);
+            assertEquals("a tap sets nothing", before, FilterStore.load(app).perMinuteCents);
+            if (ShadowAlertDialog.getLatestAlertDialog() != null) ShadowAlertDialog.getLatestAlertDialog().dismiss();
+            activity.get().onWindowFocusChanged(true);
+            settleSky(content);
+            // A drag from it along its spoke is the knob's: the line hands it over.
+            knob = star.knobAt(AreaScore.MINUTE);
+            assertNotNull("still under the line", lineAt(content, star, knob, SETUP_LINES));
+            dragKnob(content, star, knob, alongSpoke(knob, AreaScore.MINUTE, -ui.dp(40), 0), null);
+            int after = FilterStore.load(app).perMinuteCents;
+            assertTrue("the covered knob took its drag: " + before + " -> " + after, after > 0 && after < before);
+            assertFalse("still paused", FilterStore.load(app).enabled);
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);
         }
     }
 
-    /** The setup line whose row covers {@code at} (the star's pixels), or null. */
-    private static View setupLineAt(View content, MinimumsStarView star, float[] at) {
-        float[] point = inContent(content, star, at);
-        for (String words : new String[] {SetupChecklist.ACCESSIBILITY, SetupChecklist.NOTIFICATIONS,
-                SetupChecklist.ALERTS}) {
-            TextView text = shownTextContaining(content, words);
+    private static final String[] SETUP_LINES = {SetupChecklist.ACCESSIBILITY, SetupChecklist.NOTIFICATIONS,
+            SetupChecklist.ALERTS};
+
+    /**
+     * The shown line (one of {@code words}) whose row covers {@code at} (the star's pixels), or null; with {@code at}
+     * null, any one of them that shows.
+     */
+    private static View lineAt(View content, MinimumsStarView star, float[] at, String[] words) {
+        for (String each : words) {
+            TextView text = shownTextContaining(content, each);
             if (text == null) continue;
             View row = (View) text.getParent();
+            if (at == null) return row;
+            float[] point = inContent(content, star, at);
             int[] rowAt = new int[2];
             int[] contentAt = new int[2];
             row.getLocationInWindow(rowAt);
             content.getLocationInWindow(contentAt);
             float left = rowAt[0] - contentAt[0];
             float top = rowAt[1] - contentAt[1];
-            System.out.println("DEBUG " + words + " row " + left + "," + top + " " + row.getWidth() + "x"
-                    + row.getHeight() + " point " + point[0] + "," + point[1] + " knob " + at[0] + "," + at[1]);
             if (point[0] >= left && point[0] <= left + row.getWidth() && point[1] >= top
                     && point[1] <= top + row.getHeight()) {
                 return row;
@@ -996,6 +1027,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 app.getSystemService(android.view.accessibility.AccessibilityManager.class));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            showWindow(content);
             settleSky(content);
             reader.setEnabled(true);
             reader.setTouchExplorationEnabled(true);
@@ -1013,9 +1045,6 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             settleSky(content);
-            System.out.println("DEBUG attached=" + star.isAttachedToWindow() + " shown=" + star.autopilotShown()
-                    + " backdrop=" + star.backdrop() + " same=" + (star == find(content, MinimumsStarView.class))
-                    + " box=" + star.autopilotBox());
             assertEquals("the focus stays", button, star.focusedNode());
             assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
                     + "percent or more.", nodes.createAccessibilityNodeInfo(button).getContentDescription().toString());
@@ -1115,6 +1144,22 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         chart.layout(0, 0, 1000, 400);
         chart.draw(new Canvas(Bitmap.createBitmap(1000, 400, Bitmap.Config.ARGB_8888)));
         assertTrue(chart.getContentDescription().toString().startsWith("Chart of the last 3 offers: 0 passed, 2 declined, 1 need review."));
+    }
+
+    /**
+     * The page's window shown as a phone shows it. Robolectric adds the window without Android's app-visible flag, so
+     * its window stays GONE, and Android lets no view in a window that is not visible keep a screen reader's focus: its
+     * next layout pass clears it whatever the page does. Visible, the focus stays unless the page itself drops it.
+     */
+    private static void showWindow(View content) {
+        try {
+            Object root = View.class.getMethod("getViewRootImpl").invoke(content);
+            root.getClass().getMethod("dispatchAppVisibility", boolean.class).invoke(root, true);
+        } catch (ReflectiveOperationException unavailable) {
+            throw new AssertionError(unavailable);
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals("the window shows", View.VISIBLE, content.getWindowVisibility());
     }
 
     /** A screen line that passed, recorded {@code at}. */
