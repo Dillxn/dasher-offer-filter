@@ -546,6 +546,64 @@ public class ActionSafetyTest {
         assertTrue("Dasher still in front: the tab is back", tabUp());
     }
 
+    /**
+     * Paused (auto-decline off), nothing of Dasher's is read, not even a click's node: the user's tap on Dasher is told
+     * by its own time, and still puts the tab away at once, so none lingers over the map it opened.
+     */
+    @Test
+    public void pausedATapOnDasherStillPutsTheTabAwayAndReadsNothingOfDasher() {
+        OfferFilterService service = connect(finding());
+        dasherShows(finding());
+        assertTrue(tabUp());
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        OfferFilterService.requestCheckForRules();
+        idle();
+        assertTrue("paused with nothing changed since the last read: the tab still takes the tap that resumes",
+                tabUp());
+        int reads = service.contentReads;
+        userTapsDasher("Navigate");
+        assertFalse("put away at the tap itself", tabShown());
+        idle();
+        pass(200);
+        inFront(app(MAPS));
+        pass(OfferFilterService.TAP_SETTLE_MS + OfferFilterService.WINDOW_WATCH_MS * 2);
+        assertFalse("never over the map: " + log(), tabShown());
+        assertEquals("nothing of Dasher's read while paused", reads, service.contentReads);
+    }
+
+    /**
+     * Paused, a tap that stays in Dasher brings the tab back only once it settled, by Android's list of windows alone,
+     * and only as the slim peek that takes no touches (Dasher changed its screen unread: an offer may be up).
+     */
+    @Test
+    public void pausedATapThatStaysInDasherBringsBackOnlyTheUntouchablePeekOnceItSettled() {
+        OfferFilterService service = connect(finding());
+        dasherShows(finding());
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        OfferFilterService.requestCheckForRules();
+        idle();
+        int reads = service.contentReads;
+        userTapsDasher("Dash preferences");
+        idle();
+        assertFalse("put away at the tap", tabShown());
+        // Dasher's window changes as its page opens: the look at Android's list it brings waits for the tap to settle.
+        pass(100);
+        dasherShows(finding());
+        assertFalse("not at Dasher's window change before the tap settled", tabShown());
+        pass(OfferFilterService.TAP_SETTLE_MS - 200);
+        assertFalse("not before the tap settled", tabShown());
+        pass(OfferFilterService.WINDOW_WATCH_MS);
+        assertTrue("Dasher still in front: back", tabShown());
+        assertEquals("the slim peek", DasherTab.Look.PEEK, tab().look());
+        assertFalse("which takes no touches", tabUp());
+        assertEquals("nothing of Dasher's read while paused", reads, service.contentReads);
+    }
+
+    private boolean tabShown() {
+        DasherTab tab = tab();
+        return tab != null && tab.getVisibility() == View.VISIBLE;
+    }
+
     @Test
     public void aTapOnTheTabWithAnotherAppInFrontPausesNothing() {
         connect(finding());

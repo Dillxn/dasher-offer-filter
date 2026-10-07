@@ -532,6 +532,84 @@ public class WindowFlowsTest {
         assertNull(tab());
     }
 
+    /**
+     * Between reads the window watch goes by Android's list of windows and the windows known by their IDs, never
+     * Dasher's root (never starve Dasher): it keeps the tab over Dasher's half beside a map, and none beside Offer
+     * Filter's own half, whichever half is the active one.
+     */
+    @Test
+    public void theWindowWatchKeepsTheTabBesideAMapAndNoneBesideOfferFiltersOwn() {
+        connect(app(MAPS));
+        OfferFilterService service = screen.get();
+        AccessibilityNodeInfo maps = app(MAPS);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, maps, true, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, finding(), false, BOTTOM_HALF)));
+        Shadows.shadowOf(service).setRootInActiveWindow(maps);
+        dasherEvent();
+        assertNotNull(tab());
+        pass(OfferFilterService.WINDOW_WATCH_MS * 4);
+        DasherTab tab = tab();
+        assertTrue("still over Dasher's half beside the map", tab != null && tab.getVisibility() == View.VISIBLE);
+
+        // Offer Filter's own half beside Dasher, the active one: no tab, at the read or after the watch looked.
+        AccessibilityNodeInfo ours = node(app.getPackageName(), "Offer Filter", false);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, finding(), false, BOTTOM_HALF)));
+        Shadows.shadowOf(service).setRootInActiveWindow(ours);
+        dasherEvent();
+        assertNull(tab());
+        pass(OfferFilterService.WINDOW_WATCH_MS * 4);
+        assertNull("none beside Offer Filter's own half", tab());
+
+        // Dasher's half the active one, Offer Filter's beside it: still none.
+        AccessibilityNodeInfo dasherActive = finding();
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, node(app.getPackageName(), "Offer Filter", false),
+                        false, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, dasherActive, true, BOTTOM_HALF)));
+        Shadows.shadowOf(service).setRootInActiveWindow(dasherActive);
+        dasherEvent();
+        assertNull(tab());
+        pass(OfferFilterService.WINDOW_WATCH_MS * 4);
+        assertNull("none beside Offer Filter's own half, Dasher's half active", tab());
+    }
+
+    /** A pause of auto-decline ends a peek under way at once: nothing of it could be read. Dasher stays up. */
+    @Test
+    public void aPauseEndsAPeekUnderWayAtOnceWithDasherLeftUp() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        dasherShows(finding());
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        OfferFilterService.requestCheckForRules();
+        idle();
+        String log = DiagnosticLog.read(app);
+        contains(log, "[peek] left Dasher up because auto-decline was paused");
+        contains(log, "[screen] not reading Dasher while paused (auto-decline is off)");
+        pass(Peek.MAX_MS);
+        assertNull("no return to the map", started());
+        assertTrue("its watch is down", touchWatches().isEmpty());
+    }
+
+    /** A pause takes the Back to map chip away: it opens a map only on a fresh read of Dasher's wait for offers. */
+    @Test
+    public void aPauseTakesTheBackToMapChipAway() {
+        peekLeftUpFromMaps();
+        dasherShows(finding());
+        assertNotNull(chip());
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        OfferFilterService.requestCheckForRules();
+        idle();
+        assertNull("nothing of Dasher's read while paused: no way back offered over it", chip());
+        contains(DiagnosticLog.read(app), "[peek] back to map: gone (auto-decline paused)");
+    }
+
     @Test
     public void theTabBesideAMapIsOnlyASlimUntouchablePeekOverAnOffer() {
         connect(app(MAPS));
