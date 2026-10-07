@@ -1,3 +1,9 @@
+## October 7, 20:57 UTC — 0.5.1 published (your minimums grow)
+
+- **Live feed is 0.5.1/code 81**: source `ef9166bf8a489efabaf1ae8ccacd45649efaa9b2`, release commit `dfa6679` on main, Render deploy `dep-db3b3mh42hec7395o1ng`. APK 1,345,038 bytes, SHA-256 `8434a1a609534a55b68d2abcb959460a58fb265008c87af7aefe77b8243ffb38`, original signer; tools/verify_channel.py passed against the live bytes (it waited for the CDN to serve the new APK first).
+- 0.5.1 brings back growing minimums as the owner decided on 7 October (RELEASE_NOTES.md's 0.5.1 section and the AGENTS.md bullet hold the exact rules), with notice 15. Signed here with tools/sign-local.sh as for 0.5.0: 3,242 dual-SDK tests, lint without errors, inputs unchanged. No phone has shown a growth yet; PUBLIC_BETA_PHONE_GATE.md section 12 has the check.
+- offerfilter.org: /terms/ and /privacy/ rebuilt from the 0.5.1 texts, the install guide describes the growth, and assets/release.json names 0.5.1. Push the site's `main` on its own: a single push that updated the beta branch and `main` together started no GitHub Pages build (offer-filter-site's SITE_VALIDATION.md).
+
 ## October 7, 18:58 UTC — 0.5.0 published
 
 - **Live feed is 0.5.0/code 80**: source `a9a1f8a5929cbe23f56b1cc41c5b417f33eebefe`, release commit `e8e4fcc` on main, Render deploy `dep-db39bg0m7kps73dggvj0`. APK 1,336,846 bytes, SHA-256 `eb77df9ec7aa4343bd3e9ae4928943af1021360ac7ea4b19fb784d37be33a9cf`, signer `553994c4…0c703` (the original cloud key). tools/verify_channel.py passed against the live bytes through the production UpdateTransport. The CDN can keep the previous APK for up to five minutes after a deploy (`s-maxage=300`): a channel check that fails within that window should be repeated before anything is changed.
