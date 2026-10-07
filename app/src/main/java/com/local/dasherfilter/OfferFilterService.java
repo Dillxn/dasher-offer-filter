@@ -5648,10 +5648,14 @@ public final class OfferFilterService extends AccessibilityService {
             offerAcceptTarget = null;
             offerDeclineTarget = null;
             // Nothing read decides the slim bar's tint while paused, and the Back to map chip (which opens a map only
-            // on a fresh read of Dasher's wait for offers) goes. A peek goes too: nothing of it could be read.
+            // on a fresh read of Dasher's wait for offers) goes. A peek goes too: nothing of it could be read. One whose
+            // Dasher never came up announces the offer as a launch Dasher never came up for does (one still arming,
+            // as a peek not taken).
             offerVerdict = null;
             forgetBackToMap("auto-decline paused");
+            Peek.Request opening = peek.active() && peek.phase() == Peek.Phase.OPENING ? peek.request() : null;
             peekOver("left Dasher up because auto-decline was paused", Peek.Outcome.INTERRUPTED);
+            if (opening != null) OfferNotificationService.peekNotTaken(opening.alertTag);
             // What the last read made of the screen stands until the next event (set before the events are compared
             // below, so an event the main thread notes meanwhile is caught there or by the main thread).
             pausedSceneStands = true;

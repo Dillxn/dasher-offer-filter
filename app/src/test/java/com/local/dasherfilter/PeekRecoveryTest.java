@@ -1281,6 +1281,28 @@ public class PeekRecoveryTest {
                 count(log(app), "audibleRequested=true"));
     }
 
+    /**
+     * A pause of auto-decline while Dasher opens for a peek ends it at once (nothing of Dasher's is read while paused),
+     * as Peek's own look at the opening would a moment later: the offer is announced as for a peek not taken, under the
+     * rules now in force, so its card, judged before the pause, is never revived and nothing rings.
+     */
+    @Test
+    public void aPauseWhileDasherOpensEndsThePeekAtOnce() {
+        connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        OfferFilterService.requestCheckForRules();
+        idle();
+        contains(log(app), "[peek] left Dasher up because auto-decline was paused (Dasher not seen up");
+        assertEquals("nothing rings for a card judged before the pause", 0, count(log(app), "audibleRequested=true"));
+        pass(Peek.OPEN_MS + 1_000);
+        assertEquals("ended once, at the pause", 1, count(log(app), "[peek] left Dasher up because auto-decline was "
+                + "paused"));
+        assertFalse(log(app).contains("did not come up within"));
+        assertEquals(0, count(log(app), "audibleRequested=true"));
+    }
+
     private void restartWithoutTaps() {
         restart(app(MAPS));
     }
