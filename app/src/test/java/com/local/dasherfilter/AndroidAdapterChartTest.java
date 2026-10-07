@@ -444,9 +444,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     /**
      * A fresh page at twice the font size with setup still to do. The start line stands on the ground, so neither it
-     * nor a setup line covers a hollow knob, and each knob takes a drag along its spoke. A set knob that does stand
-     * under a setup line (a high per-hour minimum near the outer ring, low on the right) still takes a drag that sets
-     * out from it along its spoke, while a tap there stays the line's.
+     * nor a setup line covers a hollow knob, and each knob takes a drag along its spoke. Where a set knob can stand
+     * under a setup line (a high per-hour minimum near the outer ring, low on the right, on a whole screen; beside
+     * Dasher none can), it still takes a drag that sets out from it along its spoke, while a tap there stays the
+     * line's.
      */
     private void everyKnobStaysInReachOfTheLines(boolean beside) {
         RuntimeEnvironment.setFontScale(2f);
@@ -480,6 +481,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             }
             // Each hollow knob in turn, from where it rests, along its spoke: saved.
             for (int axis : MinimumsStarView.SPOKES) {
+                stillBesideDasher(beside);
                 settleSky(content);
                 float[] knob = star.knobAt(axis);
                 dragKnob(content, star, knob, alongSpoke(knob, axis, ui.dp(40), 0), null);
@@ -492,11 +494,18 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             View covering = null;
             float[] knob = null;
             for (int cents = 10; cents <= 400 && covering == null; cents += 2) {
+                stillBesideDasher(beside);
                 FilterStore.save(app, FilterSettings.of(false, 0, 0, cents, 0));
                 Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
                 settleSky(content);
                 knob = star.knobAt(AreaScore.MINUTE);
+                assertNotNull("the per-hour knob shows at " + cents + " cents a minute", knob);
                 covering = lineAt(content, star, knob, SETUP_LINES);
+            }
+            if (beside && covering == null) {
+                // Beside Dasher the setup lines stand clear of every per-hour position the loop above tried, from
+                // $6 to $240 an hour: no knob there is ever under one, so there is nothing to hand over.
+                return;
             }
             assertNotNull("a per-hour knob can stand under a setup line here", covering);
             int before = FilterStore.load(app).perMinuteCents;
@@ -510,6 +519,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("a tap sets nothing", before, FilterStore.load(app).perMinuteCents);
             if (ShadowAlertDialog.getLatestAlertDialog() != null) ShadowAlertDialog.getLatestAlertDialog().dismiss();
             activity.get().onWindowFocusChanged(true);
+            stillBesideDasher(beside);
             settleSky(content);
             // A drag from it along its spoke is the knob's: the line hands it over.
             knob = star.knobAt(AreaScore.MINUTE);
@@ -526,6 +536,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     private static final String[] SETUP_LINES = {SetupChecklist.ACCESSIBILITY, SetupChecklist.NOTIFICATIONS,
             SetupChecklist.ALERTS};
+
+    /** The screen reader sees Dasher beside again, as it does with each of Dasher's events (else it lapses in 20 s). */
+    private static void stillBesideDasher(boolean beside) {
+        if (beside) OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+    }
 
     /**
      * The shown line (one of {@code words}) whose row covers {@code at} (the star's pixels), or null; with {@code at}
@@ -1020,11 +1035,17 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
+    // The window is shown, so every frame is drawn: really, as on a phone, rather than as legacy draw descriptions,
+    // which grow with every frame.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     public void aScreenReaderOnTheAutopilotButtonKeepsItsFocusAndHearsNothingWhenAutopilotMovesTheBar() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         org.robolectric.shadows.ShadowAccessibilityManager reader = Shadows.shadowOf(
                 app.getSystemService(android.view.accessibility.AccessibilityManager.class));
+        // Autopilot commits only through the screen reading, which is running.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             showWindow(content);
@@ -1049,21 +1070,21 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
                     + "percent or more.", nodes.createAccessibilityNodeInfo(button).getContentDescription().toString());
             assertEquals("nothing is said", said, star.lastSaid());
+            // Its words change on screen (Android tells screen readers so their view of the page stays current), but
+            // nothing is announced, and no part of the page is a live region a screen reader would read out.
             for (AccessibilityEvent event : reader.getSentAccessibilityEvents().subList(sent,
                     reader.getSentAccessibilityEvents().size())) {
-                assertTrue("no announcement and no live region while Autopilot moves the bar: " + event,
-                        event.getEventType() != AccessibilityEvent.TYPE_ANNOUNCEMENT
-                                && (event.getContentChangeTypes()
-                                & AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT) == 0
-                                || event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                                && event.getContentChangeTypes() == AccessibilityEvent.CONTENT_CHANGE_TYPE_UNDEFINED);
+                assertTrue("no announcement while Autopilot moves the bar: " + event,
+                        event.getEventType() != AccessibilityEvent.TYPE_ANNOUNCEMENT);
             }
             TextView status = shownTextContaining(content, "Autopilot 82%");
             assertNotNull("the status line follows too", status);
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, status.getAccessibilityLiveRegion());
+            assertNull("no live region anywhere on the page", liveRegionIn(content));
         } finally {
             reader.setTouchExplorationEnabled(false);
             reader.setEnabled(false);
+            service.destroy();
         }
     }
 
@@ -1151,6 +1172,18 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
      * its window stays GONE, and Android lets no view in a window that is not visible keep a screen reader's focus: its
      * next layout pass clears it whatever the page does. Visible, the focus stays unless the page itself drops it.
      */
+    /** The first view under {@code view} that is a live region, or null. */
+    private static View liveRegionIn(View view) {
+        if (view.getAccessibilityLiveRegion() != View.ACCESSIBILITY_LIVE_REGION_NONE) return view;
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View found = liveRegionIn(((ViewGroup) view).getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     private static void showWindow(View content) {
         try {
             Object root = View.class.getMethod("getViewRootImpl").invoke(content);

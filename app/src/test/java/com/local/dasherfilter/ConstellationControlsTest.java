@@ -10,6 +10,7 @@ import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.SeekBar;
 import android.widget.Switch;
+import android.widget.TextView;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -198,6 +199,12 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
     @Test
     public void theAutopilotButtonTurnsAutopilotOnThroughTheGoalChooserAndOffAgainKeepingTheRules() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        // Set up (screen reading and notification access on): no setup line stands in the sky's lower half.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -209,7 +216,8 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
             assertEquals("where the row of three had its middle: on the circle's upright line", star.skyX(),
                     button.centerX(), 1);
-            assertTrue("below the middle", button.centerY() > star.skyY());
+            assertTrue("below the middle, as the row stood: " + button + " / " + star.skyY(),
+                    button.centerY() > star.skyY());
             for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertTrue("clear of the knobs", Math.hypot(knob[0] - button.centerX(), knob[1] - button.centerY())
@@ -253,6 +261,42 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, off.minimums());
             assertTrue(off.enabled);
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] off; bar back to 100%"));
+        } finally {
+            listener.destroy();
+            service.destroy();
+        }
+    }
+
+    @Test
+    public void withSetupLinesInTheSkysLowerHalfTheButtonStandsAboveTheMiddleClearOfThem() {
+        // Screen reading and notification access still to set up: their two lines stand at the sky's foot.
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            TextView setup = shownTextContaining(content, "Turn on Offer Filter in Accessibility");
+            assertNotNull("a setup line in the sky", setup);
+            RectF button = star.autopilotBox();
+            assertNotNull(button);
+            assertEquals("still on the circle's upright line", star.skyX(), button.centerX(), 1);
+            assertTrue("above the middle, since the lines take the room below", button.centerY() < star.skyY());
+            int[] starAt = new int[2];
+            star.getLocationInWindow(starAt);
+            for (String words : new String[] {"Turn on Offer Filter in Accessibility", "Allow notification access"}) {
+                TextView line = shownTextContaining(content, words);
+                if (line == null) continue;
+                View row = (View) line.getParent();
+                int[] rowAt = new int[2];
+                row.getLocationInWindow(rowAt);
+                RectF box = new RectF(rowAt[0] - starAt[0], rowAt[1] - starAt[1],
+                        rowAt[0] - starAt[0] + row.getWidth(), rowAt[1] - starAt[1] + row.getHeight());
+                assertFalse("clear of the setup line " + box + " / " + button, RectF.intersects(box, button));
+            }
+            ShadowAlertDialog.reset();
+            tap((ViewGroup) star.getParent(), button.centerX(), button.centerY());
+            assertEquals("the button takes its own taps there", AutopilotText.CHOOSER_TITLE,
+                    Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).getTitle().toString());
         }
     }
 

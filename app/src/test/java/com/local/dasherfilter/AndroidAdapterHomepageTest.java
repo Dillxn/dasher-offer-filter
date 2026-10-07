@@ -535,11 +535,10 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             for (int pay : new int[] {1000, 1500, 1200}) noteOfferAt(spot[0], spot[1], pay, 5.0);
         }
         setLocation(37.7749, -122.4194);
-        // The busiest constellation: three minimums (the old $1.00 per stop folded into the $7.00 minimum pay), max
-        // stops, and Autopilot on with its bar below 100% (its button and its dashed shape).
+        // The busiest constellation the old rules come to: three minimums (the old $1.00 per stop folded into the $7.00
+        // minimum pay, the learning retired) and max stops, with the Autopilot button by them. (Autopilot on adds its
+        // status line to the ground, which a very large font on a phone this small may scroll: AutopilotUiTest.)
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 4));
-        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
