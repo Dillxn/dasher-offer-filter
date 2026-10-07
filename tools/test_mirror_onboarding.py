@@ -80,7 +80,8 @@ class MirrorOnboardingTest(unittest.TestCase):
     def test_beta_risks_and_behavior_defaults_are_explicit(self):
         for phrase in ("Experimental beta", "real-phone", "acceptance rate", "deactivate",
                        "Don't handle your phone while driving", "Peek is on by default",
-                       "Auto-accept is off by default", "not legal advice", "Keep Play Protect enabled",
+                       "Auto-accept is off by default", "dated beta terms", "privacy@offerfilter.org",
+                       "Keep Play Protect enabled",
                        "not an instruction to bypass a security warning"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.page.text)

@@ -197,7 +197,8 @@ observed dash end (or eight quiet hours with the screen off and nothing of a das
 update mid-dash when Dasher is not on screen.</p>
 <p><a href="https://offerfilter.org/#help">Help and setup</a> ·
 {legal}.
-The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>
+The Terms and Privacy are dated beta terms. Privacy, data-deletion and security questions only:
+<a href="mailto:privacy@offerfilter.org">privacy@offerfilter.org</a>; feedback stays anonymous in the app.</p>
 <p><a href="/verification.json">Verification</a> · <a href="/signing-receipt.txt">Signing receipt</a></p>
 </body></html>
 ''', encoding='utf-8')
