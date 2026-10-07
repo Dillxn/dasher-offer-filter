@@ -424,8 +424,8 @@ final class LegalTexts {
             history, the wait-estimate records above and the acceptance rate Dasher shows. Turning it off puts the \
             bar back to exactly your minimums. While it is on and Let my minimums grow is on, it also raises your \
             minimums, at most 10% at a time, once the bars it recorded in your decision history have stayed at 103% \
-            or more for 30 offers over at least 2 days; it reads nothing else for this, and nothing of what you \
-            accepted or declined.
+            or more for 30 offers over at least 2 days, but not while it is recovering toward your acceptance goal; \
+            how much they grow comes only from those bars, never from what you accepted or declined.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \

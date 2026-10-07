@@ -244,8 +244,9 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"and when your current minimums took effect",
                 "whether Let my minimums grow is on (it is unless you turn it off)",
                 "it also raises your minimums, at most 10% at a time, once the bars it recorded in your decision "
-                        + "history have stayed at 103% or more for 30 offers over at least 2 days; it reads nothing "
-                        + "else for this, and nothing of what you accepted or declined",
+                        + "history have stayed at 103% or more for 30 offers over at least 2 days, but not while it is "
+                        + "recovering toward your acceptance goal; how much they grow comes only from those bars, never "
+                        + "from what you accepted or declined",
                 "Autopilot keeps a note of the last growth: when, by how much, how many offers on how many days it "
                         + "rested on, your minimums and its bar before and after, and whether its note on the "
                         + "homepage (with Undo) is still waiting",
