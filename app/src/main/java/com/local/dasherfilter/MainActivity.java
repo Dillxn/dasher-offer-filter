@@ -98,11 +98,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
             + "you accept that risk.";
     /**
      * Clear history's confirmation: the spec's words, with the unsent automatic diagnostics it also clears (the
-     * anonymous-feedback package's addition) kept in the list.
+     * anonymous-feedback package's addition) kept in the list, and both things of Autopilot's it forgets named: the
+     * acceptance rate Dasher showed and the note of its last bar change (AutopilotRuntime.cleared).
      */
     static final String CLEAR_HISTORY = "Removes the offer decisions, waiting estimates, captured screen text, offer "
-            + "areas, cached place names, unsent automatic diagnostics and Autopilot's acceptance-rate reading from this "
-            + "phone. Your rules and Autopilot settings stay.";
+            + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
+            + "last change from this phone. Your rules and Autopilot settings stay.";
     /** What the ground's one line shows: nothing, the start, Autopilot's status, or the wait for a matching offer. */
     private static final int SLOT_NONE = 0;
     private static final int SLOT_START = 1;
@@ -346,9 +347,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
         updatingCover = new UpdatingCover(this, ui, root);
-        // About a third of a split screen: one strip in place of the page (the divider gives Dasher's map the rest).
+        // About a third of a split screen: one strip in place of the page (the divider gives Dasher's map the rest),
+        // with Autopilot's chip as the layout's one Autopilot control (the page and its button are not shown there).
         if (DrivingStrip.wanted(this)) {
-            strip = new DrivingStrip(this, ui, this::toggleAutoDecline);
+            strip = new DrivingStrip(this, ui, this::toggleAutoDecline, newAutopilotChip());
             root.addView(strip, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
             SplitLines.markHintShown(this);
@@ -2056,9 +2058,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Qualify acceptance only when the stored observation distinguishes its source: "Automatically accepted" after the
      * app's own Accept request, "Accepted by you" after the user's; older lines by their old steps. An offer that
      * passed only by Autopilot's lowered bar never reads as a full pass: "Passed below your minimums" (left to the
-     * user).
+     * user). The driving strip's verdict says the same ({@link DrivingStrip}).
      */
-    private static String captionOutcome(DecisionLog.Entry entry) {
+    static String captionOutcome(DecisionLog.Entry entry) {
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
         if (outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)) {
             return AutopilotText.PASSED_BELOW_MINIMUMS;
@@ -2543,7 +2545,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * One confirm for decisions, waiting estimates, captured text, offer areas, cached place names, unsent automatic
-     * diagnostics and Autopilot's acceptance-rate reading. Rules and Autopilot's settings stay.
+     * diagnostics, and Autopilot's acceptance-rate reading and last change. Rules and Autopilot's settings stay. The
+     * order is PrivacyBoundaryTest's: the decisions and the watched waiting first, then Autopilot (it plans afresh
+     * from what is left), then the logs, so a line Autopilot queued just before goes with them.
      */
     private void confirmClearHistory() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)

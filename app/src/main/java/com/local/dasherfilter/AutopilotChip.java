@@ -36,6 +36,8 @@ final class AutopilotChip extends TextView {
 
     /** The pill's words stand this far in from its rounded ends. */
     private static final int SIDE_DP = 14;
+    /** The chip's words, at the normal font size (its default size). */
+    static final float SP = 13;
 
     private final Ui ui;
     private Look look;
@@ -43,7 +45,7 @@ final class AutopilotChip extends TextView {
     AutopilotChip(Context context, Ui ui) {
         super(context);
         this.ui = ui;
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, SP);
         setTypeface(Ui.MEDIUM);
         setSingleLine(true);
         setEllipsize(TextUtils.TruncateAt.END);
@@ -149,17 +151,29 @@ final class AutopilotChip extends TextView {
         private float fitScale = 1f;
         private boolean fitTight;
 
+        /** The chip beside words of the chip's own size, 13 sp (the homepage's latest offer's line). */
         Row(Context context, Ui ui, TextView chip, TextView words) {
+            this(context, ui, chip, words, SP);
+        }
+
+        /**
+         * The chip beside {@code words} whose own size is {@code wordsSp} (their size at the normal font: the driving
+         * strip's status line is 14 sp). The two shrink together by one share, so it stops where either would go
+         * below its own floor: three quarters of the user's size, and never below its default size.
+         */
+        Row(Context context, Ui ui, TextView chip, TextView words, float wordsSp) {
             super(context);
             this.chip = chip;
             this.words = words;
             gap = ui.dp(4);
             chipFull = chip.getTextSize();
             wordsFull = words.getTextSize();
-            // Both are 13 sp: the least is three quarters of the user's size, never below the default size.
-            float unscaled = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 13,
-                    context.getResources().getDisplayMetrics());
-            least = Math.min(1f, Math.max(SetupRow.LEAST_SCALE, unscaled / wordsFull));
+            android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+            float chipFloor = Math.max(SetupRow.LEAST_SCALE,
+                    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, SP, metrics) / chipFull);
+            float wordsFloor = Math.max(SetupRow.LEAST_SCALE,
+                    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, wordsSp, metrics) / wordsFull);
+            least = Math.min(1f, Math.max(chipFloor, wordsFloor));
             wordsSpacing = words.getLineSpacingMultiplier();
             padTop = words.getPaddingTop();
             padBottom = words.getPaddingBottom();

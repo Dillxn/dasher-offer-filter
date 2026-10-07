@@ -290,6 +290,11 @@ public class OfferReportTest {
         assertEquals(0, json.getInt("extra"));
         // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280 hundredths, exactly.
         assertEquals(52.8, json.getDouble("arPercent"), 0);
+        // Exactly, never the whole percent the page shows (its rounding half up is for the eye only: D3).
+        AutopilotText.Status shown = new AutopilotText.Status(rules, true, plan,
+                new AutopilotStore.Reading(55, AT - 12 * MIN, ""), null, AT);
+        assertEquals(53, shown.shownArPercent());
+        assertEquals(shown.exactArPercent(), json.getDouble("arPercent"), 0);
         assertEquals("DASHER", json.getString("arSource"));
         assertEquals("when Dasher showed it", 12, json.getInt("arAgeMinutes"));
         assertTrue(json.isNull("lastChange"));

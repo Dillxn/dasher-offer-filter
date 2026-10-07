@@ -54,10 +54,10 @@ final class SplitLines {
         hint.setCompoundDrawablesRelative(new Glyph(Glyph.Shape.SPLIT, ui.accent, ui.dp(20)), null, null, null);
         hint.setCompoundDrawablePadding(ui.dp(10));
         hint.setElevation(ui.dp(4));
-        // Words only: a touch goes to the page under it, and TalkBack reads it as it appears.
+        // Words only: a touch goes to the page under it, and TalkBack reads it as it appears (a live region only while
+        // it is up, showHint).
         hint.setClickable(false);
         hint.setFocusable(false);
-        hint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         hint.setVisibility(View.GONE);
         FrameLayout.LayoutParams at = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -109,13 +109,29 @@ final class SplitLines {
 
     /** The page was swapped (Settings, the notice): the hint lies only over the main page. */
     void pageChanged() {
-        show(hint, hintUp && pageShown() && DasherSplit.inSplit(activity));
+        showHint(hintUp && pageShown() && DasherSplit.inSplit(activity));
         show(noteRow, noteWanted);
     }
 
     private void hideHint() {
         hintUp = false;
-        show(hint, false);
+        showHint(false);
+    }
+
+    /**
+     * The hint up or away. Only while it is up is it a polite live region, so TalkBack reads it as it appears; hidden,
+     * it is none, and the page holds no live region that could speak by itself (as Autopilot's quiet rule asks: nothing
+     * on the page announces itself while the user drives).
+     */
+    private void showHint(boolean shown) {
+        if (shown == (hint.getVisibility() == View.VISIBLE)) return;
+        if (shown) {
+            hint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+            hint.setVisibility(View.VISIBLE);
+        } else {
+            hint.setVisibility(View.GONE);
+            hint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_NONE);
+        }
     }
 
     private boolean pageShown() {

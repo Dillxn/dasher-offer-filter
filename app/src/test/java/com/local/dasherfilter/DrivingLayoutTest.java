@@ -1,35 +1,47 @@
 package com.local.dasherfilter;
 
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.graphics.Rect;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowAlertDialog;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
  * The homepage in the layouts of a dash (the owner: "split screen at 50/50 doesn't leave enough room for seeing gps
  * well inside the dd app"; "the user isn't juggling multiple windows (dasher, filter, gps) and can just flow"): at
- * about a third of a split screen, one strip; beside Dasher, once, how to give its map more room; beside a map during
- * a dash, that background offers need a tap there, with Swap; full screen, Dasher one tap away. Which half Android
- * gives Dasher on a swap, and how the divider feels, are for a handset.
+ * about a third of a split screen, one strip (the mascot, the latest verdict, Autopilot's chip as the layout's one
+ * Autopilot control, and the filter's status), whole at the normal and twice the font; beside Dasher, once, how to
+ * give its map more room; beside a map during a dash, that background offers need a tap there, with Swap; full screen,
+ * Dasher one tap away. Which half Android gives Dasher on a swap, and how the divider feels, are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
@@ -47,6 +59,10 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         if (screen != null) screen.destroy();
         OfferFilterService.sawDasherBeside(0);
         DasherSplit.forget();
+        Peek.resumeNow(app);
+        AutopilotRuntime.executorForTests = null;
+        AutopilotRuntime.forgetCache();
+        RuntimeEnvironment.setFontScale(1f);
     }
 
     /** Screen reading and background offers both on, as during a dash. */
@@ -77,6 +93,56 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         assertTrue(part + " in:\n" + log, log.contains(part));
     }
 
+    /**
+     * The least words of {@code sp} may shrink to beside the chip: three quarters of the user's size, never below their
+     * default size (as a setup line's words, SetupRow.Words).
+     */
+    private float least(float sp) {
+        android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+        float full = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, metrics);
+        return Math.min(full, Math.max(SetupRow.LEAST_SCALE * full,
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, sp, metrics)));
+    }
+
+    /** Lets the page refresh (it does each second, and when Autopilot tells it). */
+    private static void refreshed() {
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+    }
+
+    /** Every Autopilot chip on screen under {@code view}. */
+    private static List<AutopilotChip> shownChips(View view) {
+        List<AutopilotChip> found = new ArrayList<>();
+        if (view instanceof AutopilotChip && view.isShown()) found.add((AutopilotChip) view);
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                found.addAll(shownChips(((ViewGroup) view).getChildAt(i)));
+            }
+        }
+        return found;
+    }
+
+    /** A view whose words a screen reader would read out by itself (a live region), or null. */
+    private static View liveRegionIn(View view) {
+        if (view.getAccessibilityLiveRegion() != View.ACCESSIBILITY_LIVE_REGION_NONE) return view;
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View found = liveRegionIn(((ViewGroup) view).getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static String title(AlertDialog dialog) {
+        return String.valueOf(Shadows.shadowOf(dialog).getTitle());
+    }
+
+    /** Shown through OwnWindowTouches.show: a touch on it stays this app's own in split screen. */
+    private static void assertOwnsItsTouches(AlertDialog dialog) {
+        assertTrue(dialog.getWindow().getCallback().getClass().getName(),
+                dialog.getWindow().getCallback().getClass().getName().endsWith("OwnWindowTouches$TrackedCallback"));
+    }
+
     // ---- About a third of a split screen: the strip ----
 
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
@@ -96,6 +162,10 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             View mascot = find(content, DrivingStrip.MascotButton.class);
             assertEquals("Pause auto-decline", String.valueOf(mascot.getContentDescription()));
             assertTrue("a full touch target", mascot.getHeight() >= new Ui(app).dp(48));
+            List<AutopilotChip> chips = shownChips(content);
+            assertEquals("Autopilot's chip: the layout's one Autopilot control", 1, chips.size());
+            assertTrue("the strip's own", isDescendant(strip, chips.get(0)));
+            assertEquals("off, it is the way in", "Auto off", chips.get(0).getText().toString());
 
             mascot.performClick();
             settle();
@@ -167,6 +237,253 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         }
     }
 
+    // ---- The strip's Autopilot chip ----
+
+    /** The strip's line while Peek paused itself, its longest: Peek's own words for two launches that never came up. */
+    private static final String LONGEST_PAUSE = "Dasher did not come up for 2 peeks in a row (the phone may block apps "
+            + "opening from the background)";
+
+    /**
+     * In a third of a split screen Autopilot's chip is the layout's one Autopilot control (the page, with the
+     * constellation's button and the page's own chip, is not shown there): at the status line's start, a whole 48 dp
+     * target on one line, heard in words and never a live region, a tap opening Autopilot's details and a long press
+     * the goal chooser, each through the app's own dialog window. Beside the status line it costs the strip no height,
+     * and it follows Autopilot, on or off ("Auto off" being the way back in).
+     */
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void theStripsAutopilotChipIsTheLayoutsOneAutopilotControlAndCostsNoHeight() {
+        AutopilotRuntime.executorForTests = Runnable::run;
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        DecisionLog.record(app, declinedEntry());
+        servicesUp();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            layOut(content);
+            DrivingStrip strip = find(content, DrivingStrip.class);
+            assertTrue(strip.isShown());
+            List<AutopilotChip> chips = shownChips(content);
+            assertEquals("one Autopilot control on screen", 1, chips.size());
+            AutopilotChip chip = chips.get(0);
+            assertTrue("the strip's own chip", isDescendant(strip, chip));
+            assertFalse("no constellation, so no Autopilot button either", find(content, MinimumsStarView.class)
+                    .isShown());
+            AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(), true);
+            assertEquals("Auto learning", AutopilotText.chip(status));
+            assertEquals(AutopilotText.chip(status), chip.getText().toString());
+            assertEquals("heard in words, with what a tap does", AutopilotText.chipDescription(status),
+                    String.valueOf(chip.getContentDescription()));
+            assertEquals("never a live region", View.ACCESSIBILITY_LIVE_REGION_NONE, chip.getAccessibilityLiveRegion());
+            Ui ui = new Ui(app);
+            assertTrue("a 48 dp target", chip.getHeight() >= ui.dp(48) - 1 && chip.getWidth() >= ui.dp(48) - 1);
+            assertEquals("one line, never cut short", 0, chip.getLayout().getEllipsisCount(0));
+            Rect visible = new Rect();
+            assertTrue(chip.getGlobalVisibleRect(visible));
+            assertEquals("the whole chip on screen", chip.getHeight(), visible.height());
+            assertEquals(chip.getWidth(), visible.width());
+
+            // At the status line's start, costing the strip no height: the row is the line's own height, and nothing
+            // shrinks at the normal size.
+            TextView line = shownTextContaining(strip, "Auto-decline is on");
+            assertNotNull(line);
+            AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
+            assertSame("beside the status line", row, line.getParent());
+            assertFalse("never on a line of its own here", row.stacked());
+            View inner = strip.getChildAt(0);
+            int rowWith = row.getHeight();
+            int contentWith = inner.getHeight();
+            float size = line.getTextSize();
+            chip.setVisibility(View.GONE);
+            layOut(content);
+            int rowAlone = row.getHeight();
+            chip.setVisibility(View.VISIBLE);
+            layOut(content);
+            assertEquals("no added height", rowAlone, rowWith);
+            assertEquals(contentWith, inner.getHeight());
+            assertEquals("the strip never scrolls here", strip.getHeight(), inner.getHeight());
+            assertEquals("at the normal size nothing shrinks", TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+                    14, app.getResources().getDisplayMetrics()), size, 0.01f);
+
+            // A tap opens the details; a long press asks for the goal.
+            ShadowAlertDialog.reset();
+            chip.performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(details);
+            assertEquals(AutopilotText.DETAILS_TITLE, title(details));
+            assertOwnsItsTouches(details);
+            details.dismiss();
+            chip.performLongClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
+            assertOwnsItsTouches(chooser);
+            chooser.dismiss();
+
+            // Off: still there, the way back in, still at no height.
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            refreshed();
+            layOut(content);
+            assertEquals("Auto off", chip.getText().toString());
+            assertTrue(chip.isShown());
+            assertEquals(rowAlone, row.getHeight());
+            assertEquals(1, shownChips(content).size());
+            assertNull("no live region anywhere in the strip", liveRegionIn(strip));
+        }
+    }
+
+    /**
+     * The strip's verdict is the homepage caption's: an offer Autopilot let through below the minimums never reads as
+     * a full pass there either.
+     */
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
+    public void theStripsVerdictNeverCallsAPassBelowTheMinimumsAFullPass() {
+        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3).withAutopilot(true, 70)
+                .withMinimumScalePercent(82);
+        // $5.75 for 6.6 mi and 27 min asks $6.75 at the minimums, $5.54 at an 82% bar.
+        OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
+        OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
+        assertEquals("below your minimums; passes the 82% bar", decision.reason);
+        DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
+                DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75"))
+                .withTime(System.currentTimeMillis() - 5_000));
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+        servicesUp();
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            DrivingStrip strip = find(content(activity), DrivingStrip.class);
+            assertEquals("Latest · $5.75 · Passed below your minimums", strip.verdictText());
+        }
+    }
+
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTheNormalFontTheLayoutNoteAndTheChipShareTheLineAtNoHeight() {
+        stripAt(1f, "note", false);
+    }
+
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTheNormalFontEvenTheLongestLineAndTheChipFitAStripAThirdOfAPhoneTall() {
+        stripAt(1f, "peek", false);
+    }
+
+    @Test @Config(qualifiers = "w411dp-h300dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontTheStripKeepsTheChipAndItsLineWhole() {
+        stripAt(2f, "on", false);
+    }
+
+    /** Android 8's fonts grow linearly: there, and only there, the strip scrolls by a few dp at twice the font. */
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontTheLayoutNoteKeepsEveryWordBesideTheChip() {
+        stripAt(2f, "note", android.os.Build.VERSION.SDK_INT < 34);
+    }
+
+    /** At twice the font the longest line cannot fit a third of a phone, chip or none: the strip scrolls to it. */
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontTheLongestLineIsNeverCutTheStripScrollsToItsEnd() {
+        stripAt(2f, "peek", true);
+    }
+
+    /**
+     * The strip at {@code fontScale}, Autopilot on, its line the filter's status ("on"), the layout note ("note", a
+     * dash beside a map) or Peek paused with its longest reason ("peek"): the mascot, the latest verdict, the whole
+     * chip (one line, a 48 dp target, never below three quarters of the user's size nor the default size) and every
+     * word of the line are in the strip. It fills its window and scrolls only where {@code mayScroll} (a very large
+     * font leaving no other way); scrolled to its end, the line's last words are on screen. At the normal size the chip
+     * costs the line no height.
+     */
+    private void stripAt(float fontScale, String line, boolean mayScroll) {
+        RuntimeEnvironment.setFontScale(fontScale);
+        AutopilotRuntime.executorForTests = Runnable::run;
+        dasherInstalled();
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        DecisionLog.record(app, declinedEntry());
+        servicesUp();
+        if (line.equals("note")) Dashing.seen(app);
+        if (line.equals("peek")) Peek.pause(app, LONGEST_PAUSE);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        String words = line.equals("note") ? SplitLines.LAYOUT_NOTE_SHORT
+                : line.equals("peek") ? "Peek paused: " + LONGEST_PAUSE + " · Resume" : "Auto-decline is on";
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            layOut(content);
+            DrivingStrip strip = find(content, DrivingStrip.class);
+            assertEquals(words, strip.statusText());
+            assertEquals("Latest · $7.90 · Declined", strip.verdictText());
+            AutopilotChip chip = find(strip, AutopilotChip.class);
+            AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
+            TextView status = (TextView) row.getChildAt(1);
+            Ui ui = new Ui(app);
+            String measured = "font " + fontScale + ", " + line + ": strip " + strip.getHeight() + ", content "
+                    + strip.getChildAt(0).getHeight() + ", row " + row.getHeight() + " (stacked " + row.stacked()
+                    + ", scale " + row.textScale() + ", tight " + row.tight() + "), line " + status.getLineCount()
+                    + " lines";
+
+            // The chip: whole, one line, a full target, its words no smaller than the least.
+            assertTrue(chip.isShown());
+            assertEquals("one line, never cut short: " + measured, 0, chip.getLayout().getEllipsisCount(0));
+            assertEquals(1, chip.getLineCount());
+            assertTrue(chip.getHeight() >= ui.dp(48) - 1 && chip.getWidth() >= ui.dp(48) - 1);
+            assertTrue("the chip never below three quarters of the user's size nor its default size: " + measured,
+                    chip.getTextSize() >= least(13) - 0.5f);
+            assertTrue("nor the line's words: " + measured, status.getTextSize() >= least(14) - 0.5f);
+            if (fontScale <= 1f) {
+                assertEquals("at the normal size neither shrinks: " + measured, TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_SP, 13, app.getResources().getDisplayMetrics()), chip.getTextSize(),
+                        0.01f);
+            }
+
+            // Every word of the line is laid out, inside the line's own height (nothing cut off).
+            assertEquals("every word: " + measured, words.length(),
+                    status.getLayout().getLineEnd(status.getLineCount() - 1));
+            assertTrue("inside the line: " + measured, status.getLayout().getHeight()
+                    <= status.getHeight() - status.getTotalPaddingTop() - status.getTotalPaddingBottom());
+            assertTrue(status.getHeight() >= ui.dp(48) - 1);
+
+            // One window, unless a very large font leaves no other way; then the line's end is a scroll away.
+            View inner = strip.getChildAt(0);
+            boolean scrolls = inner.getHeight() > strip.getHeight();
+            if (!mayScroll) assertFalse("one window, no scrolling: " + measured, scrolls);
+            Rect visible = new Rect();
+            if (scrolls) {
+                strip.scrollTo(0, inner.getHeight() - strip.getHeight());
+                layOut(content);
+            }
+            assertTrue(status.getGlobalVisibleRect(visible));
+            int[] at = new int[2];
+            status.getLocationInWindow(at);
+            assertEquals("the line's end on screen: " + measured, at[1] + status.getHeight(), visible.bottom);
+            if (!scrolls) {
+                for (View part : new View[] {find(strip, DrivingStrip.MascotButton.class), chip, status}) {
+                    assertTrue(part.getGlobalVisibleRect(visible));
+                    assertEquals("whole on screen: " + part + "; " + measured, part.getHeight(), visible.height());
+                }
+            }
+            if (fontScale <= 1f && !line.equals("peek")) {
+                chip.setVisibility(View.GONE);
+                layOut(content);
+                int alone = row.getHeight();
+                chip.setVisibility(View.VISIBLE);
+                layOut(content);
+                assertEquals("at the normal size the chip costs the line no height: " + measured, alone,
+                        row.getHeight());
+            }
+
+            // Its tap is still the line's own: Swap in Dasher, or Resume Peek.
+            if (line.equals("peek")) {
+                status.performClick();
+                assertNull("Resume: Peek works again", Peek.pausedWhy(app));
+            } else if (line.equals("note")) {
+                status.performClick();
+                Intent swap = started();
+                assertNotNull(swap);
+                assertEquals(DASHER_HOME, swap.getComponent());
+            }
+        }
+    }
+
     // ---- Beside Dasher: the divider hint, once ----
 
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
@@ -181,6 +498,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                     hint.getText().toString());
             assertFalse("words only: a touch goes to the page under them", hint.isClickable());
             assertFalse("over the page, not in it", isDescendant(find(content, ScenePage.class), hint));
+            assertEquals("read out as it appears: a live region while it is up",
+                    View.ACCESSIBILITY_LIVE_REGION_POLITE, hint.getAccessibilityLiveRegion());
             assertTrue(SplitLines.hintShown(app));
             logSays("[split] divider hint shown (once)");
 
@@ -193,6 +512,9 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
 
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SplitLines.HINT_MS));
             assertNull("gone by itself", shownTextContaining(content, SplitLines.HINT));
+            assertEquals("gone, it is no live region", View.ACCESSIBILITY_LIVE_REGION_NONE,
+                    hint.getAccessibilityLiveRegion());
+            assertNull("so nothing on the page can speak by itself (Autopilot's quiet rule)", liveRegionIn(content));
         }
         OfferFilterService.sawDasherBeside(SystemClock.uptimeMillis());
         try (ActivityController<MainActivity> again = splitScreen()) {

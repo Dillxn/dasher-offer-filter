@@ -9,21 +9,30 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
  * Offer Filter's own half of a split screen at about a third of the screen (the owner: "split screen at 50/50 doesn't
  * leave enough room for seeing gps well inside the dd app"): one strip with the mascot (a tap pauses or resumes, as on
- * the homepage), the latest offer's verdict and the filter's status, nothing else, so the divider can give Dasher and
- * its map about two thirds. Dragging the divider back gives the whole page again. The status line is also where a
- * setup problem, or the note that this layout needs a tap for background offers, shows; a tap on it then does what
- * the homepage's line would.
+ * the homepage), the latest offer's verdict (in the homepage caption's words), Autopilot's chip and the filter's
+ * status, nothing else, so the divider can give Dasher and its map about two thirds. Dragging the divider back gives
+ * the whole page again. The status line is also where a setup problem, or the note that this layout needs a tap for
+ * background offers, shows; a tap on it then does what the homepage's line would. The chip is the layout's one
+ * Autopilot control (the page with its constellation's button is not shown here): a tap opens Autopilot's details, a
+ * long press its goal. It stands at the status line's start and costs the strip no height ({@link AutopilotChip.Row}).
+ * The strip fills its window, its words centred in it; like the homepage, it scrolls only where a very large font leaves
+ * no other way (a long line needing the user, at twice the font, in a strip a third of a phone tall), so no word of
+ * that line is ever cut off.
  */
 @SuppressLint("ViewConstructor")
-final class DrivingStrip extends LinearLayout {
+final class DrivingStrip extends ScrollView {
     /** A split-screen window shorter than this (about a third of most phones) gets the strip, not the page. */
     static final int HEIGHT_DP = 340;
+    /** The status line's words at the normal font size. */
+    private static final float STATUS_SP = 14;
 
     /** Whether this screen gets the strip: one half of a split screen, and short. */
     static boolean wanted(Activity activity) {
@@ -37,32 +46,44 @@ final class DrivingStrip extends LinearLayout {
     private final TextView status;
     private Runnable statusAction;
 
-    /** @param toggle the mascot's tap: pause or resume auto-decline (or, with no rule yet, say how to begin) */
-    DrivingStrip(Context context, Ui ui, Runnable toggle) {
+    /**
+     * @param toggle the mascot's tap: pause or resume auto-decline (or, with no rule yet, say how to begin)
+     * @param chip   Autopilot's chip, wired by the page ({@code MainActivity.newAutopilotChip}), which shows it
+     *               Autopilot's status as it shows its own
+     */
+    DrivingStrip(Context context, Ui ui, Runnable toggle, AutopilotChip chip) {
         super(context);
         this.ui = ui;
-        setOrientation(HORIZONTAL);
-        setGravity(Gravity.CENTER_VERTICAL);
+        setFillViewport(true);
         setBackgroundColor(ui.page);
-        setPadding(ui.dp(12), ui.dp(6), ui.dp(12), ui.dp(6));
+        LinearLayout strip = new LinearLayout(context);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setPadding(ui.dp(12), ui.dp(6), ui.dp(12), ui.dp(6));
         mascot = new MascotButton(context, ui);
         mascot.setOnClickListener(tapped -> toggle.run());
-        addView(mascot, new LayoutParams(ui.dp(56), ui.dp(56)));
+        strip.addView(mascot, new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)));
         LinearLayout lines = ui.column();
         lines.setPadding(ui.dp(12), 0, 0, 0);
         verdict = ui.text("", 16, ui.ink, true);
         verdict.setMaxLines(2);
         lines.addView(verdict, Ui.matchWidth());
-        status = ui.text("", 14, ui.inkSecondary, false);
+        status = ui.text("", STATUS_SP, ui.inkSecondary, false);
         status.setMinHeight(ui.dp(48));
         status.setGravity(Gravity.CENTER_VERTICAL);
-        status.setMaxLines(3);
+        // No line limit: the chip's row works out its height from all of the line's words, and shrinks them (or stacks
+        // the chip) before it would cut one off; a cut line could hide what needs the user.
         status.setOnClickListener(tapped -> {
             Runnable action = statusAction;
             if (action != null) action.run();
         });
-        lines.addView(status, Ui.matchWidth());
-        addView(lines, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        // Autopilot's chip at the status line's start: beside its 48 dp line it takes no height of its own. A line too
+        // long for the room beside it makes the two shrink a little (at a larger font) or the row grow by the least it
+        // can; no word is cut.
+        lines.addView(new AutopilotChip.Row(context, ui, chip, status, STATUS_SP), Ui.matchWidth());
+        strip.addView(lines, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // At least the window's height (fillViewport), so the words stand in its middle.
+        addView(strip, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     /**
@@ -75,9 +96,11 @@ final class DrivingStrip extends LinearLayout {
      */
     void show(FilterHeroView.State state, DecisionLog.Entry latest, boolean waiting, String problem, Runnable action) {
         mascot.show(state);
+        // The homepage caption's words for the latest offer: one Autopilot let through below the minimums never reads
+        // as a full pass, and an acceptance says whose it was.
         String said = latest == null ? (waiting ? "Waiting for offers" : "No offers yet")
                 : "Latest · " + (latest.facts.payCents == null ? "Pay unread" : DecisionLog.money(latest.facts.payCents))
-                        + " · " + DecisionLog.outcome(latest).said;
+                        + " · " + MainActivity.captionOutcome(latest);
         if (!said.contentEquals(verdict.getText())) verdict.setText(said);
         String line = problem != null ? problem : state == FilterHeroView.State.ON ? "Auto-decline is on"
                 : state == FilterHeroView.State.PAUSED ? "Paused · nothing is declined"

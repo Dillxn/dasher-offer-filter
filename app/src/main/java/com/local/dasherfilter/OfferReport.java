@@ -207,7 +207,8 @@ final class OfferReport {
                 .put("autopilotMode", mode == null ? JSONObject.NULL : mode)
                 .put("recovering", autopilot.recovering)
                 .put("extra", autopilot.extra)
-                .put("arPercent", autopilot.arHundredths < 0 ? -1 : autopilot.arHundredths / 100.0)
+                // Exact, to the hundredth: never the whole percent the page shows (its rounding is for the eye, D3).
+                .put("arPercent", autopilot.exactArPercent())
                 .put("arSource", autopilot.arSource.name())
                 .put("arAgeMinutes", autopilot.arSource == Autopilot.ArSource.DASHER ? autopilot.arAgeMinutes() : -1)
                 .put("lastChange", change == null ? JSONObject.NULL : new JSONObject()

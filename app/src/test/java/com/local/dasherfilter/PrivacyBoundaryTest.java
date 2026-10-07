@@ -505,6 +505,107 @@ public class PrivacyBoundaryTest {
         assertEquals(-1, rules.getInt("arAgeMinutes"));
     }
 
+    /**
+     * Settings' own Clear history, tapped and confirmed on the page as the user does it (the test above takes its steps
+     * one by one): its words name both things of Autopilot's that go, and afterwards no acceptance-rate reading and no
+     * note of the last bar change remain on the phone: not in Autopilot's store, its details or the reports the user
+     * can send, and no copy of the rate in the log. Settings takes the steps in the order above: Autopilot after the
+     * history (its fresh plan counts no offers) and before the logs (the plan line it logged as it cleared went with
+     * them). Autopilot's switch and goal and the minimums stay.
+     */
+    @Test public void clearHistoryTappedInSettingsLeavesNoReadingAndNoLastChange() throws Exception {
+        wall = System.currentTimeMillis();
+        AutopilotRuntime.wallClock = () -> wall;
+        AutopilotRuntime.executorForTests = Runnable::run;
+        AutopilotRuntime.forgetCache();
+        AutopilotStore.clear(app);
+        // Minimums the worked example's offers mostly miss, and Dasher showing 37% against a 70% goal: Autopilot
+        // lowers its bar at the next safe point (the screen reader's commit), and notes that change.
+        FilterStore.save(app, FilterSettings.of(true, 2040, 400, 48, 0));
+        AutopilotRuntime.setAutopilot(app, true, 70);
+        FilterSettings rules = FilterStore.load(app);
+        for (int i = PAY.length - 1; i >= 0; i--) {
+            OfferSnapshot facts = new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 2);
+            OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
+            DecisionLog.record(app, new DecisionLog.Entry(wall - (2 + 3L * i) * 60_000L, DecisionLog.Source.SCREEN,
+                    false, facts, decision.requiredCents, decision.result, decision.reason,
+                    decision.result == OfferRule.Result.DECLINE ? DecisionLog.Action.CONFIRMATION_TAPPED
+                            : DecisionLog.Action.PASSES, true, Collections.<String>emptyList()));
+        }
+        AutopilotRuntime.confirmationSeen(app, ASKED, null);
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertEquals(37, AutopilotStore.reading(app, wall).percent);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        AutopilotStore.Change change = AutopilotStore.lastChange(app);
+        assertNotNull("a bar change noted", change);
+        String before = DiagnosticLog.report(app);
+        assertTrue(before, before.contains("; AR 37% (Dasher, "));
+        assertTrue(before, before.contains("; last change " + change.from + "%->" + change.to + "%"));
+        assertTrue(String.join("\n", AutopilotText.detailsLines(AutopilotRuntime.status(app, wall, false))),
+                AutopilotText.detailsLines(AutopilotRuntime.status(app, wall, false)).stream()
+                        .anyMatch(line -> line.startsWith("Last change ")));
+
+        try (org.robolectric.android.controller.ActivityController<MainActivity> activity =
+                     org.robolectric.Robolectric.buildActivity(MainActivity.class).setup()) {
+            android.view.View content = activity.get().findViewById(android.R.id.content);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            AndroidAdapterTestBase.iconDescribed(content, "Settings").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            org.robolectric.shadows.ShadowAlertDialog.reset();
+            AndroidAdapterTestBase.shownButton(content, "Clear history").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            android.app.AlertDialog confirm = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull("Clear history asks first", confirm);
+            String asked = String.valueOf(org.robolectric.Shadows.shadowOf(confirm).getMessage());
+            assertEquals(MainActivity.CLEAR_HISTORY, asked);
+            assertTrue("it names both things of Autopilot's that go: " + asked,
+                    asked.contains("Autopilot's acceptance-rate reading and last change from this phone"));
+            confirm.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            settle();
+        }
+
+        // Nothing of the reading or the change is left in Autopilot's store, its status or its details.
+        assertNull("no acceptance-rate reading is left", AutopilotStore.reading(app, wall));
+        assertNull("nor the last change's note", AutopilotStore.lastChange(app));
+        android.content.SharedPreferences kept = app.getSharedPreferences(AutopilotStore.PREFS, Context.MODE_PRIVATE);
+        assertFalse(kept.contains("ar_percent"));
+        AutopilotText.Status status = AutopilotRuntime.status(app, wall, false);
+        assertNull(status.reading);
+        assertNull(status.lastChange);
+        for (String line : AutopilotText.detailsLines(status)) {
+            assertFalse(line, line.startsWith("Last change"));
+            assertFalse(line, line.contains("Dasher showed") || line.contains("shown by Dasher"));
+            assertFalse(line, RATE_FIGURE.matcher(line).find());
+        }
+        // Nor in what the user could send: the report Share report builds and an offer report's rules.
+        String shared = DiagnosticLog.report(app);
+        assertTrue(shared, shared.contains("; AR unknown"));
+        assertFalse(shared, shared.contains("last change"));
+        assertFalse(shared, shared.contains("37%"));
+        DecisionLog.Entry later = new DecisionLog.Entry(wall, DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",
+                DecisionLog.Action.DECLINE_TAPPED, true, Collections.singletonList("$7.90"));
+        JSONObject offerRules = new JSONObject(OfferReport.text(app, OfferReport.Problem.MISREAD, "test", 1,
+                "Android test", later)).getJSONObject("rules");
+        assertEquals(-1, offerRules.getInt("arPercent"));
+        assertTrue(offerRules.toString(), offerRules.isNull("lastChange"));
+        // And no copy of the rate in the log: the plan Autopilot worked out as it cleared was logged before the logs
+        // were cleared, so it went with them (Settings clears Autopilot before the logs) ...
+        assertFalse("no copy of the rate in the log", RATE_FIGURE.matcher(DiagnosticLog.read(app)).find());
+        for (String line : logged(AutopilotRuntime.LOG)) assertFalse(line, line.startsWith("plan "));
+        // ... and that plan counted no offers (Settings clears the history before Autopilot).
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertNotNull(plan);
+        assertEquals(0, plan.counted);
+        assertEquals(Autopilot.Mode.LEARNING, plan.mode);
+        // Autopilot's switch, goal and the minimums stay.
+        FilterSettings after = FilterStore.load(app);
+        assertTrue(after.autopilot);
+        assertEquals(70, after.autopilotGoalPercent);
+        assertEquals(2040, after.flatCents);
+        assertEquals("CLEARED", AutopilotStore.jump(app));
+    }
+
     @Test public void noTextOfDashersQuestionGoesWithTheRate() throws Exception {
         dasherShowedTheRate();
         List<String> autopilot = logged(AutopilotRuntime.LOG);
