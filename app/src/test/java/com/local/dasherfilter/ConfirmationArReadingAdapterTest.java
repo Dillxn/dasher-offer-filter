@@ -171,6 +171,25 @@ public final class ConfirmationArReadingAdapterTest {
         return Arrays.asList(declines.get(0) - shownAt, confirms.get(0) - shownAt);
     }
 
+    /**
+     * Autopilot's own thread is started as screen reading connects (on the main thread, Autopilot off or on), so
+     * Dasher's question later only queues its parse there: no thread is created between finding the question and
+     * tapping it. The thread is the process's, started once: run on its own, this fails without the start at connect.
+     */
+    @Test public void autopilotsThreadIsStartedAsScreenReadingConnects() {
+        AutopilotRuntime.executorForTests = null;
+        assertFalse("Autopilot is off: nothing of it plans", FilterStore.load(app).autopilot);
+        service();
+        assertTrue("the offer-autopilot thread runs from the connection on", autopilotThreadAlive());
+    }
+
+    private static boolean autopilotThreadAlive() {
+        for (Thread thread : Thread.getAllStackTraces().keySet()) {
+            if ("offer-autopilot".equals(thread.getName()) && thread.isAlive()) return true;
+        }
+        return false;
+    }
+
     // ---- The user's own decline ----
 
     @Test public void theUsersOwnQuestionIsReadWithTheOfferTheyAreDeclining() {
