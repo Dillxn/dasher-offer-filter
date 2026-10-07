@@ -352,11 +352,27 @@ public final class OfferNotificationService extends NotificationListenerService 
         /**
          * Until when ({@code SystemClock.elapsedRealtime()}) this incarnation is never peeked at, 0 for none: it is
          * DoorDash re-posting an offer the user had in Dasher (read on screen, or posted while Dasher was in front)
-         * whose end the screen never saw, as it does while an offer ages ({@link OfferAlertState#newOfferReason}), up
-         * to {@link OfferPairing#OFFER_MS} after that offer's first post. Opening Dasher for it would pull Dasher back
-         * over the map the user just opened from it (the owner: Navigate's map does not stay).
+         * whose end the screen never saw, or one a delivery or pickup screen followed ({@link #routeAfter}), as it does
+         * while an offer ages ({@link OfferAlertState#newOfferReason}), up to {@link OfferPairing#OFFER_MS} after that
+         * offer's first post. Opening Dasher for it would pull Dasher back over the map the user just opened from it
+         * (the owner: Navigate's map does not stay).
          */
         long heldInDasherUntil;
+        /**
+         * A delivery, pickup or route screen of Dasher's, with no offer on it, was read within
+         * {@link OfferPairing#OFFER_MS} of this incarnation's first post, and neither the wait for offers nor the dash's
+         * end since ({@link #screenShowedRoute}): the user may have accepted this offer (from Dasher's notification, or
+         * by a tap Dasher never reported), so the screen showing it gone is no proof it was declined.
+         */
+        boolean routeAfter;
+        /**
+         * Until when ({@code SystemClock.elapsedRealtime()}) a post on this key may be the notification of an offer the
+         * user accepted, 0 for none: an earlier incarnation the user had in Dasher (read on screen, or posted while
+         * Dasher was in front) that a delivery or pickup screen followed ({@link #routeAfter}), up to
+         * {@link OfferPairing#OFFER_MS} after its first post. Such a post is never declined through Dasher's
+         * notification, nor hidden ({@link #mayBeAccepted}).
+         */
+        long mayBeAcceptedUntil;
 
         TrackedOffer(long now, StatusBarNotification source, String merchant) {
             this.state = new OfferAlertState(now, source.getPostTime());
@@ -506,6 +522,40 @@ public final class OfferNotificationService extends NotificationListenerService 
         onMain(service, () -> {
             for (TrackedOffer offer : service.tracked.values()) {
                 if (offer.state.readOnScreen != null) offer.state.endedOnScreen = true;
+            }
+        });
+    }
+
+    /**
+     * The screen showed a delivery, pickup or route screen of Dasher's with no offer on it (any thread): an offer whose
+     * notification came within {@link OfferPairing#OFFER_MS} before may be one the user accepted, from Dasher's
+     * notification or by a tap Dasher never reported, read on screen or never ({@link TrackedOffer#routeAfter}). A
+     * re-post of it is never peeked at, and, when the user had it in Dasher, never declined through Dasher's
+     * notification. Only the wait for offers or the dash's end ({@link #screenShowedNoRoute}) says otherwise.
+     */
+    static void screenShowedRoute() {
+        OfferNotificationService service = active;
+        if (service == null) return;
+        long at = SystemClock.elapsedRealtime();
+        onMain(service, () -> {
+            for (TrackedOffer offer : service.tracked.values()) {
+                long since = at - offer.state.createdAt;
+                if (since >= 0 && since < OfferPairing.OFFER_MS) offer.routeAfter = true;
+            }
+        });
+    }
+
+    /**
+     * The screen showed the wait for offers, or the dash's end or Dasher's home, with no delivery on it (any thread):
+     * no offer of the minute before is one the user accepted.
+     */
+    static void screenShowedNoRoute() {
+        OfferNotificationService service = active;
+        if (service == null) return;
+        onMain(service, () -> {
+            for (TrackedOffer offer : service.tracked.values()) {
+                offer.routeAfter = false;
+                offer.mayBeAcceptedUntil = 0;
             }
         });
     }
@@ -753,7 +803,13 @@ public final class OfferNotificationService extends NotificationListenerService 
                 action = announce(notification.contentIntent, offer, facts, decision, signature, replay, foreground,
                         offer.dasherSounded, false);
             } else if (OfferFilterService.userHasOffer(facts)) {
-                action = leaveToUser(offer, decision, signature);
+                action = leaveToUser(offer, decision, signature, "offer taken over by the user");
+            } else if (!replay && (mayBeAccepted(offer, SystemClock.elapsedRealtime())
+                    || OfferFilterService.acceptedLately(facts))) {
+                // The user may have accepted this offer (an Accept the screen reader saw or recorded in the last minute,
+                // or the offer they had in Dasher followed by a delivery or pickup screen): Dasher's own Decline is
+                // never sent for it, and its notification is never hidden (a replay does neither anyway).
+                action = leaveToUser(offer, decision, signature, "an offer you may have accepted");
             } else {
                 action = filter(source, notification, offer, decision, signature, replay);
             }
@@ -802,6 +858,9 @@ public final class OfferNotificationService extends NotificationListenerService 
             return new OfferRule.Decision(OfferRule.Result.REVIEW, 0,
                     "auto-decline is off; inspect this offer manually", facts);
         }
+        // No rule left pauses auto-decline, as the screen reader takes it: with nothing to meet, no offer is shown to
+        // pass (never the pass chime for an offer nothing was read of), and no payless card stands beside Dasher's own.
+        if (!settings.hasAnyRule()) return new OfferRule.Decision(OfferRule.Result.REVIEW, 0, NO_RULE, facts);
         if (AddOnOffer.isLikely(labels)) {
             return OfferRule.evaluateAddOn(AddOnOffer.parse(ActiveRouteStore.load(this), labels), settings);
         }
@@ -820,7 +879,15 @@ public final class OfferNotificationService extends NotificationListenerService 
         removeExpired(now);
         String key = source.getKey();
         TrackedOffer offer = tracked.get(key);
+        long heldUntil = 0;
+        long acceptedUntil = 0;
         if (offer != null && !merchant.isEmpty() && !offer.merchant.isEmpty() && !merchant.equals(offer.merchant)) {
+            // Another store is another offer. DoorDash's update of the same offer may change the words after "Go to"
+            // all the same (" · 1 item" added): the store named the same way, the post keeps what held the offer.
+            if (sameStore(offer.merchant, merchant)) {
+                heldUntil = holdOf(offer);
+                acceptedUntil = acceptedWindowOf(offer);
+            }
             remove(key, offer);
             offer = null;
         }
@@ -831,16 +898,14 @@ public final class OfferNotificationService extends NotificationListenerService 
         // offer on screen now, which comes up to ~10 s after the screen read (and perhaps declined) it. A new
         // incarnation, but it must not revoke the confirmation of a decline under way for that offer.
         boolean sameOfferOnScreen = foreground && OfferFilterService.sameForegroundOfferNotification(labels);
-        long heldUntil = 0;
         if (newOffer != null) {
             DiagnosticLog.log(this, "notification", "the same store re-posted: a new offer (" + newOffer + ")");
             // DoorDash re-posts an offer's notification as it ages: the offer the user had in Dasher, whose end the
-            // screen never saw, may be what this re-post is (a minute from its first post at most). It is never
-            // peeked at then, and a re-post of a re-post keeps that.
-            heldUntil = offer.heldInDasherUntil;
-            if (!offer.state.endedOnScreen && (offer.inDasher || offer.state.readOnScreen != null)) {
-                heldUntil = Math.max(heldUntil, offer.state.createdAt + OfferPairing.OFFER_MS);
-            }
+            // screen never saw, or one a delivery or pickup screen followed (the user may have accepted it), may be
+            // what this re-post is (a minute from its first post at most). It is never peeked at then, and a re-post
+            // of a re-post keeps that.
+            heldUntil = holdOf(offer);
+            acceptedUntil = acceptedWindowOf(offer);
             remove(key, offer);
             offer = null;
         }
@@ -864,6 +929,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (!replay) lastNotice = new Notice(labels, generation(), foreground);
             if (replay) recallRead(key, source.getPostTime(), created.state, now);
             if (heldUntil > now) created.heldInDasherUntil = heldUntil;
+            if (acceptedUntil > now) created.mayBeAcceptedUntil = acceptedUntil;
             offer = created;
         }
         // Dasher on screen as its notification came: the user has this offer in Dasher.
@@ -874,6 +940,58 @@ public final class OfferNotificationService extends NotificationListenerService 
         offer.freshPost = began && !replay;
         offerOutstanding = true;
         return offer;
+    }
+
+    /**
+     * Until when a later post on this incarnation's key is held from Peek ({@link TrackedOffer#heldInDasherUntil}): the
+     * hold it carries, or, for an offer the user had in Dasher whose end the screen never saw, or one a delivery or
+     * pickup screen followed ({@link TrackedOffer#routeAfter}), a minute from its first post.
+     */
+    private static long holdOf(TrackedOffer offer) {
+        long until = offer.heldInDasherUntil;
+        if (offer.routeAfter || (!offer.state.endedOnScreen && (offer.inDasher || offer.state.readOnScreen != null))) {
+            until = Math.max(until, offer.state.createdAt + OfferPairing.OFFER_MS);
+        }
+        return until;
+    }
+
+    /**
+     * Until when a later post on this incarnation's key may be the notification of an offer the user accepted
+     * ({@link TrackedOffer#mayBeAcceptedUntil}): what it carries, or, for an offer the user had in Dasher that a
+     * delivery or pickup screen followed, a minute from its first post.
+     */
+    private static long acceptedWindowOf(TrackedOffer offer) {
+        long until = offer.mayBeAcceptedUntil;
+        if (userHadItThenRoute(offer)) until = Math.max(until, offer.state.createdAt + OfferPairing.OFFER_MS);
+        return until;
+    }
+
+    /** The user had this offer in Dasher (read on screen, or posted while Dasher was in front), and a route followed. */
+    private static boolean userHadItThenRoute(TrackedOffer offer) {
+        return offer.routeAfter && (offer.inDasher || offer.state.readOnScreen != null);
+    }
+
+    /**
+     * Whether a post of this incarnation may be the notification of an offer the user accepted: never declined through
+     * Dasher's notification, nor hidden ({@link #handle}).
+     */
+    private static boolean mayBeAccepted(TrackedOffer offer, long now) {
+        return offer.mayBeAcceptedUntil > now || userHadItThenRoute(offer);
+    }
+
+    /**
+     * Whether two of DoorDash's "Go to …" texts name the same store: equal, or one the other with more words after it
+     * ("taco bell · 1 item" after "taco bell").
+     */
+    static boolean sameStore(String before, String after) {
+        if (before.isEmpty() || after.isEmpty()) return false;
+        return namesWithMore(after, before) || namesWithMore(before, after);
+    }
+
+    /** Whether {@code text} is {@code store}, or {@code store} followed by more that does not continue its last word. */
+    private static boolean namesWithMore(String text, String store) {
+        return text.startsWith(store)
+                && (text.length() == store.length() || !Character.isLetterOrDigit(text.charAt(store.length())));
     }
 
     /**
@@ -915,10 +1033,16 @@ public final class OfferNotificationService extends NotificationListenerService 
         return action;
     }
 
-    /** The user touched the screen during this offer's decline: its notification is neither declined nor hidden. */
-    private DecisionLog.Action leaveToUser(TrackedOffer offer, OfferRule.Decision decision, String signature) {
+    /**
+     * The offer is the user's (they touched the screen during its decline, or may have accepted it): its notification
+     * is neither declined nor hidden.
+     *
+     * @param whose why, for the log (fixed words)
+     */
+    private DecisionLog.Action leaveToUser(TrackedOffer offer, OfferRule.Decision decision, String signature,
+                                           String whose) {
         offer.state.delivered(signature, decision.result, false);
-        DiagnosticLog.log(this, "notification", "offer taken over by the user; notification left alone");
+        DiagnosticLog.log(this, "notification", whose + "; notification left alone");
         return DecisionLog.Action.USER_TOOK_OVER;
     }
 
@@ -1072,6 +1196,9 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /** Why a re-post of an offer the user had in Dasher is not peeked at ({@link TrackedOffer#heldInDasherUntil}). */
     static final String HELD_IN_DASHER = "a re-post of the offer you had in Dasher (it may still be up)";
+
+    /** An offer's notification with no rule set: nothing to meet, so it is left to the user ({@link #decide}). */
+    static final String NO_RULE = "no rule is set";
 
     /** What the card of an offer a peek opened Dasher for, and Dasher never drew, says. */
     static final String UNSHOWN_TEXT = "Dasher didn't show this offer when it opened. Tap to open it.";

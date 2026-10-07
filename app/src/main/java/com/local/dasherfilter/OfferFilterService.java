@@ -510,6 +510,32 @@ public final class OfferFilterService extends AccessibilityService {
     private final Peek peek = new Peek();
     /** When an acceptance or the user's Accept tap was last seen (Peek's clock), {@link #NEVER} for never. */
     private long lastAcceptAt = NEVER;
+    /**
+     * The latest acceptance seen ({@link #lastAcceptAt}) and the offer accepted, when known, published for the
+     * notification path ({@link #acceptedLately}); null for none. Immutable, replaced whole.
+     */
+    private volatile AcceptSeen acceptSeen;
+
+    /**
+     * When the first read of Dasher's "End your current dash?" now followed began (uptime), {@link #NEVER} while none is
+     * followed: an "End dash" click before it was the dash screen's own button, which only asks the question.
+     */
+    private long endQuestionAt = NEVER;
+    /** The first read since that question showing neither it nor anything of the dash (uptime); {@link #NEVER} for none. */
+    private long endGoneAt = NEVER;
+    /** The user's "End dash" on that question, by the click's own time (uptime); {@link #NEVER} for none seen. */
+    private long endTapAt = NEVER;
+
+    /** An acceptance the screen reader saw: when (Peek's clock), and the offer, or null when no offer was read. */
+    private static final class AcceptSeen {
+        final long at;
+        final OfferSnapshot offer;
+
+        AcceptSeen(long at, OfferSnapshot offer) {
+            this.at = at;
+            this.offer = offer;
+        }
+    }
     /** After going back: the app gone back to, and when, while whether it is in front again is looked at. */
     private Peek.Front backCheckFront;
     private long backCheckFrom;
@@ -1191,6 +1217,20 @@ public final class OfferFilterService extends AccessibilityService {
 
     static boolean isConnected() {
         return active != null && !active.scannerFaulted;
+    }
+
+    /**
+     * Whether an acceptance was seen within {@link OfferPairing#OFFER_MS} (the user's Accept tap, one recorded after an
+     * offer closed, or the app's own automatic Accept) of an offer these facts could belong to (any offer, when the one
+     * accepted was not read): the notification path never sends Dasher's Decline for such a post, nor hides it. Any
+     * thread; reads only the published snapshot.
+     */
+    static boolean acceptedLately(OfferSnapshot facts) {
+        OfferFilterService service = active;
+        AcceptSeen seen = service == null ? null : service.acceptSeen;
+        if (seen == null) return false;
+        long age = Peek.now() - seen.at;
+        return age >= 0 && age < OfferPairing.OFFER_MS && (seen.offer == null || !facts.contradicts(seen.offer));
     }
 
     /** Whether the user took over an offer these facts could belong to, so the notification path leaves it alone. */
@@ -2361,12 +2401,25 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Reads again {@link #RECHECK_INTERVAL_MS} from now. Not while Dasher's question is polled for after the first
-     * Decline tap: the poll reads instead, and only what changed.
+     * Decline tap: the poll reads instead, and only what changed. Once that poll is over with the question still not
+     * found, a read that showed neither an offer nor a question is followed by one bounded read a second
+     * ({@link #CONFIRM_QUIET_READ_MS}), in case Dasher draws the question without an event: Dasher's events and window
+     * changes are still read at once, and the decline's authority and its end are as before.
      */
     private void scheduleRecheck() {
-        if (recheckPending || polling(SystemClock.uptimeMillis())) return;
+        long now = SystemClock.uptimeMillis();
+        if (recheckPending || polling(now)) return;
         recheckPending = true;
-        scanner.postDelayed(recheck, RECHECK_INTERVAL_MS);
+        scanner.postDelayed(recheck, quietQuestionWait(now) ? CONFIRM_QUIET_READ_MS : RECHECK_INTERVAL_MS);
+    }
+
+    /**
+     * Dasher's question is still awaited after its poll ended, and the last read showed neither an offer (nor any sign
+     * of one, figures a screen explains itself aside) nor a question: the screen is quiet as far as the decline goes
+     * (Dasher's own map, say), and is read at most once a second unless Dasher says it changed.
+     */
+    private boolean quietQuestionWait(long now) {
+        return awaitingConfirmation(now) && !readEvidence && !offerOnScreen && !readShowsQuestion;
     }
 
     /** Keeps looking at the windows while Dasher is on screen: {@link #WINDOW_WATCH_MS} after the last look. */
@@ -2659,11 +2712,15 @@ public final class OfferFilterService extends AccessibilityService {
         return true;
     }
 
-    /** A look found Dasher in front, or another app (the user left Dasher: the chip goes). Scanner thread. */
+    /**
+     * A look found Dasher in front, or another app (the user left Dasher: the chip goes, and after the user's End dash
+     * the dash is over). Scanner thread.
+     */
     private void noteBackToMapLook(Look seen) {
-        if (backToMap == null || seen.activeApp == null) return;
-        noteBackToMapFront(seen.dasherActive, seen.split,
-                seen.dasherActive ? SplitWindows.Owner.DASHER : ownerOf(seen.activeApp, seen));
+        if ((backToMap == null && endTapAt == NEVER) || seen.activeApp == null) return;
+        SplitWindows.Owner activeOwner = seen.dasherActive ? SplitWindows.Owner.DASHER : ownerOf(seen.activeApp, seen);
+        noteBackToMapFront(seen.dasherActive, seen.split, activeOwner);
+        noteEndDashFront(seen.dasherActive, seen.split, activeOwner);
     }
 
     /**
@@ -2800,11 +2857,13 @@ public final class OfferFilterService extends AccessibilityService {
         // teaches nothing (it still blocks peeks for a minute, as any Accept does).
         boolean early = (tap.accept() || tap.decline()) && peek.earlyTap(elapsedOf(now));
         if (tap.accept()) lastAcceptAt = Peek.now();
+        // The offer accepted, as far as it was read: the notification path never declines a post of it.
+        OfferSnapshot accepting = null;
         if (early) {
             Peek.log(this, "your " + (tap.accept() ? "Accept" : "Decline") + " tap within "
                     + Peek.EARLY_TAP_MS / 1000 + " s of Dasher appearing teaches nothing");
         } else if (tap.accept()) {
-            OfferSnapshot accepting = acceptedTracker.acceptClicked(now);
+            accepting = acceptedTracker.acceptClicked(now);
             // Each step toward learning from an accepted offer goes in the log, so a report shows where it stops.
             DiagnosticLog.log(this, "accept", accepting != null
                     ? "Accept tap seen on " + accepting.summary() + "; waiting up to 15 s for a delivery screen"
@@ -2816,9 +2875,11 @@ public final class OfferFilterService extends AccessibilityService {
         } else if (tap.endDash()) {
             // The user's "End dash" on Dasher's "End your current dash?": the dash ends once its screen goes away.
             acceptedTracker.endDashTapped(now);
+            endDashTapped(now);
         } else if (!tap.own && near && (offerTargetsEndedAt == NEVER || now < offerTargetsEndedAt)) {
             acceptedTracker.tapNotRecognized(now);
         }
+        if (tap.accept()) acceptSeen = new AcceptSeen(lastAcceptAt, accepting);
         if (!tap.own && progressTap(tap)) ActiveRouteStore.invalidateTravel(this);
         applyNotes();
         return true;
@@ -4667,6 +4728,18 @@ public final class OfferFilterService extends AccessibilityService {
         return peek.routeAfter() && (DasherScene.showsRoute(labels) || AcceptedOfferTracker.isDeliveryScreen(labels));
     }
 
+    /**
+     * Whether a read is a delivery, pickup or route screen whose figures are its own ({@link #explainedFigures}: its one
+     * amount, its time and distance, with no offer control or label, new offer's headline, question about declining,
+     * countdown, stops, items or "+$" on it). Only for a peek's return to the route a declined offer came during
+     * ({@link Peek#routeAfter}); decisions and learning keep every figure as always.
+     */
+    private static boolean routeOwnFigures(Scan scan) {
+        List<String> labels = withParts(scan);
+        return (DasherScene.showsRoute(labels) || AcceptedOfferTracker.isDeliveryScreen(labels))
+                && explainedFigures(scan);
+    }
+
     /** Whether a screen without an offer is one Dasher's words explain: waiting, idle, the dash over, a delivery. */
     private static boolean explained(List<String> labels, boolean facts) {
         if (facts || labels.isEmpty() || DasherScene.showsNewOffer(labels)
@@ -5811,7 +5884,11 @@ public final class OfferFilterService extends AccessibilityService {
         readWin = SplitWindows.field(listed, owner::apply, display());
         DashSummary.window(this, readWin);
         noteCover(covered == null ? "" : covered);
-        if (!system && activeApp != null) noteBackToMapFront(dasherActive, split, owner.apply(activeApp));
+        if (!system && activeApp != null) {
+            SplitWindows.Owner activeOwner = owner.apply(activeApp);
+            noteBackToMapFront(dasherActive, split, activeOwner);
+            noteEndDashFront(dasherActive, split, activeOwner);
+        }
         knownPlace = new DasherPlace(listed, activeApp, split, dasherActive, dasher != null, split && dasherListed);
         return true;
     }
@@ -6164,6 +6241,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (scan.truncated) return tooBigToRead(scan);
         sceneLabels = scan.text;
         episode.readDuration(SystemClock.uptimeMillis() - currentReadStartedAt);
+        noteEndDashRead(scan, now);
 
         OfferSnapshot offer = OfferParser.parse(scan.text, scan.metricParts);
         Scan confirmation = confirmationScan(scan, lookForQuestion, look);
@@ -6666,15 +6744,28 @@ public final class OfferFilterService extends AccessibilityService {
         boolean offerGone = scan.accept == null && scan.decline == null && !scan.acceptLabel && !scan.declineLabel;
         // The first read without the last offer's controls: a click from now on is not on them.
         if (offerGone && offerTargetsEndedAt == NEVER) offerTargetsEndedAt = now;
+        // A delivery, pickup or route screen with no offer on it: an offer whose notification came in the minute
+        // before may be one the user accepted (from Dasher's notification, or by a tap Dasher never reported), so its
+        // re-post is never peeked at, nor declined through Dasher's notification. The wait for offers or the dash's end
+        // says it was not. Not while a peek has Dasher open: that is Dasher's screen before it draws the offer.
+        boolean peekOpen = peek.active() && peek.phase() != Peek.Phase.ARMING;
+        if (offerGone && !peekOpen && !DasherScene.showsNewOffer(scan.text) && DasherScene.showsRoute(scan.text)) {
+            OfferNotificationService.screenShowedRoute();
+        } else if (AcceptedOfferTracker.showsNoRoute(scan.text)) {
+            OfferNotificationService.screenShowedNoRoute();
+        }
         // An offer being drawn, less the figures the screen explains itself (navigation's, the dash summary's).
         boolean facts = AcceptedOfferTracker.offerFacts(offer, withParts(scan));
         if (peek.active() && peek.phase() != Peek.Phase.ARMING) {
             // Only on positive proof does the peek go back: the peeked offer's decline complete, and a screen Dasher's
-            // own words explain, with none of an offer's facts (never an empty, partly drawn or unrecognised one).
-            boolean explained = offerGone && explained(scan.text, facts);
+            // own words explain, with none of an offer's facts (never an empty, partly drawn or unrecognised one). The
+            // route the declined offer came during names its own figures (a pickup's "$9.30 this offer"): with no
+            // offer control, countdown, stops, items or "+$" on it, they are the route's, not an offer's.
+            boolean offerFigures = facts && !(peek.routeAfter() && routeOwnFigures(scan));
+            boolean explained = offerGone && explained(scan.text, offerFigures);
             long recognisedBefore = peek.recognisedAt();
             peek.screen(explained, Peek.now());
-            if (offerGone && declineProven(scan.text, facts, now)) {
+            if (offerGone && declineProven(scan.text, offerFigures, now)) {
                 peekBack("the offer was declined", true, Peek.Outcome.DECLINED_BACK, null);
             } else if (peek.recognisedAt() != recognisedBefore) {
                 // With no offer yet, the wait for one starts at this first screen Dasher's words explain.
@@ -6794,6 +6885,108 @@ public final class OfferFilterService extends AccessibilityService {
         String summary = PersonalText.recognizedDashScreen(withParts(scan)) ? offer.summary() + "\n" : "";
         status(summary + "Both offer controls are not yet readable; no action.");
         return settings.enabled;
+    }
+
+    // ---- The user's own End dash (scanner thread) ----
+
+    /**
+     * After each complete read of Dasher: Dasher's "End your current dash?" is followed for the user's "End dash" on
+     * it ({@link #endDashTapped}). A read after that tap showing neither the question nor anything of the dash (the
+     * wait for offers, a delivery, pickup or route, an offer's control, label, headline, countdown, stops, items or
+     * "+$", or a question about declining) is the dash's end ({@link #userEndedDash}), whatever its one amount says
+     * ("Total earned", "$0.00"); anything of the dash means it went on. The dash's end or Dasher's home in Dasher's own
+     * words end it as before.
+     */
+    private void noteEndDashRead(Scan scan, long now) {
+        List<String> labels = withParts(scan);
+        if (endTapAt != NEVER && now - endTapAt > AcceptedOfferTracker.AFTER_MS) forgetEndQuestion();
+        if (DasherScene.showsEndDashQuestion(labels)) {
+            if (endQuestionAt == NEVER) endQuestionAt = now;
+            endGoneAt = NEVER;
+            return;
+        }
+        if (endQuestionAt == NEVER) return;
+        // A screen between two others says nothing yet.
+        if (labels.isEmpty()) return;
+        if (dashGoesOn(scan, labels)) {
+            forgetEndQuestion();
+        } else if (endTapAt != NEVER) {
+            userEndedDash("a screen without the dash followed your End dash");
+        } else if (endGoneAt == NEVER) {
+            // The click may be named after this read: it ends the dash then, by its own time.
+            endGoneAt = now;
+        } else if (now - endGoneAt > AcceptedOfferTracker.QUESTION_AGE_MS) {
+            forgetEndQuestion();
+        }
+    }
+
+    /**
+     * Whether a read shows the dash going on after Dasher's "End your current dash?": the wait for offers (not the
+     * dash's end or Dasher's home, whose "Dash now" reads as one), a delivery, pickup or route, or anything of an offer
+     * but a lone amount.
+     */
+    private static boolean dashGoesOn(Scan scan, List<String> labels) {
+        if (scan.accept != null || scan.decline != null || scan.acceptLabel || scan.declineLabel) return true;
+        boolean over = OfferEvidence.isDashOver(labels) || OfferEvidence.isPreDashHome(labels);
+        if ((!over && DasherScene.showsWaiting(labels)) || DasherScene.showsRoute(labels)
+                || DasherScene.showsNewOffer(labels) || DeclineConfirmation.isSurface(scan.text)
+                || OfferEvidence.secondsLeft(scan.text) >= 0) {
+            return true;
+        }
+        OfferSnapshot facts = OfferParser.parse(scan.text, scan.metricParts);
+        return facts.stops != null || facts.payAtMostCents != null
+                || AcceptedOfferTracker.itemOfferEvidence(facts, labels);
+    }
+
+    /**
+     * The user's "End dash" (a click naming exactly that, not "Go back"), by the click's own time: it counts only on
+     * Dasher's "End your current dash?", made after a read first showed it, while that question was the last screen
+     * read, or when the first read since it already showed the dash gone (the click is named after the read of what
+     * came next). The dash screen's own "End dash", which only asks the question, came before it was read.
+     */
+    private void endDashTapped(long at) {
+        if (endQuestionAt == NEVER || at <= endQuestionAt) return;
+        if (endGoneAt == NEVER) {
+            endTapAt = at;
+            return;
+        }
+        boolean madeItGo = at <= endGoneAt && endGoneAt - at <= AcceptedOfferTracker.QUESTION_AGE_MS;
+        if (madeItGo) userEndedDash("a screen without the dash followed your End dash");
+        else forgetEndQuestion();
+    }
+
+    /**
+     * A look found another app (or Offer Filter) in front, not split, after the user's "End dash" on Dasher's
+     * question, with nothing of the dash read since: the dash ended (the user left Dasher's end screen, or never waited
+     * for it). The shade or another system surface is no app in front.
+     */
+    private void noteEndDashFront(boolean dasherActive, boolean split, SplitWindows.Owner activeOwner) {
+        if (endTapAt == NEVER || dasherActive || split) return;
+        if (SystemClock.uptimeMillis() - endTapAt > AcceptedOfferTracker.AFTER_MS) {
+            forgetEndQuestion();
+            return;
+        }
+        if (activeOwner == SplitWindows.Owner.OTHER || activeOwner == SplitWindows.Owner.OURS) {
+            userEndedDash("Dasher left the screen after your End dash");
+        }
+    }
+
+    private void forgetEndQuestion() {
+        endQuestionAt = NEVER;
+        endGoneAt = NEVER;
+        endTapAt = NEVER;
+    }
+
+    /**
+     * The user ended the dash in Dasher: the dash is over ({@link Dashing#ended}: the screen is no longer held for it,
+     * and an update waiting for the dash's end may install), and a decline held until the dash goes on counts nothing.
+     * A lifecycle step only: nothing is read, tapped or learned for it.
+     */
+    private void userEndedDash(String how) {
+        forgetEndQuestion();
+        DiagnosticLog.log(this, "dash", "ended: " + how);
+        onMain(() -> ManualDeclines.dashEnded(this));
+        Dashing.ended(this);
     }
 
     /** At most eight changed fixed-category lines for an existing acceptance watch; no screen text or values. */
@@ -6969,6 +7162,9 @@ public final class OfferFilterService extends AccessibilityService {
     private void recordAcceptance(AcceptedOfferTracker.Acceptance accepted, String how) {
         // No peek for a minute after an acceptance: the user is busy with it.
         lastAcceptAt = Peek.now();
+        // Nor a Decline of a post of it through Dasher's notification (an add-on's own figures are not what its
+        // notification shows: any offer then).
+        acceptSeen = new AcceptSeen(lastAcceptAt, accepted.addOn ? null : accepted.acceptedOffer);
         // Accepting after all means an earlier Decline of this offer was backed out of.
         onMain(() -> ManualDeclines.dropped(this, "you accepted it after all"));
         DecisionLog.StepKind kind;
@@ -7480,7 +7676,10 @@ public final class OfferFilterService extends AccessibilityService {
         }
         acceptedTracker.automaticAcceptRequested(offer, now, tapped);
         applyNotes();
-        if (tapped) lastAcceptAt = Peek.now();
+        if (tapped) {
+            lastAcceptAt = Peek.now();
+            acceptSeen = new AcceptSeen(lastAcceptAt, offer);
+        }
         DiagnosticLog.log(this, "auto-accept", tapped ? "Accept REQUESTED; awaiting observed delivery"
                 : "Accept REFUSED; offer left to user");
         status(tapped ? "Accept requested. Waiting for Dasher to show a delivery; no completion claimed."
