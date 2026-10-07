@@ -116,9 +116,9 @@ final class AutopilotChip extends TextView {
      * by the least that keeps the row that tall, never below three quarters of the user's size nor below the default
      * size (as a setup line's words do, {@link SetupRow.Words}); where even that is not enough (twice the font on the
      * narrowest pane) they stay at that least size, their lines closing up to single spacing (as the map's line does at
-     * a large font), and the row grows by the least it can. The chip goes on a line of its own above the words only
-     * where that is shorter still (a window too narrow for both side by side). A chip that is gone leaves the words the
-     * whole width, at their full size and spacing.
+     * a large font) and their space above and below halved, and the row grows by the least it can. The chip goes on a
+     * line of its own above the words only where that is shorter still (a window too narrow for both side by side). A
+     * chip that is gone leaves the words the whole width, at their full size, spacing and padding.
      */
     @SuppressLint("ViewConstructor")
     static final class Row extends ViewGroup {
@@ -132,8 +132,10 @@ final class AutopilotChip extends TextView {
         private final float chipFull;
         private final float wordsFull;
         private final float least;
-        /** The words' line spacing as the page made it, closed up to single only at the least size. */
+        /** The words' line spacing and space above and below as the page made them, closed up only at the least size. */
         private final float wordsSpacing;
+        private final int padTop;
+        private final int padBottom;
         private final TextPaint measuring = new TextPaint();
         /** How the row stands now: the chip above the words, the share of the full sizes, the lines closed up. */
         private boolean stacked;
@@ -159,6 +161,8 @@ final class AutopilotChip extends TextView {
                     context.getResources().getDisplayMetrics());
             least = Math.min(1f, Math.max(SetupRow.LEAST_SCALE, unscaled / wordsFull));
             wordsSpacing = words.getLineSpacingMultiplier();
+            padTop = words.getPaddingTop();
+            padBottom = words.getPaddingBottom();
             addView(chip);
             addView(words);
         }
@@ -173,7 +177,7 @@ final class AutopilotChip extends TextView {
             return scale;
         }
 
-        /** The words' lines are closed up to single spacing (the last resort at the least size; for tests). */
+        /** The words' lines are closed up: single spacing, half the space above and below (the last resort; for tests). */
         boolean tight() {
             return tight;
         }
@@ -188,6 +192,7 @@ final class AutopilotChip extends TextView {
                 tight = false;
                 size(words, wordsFull);
                 spacing(words, wordsSpacing);
+                padding(words, padTop, padBottom);
                 words.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.EXACTLY), any);
                 setMeasuredDimension(width, words.getMeasuredHeight() + getPaddingTop() + getPaddingBottom());
                 return;
@@ -199,6 +204,7 @@ final class AutopilotChip extends TextView {
             size(chip, chipFull * scale);
             size(words, wordsFull * scale);
             spacing(words, tight ? 1f : wordsSpacing);
+            padding(words, tight ? padTop / 2 : padTop, tight ? padBottom / 2 : padBottom);
             chip.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.AT_MOST), any);
             int height;
             if (stacked) {
@@ -225,19 +231,19 @@ final class AutopilotChip extends TextView {
             fittedWidth = inner;
             fittedChip = chipText;
             fittedWords = wordsText;
-            int alone = wordsHeight(wordsText, wordsFull, inner, wordsSpacing);
+            int alone = wordsHeight(wordsText, wordsFull, inner, false);
             fitStacked = false;
             fitTight = false;
             float step = (1f - least) / STEPS;
             for (int i = 0; i <= STEPS; i++) {
                 float s = i == STEPS ? least : 1f - i * step;
-                if (besideHeight(chipText, wordsText, s, inner, wordsSpacing) <= alone) {
+                if (besideHeight(chipText, wordsText, s, inner, false) <= alone) {
                     fitScale = s;
                     return;
                 }
                 if (step <= 0) break;
             }
-            int beside = besideHeight(chipText, wordsText, least, inner, 1f);
+            int beside = besideHeight(chipText, wordsText, least, inner, true);
             int above = chipHeight(chipFull) + alone;
             fitStacked = above < beside;
             fitTight = !fitStacked;
@@ -246,12 +252,12 @@ final class AutopilotChip extends TextView {
 
         /**
          * The row's height with the chip and the words side by side at {@code s} of their full sizes, the words' lines
-         * {@code spacing} apart.
+         * closed up ({@code closed}) or as the page made them.
          */
-        private int besideHeight(String chipText, String wordsText, float s, int inner, float spacing) {
+        private int besideHeight(String chipText, String wordsText, float s, int inner, boolean closed) {
             int room = inner - chipWidth(chipText, chipFull * s, inner) - gap;
             if (room <= 0) return Integer.MAX_VALUE;
-            return Math.max(chipHeight(chipFull * s), wordsHeight(wordsText, wordsFull * s, room, spacing));
+            return Math.max(chipHeight(chipFull * s), wordsHeight(wordsText, wordsFull * s, room, closed));
         }
 
         /** The chip's width with its words at {@code px} (one line, as wide as the row allows). */
@@ -272,18 +278,21 @@ final class AutopilotChip extends TextView {
             return Math.max(chip.getMinHeight(), tall);
         }
 
-        /** The words' height at {@code px} in {@code width}, lines {@code spacing} apart, as their view lays them out. */
-        private int wordsHeight(String text, float px, int width, float spacing) {
+        /**
+         * The words' height at {@code px} in {@code width}, as their view lays them out: their lines closed up
+         * ({@code closed}: single spacing, half the space above and below) or as the page made them.
+         */
+        private int wordsHeight(String text, float px, int width, boolean closed) {
             int across = Math.max(1, width - words.getCompoundPaddingLeft() - words.getCompoundPaddingRight());
             measuring.set(words.getPaint());
             measuring.setTextSize(px);
             Layout layout = StaticLayout.Builder.obtain(text, 0, text.length(), measuring, across)
-                    .setLineSpacing(words.getLineSpacingExtra(), spacing)
+                    .setLineSpacing(words.getLineSpacingExtra(), closed ? 1f : wordsSpacing)
                     .setIncludePad(words.getIncludeFontPadding())
                     .setBreakStrategy(words.getBreakStrategy())
                     .setHyphenationFrequency(words.getHyphenationFrequency())
                     .build();
-            int tall = layout.getHeight() + words.getCompoundPaddingTop() + words.getCompoundPaddingBottom();
+            int tall = layout.getHeight() + (closed ? padTop / 2 + padBottom / 2 : padTop + padBottom);
             return Math.max(words.getMinHeight(), tall);
         }
 
@@ -296,6 +305,13 @@ final class AutopilotChip extends TextView {
         private static void spacing(TextView view, float multiplier) {
             if (Math.abs(view.getLineSpacingMultiplier() - multiplier) > 0.001f) {
                 view.setLineSpacing(view.getLineSpacingExtra(), multiplier);
+            }
+        }
+
+        /** {@code view}'s space above and below, its sides as they are, set only when it changes. */
+        private static void padding(TextView view, int top, int bottom) {
+            if (view.getPaddingTop() != top || view.getPaddingBottom() != bottom) {
+                view.setPadding(view.getPaddingLeft(), top, view.getPaddingRight(), bottom);
             }
         }
 

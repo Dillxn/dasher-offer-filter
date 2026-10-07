@@ -871,37 +871,38 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
     public void inA360DpTallSplitPaneTheChipStandsUnderTheMascotAndTheHeaderKeepsItsHeight() {
-        chipInAShortPane(false, 1f);
+        chipInAShortPane(false, 1f, 0);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void atThreeSixtyWideAndAtNightTheChipStillFitsAndReads() {
-        chipInAShortPane(true, 1f);
+        chipInAShortPane(true, 1f, 0);
     }
 
     @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
     public void atThreeTwentyWideTheHeadersSmallerConstellationKeepsItsHeightToo() {
-        chipInAShortPane(false, 1f);
+        chipInAShortPane(false, 1f, 0);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void atOneAndAHalfTimesTheFontSizeTheChipCostsTheGroundNoHeight() {
-        chipInAShortPane(false, 1.5f);
+        chipInAShortPane(false, 1.5f, 0);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void atTwiceTheFontSizeTheChipStaysWholeAndOnScreen() {
-        chipInAShortPane(false, 2f);
+        chipInAShortPane(false, 2f, 0);
     }
 
     @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
     public void atTwiceTheFontSizeOnAWiderPaneThePageStaysOneScreen() {
-        chipInAShortPane(false, 2f);
+        chipInAShortPane(false, 2f, 0);
     }
 
+    /** 0.4.x's own page ran 1 dp past this pane at twice the font on Android 8 (its linear font scaling). */
     @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
     public void atTwiceTheFontSizeAtNightOnANarrowPaneTheChipStaysWholeAndOnScreen() {
-        chipInAShortPane(true, 2f);
+        chipInAShortPane(true, 2f, 1);
     }
 
     /**
@@ -912,10 +913,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
      * chooser. It never stands on a line of its own, and costs no more height than the latest offer's line has alone
      * across the whole width (as 0.4.x showed it): beside it the words shrink only as far as that needs, never below
      * three quarters of the user's size nor below the default size, so the page stays one screen, as 0.4.x's did at
-     * every one of these sizes, with the caption whole and the map at its readable least. No status line and no Next
+     * these sizes (or runs past it by no more than 0.4.x's did on Android 8: {@code android8OverflowDp}, measured on
+     * fd5a6df with this layout), with the caption whole and the map at its readable least. No status line and no Next
      * match take a row while Autopilot is on.
      */
-    private void chipInAShortPane(boolean night, float fontScale) {
+    private void chipInAShortPane(boolean night, float fontScale, int android8OverflowDp) {
         Appearance.choose(app, night ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
         RuntimeEnvironment.setFontScale(fontScale);
         setUpForDashing();
@@ -1007,9 +1009,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             layOut(content);
             assertEquals("the same row again: " + before + " / " + gone, rowWith, row.getHeight());
             assertEquals(withChip, scene.getHeight());
-            assertTrue("one screen, as 0.4.x's page was: " + withChip + " in " + window.getHeight() + "; " + before
-                    + " / " + gone, withChip <= window.getHeight());
-            assertTrue(withoutChip <= window.getHeight());
+            float density = app.getResources().getDisplayMetrics().density;
+            int allowed = Math.round((android.os.Build.VERSION.SDK_INT >= 34 ? 0 : android8OverflowDp) * density);
+            assertTrue("one screen, as 0.4.x's page was: " + withChip + " in " + window.getHeight() + " (0.4.x: "
+                    + allowed + " px over); " + before + " / " + gone, withChip - window.getHeight() <= allowed);
+            assertTrue(withoutChip - window.getHeight() <= allowed);
             float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full, TypedValue.applyDimension(
                     TypedValue.COMPLEX_UNIT_DIP, 13, app.getResources().getDisplayMetrics())));
             assertTrue("never below three quarters of the user's size nor the default size: " + shrunk + " of " + full,
@@ -1056,7 +1060,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(chip.isShown());
             assertTrue(contrast(chip.getCurrentTextColor(), ui.surface) >= 4.5);
             assertFalse(row.stacked());
-            assertTrue("one screen", scene.getHeight() <= window.getHeight());
+            assertTrue("one screen", scene.getHeight() - window.getHeight() <= allowed);
 
             // On again: its words take their earlier width, and the row decides as it did then.
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -1072,44 +1076,46 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void besideDasherTheButtonIsAutopilotsOneControlAndTheGroundKeepsItsHeight() {
-        besideDasherInAShortPane(false, 1f, 28, true);
+        besideDasherInAShortPane(false, 1f, 28, 28, true);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void besideDasherAtALargerFontTheLatestOffersLineAndTheSkylineKeepTheirRoom() {
-        besideDasherInAShortPane(false, 1.3f, 28, true);
+        besideDasherInAShortPane(false, 1.3f, 28, 28, true);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void besideDasherAtOneAndAHalfTimesTheFontNothingIsPushedOffScreen() {
-        besideDasherInAShortPane(false, 1.5f, 28, true);
+        besideDasherInAShortPane(false, 1.5f, 28, 28, true);
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
     public void besideDasherAtTwiceTheFontAtNightTheLatestOffersLineStaysWhole() {
-        besideDasherInAShortPane(true, 2f, 30, true);
+        besideDasherInAShortPane(true, 2f, 30, 32, true);
     }
 
     @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
     public void besideDasherOnANarrowPaneAtTwiceTheFontNothingScrollsFurtherThan04x() {
-        besideDasherInAShortPane(false, 2f, 64, false);
+        besideDasherInAShortPane(false, 2f, 64, 67, false);
     }
 
     @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
     public void besideDasherOnAWiderPaneAtTwiceTheFontThePageIsOneScreen() {
-        besideDasherInAShortPane(false, 2f, 0, true);
+        besideDasherInAShortPane(false, 2f, 0, 0, true);
     }
 
     /**
      * Beside Dasher in a 360 dp-tall pane (the driving layout), Autopilot on and below its goal: the constellation is the
      * sky, with its Autopilot button, which is Autopilot's one control there. No chip repeats it, and neither a status
      * line nor Next match takes a row, so the ground (the latest offer's line and the skyline) is 0.4.x's own: the page
-     * overflows no more than 0.4.x's did ({@code baseOverflowDp}, measured on the 0.5.0 release branch before this
-     * package, fd5a6df, with this very fixture), and the latest offer's line stays whole wherever it was whole then.
-     * The button's amber ring follows the chip's rule. With Autopilot off no "Auto off" chip appears either: the button
-     * is the way in.
+     * overflows no more than 0.4.x's did (measured on the 0.5.0 release branch before this package, fd5a6df, with
+     * this very fixture: {@code android15OverflowDp}, and {@code android8OverflowDp} with Android 8's linear font
+     * scaling), and the latest offer's line stays whole wherever it was whole then. The button's amber ring follows
+     * the chip's rule. With Autopilot off no "Auto off" chip appears either: the button is the way in.
      */
-    private void besideDasherInAShortPane(boolean night, float fontScale, int baseOverflowDp, boolean captionWhole) {
+    private void besideDasherInAShortPane(boolean night, float fontScale, int android15OverflowDp,
+                                          int android8OverflowDp, boolean captionWhole) {
+        int baseOverflowDp = android.os.Build.VERSION.SDK_INT >= 34 ? android15OverflowDp : android8OverflowDp;
         Appearance.choose(app, night ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
         RuntimeEnvironment.setFontScale(fontScale);
         setUpForDashing();
