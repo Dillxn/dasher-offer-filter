@@ -275,6 +275,34 @@ public final class ConfirmationArReadingAdapterTest {
         assertEquals(Collections.singletonList("ar reading 64% (exempt yes)"), readings());
     }
 
+    /**
+     * A question within the echo of the app's own Decline tap, once no decline of the app's waits for one any more (a
+     * clearly different offer came between): not taken for the user's (their decline by hand is not counted then
+     * either), so it names no offer, never the one shown since.
+     */
+    @Test public void aQuestionInTheEchoOfTheAppsOwnDeclineNamesNoOffer() {
+        OfferFilterService service = service();
+        show(service, waiting());
+        pass(2_000);
+        AccessibilityNodeInfo failing = offer("$7.90", "0:35");
+        List<Long> declines = taps(decline, true, null);
+        show(service, failing);
+        assertEquals("declined at once", 1, declines.size());
+        pass(300);
+        // A clearly different offer, which passes: the first one's decline is over, this one is left to the user.
+        show(service, offer("$25.00", "0:35"));
+        pass(300);
+        show(service, question(button("Decline offer"), "Does not lower acceptance rate", "64%"));
+        pass(400);
+
+        AutopilotStore.Reading reading = reading();
+        assertNotNull(reading);
+        assertEquals(64, reading.percent);
+        assertEquals("about no offer it can name", "", reading.fingerprint);
+        assertEquals(DecisionLog.report(app, 5), 0, marks());
+        assertEquals(Collections.singletonList("ar reading 64% (exempt yes)"), readings());
+    }
+
     @Test public void aQuestionLongAfterAnyOfferIsKeptWithoutOneAndMarksNoLine() {
         OfferFilterService service = service();
         show(service, waiting());
