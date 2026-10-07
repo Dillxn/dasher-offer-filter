@@ -26,8 +26,9 @@ import android.widget.TextView;
  * the long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar
  * change never interrupts TalkBack while driving. The homepage shows it beside the latest offer's line ({@link Row}),
  * where no Autopilot button is on screen (a short window with the constellation up in the header), or where a whole
- * screen has no room for the status line; the header gains no row. A driving strip of a short split screen can host
- * the same view ({@code MainActivity.newAutopilotChip}).
+ * screen has no room for the status line; the header gains no row. The driving strip of a short split screen hosts
+ * another, beside its status line, as that layout's one Autopilot control ({@code MainActivity.newAutopilotChip},
+ * {@link DrivingStrip}).
  */
 @SuppressLint("ViewConstructor")
 final class AutopilotChip extends TextView {

@@ -71,8 +71,9 @@ final class DrivingStrip extends ScrollView {
         status = ui.text("", STATUS_SP, ui.inkSecondary, false);
         status.setMinHeight(ui.dp(48));
         status.setGravity(Gravity.CENTER_VERTICAL);
-        // No line limit: the chip's row works out its height from all of the line's words, and shrinks them (or stacks
-        // the chip) before it would cut one off; a cut line could hide what needs the user.
+        // No line limit: the chip's row works out its height from all of the line's words (shrinking them a little,
+        // closing their lines up, or putting the chip above them, whichever is shortest), so none is ever cut off; a
+        // cut line could hide what needs the user, or the word its tap does.
         status.setOnClickListener(tapped -> {
             Runnable action = statusAction;
             if (action != null) action.run();
