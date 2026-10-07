@@ -21,9 +21,14 @@ actual_fp="$(keytool -list -v -keystore "$secrets/signing.p12" -storepass:env OF
     -alias offerfilter-cloud | awk -F'SHA256: ' '/SHA256: / {v=$2; gsub(":", "", v); print tolower(v); exit}')"
 [[ "$actual_fp" == "$KEY_FINGERPRINT" ]] || { echo 'Not the cloud signing key; refusing to sign.' >&2; exit 1; }
 
-# Both simulated Android versions (8 and 15); a warm daemon and the build cache make a rerun of already-tested
-# code nearly instant.
+# The release gate (tools/release_bridge_gate.py): the tracked inputs frozen first; then both simulated Android
+# versions (8 and 15; a warm daemon and the build cache make a rerun of already-tested code nearly instant) and lint;
+# then nothing signs unless the inputs are unchanged, at least MIN_TESTS ran with no failure or skip, every adapter
+# suite ran on both Android versions case by case, and lint found no error.
+python3 tools/release_bridge_gate.py freeze --snapshot "$secrets/inputs.json"
 ./gradlew -q testDebugUnitTest -PallSdks
+./gradlew -q lintDebug -PallSdks
+python3 tools/release_bridge_gate.py verify --snapshot "$secrets/inputs.json"
 
 export OFFER_FILTER_KEYSTORE="$secrets/signing.p12"
 export OFFER_FILTER_KEY_ALIAS='offerfilter-cloud'
