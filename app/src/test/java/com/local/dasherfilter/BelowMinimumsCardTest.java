@@ -42,9 +42,10 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * An offer that passes only because Autopilot's bar is below 100% is the user's to accept (the owner, 6 October 2026):
- * its card, whether from Dasher's notification or from a peek that went back to the map, is a card to check. It goes
- * on "Offers to check" ({@link OfferAlerts#REVIEW_CHANNEL_ID}), rings as such a card rings (once), is titled for
- * checking and says why, and never sounds the pass chime of "Offers that pass" ({@link OfferAlerts#CHANNEL_ID}). An
+ * its card, whether from Dasher's notification or from a peek that went back to the map (an add-on's with what the
+ * add-on itself adds), is a card to check. It goes on "Offers to check" ({@link OfferAlerts#REVIEW_CHANNEL_ID}), rings
+ * as such a card rings (once), is titled for checking and says why, and never sounds the pass chime of "Offers that
+ * pass" ({@link OfferAlerts#CHANNEL_ID}). An
  * offer meeting the minimums under the same bar keeps the pass chime. Through the real notification listener and screen
  * reader; synthetic Android, no handset claimed.
  */
@@ -198,6 +199,54 @@ public final class BelowMinimumsCardTest {
         assertEquals("below your minimums; passes the 82% bar", line.reason);
         assertEquals(82, line.barPercent);
         assertTrue(line.peeked);
+    }
+
+    /**
+     * The main case while driving: an add-on, peeked from the map, that passes only under the 82% bar. Its card carries
+     * what the add-on itself adds (never the standalone parse, and never "unclear": every figure was read) and says it
+     * is below the minimums and the user's to accept, on a card to check.
+     */
+    @Test public void aPeekedAddOnPassingBelowTheMinimumsGoesBackOnACardToCheckWithItsOwnFigures() {
+        // $10 an offer, $1 a mile, $15 an hour.
+        FilterStore.save(app, FilterSettings.of(true, 1000, 100, 25, 0));
+        connect(app(MAPS));
+        autopilotBarAt(82);
+        // On a delivery: $15.00 for 5 mi and 25 min.
+        ActiveRouteStore.save(app, new OfferSnapshot(1500, 5.0, 25, 2));
+        post("Taco Bell");
+        dasherOpened();
+        // $1.80 more for 2 more miles and 8 more minutes: the $2.00 those ask at the minimums it misses, the $1.64 they
+        // ask at 82% it meets (the whole route, $16.80 for 7 mi and 33 min, meets both).
+        AccessibilityNodeInfo addOn = node(DASHER, null, false);
+        decline = button("Decline");
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "Add to route", false));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "+$1.80", false));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "+2 mi", false));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "+8 min", false));
+        Shadows.shadowOf(addOn).addChild(decline);
+        Shadows.shadowOf(addOn).addChild(button("Accept"));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "0:30", false));
+        List<Long> declines = taps(decline);
+        dasherShows(addOn);
+        assertEquals("on a route: back to the map with its card", MAPS_HOME, started().getComponent());
+        assertTrue("never declined", declines.isEmpty());
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertTrue(line.addOn);
+        assertEquals(OfferRule.Result.KEEP, line.result);
+        assertEquals("combined route and add-on below your minimums; pass the 82% bar", line.reason);
+        assertEquals(82, line.barPercent);
+        List<Notification> posted = cards();
+        assertEquals("the peeked offer's own card", 1, posted.size());
+        Notification card = posted.get(0);
+        assertEquals("Offers to check, never the pass chime", OfferAlerts.REVIEW_CHANNEL_ID, card.getChannelId());
+        assertTrue("it rings once, as a card to check does",
+                card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
+        assertEquals("Taco Bell offer: open Dasher to check it", title(card));
+        assertEquals("+$1.80 · +2 mi · +8 min; below your minimums, passed by Autopilot's 82% bar. Yours to accept.",
+                text(card));
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("posted REVIEW audibleRequested=true"));
+        assertFalse(log, log.contains("posted KEEP"));
     }
 
     @Test public void aPeekedOfferMeetingTheMinimumsKeepsThePassChime() {

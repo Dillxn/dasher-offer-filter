@@ -1,6 +1,8 @@
 package com.local.dasherfilter;
 
 import android.app.Application;
+import android.app.PendingIntent;
+import android.content.Intent;
 import android.graphics.Rect;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -28,6 +30,7 @@ import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowAccessibilityRecord;
 import org.robolectric.shadows.ShadowAccessibilityWindowInfo;
 import org.robolectric.shadows.ShadowSystemClock;
 
@@ -42,7 +45,8 @@ import static org.junit.Assert.assertTrue;
  * acceptance rate", "50%"). The screen reader hands a copy of the labels it already read to Autopilot
  * ({@link AutopilotRuntime#confirmationSeen}), which parses them on its own thread: the confirmation tap never waits
  * for it, one number is kept per offer and question, and Dasher's mark that declining an offer does not lower the rate
- * goes on that offer's own line. Through the real screen reader, on the main looper with simulated time.
+ * goes on that offer's own line (the app's decline, one handed back to the user, the user's own), never on a line the
+ * question may not be about. Through the real screen reader, on the main looper with simulated time.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
@@ -74,6 +78,7 @@ public final class ConfirmationArReadingAdapterTest {
         OfferFilterService.sawDasherBeside(0);
         OfferFilterService.scanLooperForTests = null;
         AutopilotRuntime.executorForTests = Runnable::run;
+        OfferNotificationService.forgetDeclineAction();
     }
 
     /** No history, no reading and no log: as a phone that has seen nothing yet. */
@@ -83,24 +88,33 @@ public final class ConfirmationArReadingAdapterTest {
         DecisionLog.clear(app);
         AutopilotStore.clear(app);
         AutopilotRuntime.forgetCache();
+        OfferNotificationService.forgetDeclineAction();
     }
 
     // ---- The app's own decline: the tap never waits ----
 
     @Test public void theAppsOwnQuestionIsReadWithoutDelayingItsConfirmationTap() {
-        // The baseline: the question's labels go nowhere, as with no hook at all.
-        List<Long> baseline = declineAndConfirm(task -> { }, null);
+        // The reference: the question's labels are handed over and the work dropped (no parse at all).
+        List<Long> reference = declineAndConfirm(task -> { }, null);
         assertNull("nothing was parsed", reading());
         assertTrue(readings().isEmpty());
 
-        // Parsed at once, on the reading thread itself: the most a parse could hold the tap up.
-        List<Long> inline = declineAndConfirm(Runnable::run, null);
-        assertEquals("the same tap uptimes as the baseline", baseline, inline);
+        // The measure sees work in the tap's way: a parse run on the reading thread before the tap, holding it 50 ms,
+        // moves the confirmation tap that much later (the Decline tap, before any question, not at all). Simulated
+        // time moves only when told, so this is how a slow parse before the tap shows here.
+        List<Long> inline = declineAndConfirm(task -> {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(50));
+            task.run();
+        }, null);
+        assertEquals("the Decline tap comes before any question", reference.get(0), inline.get(0));
+        assertTrue("a parse in the tap's way delays it: " + reference + " then " + inline,
+                inline.get(1) - reference.get(1) >= 50);
         assertEquals(72, reading().percent);
         assertEquals(line(790).facts.fingerprint(), reading().fingerprint);
         assertEquals(Collections.singletonList("ar reading 72% (exempt no)"), readings());
 
-        // Parsed later, on Autopilot's own thread, as on a phone: the tap goes first.
+        // Parsed later, on Autopilot's own thread, as on a phone, however long it takes there: the tap goes first, at
+        // the reference's uptimes.
         List<Runnable> held = new CopyOnWriteArrayList<>();
         boolean[] readAtTap = {true};
         int[] handedAtTap = {-1};
@@ -108,11 +122,14 @@ public final class ConfirmationArReadingAdapterTest {
             readAtTap[0] = reading() != null;
             handedAtTap[0] = held.size();
         });
-        assertEquals("the same tap uptimes as the baseline", baseline, deferred);
+        assertEquals("the same tap uptimes as the reference", reference, deferred);
         assertEquals("the question was handed over in the read that tapped, before the tap", 1, handedAtTap[0]);
         assertFalse("tapped without waiting for the parse", readAtTap[0]);
         assertNull(reading());
-        for (Runnable task : held) task.run();
+        for (Runnable task : held) {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(50));
+            task.run();
+        }
         Shadows.shadowOf(Looper.getMainLooper()).idle();
         assertEquals(72, reading().percent);
         assertEquals(line(790).facts.fingerprint(), reading().fingerprint);
@@ -180,6 +197,63 @@ public final class ConfirmationArReadingAdapterTest {
             assertFalse("fixed words and numbers only: " + logged, logged.contains("lower")
                     || logged.contains("decline this offer") || logged.contains("acceptance rate"));
         }
+    }
+
+    /**
+     * The app declines an offer and the user taps Dasher 200 ms later (the offer is theirs now): the question that
+     * Decline brought up comes after the hand-back, when no decline of the app's is under way any more. It is still
+     * about that offer, and Dasher's mark goes on its line, now the user's.
+     */
+    @Test public void aQuestionAfterTheUserTookTheOfferOverIsKeptWithThatOffer() {
+        OfferFilterService service = service();
+        show(service, waiting());
+        pass(2_000);
+        AccessibilityNodeInfo shown = offer("$7.90", "0:35");
+        List<Long> declines = taps(decline, true, null);
+        show(service, shown);
+        assertEquals("declined at once", 1, declines.size());
+        pass(200);
+        userClicks(service, shown.getChild(2));
+        assertTrue(DiagnosticLog.read(app).contains("your tap on Dasher"));
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm, true, null);
+        show(service, question(confirm, "Does not lower acceptance rate", "64%"));
+        pass(400);
+
+        assertTrue("the question is the user's to answer", confirms.isEmpty());
+        DecisionLog.Entry line = line(790);
+        assertEquals(DecisionLog.Action.USER_TOOK_OVER, line.action);
+        AutopilotStore.Reading reading = reading();
+        assertNotNull(reading);
+        assertEquals(64, reading.percent);
+        assertEquals("kept with the offer it is about", line.facts.fingerprint(), reading.fingerprint);
+        assertTrue(DecisionLog.report(app, 5), DecisionLog.hasStep(line, DecisionLog.StepKind.AR_EXEMPT));
+        assertEquals(1, marks());
+        assertEquals(Collections.singletonList("ar reading 64% (exempt yes)"), readings());
+    }
+
+    /**
+     * Dasher's question right after the notification path sent Dasher's own Decline for an offer: not the user's own
+     * question (their decline by hand is not counted then either), so it names no offer, not even the one the user had
+     * on screen a moment before. Dasher's rate is kept all the same.
+     */
+    @Test public void aQuestionRightAfterADeclineThroughDashersNotificationNamesNoOffer() throws Exception {
+        OfferFilterService service = service();
+        show(service, waiting());
+        show(service, offer("$25.00", "0:35"));
+        pass(1_000);
+        OfferNotificationService.sendDecline(PendingIntent.getBroadcast(app, 0, new Intent("decline"),
+                PendingIntent.FLAG_IMMUTABLE));
+        show(service, question(button("Decline offer"), "Does not lower acceptance rate", "64%"));
+        pass(400);
+
+        AutopilotStore.Reading reading = reading();
+        assertNotNull(reading);
+        assertEquals(64, reading.percent);
+        assertEquals("about no offer it can name", "", reading.fingerprint);
+        assertEquals(0, marks());
+        assertFalse(DecisionLog.hasStep(line(2500), DecisionLog.StepKind.AR_EXEMPT));
+        assertEquals(Collections.singletonList("ar reading 64% (exempt yes)"), readings());
     }
 
     @Test public void aQuestionLongAfterAnyOfferIsKeptWithoutOneAndMarksNoLine() {
@@ -365,6 +439,14 @@ public final class ConfirmationArReadingAdapterTest {
     /** Dasher's countdown ticks: a content change. */
     private void tick(OfferFilterService service) {
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    /** The user taps {@code control}: Dasher reports the click, stamped now, with its node. */
+    private void userClicks(OfferFilterService service, AccessibilityNodeInfo control) {
+        AccessibilityEvent click = event(AccessibilityEvent.TYPE_VIEW_CLICKED);
+        ((ShadowAccessibilityRecord) Shadow.extract(click)).setSourceNode(control);
+        service.onAccessibilityEvent(click);
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 
