@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import static org.junit.Assert.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
@@ -61,19 +62,17 @@ public class BundledNotesTest {
     }
 
     /**
-     * The 0.5.0 words are written: two or three lines for whoever accepted notice 13 (the last one published), two or
-     * three for the 0.5.0 card, the headline changes in each, and that card is the one this build (0.5.0, code 80)
-     * shows; 0.4.73, which never shipped (the build carried its name until the release took 0.5.0's), has no entry and
-     * no card. Whoever read notice 13 was told reports went to a private repository: the box corrects it (it is
-     * public). The card says what the code does, never an outcome no phone has shown (Dasher kept responsive, fewer
-     * missed offers), and only the maps it recognizes are skipped.
+     * The 0.5.0 words are written: two or three lines for whoever accepted notice 13 (the last one before 0.5.0), two
+     * or three for the 0.5.0 card, the headline changes in each; 0.4.73, which never shipped (the build carried its
+     * name until the release took 0.5.0's), has no entry and no card. Whoever read notice 13 was told reports went to a
+     * private repository: the box corrects it (it is public). The card says what the code does, never an outcome no
+     * phone has shown (Dasher kept responsive, fewer missed offers), and only the maps it recognizes are skipped.
      */
     @Test public void theWordsFor050AreWrittenAnd0473ShowsNothing() {
         assertTrue(BundledNotes.WRITTEN);
-        List<String> changed = BundledNotes.noticeChanges(13);
-        assertTrue(changed.toString(), changed.size() >= 2 && changed.size() <= 3);
-        assertEquals(changed, BundledNotes.noticeChanges(Consent.VERSION - 1));
-        String notice = String.join(" ", changed);
+        List<String> fourteen = notice(14);
+        assertTrue(fourteen.toString(), fourteen.size() >= 2 && fourteen.size() <= 3);
+        String notice = String.join(" ", fourteen);
         for (String headline : new String[] {"Feedback needs no account", "GitHub is gone",
                 "public GitHub repository, not a private one", "Autopilot", "up or down", "acceptance rate",
                 "7 days", "screen won't time out", "Peek", "Dash diagnostics are opt-in", "Ohio"}) {
@@ -89,13 +88,57 @@ public class BundledNotesTest {
         for (String outcome : new String[] {"stays responsive", "Fewer missed", "aren't read", "catches offers"}) {
             assertFalse(outcome, card.contains(outcome) || notice.contains(outcome));
         }
-        assertEquals("this build is 0.5.0: its card is the one written for it", news,
-                BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
         assertFalse("0.4.73 never shipped and nothing builds as it: no entry", BundledNotes.hasRelease("0.4.73"));
         assertTrue(BundledNotes.whatsNew("0.4.73").isEmpty());
         for (String line : BundledNotes.allLines()) {
             assertFalse("the app's name only through AppName: " + line, line.contains("Offer Filter"));
             assertFalse(line, line.contains("0.4.73"));
         }
+    }
+
+    /**
+     * The 0.5.1 words are written (the owner's decision of 7 October 2026, "Your minimums grow"): two or three lines for
+     * whoever accepted notice 14 (0.5.0), naming the growth, its limit, Undo, the declines it can mean and its switch;
+     * two or three for the 0.5.1 card, the one this build (0.5.1, code 81) shows, saying what the code does (103% for
+     * 30 offers over 2 days, at most 10%, Undo, all minimums together, max stops never) and never an outcome. A reader
+     * of notice 13 sees 14's lines, then 15's.
+     */
+    @Test public void theWordsFor051AreWritten() {
+        assertEquals(15, Consent.VERSION);
+        List<String> fifteen = BundledNotes.noticeChanges(14);
+        assertEquals(fifteen, BundledNotes.noticeChanges(Consent.VERSION - 1));
+        assertTrue(fifteen.toString(), fifteen.size() >= 2 && fifteen.size() <= 3);
+        String notice = String.join(" ", fifteen);
+        for (String headline : new String[] {"raises your minimums", "paid above them for a while",
+                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "more declines", AutopilotText.GROW_SWITCH,
+                "last growth"}) {
+            assertTrue(headline, notice.contains(headline));
+        }
+        List<String> both = new ArrayList<>(notice(14));
+        both.addAll(fifteen);
+        assertEquals("a reader of notice 13: 14's lines, then 15's", both, BundledNotes.noticeChanges(13));
+
+        List<String> news = BundledNotes.whatsNew("0.5.1");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"Your minimums grow", Growth.LEAST_BAR + "% or more",
+                Growth.OFFERS + " offers over " + Growth.LEAST_DAYS + " days",
+                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "All three minimums grow together",
+                "max stops never changes", "lower its bar to protect your acceptance rate", "Turn growth off"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {
+            assertFalse(outcome, card.toLowerCase(java.util.Locale.US).contains(outcome)
+                    || notice.toLowerCase(java.util.Locale.US).contains(outcome));
+        }
+        assertEquals("this build is 0.5.1: its card is the one written for it", news,
+                BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
+    }
+
+    /** The lines notice {@code version} added, as a reader of the one before it sees them. */
+    private static List<String> notice(int version) {
+        List<String> since = new ArrayList<>(BundledNotes.noticeChanges(version - 1, true));
+        List<String> after = BundledNotes.noticeChanges(version, true);
+        return new ArrayList<>(since.subList(0, since.size() - after.size()));
     }
 }

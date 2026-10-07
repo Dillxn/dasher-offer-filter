@@ -24,11 +24,13 @@ public final class LegalTextsTest {
     private static final String CONTACT = "privacy@offerfilter.org";
     private static final String SOURCE = "<https://github.com/Dillxn/dasher-offer-filter>";
     /**
-     * The beta texts' effective date, the one place the tests name it (ConsentGateTest reads it here). The release
-     * that ships 0.5.0 sets it to the day the texts are published: in TERMS.md's and PRIVACY.md's second line and here,
-     * then runs tools/legal_texts.py.
+     * The beta texts' effective date, the one place the tests name it (ConsentGateTest reads it here). A release that
+     * changes them sets it to the day the texts are published: in TERMS.md's and PRIVACY.md's second line and here,
+     * then runs tools/legal_texts.py. 0.5.1's texts are dated the same day as 0.5.0's.
      */
     static final String EFFECTIVE = "7 October 2026";
+    /** The version the beta texts are for, in their second line. */
+    static final String FOR_VERSION = "0.5.1";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -41,9 +43,9 @@ public final class LegalTextsTest {
         String terms = LegalTexts.Doc.TERMS.text();
         String privacy = LegalTexts.Doc.PRIVACY.text();
         assertTrue(terms, terms.startsWith("# " + AppName.NAME + " terms of use\n\nBeta terms, effective " + EFFECTIVE
-                + " · for " + AppName.NAME + " 0.5.0\n\n"));
+                + " · for " + AppName.NAME + " " + FOR_VERSION + "\n\n"));
         assertTrue(privacy, privacy.startsWith("# " + AppName.NAME + " privacy\n\nBeta privacy policy, effective "
-                + EFFECTIVE + " · for " + AppName.NAME + " 0.5.0\n\n"));
+                + EFFECTIVE + " · for " + AppName.NAME + " " + FOR_VERSION + "\n\n"));
         assertTrue("honest that this is a beta", terms.contains(AppName.NAME + " is beta software"));
         assertTrue(privacy.contains(AppName.NAME + " is beta software"));
         for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
@@ -99,7 +101,18 @@ public final class LegalTextsTest {
                 "it keeps your unlocked screen from timing out, whatever app is in front",
                 "It never wakes or unlocks the phone; the power button still turns the screen off. This uses more "
                         + "battery.",
-                "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off"}) {
+                "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off",
+                // 0.5.1: the minimums grow (Growth), with its limits, Undo and the switch.
+                "Autopilot also raises your minimums once its bar has stayed at " + Growth.LEAST_BAR + "% or more for "
+                        + Growth.OFFERS + " offers over at least " + Growth.LEAST_DAYS + " days",
+                "all of them by the same share, at most " + Growth.MOST_PERCENT + "% at a time",
+                "while its bar comes down so offers are asked about the same right after",
+                "It never lowers them; you can.",
+                "A note on the homepage says what grew, with Undo, until you tap it or your minimums change another "
+                        + "way.",
+                "Raised minimums can mean more declines.",
+                "Turn this off with " + AutopilotText.GROW_SWITCH + " in Autopilot's details; while Autopilot is "
+                        + "off, your minimums never grow."}) {
             assertTrue(fact, terms.contains(fact));
         }
         for (String retired : new String[] {"strict or compensating area mode", "minimums percentage",
@@ -206,8 +219,8 @@ public final class LegalTextsTest {
                 "Autopilot's bar and why it changed (never your acceptance rate)",
                 "The fingerprint kept with a reading never leaves the phone.",
                 "Report this offer leaves it out.",
-                "Clear history removes the reading, Autopilot's working figures, its last-change note and its other "
-                        + "notes above.",
+                "Clear history removes the reading, Autopilot's working figures, its last-change note, the note of "
+                        + "its last growth (and with it the Undo) and its other notes above.",
                 // The rules, the history's new fields and the 0.5.0 migration.
                 "Autopilot's settings: whether it is on, your acceptance goal (70%, 50% or pay first), its current bar",
                 "the bar it was judged at and whether Autopilot set that bar",
@@ -227,6 +240,22 @@ public final class LegalTextsTest {
         assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains(reportThisOffer()));
         assertTrue("Clear history's own words name the reading too",
                 MainActivity.CLEAR_HISTORY.contains("Autopilot's acceptance-rate reading"));
+        // 0.5.1: what the minimums' growth keeps, its switch and what Clear history removes of it.
+        for (String fact : new String[] {"and when your current minimums took effect",
+                "whether Let my minimums grow is on (it is unless you turn it off)",
+                "it also raises your minimums, at most 10% at a time, once the bars it recorded in your decision "
+                        + "history have stayed at 103% or more for 30 offers over at least 2 days; it reads nothing "
+                        + "else for this, and nothing of what you accepted or declined",
+                "Autopilot keeps a note of the last growth: when, by how much, how many offers on how many days it "
+                        + "rested on, your minimums and its bar before and after, and whether its note on the "
+                        + "homepage (with Undo) is still waiting",
+                "each growth of your minimums and its Undo (your minimums and the bar before and after)",
+                "the note of its last growth (and with it the Undo)",
+                "Turn off Let my minimums grow in Autopilot's details to keep your minimums where you set them."}) {
+            assertTrue(fact, privacy.contains(fact));
+        }
+        assertTrue("and Clear history's own words name the note",
+                MainActivity.CLEAR_HISTORY.contains("its note that your minimums grew"));
         // What 0.5.0 retired is named only as deleted, never as kept.
         for (String retired : new String[] {"Reset clears the learned minimums", "learned minimums remain",
                 "what the adaptive minimum learned from offers you accepted or declined (their pay and per-mile",

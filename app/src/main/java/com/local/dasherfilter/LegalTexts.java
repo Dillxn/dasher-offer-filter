@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 7 October 2026 · for {app} 0.5.0
+            Beta terms, effective 7 October 2026 · for {app} 0.5.1
 
             ## What {app} is
 
@@ -71,10 +71,15 @@ final class LegalTexts {
             and then Dasher's confirmation, for you. Autopilot is off until you turn it on. It then moves how much \
             of your minimums an offer must pay, between 50% and 150%, using your recent offers, how often they come \
             and the acceptance rate Dasher shows when you decline. Above 100% it declines offers that meet your \
-            minimums. Offers it lets through below your minimums are left to you. Auto-accept starts off. If you \
-            separately enable it in Settings, it can tap Accept on a complete standalone offer that meets 100% of \
-            your minimums and any higher Autopilot bar, committing you to that delivery. Add-ons and unclear offers \
-            are left to you.
+            minimums. Offers it lets through below your minimums are left to you. Autopilot also raises your \
+            minimums once its bar has stayed at 103% or more for 30 offers over at least 2 days: all of them by the \
+            same share, at most 10% at a time, while its bar comes down so offers are asked about the same right \
+            after. It never lowers them; you can. A note on the homepage says what grew, with Undo, until you tap \
+            it or your minimums change another way. Raised minimums can mean more declines. Turn this off with Let \
+            my minimums grow in Autopilot's details; while Autopilot is off, your minimums never grow. Auto-accept \
+            starts off. If you separately enable it in Settings, it can tap Accept on a complete standalone offer \
+            that meets 100% of your minimums and any higher Autopilot bar, committing you to that delivery. Add-ons \
+            and unclear offers are left to you.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -172,7 +177,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 7 October 2026 · for {app} 0.5.0
+            Beta privacy policy, effective 7 October 2026 · for {app} 0.5.1
 
             {app} does not require an {app} account and has no ads or analytics. It does not sell or rent your \
             data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -250,10 +255,11 @@ final class LegalTexts {
 
             ## What it keeps on the phone
 
-            - Your rules (minimum pay, per mile, per hour and max stops), your separate auto-accept choice (off by \
-            default), and Autopilot's settings: whether it is on, your acceptance goal (70%, 50% or pay first), its \
-            current bar and whether you have answered its goal question. What else Autopilot keeps is under \
-            Autopilot and your acceptance rate below.
+            - Your rules (minimum pay, per mile, per hour and max stops) and when your current minimums took \
+            effect, your separate auto-accept choice (off by default), and Autopilot's settings: whether it is on, \
+            your acceptance goal (70%, 50% or pay first), its current bar, whether you have answered its goal \
+            question and whether Let my minimums grow is on (it is unless you turn it off). What else Autopilot \
+            keeps is under Autopilot and your acceptance rate below.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, whether the \
             offer declared items or shopping, the result, what the app did, the score (pay as a percent of your \
             minimums), the bar it was judged at and whether Autopilot set that bar, whether Dasher said declining \
@@ -416,7 +422,10 @@ final class LegalTexts {
             Autopilot is off unless you turn it on. While it is on, it moves the bar (how much of your minimums an \
             offer must pay, from 50% to 150%) between offers, only through the screen reader, using your decision \
             history, the wait-estimate records above and the acceptance rate Dasher shows. Turning it off puts the \
-            bar back to exactly your minimums.
+            bar back to exactly your minimums. While it is on and Let my minimums grow is on, it also raises your \
+            minimums, at most 10% at a time, once the bars it recorded in your decision history have stayed at 103% \
+            or more for 30 offers over at least 2 days; it reads nothing else for this, and nothing of what you \
+            accepted or declined.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
@@ -436,9 +445,14 @@ final class LegalTexts {
             correction, the acceptance rate it carried forward from Dasher's reading at its last checkpoint \
             (replaced after 25 more counted offers, and dropped when you change the goal or turn Autopilot off or \
             on). All of this is numbers and fixed words, never screen text.
+            - When it raises your minimums, Autopilot keeps a note of the last growth: when, by how much, how many \
+            offers on how many days it rested on, your minimums and its bar before and after, and whether its note \
+            on the homepage (with Undo) is still waiting. Undo removes it; tapping OK keeps it for Autopilot's \
+            details. Numbers only.
             - The 24-hour logs note each new reading, and Autopilot's plans with the acceptance rate and the offer \
-            rate (offers an hour) they count with, as numbers; as for other recognized screens, they can also hold \
-            the decline question's masked words with its percentage.
+            rate (offers an hour) they count with, as numbers, each growth of your minimums and its Undo (your \
+            minimums and the bar before and after), and when Let my minimums grow is turned on or off; as for other \
+            recognized screens, they can also hold the decline question's masked words with its percentage.
             - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Share report**), \
             in masked diagnostics you attach to feedback, and in **Report this offer**, which sends Autopilot's \
             state and the acceptance rate it counts with. It is never in the summary after each dash: that summary \
@@ -447,8 +461,8 @@ final class LegalTexts {
             kept with a reading never leaves the phone. The mark that declining an offer does not lower your \
             acceptance rate is part of that offer's history line and goes with it in Share report, attached \
             diagnostics and the summary after each dash; Report this offer leaves it out.
-            - Clear history removes the reading, Autopilot's working figures, its last-change note and its other \
-            notes above. Your rules and Autopilot's settings stay.
+            - Clear history removes the reading, Autopilot's working figures, its last-change note, the note of its \
+            last growth (and with it the Undo) and its other notes above. Your rules and Autopilot's settings stay.
 
             ## What leaves the phone, and when
 
@@ -555,15 +569,16 @@ final class LegalTexts {
             never wakes or unlocks the phone, and the power button still turns the screen off; pausing auto-decline \
             ends the hold. Peek pauses while your phone is locked.
             - Autopilot is off unless you turn it on, and turning it off puts the bar back to exactly your \
-            minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear history removes it.
+            minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear history removes it. \
+            Turn off Let my minimums grow in Autopilot's details to keep your minimums where you set them.
             - Clear history (Settings) removes the decisions, both logs and the latest states, the observed-wait \
             records, the offer map and cached place names, the temporary restart/error records above, stop \
             summaries, the current dash's problem counts and after-dash summaries not yet sent, plus Autopilot's \
-            acceptance-rate reading, its working figures, its last-change note and its other notes. Lookups and \
-            wait-record writes already in progress cannot restore cleared history. Feedback and offer reports you \
-            sent and that still wait to go stay until they are sent or 7 days pass. Your rules, Autopilot's \
-            settings and the app's last status line (which can show the last offer's figures until the next status \
-            replaces it) remain.
+            acceptance-rate reading, its working figures, its last-change note, the note of its last growth and its \
+            other notes. Lookups and wait-record writes already in progress cannot restore cleared history. \
+            Feedback and offer reports you sent and that still wait to go stay until they are sent or 7 days pass. \
+            Your rules, Autopilot's settings and the app's last status line (which can show the last offer's \
+            figures until the next status replaces it) remain.
             - Feedback and offer reports leave only after you tap Send. Leave **Attach masked diagnostics** off to \
             send only your words, the category and the app's version.
             - **Share anonymous diagnostics after each dash** is off unless you turn it on, and you can turn it off \

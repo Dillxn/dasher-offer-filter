@@ -13,11 +13,12 @@ import android.content.SharedPreferences;
 final class Consent {
     /**
      * Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. 14
-     * (first published with 0.5.0; 13 was the last published notice) covers accountless feedback, Autopilot and the
-     * acceptance-rate reading it keeps, the screen held on during a dash, Peek's unlock catch-up and the dated beta
-     * terms and privacy policy.
+     * (published with 0.5.0; 13 was the one before) covers accountless feedback, Autopilot and the acceptance-rate
+     * reading it keeps, the screen held on during a dash, Peek's unlock catch-up and the dated beta terms and privacy
+     * policy. 15 (0.5.1) covers Autopilot raising the minimums after offers have paid above them for a while (at most
+     * 10% at a time, with Undo, and the switch that stops it) and the note of the last growth it keeps.
      */
-    static final int VERSION = 14;
+    static final int VERSION = 15;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -33,7 +34,9 @@ final class Consent {
                 + "on offers below your minimums. Optional Autopilot moves that cutoff up or down by itself (50% to 150% of "
                 + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
                 + "you decline: raised, it declines offers that meet your minimums; to protect your acceptance goal it can "
-                + "let offers below your minimums through for you to decide. Auto-accept is off by default; if "
+                + "let offers below your minimums through for you to decide. Autopilot also raises your minimums after "
+                + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
+                + "declines. Auto-accept is off by default; if "
                 + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
                 + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
                 + "most twice. Your touch stops it. It can briefly turn offer sound down. During a dash it keeps your "

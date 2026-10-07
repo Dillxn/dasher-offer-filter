@@ -1,3 +1,26 @@
+## 0.5.1 — your minimums grow
+
+Version 0.5.1 (code 81). It follows 0.5.0. Everyone sees the notice once more (notice 15), because Autopilot can now change your minimums.
+
+### Your minimums grow
+- **The owner's decision of 7 October 2026:** "the whole point of the app was so that your minimums could grow". 0.5.0 removed the old learned minimums, which jumped to the best offer you accepted and never came down. This growth is different: it comes from sustained evidence, never from one offer.
+- **When it happens.** Autopilot's bar above 100% means offers have paid above your minimums. When your newest 30 offers that Autopilot judged since your minimums last changed were all at a bar of 103% or more, on at least 2 calendar days, that gain moves into your minimums.
+- **How much.** Each minimum you set grows by the lowest of those 30 bars less 100, at most 10 points, rounded up to a whole cent (cent a mile, cent a minute), and Autopilot's bar comes down by the same share, so offers right after are asked about the same. A bar that stayed at 112% raises them 10% and brings the bar to 102%; with the lowest at 108%, $4.00 · $1.00/mi · $15/hr become $4.32 · $1.08/mi · $16.20/hr and a 112% bar becomes 104%.
+- **Only up, unless you lower them.** All your minimums grow together, so their shape stays yours. An unset minimum stays unset, and max stops never changes. Your minimums grow only where Autopilot may move its bar: between offers, never while an offer, a decline or a peek is under way, once at a time, never while Autopilot is recovering toward your acceptance-rate goal, and not while Autopilot has lowered its bar below where it could come down with them. After a growth, the 30 offers count again from the new minimums.
+- **A note says what grew and why, with Undo:** "Your minimums grew 8%", then "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised them: $4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr." It stays on the homepage until you tap Undo or OK, and goes (with its Undo) once your minimums change another way or you clear history. Undo puts your minimums back as your own change; Autopilot then sets its bar for them at its next safe point. Autopilot's details say when your minimums last grew. Nothing is announced aloud.
+- **A slow night can't starve you.** Autopilot can still lower its bar, down to 50% of your minimums, to protect your acceptance rate, and offers between the bar and your minimums are left to you, never declined automatically (as in 0.5.0).
+- **"Let my minimums grow"** in Autopilot's details is on by default, also when updating from 0.5.0. Off, your minimums never grow and nothing else changes. With Autopilot off they never grow either, and growth never runs without a pay, per-mile or hourly minimum.
+- **Nothing is learned from what you accept or decline.** Growth reads only the bars Autopilot itself recorded on your offers' history lines.
+- **Updating from 0.5.0:** its history lines don't say which minimums judged them, so the 30 offers count from the update.
+- **A change saved from a screen loaded just before a growth** (pausing, or one knob) no longer writes your other minimums back: only what you changed is saved.
+
+### Privacy and the notice
+- **Notice 15** adds one clause: Autopilot also raises your minimums after offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more declines.
+- **The terms and the privacy text** describe the growth, its limits, Undo and the switch. Autopilot keeps its last growth on the phone (when, by how much, on how many offers and days, your minimums and its bar before and after, and whether its note is waiting), and when your current minimums took effect is kept with your rules; numbers only. The 24-hour logs note each growth, its Undo and the switch. Clear history removes the note of the last growth and its Undo; your rules and Autopilot's settings stay.
+
+### Evidence boundaries
+- **Simulation only:** plain Java tests and simulated Android 8 and 15 (Robolectric), with synthetic offer histories. No phone has shown a growth yet. The 103% bar, the 30 offers, the 2 days and the 10% limit are the owner's choices, not tuned on real dashes.
+
 ## 0.5.0 — three minimums and Autopilot; Dasher stays responsive; smoother Peek and driving layouts; accountless feedback
 
 Version 0.5.0 (code 80), a public beta for Cincinnati Dashers. It follows 0.4.72. Versions 0.4.73 and 0.4.74 were never released, and everything they held is part of 0.5.0. Everyone sees the notice once more (notice 14), because what the app reads, keeps and sends has changed.

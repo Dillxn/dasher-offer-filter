@@ -29,8 +29,8 @@ final class BundledNotes {
     private static final Map<String, List<String>> RELEASES = new LinkedHashMap<>();
 
     static {
-        // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 is
-        // first published with 0.5.0; its reader last accepted notice 13.
+        // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 was
+        // first published with 0.5.0; its reader last accepted notice 13. Notice 15 comes with 0.5.1.
         // Notice 13 and earlier texts called the repository older versions filed reports in "private"; it is public
         // (the owner's decision, 6 October 2026), and the first line corrects that for everyone who read them.
         notice(14,
@@ -40,6 +40,13 @@ final class BundledNotes {
                         + "Dasher's last acceptance rate is kept, used 7 days at most.",
                 "Mid-dash your unlocked screen won't time out, and Peek can check an offer that came while locked. "
                         + "Dash diagnostics are opt-in. The Terms name Ohio law.");
+        notice(15,
+                "Autopilot now raises your minimums after offers have paid above them for a while: at most 10% at a "
+                        + "time, with Undo.",
+                "Higher minimums can mean more declines. \"Let my minimums grow\" in Autopilot's details turns it "
+                        + "off.",
+                "Autopilot keeps a note of its last growth: when, how much, and your minimums and bar before and "
+                        + "after.");
         // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
         // the versionName that ships (BundledNotesTest requires the current versionName's entry). What the code does,
         // never an outcome no phone has shown yet.
@@ -50,6 +57,13 @@ final class BundledNotes {
                         + "while locked; mid-dash your unlocked screen won't time out.",
                 "Lighter on Dasher: recognized maps are skipped and screens with no offer are read less often. "
                         + "Feedback needs no account: Settings → Send anonymous feedback.");
+        release("0.5.1",
+                "Your minimums grow: when Autopilot's bar stays at 103% or more for 30 offers over 2 days, that gain "
+                        + "moves into your minimums, at most 10% at a time.",
+                "A note says what grew and why, with Undo. All three minimums grow together; max stops never "
+                        + "changes.",
+                "Autopilot can still lower its bar to protect your acceptance rate. Turn growth off in Autopilot's "
+                        + "details.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

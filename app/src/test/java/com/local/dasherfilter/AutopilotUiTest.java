@@ -1553,8 +1553,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             AlertDialog confirm = ShadowAlertDialog.getLatestAlertDialog();
             assertOwnsItsTouches(confirm);
             assertEquals(MainActivity.CLEAR_HISTORY, message(confirm));
-            assertTrue("it names both things of Autopilot's that go", message(confirm).contains("Autopilot's "
-                    + "acceptance-rate reading and last change from this phone. Your rules and Autopilot settings stay."));
+            assertTrue("it names what of Autopilot's goes", message(confirm).contains("Autopilot's "
+                    + "acceptance-rate reading and last change from this phone, with its note that your minimums grew. "
+                    + "Your rules and Autopilot settings stay."));
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             assertNull("no acceptance-rate reading is left", AutopilotStore.reading(app, System.currentTimeMillis()));

@@ -629,7 +629,7 @@ public final class AutopilotTextTest {
                 {"RECOVERY", "acceptance rate below your goal"}, {"GOAL", "keeping enough offers for your goal"},
                 {"PASS_FLOOR", "keeping at least 1 in 5 offers coming to you"},
                 {"AT_MINIMUMS", "holding at your minimums"}, {"VALUE_UP", "offers are coming often"},
-                {"VALUE_DOWN", "offers are slower"}};
+                {"VALUE_DOWN", "offers are slower"}, {"MINIMUMS_GREW", "your minimums grew"}};
         assertEquals(Autopilot.Reason.values().length, words.length);
         for (String[] reason : words) {
             assertEquals(reason[1], AutopilotText.reasonWords(Autopilot.Reason.valueOf(reason[0])));

@@ -162,7 +162,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         assertEquals("plain and few: the same eight points", java.util.Arrays.asList("Acceptance rate.",
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data."), java.util.Arrays.asList(leads));
-        assertEquals("notice 14 was never published before 0.5.0: these words ride on it", 14, Consent.VERSION);
+        assertEquals("notice 15 comes with 0.5.1: these words ride on it", 15, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers below your minimums.",
@@ -173,6 +173,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                         + "and the acceptance rate Dasher shows when you decline",
                 "raised, it declines offers that meet your minimums",
                 "to protect your acceptance goal it can let offers below your minimums through for you to decide",
+                // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo; more declines.
+                "Autopilot also raises your minimums after offers have paid above them for a while, at most "
+                        + Growth.MOST_PERCENT + "% at a time, with Undo, which can mean more declines.",
                 "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
                         + "offers that meet your minimums and commit you to a delivery.",
                 "it may go Back and retry, at most twice", "Your touch stops it.",
@@ -310,10 +313,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
-        // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms.
-        assertEquals(14, Consent.VERSION);
+        // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
+        // growth. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(15, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
-                .putInt(Consent.ACCEPTED_VERSION, 13).commit();
+                .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
 
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -386,7 +390,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             if (doc != LegalTexts.Doc.LICENSE) {
                 // Dated beta texts, never drafts.
                 String dated = (doc == LegalTexts.Doc.TERMS ? "Beta terms" : "Beta privacy policy")
-                        + ", effective " + LegalTextsTest.EFFECTIVE + " · for " + AppName.NAME + " 0.5.0";
+                        + ", effective " + LegalTextsTest.EFFECTIVE + " · for " + AppName.NAME + " "
+                        + LegalTextsTest.FOR_VERSION;
                 assertNotNull(doc.title + ": " + dated, shownTextContaining(shown, dated));
                 assertNull(shownTextContaining(shown, "Not legal advice"));
             }
