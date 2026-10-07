@@ -159,7 +159,15 @@ public final class LegalTextsTest {
                 "Anthropic's Claude or OpenAI's ChatGPT/Codex", "Cloudflare and Supabase necessarily receive ordinary "
                 + "connection metadata", "this is not a guarantee of anonymity",
                 "Never coordinates, place names, or an install or device identifier",
-                "no account, name, email, IP address, user agent, install or device identifier"}) {
+                "no account, name, email, IP address, user agent, install or device identifier",
+                // The developer's own view of the providers' request logs, and the homepage's own place lookup.
+                "The developer can see the request logs Supabase keeps for the project, which can record each "
+                        + "request's IP address",
+                "To name the squares on the map and the place you are in", "the phone's own approximate position "
+                        + "among them", "which can include where you opened the app",
+                // What an older version's history lines keep after 0.5.0 deleted the learned minimums.
+                "Decisions an older version recorded keep the reasons and notes they were recorded with, which can "
+                        + "name an amount its adaptive minimum had learned"}) {
             assertTrue(fact, privacy.contains(fact));
         }
         assertFalse(privacy.contains("no server that collects your data"));

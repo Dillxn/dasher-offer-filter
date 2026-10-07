@@ -298,9 +298,9 @@ final class LegalTexts {
             offers came in, each with its number of offers, their total and best pay, the pay and miles of those \
             whose miles were read, and when it last had one, with no age-based expiry; also the last offer's pay, \
             miles, minutes and stops and when it came, so one offer seen twice counts once, and a count of offers \
-            that came with no location. The separate place-name cache holds at most 300 rounded positions, also \
-            without age-based expiry; older names are removed as others are used. Clear history or uninstalling \
-            removes all of it.
+            that came with no location. The separate place-name cache holds at most 300 rounded positions, which \
+            can include where you opened the app (the place the homepage names), also without age-based expiry; \
+            older names are removed as others are used. Clear history or uninstalling removes all of it.
             - While you are dashing: whether a dash is on, when it started and was last seen (also on the phone's \
             since-boot clock with its boot number, so a changed clock cannot release an update held for a dash \
             early: an update the app finds by itself waits for the dash to end, or for 8 hours with nothing of a \
@@ -378,7 +378,11 @@ final class LegalTexts {
             rates, and when learning was on or reset), the record of offers you declined by hand, and the retired \
             rules (per stop, per item, the hotspot distance, the minimums percentage and score by area), after \
             building per stop and the minimums percentage into your minimums. Until you close the one-time note \
-            about this change, a summary of it (your old and new minimums, as numbers) stays with your rules.
+            about this change, a summary of it (your old and new minimums, as numbers) stays with your rules. \
+            Decisions an older version recorded keep the reasons and notes they were recorded with, which can name \
+            an amount its adaptive minimum had learned (such as "must match best accepted $0.45/min"), until newer \
+            decisions replace them or you clear history; like the rest of the history, they can go in a report you \
+            share or send. Log lines it wrote about what it learned age out with the logs within 24 hours.
 
             Decision and confirmation lines take priority over repeated scan timings within the existing log \
             limits. Reports include numeric counts of discarded log lines, so missing evidence is visible. Atomic \
@@ -494,8 +498,10 @@ final class LegalTexts {
             made with a secret key from the network's address and the date, so the value changes every day; the \
             address itself is not stored. Counts older than two days are deleted as new submissions arrive. \
             Cloudflare and Supabase necessarily receive ordinary connection metadata, such as your IP address, \
-            while handling a request and may keep infrastructure logs under their own policies, so this is not a \
-            guarantee of anonymity.
+            while handling a request and may keep infrastructure logs under their own policies. The developer can \
+            see the request logs Supabase keeps for the project, which can record each request's IP address and the \
+            app or browser that sent it, for as long as Supabase keeps them. So this is not a guarantee of \
+            anonymity.
             - Submissions are kept on the feedback service for 90 days, then deleted. The developer reads them, and \
             may use AI systems (Anthropic's Claude or OpenAI's ChatGPT/Codex) to investigate problems with them. A \
             submission does not guarantee review or a fix.
@@ -507,10 +513,10 @@ final class LegalTexts {
             - **Share report**, only when you tap it, hands a masked report to the app you choose: the same report \
             attached diagnostics carry, with the latest acceptance-rate reading. From there, that app handles the \
             copy under its own privacy practices.
-            - Place names. To name the squares on the map, the app asks Android's own place lookup (Google's \
-            servers on most phones) about positions rounded to about half a kilometre, once while a position \
-            remains cached. An evicted or cleared position may be looked up again. Nothing about your offers goes \
-            with them.
+            - Place names. To name the squares on the map and the place you are in, the app asks Android's own \
+            place lookup (Google's servers on most phones) about positions rounded to about half a kilometre, the \
+            phone's own approximate position among them, once while a position remains cached. An evicted or \
+            cleared position may be looked up again. Nothing about your offers goes with them.
             - Navigation, only when you tap it. Opening an offer area hands that historical area's center \
             coordinates to your chosen Maps or Waze app, or to Google Maps in a browser. Gas and gas-price choices \
             hand a search phrase to the map provider. A Back to map tap opens your navigation app the way its own \
