@@ -26,15 +26,27 @@ public class PeekStateTest {
                 new ComponentName("com.doordash.driverapp", "Home"), at);
         return peek;
     }
-    @Test public void touchRestartsQuietAndTheWaitHasABound() {
+    @Test public void touchRestartsQuietOnceItsGestureCouldHaveEndedAndTheWaitHasABound() {
         Peek peek = armed(1_000);
         assertFalse(peek.quiet(1_699));
+        assertTrue(peek.quiet(1_700));
         peek.touchedWhileArming(1_650);
-        assertFalse(peek.quiet(2_000));
-        assertTrue(peek.quiet(2_350));
+        // The watch hears a gesture's first finger only: it may still be down for GESTURE_MS, and the quiet follows.
+        assertFalse("never 700 ms after a finger landed", peek.quiet(2_350));
+        assertFalse(peek.quiet(1_650 + Peek.GESTURE_MS + Peek.QUIET_MS - 1));
+        assertTrue(peek.quiet(1_650 + Peek.GESTURE_MS + Peek.QUIET_MS));
+        assertTrue(peek.touchedWhileArming());
         peek.touchedWhileArming(3_800);
         assertTrue(peek.quietTimedOut(4_000));
         assertFalse(peek.quiet(4_000));
+    }
+
+    @Test public void theKeyboardRestartsTheQuietFromWhenItWasSeen() {
+        Peek peek = armed(1_000);
+        peek.keyboardWhileArming(1_200);
+        assertFalse(peek.quiet(1_899));
+        assertTrue("a keyboard is no gesture: its quiet counts from when it was seen", peek.quiet(1_900));
+        assertTrue(peek.touchedWhileArming());
     }
     @Test public void gapStartsWhenThePeekEndsAndNotWhenItOpened() {
         Peek peek = armed(1_000);

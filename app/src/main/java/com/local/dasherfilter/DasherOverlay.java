@@ -68,6 +68,12 @@ final class DasherOverlay implements DasherTab.Listener {
     private Runnable backToMap;
     /** Whether the screen reader wants the chip shown now. */
     private boolean chipWanted;
+    /**
+     * Whether the read that wants the chip shown began after Dasher's last change: only then does the chip take touches.
+     * Any change of Dasher's since may be an offer drawing under it, which is never under a chip that takes touches
+     * (every touch there is Dasher's) until a read after the change finds the wait for offers still there.
+     */
+    private boolean chipCurrent;
     private DasherGuide.Pointer pointer;
     private long pointerAt = -GUIDE_EVERY_MS;
     private long pointerVersion = -1;
@@ -135,17 +141,18 @@ final class DasherOverlay implements DasherTab.Listener {
      * taken for Offer Filter's own (no tab).
      */
     void sync(Rect dasher, boolean split, DasherScene scene) {
-        sync(dasher, split, split, scene, null, false);
+        sync(dasher, split, split, scene, null, false, false);
     }
 
     /**
      * As {@link #sync(Rect, boolean, DasherScene)}: {@code oursBeside} whether the other half of a split screen is
      * Offer Filter's own (no tab then; beside another app the tab shows over Dasher's half), {@code verdict} the
-     * decided offer on screen's KEEP or REVIEW (the slim peek's tint), and {@code backToMap} whether the Back to map
-     * chip shows.
+     * decided offer on screen's KEEP or REVIEW (the slim peek's tint), {@code backToMap} whether the Back to map chip
+     * shows, and {@code chipCurrent} whether the read that wants it began after Dasher's last change (only then does
+     * it take touches).
      */
     void sync(Rect dasher, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict,
-              boolean backToMap) {
+              boolean backToMap, boolean chipCurrent) {
         if (dasher == null || dasher.isEmpty() || !enabled(service)) {
             hide();
             return;
@@ -157,6 +164,7 @@ final class DasherOverlay implements DasherTab.Listener {
         this.scene = scene == null ? DasherScene.UNKNOWN : scene;
         this.verdict = verdict;
         this.chipWanted = backToMap;
+        this.chipCurrent = backToMap && chipCurrent;
         dashing = Dashing.now(service);
         if (this.oursBeside) {
             hideTab();
@@ -267,6 +275,13 @@ final class DasherOverlay implements DasherTab.Listener {
         if (suspended) return;
         DasherTab view = tab;
         if (view == null) return;
+        // Only over Dasher: another app may have come in front since the screen reader last looked (Android tells it
+        // nothing of other apps), so with Dasher not in front by Android's own list of windows now, a tap on the tab
+        // does nothing (never pauses auto-decline from over a map) and the tab goes until a look puts it back.
+        if (!OfferFilterService.isDasherOnScreenNow()) {
+            suspend();
+            return;
+        }
         if (tucksAway()) {
             // Out for a few seconds after each tap, then tucked away again.
             boolean wasTucked = view.look() == DasherTab.Look.PEEK;
@@ -356,7 +371,8 @@ final class DasherOverlay implements DasherTab.Listener {
                     WindowManager.LayoutParams.WRAP_CONTENT, ui.dp(BackToMapChip.HEIGHT_DP),
                     WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                            | (chipCurrent ? 0 : WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE),
                     PixelFormat.TRANSLUCENT);
             params.gravity = Gravity.TOP | Gravity.START;
             try {
@@ -375,6 +391,39 @@ final class DasherOverlay implements DasherTab.Listener {
         int lowest = Math.max(minTop(), area.bottom - ui.dp(BackToMapChip.HEIGHT_DP) - ui.dp(BOTTOM_MARGIN_DP));
         int y = clamp(tabTop() + ui.dp(DasherTab.HEIGHT_DP) + ui.dp(CHIP_GAP_DP), minTop(), lowest);
         place(chip, x, y, WindowManager.LayoutParams.WRAP_CONTENT);
+        chipTouchable(chipCurrent);
+    }
+
+    /**
+     * Main thread, at each of Dasher's events but a click (a click puts all of it away): what Dasher changed may be an
+     * offer drawing under the chip, which no read has seen yet. Until one has, the chip takes no touches (every touch
+     * there is Dasher's); it stays in view, so a screen that changes all the time does not make it blink.
+     */
+    void dasherChanged() {
+        if (chip == null || !chipCurrent) return;
+        chipCurrent = false;
+        chipTouchable(false);
+    }
+
+    /** Whether the chip is on screen and takes touches (tests). */
+    boolean chipTakesTouches() {
+        if (chip == null || !(chip.getLayoutParams() instanceof WindowManager.LayoutParams)) return false;
+        return (((WindowManager.LayoutParams) chip.getLayoutParams()).flags
+                & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0;
+    }
+
+    private void chipTouchable(boolean on) {
+        if (chip == null || !(chip.getLayoutParams() instanceof WindowManager.LayoutParams)) return;
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) chip.getLayoutParams();
+        int flags = on ? params.flags & ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                : params.flags | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        if (flags == params.flags) return;
+        params.flags = flags;
+        try {
+            service.getSystemService(WindowManager.class).updateViewLayout(chip, params);
+        } catch (RuntimeException gone) {
+            // The window went with the service.
+        }
     }
 
     private void hideChip() {

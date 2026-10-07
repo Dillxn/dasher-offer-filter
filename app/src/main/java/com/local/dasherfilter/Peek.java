@@ -54,6 +54,12 @@ import java.util.function.LongSupplier;
 final class Peek {
     /** No touch and no keyboard this long before Dasher is opened. */
     static final long QUIET_MS = 700;
+    /**
+     * A touch the watch saw while arming may still be under way this long after it landed: Android tells the watch of
+     * a gesture's first finger landing only, never of a finger kept down (a pan of the map, a pinch, a long press). So
+     * the quiet starts this long after it, never mid-gesture.
+     */
+    static final long GESTURE_MS = 2_000;
     /** That quiet is waited for this long at most; else no peek ("you were using the phone"). */
     static final long QUIET_WAIT_MS = 3_000;
     /** Dasher's window must appear this long after its launch intent was started (cold starts take 2-5 s). */
@@ -427,11 +433,21 @@ final class Peek {
         this.phase = Phase.ARMING;
     }
 
-    /** A touch while arming: the quiet starts again from it. */
+    /**
+     * A touch while arming: the quiet starts again {@link #GESTURE_MS} after it landed (its finger may be down until
+     * then, which the watch never hears).
+     */
     void touchedWhileArming(long at) {
+        if (phase != Phase.ARMING || at == NEVER) return;
+        if (at > armedAt) touchedWhileArming = true;
+        quietSince = Math.max(quietSince, at + GESTURE_MS);
+    }
+
+    /** The keyboard is listed now: the quiet starts again from now. */
+    void keyboardWhileArming(long now) {
         if (phase != Phase.ARMING) return;
-        if (at != NEVER && at > armedAt) touchedWhileArming = true;
-        quietSince = Math.max(quietSince, at);
+        touchedWhileArming = true;
+        quietSince = Math.max(quietSince, now);
     }
 
     /** Whether a touch came during this quiet wait (else a wait that ran out was for want of the touch watch). */

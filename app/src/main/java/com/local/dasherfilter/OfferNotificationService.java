@@ -342,6 +342,20 @@ public final class OfferNotificationService extends NotificationListenerService 
          * card is never swapped for a payless one).
          */
         boolean unshownCard;
+        /**
+         * A post of it was handled while Dasher was on screen (never a replay): the user had this offer in Dasher, drawn
+         * or still drawing. With the screen's reading of it ({@link OfferAlertState#readOnScreen}), what makes a re-post
+         * of it held from Peek ({@link #heldInDasherUntil}).
+         */
+        boolean inDasher;
+        /**
+         * Until when ({@code SystemClock.elapsedRealtime()}) this incarnation is never peeked at, 0 for none: it is
+         * DoorDash re-posting an offer the user had in Dasher (read on screen, or posted while Dasher was in front)
+         * whose end the screen never saw, as it does while an offer ages ({@link OfferAlertState#newOfferReason}), up
+         * to {@link OfferPairing#OFFER_MS} after that offer's first post. Opening Dasher for it would pull Dasher back
+         * over the map the user just opened from it (the owner: Navigate's map does not stay).
+         */
+        long heldInDasherUntil;
 
         TrackedOffer(long now, StatusBarNotification source, String merchant) {
             this.state = new OfferAlertState(now, source.getPostTime());
@@ -715,6 +729,9 @@ public final class OfferNotificationService extends NotificationListenerService 
                         DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
                         DecisionLog.Action.CHECK_BELL, settings.enabled, labels));
                 String why = OfferFilterService.peekRefusal(this, request, settings, foreground, readAgo);
+                // A re-post of the offer the user had in Dasher (and left it for a map, say): never brought back
+                // over them; Dasher's own notification, and the card when one is due, are the way in.
+                if (why == null && offer.heldInDasherUntil > SystemClock.elapsedRealtime()) why = HELD_IN_DASHER;
                 if (why == null) {
                     peek = request;
                 } else {
@@ -813,8 +830,16 @@ public final class OfferNotificationService extends NotificationListenerService 
         // offer on screen now, which comes up to ~10 s after the screen read (and perhaps declined) it. A new
         // incarnation, but it must not revoke the confirmation of a decline under way for that offer.
         boolean sameOfferOnScreen = foreground && OfferFilterService.sameForegroundOfferNotification(labels);
+        long heldUntil = 0;
         if (newOffer != null) {
             DiagnosticLog.log(this, "notification", "the same store re-posted: a new offer (" + newOffer + ")");
+            // DoorDash re-posts an offer's notification as it ages: the offer the user had in Dasher, whose end the
+            // screen never saw, may be what this re-post is (a minute from its first post at most). It is never
+            // peeked at then, and a re-post of a re-post keeps that.
+            heldUntil = offer.heldInDasherUntil;
+            if (!offer.state.endedOnScreen && (offer.inDasher || offer.state.readOnScreen != null)) {
+                heldUntil = Math.max(heldUntil, offer.state.createdAt + OfferPairing.OFFER_MS);
+            }
             remove(key, offer);
             offer = null;
         }
@@ -837,8 +862,11 @@ public final class OfferNotificationService extends NotificationListenerService 
             }
             if (!replay) lastNotice = new Notice(labels, generation(), foreground);
             if (replay) recallRead(key, source.getPostTime(), created.state, now);
+            if (heldUntil > now) created.heldInDasherUntil = heldUntil;
             offer = created;
         }
+        // Dasher on screen as its notification came: the user has this offer in Dasher.
+        if (foreground && !replay) offer.inDasher = true;
         offer.gapMs = source.getPostTime() - offer.state.postedAt;
         offer.state.postedAt = Math.max(offer.state.postedAt, source.getPostTime());
         offer.state.text = text;
@@ -1040,6 +1068,9 @@ public final class OfferNotificationService extends NotificationListenerService 
         DecisionLog.record(this, DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION, card.addOn,
                 card.decision.basis, card.decision, action, card.enabled, card.labels).withAlertTag(alertTag, false));
     }
+
+    /** Why a re-post of an offer the user had in Dasher is not peeked at ({@link TrackedOffer#heldInDasherUntil}). */
+    static final String HELD_IN_DASHER = "a re-post of the offer you had in Dasher (it may still be up)";
 
     /** What the card of an offer a peek opened Dasher for, and Dasher never drew, says. */
     static final String UNSHOWN_TEXT = "Dasher didn't show this offer when it opened. Tap to open it.";

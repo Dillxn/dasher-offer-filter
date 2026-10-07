@@ -50,8 +50,9 @@ public final class UpdateReceiver extends BroadcastReceiver {
         Updater.clearReady(context);
         Updater.status(context, "Updated to " + Updater.version(context));
         Updater.schedule(context);
-        // Android may not let a broadcast open a screen; the screen-reading service, reconnecting, tries as well
-        // once it has looked at the windows, so neither opens it over Dasher.
-        if (!OfferFilterService.dasherMayBeOnScreen()) Updater.relaunchAfterUpdate(context);
+        // Offer Filter's screen was up as the update began: it opens again only over its own window or the home screen,
+        // never over Dasher, a map or any other app. With screen reading on, the screen reader alone decides, once it
+        // has asked which app is in front (now, or as it reconnects after the update: until then nothing can say).
+        if (Updater.relaunchPending(context)) OfferFilterService.relaunchAfterUpdate(context);
     }
 }

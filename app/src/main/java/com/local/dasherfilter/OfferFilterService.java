@@ -108,6 +108,12 @@ public final class OfferFilterService extends AccessibilityService {
      */
     static final long WINDOW_WATCH_MS = 500;
     /**
+     * After the user's tap on Dasher, the tab, guide and chip stay away this long, and come back only with a read
+     * begun then that finds Dasher still in front: a tap that opens another app (Navigate's map) has it in front by
+     * then, and nothing of ours lingers over it.
+     */
+    static final long TAP_SETTLE_MS = 500;
+    /**
      * A read slower than this is logged, so a report shows the phone's real timings: every one while an offer or
      * confirmation is up or a decline is under way, otherwise once a minute at most.
      */
@@ -397,6 +403,13 @@ public final class OfferFilterService extends AccessibilityService {
     private int launchWindowLines;
     /** Clicks on Dasher that are not the echo of a tap of the app's (main thread counts): a card's watch goes by it. */
     private final AtomicLong dasherClicks = new AtomicLong();
+    /**
+     * Until when (uptime) the tab, guide and chip stay put away after the user's last tap on Dasher (main thread
+     * writes): the tap may take them to another app (Navigate opens a map), and Android tells this screen reader
+     * nothing of another app coming in front (only Dasher's events reach it). Only a read begun by then, finding Dasher
+     * still in front, brings them back ({@link #afterUserTap}).
+     */
+    private volatile long userTapSettleAt = NEVER;
     /** Cameras an app has open now, as Android's availability callback says (no permission needed). */
     private final Set<String> camerasInUse = ConcurrentHashMap.newKeySet();
     private CameraManager.AvailabilityCallback cameraWatch;
@@ -1251,14 +1264,6 @@ public final class OfferFilterService extends AccessibilityService {
         return onScreen;
     }
 
-    /** Whether Dasher may be on screen: as last seen, or the service has not looked yet since it connected. */
-    static boolean dasherMayBeOnScreen() {
-        OfferFilterService service = active;
-        if (service == null) return false;
-        Screen seen = service.screen;
-        return !seen.known || seen.dasherReadable;
-    }
-
     /**
      * At the user's tap on Split with Dasher: asks Android to split the screen, as its own Split screen accessibility
      * shortcut does. Never called otherwise.
@@ -1398,28 +1403,104 @@ public final class OfferFilterService extends AccessibilityService {
                 status("Waiting for the notice in the app to be accepted; nothing is read or declined until then.");
                 // The one thing posted meanwhile, once per notice version: the app is paused until it is opened.
                 ConsentReminder.postIfPaused(this, "accessibility connected");
-                if (Updater.relaunchPending(this)) {
-                    boolean dasher;
-                    try {
-                        dasher = see(false, null).dasherRoot != null;
-                    } catch (RuntimeException unreadable) {
-                        dasher = true;
-                    }
-                    if (!dasher) onMain(() -> Updater.relaunchAfterUpdate(this));
-                }
+                relaunchIfFront();
                 return;
             }
             restoreRestartState();
             lookSafely();
             status("Accessibility connected. Only visible offer screens can be fully evaluated.");
-            // Offer Filter was on screen when an update began: open it again, never over Dasher.
-            boolean dasher = screen.dasherReadable;
-            onMain(() -> {
-                if (!dasher) Updater.relaunchAfterUpdate(this);
-            });
+            // Offer Filter was on screen when an update began: open it again, only over its own window or the home
+            // screen.
+            relaunchIfFront();
             watchWindows();
         });
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
+    }
+
+    /**
+     * After an update installed while Offer Filter's screen was up ({@link Updater#relaunchPending}), from the update's
+     * broadcast (any thread): Offer Filter opens again only once the screen reader has asked which app is in front
+     * ({@link #relaunchIfFront}). With screen reading on but not connected yet (as after every update, Android binds it
+     * again), it waits for that connection; with screen reading off, nothing can say which app is in front, nothing of
+     * Dasher's is read or tapped either, and the screen opens again as it always did.
+     */
+    static void relaunchAfterUpdate(Context context) {
+        OfferFilterService service = active;
+        if (service != null && !service.stopped) {
+            service.scanner.post(service::relaunchIfFront);
+            return;
+        }
+        if (enabledInSettings(context)) {
+            DiagnosticLog.log(context, "update", "reopen after update: waiting for screen reading to say which app is "
+                    + "in front");
+            return;
+        }
+        Updater.relaunchAfterUpdate(context);
+    }
+
+    /** Whether this screen reader is switched on in Android's Accessibility settings (connected or not). */
+    static boolean enabledInSettings(Context context) {
+        try {
+            String enabled = android.provider.Settings.Secure.getString(context.getContentResolver(),
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (enabled == null) return false;
+            ComponentName ours = new ComponentName(context, OfferFilterService.class);
+            for (String component : enabled.split(":")) {
+                if (ours.equals(ComponentName.unflattenFromString(component))) return true;
+            }
+        } catch (RuntimeException unreadable) {
+            // Not known: taken as on, so the reopen waits for the screen reader.
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Scanner thread: after an update installed while Offer Filter's screen was up, Offer Filter opens again only over
+     * its own window or the home screen, never over Dasher, a navigation app or any other app (Android's list of
+     * windows and the package of the app in front, nothing of it read; the same look a peek takes before the notice is
+     * accepted too). Over another app, the user went on with the phone: the reopen is dropped. Unknown (the shade, a
+     * locked phone) opens nothing now. "[update] reopen after update: …" says which.
+     */
+    private void relaunchIfFront() {
+        if (stopped || scannerFaulted || !Updater.relaunchPending(this)) return;
+        // Over Dasher or another app the reopen is dropped; while it cannot be told, it waits (nothing opens now).
+        String dropped = null;
+        String notNow = null;
+        if (!phoneReadable()) {
+            notNow = "the phone is locked";
+        } else {
+            Look look;
+            try {
+                look = see(true, null);
+            } catch (RuntimeException unreadable) {
+                look = null;
+            }
+            if (look == null) {
+                notNow = "the windows could not be read";
+            } else if (look.dasherActive || look.dasherRoot != null || look.dasherBeside) {
+                dropped = "Dasher is on screen";
+            } else {
+                Peek.Front front;
+                try {
+                    front = front(look);
+                } catch (RuntimeException unreadable) {
+                    front = null;
+                }
+                if (front == null) notNow = "the app in front is unknown";
+                else if (front.back == Peek.Back.APP) dropped = "not over " + front.kind();
+            }
+        }
+        if (dropped != null) {
+            Updater.relaunched(this);
+            DiagnosticLog.log(this, "update", "reopen after update: dropped (" + dropped + ")");
+            return;
+        }
+        if (notNow != null) {
+            DiagnosticLog.log(this, "update", "reopen after update: not now (" + notNow + ")");
+            return;
+        }
+        onMain(() -> Updater.relaunchAfterUpdate(this));
     }
 
     /** Consent may be accepted after connection; the first permitted read restores suppression before any tap. */
@@ -1501,6 +1582,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (click != null) {
             if (ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
                 dasherClicks.incrementAndGet();
+                userTappedDasher(at);
             }
             if (autoAcceptWatched && click.at >= autoAcceptBeganAt
                     && ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null) {
@@ -1516,6 +1598,9 @@ public final class OfferFilterService extends AccessibilityService {
         // First: work that is not essential, under way on the scanner, stops at its next step.
         if (change) windowChanges.incrementAndGet();
         dasherEvents.incrementAndGet();
+        // Whatever Dasher changed may be an offer drawing under the Back to map chip: it takes no touches until a read
+        // after this change finds the wait for offers still there.
+        if (click == null && overlay != null) overlay.dasherChanged();
         if (onScannerThread()) {
             onEvents(change, click == null ? Collections.<Click>emptyList() : Collections.singletonList(click), at);
             return;
@@ -1527,6 +1612,27 @@ public final class OfferFilterService extends AccessibilityService {
         // up or a decline is under way: read ahead of everything else queued.
         handOff(change || busyPublished || at < hotUntil, at);
     }
+
+    /**
+     * Main thread: the user tapped Dasher. The tap may take them to another app (Navigate opens a map), and Android
+     * tells this screen reader nothing of that app coming in front: the tab, guide and chip are put away now, so none
+     * lingers over that app taking its touches, and only a read begun {@link #TAP_SETTLE_MS} after the tap, finding
+     * Dasher still in front, brings them back.
+     */
+    private void userTappedDasher(long at) {
+        long settle = at + TAP_SETTLE_MS;
+        userTapSettleAt = settle;
+        overlayTransition.incrementAndGet();
+        if (overlay != null) overlay.suspend();
+        scanner.removeCallbacks(afterUserTap);
+        scanner.postAtTime(afterUserTap, settle);
+    }
+
+    /** {@link #TAP_SETTLE_MS} after the user's last tap on Dasher: a read, which brings the tab back over Dasher. */
+    private final Runnable afterUserTap = () -> {
+        if (stopped || scannerFaulted || !phoneReadable() || !Consent.accepted(this)) return;
+        scanNow(SystemClock.uptimeMillis(), "after your tap");
+    };
 
     /**
      * Main thread: within {@link #LAUNCH_WATCH_MS} of a peek's or a card's launch of Dasher (or of Dasher's own
@@ -2072,15 +2178,18 @@ public final class OfferFilterService extends AccessibilityService {
         if (area != null && overlayApprovedTransition != transition) return;
         // The slim bar over an offer takes its verdict's tint (presentation only): pass green, review amber.
         OfferRule.Result verdict = scene == DasherScene.OFFER ? offerVerdict : null;
-        OverlayState next = new OverlayState(area, area != null && seen.split, seen.oursBeside, scene, verdict,
-                area != null && backToMapShows(seen));
+        boolean chip = area != null && backToMapShows(seen);
+        // The chip takes touches only while the read that found the wait for offers began after Dasher's last event.
+        OverlayState next = new OverlayState(area, area != null && seen.split, seen.oursBeside, scene, verdict, chip,
+                chip ? lastReadEvents : -1);
         long now = SystemClock.uptimeMillis();
         if (next.equals(overlayGiven) && now - overlayGivenAt < OVERLAY_CHECK_MS) return;
         overlayGiven = next;
         overlayGivenAt = now;
         onMain(() -> {
             if (!stopped && !scannerFaulted && overlay != null && overlayTransition.get() == transition) {
-                overlay.sync(next.area, next.split, next.oursBeside, next.scene, next.verdict, next.backToMap);
+                overlay.sync(next.area, next.split, next.oursBeside, next.scene, next.verdict, next.backToMap,
+                        next.backToMap && next.chipEvents == dasherEvents.get());
             }
         });
     }
@@ -2213,10 +2322,21 @@ public final class OfferFilterService extends AccessibilityService {
         if (owner == SplitWindows.Owner.OTHER) forgetBackToMap("another app came in front");
     }
 
-    /** A read (scanner thread) showed the offer while the chip is armed: its end can now bring the chip up. */
+    /**
+     * After each read (scanner thread), while the chip is armed: an acceptance or a delivery ends it at once (whether
+     * or not the tab may show yet), and the offer shown (its figures, or Dasher's question about it) lets its end bring
+     * the chip up.
+     */
     private void noteBackToMapRead() {
         BackToMap chip = backToMap;
-        if (chip != null && !chip.offerSeen && (readFigures || readShowsQuestion)) chip.offerSeen = true;
+        if (chip == null) return;
+        if (lastAcceptAt != chip.acceptAt) {
+            forgetBackToMap("an offer was accepted");
+        } else if (scene == DasherScene.ROUTE) {
+            forgetBackToMap("a delivery is under way");
+        } else if (!chip.offerSeen && (readFigures || readShowsQuestion)) {
+            chip.offerSeen = true;
+        }
     }
 
     /**
@@ -3807,7 +3927,7 @@ public final class OfferFilterService extends AccessibilityService {
             return;
         }
         boolean keyboard = keyboardListed();
-        if (keyboard) peek.touchedWhileArming(now);
+        if (keyboard) peek.keyboardWhileArming(now);
         boolean watchReady = watchState == WATCH_UP;
         if (watchReady) {
             // The quiet counts from when the watch could see a touch, never from before it was up.
@@ -4943,7 +5063,10 @@ public final class OfferFilterService extends AccessibilityService {
             noteResized();
             noteCardOpenRead();
             syncWaitRead();
-            if (sceneLabels != null && !readSkipped && overlayTransition.get() == overlayAtStart) {
+            // Shown again only by a read begun after the last window change, and after the user's last tap on Dasher
+            // settled (that tap may have taken them to another app).
+            if (sceneLabels != null && !readSkipped && overlayTransition.get() == overlayAtStart
+                    && started >= userTapSettleAt) {
                 if (overlayApprovedTransition != overlayAtStart) overlayGiven = null;
                 overlayApprovedTransition = overlayAtStart;
             }
@@ -6147,10 +6270,19 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (takeover != Takeover.NONE && takeoverGeneration != OfferNotificationService.generation()
                 && OfferNotificationService.freshBackgroundGeneration() > takeoverGeneration) {
-            newScreenInstancePending = true;
-            forgetTakeover("fresh notification");
-            endAuthority("fresh notification", true);
-            episode.end();
+            if (newCountdown || offer.contradicts(takeover.offer)) {
+                newScreenInstancePending = true;
+                forgetTakeover("fresh notification");
+                endAuthority("fresh notification", true);
+                episode.end();
+            } else {
+                // The offer the user took over, its countdown going on (or not read yet): that notification was
+                // DoorDash re-posting it as it aged, or its own notification coming late, while the user was away.
+                // Never a new instance: the takeover stays, and only a later notification is weighed again.
+                takeoverGeneration = OfferNotificationService.generation();
+                DiagnosticLog.log(this, "takeover", "kept: a notification came while Dasher was away, but the screen "
+                        + "shows the offer you took over, its countdown going on");
+            }
         }
         if (declineError.pending() || declineError.hasBackAttempt()) {
             if (offer.contradicts(declinedOffer)) {
@@ -7548,22 +7680,25 @@ public final class OfferFilterService extends AccessibilityService {
         final OfferRule.Result verdict;
         /** The Back to map chip shows. */
         final boolean backToMap;
+        /** Dasher's events counted as the read that wants the chip began; -1 without the chip. */
+        final long chipEvents;
 
         OverlayState(Rect area, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict,
-                     boolean backToMap) {
+                     boolean backToMap, long chipEvents) {
             this.area = area == null ? null : new Rect(area);
             this.split = split;
             this.oursBeside = split && oursBeside;
             this.scene = scene;
             this.verdict = verdict;
             this.backToMap = backToMap;
+            this.chipEvents = chipEvents;
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof OverlayState)) return false;
             OverlayState that = (OverlayState) other;
             return split == that.split && oursBeside == that.oursBeside && scene == that.scene
-                    && verdict == that.verdict && backToMap == that.backToMap
+                    && verdict == that.verdict && backToMap == that.backToMap && chipEvents == that.chipEvents
                     && (area == null ? that.area == null : area.equals(that.area));
         }
 

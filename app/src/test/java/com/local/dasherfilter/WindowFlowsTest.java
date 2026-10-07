@@ -795,6 +795,49 @@ public class WindowFlowsTest {
         assertEquals("the offer is read as any (and passes)", OfferRule.Result.KEEP, tab().verdict());
     }
 
+    /** Dasher changed its screen (its content), stamped with its own time. */
+    private void dasherChanged() {
+        AccessibilityEvent change = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        change.setPackageName(DASHER);
+        change.setEventTime(SystemClock.uptimeMillis());
+        screen.get().onAccessibilityEvent(change);
+    }
+
+    private static boolean takesTouches(View view) {
+        return (((WindowManager.LayoutParams) view.getLayoutParams()).flags
+                & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0;
+    }
+
+    /**
+     * Whatever Dasher changes under the chip may be an offer drawing: from that change until a read sees it, the chip
+     * takes no touches (every touch there is Dasher's), staying in view; a read that finds the wait for offers still
+     * there gives it its touches back, and one that finds an offer takes it away.
+     */
+    @Test
+    public void theChipTakesNoTouchesFromDashersChangeUntilAReadSeesIt() {
+        peekLeftUpFromMaps();
+        dasherShows(finding());
+        BackToMapChip chip = chip();
+        assertNotNull(chip);
+        assertTrue(takesTouches(chip));
+        // A change read at once (the first after a quiet spell): the read saw it, the chip takes touches.
+        dasherChanged();
+        idle();
+        assertTrue(takesTouches(chip()));
+        // The next change within the quiet gap waits for its read: no touches meanwhile, the chip still in view.
+        dasherChanged();
+        assertNotNull("in view: a screen that keeps changing never makes it blink", chip());
+        assertFalse("nothing read of this change yet", takesTouches(chip()));
+        pass(OfferFilterService.QUIET_SCAN_GAP_MS + 50);
+        assertTrue("the read found the wait for offers still there", takesTouches(chip()));
+        // Dasher draws an offer by a content change held for the quiet gap: never a chip taking touches over it.
+        inFront(offer("$25.00"));
+        dasherChanged();
+        assertFalse(takesTouches(chip()));
+        pass(OfferFilterService.QUIET_SCAN_GAP_MS + 50);
+        assertNull("the read saw the offer: the chip goes", chip());
+    }
+
     @Test
     public void aCardTappedFromMapsThenAnotherAppInFrontEndsTheChip() {
         cardTappedFromMaps();
