@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["Bash", "WebFetch", "WebSearch", "mcp__github", "mcp__Render"]
+  }
+}
