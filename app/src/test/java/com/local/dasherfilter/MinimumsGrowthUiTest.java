@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Button;
 import android.widget.Switch;
 import android.widget.TextView;
 import java.time.Duration;
@@ -17,6 +18,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
@@ -80,6 +82,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     }
 
     @After public void plansOnTheirOwnThread() {
+        RuntimeEnvironment.setFontScale(1f);
         FilterStore.wallClock = System::currentTimeMillis;
         AutopilotRuntime.executorForTests = null;
         AutopilotRuntime.forgetCache();
@@ -251,6 +254,57 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * In a short window at the largest font, Autopilot's details keep their buttons whole and in the dialog, and the
+     * switch can be scrolled to: a long details text never pushes "Turn off" or "Close" out of the window.
+     */
+    @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
+    public void inAShortWindowAtLargeFontTheDetailsKeepTheirButtonsAndTheSwitchWithinReach() {
+        RuntimeEnvironment.setFontScale(2f);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = page(activity);
+            settleSky(content);
+            Switch grow = detailsSwitch(content);
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            View decor = details.getWindow().getDecorView();
+            int height = layOutDialog(decor);
+            int touch = new Ui(app).dp(48);
+            int buttons = 0;
+            int buttonsTop = height;
+            for (int which : new int[] {AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE,
+                    AlertDialog.BUTTON_NEUTRAL}) {
+                Button button = details.getButton(which);
+                if (button == null || button.getVisibility() != View.VISIBLE) continue;
+                buttons++;
+                int top = topIn(button, decor);
+                buttonsTop = Math.min(buttonsTop, top);
+                assertTrue(button.getText() + " is whole: " + button.getHeight() + " px",
+                        button.getHeight() >= touch);
+                assertTrue(button.getText() + " is in the dialog: " + top + ".." + (top + button.getHeight())
+                        + " of " + height + " px", top >= 0 && top + button.getHeight() <= height);
+            }
+            assertTrue("Close and Turn off at least", buttons >= 2);
+            // The switch: whole above the buttons, at once or, where it scrolls with the words, once scrolled to.
+            assertTrue(grow.getHeight() >= touch);
+            android.widget.ScrollView scroll = null;
+            for (View up = (View) grow.getParent(); up != null && up != decor;
+                    up = up.getParent() instanceof View ? (View) up.getParent() : null) {
+                if (up instanceof android.widget.ScrollView) scroll = (android.widget.ScrollView) up;
+            }
+            View frame = scroll == null ? grow : scroll;
+            int frameTop = topIn(frame, decor);
+            assertTrue("the switch's part of the dialog is above its buttons: " + frameTop + ".."
+                    + (frameTop + frame.getHeight()) + ", buttons from " + buttonsTop,
+                    frameTop >= 0 && frameTop + frame.getHeight() <= buttonsTop);
+            if (scroll != null) {
+                scroll.scrollTo(0, scroll.getChildAt(0).getHeight());
+                int at = topIn(grow, scroll);
+                assertTrue("the switch is whole once scrolled to: " + at + ".." + (at + grow.getHeight()) + " of "
+                        + scroll.getHeight(), at >= 0 && at + grow.getHeight() <= scroll.getHeight());
+            }
+        }
+    }
+
     // ---- Helpers ----
 
     /**
@@ -289,6 +343,28 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         assertNotNull("Let my minimums grow, in the details", grow);
         assertTrue(grow.isShown());
         return grow;
+    }
+
+    /** Lays the dialog out as its window would be, at most the display less 16 dp a side; its height. */
+    private int layOutDialog(View decor) {
+        idle();
+        int width = app.getResources().getDisplayMetrics().widthPixels - new Ui(app).dp(32);
+        int most = app.getResources().getDisplayMetrics().heightPixels - new Ui(app).dp(32);
+        decor.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(most, View.MeasureSpec.AT_MOST));
+        decor.layout(0, 0, decor.getMeasuredWidth(), decor.getMeasuredHeight());
+        return decor.getHeight();
+    }
+
+    /** {@code view}'s top within {@code ancestor}, after any scrolling between them. */
+    private static int topIn(View view, View ancestor) {
+        int top = 0;
+        for (View at = view; at != null && at != ancestor;
+                at = at.getParent() instanceof View ? (View) at.getParent() : null) {
+            top += at.getTop();
+            if (at.getParent() instanceof View) top -= ((View) at.getParent()).getScrollY();
+        }
+        return top;
     }
 
     private static void idle() {

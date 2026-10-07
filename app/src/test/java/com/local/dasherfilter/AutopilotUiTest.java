@@ -223,8 +223,12 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         return String.valueOf(Shadows.shadowOf(dialog).getTitle());
     }
 
+    /** A dialog's message; for Autopilot's details, the words over its switch (MainActivity.DETAILS_WORDS_ID). */
     private static String message(AlertDialog dialog) {
-        return String.valueOf(Shadows.shadowOf(dialog).getMessage());
+        CharSequence message = Shadows.shadowOf(dialog).getMessage();
+        if (message != null && message.length() > 0) return String.valueOf(message);
+        TextView words = dialog.findViewById(MainActivity.DETAILS_WORDS_ID);
+        return String.valueOf(words == null ? null : words.getText());
     }
 
     /** Shown through OwnWindowTouches.show: a touch on it stays this app's own in split screen. */

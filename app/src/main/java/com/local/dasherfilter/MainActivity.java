@@ -111,6 +111,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
             + "last change from this phone, with its note that your minimums grew. Your rules and Autopilot settings "
             + "stay.";
+    /** The view of Autopilot's details' words, over "Let my minimums grow" ({@link #showAutopilotDetails}). */
+    static final int DETAILS_WORDS_ID = 0x4F460104;
     /** What the ground's one line shows: nothing, the start, Autopilot's status, or the wait for a matching offer. */
     private static final int SLOT_NONE = 0;
     private static final int SLOT_START = 1;
@@ -1259,23 +1261,32 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known; its buttons
+     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known, then "Let my
+     * minimums grow" (one of Autopilot's settings, on unless turned off), the words and the switch scrolling together
+     * as the dialog's one view ({@link #DETAILS_WORDS_ID}), so its buttons keep their room in a short window at a large
+     * font (words set as the dialog's message beside a view of its own would push them out of it); its buttons
      * ({@link AutopilotText#detailsButtons}): while on, "Change goal" ("Use typical minimums" while even the lowest bar
      * passes too few and the minimums are not those already), "Turn off" and "Close"; while off, "Turn on" (the goal
      * chooser) and "Close".
      */
     private void showAutopilotDetails() {
         AutopilotText.Status status = autopilotStatus();
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(AutopilotText.DETAILS_TITLE)
-                .setMessage(String.join("\n\n", AutopilotText.detailsLines(status)));
-        // "Let my minimums grow", one of Autopilot's settings, under its details (on unless turned off).
-        LinearLayout grow = ui.column();
-        grow.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(4));
-        Switch growSwitch = ui.toggle(grow, AutopilotText.GROW_SWITCH, FilterStore.minimumsGrow(this));
+        LinearLayout body = ui.column();
+        body.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(4));
+        TextView words = ui.text(String.join("\n\n", AutopilotText.detailsLines(status)), 16, ui.inkSecondary,
+                false);
+        words.setId(DETAILS_WORDS_ID);
+        // In line with the switch's words, which keep a little room of their own.
+        words.setPaddingRelative(ui.dp(4), 0, ui.dp(4), ui.dp(4));
+        body.addView(words, Ui.matchWidth());
+        Switch growSwitch = ui.toggle(body, AutopilotText.GROW_SWITCH, FilterStore.minimumsGrow(this));
         growSwitch.setText(ui.twoLines(AutopilotText.GROW_SWITCH, AutopilotText.GROW_ABOUT));
         growSwitch.setOnCheckedChangeListener((view, on) -> AutopilotRuntime.setMinimumsGrow(this, on));
-        builder.setView(grow);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(AutopilotText.DETAILS_TITLE)
+                .setView(scroll);
         for (String button : AutopilotText.detailsButtons(status)) {
             switch (button) {
                 case AutopilotText.DETAILS_TYPICAL_MINIMUMS:
