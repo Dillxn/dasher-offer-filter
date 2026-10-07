@@ -1,6 +1,6 @@
 ## 0.5.0 — three minimums and Autopilot; Dasher stays responsive; smoother Peek and driving layouts; accountless feedback
 
-Version 0.5.0 (code 80), a public beta for Cincinnati Dashers. It follows 0.4.72. Version 0.4.73 was never released, and everything it held is part of 0.5.0. Everyone sees the notice once more (notice 14), because what the app reads, keeps and sends has changed.
+Version 0.5.0 (code 80), a public beta for Cincinnati Dashers. It follows 0.4.72. Versions 0.4.73 and 0.4.74 were never released, and everything they held is part of 0.5.0. Everyone sees the notice once more (notice 14), because what the app reads, keeps and sends has changed.
 
 ### Your rules are simpler: three minimums
 - **An offer has to meet each of three minimums you set:** minimum pay, pay per mile, and pay per hour of Dasher's own time estimate. There is also an optional max stops. Per hour is your old per-minute minimum shown ×60, so its knob moves in $0.60/hr steps and your saved value does not change.
@@ -83,6 +83,7 @@ Version 0.5.0 (code 80), a public beta for Cincinnati Dashers. It follows 0.4.72
 - **The home-screen icon no longer swaps** between day and night versions (that could remove a pinned icon). If it disappeared under 0.4.68–0.4.72, add it back from the app drawer. An icon an older version left stays.
 - **Settings:** a Beta label next to the version, Help (offerfilter.org/install), and "Battery limits background work" only when Android restricts the app in the background. The "Updates can't install" row moved to the homepage's Allow updates step.
 - **Terms, Privacy and License** show their headings, bold words and tappable links, and their text can be selected.
+- **The Jesus Loves You signature** at the end of Settings opens https://jesuslovesyou.xyz/ when you tap it, as on the website. The app sends nothing with the tap.
 - **One-time notes:** a short "What changed" box when you accept an updated notice, a "What is new" card after an update, and a card the first time Peek is on that links to its switch.
 - **Location all the time** for the offer map is asked only from its Settings row, after one line of why. Not now asks nothing, and if Android won't ask again, App info opens with the path.
 - **Plainer words and better contrast:** no error class names in messages, "offer map" instead of "atlas", "Allow alerts", "Tap to review and resume filtering.", darker muted text, and Fix words in link ink on both skies. At the largest font on a small phone, setup lines keep to two lines, so the homepage still fits one screen.
@@ -105,6 +106,12 @@ Version 0.5.0 (code 80), a public beta for Cincinnati Dashers. It follows 0.4.72
 - **Autopilot's tuning** (its margins, step limits and the 6-offers-an-hour prior) comes from simulations on a synthetic offer stream calibrated to one Dasher's mostly late-evening week, not from field results. Reading the acceptance rate rests on one capture of Dasher's decline question and test fixtures. Whether Dasher shows exactly one percent there, and whether that is the rate before or after the decline counts, needs a real phone.
 - **Not verified on a real phone:** Dasher staying responsive with Offer Filter on (Navigate, End dash, Complete delivery, offer details without split screen), map pruning on Dasher's real map, the read-load numbers, Peek's own-notification tap and unlock catch-up, the screen hold and its release, the silent Offer details card, Back to map, the tab beside a map, the strip at a third of a split, Swap in Dasher, restricted settings on Pixel and Samsung, the 8-hour update ceiling and Auto Blocker. PUBLIC_BETA_PHONE_GATE.md lists each check.
 - **Still open:** the Samsung split/navigation mismatch and returning from a map on arrival are not addressed.
+
+## 0.4.74 — the Settings signature links to jesuslovesyou.xyz (candidate)
+
+- A tap on the Jesus Loves You emblem at the end of Settings opens https://jesuslovesyou.xyz/ in the browser, matching the website footer. Its lettering, size, colors and screen-reader text are unchanged; the app sends nothing with the tap.
+- Brings the unit tests in line with 0.4.73's retirement of end-user GitHub, problem reports and diagnostics after each dash, and regenerates LegalTexts.java so the app compiles again. The feedback dialog names the app through AppName.NAME.
+- Source version was 0.4.74 / code 80. It was never signed or published: the update feed stayed on 0.4.72, and 0.5.0 (also code 80) replaces it with the signature link included.
 
 ## 0.4.71 — keep Peek from returning during offer loading (candidate)
 

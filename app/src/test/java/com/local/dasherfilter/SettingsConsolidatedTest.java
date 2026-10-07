@@ -73,7 +73,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void settingsEndsWithTheRequestedEmblemAndAccessiblePassageAfterLegalLinks() {
+    public void settingsEndsWithTheLinkedEmblemAndAccessiblePassageAfterLegalLinks() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
             layOut(content);
@@ -83,7 +83,6 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             assertTrue(closing.isShown());
             assertNotNull("the bundled emblem is available offline", closing.getDrawable());
             assertEquals(ImageView.ScaleType.FIT_CENTER, closing.getScaleType());
-            assertFalse("the signature adds no control", closing.isClickable());
             assertFalse(closing.isLongClickable());
             assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, closing.getImportantForAccessibility());
             ViewGroup body = (ViewGroup) closing.getParent();
@@ -109,6 +108,13 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
                         body.indexOfChild(ancestor) < body.indexOfChild(closing));
                 previous = at;
             }
+
+            assertTrue("a tap on the signature opens jesuslovesyou.xyz", closing.performClick());
+            Intent opened = Shadows.shadowOf(activity.get()).getNextStartedActivity();
+            assertNotNull(opened);
+            assertEquals(Intent.ACTION_VIEW, opened.getAction());
+            assertEquals("https://jesuslovesyou.xyz/", opened.getDataString());
+            assertNull("the app sends nothing with the tap", opened.getExtras());
         }
     }
 
@@ -299,6 +305,19 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             View content = openSettings(activity);
             assertNull(findButton(content, "Send problem reports"));
             assertNull(findButton(content, "Connect GitHub"));
+            assertNull(findButton(content, "Share diagnostics after each dash"));
+            assertNull("no GitHub row or line, even with an older version's connection",
+                    shownTextContaining(content, "GitHub"));
+            // The retired queue's status line ("On · last report #12 · 2 waiting to send") is gone, and the report
+            // it held is not counted as feedback waiting to send.
+            for (String part : new String[] {"no reports sent yet", "last report #", "waiting to send"}) {
+                assertNull(part, shownTextContaining(content, part));
+            }
+            Switch afterDash = (Switch) findButton(content, "Share anonymous diagnostics after each dash");
+            assertNotNull(afterDash);
+            assertFalse("an older version's diagnostics after each dash leaves the new switch off",
+                    afterDash.isChecked());
+            assertFalse(Feedback.afterDashOn(app));
         }
     }
 
