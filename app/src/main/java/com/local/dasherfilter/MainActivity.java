@@ -2291,7 +2291,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     + lowerFirst(plainReason(reason.substring(bound + " with its +$ amount; ".length())));
         }
         Matcher bar = BAR_REASON.matcher(reason);
-        if (bar.matches()) return plainReason(bar.group(2)) + " (Autopilot " + bar.group(1) + "%)";
+        if (bar.matches()) {
+            String plain = plainReason(bar.group(2));
+            // Above 100% the offer may meet the minimum itself (a $4.50 offer under a $4.00 minimum pay, declined at
+            // 119%): it missed Autopilot's raised share of it, so the words never say it is below the minimum.
+            if (bar.group(1).length() <= 3 && Integer.parseInt(bar.group(1)) > FilterSettings.BAR_AT_MINIMUMS
+                    && plain.startsWith("Below your ")) {
+                return "Below Autopilot's " + bar.group(1) + "% of your " + plain.substring("Below your ".length());
+            }
+            return plain + " (Autopilot " + bar.group(1) + "%)";
+        }
         Matcher baseline = BASELINE_REASON.matcher(reason);
         if (baseline.matches()) return plainReason(baseline.group(2)) + " (buffer " + baseline.group(1) + "%)";
         Matcher meets = MEETS_BAR.matcher(reason);

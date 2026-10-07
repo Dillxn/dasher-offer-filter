@@ -693,8 +693,18 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertEquals("Below your hourly minimum", MainActivity.plainReason("dollars per hour"));
         assertEquals("Below your per-mile minimum (Autopilot 82%)",
                 MainActivity.plainReason("82% bar: dollars per mile"));
-        assertEquals("Below your hourly minimum (Autopilot 110%)",
+        // Above 100% the offer may meet a minimum itself: the words name Autopilot's share of it, never "below your
+        // minimum" (a $4.50 offer declined at 119% of a $4.00 minimum pay, score 112%).
+        assertEquals("Below Autopilot's 110% of your hourly minimum",
                 MainActivity.plainReason("110% bar: dollars per hour"));
+        assertEquals("Below Autopilot's 119% of your minimum pay", MainActivity.plainReason("119% bar: flat minimum"));
+        assertEquals("Below Autopilot's 150% of your per-mile minimum",
+                MainActivity.plainReason("150% bar: dollars per mile"));
+        assertEquals("Whole route: Below Autopilot's 119% of your per-mile minimum",
+                MainActivity.plainReason("combined route fails: 119% bar: dollars per mile"));
+        assertEquals("Add-on pays too little for what it adds (Autopilot 119%)",
+                MainActivity.plainReason("119% bar: add-on marginal economics"));
+        assertEquals("Below your minimum pay (Autopilot 50%)", MainActivity.plainReason("50% bar: flat minimum"));
         assertEquals("Meets your minimums", MainActivity.plainReason("meets your minimums"));
         assertEquals("Meets Autopilot's 110% bar", MainActivity.plainReason("meets the 110% bar"));
         assertEquals("Below your minimums · passed by Autopilot's 82% bar",
@@ -743,5 +753,32 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
                 OfferSnapshot.UNKNOWN, 0, OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD,
                 true, Collections.emptyList());
         assertEquals("Notification showed no pay", MainActivity.plainReason(fromNotification));
+    }
+
+    /**
+     * Pay first with the typical minimums ($4.00 · $1.00/mi · $15/hr) and Autopilot's bar at 119%: $4.50 for 2.6 mi and
+     * 15 min scores 112% and is declined. Its ticket says what it missed, Autopilot's share of the minimum pay, never
+     * that it is below the $4.00 it meets; an offer truly below the minimum at a bar under 100% still says so.
+     */
+    @Test
+    public void aDeclineBetweenTheMinimumsAndAHigherBarNeverSaysItIsBelowThem() {
+        FilterSettings at119 = new FilterSettings(true, 400, 100, 25, 0, true, FilterSettings.GOAL_PAY_FIRST, 119);
+        OfferSnapshot offer = new OfferSnapshot(450, 2.6, 15, 1);
+        OfferRule.Decision decision = OfferRule.evaluate(offer, at119);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertEquals("119% bar: flat minimum", decision.reason);
+        DecisionLog.Entry ticket = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, offer, decision,
+                DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.<String>emptyList());
+        assertEquals("Score 112% of your minimums · bar 119%",
+                AutopilotText.ticketScoreLine(ticket.scorePercent, ticket.barPercent, ticket.model));
+        assertEquals("Below Autopilot's 119% of your minimum pay", MainActivity.reasonLine(ticket));
+        assertFalse(MainActivity.reasonLine(ticket).contains("Below your minimum pay"));
+
+        FilterSettings at82 = at119.withMinimumScalePercent(82);
+        OfferSnapshot below = new OfferSnapshot(300, 2.6, 15, 1);
+        DecisionLog.Entry belowTicket = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, below,
+                OfferRule.evaluate(below, at82), DecisionLog.Action.CONFIRMATION_TAPPED, true,
+                Collections.<String>emptyList());
+        assertEquals("Below your minimum pay (Autopilot 82%)", MainActivity.reasonLine(belowTicket));
     }
 }
