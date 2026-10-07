@@ -50,8 +50,7 @@ final class BundledNotes {
                         + "while locked; mid-dash your unlocked screen won't time out.",
                 "Lighter on Dasher: recognized maps are skipped and screens with no offer are read less often. "
                         + "Feedback needs no account: Settings → Send anonymous feedback.");
-        // 0.4.73 never shipped, and the build carries its name until the release takes 0.5.0's: no card for it.
-        release("0.4.73");
+        // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 
     private BundledNotes() {}

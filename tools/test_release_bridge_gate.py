@@ -2,6 +2,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 import release_bridge_gate as gate
@@ -82,6 +83,33 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         path.write_text(path.read_text().replace('name="example"', 'name="example[35]"'))
         result = gate.gate(self.root, self.frozen)
         self.assertEqual({"26": 1, "35": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+
+    def test_missing_or_reconfigured_adapter_source_rejected_as_a_gate_failure(self):
+        reports = {}
+        for path in self.junit.parent.glob("TEST-*.xml"):
+            suite = ET.parse(path).getroot()
+            reports[suite.get("name")] = suite
+        # Every suite's results are there and paired, so only its source can fail the gate below.
+        self.assertEqual(len(gate.ADAPTERS), len(gate.sdk_evidence(self.root, reports)))
+        source = self.root / (gate.ADAPTER_SOURCES + gate.ADAPTERS[-1] + ".java")
+        for change, refusal in (("@Config(sdk=35) class Changed {}", "SDK configuration changed"),
+                                ("@Config(sdk={26,35}) @Config(sdk = 26) class Two {}", "SDK configuration changed"),
+                                (None, "suite source missing")):
+            if change is None:
+                source.unlink()
+            else:
+                source.write_text(change)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, refusal):
+                gate.sdk_evidence(self.root, reports)
+
+
+class RepositoryAdaptersTest(unittest.TestCase):
+    """The suites the gate requires exist here as it requires them (0.5.0 deleted one it still named)."""
+
+    def test_every_required_adapter_suite_is_in_the_repository_on_both_sdks(self):
+        gate.adapter_sources(pathlib.Path(__file__).resolve().parents[1])
+        self.assertNotIn("AdaptiveMinimumLifecycleTest", gate.ADAPTERS)
+        self.assertEqual(len(gate.ADAPTERS), len(set(gate.ADAPTERS)))
 
 
 class MainAuthorityTest(unittest.TestCase):

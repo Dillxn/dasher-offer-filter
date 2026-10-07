@@ -9,16 +9,34 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 
-# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks: Android 8 and 15) at its last recount, after
-# the accountless-feedback review fixes (2,358 on 6 October 2026). Raise it as tests are added; a run below it is
-# missing tests.
-MIN_TESTS = 2358
+# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks: Android 8 and 15) at its last recount, the
+# 0.5.0 release integration (3,122 in 146 suites on 7 October 2026: 1,213 cases on Android 8, the rest on Android 15
+# or the plain JVM; 2,358 after the accountless-feedback review fixes the day before). Raise it as tests are added; a
+# run below it is missing tests.
+MIN_TESTS = 3122
 
+# The Android adapter suites a release must have run on both Android 8 and 15, paired case by case. 0.5.0 retired the
+# adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that
+# retires the learned minimums and Autopilot moving the bar only at a safe point with the acceptance rate read from
+# Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest.
 ADAPTERS = (
     "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
-    "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "AdaptiveMinimumLifecycleTest", "ConsentGateTest",
+    "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "ModelMigrationTest", "AutopilotCommitAdapterTest",
+    "ConfirmationArReadingAdapterTest", "ConsentGateTest",
 )
+ADAPTER_SOURCES = "app/src/test/java/com/local/dasherfilter/"
+
+
+def adapter_sources(root):
+    """Each release adapter suite is in the repository with one explicit {26,35} configuration and no SDK override."""
+    for name in ADAPTERS:
+        path = root / (ADAPTER_SOURCES + name + ".java")
+        if not path.is_file():
+            raise ValueError("Required Android adapter suite source missing")
+        configs = re.findall(r"@Config\([^)]*sdk\s*=\s*([^)]*)\)", path.read_text())
+        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35}":
+            raise ValueError("Release adapter SDK configuration changed")
 
 
 def check_main(root, source, expected_main, external=False, environment=None):
@@ -51,13 +69,9 @@ def check_main(root, source, expected_main, external=False, environment=None):
 
 
 def sdk_evidence(root, reports):
+    adapter_sources(root)
     evidence = {}
     for name in ADAPTERS:
-        source = (root / ("app/src/test/java/com/local/dasherfilter/" + name + ".java")).read_text()
-        # These classes have one explicit {26,35} configuration and no SDK override.
-        configs = re.findall(r"@Config\([^)]*sdk\s*=\s*([^)]*)\)", source)
-        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35}":
-            raise ValueError("Release adapter SDK configuration changed")
         report = reports.get("com.local.dasherfilter." + name)
         if report is None:
             raise ValueError("Required Android adapter suite missing")

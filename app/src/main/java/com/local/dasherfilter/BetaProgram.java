@@ -28,8 +28,8 @@ final class BetaProgram {
     }
 
     /**
-     * Settings' footer line: "Offer Filter v0.4.73 [Beta] · Not a DoorDash app.", the label a small outlined pill
-     * that wraps with the words. Screen readers hear "Offer Filter version 0.4.73, beta. Not a DoorDash app."
+     * Settings' footer line: "Offer Filter v0.5.0 [Beta] · Not a DoorDash app.", the label a small outlined pill
+     * that wraps with the words. Screen readers hear "Offer Filter version 0.5.0, beta. Not a DoorDash app."
      */
     static CharSequence footer(Ui ui, String version) {
         SpannableStringBuilder words = new SpannableStringBuilder(AppName.NAME + " v" + version + " ");

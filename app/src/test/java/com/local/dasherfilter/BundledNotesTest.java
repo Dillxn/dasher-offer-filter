@@ -62,10 +62,11 @@ public class BundledNotesTest {
 
     /**
      * The 0.5.0 words are written: two or three lines for whoever accepted notice 13 (the last one published), two or
-     * three for the 0.5.0 card, the headline changes in each; and no card for 0.4.73, which never shipped though the
-     * build carries its name until the release takes 0.5.0's. Whoever read notice 13 was told reports went to a private
-     * repository: the box corrects it (it is public). The card says what the code does, never an outcome no phone has
-     * shown (Dasher kept responsive, fewer missed offers), and only the maps it recognizes are skipped.
+     * three for the 0.5.0 card, the headline changes in each, and that card is the one this build (0.5.0, code 80)
+     * shows; 0.4.73, which never shipped (the build carried its name until the release took 0.5.0's), has no entry and
+     * no card. Whoever read notice 13 was told reports went to a private repository: the box corrects it (it is
+     * public). The card says what the code does, never an outcome no phone has shown (Dasher kept responsive, fewer
+     * missed offers), and only the maps it recognizes are skipped.
      */
     @Test public void theWordsFor050AreWrittenAnd0473ShowsNothing() {
         assertTrue(BundledNotes.WRITTEN);
@@ -88,7 +89,9 @@ public class BundledNotesTest {
         for (String outcome : new String[] {"stays responsive", "Fewer missed", "aren't read", "catches offers"}) {
             assertFalse(outcome, card.contains(outcome) || notice.contains(outcome));
         }
-        assertTrue("0.4.73 opts out", BundledNotes.hasRelease("0.4.73"));
+        assertEquals("this build is 0.5.0: its card is the one written for it", news,
+                BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
+        assertFalse("0.4.73 never shipped and nothing builds as it: no entry", BundledNotes.hasRelease("0.4.73"));
         assertTrue(BundledNotes.whatsNew("0.4.73").isEmpty());
         for (String line : BundledNotes.allLines()) {
             assertFalse("the app's name only through AppName: " + line, line.contains("Offer Filter"));
