@@ -190,7 +190,7 @@ public final class AutopilotCommitAdapterTest {
         assertTrue("never declined", declines.isEmpty());
     }
 
-    @Test public void noCommitWhileOnlyAnotherAppWasSeenSinceTheConnectionNorWhilePaused() {
+    @Test public void noCommitWhileOnlyAnotherAppWasSeenSinceTheConnection() {
         // Screen reading connects with the map in front: nothing of Dasher's is read, so an offer may be up there.
         connect(app(MAPS));
         pass(15_000);
@@ -198,29 +198,67 @@ public final class AutopilotCommitAdapterTest {
         assertEquals("nothing of Dasher's screen known: no commit", 82, bar());
         pass(180_000);
         assertEquals(82, bar());
+        assertEquals(0, commits());
         // The user goes back to Dasher, waiting for offers.
         show(waiting());
         assertCommitsAtTheFirstTickFrom(now());
+    }
 
-        // Paused: nothing of Dasher's is read, so an offer may come up unseen; the bar waits for the first read after.
+    /**
+     * Nothing of Dasher's is read while auto-decline is paused. Paused over an offer the last read decided (left to the
+     * user at 82%), that offer may still be up as the pause ends: the bar waits for the first read after it, which
+     * judges the offer at the bar it was shown under. Paused over the wait for offers, nothing was decided that a new
+     * bar could meet: the bar moves at the next safe tick as ever.
+     */
+    @Test public void aPauseOverAnOfferHoldsTheBarUntilTheFirstReadAfterItAPauseOverTheWaitDoesNot() {
+        connect(null);
+        show(waiting());
+        pass(15_000);
+        pause();
+        wantCommit();
+        assertEquals("paused over the wait for offers: nothing holds the commit back", 100, bar());
+        assertEquals(1, commits());
+        assertTrue(autopilotLog().toString(), firstCommit().startsWith(COMMIT_TO_100));
+        resume();
         assertTrue(FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 82));
         DiagnosticLog.clear(app);
+        pass(61_000);
+
+        // $5.75 passes at 82% and fails at exactly the minimums: left to the user, and up as they pause.
+        AccessibilityNodeInfo shown = offer("$5.75", "0:35");
+        List<Long> declines = taps(decline, true);
+        show(shown);
+        pause();
+        pass(15_000);
+        wantCommit();
+        assertEquals("not while the offer decided before the pause may be up", 82, bar());
+        pass(120_000);
+        assertEquals(82, bar());
+        assertEquals(0, commits());
+        // Resumed with the offer still up: read at once, at the bar it was shown under.
+        resume();
+        assertTrue(log(), log().contains("[screen] reading Dasher again"));
+        assertEquals(82, bar());
+        assertTrue("left to the user, as shown", declines.isEmpty());
+        pass(3_000);
+        show(waiting());
+        assertCommitsAtTheFirstTickFrom(now() + OfferFilterService.BAR_CHANGE_QUIET_MS);
+        assertTrue("never declined", declines.isEmpty());
+    }
+
+    /** The user pauses auto-decline: the rules saved with it off, and a read asked for, as the mascot's pause does. */
+    private void pause() {
         FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
         OfferFilterService.requestCheckForRules();
         pass(1_000);
         assertTrue(log(), log().contains("[screen] not reading Dasher while paused (auto-decline is off)"));
-        pass(15_000);
-        wantCommit();
-        assertEquals("not while paused", 82, bar());
-        pass(180_000);
-        assertEquals(82, bar());
-        assertEquals(0, commits());
-        // Resumed: read at once, the wait for offers still up.
+    }
+
+    /** The user resumes auto-decline: read again at once. */
+    private void resume() {
         FilterStore.save(app, STARTER);
         OfferFilterService.requestCheckForRules();
         pass(1_000);
-        assertTrue(log(), log().contains("[screen] reading Dasher again"));
-        assertCommitsAtTheFirstTickFrom(now());
     }
 
     // ---- A decline and its question ----

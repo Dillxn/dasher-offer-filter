@@ -694,11 +694,11 @@ public final class OfferFilterService extends AccessibilityService {
     /** When a read last showed an offer or confirmation, or a decline was under way (uptime). */
     private long offerSeenAt = Long.MIN_VALUE / 2;
     /**
-     * Whether a complete read of Dasher's own screen said what it shows since screen reading connected, or since it
-     * resumed after a pause (nothing of Dasher's is read while paused: an offer may be up unseen). Until then nothing
-     * is known of an offer Dasher may be showing (one a read before the connection or the pause may already have
-     * decided at the bar it was shown under), so Autopilot's bar does not move ({@link #safeForBarChange}). A look at
-     * the windows alone says nothing of it. Set on the scanner thread; cleared as screen reading connects or pauses.
+     * Whether a complete read of Dasher's own screen said what it shows since screen reading connected, and since a
+     * pause that began with an offer on screen (nothing of Dasher's is read while paused). Until then an offer that a
+     * read before the connection or the pause decided at the bar it was shown under may still be up, and nothing says
+     * otherwise, so Autopilot's bar does not move ({@link #safeForBarChange}). A look at the windows alone says nothing
+     * of it. Set on the scanner thread; cleared as screen reading connects, or pauses over an offer.
      */
     private volatile boolean dasherScreenKnown;
     /** When a read last found a readable offer, its Accept and Decline both (uptime); on the scanner. */
@@ -1290,13 +1290,13 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Whether Autopilot may move the bar now (finalSpec updateTiming): screen reading running with the notice accepted;
-     * Dasher's own screen read since it connected or last resumed from a pause ({@link #dasherScreenKnown}: until then
-     * an offer may be up that no read of this connection has seen); nothing of an offer up, nor seen in the last
-     * {@link #BAR_CHANGE_QUIET_MS}; no decline under way, no question of one awaited or held for the touch watch, no
-     * decline-error recovery; no read or settling queued; no takeover still holding, nor a restart record of one; no
-     * automatic acceptance waiting, watched or requested in the last {@link AutoAccept#SUPPRESS_MS}; no peek; no offer's
-     * notification tracked; no late completion watched. Scanner thread. A user's own change of the bar (turning
-     * Autopilot off) never waits for this: it hands an offer under way back ({@link #minimumScaleChanged}).
+     * Dasher's own screen read since it connected, and since a pause that began over an offer
+     * ({@link #dasherScreenKnown}: until then an offer decided before may still be up); nothing of an offer up, nor
+     * seen in the last {@link #BAR_CHANGE_QUIET_MS}; no decline under way, no question of one awaited or held for the
+     * touch watch, no decline-error recovery; no read or settling queued; no takeover still holding, nor a restart
+     * record of one; no automatic acceptance waiting, watched or requested in the last {@link AutoAccept#SUPPRESS_MS};
+     * no peek; no offer's notification tracked; no late completion watched. Scanner thread. A user's own change of the
+     * bar (turning Autopilot off) never waits for this: it hands an offer under way back ({@link #minimumScaleChanged}).
      */
     private boolean safeForBarChange(long now) {
         return !stopped && !scannerFaulted && Consent.accepted(this) && dasherScreenKnown
@@ -5862,11 +5862,11 @@ public final class OfferFilterService extends AccessibilityService {
             lateClicksPending = false;
             lateClicks.clear();
             offerOnScreen = false;
+            // The offer the last read showed (decided at the bar it was shown under) may still be up when the pause
+            // ends, and nothing read says otherwise meanwhile: Autopilot's bar waits for the first read after it.
+            if (readEvidence) dasherScreenKnown = false;
             offerEvidence = false;
             readEvidence = false;
-            // Nothing read can say from now on whether an offer is up (one may be, decided before the pause): Autopilot's
-            // bar waits for the first read after the pause ends.
-            dasherScreenKnown = false;
             quietTakenOver = false;
             quietDecided = false;
             decidedKey = "";
