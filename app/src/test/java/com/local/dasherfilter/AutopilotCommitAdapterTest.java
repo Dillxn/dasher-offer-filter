@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityService;
 import android.app.Application;
 import android.app.Notification;
 import android.content.ComponentName;
@@ -11,13 +12,16 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +45,8 @@ import org.robolectric.shadows.ShadowAccessibilityRecord;
 import org.robolectric.shadows.ShadowAccessibilityWindowInfo;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowSystemClock;
+import org.robolectric.shadows.ShadowToast;
+import org.robolectric.shadows.ShadowWindowManagerImpl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -49,12 +55,14 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Autopilot moves the bar only through the screen reader, at a safe point between offers (finalSpec updateTiming):
- * never while an offer is up or was seen in the last 10 s, a decline or its question is under way, the user holds an
- * offer they took over (or a restart's record of one stands), an automatic Accept is waiting, watched or was requested
- * in the last 2 minutes, a peek is under way, Dasher's notification of an offer is tracked, a read is queued, or a late
- * completion is watched. A commit that could not be made then is made at the next safe tick. The user's own change
- * (turning Autopilot off) never waits: a decline under way at the old bar is handed back. Through the real screen
- * reader on the main looper with simulated time; synthetic Android, no handset claimed.
+ * never before a read of Dasher's own screen since screen reading connected or resumed after a pause, nor while an
+ * offer is up or was seen in the last 10 s, a decline or its question is under way (its question held for a touch, its
+ * episode, a decline-error recovery included), the user holds an offer they took over (or a restart's record of one
+ * stands), an automatic Accept is armed, watched or was requested in the last 2 minutes, a peek is under way, Dasher's
+ * notification of an offer is tracked, a read is queued, or a late completion is watched; each of these is also held on
+ * its own. A commit that could not be made then is made at the next safe tick. The user's own change (turning Autopilot
+ * off) never waits: a decline under way at the old bar is handed back. Through the real screen reader on the main
+ * looper with simulated time; synthetic Android, no handset claimed.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
@@ -140,6 +148,81 @@ public final class AutopilotCommitAdapterTest {
         assertEquals("decided at the bar it was shown at", 82, line.barPercent);
     }
 
+    // ---- Nothing of Dasher's screen read yet ----
+
+    /**
+     * Screen reading connects (again) while Dasher already shows an offer that a read before may have decided, with a
+     * commit due (the user chose another goal meanwhile): nothing of Dasher's screen is known to the new connection, so
+     * the bar stays until a read says what is up. The offer is judged at the bar it was shown under, and the commit
+     * lands at the first safe tick after it.
+     */
+    @Test public void noCommitAtAConnectionBeforeDashersScreenIsReadEvenWithAnOfferUp() {
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TIER);
+        idle();
+        assertEquals("GOAL_CHANGED", AutopilotStore.jump(app));
+        assertEquals(82, bar());
+        // $5.75 is 85% of the $6.75 the minimums ask: it passes at 82% and fails at exactly the minimums.
+        AccessibilityNodeInfo shown = offer("$5.75", "0:35");
+        List<Long> declines = taps(decline, true);
+        connect(shown);
+        assertEquals("nothing of Dasher's read: no commit", 82, bar());
+        assertEquals("the commit the connection's plan asked for waits", 1, logged(AutopilotText.LOG_DEFERRED));
+        assertEquals(0, service.contentReads);
+        // Dasher's countdown ticks: the offer's first read, at the bar it was shown under.
+        shown.getChild(5).setText("0:34");
+        tick();
+        pass(500);
+        assertTrue(service.contentReads > 0);
+        assertEquals(82, bar());
+        assertTrue("left to the user, as shown", declines.isEmpty());
+        DecisionLog.Entry line = line(575);
+        assertEquals(OfferRule.Result.KEEP, line.result);
+        assertEquals(82, line.barPercent);
+        pass(3_000);
+        show(waiting());
+        long gone = now();
+        long tick = tickAtOrAfter(gone + OfferFilterService.BAR_CHANGE_QUIET_MS);
+        passUntil(tick - 1);
+        assertEquals("nothing before Autopilot's next safe tick", 82, bar());
+        passUntil(tick + 1);
+        assertEquals("committed at the next safe tick", 100, bar());
+        assertTrue(autopilotLog().toString(), firstCommit().startsWith(COMMIT_TO_100 + " (you changed your goal)"));
+        assertTrue("never declined", declines.isEmpty());
+    }
+
+    @Test public void noCommitWhileOnlyAnotherAppWasSeenSinceTheConnectionNorWhilePaused() {
+        // Screen reading connects with the map in front: nothing of Dasher's is read, so an offer may be up there.
+        connect(app(MAPS));
+        pass(15_000);
+        wantCommit();
+        assertEquals("nothing of Dasher's screen known: no commit", 82, bar());
+        pass(180_000);
+        assertEquals(82, bar());
+        // The user goes back to Dasher, waiting for offers.
+        show(waiting());
+        assertCommitsAtTheFirstTickFrom(now());
+
+        // Paused: nothing of Dasher's is read, so an offer may come up unseen; the bar waits for the first read after.
+        assertTrue(FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 82));
+        DiagnosticLog.clear(app);
+        FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+        OfferFilterService.requestCheckForRules();
+        pass(1_000);
+        assertTrue(log(), log().contains("[screen] not reading Dasher while paused (auto-decline is off)"));
+        pass(15_000);
+        wantCommit();
+        assertEquals("not while paused", 82, bar());
+        pass(180_000);
+        assertEquals(82, bar());
+        assertEquals(0, commits());
+        // Resumed: read at once, the wait for offers still up.
+        FilterStore.save(app, STARTER);
+        OfferFilterService.requestCheckForRules();
+        pass(1_000);
+        assertTrue(log(), log().contains("[screen] reading Dasher again"));
+        assertCommitsAtTheFirstTickFrom(now());
+    }
+
     // ---- A decline and its question ----
 
     @Test public void noCommitWhileADeclineOrItsQuestionIsUnderWayThenAtTheNextSafeTick() {
@@ -167,6 +250,87 @@ public final class AutopilotCommitAdapterTest {
         DecisionLog.Entry line = line(500);
         assertEquals("the decline went through as decided", DecisionLog.Action.CONFIRMATION_TAPPED, line.action);
         assertEquals(82, line.barPercent);
+        assertNoHandBackOrStaleTap();
+    }
+
+    /**
+     * Dasher answers the app's Decline with "Something went wrong. Please try again." over a screen showing only its
+     * map: the app goes Back to the offer and declines it again (the approved recovery). The bar stays through all of
+     * it, and moves at the first safe tick after the offer is over.
+     */
+    @Test public void noCommitDuringADeclineErrorRecoveryThenAtTheNextSafeTick() {
+        connect(null);
+        focused(waiting());
+        pass(15_000);
+        long shownAt = now();
+        AccessibilityNodeInfo failing = offer("$5.00", "0:35");
+        List<Long> declines = taps(decline, true);
+        focused(failing);
+        assertEquals("declined at once, at the 82% bar", 1, declines.size());
+        pass(300);
+        errorToast();
+        focused(node("Map", false));
+        wantCommit();
+        assertEquals("not while Dasher's error is recovered from", 82, bar());
+        pass(600);
+        assertEquals("the recovery's one Back", Collections.singletonList(AccessibilityService.GLOBAL_ACTION_BACK),
+                Shadows.shadowOf(service).getGlobalActionsPerformed());
+        wantCommit();
+        assertEquals("not while the recovery waits for the offer again", 82, bar());
+        // Back on the offer, its countdown going on: declined again, and its question confirmed.
+        AccessibilityNodeInfo shownAgain = offer("$5.00", remaining(shownAt));
+        List<Long> again = taps(decline, true);
+        focused(shownAgain);
+        pass(1_500);
+        assertEquals("declined once more after the recovery", 1, again.size());
+        assertEquals(82, bar());
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm, true);
+        focused(question(confirm));
+        assertEquals(1, confirms.size());
+        assertEquals(82, bar());
+        pass(400);
+        focused(waiting());
+        long gone = now();
+        assertCommitsAtTheFirstTickFrom(gone + OfferFilterService.BAR_CHANGE_QUIET_MS);
+        assertEquals("decided at the bar it was shown at", 82, line(500).barPercent);
+        assertNoHandBackOrStaleTap();
+    }
+
+    /**
+     * In split screen beside Offer Filter, a finger lands while the app declines: until Offer Filter's half reports it,
+     * the touch may be the user's on Dasher's half, so Dasher's question is held, untapped. The bar stays while it is
+     * held; the touch was on Offer Filter's half, the question is tapped, and the bar moves at the first safe tick
+     * after the offer is over.
+     */
+    @Test public void noCommitWhileDashersQuestionIsHeldForATouchInSplitScreen() {
+        connect(null);
+        split(waiting());
+        pass(15_000);
+        AccessibilityNodeInfo failing = offer("$5.00", "0:35");
+        List<Long> declines = taps(decline, true);
+        split(failing);
+        assertEquals("declined at once, in Dasher's half", 1, declines.size());
+        pass(300);
+        long at = now();
+        watchHears(at);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm, true);
+        split(question(confirm));
+        assertTrue("held while the touch is judged", confirms.isEmpty());
+        assertTrue(log(), log().contains("held while a touch in split screen is judged"));
+        wantCommit();
+        assertEquals("not while the question is held", 82, bar());
+        // Offer Filter's half reports the same finger: the decline goes on.
+        OfferFilterService.ownScreenTouched(at);
+        idle();
+        assertEquals("tapped once the touch is found on Offer Filter's half", 1, confirms.size());
+        assertEquals(82, bar());
+        pass(400);
+        split(waiting());
+        long gone = now();
+        assertCommitsAtTheFirstTickFrom(gone + OfferFilterService.BAR_CHANGE_QUIET_MS);
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED, line(500).action);
         assertNoHandBackOrStaleTap();
     }
 
@@ -222,10 +386,35 @@ public final class AutopilotCommitAdapterTest {
         assertTrue(RestartSuppression.remember(app, new OfferSnapshot(500, 6.6, 27, 2), 30));
         long saved = now();
         connect(app(MAPS));
+        // The user looks at one of Dasher's own screens, no offer on it (nor the wait for offers, which would end it).
+        show(screen("Ratings", "Customer rating", "Acceptance rate"));
         pass(15_000);
         wantCommit();
         assertEquals("not while the record stands", 82, bar());
         assertCommitsAtTheFirstTickFrom(saved + RestartSuppression.MAX_MS);
+    }
+
+    @Test public void noCommitWhileATakeoverHoldsEvenWithoutItsRestartRecord() {
+        connect(null);
+        show(waiting());
+        pass(15_000);
+        show(offer("$5.00", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        taps(confirm, false);
+        AccessibilityNodeInfo details = button("View offer details");
+        show(question(confirm, details));
+        pass(100);
+        userClicks(details);
+        long tookOver = now();
+        assertTrue(OfferFilterService.userHasOffer(new OfferSnapshot(500, 6.6, 27, 2)));
+        // Only the takeover itself holds now: its record for a restart is gone (as if it could not be kept).
+        RestartSuppression.clear(app);
+        show(screen("Ratings", "Customer rating", "Acceptance rate"));
+        pass(15_000);
+        wantCommit();
+        assertEquals("not while the user holds the offer", 82, bar());
+        assertCommitsAtTheFirstTickFrom(tookOver + OfferFilterService.TAKEOVER_MS);
     }
 
     // ---- An automatic acceptance ----
@@ -261,7 +450,10 @@ public final class AutopilotCommitAdapterTest {
 
     @Test public void noCommitWhileDashersNotificationOfAnOfferIsTracked() {
         listen();
-        connect(app(MAPS));
+        connect(null);
+        show(waiting());
+        // The user goes to their map: Dasher was last seen waiting for offers.
+        showApp(MAPS);
         pass(15_000);
         StatusBarNotification source = withFigures("$7.00");
         listener.get().onNotificationPosted(source, null);
@@ -305,6 +497,44 @@ public final class AutopilotCommitAdapterTest {
         assertCommitsAtTheFirstTickFrom(now());
     }
 
+    @Test public void noCommitWhileAPeekIsUnderWayAfterItsOffersNotificationWentAway() throws Exception {
+        installed(DASHER_HOME);
+        installed(MAPS_HOME);
+        listen();
+        connect(app(MAPS));
+        pass(15_000);
+        StatusBarNotification source = payless("Taco Bell");
+        listener.get().onNotificationPosted(source, null);
+        idle();
+        pass(Peek.QUIET_MS);
+        Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+        assertNotNull("Dasher is brought up", opened);
+        dasherShows(node("Starting…", false));
+        // Dasher takes its notification down while the peek still waits for the offer to be drawn: the notification
+        // no longer holds the bar, and nothing of an offer was read. Only the peek does.
+        listener.get().onNotificationRemoved(source, null, NotificationListenerService.REASON_APP_CANCEL);
+        idle();
+        pass(2_000);
+        assertFalse(OfferNotificationService.hasActiveOffer());
+        assertTrue("the peek is still under way", peekActive());
+        wantCommit();
+        assertEquals("not while the peek is under way", 82, bar());
+        assertEquals(1, logged(AutopilotText.LOG_DEFERRED));
+        long until = now() + 30_000;
+        while (peekActive() && now() < until) {
+            pass(250);
+            if (peekActive()) assertEquals("not while the peek is under way", 82, bar());
+        }
+        assertFalse("the peek ended", peekActive());
+        assertCommitsAtTheFirstTickFrom(now());
+    }
+
+    private boolean peekActive() throws Exception {
+        Field field = OfferFilterService.class.getDeclaredField("peek");
+        field.setAccessible(true);
+        return ((Peek) field.get(service)).active();
+    }
+
     // ---- The scanner's own work ----
 
     @Test public void noCommitWhileAReadIsQueuedARecheckIsDueOrALateCompletionIsWatched() throws Exception {
@@ -327,17 +557,92 @@ public final class AutopilotCommitAdapterTest {
         }
     }
 
-    /** Puts the scanner in {@code state} (a read queued, a recheck due, a late completion watched), or takes it out. */
+    /**
+     * Each state the commit waits for, held on its own with nothing else under way (Dasher read showing the wait for
+     * offers, nothing of an offer seen for 15 s): a question held for the touch watch or a split-screen touch, a decline
+     * episode (whose restart record would otherwise hold the bar too), a decline-error recovery, an automatic acceptance
+     * armed (with no offer up any more) or watched. Each keeps the bar where it is across Autopilot's ticks, and the
+     * commit lands at the first tick after it ends.
+     */
+    @Test public void noCommitWhileAnyOneDeclineOrAcceptanceStateHoldsOnItsOwn() throws Exception {
+        connect(null);
+        show(waiting());
+        pass(15_000);
+        String[] states = {"heldConfirmation", "episode", "declineError", "autoAccept", "autoAcceptWatched"};
+        for (String state : states) {
+            hold(state, true);
+            wantCommit();
+            assertEquals(state, 82, bar());
+            assertEquals(state, 1, logged(AutopilotText.LOG_DEFERRED));
+            pass(90_000);
+            assertEquals(state, 82, bar());
+            hold(state, false);
+            assertCommitsAtTheFirstTickFrom(now());
+            // Back where an earlier commit left it, for the next state.
+            assertTrue(FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 82));
+            DiagnosticLog.clear(app);
+            pass(61_000);
+        }
+    }
+
+    /**
+     * Puts the scanner in {@code state}, or takes it out: a read queued, a recheck due, a late completion watched; a
+     * question held, a decline episode, a decline-error recovery, an armed automatic acceptance, one watched.
+     */
     private void hold(String state, boolean on) throws Exception {
         Field field = OfferFilterService.class.getDeclaredField(state);
         field.setAccessible(true);
+        OfferSnapshot offer = new OfferSnapshot(500, 6.6, 27, 2);
         switch (state) {
             case "queued":
                 ((AtomicInteger) field.get(service)).set(on ? 1 : 0);
                 break;
             case "recheckPending":
+            case "autoAcceptWatched":
                 field.setBoolean(service, on);
                 break;
+            case "heldConfirmation": {
+                // Dasher's question as a read found it, held until the touch watch is up or a touch is judged.
+                java.lang.reflect.Constructor<?> scan =
+                        Class.forName(OfferFilterService.class.getName() + "$Scan").getDeclaredConstructor();
+                scan.setAccessible(true);
+                field.set(service, on ? scan.newInstance() : null);
+                break;
+            }
+            case "episode": {
+                DeclineEpisode episode = (DeclineEpisode) field.get(service);
+                if (on) {
+                    episode.declined("held offer", offer, now());
+                    assertTrue(episode.active(now()));
+                } else {
+                    episode.end();
+                }
+                break;
+            }
+            case "declineError": {
+                DeclineErrorRecovery recovery = (DeclineErrorRecovery) field.get(service);
+                if (on) {
+                    Object request = new Object();
+                    recovery.requested(request, now(), 1);
+                    assertTrue(recovery.error(request, now(), now()));
+                    assertTrue(recovery.pending());
+                } else {
+                    recovery.end();
+                }
+                break;
+            }
+            case "autoAccept": {
+                AutoAccept accept = (AutoAccept) field.get(service);
+                if (on) {
+                    assertEquals(AutoAccept.State.WAIT, accept.observe(new OfferSnapshot(700, 6.6, 27, 2),
+                            "held offer", FilterStore.load(app), 30, OfferNotificationService.generation(), now(),
+                            true));
+                    assertNotNull(accept.candidate());
+                } else {
+                    accept.clear();
+                }
+                break;
+            }
             default:
                 field.setLong(service, on ? now() + 60_000 : 0);
         }
@@ -476,8 +781,12 @@ public final class AutopilotCommitAdapterTest {
         DecisionLog.Entry line = line(500);
         assertEquals(DecisionLog.Action.USER_TOOK_OVER, line.action);
         assertEquals("its line keeps the bar it was decided at", 82, line.barPercent);
+        // What happened, in the user's words: Autopilot went off, not the minimums.
         assertTrue(FilterStore.lastStatus(app), FilterStore.lastStatus(app).endsWith(
-                "Minimums changed; this earlier decline is left to you."));
+                "Autopilot turned off (bar back to 100%); this earlier decline is left to you."));
+        assertEquals("Autopilot turned off (bar back to 100%); automatic taps stopped for this offer",
+                ShadowToast.getTextOfLatestToast());
+        assertFalse(log, log.contains("Minimums changed"));
         assertEquals("Autopilot itself committed nothing", 0, commits());
     }
 
@@ -502,6 +811,8 @@ public final class AutopilotCommitAdapterTest {
     private void assertNoHandBackOrStaleTap() {
         String log = log();
         assertFalse(log, log.contains("bar changed"));
+        assertFalse(log, log.contains("Autopilot turned off"));
+        assertFalse(log, log.contains("while reading; checking the offer again"));
         assertFalse(log, log.contains("Minimums changed"));
     }
 
@@ -696,6 +1007,69 @@ public final class AutopilotCommitAdapterTest {
     private void showApp(String pkg) {
         inFront(app(pkg));
         service.onAccessibilityEvent(event(pkg, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        idle();
+    }
+
+    /** Dasher's content changes (its countdown ticks, say), with no window change. */
+    private void tick() {
+        service.onAccessibilityEvent(event(DASHER, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        idle();
+    }
+
+    /**
+     * Dasher fills the screen showing {@code root}, its window focused as well as active (a decline-error recovery's
+     * Back goes only to such a window), and says so with a window change.
+     */
+    private void focused(AccessibilityNodeInfo root) {
+        TestWindows.full(service, root);
+        ((ShadowAccessibilityWindowInfo) Shadow.extract(service.getWindows().get(0))).setFocused(true);
+        service.onAccessibilityEvent(event(DASHER, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        idle();
+    }
+
+    /** Dasher's toast after the app's Decline: "Something went wrong. Please try again." */
+    private void errorToast() {
+        AccessibilityEvent toast = event(DASHER, AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED);
+        toast.setClassName("android.widget.Toast");
+        toast.getText().add("Something went wrong. Please try again.");
+        service.onAccessibilityEvent(toast);
+        idle();
+    }
+
+    /** The countdown of an offer of 35 s shown at {@code shownAt}, as it reads now ("0:31"). */
+    private static String remaining(long shownAt) {
+        return String.format(Locale.US, "0:%02d", Math.max(1, 35 - (now() - shownAt) / 1000));
+    }
+
+    /** Offer Filter's page in the top half, the active one; Dasher showing {@code root} in the bottom half. */
+    private void split(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo ours = node("com.local.dasherfilter", null, false);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, new Rect(0, 0, 1080, 1000)),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, new Rect(0, 1000, 1080, 1040)),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, root, false, new Rect(0, 1040, 1080, 2040))));
+        Shadows.shadowOf(service).setRootInActiveWindow(ours);
+        service.onAccessibilityEvent(event(DASHER, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
+        idle();
+    }
+
+    private static AccessibilityWindowInfo window(int type, AccessibilityNodeInfo root, boolean active, Rect bounds) {
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setType(type);
+        if (root != null) shadow.setRoot(root);
+        shadow.setActive(active);
+        shadow.setBoundsInScreen(bounds);
+        return window;
+    }
+
+    /** The touch watch, up while the app declines, hears of a finger landing at {@code at}, somewhere outside it. */
+    private void watchHears(long at) {
+        ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
+        List<View> watches = new ArrayList<>();
+        for (View view : windows.getViews()) if (view.getClass() == View.class) watches.add(view);
+        assertEquals("one touch watch while declining", 1, watches.size());
+        watches.get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
         idle();
     }
 
