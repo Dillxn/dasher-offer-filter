@@ -3564,7 +3564,8 @@ public final class OfferFilterService extends AccessibilityService {
             boolean paused = !current.enabled || !current.hasAnyRule();
             confirmLog(what + " skipped: " + (paused ? "auto-decline was paused" : "your rules changed")
                     + " while reading");
-            status(paused ? "Auto-decline paused while reading; nothing was tapped."
+            status(paused ? "Auto-decline paused while reading; " + ("confirmation".equals(what)
+                    ? "Dasher's question was not confirmed." : "nothing was tapped.")
                     : "Your rules changed while reading; checking the offer again.");
         }
         if (rulesCheckQueued.compareAndSet(false, true)) scanner.post(rulesCheck);

@@ -278,6 +278,7 @@ public final class StalledDeclineTest {
         assertTrue(confirmed.isEmpty());
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("first-step Decline skipped: auto-decline was paused while reading"));
+        assertTrue(log, log.contains("Auto-decline paused while reading; nothing was tapped."));
         assertTrue(log, log.contains("not reading Dasher while paused (auto-decline is off)"));
         assertFalse(log, log.contains("first-step Decline REQUESTED"));
         for (DecisionLog.Entry line : DecisionLog.recent(app, 5)) {
@@ -363,6 +364,7 @@ public final class StalledDeclineTest {
                 confirmed.isEmpty());
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("confirmation skipped: auto-decline was paused while reading"));
+        assertTrue(log, log.contains("Auto-decline paused while reading; Dasher's question was not confirmed."));
         assertTrue(log, log.contains("not reading Dasher while paused (auto-decline is off)"));
         for (DecisionLog.Entry line : DecisionLog.recent(app, 5)) {
             assertNotEquals(DecisionLog.Action.CONFIRMATION_TAPPED, line.action);
