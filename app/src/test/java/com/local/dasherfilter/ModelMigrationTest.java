@@ -63,7 +63,7 @@ public class ModelMigrationTest {
         return app.getSharedPreferences("offer_filter", Context.MODE_PRIVATE);
     }
 
-    /** What 0.4.73 left on the owner's phone (Oct 5–6): his shape, area mode, an 80% buffer and learned values. */
+    /** What 0.4.73 left on the owner's phone (Oct 5–6): their shape, area mode, an 80% buffer and learned values. */
     private void ownerShape() {
         prefs().edit()
                 .putBoolean("enabled", true).putInt("flat", 1950).putInt("mile", 500).putInt("minute", 60)

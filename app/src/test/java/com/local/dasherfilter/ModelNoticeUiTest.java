@@ -33,7 +33,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * The one-time 0.5.0 notice (finalSpec.migration, ONE-TIME NOTICE) on the real homepage: shown once, after the first-run
- * notice, until a button is tapped, again on a recreated screen; the owner's lines that apply, in his order; the pass
+ * notice, until a button is tapped, again on a recreated screen; the owner's lines that apply, in order; the pass
  * check only from 20 offers and when fewer than one in five would pass; "Use typical minimums" saving $4.00, $1.00 a
  * mile and $15 an hour from exactly the minimums (the owner's decision D1: Autopilot's bar back at 100 first), keeping
  * max stops and the switch, then asking for the goal; "Set up Autopilot" asking for it at once; and no notice at all
@@ -43,7 +43,7 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ModelNoticeUiTest extends AndroidAdapterTestBase {
-    /** The owner's notice (his Oct 5–6 rules): every line that applies to them, in the spec's order. */
+    /** The owner's notice (their Oct 5–6 rules): every line that applies to them, in the spec's order. */
     private static final String OWNER_LINES = "• Score by area is gone: an offer now has to meet each of your minimums."
             + "\n\n• Per stop is gone. Your $12.75 per stop now counts as a $25.50 minimum pay, so single orders are "
             + "judged the same. Use Max stops to limit stacked orders."
@@ -68,7 +68,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * What 0.4.73 left on the owner's phone (Oct 5–6, as ModelMigrationTest): his shape in area mode, an 80% buffer,
+     * What 0.4.73 left on the owner's phone (Oct 5–6, as ModelMigrationTest): their shape in area mode, an 80% buffer,
      * per stop and per item, learned values and auto-accept on; max stops {@code maxStops}.
      */
     private void ownerShape(int maxStops) {
