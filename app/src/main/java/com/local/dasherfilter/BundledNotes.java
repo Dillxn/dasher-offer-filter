@@ -21,7 +21,7 @@ import java.util.Map;
  */
 final class BundledNotes {
     /** The docs package's one switch: true once every line below is final (and none is a placeholder). */
-    static final boolean WRITTEN = false;
+    static final boolean WRITTEN = true;
     /** How a line still to be written starts. */
     static final String PLACEHOLDER = "[DOCS PACKAGE:";
 
@@ -29,16 +29,29 @@ final class BundledNotes {
     private static final Map<String, List<String>> RELEASES = new LinkedHashMap<>();
 
     static {
-        // What changed in the notice since the one before it. Two or three short lines, plain words.
+        // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 is
+        // first published with 0.5.0; its reader last accepted notice 13.
+        // Notice 13 and earlier texts called the repository older versions filed reports in "private"; it is public
+        // (the owner's decision, 6 October 2026), and the first line corrects that for everyone who read them.
         notice(14,
-                "[DOCS PACKAGE: what changed in notice 14, line 1 (e.g. feedback no longer needs GitHub)]",
-                "[DOCS PACKAGE: line 2, or delete this line]");
+                "Feedback needs no account and GitHub is gone. Reports older versions sent went to the project's "
+                        + "public GitHub repository, not a private one.",
+                "Optional Autopilot moves your cutoff up or down and may pass offers below your minimums to you. "
+                        + "Dasher's last acceptance rate is kept, used 7 days at most.",
+                "Mid-dash your unlocked screen won't time out, and Peek can check an offer that came while locked. "
+                        + "Dash diagnostics are opt-in. The Terms name Ohio law.");
         // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
-        // the versionName that ships: the release is 0.5.0 (AGENTS.md), so the docs package renames this key with
-        // app/build.gradle's versionName (BundledNotesTest requires the current versionName's entry).
-        release("0.4.73",
-                "[DOCS PACKAGE: what is new in 0.4.73, line 1]",
-                "[DOCS PACKAGE: line 2, or delete this line]");
+        // the versionName that ships (BundledNotesTest requires the current versionName's entry). What the code does,
+        // never an outcome no phone has shown yet.
+        release("0.5.0",
+                "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
+                        + "you pick: acceptance rate 70%, 50%, or pay first.",
+                "Peek now taps Dasher's own notification when an offer won't show and checks an offer that came "
+                        + "while locked; mid-dash your unlocked screen won't time out.",
+                "Lighter on Dasher: recognized maps are skipped and screens with no offer are read less often. "
+                        + "Feedback needs no account: Settings → Send anonymous feedback.");
+        // 0.4.73 never shipped, and the build carries its name until the release takes 0.5.0's: no card for it.
+        release("0.4.73");
     }
 
     private BundledNotes() {}

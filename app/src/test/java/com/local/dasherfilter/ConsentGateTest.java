@@ -136,12 +136,60 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details",
                 "What you type is sent as written, not masked",
                 "No feedback or diagnostics leave before you accept this notice",
-                "clearing this phone does not erase sent copies"}) {
+                "clearing this phone does not erase sent copies",
+                // Autopilot and Dasher's acceptance rate (finalSpec.privacyConsent; WP5: kept even with it off, with
+                // the offer's numeric fingerprint; AutopilotStore deletes an old reading only when it next reads it).
+                "The wait estimate and Autopilot use up to 200 numeric offer and observed-wait records in a rolling "
+                        + "24-hour window, which are not shared",
+                "the app keeps the latest acceptance rate Dasher showed, with the offer it was shown for (used up to 7 "
+                        + "days, then deleted when the app next looks), even with Autopilot off",
+                "the rate leaves only in reports you share or send yourself, never in the summary after a dash"}) {
             assertTrue(fact, data.contains(fact));
         }
+        assertEquals(7L * 24 * 60 * 60_000, AutopilotStore.AR_MAX_AGE_MS);
+        assertFalse("more than one number is kept", data.contains("one number"));
         assertFalse("no account of any kind", data.contains("GitHub"));
         assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
         assertFalse(data.contains("cleared by this update"));
+        assertFalse("0.5.0 words for the wait records", data.contains("A local wait estimate uses"));
+    }
+
+    @Test
+    public void theNoticeSaysWhatAutopilotPeekAndTheScreenHoldDoInFewPlainPoints() {
+        String[] leads = new String[Consent.POINTS.length];
+        for (int i = 0; i < leads.length; i++) leads[i] = Consent.POINTS[i][0];
+        assertEquals("plain and few: the same eight points", java.util.Arrays.asList("Acceptance rate.",
+                "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Your Dasher account.",
+                "At your own risk.", "Not while driving.", "Your data."), java.util.Arrays.asList(leads));
+        assertEquals("notice 14 was never published before 0.5.0: these words ride on it", 14, Consent.VERSION);
+        String does = Consent.POINTS[2][1];
+        for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
+                "It taps Decline and its confirmation on offers below your minimums.",
+                // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
+                // meet the minimums, which the acceptance-rate warning covers too.
+                "Optional Autopilot moves that cutoff up or down by itself (" + FilterStore.BAR_MIN + "% to "
+                        + FilterStore.BAR_MAX + "% of your minimums), using your recent offers, how often they come "
+                        + "and the acceptance rate Dasher shows when you decline",
+                "raised, it declines offers that meet your minimums",
+                "to protect your acceptance goal it can let offers below your minimums through for you to decide",
+                "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
+                        + "offers that meet your minimums and commit you to a delivery.",
+                "it may go Back and retry, at most twice", "Your touch stops it.",
+                "It can briefly turn offer sound down.",
+                "During a dash it keeps your unlocked screen from timing out; it never wakes or unlocks it."}) {
+            assertTrue(fact, does.contains(fact));
+        }
+        String peek = Consent.POINTS[3][1];
+        assertTrue(peek.contains("While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
+                + "background offer (also just after you unlock, for one that came while it was locked), then return "
+                + "to your previous app."));
+        assertTrue(peek.contains("Turn Peek off in Settings."));
+        assertTrue(Consent.POINTS[4][1].contains("may break DoorDash's terms"));
+        assertTrue(Consent.POINTS[5][1].contains("no warranty"));
+        assertTrue(Consent.POINTS[6][1].contains("Don't handle your phone while driving."));
+        for (String[] point : Consent.POINTS) {
+            assertFalse(point[0], point[1].contains("learned") || point[1].contains("adaptive"));
+        }
     }
 
     @Test
@@ -260,7 +308,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
-        // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics.
+        // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
+        // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms.
         assertEquals(14, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 13).commit();
@@ -334,7 +383,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             View shown = page.get().findViewById(android.R.id.content);
             assertNotNull(findText(shown, doc.title));
             if (doc != LegalTexts.Doc.LICENSE) {
-                assertNotNull(shownTextContaining(shown, "Not legal advice; have a lawyer review before public release."));
+                // Dated beta texts, never drafts.
+                String dated = (doc == LegalTexts.Doc.TERMS ? "Beta terms" : "Beta privacy policy")
+                        + ", effective " + LegalTextsTest.EFFECTIVE + " · for " + AppName.NAME + " 0.5.0";
+                assertNotNull(doc.title + ": " + dated, shownTextContaining(shown, dated));
+                assertNull(shownTextContaining(shown, "Not legal advice"));
             }
             String line = doc == LegalTexts.Doc.TERMS ? "Auto-accept starts off."
                     : doc == LegalTexts.Doc.PRIVACY ? "positions rounded to about half a kilometre"
