@@ -105,7 +105,11 @@ final class AddOnOffer {
         }
 
         // Totals may be composed from known context plus explicit increments, never the other way around.
-        if (milesTotal == null && miles != null && active.miles != null) milesTotal = active.miles + miles;
+        // Miles add as the decimals they were read as (3.1 + 2.2 is 5.3, never 5.300000000000001), so the per-mile
+        // minimum, multiplied exactly, asks no extra cent of the combined route.
+        if (milesTotal == null && miles != null && active.miles != null) {
+            milesTotal = BigDecimal.valueOf(active.miles).add(BigDecimal.valueOf(miles)).doubleValue();
+        }
         if (minutesTotal == null && minutes != null) minutesTotal = sum(active.minutes, minutes);
         if (stopsTotal == null && stops != null) stopsTotal = sum(active.stops, stops);
 

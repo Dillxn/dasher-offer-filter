@@ -41,6 +41,21 @@ public final class AddOnOfferTest {
         assertEquals(Integer.valueOf(4), addOn.combined.stops);
     }
 
+    /**
+     * Miles composed from the route and an explicit increment add as the decimals they were read as: 3.1 + 2.2 is 5.3,
+     * not 5.300000000000001, so $1.00 a mile asks the combined route $5.30, not $5.31 (AGENTS: per mile is multiplied
+     * as an exact BigDecimal), and a $5.30 route that meets it exactly is kept.
+     */
+    @Test
+    public void composedMilesAddAsReadSoAnExactlyMeetingRouteIsNotDeclinedByACent() {
+        OfferSnapshot route = new OfferSnapshot(300, 3.1, 20, 1);
+        AddOnOffer addOn = AddOnOffer.parse(route, Arrays.asList("Add to route", "+$2.30", "+2.2 mi", "+10 min"));
+        assertEquals(Double.valueOf(5.3), addOn.combined.miles);
+        assertEquals(Integer.valueOf(530), addOn.combined.payCents);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, FilterSettings.of(true, 0, 100, 0, 0));
+        assertEquals(decision.reason, OfferRule.Result.KEEP, decision.result);
+    }
+
     @Test
     public void totalsDoNotInventMarginalTravelFromAnOldRoute() {
         OfferSnapshot route = new OfferSnapshot(2500, 8.0, 40, 2);
