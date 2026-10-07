@@ -226,10 +226,10 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
     public void narrowDoubledFontWrapsAnUnconfirmedRequestWithoutClipping() throws Exception {
         RuntimeEnvironment.setFontScale(2f);
-        // Autopilot off, as before 0.5.0: no line of its own in the ground (with it on, a very large font on a phone
-        // this small scrolls the map a little: AutopilotUiTest).
+        // Autopilot on: at a very large font its status stands in its chip beside this long line, never a row of its
+        // own, and the page stays one screen.
         try { render(false, "narrow-large-requested", DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED,
-                "Accept requested, not confirmed", false); }
+                "Accept requested, not confirmed", true); }
         finally { RuntimeEnvironment.setFontScale(1f); }
     }
 
@@ -240,7 +240,8 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     private void render(boolean split, String name, DecisionLog.StepKind status, String outcome, boolean autopilot)
             throws Exception {
         FilterStore.save(app, RULES);
-        // Autopilot on below 100%: its status line on a whole screen, its chip beside the caption in a short one.
+        // Autopilot on below 100%: its status line on a whole screen with room for it, else its chip beside the
+        // caption (a short pane with the constellation in its header); beside Dasher its button alone.
         if (autopilot) withAutopilotAt(82);
         DecisionLog.record(app, entry(System.currentTimeMillis(), 1835, status));
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
