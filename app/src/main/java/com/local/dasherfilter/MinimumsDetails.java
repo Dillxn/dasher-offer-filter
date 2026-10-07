@@ -30,6 +30,12 @@ final class MinimumsDetails {
     static final String BELOW = "Below 100%, offers pass only because Autopilot lowered the bar and are never "
             + "auto-accepted.";
     static final String ROUNDED = "≈ means rounded up to the next cent.";
+    /**
+     * A "+$" offer, its pay unread beside a "+$" amount, is declined only when even the most it can pay misses the
+     * minimums at min(bar, 100) (OfferRule): Autopilot's bar above 100% never makes that stricter.
+     */
+    static final String CEILING = "Its pay was not read, only the most it can pay with its +$ amount: that is judged "
+            + "at exactly your minimums, never at a bar above 100%.";
 
     private MinimumsDetails() {}
 
@@ -47,14 +53,21 @@ final class MinimumsDetails {
             lines.add(rates(rules));
             lines.add(ADD_ON);
         } else {
-            if (rules.flatCents > 0) lines.add(minimum(AreaScore.PAY, rules.flatCents, facts, bar, approximate));
-            if (rules.perMileCents > 0) lines.add(minimum(AreaScore.MILE, rules.perMileCents, facts, bar, approximate));
-            if (rules.perMinuteCents > 0) {
-                lines.add(minimum(AreaScore.MINUTE, rules.perMinuteCents, facts, bar, approximate));
+            // A "+$" ceiling's decline was judged at min(bar, 100): worked out, and compared, at that bar.
+            boolean ceiling = !legacy && entry != null && entry.reason != null
+                    && entry.reason.startsWith("pay at most ") && bar > FilterSettings.BAR_AT_MINIMUMS;
+            int judged = ceiling ? FilterSettings.BAR_AT_MINIMUMS : bar;
+            if (ceiling) lines.add(CEILING);
+            if (rules.flatCents > 0) lines.add(minimum(AreaScore.PAY, rules.flatCents, facts, judged, approximate));
+            if (rules.perMileCents > 0) {
+                lines.add(minimum(AreaScore.MILE, rules.perMileCents, facts, judged, approximate));
             }
-            lines.add(required(rules, facts, bar, approximate));
+            if (rules.perMinuteCents > 0) {
+                lines.add(minimum(AreaScore.MINUTE, rules.perMinuteCents, facts, judged, approximate));
+            }
+            lines.add(required(rules, facts, judged, approximate));
             if (!legacy && entry != null && entry.requiredCents > 0 && entry.requiredCents < Long.MAX_VALUE) {
-                long now = requiredCents(rules, facts, bar);
+                long now = requiredCents(rules, facts, judged);
                 if (now != entry.requiredCents) {
                     lines.add("When decided it needed " + DecisionLog.money(entry.requiredCents)
                             + "; your minimums have changed since.");

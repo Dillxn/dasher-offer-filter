@@ -62,6 +62,36 @@ public final class MinimumsDetailsTest {
         assertNothingRetired(text);
     }
 
+    /**
+     * A "+$" offer (pay unread beside a "+$" amount) is declined only when even the most it can pay misses the minimums
+     * at min(bar, 100): at Autopilot's 119% its ticket works the minimums out at exactly 100%, as the decision did, and
+     * never claims the minimums changed when they did not.
+     */
+    @Test public void aPlusAmountsDeclineAboveOneHundredIsShownAtExactlyTheMinimums() {
+        FilterSettings at119 = atBar(starters(), 119);
+        OfferSnapshot ceiling = new OfferSnapshot(null, 2.6, 15, 2, 390);
+        OfferRule.Decision decision = OfferRule.evaluate(ceiling, at119);
+        assertEquals(OfferRule.Result.DECLINE, decision.result);
+        assertTrue(decision.reason, decision.reason.startsWith("pay at most $3.90 with its +$ amount; "));
+        DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, ceiling, decision,
+                DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.<String>emptyList());
+        assertEquals(400, entry.requiredCents);
+        String text = MinimumsDetails.describe(at119, entry);
+        assertTrue(text, text.startsWith("Your minimums · bar 119% (Autopilot)\n" + MinimumsDetails.CEILING + "\n"));
+        assertTrue(text, text.contains("Pay — set $4.00\n"));
+        assertTrue(text, text.contains("Required $4.00: the highest set amount"));
+        assertFalse(text, text.contains("119% of the highest"));
+        assertFalse("the minimums did not change: " + text, text.contains("changed since"));
+        // A minimum raised since still says so.
+        String later = MinimumsDetails.describe(atBar(FilterSettings.of(true, 450, 100, 25, 3), 119), entry);
+        assertTrue(later, later.contains("When decided it needed $4.00; your minimums have changed since."));
+        // At or below 100% nothing is added: the decision's bar was the line's own.
+        DecisionLog.Entry at82 = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, ceiling,
+                OfferRule.evaluate(ceiling, atBar(starters(), 82)), DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList());
+        assertFalse(MinimumsDetails.describe(atBar(starters(), 82), at82).contains(MinimumsDetails.CEILING));
+    }
+
     @Test public void theSelectedOffersOwnAmountsChangeWhatEachMinimumAsksWithoutInventingPay() {
         // Another offer, its pay unread, at exactly the minimums: the per-mile and per-hour amounts follow its own miles
         // and minutes, the highest set amount is the requirement, and there is no score without pay.
