@@ -62,6 +62,17 @@ final class AutopilotText {
     static final String DETAILS_AT_GOAL = "At or above your goal.";
     static final String DETAILS_NO_WAITING = "Not enough watched waiting yet to tell how often offers come.";
     static final String DETAILS_AUTO_ACCEPT = "Auto-accept only takes offers that meet 100% of your minimums.";
+    /** The details' switch for the minimums' growth ({@link Growth}), one of Autopilot's settings. */
+    static final String GROW_SWITCH = "Let my minimums grow";
+    /** Under the switch: what it does, in a sentence. */
+    static final String GROW_ABOUT = "When offers pay above your minimums for " + Growth.OFFERS + " offers over "
+            + Growth.LEAST_DAYS + " days or more, Autopilot raises them, at most " + Growth.MOST_PERCENT + "% at a "
+            + "time, with Undo.";
+
+    // ---- The minimums grew: the homepage's one-time note ----
+
+    static final String GROWTH_UNDO = "Undo";
+    static final String GROWTH_OK = "OK";
 
     // ---- The offer ticket ----
 
@@ -128,6 +139,8 @@ final class AutopilotText {
         final AutopilotStore.Reading reading;
         /** The last bar change, or null. */
         final AutopilotStore.Change lastChange;
+        /** The last growth of the minimums, or null. */
+        final AutopilotStore.Grew lastGrowth;
         /** Recovering and the stall correction: the plan's, else as stored. */
         final boolean recovering;
         final int extra;
@@ -148,6 +161,12 @@ final class AutopilotText {
 
         Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
                AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra, long wallNow) {
+            this(rules, readerConnected, plan, reading, lastChange, storedRecovering, storedExtra, null, wallNow);
+        }
+
+        Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
+               AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
+               AutopilotStore.Grew lastGrowth, long wallNow) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.rules = rules;
             this.on = rules.autopilot;
@@ -158,6 +177,7 @@ final class AutopilotText {
             this.plan = on && plan != null && plan.rulesKey.equals(rules.rulesKey()) ? plan : null;
             this.reading = reading;
             this.lastChange = lastChange;
+            this.lastGrowth = lastGrowth;
             this.recovering = this.plan != null ? this.plan.recovering : storedRecovering;
             this.extra = this.plan != null ? this.plan.extra : Math.max(0, Math.min(Autopilot.EXTRA_MAX, storedExtra));
             this.wallNow = wallNow;
@@ -474,6 +494,8 @@ final class AutopilotText {
         if (paid != null) lines.add(paid);
         String change = detailsLastChange(s);
         if (change != null) lines.add(change);
+        String grew = detailsGrowth(s);
+        if (grew != null) lines.add(grew);
         if (s.on) lines.add(DETAILS_AUTO_ACCEPT);
         String pinned = detailsPinned(s);
         if (pinned != null) lines.add(pinned);
@@ -569,6 +591,17 @@ final class AutopilotText {
     }
 
     /**
+     * When the minimums last grew: "Your minimums last grew 8%, 3 h ago: $4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr
+     * → $16.20/hr."; null when no growth is kept.
+     */
+    static String detailsGrowth(Status s) {
+        AutopilotStore.Grew grew = s.lastGrowth;
+        if (grew == null) return null;
+        return "Your minimums last grew " + grew.grown.percent + "%, " + ago(s.wallNow - grew.at) + ": "
+                + grownMinimums(grew.grown) + ".";
+    }
+
+    /**
      * While pinned: how few offers even the lowest bar passes, and what helps: turning off max stops only when it is
      * set, and typical minimums only when the minimums are not those already. Null otherwise.
      */
@@ -599,6 +632,65 @@ final class AutopilotText {
         if (!s.on) return Collections.unmodifiableList(Arrays.asList(DETAILS_TURN_ON, DETAILS_CLOSE));
         return Collections.unmodifiableList(Arrays.asList(
                 offersTypical(s) ? DETAILS_TYPICAL_MINIMUMS : DETAILS_CHANGE_GOAL, DETAILS_TURN_OFF, DETAILS_CLOSE));
+    }
+
+    // ---- The minimums grew ----
+
+    /** The note's title: "Your minimums grew 8%". */
+    static String growthTitle(Growth.Grown grown) {
+        return "Your minimums grew " + grown.percent + "%";
+    }
+
+    /**
+     * The note's one line: "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised them: $4.00
+     * → $4.32 · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."
+     */
+    static String growthLine(AutopilotStore.Grew grew) {
+        return "Offers paid above your minimums for " + grew.offers + " " + plural(grew.offers, "offer") + " over "
+                + grew.days + " " + plural(grew.days, "day") + ", so Autopilot raised them: "
+                + grownMinimums(grew.grown) + ".";
+    }
+
+    /**
+     * The note as a screen reader hears it, in words: "Your minimums grew 8 percent. Offers paid above your minimums
+     * for 30 offers over 2 days, so Autopilot raised them: minimum pay $4.00 to $4.32, per mile $1.00 to $1.08, per
+     * hour $15 to $16.20."
+     */
+    static String growthSaid(AutopilotStore.Grew grew) {
+        Growth.Grown g = grew.grown;
+        List<String> parts = new ArrayList<>();
+        if (g.flatAfter > 0) parts.add("minimum pay " + DecisionLog.money(g.flatBefore) + " to "
+                + DecisionLog.money(g.flatAfter));
+        if (g.mileAfter > 0) parts.add("per mile " + DecisionLog.money(g.mileBefore) + " to "
+                + DecisionLog.money(g.mileAfter));
+        if (g.minuteAfter > 0) parts.add("per hour " + DecisionLog.shortMoney(g.minuteBefore * 60L) + " to "
+                + DecisionLog.shortMoney(g.minuteAfter * 60L));
+        return "Your minimums grew " + g.percent + " percent. Offers paid above your minimums for " + grew.offers + " "
+                + plural(grew.offers, "offer") + " over " + grew.days + " " + plural(grew.days, "day")
+                + ", so Autopilot raised them: " + String.join(", ", parts) + ".";
+    }
+
+    /** The Undo's toast: "Minimums back to $4.00 · $1.00/mi · $15/hr". */
+    static String growthUndoneToast(Growth.Grown g) {
+        List<String> parts = new ArrayList<>();
+        if (g.flatBefore > 0) parts.add(DecisionLog.money(g.flatBefore));
+        if (g.mileBefore > 0) parts.add(DecisionLog.money(g.mileBefore) + "/mi");
+        if (g.minuteBefore > 0) parts.add(DecisionLog.shortMoney(g.minuteBefore * 60L) + "/hr");
+        return "Minimums back to " + String.join(" · ", parts);
+    }
+
+    /** Each set minimum before and after, as the page shows money: "$4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr → …". */
+    static String grownMinimums(Growth.Grown g) {
+        List<String> parts = new ArrayList<>();
+        if (g.flatAfter > 0) parts.add(DecisionLog.money(g.flatBefore) + " → " + DecisionLog.money(g.flatAfter));
+        if (g.mileAfter > 0) {
+            parts.add(DecisionLog.money(g.mileBefore) + "/mi → " + DecisionLog.money(g.mileAfter) + "/mi");
+        }
+        if (g.minuteAfter > 0) {
+            parts.add(DecisionLog.shortMoney(g.minuteBefore * 60L) + "/hr → "
+                    + DecisionLog.shortMoney(g.minuteAfter * 60L) + "/hr");
+        }
+        return String.join(" · ", parts);
     }
 
     // ---- Why the bar moved ----
@@ -777,6 +869,43 @@ final class AutopilotText {
     /** "commit 100% -> 82% (acceptance rate below your goal)". */
     static String logCommit(int from, int to, Autopilot.Reason reason) {
         return "commit " + from + "% -> " + to + "% (" + reasonWords(reason) + ")";
+    }
+
+    /**
+     * "minimums grew 8% after 30 offers above 103% on 2 days: $4.00 -> $4.32, $1.00/mi -> $1.08/mi, $15.00/hr ->
+     * $16.20/hr (bar 112% -> 104%)": only the set minimums.
+     */
+    static String logGrowth(Growth.Evidence evidence) {
+        Growth.Grown g = evidence.grown;
+        return "minimums grew " + g.percent + "% after " + evidence.offers + " offers above " + Growth.LEAST_BAR
+                + "% on " + evidence.days + " days: " + logMinimums(g.flatBefore, g.mileBefore, g.minuteBefore,
+                        g.flatAfter, g.mileAfter, g.minuteAfter)
+                + " (bar " + g.barBefore + "% -> " + g.barAfter + "%)";
+    }
+
+    /** "minimums growth undone: $4.32 -> $4.00, $1.08/mi -> $1.00/mi, $16.20/hr -> $15.00/hr". */
+    static String logGrowthUndone(Growth.Grown g) {
+        return "minimums growth undone: " + logMinimums(g.flatAfter, g.mileAfter, g.minuteAfter, g.flatBefore,
+                g.mileBefore, g.minuteBefore);
+    }
+
+    /** "minimums growth on" / "minimums growth off": the user's switch. */
+    static String logGrowSwitch(boolean on) {
+        return "minimums growth " + (on ? "on" : "off");
+    }
+
+    /** "$4.00 -> $4.32, $1.00/mi -> $1.08/mi, $15.00/hr -> $16.20/hr", the set minimums only. */
+    private static String logMinimums(int flatFrom, int mileFrom, int minuteFrom, int flatTo, int mileTo,
+                                      int minuteTo) {
+        List<String> parts = new ArrayList<>();
+        if (flatFrom > 0 || flatTo > 0) parts.add(DecisionLog.money(flatFrom) + " -> " + DecisionLog.money(flatTo));
+        if (mileFrom > 0 || mileTo > 0) {
+            parts.add(DecisionLog.money(mileFrom) + "/mi -> " + DecisionLog.money(mileTo) + "/mi");
+        }
+        if (minuteFrom > 0 || minuteTo > 0) {
+            parts.add(DecisionLog.money(minuteFrom * 60L) + "/hr -> " + DecisionLog.money(minuteTo * 60L) + "/hr");
+        }
+        return String.join(", ", parts);
     }
 
     /** "ar reading 55% (exempt no)"; a question that showed no single percent, "ar reading none (exempt yes)". */

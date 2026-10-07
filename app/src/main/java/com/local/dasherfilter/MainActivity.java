@@ -109,7 +109,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String CLEAR_HISTORY = "Removes the offer decisions, waiting estimates, captured screen text, offer "
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
-            + "last change from this phone. Your rules and Autopilot settings stay.";
+            + "last change from this phone, with its note that your minimums grew. Your rules and Autopilot settings "
+            + "stay.";
     /** What the ground's one line shows: nothing, the start, Autopilot's status, or the wait for a matching offer. */
     private static final int SLOT_NONE = 0;
     private static final int SLOT_START = 1;
@@ -310,6 +311,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private UpdateReadyRow updateReady;
     /** One-time cards on the homepage: what Peek does (the first time filtering is on), what is new after an update. */
     private PeekIntroCard peekIntro;
+    /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
+    private GrowthCard growthCard;
     private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
     private boolean freshScreen;
@@ -886,6 +889,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
         whatsNew = new WhatsNewCard(this, ui, problems);
+        growthCard = new GrowthCard(this, ui, problems, this::undoGrowth);
         addFeeNotice(problems);
         // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
         // beside another app.
@@ -1151,7 +1155,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private FilterSettings storeRules(FilterSettings saved, FilterSettings rules) {
         if (rules.enabled && !rules.hasAnyRule()) rules = rules.withEnabled(false);
-        FilterStore.save(this, rules);
+        // Only what this change changed: minimums Autopilot grew since they were loaded stay grown.
+        FilterStore.save(this, saved, rules);
         if (rules.flatCents != saved.flatCents || rules.perMileCents != saved.perMileCents
                 || rules.perMinuteCents != saved.perMinuteCents || rules.maxStops != saved.maxStops) {
             AutopilotRuntime.rulesChanged(this);
@@ -1264,6 +1269,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle(AutopilotText.DETAILS_TITLE)
                 .setMessage(String.join("\n\n", AutopilotText.detailsLines(status)));
+        // "Let my minimums grow", one of Autopilot's settings, under its details (on unless turned off).
+        LinearLayout grow = ui.column();
+        grow.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(4));
+        Switch growSwitch = ui.toggle(grow, AutopilotText.GROW_SWITCH, FilterStore.minimumsGrow(this));
+        growSwitch.setText(ui.twoLines(AutopilotText.GROW_SWITCH, AutopilotText.GROW_ABOUT));
+        growSwitch.setOnCheckedChangeListener((view, on) -> AutopilotRuntime.setMinimumsGrow(this, on));
+        builder.setView(grow);
         for (String button : AutopilotText.detailsButtons(status)) {
             switch (button) {
                 case AutopilotText.DETAILS_TYPICAL_MINIMUMS:
@@ -1319,6 +1331,21 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 Autopilot.STARTER_PER_MINUTE_CENTS));
         DiagnosticLog.log(this, "rules", "typical minimums chosen from " + where);
         return true;
+    }
+
+    /**
+     * The growth note's Undo ({@link GrowthCard}): the minimums from before the growth come back, only while they are
+     * still the grown ones. It is the user's change: applied to any offer on screen like a knob's, and said in a toast.
+     */
+    private void undoGrowth() {
+        AutopilotStore.Grew grew = AutopilotRuntime.growthNote(this);
+        if (grew != null && AutopilotRuntime.undoGrowth(this)) {
+            rulesChanged();
+            updateMeter();
+            toast(AutopilotText.growthUndoneToast(grew.grown));
+        } else {
+            refresh();
+        }
     }
 
     /** "Typical minimums set: $4 · $1/mi · $15/hr". */
@@ -1717,6 +1744,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
+        growthCard.refresh();
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
@@ -2539,7 +2567,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Persists auto-decline off immediately, keeping every saved rule. */
     private void pause() {
-        FilterStore.save(this, FilterStore.load(this).withEnabled(false));
+        FilterSettings saved = FilterStore.load(this);
+        FilterStore.save(this, saved, saved.withEnabled(false));
         rulesChanged();
         toast("Paused. Nothing will be declined.");
     }
@@ -2554,7 +2583,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             showStarter();
             return;
         }
-        FilterStore.save(this, saved.withEnabled(true));
+        FilterStore.save(this, saved, saved.withEnabled(true));
         // Autopilot's plans are for the rules with their switch: a plan made while paused says nothing now, so one is
         // asked for, for display. Never AutopilotRuntime.rulesChanged: resuming changes no minimum (and makes no jump).
         AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.USER);

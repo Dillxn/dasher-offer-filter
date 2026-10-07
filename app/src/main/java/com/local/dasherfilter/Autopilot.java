@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 /**
  * Autopilot (0.5.0): the one control that moves the bar, the share of the user's minimums an offer must pay
@@ -30,7 +31,9 @@ import java.util.Map;
  * requirement formula here.
  *
  * <p>Autopilot never accepts anything, never decides a single offer and learns nothing from what the user accepts or
- * declines: the history only counts offers and outcomes for the acceptance rate, and the market for the value.
+ * declines: the history only counts offers and outcomes for the acceptance rate, and the market for the value. A plan
+ * also says whether the minimums are due to grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded
+ * bars only.
  */
 final class Autopilot {
     // ---- Bar ----
@@ -165,7 +168,9 @@ final class Autopilot {
         PASS_FLOOR(false, "keeping at least 1 in 5 offers coming to you"),
         AT_MINIMUMS(false, "holding at your minimums"),
         VALUE_UP(false, "offers are coming often"),
-        VALUE_DOWN(false, "offers are slower");
+        VALUE_DOWN(false, "offers are slower"),
+        /** The minimums grew ({@link Growth}) and the bar came down with them, keeping what it asks. */
+        MINIMUMS_GREW(false, "your minimums grew");
 
         /** A user's change: the next commit goes straight to the plan's target. */
         final boolean jump;
@@ -214,9 +219,22 @@ final class Autopilot {
         final boolean declined;
         /** Dasher said declining it does not lower the acceptance rate. */
         final boolean arExempt;
+        /** The bar it was decided at, in percent of the minimums (DecisionLog's "bar"). */
+        final int bar;
+        /** Autopilot was on when it was decided, so Autopilot had set that bar (DecisionLog's "auto"). */
+        final boolean autopilot;
+        /** The rules model it was decided under (DecisionLog's "model"; 1 for a line an older version wrote). */
+        final int model;
 
+        /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, FilterSettings.BAR_AT_MINIMUMS, false,
+                    DecisionLog.MODEL);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model) {
             this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
             this.at = at;
             this.addOn = addOn;
@@ -224,6 +242,9 @@ final class Autopilot {
             this.accepted = accepted;
             this.declined = declined;
             this.arExempt = arExempt;
+            this.bar = bar;
+            this.autopilot = autopilot;
+            this.model = model;
         }
 
         /** An accept in acceptance-rate accounting. */
@@ -309,9 +330,23 @@ final class Autopilot {
         final State state;
         final long wallNow;
         final long generation;
+        /**
+         * When the current minimums took effect (wall clock; FilterStore's "minimums since"): only lines decided from
+         * then on are evidence that they can grow. {@link Long#MAX_VALUE}: none is.
+         */
+        final long minimumsSince;
+        /** The phone's time zone, for the calendar days of that evidence. */
+        final TimeZone zone;
 
+        /** Inputs with no evidence for growth (no line is decided after {@link Long#MAX_VALUE}). */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation) {
+            this(rules, newestFirst, waits, reading, state, wallNow, generation, Long.MAX_VALUE,
+                    TimeZone.getTimeZone("UTC"));
+        }
+
+        Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
+               Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.rules = rules;
             this.newestFirst = newestFirst == null ? Collections.<OfferRecord>emptyList()
@@ -322,6 +357,8 @@ final class Autopilot {
             this.state = state == null ? State.INITIAL : state;
             this.wallNow = wallNow;
             this.generation = generation;
+            this.minimumsSince = minimumsSince;
+            this.zone = zone == null ? TimeZone.getTimeZone("UTC") : zone;
         }
     }
 
@@ -577,6 +614,12 @@ final class Autopilot {
         /** Display only: watched waiting and arrivals over the last two hours. */
         final long recentWaitMs;
         final int recentArrivals;
+        /**
+         * The minimums are due to grow ({@link Growth#evidence}), for exactly these rules and the minimums since the
+         * plan read; null when not. Applied only at a safe point, and only while the gates there hold
+         * ({@link AutopilotRuntime}).
+         */
+        final Growth.Evidence growth;
 
         private final int[] windowThetas;
         private final int[] mixThetas;
@@ -619,6 +662,7 @@ final class Autopilot {
             this.checkpointAr = d.checkpointAr;
             this.recentWaitMs = d.recentWaitMs;
             this.recentArrivals = d.recentArrivals;
+            this.growth = d.growth;
             this.windowThetas = d.windowThetas;
             this.mixThetas = d.mixThetas;
             this.mixPay = d.mixPay;
@@ -670,6 +714,7 @@ final class Autopilot {
         final int[] mixThetas;
         final long[] mixPay;
         final long[] mixMinutes;
+        final Growth.Evidence growth;
         int need = -1;
         int barShare = -1;
         boolean pinned;
@@ -682,8 +727,9 @@ final class Autopilot {
         int checkpointAr;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
-              boolean exemptionsIgnored) {
+              boolean exemptionsIgnored, Growth.Evidence growth) {
             rules = in.rules;
+            this.growth = growth;
             state = in.state;
             wallNow = in.wallNow;
             generation = in.generation;
@@ -746,7 +792,9 @@ final class Autopilot {
      *   <li>With fewer than 20 readable offers, {@code min(share bar, 100)}.</li>
      *   <li>Otherwise the acceptable bar closest to the current one, the lower of two equally close.</li>
      * </ol>
-     * The acceptance rate, the offer rate and the display figures are worked out in every mode.
+     * The acceptance rate, the offer rate, the display figures and whether the minimums are due to grow
+     * ({@link Growth#evidence}, from the counted lines Autopilot decided under these minimums) are worked out in every
+     * mode.
      */
     static Plan plan(Inputs in) {
         FilterSettings rules = in.rules;
@@ -760,7 +808,8 @@ final class Autopilot {
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas);
-        Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt);
+        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone);
+        Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);

@@ -14,8 +14,8 @@ import java.util.List;
 
 /**
  * A one-time note on the homepage's sky, as a small card: a few words (a bold lead, or a title over short lines) and
- * its actions as links at its foot (OK closes it for good). Shown only until dismissed; used by the What is new card
- * and Peek's introduction. Also builds the notice's "What changed" box.
+ * its actions as links at its foot (OK closes it for good). Shown only until dismissed; used by the What is new card,
+ * Peek's introduction and the note that the minimums grew. Also builds the notice's "What changed" box.
  */
 final class OnboardingCard {
     final LinearLayout card;
@@ -58,8 +58,20 @@ final class OnboardingCard {
         return text;
     }
 
+    /** {@code title} in bold over one line of its own. */
+    static CharSequence titled(String title, String line) {
+        SpannableStringBuilder text = new SpannableStringBuilder(title);
+        text.setSpan(new StyleSpan(Typeface.BOLD), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return text.append('\n').append(line);
+    }
+
     void setWords(CharSequence text) {
         if (!android.text.TextUtils.equals(text, words.getText())) words.setText(text);
+    }
+
+    /** What a screen reader hears for the words, in place of their symbols; null for the words themselves. */
+    void setSaid(String said) {
+        if (!android.text.TextUtils.equals(said, words.getContentDescription())) words.setContentDescription(said);
     }
 
     /** A link at the card's foot; its tap runs {@code action}. */

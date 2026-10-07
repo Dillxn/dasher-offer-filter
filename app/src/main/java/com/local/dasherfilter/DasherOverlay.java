@@ -619,7 +619,7 @@ final class DasherOverlay implements DasherTab.Listener {
             return;
         }
         FilterSettings next = saved.withEnabled(!saved.enabled);
-        FilterStore.save(service, next);
+        FilterStore.save(service, saved, next);
         OfferNotificationService.rulesChanged();
         OfferFilterService.requestCheckForRules();
         view.show(state(next));

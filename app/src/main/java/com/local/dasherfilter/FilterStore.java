@@ -9,16 +9,24 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * Saved rules (0.5.0, rules model 2), Autopilot's switch, goal and bar, and the last user-visible status line.
  *
- * <p>Two writers share prefs "offer_filter" on disjoint keys. {@link #save} (the user's rules, main thread) writes only
- * enabled, the three money minimums and max stops. The bar is written only by {@link #commitAutopilotBar} (Autopilot,
- * compare-and-set at a safe point on the scanner thread) and reset to exactly 100 by {@link #setAutopilot} turning
- * Autopilot off; {@link #save} never writes it, so a rule saved from a stale copy can never restore an old bar.
+ * <p>Two writers share prefs "offer_filter". {@link #save} (the user's rules, main thread) writes only enabled, the
+ * three money minimums and max stops, and, given the rules its change was made from, only what that change changed. The
+ * bar is written only by {@link #commitAutopilotBar} (Autopilot, compare-and-set at a safe point on the scanner thread)
+ * and reset to exactly 100 by {@link #setAutopilot} turning Autopilot off; {@link #save} never writes it, so a rule
+ * saved from a stale copy can never restore an old bar. Autopilot's one other write, {@link #growMinimums} (0.5.1, the
+ * minimums grow), is a compare-and-set of the minimums and the bar at that same safe point, which a change saved from a
+ * copy made before it never undoes: such a save writes only the fields the user changed ({@link #save(Context,
+ * FilterSettings, FilterSettings)}).
+ *
+ * <p>"Minimums since" ({@link #minimumsSince}) is when the current minimums took effect: set whenever the minimum pay,
+ * per mile or per minute changes (the user's save, a growth, its Undo, the 0.5.0 migration), never by the bar.
  *
  * <p>The first {@link #load} after the update runs {@link #migrateToModel2} once: the retired rules (score by area,
  * per stop, per item, hotspot, the minimums scale) and every learned minimum leave, per stop is folded into minimum pay
@@ -48,6 +56,14 @@ final class FilterStore {
     static final int MODEL = 2;
     /** What the 0.5.0 migration changed, as JSON, until the homepage's notice is dismissed. */
     private static final String MODEL_NOTICE = "model_notice";
+    /**
+     * When the current minimums took effect (wall clock): written with every change of minimum pay, per mile or per
+     * minute, never by the bar; an install from before 0.5.1 gets it at its first load (its older lines say nothing of
+     * which minimums judged them).
+     */
+    private static final String MINIMUMS_SINCE = "minimums_since";
+    /** "Let my minimums grow", one of Autopilot's settings: on unless turned off (0.5.0 installs too). */
+    private static final String AUTOPILOT_GROW = "autopilot_grow";
 
     // ---- Retired by the 0.5.0 migration: removed, never read as rules again, never reused. ----
     private static final String PER_STOP = "per_stop";
@@ -112,12 +128,34 @@ final class FilterStore {
      * there (by throwing) as a crash would. Null in the app.
      */
     static volatile Runnable migrationInterruptForTests;
+    /** The wall clock "minimums since" is stamped with (tests set their own). */
+    static volatile LongSupplier wallClock = System::currentTimeMillis;
 
     static FilterSettings load(Context context) {
         SharedPreferences prefs = prefs(context);
         retireExtraStopFee(context, prefs);
         migrateToModel2(context, prefs);
+        stampMinimumsSince(prefs);
         return read(prefs);
+    }
+
+    /** "Minimums since" for an install that has none yet (one from before 0.5.1, or a new one): now. */
+    private static void stampMinimumsSince(SharedPreferences prefs) {
+        if (prefs.contains(MINIMUMS_SINCE)) return;
+        synchronized (FilterStore.class) {
+            if (!prefs.contains(MINIMUMS_SINCE)) prefs.edit().putLong(MINIMUMS_SINCE, wallClock.getAsLong()).apply();
+        }
+    }
+
+    /**
+     * When the current minimums took effect (wall clock): lines Autopilot decided before it say nothing about them
+     * ({@link Growth}).
+     */
+    static long minimumsSince(Context context) {
+        SharedPreferences prefs = prefs(context);
+        migrateToModel2(context, prefs);
+        stampMinimumsSince(prefs);
+        return prefs.getLong(MINIMUMS_SINCE, 0);
     }
 
     /**
@@ -200,7 +238,7 @@ final class FilterStore {
      *       rule or learned value was in use, the scale was not 100, or only max stops is left.</li>
      *   <li>Autopilot starts off, goal 70, bar 100 (each only if absent).</li>
      *   <li>An install that had rules gets one "rules" log line, and a notice ({@link #peekModelNotice}) and status
-     *       when the meaning of its rules changed.</li>
+     *       when the meaning of its rules changed; its minimums take effect now ({@link #minimumsSince}).</li>
      * </ul>
      */
     static void migrateToModel2(Context context, SharedPreferences prefs) {
@@ -216,6 +254,7 @@ final class FilterStore {
             }
             SharedPreferences.Editor edit = prefs.edit();
             done.writeTo(edit);
+            if (!done.fresh) edit.putLong(MINIMUMS_SINCE, wallClock.getAsLong());
             Runnable interrupt = migrationInterruptForTests;
             if (interrupt != null) interrupt.run();
             edit.apply();
@@ -419,18 +458,37 @@ final class FilterStore {
      * Saves the user's rules: auto-decline on or off, the three money minimums and max stops, nothing else. Autopilot's
      * switch, goal and bar are never written here ({@link #setAutopilot}, {@link #commitAutopilotBar}), so this can
      * never put back a bar Autopilot has since moved. Values saved here are already model 2: a pending migration runs
-     * first, so they are never folded or scaled again.
+     * first, so they are never folded or scaled again. A change of minimum pay, per mile or per minute moves "minimums
+     * since" ({@link #minimumsSince}).
      */
     static void save(Context context, FilterSettings settings) {
+        save(context, null, settings);
+    }
+
+    /**
+     * Saves the user's change from {@code base} (the rules as loaded when the change was made) to {@code next}: only
+     * the fields it changed are written, so a change made from a copy loaded before Autopilot grew the minimums
+     * ({@link #growMinimums}) never puts the old ones back (pausing writes only the switch; one knob only its own
+     * minimum). A null {@code base} writes every field, as {@link #save(Context, FilterSettings)} does.
+     */
+    static void save(Context context, FilterSettings base, FilterSettings next) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
         synchronized (FilterStore.class) {
-            prefs.edit().putBoolean(ENABLED, settings.enabled)
-                    .putInt(FLAT, settings.flatCents)
-                    .putInt(PER_MILE, settings.perMileCents)
-                    .putInt(PER_MINUTE, settings.perMinuteCents)
-                    .putInt(MAX_STOPS, settings.maxStops)
-                    .apply();
+            FilterSettings stored = read(prefs);
+            SharedPreferences.Editor edit = prefs.edit();
+            if (base == null || next.enabled != base.enabled) edit.putBoolean(ENABLED, next.enabled);
+            int flat = base == null || next.flatCents != base.flatCents ? next.flatCents : stored.flatCents;
+            int mile = base == null || next.perMileCents != base.perMileCents ? next.perMileCents : stored.perMileCents;
+            int minute = base == null || next.perMinuteCents != base.perMinuteCents ? next.perMinuteCents
+                    : stored.perMinuteCents;
+            edit.putInt(FLAT, flat).putInt(PER_MILE, mile).putInt(PER_MINUTE, minute);
+            if (base == null || next.maxStops != base.maxStops) edit.putInt(MAX_STOPS, next.maxStops);
+            if (flat != stored.flatCents || mile != stored.perMileCents || minute != stored.perMinuteCents
+                    || !prefs.contains(MINIMUMS_SINCE)) {
+                edit.putLong(MINIMUMS_SINCE, wallClock.getAsLong());
+            }
+            edit.apply();
         }
     }
 
@@ -476,6 +534,68 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || bar(prefs) != expected) return false;
             prefs.edit().putInt(AUTOPILOT_BAR, next).apply();
+            return true;
+        }
+    }
+
+    // ---- The minimums grow (0.5.1) ----
+
+    /** "Let my minimums grow", kept with Autopilot's settings: on unless turned off, so on for 0.5.0 installs too. */
+    static boolean minimumsGrow(Context context) {
+        return prefs(context).getBoolean(AUTOPILOT_GROW, true);
+    }
+
+    static void setMinimumsGrow(Context context, boolean on) {
+        synchronized (FilterStore.class) {
+            prefs(context).edit().putBoolean(AUTOPILOT_GROW, on).apply();
+        }
+    }
+
+    /**
+     * Autopilot grows the minimums ({@link Growth}): compare-and-set, under the same lock as every other rules write,
+     * with one apply. Nothing happens (false) unless Autopilot is on, "Let my minimums grow" is on, and the stored
+     * minimums, bar and "minimums since" are exactly those {@code evidence} was worked out for. Then every set money
+     * minimum and the bar become {@code evidence}'s grown ones and the minimums take effect at {@code wall}; max stops,
+     * auto-decline and auto-accept never change.
+     */
+    static boolean growMinimums(Context context, Growth.Evidence evidence, long wall) {
+        if (evidence == null) return false;
+        Growth.Grown grown = evidence.grown;
+        if (grown.barAfter < BAR_MIN || grown.barAfter > BAR_MAX) return false;
+        SharedPreferences prefs = prefs(context);
+        migrateToModel2(context, prefs);
+        synchronized (FilterStore.class) {
+            if (!prefs.getBoolean(AUTOPILOT_ON, false) || !prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
+            FilterSettings stored = read(prefs);
+            if (stored.flatCents != grown.flatBefore || stored.perMileCents != grown.mileBefore
+                    || stored.perMinuteCents != grown.minuteBefore || bar(prefs) != grown.barBefore
+                    || !prefs.contains(MINIMUMS_SINCE) || prefs.getLong(MINIMUMS_SINCE, 0) != evidence.since) {
+                return false;
+            }
+            prefs.edit().putInt(FLAT, grown.flatAfter).putInt(PER_MILE, grown.mileAfter)
+                    .putInt(PER_MINUTE, grown.minuteAfter).putInt(AUTOPILOT_BAR, grown.barAfter)
+                    .putLong(MINIMUMS_SINCE, wall).apply();
+            return true;
+        }
+    }
+
+    /**
+     * Undo of a growth: the minimums from before it come back, by compare-and-set, only while they are still exactly
+     * the grown ones, in effect since the growth ({@code grewAt}). It counts as the user's change: the minimums take
+     * effect at {@code wall}. The bar is Autopilot's: it is not written here.
+     */
+    static boolean undoGrowth(Context context, Growth.Grown grown, long grewAt, long wall) {
+        if (grown == null) return false;
+        SharedPreferences prefs = prefs(context);
+        migrateToModel2(context, prefs);
+        synchronized (FilterStore.class) {
+            FilterSettings stored = read(prefs);
+            if (stored.flatCents != grown.flatAfter || stored.perMileCents != grown.mileAfter
+                    || stored.perMinuteCents != grown.minuteAfter || prefs.getLong(MINIMUMS_SINCE, 0) != grewAt) {
+                return false;
+            }
+            prefs.edit().putInt(FLAT, grown.flatBefore).putInt(PER_MILE, grown.mileBefore)
+                    .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall).apply();
             return true;
         }
     }

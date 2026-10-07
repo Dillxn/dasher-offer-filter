@@ -7,6 +7,7 @@ import android.os.Process;
 import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -39,6 +40,13 @@ import java.util.function.LongSupplier;
  * happen under the runtime's lock, which a user's change and Clear history take too, so neither can land between
  * them. A user's change (Autopilot turned on, another goal, other minimums, history cleared) is a "jump": the next
  * commit goes straight to the target, still only at a safe point.
+ *
+ * <p><b>The minimums grow</b> (0.5.1, {@link Growth}) at that same safe point, in place of a bar move: when the latest
+ * plan found the evidence ({@link Autopilot.Plan#growth}), no user's change waits for its commit, Autopilot is on with
+ * a money minimum, "Let my minimums grow" is on and Autopilot is not recovering toward its goal. One growth at most
+ * per commit, by compare-and-set ({@link FilterStore#growMinimums}); its record and note are kept
+ * ({@link AutopilotStore#recordGrowth}), its one line logged, and the plan, made for the minimums before, is dropped.
+ * Its Undo ({@link #undoGrowth}) is the user's change.
  *
  * <p><b>Dasher's acceptance rate</b> comes only from its decline question ({@link #confirmationSeen}): the labels are
  * parsed here, off the screen reader's thread, one number is kept (no text), and an offer Dasher says is free to
@@ -104,6 +112,8 @@ final class AutopilotRuntime {
         HELD,
         /** The bar moved. */
         COMMITTED,
+        /** The minimums grew, and the bar with them ({@link Growth}). */
+        GREW,
         /** The stored bar was not the one expected: nothing was written; a new plan was asked for. */
         CONFLICT,
         /** Something failed and was logged; nothing more was written. */
@@ -296,10 +306,11 @@ final class AutopilotRuntime {
             List<QualifyingWait.Sample> waits = QualifyingWaitStore.snapshot(app);
             AutopilotStore.Reading stored = AutopilotStore.reading(app, wall);
             Autopilot.State state = state(app, rules);
+            long since = FilterStore.minimumsSince(app);
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned));
+                    planned, since, TimeZone.getDefault()));
             String dropped = publish(app, plan, state, epoch, stored, wall);
             if (dropped != null) {
                 log(app, dropped);
@@ -368,8 +379,8 @@ final class AutopilotRuntime {
      * The decision history as Autopilot counts it, newest first: each line's facts (never a "+$" bound on unread pay,
      * which a stored line does not keep either: {@link Autopilot.OfferRecord#facts}) and time, add-on and replay,
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
-     * as your Decline" step, or a hidden notification of a failing offer), and Dasher's "does not lower acceptance
-     * rate" mark.
+     * as your Decline" step, or a hidden notification of a failing offer), Dasher's "does not lower acceptance rate"
+     * mark, and the bar it was decided at, whether Autopilot set it, and its rules model (for {@link Growth}).
      */
     static List<Autopilot.OfferRecord> records(List<DecisionLog.Entry> newestFirst) {
         List<Autopilot.OfferRecord> records = new ArrayList<>();
@@ -388,7 +399,8 @@ final class AutopilotRuntime {
                         && entry.result == OfferRule.Result.DECLINE);
         return new Autopilot.OfferRecord(entry.facts, entry.at, entry.addOn,
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
-                DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT));
+                DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
+                entry.model);
     }
 
     // ---- Commits ----
@@ -423,6 +435,8 @@ final class AutopilotRuntime {
             if (stale != null || plan.current != current) return discard(app, plan, stale);
             Autopilot.Reason jump = jumpCause(app);
             long elapsed = elapsedClock.getAsLong();
+            // The minimums grow in place of a move, when due and no change of the user's waits for its commit.
+            if (jump == null && growthDue(app, plan, rules)) return grow(app, plan, wall, elapsed);
             Autopilot.Step step = step(plan, jump, elapsed);
             if (step.next == current && jump == null) return Commit.HELD;
             if (step.next != current) {
@@ -480,6 +494,71 @@ final class AutopilotRuntime {
     }
 
     /**
+     * The minimums grow as the plan's evidence says ({@link Growth}), at this safe point: under {@link #LOCK} the plan
+     * must still be the latest, for the same generation and rules, with no user's change waiting and the gates still
+     * holding ({@link #growthDue}); then {@link FilterStore#growMinimums} compares and sets the minimums, the bar and
+     * "minimums since" together, the growth is kept with its note, and the bar's move gets its change note ("your
+     * minimums grew"). The plan, made for the minimums before, is dropped and a new one asked for. Never announced.
+     */
+    private static Commit grow(Context app, Autopilot.Plan plan, long wall, long elapsed) {
+        Runnable hook = beforeWriteForTests;
+        if (hook != null) hook.run();
+        Growth.Evidence growth = plan.growth;
+        String stale;
+        Commit outcome;
+        synchronized (LOCK) {
+            if (latest.get() != plan) return Commit.DISCARDED;
+            FilterSettings now = FilterStore.load(app);
+            if (!now.autopilot) {
+                latest.compareAndSet(plan, null);
+                return Commit.NO_PLAN;
+            }
+            stale = staleness(plan, now, wall);
+            if (stale != null || jumpCause(app) != null || !growthDue(app, plan, now)) {
+                latest.compareAndSet(plan, null);
+                outcome = Commit.DISCARDED;
+            } else if (!FilterStore.growMinimums(app, growth, wall)) {
+                // The minimums, the bar or when they took effect are not those the evidence was for: nothing written.
+                latest.compareAndSet(plan, null);
+                outcome = Commit.CONFLICT;
+            } else {
+                Growth.Grown grown = growth.grown;
+                AutopilotStore.recordGrowth(app, growth, wall);
+                if (grown.barAfter != grown.barBefore) {
+                    boolean raised = grown.barAfter > grown.barBefore;
+                    AutopilotStore.recordChange(app, grown.barBefore, grown.barAfter,
+                            Autopilot.Reason.MINIMUMS_GREW.name(), wall, raised);
+                    lastCommitElapsed = elapsed;
+                    if (raised) lastRaiseElapsed = elapsed;
+                }
+                latest.compareAndSet(plan, null);
+                outcome = Commit.GREW;
+            }
+        }
+        if (outcome != Commit.GREW) {
+            if (stale != null) log(app, stale);
+            requestPlan(app, Trigger.COMMIT);
+            return outcome;
+        }
+        log(app, AutopilotText.logGrowth(growth));
+        notifyListeners();
+        // The next plan works from the grown minimums, and its evidence from the lines decided under them.
+        requestPlan(app, Trigger.COMMIT);
+        return Commit.GREW;
+    }
+
+    /**
+     * Whether the minimums are due to grow from {@code plan} now: it found the evidence ({@link Autopilot.Plan#growth})
+     * for exactly {@code rules} and their bar, Autopilot is on with a pay, per-mile or hourly minimum, "Let my
+     * minimums grow" is on, and Autopilot is not recovering toward its acceptance-rate goal (as planned, nor as stored).
+     */
+    private static boolean growthDue(Context app, Autopilot.Plan plan, FilterSettings rules) {
+        return plan.growth != null && rules.autopilot && rules.hasMonetaryRule()
+                && plan.rulesKey.equals(rules.rulesKey()) && plan.current == rules.minimumScalePercent
+                && FilterStore.minimumsGrow(app) && !plan.recovering && !AutopilotStore.recovering(app);
+    }
+
+    /**
      * Drops a plan that can no longer be committed from and asks for a new one; {@code stale} is its log line, null
      * when the plan is only behind the bar (its own last commit moved it), which is no news.
      */
@@ -524,7 +603,8 @@ final class AutopilotRuntime {
 
     private static boolean wanted(Context app, Autopilot.Plan plan) {
         Autopilot.Reason jump = jumpCause(app);
-        return jump != null || step(plan, null, elapsedClock.getAsLong()).next != plan.current;
+        return jump != null || (plan.growth != null && growthDue(app, plan, FilterStore.load(app)))
+                || step(plan, null, elapsedClock.getAsLong()).next != plan.current;
     }
 
     private static Autopilot.Step step(Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
@@ -580,6 +660,77 @@ final class AutopilotRuntime {
     /** The user changed a minimum or max stops (already saved with {@link FilterStore#save}). */
     static void rulesChanged(Context context) {
         userChanged(context, UserChange.RULES_CHANGED);
+    }
+
+    /**
+     * The growth note's Undo: the minimums from before the last growth come back, only while they are still exactly
+     * the grown ones ({@link FilterStore#undoGrowth}, compare-and-set). It is the user's change: the minimums take
+     * effect now, the growth's record and note go, it is logged, and the bar is Autopilot's to move (other minimums: a
+     * jump at the next safe point, {@link #rulesChanged}). With nothing left to undo (the minimums changed since) the
+     * note goes and nothing else changes.
+     *
+     * @return whether the minimums were put back
+     */
+    static boolean undoGrowth(Context context) {
+        if (context == null) return false;
+        Context app = app(context);
+        AutopilotStore.Grew grew;
+        boolean undone;
+        synchronized (LOCK) {
+            grew = AutopilotStore.lastGrowth(app);
+            if (grew == null || !grew.note) return false;
+            undone = FilterStore.undoGrowth(app, grew.grown, grew.at, wallClock.getAsLong());
+            if (undone) AutopilotStore.forgetGrowth(app);
+            else AutopilotStore.forgetGrowthNote(app);
+        }
+        if (!undone) {
+            notifyListeners();
+            return false;
+        }
+        log(app, AutopilotText.logGrowthUndone(grew.grown));
+        rulesChanged(app);
+        return true;
+    }
+
+    /** The growth note's OK: the note (and its Undo) goes; the growth stays, and the details still say when it was. */
+    static void growthNoted(Context context) {
+        if (context == null) return;
+        AutopilotStore.forgetGrowthNote(app(context));
+    }
+
+    /**
+     * The last growth's note while it still applies: kept with its note, and the minimums still exactly the grown ones,
+     * in effect since that growth. Null otherwise (none, answered, or the minimums changed any other way since: the
+     * note then goes for good, with its Undo).
+     */
+    static AutopilotStore.Grew growthNote(Context context) {
+        if (context == null) return null;
+        Context app = app(context);
+        AutopilotStore.Grew grew = AutopilotStore.lastGrowth(app);
+        if (grew == null || !grew.note) return null;
+        FilterSettings rules = FilterStore.load(app);
+        Growth.Grown g = grew.grown;
+        if (rules.flatCents == g.flatAfter && rules.perMileCents == g.mileAfter && rules.perMinuteCents == g.minuteAfter
+                && FilterStore.minimumsSince(app) == grew.at) {
+            return grew;
+        }
+        AutopilotStore.forgetGrowthNote(app);
+        return null;
+    }
+
+    /**
+     * "Let my minimums grow" turned on or off (one of Autopilot's settings, in its details): kept and logged. Off, the
+     * minimums never grow and nothing else changes; on, a plan is asked for, so growth that is due is made at the next
+     * safe point.
+     */
+    static void setMinimumsGrow(Context context, boolean on) {
+        if (context == null) return;
+        Context app = app(context);
+        if (FilterStore.minimumsGrow(app) == on) return;
+        FilterStore.setMinimumsGrow(app, on);
+        log(app, AutopilotText.logGrowSwitch(on));
+        notifyListeners();
+        if (on) requestPlan(app, Trigger.USER);
     }
 
     /**
@@ -757,7 +908,8 @@ final class AutopilotRuntime {
         Autopilot.Plan plan = latest.get();
         if (plan != null && plan.generation != generation.get()) plan = null;
         return new AutopilotText.Status(rules, readerConnected, plan, AutopilotStore.reading(app, wallNow),
-                AutopilotStore.lastChange(app), AutopilotStore.recovering(app), AutopilotStore.extra(app), wallNow);
+                AutopilotStore.lastChange(app), AutopilotStore.recovering(app), AutopilotStore.extra(app),
+                AutopilotStore.lastGrowth(app), wallNow);
     }
 
     // ---- Logging and listeners ----

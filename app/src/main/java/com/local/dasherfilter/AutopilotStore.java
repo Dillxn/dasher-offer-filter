@@ -15,7 +15,9 @@ import android.content.SharedPreferences;
  *       a percent, when there was one);</li>
  *   <li>a pending user-change cause (the "jump") for the next commit;</li>
  *   <li>a note of the last bar change (time, old and new bar, a fixed reason name), when the bar last rose, and when
- *       the exemption valve was last logged.</li>
+ *       the exemption valve was last logged;</li>
+ *   <li>the last growth of the minimums ({@link Growth}, 0.5.1): when, how much, how many offers on how many days, the
+ *       minimums and the bar before and after, and whether its homepage note (with Undo) still waits for a tap.</li>
  * </ul>
  * Clear history removes all of it ({@link #clear}). Callers on several threads share it: every read-modify-write is
  * under this class's lock, and every write bumps {@link #version}.
@@ -48,6 +50,24 @@ final class AutopilotStore {
     private static final String CHANGED_WHY = "changed_why";
     private static final String RAISED_AT = "raised_at";
     private static final String EXEMPT_LOGGED_AT = "exempt_logged_at";
+    /** The last growth: when (also the minimums' "since" it wrote), points, offers and days, before and after. */
+    private static final String GREW_AT = "grew_at";
+    private static final String GREW_PERCENT = "grew_percent";
+    private static final String GREW_OFFERS = "grew_offers";
+    private static final String GREW_DAYS = "grew_days";
+    private static final String GREW_FLAT_FROM = "grew_flat_from";
+    private static final String GREW_FLAT_TO = "grew_flat_to";
+    private static final String GREW_MILE_FROM = "grew_mile_from";
+    private static final String GREW_MILE_TO = "grew_mile_to";
+    private static final String GREW_MINUTE_FROM = "grew_minute_from";
+    private static final String GREW_MINUTE_TO = "grew_minute_to";
+    private static final String GREW_BAR_FROM = "grew_bar_from";
+    private static final String GREW_BAR_TO = "grew_bar_to";
+    /** The homepage's note of it (with Undo) waits for a tap. */
+    private static final String GREW_NOTE = "grew_note";
+    private static final String[] GREW_KEYS = {GREW_AT, GREW_PERCENT, GREW_OFFERS, GREW_DAYS, GREW_FLAT_FROM,
+        GREW_FLAT_TO, GREW_MILE_FROM, GREW_MILE_TO, GREW_MINUTE_FROM, GREW_MINUTE_TO, GREW_BAR_FROM, GREW_BAR_TO,
+        GREW_NOTE};
 
     /** Changes whenever anything here is written or cleared, so a screen can skip redrawing unchanged state. */
     static volatile long version;
@@ -306,7 +326,81 @@ final class AutopilotStore {
         }
     }
 
-    /** Clear history: the reading, the acceptance-rate state, the jump and the change note all go. */
+    // ---- The last growth of the minimums ----
+
+    /** The last growth of the minimums, as kept. */
+    static final class Grew {
+        /** When (wall clock): also the "minimums since" the growth wrote ({@link FilterStore#minimumsSince}). */
+        final long at;
+        final int offers;
+        final int days;
+        final Growth.Grown grown;
+        /** Its homepage note (with Undo) still waits for a tap. */
+        final boolean note;
+
+        Grew(long at, int offers, int days, Growth.Grown grown, boolean note) {
+            this.at = at;
+            this.offers = offers;
+            this.days = days;
+            this.grown = grown;
+            this.note = note;
+        }
+    }
+
+    /** The minimums grew as {@code evidence} said, at {@code wall}: kept, replacing any before, with its note. */
+    static void recordGrowth(Context context, Growth.Evidence evidence, long wall) {
+        Growth.Grown grown = evidence.grown;
+        synchronized (AutopilotStore.class) {
+            prefs(context).edit().putLong(GREW_AT, wall).putInt(GREW_PERCENT, grown.percent)
+                    .putInt(GREW_OFFERS, evidence.offers).putInt(GREW_DAYS, evidence.days)
+                    .putInt(GREW_FLAT_FROM, grown.flatBefore).putInt(GREW_FLAT_TO, grown.flatAfter)
+                    .putInt(GREW_MILE_FROM, grown.mileBefore).putInt(GREW_MILE_TO, grown.mileAfter)
+                    .putInt(GREW_MINUTE_FROM, grown.minuteBefore).putInt(GREW_MINUTE_TO, grown.minuteAfter)
+                    .putInt(GREW_BAR_FROM, grown.barBefore).putInt(GREW_BAR_TO, grown.barAfter)
+                    .putBoolean(GREW_NOTE, true).apply();
+            version++;
+        }
+    }
+
+    /** The last growth, or null when none is kept. */
+    static Grew lastGrowth(Context context) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (!prefs.contains(GREW_AT)) return null;
+            Growth.Grown grown = new Growth.Grown(prefs.getInt(GREW_PERCENT, 0), prefs.getInt(GREW_FLAT_FROM, 0),
+                    prefs.getInt(GREW_MILE_FROM, 0), prefs.getInt(GREW_MINUTE_FROM, 0),
+                    prefs.getInt(GREW_BAR_FROM, FilterSettings.BAR_AT_MINIMUMS), prefs.getInt(GREW_FLAT_TO, 0),
+                    prefs.getInt(GREW_MILE_TO, 0), prefs.getInt(GREW_MINUTE_TO, 0),
+                    prefs.getInt(GREW_BAR_TO, FilterSettings.BAR_AT_MINIMUMS));
+            return new Grew(prefs.getLong(GREW_AT, 0), prefs.getInt(GREW_OFFERS, 0), prefs.getInt(GREW_DAYS, 0),
+                    grown, prefs.getBoolean(GREW_NOTE, false));
+        }
+    }
+
+    /** The homepage's note of the last growth is answered (OK) or no longer applies: it and its Undo go. */
+    static void forgetGrowthNote(Context context) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (!prefs.getBoolean(GREW_NOTE, false)) return;
+            prefs.edit().remove(GREW_NOTE).apply();
+            version++;
+        }
+    }
+
+    /** The last growth was undone: nothing of it is kept. */
+    static void forgetGrowth(Context context) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences.Editor edit = prefs(context).edit();
+            for (String key : GREW_KEYS) edit.remove(key);
+            edit.apply();
+            version++;
+        }
+    }
+
+    /**
+     * Clear history: the reading, the acceptance-rate state, the jump, the change note and the last growth (with its
+     * note and Undo) all go.
+     */
     static void clear(Context context) {
         synchronized (AutopilotStore.class) {
             prefs(context).edit().clear().apply();
