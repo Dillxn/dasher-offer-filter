@@ -899,14 +899,15 @@ public class AutopilotRuntimeTest {
                 AutopilotText.statusLine(AutopilotRuntime.status(app, wall, false)));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
         AutopilotText.Status s = AutopilotRuntime.status(app, wall, true);
-        // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280.
+        // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280, shown everywhere as 53%
+        // (rounded half up), with the goal less that, 17, still to accept.
         assertEquals(5_280, s.arHundredths);
-        assertEquals("Autopilot 100% · AR 52% → 70%: about 18 more accepts", AutopilotText.statusLine(s));
-        assertEquals("Acceptance rate: about 52% (Dasher showed 55% 12 min ago; 4 offers since).",
+        assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", AutopilotText.statusLine(s));
+        assertEquals("Acceptance rate: about 53% (Dasher showed 55% 12 min ago; 4 offers since).",
                 AutopilotText.detailsAcceptanceRate(s));
         assertTrue(s.recovering);
         assertTrue(AutopilotText.reportLine(s).startsWith("Autopilot: on; goal 70%; bar 100%; mode RECOVERY; "
-                + "recovering yes; extra 0; AR 52% (Dasher, 12 min ago, 4 offers since)"));
+                + "recovering yes; extra 0; AR 53% (Dasher, 12 min ago, 4 offers since)"));
     }
 
     @Test

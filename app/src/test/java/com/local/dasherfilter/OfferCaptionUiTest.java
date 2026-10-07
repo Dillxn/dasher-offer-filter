@@ -36,15 +36,14 @@ import org.robolectric.annotation.LooperMode;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferCaptionUiTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 100, 20, 100, 3)
-            .withPerItem(735).withAdaptive(true).withScoreByArea(true);
+    private static final FilterSettings RULES = FilterSettings.of(true, 1000, 100, 20, 3);
 
     @Before public void palette() { Appearance.choose(app, Appearance.Mode.NIGHT); }
 
     private DecisionLog.Entry entry(long at, int pay, DecisionLog.StepKind step) {
         OfferSnapshot facts = new OfferSnapshot(pay, 3.0, 15, 2).withItems(1, true);
         DecisionLog.Entry entry = new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false, facts, 1000,
-                OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
                 Collections.singletonList(DecisionLog.money(pay)));
         if (step != null) entry = entry.withStep(new DecisionLog.Step(step, at + 10, "observed test outcome"));
         return entry;
@@ -53,10 +52,13 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     @Test public void captionUsesObservedOutcomesInsteadOfCallingEveryPassingShapeAccepted() {
         FilterStore.save(app, RULES);
         long now = System.currentTimeMillis();
+        // 0.5.0's outcomes (the user's acceptance, the app's automatic one), then the kinds older versions wrote.
         DecisionLog.StepKind[] steps = {null, DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED,
-                DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, DecisionLog.StepKind.ACCEPTED_NOT_LEARNED,
+                DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, DecisionLog.StepKind.ACCEPTED,
+                DecisionLog.StepKind.ACCEPTED_AUTOMATIC, DecisionLog.StepKind.ACCEPTED_NOT_LEARNED,
                 DecisionLog.StepKind.ACCEPTED_BEST_SAVED, DecisionLog.StepKind.ACCEPTED_LEARNED};
-        String[] words = {"Passed", "Accept requested, not confirmed", "Left to you", "Accepted", "Accepted by you", "Accepted by you"};
+        String[] words = {"Passed", "Accept requested, not confirmed", "Left to you", "Accepted by you",
+                "Automatically accepted", "Accepted", "Accepted by you", "Accepted by you"};
         for (int i = 0; i < steps.length; i++) DecisionLog.record(app, entry(now - (steps.length - i) * 1000L,
                 1200 + i * 100, steps[i]));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -82,6 +84,11 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     @Test public void automaticAcceptanceNeedsItsOwnConfirmationEvidenceAndCancellationAppearsFirst() {
         FilterStore.save(app, RULES);
         long now = System.currentTimeMillis();
+        // 0.5.0 says it outright: the app's own request, then a delivery screen.
+        DecisionLog.record(app, entry(now - 4000, 1250, DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED)
+                .withStep(new DecisionLog.Step(DecisionLog.StepKind.ACCEPTED_AUTOMATIC, now - 3500,
+                        "automatic Accept was requested, and Dasher showed a delivery screen")));
+        // Written by older versions: the request, then their acceptance step's words.
         DecisionLog.Entry automatic = entry(now - 3000, 1300, DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED)
                 .withStep(new DecisionLog.Step(DecisionLog.StepKind.ACCEPTED_NOT_LEARNED, now - 2500,
                         "automatic Accept was requested, and Dasher showed a delivery screen; automatic choices never raise your learned minimums"));
@@ -105,8 +112,11 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             activity.get().onBackPressed();
             DecisionChartView chart = find(content, DecisionChartView.class);
             chart.select(0);
-            assertNotNull(shownTextContaining(content, "Selected · $13.00 · Automatically accepted"));
+            assertNotNull(shownTextContaining(content, "Selected · $12.50 · Automatically accepted"));
             chart.select(1);
+            assertNotNull("as an older version recorded it", shownTextContaining(content,
+                    "Selected · $13.00 · Automatically accepted"));
+            chart.select(2);
             assertEquals("ambiguous provenance does not invent who accepted", "Selected · $14.00 · Accepted",
                     shownTextContaining(content, "Selected · $14.00").getText().toString());
         }
@@ -134,7 +144,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void olderSelectionAndItsCaptionSurviveLaterLearningAndNewArrivals() {
+    @Test public void olderSelectionAndItsCaptionSurviveALaterOutcomeAndNewArrivals() {
         FilterStore.save(app, RULES);
         long now = System.currentTimeMillis();
         DecisionLog.Entry older = entry(now - 5000, 1234, null);
@@ -146,24 +156,25 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             DecisionChartView chart = find(content, DecisionChartView.class);
             chart.select(0);
             assertNotNull(shownTextContaining(content, "Selected · $12.34 · Passed"));
-            assertTrue(DecisionLog.markStep(app, older.facts, DecisionLog.StepKind.ACCEPTED_BEST_SAVED,
-                    "new accepted item best stored; fixed floor remains higher", 60_000));
+            assertTrue(DecisionLog.markStep(app, older.facts, DecisionLog.StepKind.ACCEPTED,
+                    "you tapped Accept, then Dasher showed a delivery", 60_000));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertEquals(older.at, chart.selectedEntry().at);
             TextView caption = shownTextContaining(content, "Selected · $12.34 · Accepted by you");
             assertNotNull(caption);
             caption.performClick();
             layOut(content);
-            TextView learned = shownTextContaining(content, "Accepted; new best saved:");
-            assertNotNull(learned);
+            TextView outcome = shownTextContaining(content, "Accepted: you tapped Accept");
+            assertNotNull(outcome);
             OfferCardView card = find(content, OfferCardView.class);
-            int[] learningLocation = new int[2], cardLocation = new int[2];
-            learned.getLocationOnScreen(learningLocation);
+            int[] outcomeLocation = new int[2], cardLocation = new int[2];
+            outcome.getLocationOnScreen(outcomeLocation);
             card.getLocationOnScreen(cardLocation);
-            assertTrue("learning result precedes the detailed offer numbers", learningLocation[1] < cardLocation[1]);
+            assertTrue("the outcome precedes the detailed offer numbers", outcomeLocation[1] < cardLocation[1]);
             assertTrue("opening the ticket does not pause", FilterStore.load(app).enabled);
-            assertEquals("the promoted result is not repeated in the lower step history", 1,
-                    countText(content, "Accepted; new best saved:"));
+            assertEquals("the promoted outcome is not repeated in the lower step history", 1,
+                    countText(content, "Accepted: you tapped Accept"));
+            assertArrayEquals("an acceptance changes no minimum", RULES.minimums(), FilterStore.load(app).minimums());
             activity.get().onBackPressed();
             DecisionLog.record(app, entry(now - 1000, 2500, null));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
@@ -174,19 +185,29 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void modeNameIsDrawnAndTappingStillPreservesMinimumsAndScale() {
-        FilterStore.save(app, RULES.withMinimumScalePercent(97));
+    @Test public void theAutopilotButtonsWordsAreDrawnAndATapPreservesTheMinimums() {
+        FilterStore.save(app, RULES);
+        withAutopilotAt(97);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(drawnWords(star).contains("Area"));
+            List<String> drawn = drawnWords(star);
+            assertTrue(drawn.toString(), drawn.contains("Auto") && drawn.contains("97%"));
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
-            assertTrue(drawnWords(star).contains("Each"));
-            assertFalse(FilterStore.load(app).scoreByArea);
-            assertEquals(97, FilterStore.load(app).minimumScalePercent);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            drawn = drawnWords(star);
+            assertTrue(drawn.toString(), drawn.contains("Auto") && drawn.contains("Off"));
+            assertFalse(FilterStore.load(app).autopilot);
+            assertEquals("off is exactly the minimums", 100, FilterStore.load(app).minimumScalePercent);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
         }
+    }
+
+    /** Autopilot on, its bar moved to {@code bar} between offers. */
+    private void withAutopilotAt(int bar) {
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, bar));
     }
 
     @Test public void phoneCaptionIsAVisible48DpTarget() throws Exception { render(false, "phone"); }
@@ -205,17 +226,23 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
     public void narrowDoubledFontWrapsAnUnconfirmedRequestWithoutClipping() throws Exception {
         RuntimeEnvironment.setFontScale(2f);
+        // Autopilot on: at a very large font its status stands in its chip beside this long line, never a row of its
+        // own, and the page stays one screen.
         try { render(false, "narrow-large-requested", DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED,
-                "Accept requested, not confirmed"); }
+                "Accept requested, not confirmed", true); }
         finally { RuntimeEnvironment.setFontScale(1f); }
     }
 
     private void render(boolean split, String name) throws Exception {
-        render(split, name, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, "Left to you");
+        render(split, name, DecisionLog.StepKind.AUTO_ACCEPT_NOT_SENT, "Left to you", true);
     }
 
-    private void render(boolean split, String name, DecisionLog.StepKind status, String outcome) throws Exception {
+    private void render(boolean split, String name, DecisionLog.StepKind status, String outcome, boolean autopilot)
+            throws Exception {
         FilterStore.save(app, RULES);
+        // Autopilot on below 100%: its status line on a whole screen with room for it, else its chip beside the
+        // caption (a short pane with the constellation in its header); beside Dasher its button alone.
+        if (autopilot) withAutopilotAt(82);
         DecisionLog.record(app, entry(System.currentTimeMillis(), 1835, status));
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         ServiceController<OfferNotificationService> listener = Robolectric.buildService(OfferNotificationService.class).create();
@@ -234,7 +261,8 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             assertTrue(caption.getHeight() >= new Ui(app).dp(48));
             assertTrue(caption.getWidth() >= new Ui(app).dp(48));
             ScenePage scene = find(content, ScenePage.class);
-            assertTrue("main scene fits its window", scene.getHeight() <= ((View) scene.getParent()).getHeight());
+            assertTrue("main scene fits its window: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
+                    scene.getHeight() <= ((View) scene.getParent()).getHeight());
             Rect visible = new Rect();
             assertTrue(caption.getGlobalVisibleRect(visible));
             assertEquals("whole target remains on screen", caption.getHeight(), visible.height());

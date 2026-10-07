@@ -52,8 +52,7 @@ final class AreaMapView extends View {
             + "You: the phone’s latest available location. The dotted trail points toward #1; it is not a road "
             + "route. North is up and the scale shows straight-line distance.\n\n"
             + "Tap a square for its rate and sample count. Tap its details below the map to open Maps. "
-            + "This is recorded offer history, not earnings or a prediction of future offers. It does not "
-            + "measure hotspot distance.";
+            + "This is recorded offer history, not earnings or a prediction of future offers.";
 
     private final Ui ui;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);

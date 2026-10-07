@@ -40,8 +40,9 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         QualifyingWaitStore.wallClock = System::currentTimeMillis;
     }
 
+    /** $10.00 and $1.50 a mile, at most 3 stops; Autopilot off, so offers are judged at exactly these. */
     private FilterSettings rules() {
-        return new FilterSettings(true, 1000, 150, 0, 0, 3, false, 0).withMinimumScalePercent(97);
+        return FilterSettings.of(true, 1000, 150, 0, 3);
     }
 
     private View page(ActivityController<MainActivity> activity) {
@@ -123,46 +124,138 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void hotspotExplanationPreservesRuleUntilItsExplicitOffAction() {
-        FilterSettings original = rules().withHotspotProximity(50).withPerItem(125);
+    @Test public void autopilotsExplanationsChangeNothingUntilTheirExplicitAction() {
+        FilterSettings original = rules();
         FilterStore.save(app, original);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 97));
+        // Set up (screen reading and background offers on), so no setup line takes the status line's room.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        service.get().onServiceConnected();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            AccessibilityNodeInfo hotspot = node(star, AreaScore.HOTSPOT);
-            assertNotNull(hotspot);
-            assertTrue(hotspot.getContentDescription().toString().toLowerCase(java.util.Locale.US)
-                    .contains("unavailable"));
-            assertTrue(act(star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_CLICK));
-            AlertDialog explanation = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals("Hotspot distance is unavailable", Shadows.shadowOf(explanation).getTitle().toString());
-            assertNotNull(findTextContaining(explanation.getWindow().getDecorView(), "not Dasher's live hotspots"));
-            assertArrayEquals("opening disclosure changes no floor", original.minimums(),
-                    FilterStore.load(app).minimums());
-            explanation.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            // The status line stands where the wait would; a tap explains and changes nothing.
+            TextView status = shownTextContaining(content, "Autopilot 97%");
+            assertNotNull(status);
+            assertTrue(status.getHeight() >= new Ui(app).dp(48));
+            assertTrue(status.performClick());
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.DETAILS_TITLE, Shadows.shadowOf(details).getTitle().toString());
+            assertNotNull(findTextContaining(details.getWindow().getDecorView(),
+                    "Bar: 97% of your minimums (100% = exactly your minimums)."));
+            unchanged(original, 97);
+            details.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertEquals("acknowledging disclosure is not opting out", 50,
-                    FilterStore.load(app).hotspotProximityHundredths);
+            unchanged(original, 97);
 
-            assertTrue(act(star, AreaScore.HOTSPOT, AccessibilityNodeInfo.ACTION_CLICK));
-            AlertDialog again = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals("Turn hotspot rule off", again.getButton(AlertDialog.BUTTON_NEUTRAL).getText().toString());
-            again.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
+            // About acceptance rate explains without closing the choice; Not now leaves the goal as it was.
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            chooser.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog about = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.ABOUT_ACCEPTANCE_RATE, Shadows.shadowOf(about).getMessage().toString());
+            assertTrue("the choice stays open", chooser.isShowing());
+            about.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            unchanged(original, 97);
+
+            // Only the details' own Turn off turns Autopilot off: back to exactly the minimums, filtering still on.
+            assertTrue(shownTextContaining(content, "Autopilot 97%").performClick());
+            details = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(AutopilotText.DETAILS_TURN_OFF,
+                    details.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
+            details.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             FilterSettings after = FilterStore.load(app);
-            assertArrayEquals(original.withHotspotProximity(0).minimums(), after.minimums());
-            assertEquals(original.minimumScalePercent, after.minimumScalePercent);
+            assertFalse(after.autopilot);
+            assertEquals(100, after.minimumScalePercent);
+            assertArrayEquals(original.minimums(), after.minimums());
             assertEquals(original.maxStops, after.maxStops);
-            assertTrue("disabling one unavailable rule does not pause other rules", after.enabled);
+            assertTrue("turning Autopilot off does not pause filtering", after.enabled);
+        } finally {
+            listener.destroy();
+            service.destroy();
         }
     }
 
+    /**
+     * A short window (half a split screen beside another app, then beside Dasher): with Autopilot off Next match works
+     * as before; with it on the ground's line is Autopilot's, and in a short window that is no line at all (its chip, or
+     * beside Dasher its button, says the status), so Next match never takes a row under the chip.
+     */
+    @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
+    public void aShortWindowShowsNoNextMatchWhileAutopilotIsOn() {
+        FilterStore.save(app, rules());
+        java.util.List<QualifyingWait.Sample> samples = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) samples.add(new QualifyingWait.Sample(
+                QualifyingWaitStore.wallClock.getAsLong(), 120_000, new OfferSnapshot(1200, 3.0, 15, 2)));
+        app.getSharedPreferences("qualifying-wait", 0).edit()
+                .putString("numeric-history-v1", QualifyingWaitStore.encode(samples)).commit();
+        QualifyingWaitStore.forgetCache();
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        service.get().onServiceConnected();
+        listener.get().onListenerConnected();
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = page(activity);
+            QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertTrue("a short window", find(content, MinimumsStarView.class).beside());
+            assertNotNull("Autopilot off: Next match as before", shownTextContaining(content, "Next match:"));
+
+            AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            layOut(content);
+            assertNull("Autopilot on: no Next match under the chip", shownTextContaining(content, "Next match:"));
+            assertNull("nor a status line", shownTextContaining(content, "Autopilot 100%"));
+            assertTrue("the chip says it", find(content, AutopilotChip.class).isShown());
+
+            // Beside Dasher: the button says it, and still no Next match.
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            layOut(content);
+            assertFalse("the constellation is the sky beside Dasher", find(content, MinimumsStarView.class).beside());
+            assertNull(shownTextContaining(content, "Next match:"));
+            assertFalse("the button, not the chip", find(content, AutopilotChip.class).isShown());
+
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNotNull("off again: Next match is back", shownTextContaining(content, "Next match:"));
+        } finally {
+            OfferFilterService.sawDasherBeside(0);
+            listener.destroy();
+            service.destroy();
+        }
+    }
+
+    /** The rules as {@code original}, with Autopilot on at {@code bar} and the top-tier goal. */
+    private void unchanged(FilterSettings original, int bar) {
+        FilterSettings now = FilterStore.load(app);
+        assertArrayEquals(original.minimums(), now.minimums());
+        assertEquals(original.maxStops, now.maxStops);
+        assertEquals(original.enabled, now.enabled);
+        assertTrue(now.autopilot);
+        assertEquals(bar, now.minimumScalePercent);
+        assertEquals(FilterSettings.GOAL_TOP_TIER, now.autopilotGoalPercent);
+    }
+
     @Test public void clearHistoryErasesWaitDataAfterConfirmationAndPreservesRules() {
-        // Per item is retired (0.5.0), and the 97% bar is Autopilot's to set: it set it between offers.
+        // Per item is retired (0.5.0), and a 97% bar is Autopilot's to set: it set it between offers.
         FilterSettings original = rules();
         FilterStore.save(app, original);
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        assertTrue(FilterStore.commitAutopilotBar(app, 100, original.minimumScalePercent));
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 97));
         QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
         ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
         QualifyingWaitStore.screen(app, true, DasherScene.OFFER,
@@ -178,6 +271,8 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             shownButton(content, "Clear history").performClick();
             AlertDialog confirm = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(findTextContaining(confirm.getWindow().getDecorView(), "waiting estimates"));
+            assertNotNull(findTextContaining(confirm.getWindow().getDecorView(),
+                    "Your rules and Autopilot settings stay."));
             assertEquals("opening the confirmation does not clear data", 1,
                     QualifyingWaitStore.estimate(app, original).readable);
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
@@ -189,7 +284,8 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             assertEquals(0, QualifyingWaitStore.estimate(app, original).observedMs);
             FilterSettings after = FilterStore.load(app);
             assertArrayEquals(original.minimums(), after.minimums());
-            assertEquals(original.minimumScalePercent, after.minimumScalePercent);
+            assertTrue("Autopilot's settings stay", after.autopilot);
+            assertEquals("its bar moves only at its next safe point", 97, after.minimumScalePercent);
             assertEquals(original.maxStops, after.maxStops);
             assertEquals(original.enabled, after.enabled);
         }

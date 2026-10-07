@@ -546,6 +546,38 @@ final class AutopilotRuntime {
     }
 
     /**
+     * The user is about to choose typical minimums (the 0.5.0 notice's "Use typical minimums", the new-install
+     * starter's "Use these"): with Autopilot on, the bar goes back to exactly 100 first (the owner's decision), so the
+     * plan {@link #rulesChanged} then asks for starts from 100, never from a bar set for the old minimums (a pinned 50,
+     * say). Under {@link #LOCK} like a commit, with its change note ("you changed your minimums") and log line; no
+     * plan is asked for here. Nothing happens while Autopilot is off: the bar is exactly 100 already.
+     */
+    static void barBackToMinimums(Context context) {
+        if (context == null) return;
+        Context app = app(context);
+        int from = -1;
+        synchronized (LOCK) {
+            FilterSettings rules = FilterStore.load(app);
+            int bar = rules.minimumScalePercent;
+            if (rules.autopilot && bar != Autopilot.BAR_OFF
+                    && FilterStore.commitAutopilotBar(app, bar, Autopilot.BAR_OFF)) {
+                from = bar;
+                boolean raised = Autopilot.BAR_OFF > bar;
+                long elapsed = elapsedClock.getAsLong();
+                AutopilotStore.recordChange(app, bar, Autopilot.BAR_OFF, Autopilot.Reason.RULES_CHANGED.name(),
+                        wallClock.getAsLong(), raised);
+                lastCommitElapsed = elapsed;
+                if (raised) lastRaiseElapsed = elapsed;
+                // A plan made at the old bar can no longer be committed from.
+                latest.set(null);
+            }
+        }
+        if (from < 0) return;
+        log(app, AutopilotText.logCommit(from, Autopilot.BAR_OFF, Autopilot.Reason.RULES_CHANGED));
+        notifyListeners();
+    }
+
+    /**
      * A change the user made, already saved. Turning Autopilot on, choosing another goal and turning it off forget the
      * goal-relative state (recovering, the stall correction and its checkpoint) and the plan: a plan worked out
      * before (or still being worked out) is never published or committed from, so it cannot write that state back.

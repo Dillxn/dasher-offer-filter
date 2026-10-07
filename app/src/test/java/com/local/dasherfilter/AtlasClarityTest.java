@@ -73,7 +73,8 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
             String key = Shadows.shadowOf(dialog).getMessage().toString();
             assertTrue(key, key.contains("including declined offers"));
             assertTrue(key, key.contains("total offered pay divided by total offer miles"));
-            assertTrue(key, key.contains("It does not measure hotspot distance"));
+            assertTrue("it says what it is not: " + key, key.contains("not pickups, final stops or Dasher hotspots"));
+            assertFalse("nothing of the retired hotspot spoke: " + key, key.contains("hotspot distance"));
             assertFalse(key, key.contains("atlas") || key.contains("spoke"));
             assertTrue(selected.isEmpty());
             assertEquals(0, ordinaryClicks[0]);

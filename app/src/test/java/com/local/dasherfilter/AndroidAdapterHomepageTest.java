@@ -45,7 +45,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNull("no line of words under the skyline", shownTextContaining(content, "Below your per-mile rate"));
+            assertNull("no line of words under the skyline", shownTextContaining(content, "Below your per-mile minimum"));
             assertNull("the ticket stays folded until asked for", find(content, OfferCardView.class));
 
             openTicket(content);
@@ -54,16 +54,16 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertEquals("Paid $7.90, needed $10.80. 7.2 mi · 21 min · 2 stops",
                     card.getContentDescription().toString());
             assertEquals("Declined", find(content, Decor.Stamp.class).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "Below your per-mile minimum"));
 
             // While no older offer is picked, the ticket follows each new one.
             DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
                     DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
-                    OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
+                    OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
                     Collections.emptyList()));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertEquals("Passed", find(content, Decor.Stamp.class).getContentDescription().toString());
-            assertNotNull(shownTextContaining(content, "Meets your rules"));
+            assertNotNull(shownTextContaining(content, "Meets your minimums"));
 
             // Back folds the ticket away.
             activity.get().onBackPressed();
@@ -73,7 +73,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
     @Test
     public void theFilterPictureShowsThisDashWithAllTimeTotalsAndTheState() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         // One offer from hours before this dash began.
         Dashing.forgetCache();
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - 3 * 3_600_000L,
@@ -84,7 +84,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         Dashing.seen(app);
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
-                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
+                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets your minimums",
                 DecisionLog.Action.PASSES, true, Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -291,10 +291,10 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(find(content, AreaMapView.class).isShown());
 
             openTicket(content);
-            assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull("the ticket is up", shownTextContaining(content, "Below your per-mile minimum"));
             activity.get().onBackPressed();
             assertFalse(activity.get().isFinishing());
-            assertNull("folded again", shownTextContaining(content, "Below your per-mile rate"));
+            assertNull("folded again", shownTextContaining(content, "Below your per-mile minimum"));
         }
     }
 
@@ -474,7 +474,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             DecisionLog.record(app, new DecisionLog.Entry(now - (DecisionChartView.SLOTS - i) * 60_000L,
                     DecisionLog.Source.SCREEN, false, new OfferSnapshot(pay, 5.0, 20, 2), 1000,
                     pay >= 1000 ? OfferRule.Result.KEEP : OfferRule.Result.DECLINE,
-                    pay >= 1000 ? "meets enabled rules" : "flat minimum", DecisionLog.Action.PASSES, true,
+                    pay >= 1000 ? "meets your minimums" : "flat minimum", DecisionLog.Action.PASSES, true,
                     Collections.emptyList()));
         }
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -526,6 +526,21 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w320dp-h640dp-xhdpi")
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     public void aLargeFontAndALineToFixKeepTheSkylineAndTheMapAtTheirLeast() {
+        largeFontAndALineToFix(false);
+    }
+
+    /**
+     * The same with Autopilot on: the line to fix takes its room first, so Autopilot's status stands in its chip beside
+     * the latest offer's line (no status line in the ground), and the page is still one screen.
+     */
+    @Test
+    @Config(qualifiers = "w320dp-h640dp-xhdpi")
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    public void aLargeFontALineToFixAndAutopilotOnStillFitOneScreen() {
+        largeFontAndALineToFix(true);
+    }
+
+    private void largeFontAndALineToFix(boolean autopilot) {
         RuntimeEnvironment.setFontScale(2f);
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         AreaMap.setEnabled(app, true);
@@ -535,8 +550,10 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             for (int pay : new int[] {1000, 1500, 1200}) noteOfferAt(spot[0], spot[1], pay, 5.0);
         }
         setLocation(37.7749, -122.4194);
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 4, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+        // The busiest constellation the old rules come to: three minimums (the old $1.00 per stop folded into the $7.00
+        // minimum pay, the learning retired) and max stops, with the Autopilot button by them.
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 4));
+        if (autopilot) FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -562,6 +579,20 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             View column = page.getChildAt(0);
             assertTrue("one screen: " + column.getHeight() + " in " + page.getHeight(),
                     column.getHeight() <= page.getHeight());
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            if (autopilot) {
+                assertNull("no status line: the line to fix takes the room first",
+                        shownTextContaining(content, "Autopilot 100%"));
+                assertTrue("the chip says it, beside the latest offer's line", chip.isShown());
+                android.graphics.Rect visible = new android.graphics.Rect();
+                assertTrue(chip.getGlobalVisibleRect(visible));
+                assertEquals("whole", chip.getHeight(), visible.height());
+                TextView caption = shownTextContaining(content, "Latest · ");
+                assertTrue(caption.getGlobalVisibleRect(visible));
+                assertEquals("the latest offer's line whole", caption.getHeight(), visible.height());
+            } else {
+                assertFalse("off on a whole screen: the button in the sky is the way in", chip.isShown());
+            }
         } finally {
             service.destroy();
             RuntimeEnvironment.setFontScale(1f);
@@ -570,7 +601,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
     @Test
     public void theMascotAloneOwnsThePauseActionOnTheMainPage() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

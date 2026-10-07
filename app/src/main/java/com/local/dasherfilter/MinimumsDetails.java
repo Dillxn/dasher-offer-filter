@@ -1,115 +1,155 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
-/** On-demand explanation of the current minimums for the selected offer's actual observed amounts. */
+/**
+ * The ticket's "How this offer was judged": each minimum as this offer's own miles and minutes made it, and what the
+ * bar used, e.g.
+ *
+ * <pre>
+ * Your minimums · bar 82% (Autopilot)
+ * Pay — set $4.00 · used ≈$3.28
+ * Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42
+ * Per hour — set $6.75 (27 min × $15/hr) · used ≈$5.54
+ * Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%
+ * Max stops 3 (never scaled). Below 100%, offers pass only because Autopilot lowered the bar and are never
+ * auto-accepted. ≈ means rounded up to the next cent.
+ * </pre>
+ *
+ * Worked out from the minimums as they are now (a line does not keep them) at the bar the line recorded; where the pay
+ * it needed then differs, it says so. A line an older version decided (score by area, learned minimums, the minimums
+ * scale) says that first, with what it needs now, and is then worked out at the current bar.
+ */
 final class MinimumsDetails {
-    private static final int[] MONEY_AXES = {
-            AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE, AreaScore.STOP, AreaScore.ITEM
-    };
-    private static final String[] NAMES = {"Payout", "Pay/mile", "Pay/min", "Pay/stop", "Hotspot", "Pay/item"};
+    static final String LEGACY = "Decided under retired rules (score by area or learned minimums).";
+    static final String ADD_ON = "An add-on is judged twice: the whole route against your minimums at the bar, and "
+            + "its added pay against what its added miles and minutes ask at the bar (minimum pay does not apply to "
+            + "what it adds).";
+    static final String BELOW = "Below 100%, offers pass only because Autopilot lowered the bar and are never "
+            + "auto-accepted.";
+    static final String ROUNDED = "≈ means rounded up to the next cent.";
 
     private MinimumsDetails() {}
 
-    static String describe(FilterSettings rules, OfferSnapshot offer) {
-        OfferSnapshot facts = offer == null ? OfferSnapshot.UNKNOWN : offer;
-        AreaScore.Floors floors = AreaScore.floors(rules, facts);
-        StringBuilder text = new StringBuilder("Current minimums · Scale ")
-                .append(rules.minimumScalePercent).append("%\n");
-        int[] minimums = rules.minimums();
-        for (int axis : MONEY_AXES) {
-            text.append(NAMES[axis]).append(" — Saved ")
-                    .append(saved(axis, minimums[axis], facts, floors))
-                    .append(" · Learned ").append(learned(axis, rules, facts, floors))
-                    .append(" · Used ").append(used(axis, rules, facts, floors)).append('\n');
-        }
-        text.append("\nBlue is Saved; purple is Learned. Values are payout-dollar requirements for this offer, "
-                + "not per-unit rates. Used includes the percentage buffer; stored minimums stay unchanged. "
-                + "≈ means rounded up to the next cent.\n\n");
-        if (!rules.risingOffers) text.append("Adaptive is off: learned minimums are kept, not applied. ");
-        if (rules.scoreByArea) {
-            text.append("In area mode, 100% rescales to the current minimums: increased learning need not expand "
-                    + "the purple outline. Stronger spokes can compensate for weaker ones. ");
+    /** How {@code entry} was judged against {@code rules} (the minimums as they are now). */
+    static String describe(FilterSettings rules, DecisionLog.Entry entry) {
+        OfferSnapshot facts = entry == null ? OfferSnapshot.UNKNOWN : entry.facts;
+        boolean legacy = entry != null && entry.model < DecisionLog.MODEL;
+        int bar = entry == null || legacy ? rules.minimumScalePercent : entry.barPercent;
+        boolean autopilot = entry == null || legacy ? rules.autopilot : entry.autopilot;
+        List<String> lines = new ArrayList<>();
+        if (legacy) lines.add(LEGACY + " Now: " + needsNow(rules, facts));
+        lines.add("Your minimums · bar " + bar + "%" + (autopilot ? " (Autopilot)" : ""));
+        boolean[] approximate = {false};
+        if (entry != null && entry.addOn) {
+            lines.add(rates(rules));
+            lines.add(ADD_ON);
         } else {
-            text.append("In strict mode, every active Used amount must be met; the area score is only a reference. ");
+            if (rules.flatCents > 0) lines.add(minimum(AreaScore.PAY, rules.flatCents, facts, bar, approximate));
+            if (rules.perMileCents > 0) lines.add(minimum(AreaScore.MILE, rules.perMileCents, facts, bar, approximate));
+            if (rules.perMinuteCents > 0) {
+                lines.add(minimum(AreaScore.MINUTE, rules.perMinuteCents, facts, bar, approximate));
+            }
+            lines.add(required(rules, facts, bar, approximate));
+            if (!legacy && entry != null && entry.requiredCents > 0 && entry.requiredCents < Long.MAX_VALUE) {
+                long now = requiredCents(rules, facts, bar);
+                if (now != entry.requiredCents) {
+                    lines.add("When decided it needed " + DecisionLog.money(entry.requiredCents)
+                            + "; your minimums have changed since.");
+                }
+            }
         }
-        text.append("Only confirmed manual choices train Payout, Pay/mile, Pay/min and Pay/stop. "
-                + "Pay/item learns from confirmed manual accepts with an observed total count. "
-                + "Automatic accepts do not train minimums.\n\n");
-        appendHotspot(text, rules, facts);
-        return text.toString();
+        List<String> notes = new ArrayList<>();
+        if (rules.maxStops > 0) notes.add("Max stops " + rules.maxStops + " (never scaled).");
+        if (bar < FilterSettings.BAR_AT_MINIMUMS) notes.add(BELOW);
+        if (approximate[0]) notes.add(ROUNDED);
+        if (!notes.isEmpty()) lines.add(String.join(" ", notes));
+        return String.join("\n", lines);
     }
 
-    private static String saved(int axis, int minimum, OfferSnapshot offer, AreaScore.Floors floors) {
-        if (minimum <= 0) return "off";
-        if (axis == AreaScore.ITEM && !offer.itemCountApplicable) return "not applicable";
-        return amount(floors.fixedCents[axis]);
-    }
-
-    private static String learned(int axis, FilterSettings rules, OfferSnapshot offer, AreaScore.Floors floors) {
-        if (!hasLearned(axis, rules)) return "off";
-        if (axis == AreaScore.ITEM && !offer.itemCountApplicable) return "not applicable";
-        BigDecimal accepted = floors.acceptedCents[axis];
-        BigDecimal declined = floors.declinedCents[axis];
-        BigDecimal higher = accepted == null ? declined : declined == null ? accepted : accepted.max(declined);
-        return amount(higher) + (rules.risingOffers ? "" : " (not applied)");
-    }
-
-    private static String used(int axis, FilterSettings rules, OfferSnapshot offer, AreaScore.Floors floors) {
-        if (axis == AreaScore.ITEM && (rules.perItemCents > 0 || rules.risingOffers && rules.best.hasPerItem())
-                && !offer.itemCountApplicable) {
-            return "not applicable";
+    /** "Pay — set $4.00 · used ≈$3.28", "Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42", or unread. */
+    private static String minimum(int axis, int rate, OfferSnapshot facts, int bar, boolean[] approximate) {
+        String name = axis == AreaScore.PAY ? "Pay" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
+        String unit = axis == AreaScore.MILE ? DecisionLog.money(rate) + " a mile"
+                : axis == AreaScore.MINUTE ? perHour(rate) : DecisionLog.money(rate);
+        BigDecimal set = AreaScore.fixedFloor(axis, rate, facts);
+        if (set == null) {
+            return name + " — " + unit + "; " + (axis == AreaScore.MILE ? "miles" : "minutes") + " not read";
         }
-        if (!floors.active[axis]) return "off";
-        // Area cannot score a zero route, while strict retains its known zero-cost policy.
-        if (rules.scoreByArea && floors.cents[axis] == null) return "unavailable";
-        if (floors.fixedCents[axis] == null && floors.acceptedCents[axis] == null
-                && floors.declinedCents[axis] == null) return "unavailable";
-        BigDecimal exact = floors.effectiveCents(axis).multiply(BigDecimal.valueOf(rules.minimumScalePercent))
-                .movePointLeft(2);
-        return amount(exact, floors.scaledCents(axis, rules.minimumScalePercent, false));
+        String how = axis == AreaScore.MILE ? " (" + miles(facts.miles) + " mi × " + DecisionLog.money(rate) + ")"
+                : axis == AreaScore.MINUTE ? " (" + facts.minutes + " min × " + perHour(rate) + ")" : "";
+        String line = name + " — set " + amount(set, approximate) + how;
+        if (bar == FilterSettings.BAR_AT_MINIMUMS) return line;
+        approximate[0] = true;
+        return line + " · used ≈" + money(AreaScore.roundedCents(set, bar));
     }
 
-    private static boolean hasLearned(int axis, FilterSettings rules) {
-        switch (axis) {
-            case AreaScore.PAY: return rules.lastAcceptedCents > 0 || rules.declined.payCents > 0;
-            case AreaScore.MILE: return rules.best.hasPerMile() || rules.declined.rates.hasPerMile();
-            case AreaScore.MINUTE: return rules.best.hasPerMinute() || rules.declined.rates.hasPerMinute();
-            case AreaScore.STOP: return rules.best.hasPerStop() || rules.declined.rates.hasPerStop();
-            case AreaScore.ITEM: return rules.best.hasPerItem();
-            default: return false;
+    /**
+     * "Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%"; at 100%, "Required $6.75: the highest set
+     * amount · score 85%"; a floor only ("at least") while a minimum's miles or minutes were not read.
+     */
+    private static String required(FilterSettings rules, OfferSnapshot facts, int bar, boolean[] approximate) {
+        if (!rules.hasMonetaryRule()) return "No pay, per-mile or hourly minimum is set.";
+        AreaScore.Asks asks = AreaScore.asks(rules, facts);
+        if (asks.known == null) return "Required: not known until this offer's miles and minutes are read.";
+        String head = "Required " + (asks.missing ? "at least " : "");
+        String score = "";
+        int percent = AreaScore.scorePercent(rules, facts);
+        if (percent >= 0) score = " · score " + percent + "%";
+        if (bar == FilterSettings.BAR_AT_MINIMUMS) {
+            return head + amount(asks.known, approximate) + ": the highest set amount" + score;
         }
+        approximate[0] = true;
+        return head + "≈" + money(AreaScore.roundedCents(asks.known, bar)) + ": " + bar
+                + "% of the highest set amount (" + amount(asks.known, approximate) + ")" + score;
     }
 
-    private static String amount(BigDecimal exactCents) {
-        return exactCents == null ? "unavailable" : amount(exactCents, AreaScore.roundedCents(exactCents, 100));
+    /** The pay the minimums ask of {@code facts} at {@code bar}, as a decision rounds it; 0 when none. */
+    private static long requiredCents(FilterSettings rules, OfferSnapshot facts, int bar) {
+        BigDecimal known = AreaScore.knownRequired100(rules, facts);
+        return known == null ? 0 : AreaScore.roundedCents(known, bar);
     }
 
-    private static String amount(BigDecimal exactCents, long roundedCents) {
-        if (roundedCents == Long.MAX_VALUE) return "out of range";
-        String approximation = exactCents.compareTo(BigDecimal.valueOf(roundedCents)) == 0 ? "" : "≈";
-        return approximation + "$" + BigDecimal.valueOf(roundedCents, 2).toPlainString();
+    /** What a line an older version decided needs under the minimums and the bar now. */
+    private static String needsNow(FilterSettings rules, OfferSnapshot facts) {
+        if (!rules.hasMonetaryRule()) return "no pay, per-mile or hourly minimum is set.";
+        BigDecimal required = AreaScore.required100(rules, facts);
+        if (required == null) return "needs this offer's miles and minutes to be read.";
+        return "needs " + money(AreaScore.roundedCents(required, rules.minimumScalePercent)) + " at "
+                + rules.minimumScalePercent + "%.";
     }
 
-    private static void appendHotspot(StringBuilder text, FilterSettings rules, OfferSnapshot offer) {
-        text.append("Hotspot — ");
-        if (offer.finalStopHotspotMiles == null) {
-            text.append("distance unavailable; needs the actual distance from this offer's final stop "
-                    + "to a current Dasher hotspot. Automatic measurement is unavailable. ");
-        } else {
-            text.append(BigDecimal.valueOf(offer.finalStopHotspotMiles).stripTrailingZeros().toPlainString())
-                    .append(" mi from this offer's final stop to its nearest actual Dasher hotspot. ");
-        }
-        text.append("Independent of payout, fixed only; ");
-        if (rules.hotspotProximityHundredths <= 0) {
-            text.append("rule off.");
-        } else {
-            text.append("Saved ").append(FilterSettings.proximityLabel(rules.hotspotProximityHundredths))
-                    .append("; Used ")
-                    .append(BigDecimal.valueOf(rules.hotspotProximityHundredths)
-                            .multiply(BigDecimal.valueOf(rules.minimumScalePercent)).movePointLeft(4)
-                            .stripTrailingZeros().toPlainString())
-                    .append(" /mi reciprocal proximity.");
-        }
+    /** "Your rates: $4.00 · $1.00 a mile · $15/hr", the minimums without an offer to apply them to. */
+    private static String rates(FilterSettings rules) {
+        List<String> parts = new ArrayList<>();
+        if (rules.flatCents > 0) parts.add(DecisionLog.money(rules.flatCents));
+        if (rules.perMileCents > 0) parts.add(DecisionLog.money(rules.perMileCents) + " a mile");
+        if (rules.perMinuteCents > 0) parts.add(perHour(rules.perMinuteCents));
+        return parts.isEmpty() ? "No pay, per-mile or hourly minimum is set." : "Your rates: " + String.join(" · ", parts);
+    }
+
+    /** "$15/hr" for 25 cents a minute. */
+    private static String perHour(int centsPerMinute) {
+        return DecisionLog.shortMoney(centsPerMinute * 60L) + "/hr";
+    }
+
+    private static String miles(Double miles) {
+        if (miles == null) return "?";
+        return BigDecimal.valueOf(miles).stripTrailingZeros().toPlainString();
+    }
+
+    /** "$6.60", or "≈$7.56" where the exact amount is not a whole cent (rounded up), noted in {@code approximate}. */
+    private static String amount(BigDecimal exactCents, boolean[] approximate) {
+        long rounded = AreaScore.roundedCents(exactCents, FilterSettings.BAR_AT_MINIMUMS);
+        if (rounded == Long.MAX_VALUE) return "out of range";
+        if (exactCents.compareTo(BigDecimal.valueOf(rounded)) == 0) return money(rounded);
+        approximate[0] = true;
+        return "≈" + money(rounded);
+    }
+
+    private static String money(long cents) {
+        return cents == Long.MAX_VALUE ? "out of range" : DecisionLog.money(cents);
     }
 }

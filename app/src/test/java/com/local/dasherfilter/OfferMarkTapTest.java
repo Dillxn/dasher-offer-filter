@@ -30,15 +30,16 @@ import static org.junit.Assert.assertTrue;
  * opens its ticket exactly as a tap on its building in the skyline does (both show it chosen, and its shape stands out
  * while the ticket is open); the knobs and the buttons keep their touches, a drag opens nothing, a tap on empty sky
  * opens nothing, and with an older offer chosen it chooses the newest again. Only the latest or skyline-selected
- * offer is plotted or exposed for touch and screen readers; history stays selectable in the skyline. The rules: $5 pay, $3.00 a mile,
- * $0.20 a minute, $1.00 a stop, at most 3 stops; the newest offer ($24.00 for 6 mi, 25 min, 2 stops) passes and is the
- * chart's example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
+ * offer is plotted or exposed for touch and screen readers; history stays selectable in the skyline. Autopilot's dashed
+ * shape takes no touches. The rules: $5 pay, $3.00 a mile, $12 an hour ($0.20 a minute), at most 3 stops (an old $1.00
+ * a stop folds into the $5 minimum pay); the newest offer ($24.00 for 6 mi, 25 min, 2 stops) passes and is the chart's
+ * example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferMarkTapTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = new FilterSettings(true, 500, 300, 20, 100, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, 500, 300, 20, 3);
     /** The newest offer is mark 0, the older one mark 1. */
     private static final int NEWEST = 0;
     private static final int OLDER = 1;
@@ -70,7 +71,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertEquals("chosen on the skyline, as a tap on its building does", Integer.valueOf(975),
                     chart.selectedEntry().facts.payCents);
             assertNotNull("its ticket is open", shownTextContaining(content, "Read: $9.75"));
-            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "Below your per-mile minimum"));
             assertEquals("its shape and marks stand out while the ticket is open", OLDER, star.openedOffer());
             assertEquals(-1, star.pressedOffer());
             assertFalse("no page opens", settingsShown(content));
@@ -118,15 +119,16 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void byAreaTheChosenOffersShapeIsOnTopAndATapInsideItOpensThatOne() {
-        seed(RULES.withScoreByArea(true));
+    public void withAutopilotsDashedShapeDrawnATapInsideTheChosenOffersShapeStillOpensThatOne() {
+        seed(RULES);
+        withAutopilotAt(82);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
-            assertTrue(star.byArea());
-            // By area the chosen offer's polygon stands out over the rest, so a touch finds it first.
+            assertFalse("Autopilot's dashed shape is drawn", star.autopilotShape().isEmpty());
+            // The dashed shape is a picture only: the chosen offer's polygon under it still takes the touch.
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             float[] inBoth = insideBoth(star);
@@ -162,7 +164,8 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
 
     @Test
     public void withAnOlderOfferChosenATapOffEveryOfferChoosesTheNewestAgain() {
-        seed(RULES.withScoreByArea(true));
+        seed(RULES);
+        withAutopilotAt(82);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -260,10 +263,9 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("the knobs, max stops, toggles, then only the displayed offer",
-                    Arrays.asList(AreaScore.PAY, AreaScore.HOTSPOT, AreaScore.MILE, AreaScore.MINUTE, AreaScore.ITEM, AreaScore.STOP,
-                            MinimumsStarView.STOPS_ID, MinimumsStarView.ADAPTIVE_ID, MinimumsStarView.SCORE_ID,
-                            MinimumsStarView.OFFER_ID),
+            assertEquals("the three knobs, max stops, the Autopilot button, then only the displayed offer",
+                    Arrays.asList(AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE, MinimumsStarView.STOPS_ID,
+                            MinimumsStarView.SCORE_ID, MinimumsStarView.OFFER_ID),
                     childIds(host));
             assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER));
             assertFalse("hidden offers cannot be activated through stale accessibility ids",
@@ -405,6 +407,12 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
 
     // ---- Helpers ----
 
+    /** Autopilot on, its bar moved to {@code bar} between offers (its dashed shape drawn below 100%). */
+    private void withAutopilotAt(int bar) {
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, bar));
+    }
+
     /** The rules, an older declined offer three minutes ago and the newest passing one a minute ago. */
     private void seed(FilterSettings rules) {
         FilterStore.save(app, rules);
@@ -450,15 +458,14 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                 if (mark != null) clear = Math.min(clear, Math.hypot(mark[0] - at[0], mark[1] - at[1]));
             }
         }
-        for (android.graphics.RectF control : new android.graphics.RectF[] {star.scoreToggleBox(),
-                star.adaptiveBox(), star.adoptBox(), star.stopsBox()}) {
+        for (android.graphics.RectF control : new android.graphics.RectF[] {star.autopilotBox(), star.stopsBox()}) {
             if (control != null) clear = Math.min(clear,
                     Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width());
         }
         return clear;
     }
 
-    /** A verified empty part of the circle, clear of all six knobs and the controls in their current layout. */
+    /** A verified empty part of the circle, clear of the three knobs and the controls in their current layout. */
     private float[] emptySky(MinimumsStarView star) {
         Ui ui = new Ui(app);
         float radius = star.skyRadius();
@@ -479,7 +486,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                 }
             }
         }
-        assertNotNull("empty sky clear of offers, six knobs and controls", best);
+        assertNotNull("empty sky clear of offers, the knobs and the controls", best);
         return best;
     }
 

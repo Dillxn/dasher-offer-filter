@@ -37,8 +37,7 @@ final class OfferCardView extends View {
     void show(DecisionLog.Entry entry) {
         this.entry = entry;
         setContentDescription(pay() + (needed() > 0 ? ", needed " + DecisionLog.money(needed()) : "") + ". "
-                + route() + (hasItemDetails() ? ". " + MinimumsStarView.itemsLabel(entry.facts) : "")
-                + (hasHotspotDistance() ? ". " + MinimumsStarView.hotspotSaid(entry.facts.finalStopHotspotMiles) : ""));
+                + route() + (hasItemDetails() ? ". " + itemsLabel(entry.facts) : ""));
         requestLayout();
         invalidate();
     }
@@ -51,18 +50,27 @@ final class OfferCardView extends View {
     private float routeLabelBaseline;
     private float routeY;
     private float itemsBaseline;
-    private float hotspotBaseline;
 
     private boolean hasItemDetails() {
         return entry != null && entry.facts.itemCountApplicable;
     }
 
-    private boolean hasHotspotDistance() {
-        return entry != null && MinimumsStarView.knownHotspotDistance(entry.facts.finalStopHotspotMiles);
+    private static boolean hasItems(OfferSnapshot offer) {
+        return offer != null && offer.itemCountApplicable && offer.items != null && offer.items > 0;
     }
 
-    private String hotspotLabel() {
-        return "Final stop → hotspot  " + MinimumsStarView.distanceText(entry.facts.finalStopHotspotMiles) + " mi";
+    /**
+     * A shopping offer's observed count and pay per item ("12 items · ≈$1.50/item"), or that the count was not read.
+     * Observed quantities only: an absent count never becomes a one-item order. A fact of the offer, not a rule.
+     */
+    static String itemsLabel(OfferSnapshot offer) {
+        if (offer == null || !offer.itemCountApplicable) return "";
+        if (!hasItems(offer)) return "Item count unavailable";
+        String count = offer.items + (offer.items == 1 ? " item" : " items");
+        if (offer.payCents == null) return count;
+        boolean rounded = offer.payCents % offer.items != 0;
+        String rate = String.format(Locale.US, "$%.2f/item", offer.payCents / (100.0 * offer.items));
+        return count + " · " + (rounded ? "≈" : "") + rate;
     }
 
     /** @param width the view's width: when "Paid" and "needed" do not fit side by side, "needed" gets its own line */
@@ -84,14 +92,12 @@ final class OfferCardView extends View {
         routeLabelBaseline = barTop + ui.dp(12) + ui.dp(14) - small.ascent;
         routeY = routeLabelBaseline + small.descent + ui.dp(4) + ui.dp(11);
         itemsBaseline = routeY + ui.dp(13) + ui.dp(8) - small.ascent;
-        hotspotBaseline = hasItemDetails() ? itemsBaseline + small.descent + ui.dp(8) - small.ascent : itemsBaseline;
         text.setTextSize(ui.sp(13));
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         layoutLines(MeasureSpec.getSize(widthSpec));
-        float bottom = hasHotspotDistance() ? hotspotBaseline + text.getFontMetrics().descent + ui.dp(2)
-                : hasItemDetails() ? itemsBaseline + text.getFontMetrics().descent + ui.dp(2) : routeY + ui.dp(13);
+        float bottom = hasItemDetails() ? itemsBaseline + text.getFontMetrics().descent + ui.dp(2) : routeY + ui.dp(13);
         setMeasuredDimension(MeasureSpec.getSize(widthSpec), resolveSize(Math.round(bottom), heightSpec));
     }
 
@@ -197,18 +203,8 @@ final class OfferCardView extends View {
             float itemIcon = ui.dp(16);
             Glyph.draw(canvas, Glyph.Shape.BAG, ui.inkSecondary, 0,
                     itemsBaseline - itemIcon + ui.dp(2), itemIcon);
-            CharSequence items = Ui.fit(text, MinimumsStarView.itemsLabel(entry.facts),
-                    width - itemIcon - ui.dp(7), 0.8f);
+            CharSequence items = Ui.fit(text, itemsLabel(entry.facts), width - itemIcon - ui.dp(7), 0.8f);
             canvas.drawText(items, 0, items.length(), itemIcon + ui.dp(7), itemsBaseline, text);
-        }
-        if (hasHotspotDistance()) {
-            text.setTextAlign(Paint.Align.LEFT);
-            text.setTextSize(ui.sp(13));
-            float hotspotIcon = ui.dp(16);
-            Glyph.draw(canvas, Glyph.Shape.HOTSPOT, ui.inkSecondary, 0,
-                    hotspotBaseline - hotspotIcon + ui.dp(2), hotspotIcon);
-            CharSequence hotspot = Ui.fit(text, hotspotLabel(), width - hotspotIcon - ui.dp(7), 0.8f);
-            canvas.drawText(hotspot, 0, hotspot.length(), hotspotIcon + ui.dp(7), hotspotBaseline, text);
         }
     }
 }

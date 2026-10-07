@@ -1,7 +1,8 @@
 package com.local.dasherfilter;
 
 import android.Manifest;
-import android.app.NotificationManager;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Looper;
 import android.view.View;
@@ -9,20 +10,28 @@ import android.view.ViewGroup;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.view.MotionEvent;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.time.Duration;
 import java.util.List;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowToast;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -32,18 +41,29 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The header's charts through real Android adapters: the constellation of minimums with its knobs and adopted
- * minimums, and the decisions chart.
+ * The page's charts through real Android adapters: the constellation of the three minimums (pay, per mile, per hour)
+ * with its knobs, the max stops badge and the Autopilot button, and the decisions chart.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk={26,35})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
+    @Before public void plansOnThisThread() {
+        AutopilotRuntime.forgetCache();
+        AutopilotRuntime.executorForTests = Runnable::run;
+    }
+
+    @After public void plansOnTheirOwnThread() {
+        AutopilotRuntime.executorForTests = null;
+        AutopilotRuntime.forgetCache();
+        RuntimeEnvironment.setFontScale(1f);
+    }
+
     @Test
     public void tappingAChartColumnShowsWhatWasRead() {
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000, DecisionLog.Source.SCREEN,
-                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets enabled rules",
+                false, new OfferSnapshot(2500, 9.1, 30, 3), 2000, OfferRule.Result.KEEP, "meets your minimums",
                 DecisionLog.Action.PASSES, true, Collections.emptyList()));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -65,87 +85,84 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
-    /** A knob set to {@code dollars} as a screen reader sets it, saved at once. */
+    /** A knob set to {@code dollars} (dollars an hour for the per-hour knob) as a screen reader sets it, saved at once. */
     private static void setKnob(MinimumsStarView star, int axis, float dollars) {
         android.os.Bundle value = new android.os.Bundle();
-        value.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, dollars);
+        value.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, dollars);
         assertTrue(star.getAccessibilityNodeProvider().performAction(axis,
                 android.R.id.accessibilityActionSetProgress, value));
     }
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void theStarShowsSetAgainstAdaptiveMinimumsAsTheyAreSet() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+    public void theStarShowsTheSetMinimumsAndAutopilotsBarAsTheyAreSet() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.isShown());
-            // What the example offer needs is heard first; the page shows no words for it.
-            assertEquals("An offer like 20 min · 5 mi · 2 stops needs $14.21. "
-                    + "Minimums, set and adaptive now. Pay: set $7.00, adaptive more than $14.20. "
-                    + "Minimum final-stop hotspot proximity, off. Final-stop distance to nearest hotspot unavailable. "
-                    + "Automatic measurement unavailable: the app cannot read the final stop and actual hotspots. Tap for details. "
-                    + "No adaptive minimum on this spoke. "
-                    + "Per mile: set $1.50, adaptive $2.37. Per minute: set $0.30, adaptive $0.59. "
-                    + "Minimum per item, off. Item rule not applicable: no shopping or items shown. "
-                    + "Based on the observed total items, not unique products; no learned item minimum yet. "
-                    + "Per stop: set $1.00, adaptive $7.10. "
-                    + "The hotspot spoke uses inverse miles: closer is farther out; "
-                    + "its 1 per mile shares the $10 ring radius for display only. "
-                    + "Farther out means higher payout or pay rates, or a final stop nearer the hotspot. "
-                    + "Solid blue is your set minimums; dashed purple is learned minimums; colored shapes are offers. "
-                    + "Drag the percentage sideways to scale all minimums without changing those saved values.",
+            // What the example offer needs is heard first; the page shows no words for it. No offers yet, so the
+            // example is a typical one: $7.00, $1.50 × 5 mi = $7.50 and 20 min at $18 an hour = $6.00.
+            assertEquals("An offer like 20 min · 5 mi · 2 stops needs $7.50 at your minimums. Your minimums: pay "
+                    + "$7.00, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Farther out "
+                    + "means higher pay or pay rates. Solid blue is your minimums; while Autopilot's bar is not 100%, a "
+                    + "dashed purple shape shows what it asks now; colored shapes are offers.",
                     star.getContentDescription().toString());
-            // No offers yet, so the example is a typical one; the largest ask is "more than $14.20".
-            // The per-stop spoke holds the set minimum as the example's 2 stops × $1.00, beside the adaptive 2 × $7.10.
-            assertEquals(200, star.setAsks(3), 0);
-            assertEquals(1420, star.learnedAsks(3), 0);
+            assertEquals(700, star.setAsks(AreaScore.PAY), 0);
+            assertEquals(750, star.setAsks(AreaScore.MILE), 0);
+            assertEquals(600, star.setAsks(AreaScore.MINUTE), 0);
+            assertTrue("no dashed shape at exactly the minimums", star.autopilotShape().isEmpty());
 
-            // A per-stop minimum is a floor like the others: $8.00 a stop makes the example need $16.00.
-            setKnob(star, 3, 8f);
-            assertEquals(800, FilterStore.load(app).perStopCents);
-            assertEquals(1600, star.setAsks(3), 0);
-            assertTrue(star.getContentDescription().toString().contains("Per stop: set $8.00, adaptive $7.10."));
+            // The per-hour knob is set in dollars an hour and kept in cents a minute: $24 an hour is 40¢ a minute.
+            setKnob(star, AreaScore.MINUTE, 24f);
+            assertEquals(40, FilterStore.load(app).perMinuteCents);
+            assertEquals("20 min at $24 an hour", 800, star.setAsks(AreaScore.MINUTE), 0);
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $16.00."));
-            setKnob(star, 3, 0f);
-            assertTrue(Double.isNaN(star.setAsks(3)));
-            assertTrue(star.getContentDescription().toString()
-                    .contains("Per stop: no set minimum, adaptive $7.10."));
+                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $8.00 at your minimums."));
+            assertTrue(star.getContentDescription().toString().contains("per hour of trip time 24 dollars per hour"));
+            setKnob(star, AreaScore.MILE, 0f);
+            assertTrue(Double.isNaN(star.setAsks(AreaScore.MILE)));
+            assertTrue(star.getContentDescription().toString().contains("per mile off"));
 
-            setKnob(star, 1, 0f);
-            assertTrue(star.getContentDescription().toString()
-                    .contains("Per mile: no set minimum, adaptive $2.37."));
-            // The adaptive minimum's toggle by the constellation turns it off, saved at once.
-            assertTrue(act(star, MinimumsStarView.ADAPTIVE_ID,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
-            assertTrue(star.getContentDescription().toString()
-                    .contains("Adaptive minimum is off, so the adaptive values are not applied."));
-            assertFalse(FilterStore.load(app).risingOffers);
-            // What it learned stays.
-            assertEquals(0, FilterStore.load(app).perMileCents);
-            assertEquals("$2.37", FilterStore.load(app).best.perMile());
+            // Autopilot moves its bar between offers: its dashed shape stands at that share of each minimum.
+            FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+            assertTrue(FilterStore.commitAutopilotBar(app, 100, 80));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            settleSky(content);
+            assertEquals("80% of $7.00", 560, star.barAsks(AreaScore.PAY), 0.001);
+            assertEquals("80% of $8.00", 640, star.barAsks(AreaScore.MINUTE), 0.001);
+            assertTrue("no minimum, no point", Double.isNaN(star.barAsks(AreaScore.MILE)));
+            assertFalse("dashed", star.autopilotShape().isEmpty());
+            assertArrayEquals("the bar never rewrites a minimum", new int[] {700, 0, 40, 0, 0, 0},
+                    FilterStore.load(app).minimums());
+
+            // Off again: back to exactly the minimums, and the dashed shape goes.
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            settleSky(content);
+            assertTrue(Double.isNaN(star.barAsks(AreaScore.PAY)));
+            assertTrue(star.autopilotShape().isEmpty());
+            assertEquals(3, FilterStore.load(app).maxStops);
         }
     }
 
     @Test
-    public void theStarMarksRecentOffersAndWhatAManualDeclineTaught() {
-        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0, true, 0));
-        // Declined by hand: pay came closest to catching it, so later offers must beat its $9.00.
-        FilterStore.learnFromDecline(app, new OfferSnapshot(900, 3.0, 12, 2));
+    public void theStarMarksTheLatestOfferAndTheSkylineChoosesOthers() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
                 DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
-                OfferRule.Result.KEEP, "meets enabled rules", DecisionLog.Action.PASSES, true,
-                Collections.emptyList()));
+                OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
+                Collections.emptyList()).withScore(357));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             String description = star.getContentDescription().toString();
-            assertTrue(description, description.contains("Pay: set $7.00, adaptive more than $9.00."));
+            assertTrue(description, description.contains("Your minimums: pay $7.00, per mile off, per hour of trip "
+                    + "time off; no max stops."));
+            assertTrue("$25.00 against $7.00: " + description,
+                    description.contains("The newest offer scores 357% of your minimums."));
             assertTrue(description, description.endsWith("The constellation shows the latest or selected offer. "
                     + "Choose an older offer on the skyline."));
             DecisionChartView chart = findChart(content);
@@ -153,59 +170,65 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     "Chart of the last 2 offers: 1 passed, 1 declined, 0 need review."));
             assertEquals(Integer.valueOf(2500), chart.selectedEntry().facts.payCents);
             chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals("history stays selectable", Integer.valueOf(790), chart.selectedEntry().facts.payCents);
-            assertEquals("selection preserves the learned payout floor", 901, star.learnedAsks(0), 0);
+            assertTrue("the chosen offer is worked out against the minimums as they are now: $7.90 against $7.00",
+                    star.getContentDescription().toString().contains("The chosen offer scores 112% of your minimums."));
         }
     }
 
     @Test
-    public void acceptedOffersOnlyRaiseTheAdaptiveMinimumsUntilReset() {
-        // Nothing is learned while the adaptive minimum is off, or while auto-decline is paused.
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
-        FilterStore.save(app, new FilterSettings(false, 1000, 0, 0, 0, 0, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(3000, 6.0, 24, 2));
-        assertTrue(FilterStore.load(app).best.isEmpty());
-        assertEquals("nothing is learned while off or paused, the pay included", 0,
-                FilterStore.load(app).lastAcceptedCents);
+    public void acceptedOffersAreOutcomesOnTheirLinesAndNeverChangeTheMinimums() {
+        // Nothing is learned from an acceptance any more (0.5.0): what the user accepted is a step on its line, its
+        // outcome and tally follow, and the minimums stay exactly as set, high or low, paused or on.
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
+        FilterStore.save(app, rules);
+        long now = System.currentTimeMillis();
+        OfferSnapshot high = new OfferSnapshot(3000, 6.0, 24, 2);
+        OfferSnapshot low = new OfferSnapshot(1420, 6.0, 24, 2);
+        DecisionLog.record(app, kept(now - 60_000, high));
+        assertTrue(DecisionLog.markStep(app, high, DecisionLog.StepKind.ACCEPTED,
+                "you tapped Accept, then Dasher showed a delivery", 120_000));
+        DecisionLog.Entry first = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(first));
+        assertTrue(DecisionLog.accepted(first));
+        assertArrayEquals("a high accepted pay raises nothing", rules.minimums(), FilterStore.load(app).minimums());
 
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
-        FilterStore.recordAccepted(app, new OfferSnapshot(900, 6.0, 24, 2));
+        FilterStore.save(app, rules.withEnabled(false));
+        DecisionLog.record(app, kept(now, low));
+        assertTrue(DecisionLog.markStep(app, low, DecisionLog.StepKind.ACCEPTED, "", 120_000));
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        FilterStore.save(app, FilterStore.load(app).withEnabled(true));
         FilterSettings saved = FilterStore.load(app);
-        assertEquals("a lower offer accepted later does not lower the pay minimum", 1420, saved.lastAcceptedCents);
-        assertEquals("nor any best rate", "$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
-        // Pausing, turning the adaptive minimum off and on, and accepting meanwhile keep what was learned.
-        FilterStore.save(app, saved.withEnabled(false));
-        FilterStore.recordAccepted(app, new OfferSnapshot(600, 6.0, 24, 2));
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, false, 0));
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
-        assertEquals(1420, FilterStore.load(app).lastAcceptedCents);
-        assertEquals("$0.59/min, $2.37/mi, $7.10/stop", FilterStore.load(app).best.summary());
-
-        // Saving rules keeps what was learned; Reset starts over.
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
-        assertEquals("$0.59/min, $2.37/mi, $7.10/stop", FilterStore.load(app).best.summary());
-        FilterStore.resetAccepted(app);
-        assertTrue(FilterStore.load(app).best.isEmpty());
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertArrayEquals("nor does a lower one, or pausing between them", rules.minimums(), saved.minimums());
+        assertEquals(rules.rulesKey(), saved.rulesKey());
+        java.util.Map<String, ?> stored = app.getSharedPreferences("offer_filter", android.content.Context.MODE_PRIVATE)
+                .getAll();
+        for (String retired : FilterStore.RETIRED_KEYS) {
+            assertFalse("no learned value is kept: " + retired, stored.containsKey(retired));
+        }
     }
 
     @Test
     public void anOrderAcceptedWhileThePageIsOpenShowsOnTheStarWithoutWaitingForAnotherOffer() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0, true, 0));
-        FilterStore.resetAccepted(app);
-        DecisionLog.record(app, declinedEntry());
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
+        OfferSnapshot facts = new OfferSnapshot(1420, 6.0, 24, 2);
+        DecisionLog.record(app, kept(System.currentTimeMillis(), facts).withScore(142));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            MinimumsStarView star = find(activity.get().findViewById(android.R.id.content), MinimumsStarView.class);
-            assertTrue(star.getContentDescription().toString().contains("Per mile: no set minimum, no adaptive minimum yet"));
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            String before = node(star, MinimumsStarView.OFFER_ID).getContentDescription().toString();
+            assertTrue(before, before.startsWith("Offer $14.20, 6 mi, 24 min, 2 stops, passed"));
 
             // Accepted in Dasher while Offer Filter stays open behind it; no new offer has come in since.
-            FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+            assertTrue(DecisionLog.markStep(app, facts, DecisionLog.StepKind.ACCEPTED,
+                    "you tapped Accept, then Dasher showed a delivery", 60_000));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            String described = star.getContentDescription().toString();
-            assertTrue(described, described.contains("Pay: set $10.00, adaptive more than $14.20"));
-            assertTrue(described, described.contains("Per mile: no set minimum, adaptive $2.37."));
+            String after = node(star, MinimumsStarView.OFFER_ID).getContentDescription().toString();
+            assertTrue(after, after.startsWith("Offer $14.20, 6 mi, 24 min, 2 stops, accepted, rules said pass"));
+            assertArrayEquals("it changes no minimum", new int[] {1000, 0, 0, 0, 0, 0},
+                    FilterStore.load(app).minimums());
         }
     }
 
@@ -213,7 +236,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void besideDasherTheMascotAndTheConstellationBehindItEachTakeTheirOwnTaps() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
-        FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 0));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -254,7 +277,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherSixSpokesFitTheHeightAndALineDoesNotShrinkThem() throws Exception {
+    public void besideDasherThreeSpokesFitTheHeightAndALineDoesNotShrinkThem() throws Exception {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -268,7 +291,6 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             layOut(content);
-            Ui ui = new Ui(app);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             ScenePage scene = find(content, ScenePage.class);
@@ -280,10 +302,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             android.graphics.RectF counts = new android.graphics.RectF();
             mascot.countsAt(counts);
             counts.offset(mascot.getLeft(), mascot.getTop());
-            // The upright fifth spoke makes height, not width, the limiting dimension in a short window.
-            assertTrue("the full upright spoke fits below the counts",
-                    star.skyY() - radius >= counts.bottom);
-            assertNotNull("the fifth knob stays available", star.knobAt(AreaScore.HOTSPOT));
+            assertTrue("the circle stands below the counts", star.skyY() - radius >= counts.bottom);
+            for (int axis : MinimumsStarView.SPOKES) assertNotNull("knob " + axis, star.knobAt(axis));
+            for (int axis : new int[] {AreaScore.STOP, AreaScore.HOTSPOT, AreaScore.ITEM}) {
+                assertNull("no knob on a retired spoke: " + axis, star.knobAt(axis));
+            }
             List<android.graphics.RectF> icons = new ArrayList<>();
             star.iconsAt(icons);
             java.lang.reflect.Method iconAt = MinimumsStarView.class.getDeclaredMethod("skyIcon", int.class,
@@ -292,13 +315,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             for (int axis = 0; axis < AreaScore.AXES; axis++) {
                 android.graphics.RectF box = new android.graphics.RectF();
                 boolean visible = (Boolean) iconAt.invoke(star, axis, star.skyX(), star.skyY(), radius, box);
-                assertTrue("axis " + axis + " absent at " + box + "; sky=" + star.getWidth() + "x"
-                        + star.getHeight() + ", center=" + star.skyX() + "," + star.skyY()
-                        + ", radius=" + radius + ", adaptive=" + star.adaptiveBox()
-                        + ", stops=" + star.stopsBox(), visible);
+                boolean shown = axis != AreaScore.HOTSPOT && axis != AreaScore.ITEM;
+                assertEquals("axis " + axis + " at " + box + "; sky=" + star.getWidth() + "x" + star.getHeight()
+                        + ", center=" + star.skyX() + "," + star.skyY() + ", radius=" + radius + ", stops="
+                        + star.stopsBox(), shown, visible);
             }
-            assertEquals("the six icons, the max stops badge and the adaptive minimum's toggle; adaptive="
-                    + star.adaptiveBox() + "; stops=" + star.stopsBox(), 8, icons.size());
+            assertEquals("the three spokes' icons, the max stops pin and its badge, and the Autopilot button; button="
+                    + star.autopilotBox() + "; stops=" + star.stopsBox(), 6, icons.size());
             for (android.graphics.RectF icon : icons) {
                 assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
                 assertFalse("and clear of the counts: " + icon, android.graphics.RectF.intersects(icon, counts));
@@ -328,7 +351,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             icons.clear();
             star.iconsAt(icons);
             assertEquals("every icon still shows, the lower ones stepped above their spokes' ends (and the badge and "
-                    + "the toggle)", 8, icons.size());
+                    + "the button)", 6, icons.size());
             for (android.graphics.RectF icon : icons) {
                 assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
                 assertFalse("and clear of the line: " + icon + " / " + rowBox,
@@ -346,8 +369,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherOnAFreshPageThreeLinesCrossTheConstellationAndTheMascotRisesAboveThem() {
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+    public void besideDasherOnAFreshPageTwoLinesCrossTheConstellationAndTheMascotRisesAboveThem() {
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         Shadows.shadowOf(app.getSystemService(android.app.NotificationManager.class)).setNotificationsEnabled(false);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -364,16 +387,23 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             int[] skyAt = new int[2];
             sky.getLocationInWindow(skyAt);
             float linesTop = Float.MAX_VALUE;
-            for (String line : new String[] {MainActivity.START_HINT, SetupChecklist.NOTIFICATIONS,
-                    SetupChecklist.ALERTS}) {
+            for (String line : new String[] {SetupChecklist.NOTIFICATIONS, SetupChecklist.ALERTS}) {
                 TextView shown = shownTextContaining(content, line);
                 assertNotNull(line, shown);
                 int[] at = new int[2];
                 shown.getLocationInWindow(at);
                 linesTop = Math.min(linesTop, at[1] - skyAt[1]);
             }
-            assertNotNull("the fifth knob stays available with all three lines", star.knobAt(AreaScore.HOTSPOT));
-            assertTrue("the upright spoke stays inside the short window", star.skyY() - star.skyRadius() >= 0);
+            // With no rule yet, the start stands on the ground, under the latest offer's line, never in the sky.
+            TextView start = shownTextContaining(content, MainActivity.START_LINE);
+            assertNotNull(start);
+            int[] startAt = new int[2];
+            start.getLocationInWindow(startAt);
+            assertTrue("below the sky", startAt[1] >= skyAt[1] + sky.getHeight());
+            for (int axis : MinimumsStarView.SPOKES) {
+                assertNotNull("every hollow knob stays with both lines: " + axis, star.knobAt(axis));
+            }
+            assertTrue("the upper spokes stay inside the short window", star.skyY() - star.skyRadius() >= 0);
             assertTrue("they cross its lower part", star.skyY() + star.skyRadius() > linesTop);
             float mascotY = mascot.getTop() + mascot.mascotY();
             float mascotX = mascot.getLeft() + mascot.mascotX();
@@ -401,9 +431,155 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     }
 
     @Test
+    @Config(qualifiers = "w360dp-h800dp-xxhdpi")
+    public void atTwiceTheFontSizeEveryKnobStaysInReachOfTheSetupLinesAndTheStartLine() {
+        everyKnobStaysInReachOfTheLines(false);
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h410dp-420dpi")
+    public void besideDasherAtTwiceTheFontSizeEveryKnobStaysInReachOfTheLines() {
+        everyKnobStaysInReachOfTheLines(true);
+    }
+
+    /**
+     * A fresh page at twice the font size with setup still to do. The start line stands on the ground, so neither it
+     * nor a setup line covers a hollow knob, and each knob takes a drag along its spoke. Where a set knob can stand
+     * under a setup line (a high per-hour minimum near the outer ring, low on the right, on a whole screen; beside
+     * Dasher none can), it still takes a drag that sets out from it along its spoke, while a tap there stays the
+     * line's.
+     */
+    private void everyKnobStaysInReachOfTheLines(boolean beside) {
+        RuntimeEnvironment.setFontScale(2f);
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        if (beside) {
+            service.get().onServiceConnected();
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+        }
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        if (beside) Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue(star.backdrop());
+            Ui ui = new Ui(app);
+            assertNotNull("a setup line to do", lineAt(content, star, null, SETUP_LINES));
+            TextView start = shownTextContaining(content, MainActivity.START_LINE);
+            assertNotNull("the start line", start);
+            int[] startAt = new int[2];
+            int[] skyAt = new int[2];
+            start.getLocationInWindow(startAt);
+            ((View) star.getParent()).getLocationInWindow(skyAt);
+            assertTrue("the start line stands on the ground, below the sky and its knobs",
+                    startAt[1] >= skyAt[1] + ((View) star.getParent()).getHeight());
+            for (int axis : MinimumsStarView.SPOKES) {
+                float[] knob = star.knobAt(axis);
+                assertNotNull(knob);
+                assertNull("no line covers hollow knob " + axis, lineAt(content, star, knob, SETUP_LINES));
+            }
+            // Each hollow knob in turn, from where it rests, along its spoke: saved.
+            for (int axis : MinimumsStarView.SPOKES) {
+                stillBesideDasher(beside);
+                settleSky(content);
+                float[] knob = star.knobAt(axis);
+                dragKnob(content, star, knob, alongSpoke(knob, axis, ui.dp(40), 0), null);
+                assertTrue("knob " + axis + " took its drag: " + java.util.Arrays.toString(
+                        FilterStore.load(app).minimums()), FilterStore.load(app).minimums()[axis] > 0);
+            }
+            assertFalse("auto-decline stays paused", FilterStore.load(app).enabled);
+
+            // A per-hour minimum high enough that its knob stands under a setup line.
+            View covering = null;
+            float[] knob = null;
+            for (int cents = 10; cents <= 400 && covering == null; cents += 2) {
+                stillBesideDasher(beside);
+                FilterStore.save(app, FilterSettings.of(false, 0, 0, cents, 0));
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+                settleSky(content);
+                knob = star.knobAt(AreaScore.MINUTE);
+                assertNotNull("the per-hour knob shows at " + cents + " cents a minute", knob);
+                covering = lineAt(content, star, knob, SETUP_LINES);
+            }
+            if (beside && covering == null) {
+                // Beside Dasher the setup lines stand clear of every per-hour position the loop above tried, from
+                // $6 to $240 an hour: no knob there is ever under one, so there is nothing to hand over.
+                return;
+            }
+            assertNotNull("a per-hour knob can stand under a setup line here", covering);
+            int before = FilterStore.load(app).perMinuteCents;
+            // A tap there is the line's: it opens what the line fixes and sets nothing.
+            Shadows.shadowOf(app).clearNextStartedActivities();
+            ShadowAlertDialog.reset();
+            float[] point = inContent(content, star, knob);
+            tap((ViewGroup) content, point[0], point[1]);
+            assertTrue("the covering line's tap", Shadows.shadowOf(app).getNextStartedActivity() != null
+                    || ShadowAlertDialog.getLatestAlertDialog() != null);
+            assertEquals("a tap sets nothing", before, FilterStore.load(app).perMinuteCents);
+            if (ShadowAlertDialog.getLatestAlertDialog() != null) ShadowAlertDialog.getLatestAlertDialog().dismiss();
+            activity.get().onWindowFocusChanged(true);
+            stillBesideDasher(beside);
+            settleSky(content);
+            // A drag from it along its spoke is the knob's: the line hands it over.
+            knob = star.knobAt(AreaScore.MINUTE);
+            assertNotNull("still under the line", lineAt(content, star, knob, SETUP_LINES));
+            dragKnob(content, star, knob, alongSpoke(knob, AreaScore.MINUTE, -ui.dp(40), 0), null);
+            int after = FilterStore.load(app).perMinuteCents;
+            assertTrue("the covered knob took its drag: " + before + " -> " + after, after > 0 && after < before);
+            assertFalse("still paused", FilterStore.load(app).enabled);
+        } finally {
+            service.destroy();
+            OfferFilterService.sawDasherBeside(0);
+        }
+    }
+
+    private static final String[] SETUP_LINES = {SetupChecklist.ACCESSIBILITY, SetupChecklist.NOTIFICATIONS,
+            SetupChecklist.ALERTS};
+
+    /** The screen reader sees Dasher beside again, as it does with each of Dasher's events (else it lapses in 20 s). */
+    private static void stillBesideDasher(boolean beside) {
+        if (beside) OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+    }
+
+    /**
+     * The shown line (one of {@code words}) whose row covers {@code at} (the star's pixels), or null; with {@code at}
+     * null, any one of them that shows.
+     */
+    private static View lineAt(View content, MinimumsStarView star, float[] at, String[] words) {
+        for (String each : words) {
+            TextView text = shownTextContaining(content, each);
+            if (text == null) continue;
+            View row = (View) text.getParent();
+            if (at == null) return row;
+            float[] point = inContent(content, star, at);
+            int[] rowAt = new int[2];
+            int[] contentAt = new int[2];
+            row.getLocationInWindow(rowAt);
+            content.getLocationInWindow(contentAt);
+            float left = rowAt[0] - contentAt[0];
+            float top = rowAt[1] - contentAt[1];
+            if (point[0] >= left && point[0] <= left + row.getWidth() && point[1] >= top
+                    && point[1] <= top + row.getHeight()) {
+                return row;
+            }
+        }
+        return null;
+    }
+
+    /** {@code at} in the star's pixels, as a point in the page's own. */
+    private static float[] inContent(View content, MinimumsStarView star, float[] at) {
+        int[] starAt = new int[2];
+        int[] contentAt = new int[2];
+        star.getLocationInWindow(starAt);
+        content.getLocationInWindow(contentAt);
+        return new float[] {at[0] + starAt[0] - contentAt[0], at[1] + starAt[1] - contentAt[1]};
+    }
+
+    @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void aKnobDraggedAlongItsSpokeSavesTheSnappedMinimum() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 80, 30, 100, 3, true, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 80, 30, 3));
         // The example offer: 7.2 mi, 21 min, 2 stops.
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -430,8 +606,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("snapped to $0.05 on the chart's scale for 7.2 mi", expected, saved.perMileCents);
             assertTrue("still on", saved.enabled);
             assertEquals("max stops untouched", 3, saved.maxStops);
-            assertArrayEquals("the other minimums untouched", new int[] {1000, expected, 30, 100, 0, 0}, saved.minimums());
-            assertTrue(saved.risingOffers);
+            assertArrayEquals("the other minimums untouched", new int[] {1000, expected, 30, 0, 0, 0},
+                    saved.minimums());
             assertFalse("a drag opens no page", settingsShown(content));
 
             // Into the middle: the rule is off.
@@ -461,7 +637,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void theRingsHoldStillWhileAKnobMovesAndGrowToFitItWhenLetGo() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 0));
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -476,7 +652,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 // A new offer while the knob is held does not move the rings either.
                 DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis(), DecisionLog.Source.SCREEN,
                         false, new OfferSnapshot(4800, 9.0, 30, 2), 1000, OfferRule.Result.KEEP,
-                        "meets enabled rules", DecisionLog.Action.PASSES, true, Collections.emptyList()));
+                        "meets your minimums", DecisionLog.Action.PASSES, true, Collections.emptyList()));
                 Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
                 assertTrue(star.dragging());
                 assertEquals(ring, star.ringCents());
@@ -491,65 +667,56 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void screenReadersAdjustEachKnobByOneStepAndHearTheValue() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 0, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
-        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {700, 150, 30, 0}));
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
+            AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull("each knob is its own control", nodes);
-            android.view.accessibility.AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(
-                    android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("six knobs, the max stops badge, the adaptive minimum's toggle, the adopt button and the "
-                    + "score by area toggle", 10, host.getChildCount());
-            android.view.accessibility.AccessibilityNodeInfo mile = nodes.createAccessibilityNodeInfo(1);
-            assertEquals("Minimum per mile, $1.50; adaptive $2.37, learned", mile.getContentDescription().toString());
+            AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
+            assertEquals("three knobs, the max stops badge and the Autopilot button", 5, host.getChildCount());
+            AccessibilityNodeInfo mile = nodes.createAccessibilityNodeInfo(1);
+            assertEquals("Minimum per mile, $1.50", mile.getContentDescription().toString());
             assertEquals(android.widget.SeekBar.class.getName(), mile.getClassName().toString());
             assertTrue("a screen reader stops on it, not taking it for part of the clickable chart",
                     mile.isFocusable());
             if (Build.VERSION.SDK_INT >= 28) assertTrue(mile.isScreenReaderFocusable());
             assertEquals(1.5f, mile.getRangeInfo().getCurrent(), 0.001f);
             assertEquals(1000f, mile.getRangeInfo().getMax(), 0.001f);
-            assertTrue(mile.getActionList().contains(
-                    android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD));
-            assertEquals("Minimum per stop, off; adaptive $7.10, learned",
-                    nodes.createAccessibilityNodeInfo(3).getContentDescription().toString());
-            assertFalse("an off knob steps only up", nodes.createAccessibilityNodeInfo(3).getActionList().contains(
-                    android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD));
+            assertTrue(mile.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD));
+            AccessibilityNodeInfo hour = nodes.createAccessibilityNodeInfo(AreaScore.MINUTE);
+            assertEquals("Minimum per hour of trip time, 18 dollars per hour",
+                    hour.getContentDescription().toString());
+            assertEquals("in dollars an hour", 18f, hour.getRangeInfo().getCurrent(), 0.001f);
+            for (int retired : new int[] {AreaScore.STOP, AreaScore.HOTSPOT, AreaScore.ITEM}) {
+                assertNull("no knob for a retired spoke: " + retired, nodes.createAccessibilityNodeInfo(retired));
+                assertFalse(nodes.performAction(retired, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
+            }
 
-            assertTrue(nodes.performAction(1, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
-                    null));
+            assertTrue(nodes.performAction(1, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
             assertEquals("one $0.05 step, saved", 155, FilterStore.load(app).perMileCents);
-            assertEquals("Minimum per mile, $1.55; adaptive $2.37, learned", star.lastSaid());
-            assertTrue(nodes.performAction(1, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD,
-                    null));
-            assertTrue(nodes.performAction(1, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD,
-                    null));
+            assertEquals("Minimum per mile, $1.55", star.lastSaid());
+            assertTrue(nodes.performAction(1, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null));
+            assertTrue(nodes.performAction(1, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null));
             assertEquals(145, FilterStore.load(app).perMileCents);
-            assertTrue(nodes.performAction(0, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
-                    null));
+            assertTrue(nodes.performAction(0, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
             assertEquals("pay steps $0.50", 750, FilterStore.load(app).flatCents);
-            assertTrue(nodes.performAction(2, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD,
-                    null));
-            assertEquals("per minute steps $0.01", 29, FilterStore.load(app).perMinuteCents);
-            assertTrue(nodes.performAction(3, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
-                    null));
-            assertEquals("per stop steps $0.25", 25, FilterStore.load(app).perStopCents);
-            assertEquals("Minimum per stop, $0.25; adaptive $7.10, learned", star.lastSaid());
+            assertTrue(nodes.performAction(2, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null));
+            assertEquals("per hour steps 60 cents (a cent a minute)", 29, FilterStore.load(app).perMinuteCents);
+            assertEquals("Minimum per hour of trip time, 17 dollars 40 cents per hour", star.lastSaid());
             FilterSettings saved = FilterStore.load(app);
             assertTrue(saved.enabled);
             assertEquals(3, saved.maxStops);
-            assertEquals("what was learned stays", "$0.59/min, $2.37/mi, $7.10/stop", saved.best.summary());
+            assertFalse("a knob never turns Autopilot on", saved.autopilot);
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherOneButtonMakesTheLearnedMinimumsTheSetOnesAndUndoesIt() {
+    public void besideDasherOneAutopilotButtonStandsWhereTheRowStoodAndTakesItsOwnTaps() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -561,66 +728,56 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
-            assertNull("nothing learned yet, so no button", star.adoptBox());
-            android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertEquals("six knobs, the badge, the two toggles and the offer marked", 10,
-                    nodes.createAccessibilityNodeInfo(
-                            android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
+            AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
+            assertEquals("three knobs, the badge, the Autopilot button and the offer marked", 6,
+                    nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
+            for (int retired : new int[] {MinimumsStarView.ADOPT_ID, MinimumsStarView.ADAPTIVE_ID}) {
+                assertNull("the retired buttons' ids are never shown", nodes.createAccessibilityNodeInfo(retired));
+            }
 
-            // An accepted offer teaches the adaptive minimums a best rate: now they ask more than the set ones.
-            FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
-            settleSky(content);
-            android.graphics.RectF button = star.adoptBox();
-            assertNotNull("the learned minimums can be made the set ones", button);
-            assertEquals(MinimumsStarView.ADOPT_SAID,
-                    nodes.createAccessibilityNodeInfo(MinimumsStarView.ADOPT_ID).getContentDescription().toString());
-            assertTrue("a full touch target", button.width() >= new Ui(app).dp(48) - 1);
-            for (int axis = 0; axis < AreaScore.AXES; axis++) {
+            android.graphics.RectF button = star.autopilotBox();
+            assertNotNull("one round button", button);
+            Ui ui = new Ui(app);
+            assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
+            for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertTrue("clear of the knobs", Math.hypot(knob[0] - button.centerX(),
-                        knob[1] - button.centerY()) >= new Ui(app).dp(24) + button.width() / 2 - 1);
+                        knob[1] - button.centerY()) >= ui.dp(24) + button.width() / 2 - 1);
             }
             List<android.graphics.RectF> icons = new ArrayList<>();
             star.iconsAt(icons);
             assertTrue("the scene keeps its clouds and stars off it",
                     containsPoint(icons, button.centerX(), button.centerY()));
+            assertEquals("Autopilot, off. Offers are judged at exactly your minimums.",
+                    nodes.createAccessibilityNodeInfo(MinimumsStarView.SCORE_ID).getContentDescription().toString());
 
+            // While off, its tap asks for the goal; one tap on a goal turns Autopilot on with it.
             ViewGroup sky = (ViewGroup) star.getParent();
             tap(sky, button.centerX(), button.centerY());
-            FilterSettings adopted = FilterStore.load(app);
-            assertArrayEquals("pay beats $14.20, the rates match $2.366…/mi, $0.591…/min and $7.10/stop",
-                    new int[] {1421, 237, 60, 710, 0, 0}, adopted.minimums());
-            assertTrue("still on", adopted.enabled);
-            assertEquals(3, adopted.maxStops);
-            assertTrue("the adaptive minimum stays on, keeping what it learned",
-                    adopted.risingOffers && adopted.lastAcceptedCents == 1420);
-            assertTrue(star.lastSaid(), star.lastSaid().contains(
-                    "Pay $14.21, per mile $2.37, per minute $0.60, per stop $7.10"));
+            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(chooser);
+            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
+            assertFalse("asking changes nothing", FilterStore.load(app).autopilot);
+            Shadows.shadowOf(chooser).clickOnItem(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            FilterSettings on = FilterStore.load(app);
+            assertTrue(on.autopilot);
+            assertEquals(70, on.autopilotGoalPercent);
+            assertEquals("Autopilot on · goal: acceptance rate 70% or more", ShadowToast.getTextOfLatestToast());
+            assertArrayEquals("the minimums stay", new int[] {700, 150, 30, 0, 0, 0}, on.minimums());
+            assertTrue("still on", on.enabled);
+            assertEquals(3, on.maxStops);
             assertFalse("no page opens", settingsShown(content));
-            assertTrue("the button offers Undo", star.offeringUndo());
-            assertEquals("Undo",
-                    nodes.createAccessibilityNodeInfo(MinimumsStarView.ADOPT_ID).getContentDescription().toString());
+
+            // While on, its tap turns it off, back to exactly the minimums.
             settleSky(content);
-            assertEquals("Undo stays under the finger, though the set shape grew", button, star.adoptBox());
-
-            // Undo puts the four back exactly.
-            button = star.adoptBox();
+            button = star.autopilotBox();
             tap(sky, button.centerX(), button.centerY());
-            assertArrayEquals(new int[] {700, 150, 30, 100, 0, 0}, FilterStore.load(app).minimums());
-            assertFalse(star.offeringUndo());
-            assertTrue(FilterStore.load(app).enabled);
-
-            // Adopted again, by a screen reader; Undo is offered for eight seconds, then the button goes.
-            assertTrue(nodes.performAction(MinimumsStarView.ADOPT_ID,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
-            assertEquals(237, FilterStore.load(app).perMileCents);
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(7000));
-            assertTrue(star.offeringUndo());
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
-            assertFalse(star.offeringUndo());
-            assertNull("set minimums no looser than the learned ones: no button", star.adoptBox());
-            assertEquals("the knobs, the badge, the toggles and the offer", 10, nodes.createAccessibilityNodeInfo(
-                    android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
+            FilterSettings off = FilterStore.load(app);
+            assertFalse(off.autopilot);
+            assertEquals(100, off.minimumScalePercent);
+            assertEquals("Autopilot off · back to exactly your minimums", ShadowToast.getTextOfLatestToast());
+            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, off.minimums());
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);
@@ -629,30 +786,32 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void undoIsWithdrawnOnceAKnobChangesTheAdoptedMinimums() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
-        try (ActivityController<MainActivity> activity =
-                Robolectric.buildActivity(MainActivity.class).setup()) {
+    public void aKnobChangeMovesAutopilotsDashedShapeWithItAndAsksForANewPlan() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 80));
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertTrue(nodes.performAction(MinimumsStarView.ADOPT_ID,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
-            assertTrue(star.offeringUndo());
-            assertTrue(nodes.performAction(1, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
-                    null));
-            assertEquals("the next $0.05 step up from $2.37", 240, FilterStore.load(app).perMileCents);
-            assertFalse("Undo would put back more than the adoption now", star.offeringUndo());
+            // The typical example offer: 5 mi.
+            assertEquals("80% of $1.50 × 5 mi", 600, star.barAsks(AreaScore.MILE), 0.001);
+            assertTrue(act(star, AreaScore.MILE, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            settleSky(content);
+            assertEquals(155, FilterStore.load(app).perMileCents);
+            assertEquals("the dashed shape follows the minimum at once: 80% of $1.55 × 5 mi", 620,
+                    star.barAsks(AreaScore.MILE), 0.001);
+            assertEquals("a knob never moves the bar itself", 80, FilterStore.load(app).minimumScalePercent);
+            assertEquals("Autopilot works out the new minimums: its next commit goes straight to their bar",
+                    Autopilot.Reason.RULES_CHANGED.name(), AutopilotStore.jump(app));
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void inAShortSplitWithAnotherAppTheHeaderChartHasNoKnobsOrButton() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
@@ -662,11 +821,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue("up in the header", star.beside());
             assertNull("no knobs", star.knobAt(1));
-            assertNull("no button, though the learned minimums ask more", star.adoptBox());
+            assertNull("no Autopilot button: the chip under the mascot stands for it", star.autopilotBox());
+            assertNotNull(find(content, AutopilotChip.class));
+            assertTrue(find(content, AutopilotChip.class).isShown());
             assertNull("no knobs for screen readers either", star.getAccessibilityNodeProvider());
             // A drag across it sets nothing; a tap spreads it across the sky, with its knobs.
-            int[] at = new int[2];
-            star.getLocationInWindow(at);
             float x = star.getWidth() * 0.6f;
             float y = star.getHeight() / 2f;
             long now = android.os.SystemClock.uptimeMillis();
@@ -674,14 +833,16 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             star.dispatchTouchEvent(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_MOVE, x + 60, y - 30, 0));
             star.dispatchTouchEvent(MotionEvent.obtain(now, now + 100, MotionEvent.ACTION_UP, x + 60, y - 30, 0));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertArrayEquals(new int[] {700, 150, 30, 100, 0, 0}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
             tap((ViewGroup) star.getParent(), star.getLeft() + x, star.getTop() + y);
             settleSky(content);
             assertFalse("no page opens", settingsShown(content));
             assertFalse("out of the header", star.beside());
             assertTrue("into the sky", star.backdrop());
             assertNotNull("with its knobs", star.knobAt(1));
-            assertNotNull(star.adoptBox());
+            assertNotNull("and the Autopilot button", star.autopilotBox());
+            assertFalse("which is Autopilot's one control now: no chip repeats it",
+                    find(content, AutopilotChip.class).isShown());
             assertEquals("the map makes room", View.GONE, find(content, AreaMapView.class).getVisibility());
 
             // A tap on its circle, away from everything on it, puts it back in the header with the map.
@@ -689,17 +850,18 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             tap(sky, star.skyX() + star.skyRadius() * 0.5f, star.skyY());
             settleSky(content);
             assertTrue("back in the header", star.beside());
+            assertTrue("and the chip with it", find(content, AutopilotChip.class).isShown());
             assertEquals(View.VISIBLE, find(content, AreaMapView.class).getVisibility());
-            assertArrayEquals(new int[] {700, 150, 30, 100, 0, 0}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void aKnobKeepsItsExactValueUntilMovedHalfAStepAlongItsSpoke() {
-        // Adopted minimums sit between steps: $14.21, $2.37/mi, $0.60/min, $7.10/stop.
-        int[] adopted = {1421, 237, 60, 710, 0, 0};
-        FilterStore.save(app, new FilterSettings(true, 1421, 237, 60, 710, 3, true, 0));
+        // Minimums between steps (the 0.5.0 update built an old buffer into them): $14.21 and $2.37 a mile.
+        int[] between = {1421, 237, 48, 0, 0, 0};
+        FilterStore.save(app, FilterSettings.of(true, 1421, 237, 48, 3));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -711,7 +873,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 float[] knob = star.knobAt(axis);
                 dragKnob(content, star, knob, alongSpoke(knob, axis, 0, ui.dp(20)),
                         () -> assertFalse("a slide across the spoke is not a drag", star.dragging()));
-                assertArrayEquals(adopted, FilterStore.load(app).minimums());
+                assertArrayEquals(between, FilterStore.load(app).minimums());
                 assertFalse("nor a tap", settingsShown(content));
             }
 
@@ -720,7 +882,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             float[] pay = star.knobAt(0);
             dragThrough(content, new float[][] {pay, alongSpoke(pay, 0, ui.dp(30), 0), pay},
                     () -> assertTrue(star.dragging()));
-            assertArrayEquals(adopted, FilterStore.load(app).minimums());
+            assertArrayEquals(between, FilterStore.load(app).minimums());
 
             // In past half a step ($0.25) from $14.21: the step below, $14.00, is in reach.
             settleSky(content);
@@ -729,7 +891,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             dragThrough(content, new float[][] {pay, alongSpoke(pay, 0, -ui.dp(30), 0),
                     alongSpoke(pay, 0, -31 * perCent, 0)}, null);
             assertEquals(1400, FilterStore.load(app).flatCents);
-            assertArrayEquals("nothing else moved", new int[] {1400, 237, 60, 710, 0, 0}, FilterStore.load(app).minimums());
+            assertArrayEquals("nothing else moved", new int[] {1400, 237, 48, 0, 0, 0},
+                    FilterStore.load(app).minimums());
         }
     }
 
@@ -737,7 +900,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     public void inAPageThatScrollsASwipeFromAKnobScrollsAndASlideAcrossItSetsNothing() {
         try (ActivityController<android.app.Activity> built =
                 Robolectric.buildActivity(android.app.Activity.class).setup()) {
-            LoneSky page = new LoneSky(built.get(), new FilterSettings(true, 725, 150, 30, 0, 0));
+            LoneSky page = new LoneSky(built.get(), FilterSettings.of(true, 725, 150, 30, 0));
             Ui ui = page.ui;
             MinimumsStarView star = page.star;
 
@@ -784,43 +947,44 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     public void aKnobSetSoLowItRestsNearTheMiddleTurnsOffOnlyWhenPushedClearlyIn() {
         try (ActivityController<android.app.Activity> built =
                 Robolectric.buildActivity(android.app.Activity.class).setup()) {
-            // $1.00 a stop asks $2 of the example's 2 stops, on rings reaching $21: inside the resting place.
-            LoneSky page = new LoneSky(built.get(), new FilterSettings(true, 2000, 0, 0, 100, 0));
+            // $0.10 a mile asks $0.50 of the example's 5 mi, on rings reaching $21: inside the resting place.
+            LoneSky page = new LoneSky(built.get(), FilterSettings.of(true, 2000, 10, 0, 0));
             Ui ui = page.ui;
             MinimumsStarView star = page.star;
-            float[] stop = star.knobAt(3);
+            float[] mile = star.knobAt(AreaScore.MILE);
             float[] middle = {star.skyX(), star.skyY()};
             assertTrue("it rests inside the resting place",
-                    Math.hypot(stop[0] - middle[0], stop[1] - middle[1]) < ui.dp(MinimumsStarView.KNOB_REST_DP));
+                    Math.hypot(mile[0] - middle[0], mile[1] - middle[1]) < ui.dp(MinimumsStarView.KNOB_REST_DP));
 
             // Sideways past the slop: nothing set, and the rule is not turned off.
             float past = page.slop + ui.dp(4);
-            page.swipe(stop, alongSpoke(stop, 3, 0, past));
+            page.swipe(mile, alongSpoke(mile, AreaScore.MILE, 0, past));
             assertTrue("nothing saved: " + page.saves, page.saves.isEmpty());
             page.scroll.scrollTo(0, 0);
             page.layOut();
             // Out along its spoke and back to where it was: still nothing.
-            page.drag(new float[][] {stop, alongSpoke(stop, 3, past, 0), stop});
+            page.drag(new float[][] {mile, alongSpoke(mile, AreaScore.MILE, past, 0), mile});
             assertTrue("nothing saved: " + page.saves, page.saves.isEmpty());
 
             // Out, then back in to 9 dp inside where it was (less than a clear 12 dp): it stays on, a step lower.
-            page.drag(new float[][] {stop, alongSpoke(stop, 3, past, 0), alongSpoke(stop, 3, -ui.dp(9), 0)});
+            page.drag(new float[][] {mile, alongSpoke(mile, AreaScore.MILE, past, 0),
+                    alongSpoke(mile, AreaScore.MILE, -ui.dp(9), 0)});
             assertEquals(1, page.saves.size());
-            assertEquals("3=50", page.saves.get(0));
+            assertEquals("1=5", page.saves.get(0));
 
             // Pushed in through the middle: off.
-            stop = star.knobAt(3);
-            page.drag(new float[][] {stop, alongSpoke(middle, 3, -ui.dp(16), 0)});
-            assertEquals("3=0", page.saves.get(page.saves.size() - 1));
+            mile = star.knobAt(AreaScore.MILE);
+            page.drag(new float[][] {mile, alongSpoke(middle, AreaScore.MILE, -ui.dp(16), 0)});
+            assertEquals("1=0", page.saves.get(page.saves.size() - 1));
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void besideDasherAKnobNearPausedTakesItsOwnTouchesAndTheWordStillResumes() {
-        // The sixth spoke can move the per-minute knob above the Paused line. The knob must stay clear of
-        // its words, and touching or dragging either control must still reach only that control.
-        FilterStore.save(app, new FilterSettings(false, 2000, 150, 75, 100, 0));
+        // The per-hour knob can stand near the Paused line. The knob must stay clear of its words, and touching or
+        // dragging either control must still reach only that control.
+        FilterStore.save(app, FilterSettings.of(false, 2000, 150, 75, 0));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -856,7 +1020,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             knob = star.knobAt(2);
             dragKnob(content, star, knob, alongSpoke(knob, 2, new Ui(app).dp(30), 0), null);
-            assertTrue("a drag from it sets the per-minute minimum: " + FilterStore.load(app).perMinuteCents,
+            assertTrue("a drag from it sets the per-hour minimum: " + FilterStore.load(app).perMinuteCents,
                     FilterStore.load(app).perMinuteCents > 75);
             assertFalse("still paused", FilterStore.load(app).enabled);
 
@@ -874,103 +1038,110 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void undoHoldsWhileAScreenReaderIsOnItAndItsFocusGoesWithTheButton() {
-        FilterStore.save(app, new FilterSettings(true, 700, 150, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
+    // The window is shown, so every frame is drawn: really, as on a phone, rather than as legacy draw descriptions,
+    // which grow with every frame.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    public void aScreenReaderOnTheAutopilotButtonKeepsItsFocusAndHearsNothingWhenAutopilotMovesTheBar() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         org.robolectric.shadows.ShadowAccessibilityManager reader = Shadows.shadowOf(
                 app.getSystemService(android.view.accessibility.AccessibilityManager.class));
+        // Autopilot commits only through the screen reading, which is running; background offers too, so no setup line
+        // takes the status line's room.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
+            showWindow(content);
             settleSky(content);
             reader.setEnabled(true);
             reader.setTouchExplorationEnabled(true);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            int adopt = MinimumsStarView.ADOPT_ID;
-            assertTrue(nodes.performAction(adopt,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null));
-            assertTrue(nodes.performAction(adopt, android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,
-                    null));
-            assertTrue("what to do comes first: " + star.lastSaid(),
-                    star.lastSaid().startsWith("Learned minimums set. Double-tap to undo."));
-            assertTrue(star.lastSaid(), star.lastSaid().contains("Add-ons are held to these too."));
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3 * MinimumsStarView.UNDO_MS));
-            assertTrue("Undo holds while the screen reader is on it", star.offeringUndo());
+            AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
+            int button = MinimumsStarView.SCORE_ID;
+            assertTrue(nodes.performAction(button, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null));
+            assertEquals(button, star.focusedNode());
+            assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
+                    + "percent or more.", nodes.createAccessibilityNodeInfo(button).getContentDescription().toString());
+            String said = star.lastSaid();
+            int sent = reader.getSentAccessibilityEvents().size();
 
-            // Moved on: Undo's time starts over (Android before 10 has no timeout to ask, so it waits for a change).
-            assertTrue(nodes.performAction(adopt,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS, null));
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(MinimumsStarView.UNDO_MS + 500));
-            assertEquals(Build.VERSION.SDK_INT < 29, star.offeringUndo());
-
-            // Back on it, a knob changes the adopted minimums: Undo ends, the button goes, and so does the focus.
-            if (star.offeringUndo()) {
-                assertTrue(nodes.performAction(adopt,
-                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null));
-                assertEquals(adopt, star.focusedNode());
-                assertTrue(nodes.performAction(1,
-                        android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null));
-                assertFalse(star.offeringUndo());
-                assertNull(star.adoptBox());
-                assertEquals("no focus left on a button that is gone", -1, star.focusedNode());
+            // Autopilot moves the bar between offers, by itself: the button follows quietly and keeps the focus.
+            assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            settleSky(content);
+            assertEquals("the focus stays", button, star.focusedNode());
+            assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
+                    + "percent or more.", nodes.createAccessibilityNodeInfo(button).getContentDescription().toString());
+            assertEquals("nothing is said", said, star.lastSaid());
+            // Its words change on screen (Android tells screen readers so their view of the page stays current), but
+            // nothing is announced, and no part of the page is a live region a screen reader would read out.
+            for (AccessibilityEvent event : reader.getSentAccessibilityEvents().subList(sent,
+                    reader.getSentAccessibilityEvents().size())) {
+                assertTrue("no announcement while Autopilot moves the bar: " + event,
+                        event.getEventType() != AccessibilityEvent.TYPE_ANNOUNCEMENT);
             }
+            TextView status = shownTextContaining(content, "Autopilot 82%");
+            assertNotNull("the status line follows too", status);
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, status.getAccessibilityLiveRegion());
+            assertNull("no live region anywhere on the page", liveRegionIn(content));
         } finally {
             reader.setTouchExplorationEnabled(false);
             reader.setEnabled(false);
+            listener.destroy();
+            service.destroy();
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void adoptingWorksFromTheSavedMinimumsAndRaisesOnlyThoseItBeats() {
-        FilterStore.save(app, new FilterSettings(true, 1000, 300, 30, 100, 3, true, 0));
-        FilterStore.recordAccepted(app, new OfferSnapshot(1420, 6.0, 24, 2));
-        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {1000, 300, 30, 100}));
+    public void withNoMoneyMinimumTheAutopilotButtonSaysWhatItNeedsAndTurnsNothingOn() {
+        // Max stops alone is a rule, but Autopilot moves a bar on money minimums.
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            android.view.accessibility.AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertTrue(nodes.performAction(MinimumsStarView.ADOPT_ID,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
-            FilterSettings adopted = FilterStore.load(app);
-            assertArrayEquals("pay from the saved $10 to beat $14.20; the saved $3.00/mi was already above $2.37",
-                    new int[] {1421, 300, 60, 710, 0, 0}, adopted.minimums());
-
-            assertTrue(nodes.performAction(MinimumsStarView.ADOPT_ID,
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null));
-            assertArrayEquals("Undo puts back the saved minimums it replaced", new int[] {1000, 300, 30, 100, 0, 0},
-                    FilterStore.load(app).minimums());
-
-            // With the saved adaptive minimum off there is no button: it follows the saved rules.
-            FilterStore.save(app, FilterStore.load(app).withAdaptive(false));
-            activity.get().onPause();
-            activity.get().onResume();
-            settleSky(content);
-            assertNull("the saved adaptive minimum is off", star.adoptBox());
+            ShadowAlertDialog.reset();
+            android.graphics.RectF button = star.autopilotBox();
+            assertNotNull(button);
+            tap((ViewGroup) star.getParent(), button.centerX(), button.centerY());
+            assertEquals("Set a pay, per-mile or hourly minimum first.", ShadowToast.getTextOfLatestToast());
+            assertNull("no chooser", ShadowAlertDialog.getLatestAlertDialog());
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            assertNull("held, still no chooser", ShadowAlertDialog.getLatestAlertDialog());
+            FilterSettings saved = FilterStore.load(app);
+            assertFalse(saved.autopilot);
+            assertEquals(100, saved.minimumScalePercent);
+            assertArrayEquals(new int[] {0, 0, 0, 0, 0, 0}, saved.minimums());
+            assertEquals(3, saved.maxStops);
+            assertTrue(saved.enabled);
         }
     }
 
     @Test
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
-    public void aFreshPageHasSixHollowKnobsAndAFirstRuleSetByOneStaysPaused() {
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+    public void aFreshPageHasThreeHollowKnobsAndAFirstRuleSetByOneStaysPaused() {
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             float[] middle = {star.skyX(), star.skyY()};
-            for (int axis = 0; axis < AreaScore.AXES; axis++) {
+            for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertNotNull("a hollow knob on every spoke", knob);
                 assertEquals("resting just outside the middle", new Ui(app).dp(MinimumsStarView.KNOB_REST_DP),
                         Math.hypot(knob[0] - middle[0], knob[1] - middle[1]), 1);
             }
-            assertEquals("screen readers find the six knobs, the badge and the adaptive minimum's toggle", 8,
+            assertEquals("screen readers find the three knobs, the badge and the Autopilot button", 5,
                     star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(
-                            android.view.accessibility.AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
-            assertNotNull(shownTextContaining(content, MainActivity.START_HINT));
+                            AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
+            assertNotNull(shownTextContaining(content, MainActivity.START_LINE));
 
             // One dragged out saves the first rule.
             float[] mile = star.knobAt(1);
@@ -979,8 +1150,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("the per-mile minimum is saved: " + saved.perMileCents, saved.perMileCents > 0);
             assertEquals("only it", 0, saved.flatCents);
             assertFalse("auto-decline stays paused", saved.enabled);
-            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.",
-                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            assertEquals("Rule saved. Tap the mascot to turn on auto-decline.", ShadowToast.getTextOfLatestToast());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull("the start goes once there is a rule", shownTextContaining(content, MainActivity.START_LINE));
         }
     }
 
@@ -993,7 +1165,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 OfferRule.Result.REVIEW, "pay not found", DecisionLog.Action.SILENT_CARD, true,
                 Collections.emptyList()));
         entries.add(new DecisionLog.Entry(3000, DecisionLog.Source.SCREEN, false, new OfferSnapshot(100, 1.0, 999, 2),
-                Long.MAX_VALUE, OfferRule.Result.DECLINE, "dollars per minute", DecisionLog.Action.DECLINE_TAPPED,
+                Long.MAX_VALUE, OfferRule.Result.DECLINE, "dollars per hour", DecisionLog.Action.DECLINE_TAPPED,
                 true, Collections.emptyList()));
         chart.setEntries(entries);
         chart.measure(View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
@@ -1001,5 +1173,39 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         chart.layout(0, 0, 1000, 400);
         chart.draw(new Canvas(Bitmap.createBitmap(1000, 400, Bitmap.Config.ARGB_8888)));
         assertTrue(chart.getContentDescription().toString().startsWith("Chart of the last 3 offers: 0 passed, 2 declined, 1 need review."));
+    }
+
+    /**
+     * The page's window shown as a phone shows it. Robolectric adds the window without Android's app-visible flag, so
+     * its window stays GONE, and Android lets no view in a window that is not visible keep a screen reader's focus: its
+     * next layout pass clears it whatever the page does. Visible, the focus stays unless the page itself drops it.
+     */
+    /** The first view under {@code view} that is a live region, or null. */
+    private static View liveRegionIn(View view) {
+        if (view.getAccessibilityLiveRegion() != View.ACCESSIBILITY_LIVE_REGION_NONE) return view;
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View found = liveRegionIn(((ViewGroup) view).getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static void showWindow(View content) {
+        try {
+            Object root = View.class.getMethod("getViewRootImpl").invoke(content);
+            root.getClass().getMethod("dispatchAppVisibility", boolean.class).invoke(root, true);
+        } catch (ReflectiveOperationException unavailable) {
+            throw new AssertionError(unavailable);
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals("the window shows", View.VISIBLE, content.getWindowVisibility());
+    }
+
+    /** A screen line that passed, recorded {@code at}. */
+    private static DecisionLog.Entry kept(long at, OfferSnapshot facts) {
+        return new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false, facts, 1000, OfferRule.Result.KEEP,
+                "meets your minimums", DecisionLog.Action.PASSES, true, Collections.emptyList());
     }
 }

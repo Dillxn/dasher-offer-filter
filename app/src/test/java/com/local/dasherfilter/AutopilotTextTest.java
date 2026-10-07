@@ -135,8 +135,8 @@ public final class AutopilotTextTest {
         assertEquals(AutopilotText.Status.Kind.PINNED, s.kind);
         assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 50% lowest", AutopilotText.chip(s));
-        assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts. Opens Autopilot details",
-                AutopilotText.chipDescription(s));
+        assertEquals("heard in words, not symbols", "Autopilot bar 50 percent, the lowest. Acceptance rate 9 percent, "
+                + "goal 70 percent: about 61 more accepts. Opens Autopilot details.", AutopilotText.chipDescription(s));
         assertTrue("the ring is amber", s.belowGoal());
         assertTrue(s.pinned());
         assertEquals(Arrays.asList(
@@ -196,30 +196,130 @@ public final class AutopilotTextTest {
                 AutopilotText.detailsPass(s));
     }
 
+    /**
+     * Pinned with the typical minimums already ($4.00, $1.00 a mile, $15 an hour; max stops 2 against three-stop
+     * offers): offering typical minimums would change nothing, so neither the line nor the button offers them.
+     */
+    @Test
+    public void pinnedWithTheTypicalMinimumsAlreadyOffersTheGoalNotTypicalMinimums() {
+        AutopilotStore.Reading nine = dasher(9, 1);
+        List<Autopilot.OfferRecord> stacked = new ArrayList<>();
+        for (int i = 0; i < PAY.length; i++) {
+            stacked.add(new Autopilot.OfferRecord(new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 3),
+                    NOW - (2 + 3L * i) * MIN, false, false, false, false, false));
+        }
+        FilterSettings typical = rules(400, 100, 25, 2, 70, 100);
+        Autopilot.Plan plan = plan(typical, stacked, nine, 100);
+        assertEquals(Autopilot.Mode.PINNED, plan.mode);
+        AutopilotText.Status s = status(typical.withMinimumScalePercent(50), plan, nine, null);
+        assertTrue(s.pinned());
+        assertTrue(s.typicalMinimums());
+        assertEquals("Even at the lowest bar (50%) only 0 of your last 20 offers pass. Lower a minimum or turn off max "
+                + "stops.", AutopilotText.detailsPinned(s));
+        assertEquals(Arrays.asList("Change goal", "Turn off", "Close"), AutopilotText.detailsButtons(s));
+
+        // Without max stops, offers paying a tenth of what the minimums ask: lowering a minimum is the one advice left.
+        List<Autopilot.OfferRecord> cheap = new ArrayList<>();
+        for (int i = 0; i < PAY.length; i++) {
+            cheap.add(new Autopilot.OfferRecord(new OfferSnapshot(100, 10.0, 40, 2), NOW - (2 + 3L * i) * MIN, false,
+                    false, false, false, false));
+        }
+        FilterSettings noStops = rules(400, 100, 25, 0, 70, 100);
+        Autopilot.Plan low = plan(noStops, cheap, nine, 100);
+        assertEquals(Autopilot.Mode.PINNED, low.mode);
+        AutopilotText.Status open = status(noStops.withMinimumScalePercent(50), low, nine, null);
+        assertEquals("Even at the lowest bar (50%) only 0 of your last 20 offers pass. Lower a minimum.",
+                AutopilotText.detailsPinned(open));
+        assertEquals(Arrays.asList("Change goal", "Turn off", "Close"), AutopilotText.detailsButtons(open));
+        assertTrue(AutopilotText.typicalMinimums(FilterSettings.of(true, 400, 100, 25, 3)));
+        assertFalse(AutopilotText.typicalMinimums(FilterSettings.of(true, 400, 100, 30, 0)));
+        assertFalse(AutopilotText.typicalMinimums(null));
+    }
+
+    /** Every status line has a spoken twin in words: no arrow, dot, tilde or "AR" for a screen reader to spell. */
+    @Test
+    public void everyStatusIsHeardInWordsNotSymbols() {
+        AutopilotStore.Reading nine = dasher(9, 1);
+        AutopilotStore.Reading reading = dasher(55, 12);
+        Autopilot.Plan recovering = plan(starters(70, 100), window(twoAfterTwelveMinutes(), 1), reading, 100);
+        Autopilot.Plan atGoal = plan(starters(70, 100), window(20), dasher(74, 1), 100);
+        Autopilot.Plan estimate = plan(starters(70, 100), outcomes(29, 9), null, 100);
+        Autopilot.Plan estimateHigh = plan(starters(70, 100), outcomes(27, 20), null, 100);
+        Autopilot.Plan unread = plan(starters(70, 100), window(20), null, 100);
+        Autopilot.Plan learning = plan(starters(70, 100), window(12), null, 100);
+        Autopilot.Plan pinned = plan(owner(70, 100), window(20), nine, 100);
+        Autopilot.Plan pinnedUnread = plan(owner(70, 100), window(20), null, 100);
+        Autopilot.Plan payFirst = plan(starters(0, 100), window(20), null, 100);
+        Autopilot.Plan floor = plan(owner(0, 100), window(20), null, 100);
+        Object[][] cases = {
+                {status(FilterSettings.of(true, 400, 100, 25, 0), null, null, null), "Autopilot off."},
+                {new AutopilotText.Status(starters(70, 82), false, recovering, null, null, NOW),
+                        "Autopilot waits for screen reading."},
+                {status(rules(0, 0, 0, 3, 70, 100), null, null, null),
+                        "Autopilot needs a pay, per-mile or hourly minimum."},
+                {status(new FilterSettings(false, 400, 100, 25, 0, true, 70, 82), recovering, null, null),
+                        "Autopilot bar 82 percent. Auto-decline paused."},
+                {status(starters(70, 100), null, null, null), "Autopilot bar 100 percent. Checking your offers."},
+                {status(starters(70, 100), learning, null, null),
+                        "Autopilot bar 100 percent. Learning, 12 of 20 offers."},
+                {status(owner(70, 50), pinned, nine, null), "Autopilot bar 50 percent, the lowest. Acceptance rate 9 "
+                        + "percent, goal 70 percent: about 61 more accepts."},
+                {status(owner(70, 50), pinnedUnread, null, null),
+                        "Autopilot bar 50 percent, the lowest. Lower a minimum to pass more."},
+                {status(starters(70, 82), recovering, reading, null), "Autopilot bar 82 percent. Acceptance rate 55 "
+                        + "percent, goal 70 percent: about 15 more accepts."},
+                {status(starters(70, 100), estimate, null, null), "Autopilot bar 100 percent. Estimated acceptance "
+                        + "rate 31 percent, goal 70 percent: about 39 more accepts."},
+                {status(starters(70, 96), atGoal, dasher(74, 1), null),
+                        "Autopilot bar 96 percent. Acceptance rate 74 percent, goal 70 percent."},
+                {status(starters(70, 100), estimateHigh, null, null),
+                        "Autopilot bar 100 percent. Estimated acceptance rate 74 percent, goal 70 percent."},
+                {status(starters(70, 100), unread, null, null),
+                        "Autopilot bar 100 percent. Goal 70 percent. Acceptance rate not seen yet."},
+                {status(owner(0, 61), floor, null, null),
+                        "Autopilot bar 61 percent. Pay first, keeping 1 in 5 offers."},
+                {status(starters(0, 119), payFirst, null, null), "Autopilot bar 119 percent. Pay first."},
+        };
+        java.util.Set<AutopilotText.Status.Kind> kinds = java.util.EnumSet.noneOf(AutopilotText.Status.Kind.class);
+        for (Object[] each : cases) {
+            AutopilotText.Status s = (AutopilotText.Status) each[0];
+            kinds.add(s.kind);
+            String said = AutopilotText.statusSaid(s);
+            assertEquals(s.kind.name(), each[1], said);
+            assertEquals(said + " Opens Autopilot details.", AutopilotText.chipDescription(s));
+            for (String symbol : new String[] {"→", "·", "~", "AR ", "%", "▲"}) {
+                assertFalse(s.kind + " says " + symbol + ": " + said, said.contains(symbol));
+            }
+        }
+        assertEquals("every kind of status is heard", java.util.EnumSet.allOf(AutopilotText.Status.Kind.class), kinds);
+    }
+
     // ---- Recovery, the goal held, no reading, the app's estimate ----
 
     @Test
     public void recoveryAtFiftyFiveWithTwoOffersSinceTheReading() {
-        // Dasher showed 55% 12 minutes ago; the two offers since were both accepted: 5,500 + 200 − 110 = 5,590.
+        // Dasher showed 55% 12 minutes ago; of the two offers since, the newer was accepted: 5,500 + 100 − 110 =
+        // 5,490, which every Autopilot text shows as 55% (rounded half up), Dasher's own figure.
         AutopilotStore.Reading reading = dasher(55, 12);
-        List<Autopilot.OfferRecord> lines = window(twoAfterTwelveMinutes(), 2);
+        List<Autopilot.OfferRecord> lines = window(twoAfterTwelveMinutes(), 1);
         Autopilot.Plan plan = plan(starters(70, 100), lines, reading, 100);
         assertEquals(Autopilot.Mode.RECOVERY, plan.mode);
-        assertEquals(5_590, plan.arHundredths);
+        assertEquals(5_490, plan.arHundredths);
         AutopilotText.Status s = status(starters(70, 82), plan, reading,
                 change(4, 100, 82, Autopilot.Reason.RECOVERY));
 
         assertEquals(AutopilotText.Status.Kind.BELOW_GOAL, s.kind);
-        // What the reports' rules JSON takes.
-        assertEquals(55, s.arPercent());
+        assertEquals("the rate as shown", 55, s.shownArPercent());
+        assertEquals("the rate as a report records it: exact to the hundredth (D3)", 54.9, s.exactArPercent(), 0);
+        assertEquals("the goal less the rate as shown", 15, s.acceptsNeeded());
         assertEquals(12, s.arAgeMinutes());
         assertEquals("RECOVERY", s.modeName());
         assertTrue(s.recovering);
         assertEquals(0, s.extra);
         assertEquals("Autopilot 82% · AR 55% → 70%: about 15 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 82% ▲", AutopilotText.chip(s));
-        assertEquals("Autopilot 82% · AR 55% → 70%: about 15 more accepts. Opens Autopilot details",
-                AutopilotText.chipDescription(s));
+        assertEquals("Autopilot bar 82 percent. Acceptance rate 55 percent, goal 70 percent: about 15 more accepts. "
+                + "Opens Autopilot details.", AutopilotText.chipDescription(s));
         assertEquals(Arrays.asList(
                 "Bar: 82% of your minimums (100% = exactly your minimums).",
                 "Goal: Keep a top tier — acceptance rate 70% or more.",
@@ -238,6 +338,54 @@ public final class AutopilotTextTest {
         assertEquals("plan 100% RECOVERY: need 80%, pass 16/20 at 100%, share bar 100%, ar 55% dasher (12 min ago, 2 "
                 + "since), recovering yes, extra 0, lambda 17.1/h, mix 20, best 86%, ok 86-100%",
                 AutopilotText.logPlan(plan, reading.at, NOW));
+    }
+
+    @Test
+    public void theRateIsShownRoundedHalfUpTheSameWayEverywhere() {
+        assertEquals(56, AutopilotText.shownPercent(5_590));
+        assertEquals(55, AutopilotText.shownPercent(5_549));
+        assertEquals("half up", 56, AutopilotText.shownPercent(5_550));
+        assertEquals(70, AutopilotText.shownPercent(6_950));
+        assertEquals(0, AutopilotText.shownPercent(0));
+        assertEquals(100, AutopilotText.shownPercent(10_000));
+        assertEquals("unknown", -1, AutopilotText.shownPercent(-1));
+
+        // Dasher showed 55% 12 minutes ago and both offers since were accepted: 5,500 + 200 − 110 = 5,590, so the
+        // status line, the chip, the details, the shared report and the plan's log line all say 56%, never 55%.
+        AutopilotStore.Reading reading = dasher(55, 12);
+        Autopilot.Plan plan = plan(starters(70, 100), window(twoAfterTwelveMinutes(), 2), reading, 100);
+        assertEquals(5_590, plan.arHundredths);
+        AutopilotText.Status s = status(starters(70, 100), plan, reading, null);
+        assertEquals(56, s.shownArPercent());
+        assertEquals("a report keeps it exact", 55.9, s.exactArPercent(), 0);
+        assertEquals("70 − 56", 14, s.acceptsNeeded());
+        assertEquals("Autopilot 100% · AR 56% → 70%: about 14 more accepts", AutopilotText.statusLine(s));
+        assertEquals("Auto 100% ▲", AutopilotText.chip(s));
+        assertEquals("Acceptance rate: about 56% (Dasher showed 55% 12 min ago; 2 offers since).",
+                AutopilotText.detailsAcceptanceRate(s));
+        assertTrue(AutopilotText.detailsGoalProgress(s).startsWith("Below your goal: about 14 more accepts"));
+        assertTrue(AutopilotText.reportLine(s), AutopilotText.reportLine(s)
+                .endsWith("; AR 56% (Dasher, 12 min ago, 2 offers since)"));
+        assertTrue(AutopilotText.logPlan(plan, reading.at, NOW).contains(", ar 56% dasher (12 min ago, 2 since), "));
+
+        // 16 of 23 counted offers accepted: ⌊10,000 × 16 ÷ 23⌋ = 6,956, just under the goal in the engine's exact
+        // arithmetic, shows as 70%: at the goal, so no amber, no "▲" and no "0 more accepts".
+        Autopilot.Plan close = plan(starters(70, 100), outcomes(23, 16), null, 100);
+        assertEquals(6_956, close.arHundredths);
+        assertTrue("the engine still counts it below the goal", close.recovering);
+        AutopilotText.Status shown = status(starters(70, 100), close, null, null);
+        assertEquals(70, shown.shownArPercent());
+        assertEquals("exact: still under 70", 69.56, shown.exactArPercent(), 1e-9);
+        assertFalse(shown.belowGoal());
+        assertEquals(0, shown.acceptsNeeded());
+        assertEquals(AutopilotText.Status.Kind.AT_GOAL, shown.kind);
+        assertEquals("Autopilot 100% · AR ~70%, goal 70%", AutopilotText.statusLine(shown));
+        assertEquals("Auto 100%", AutopilotText.chip(shown));
+        assertEquals("Acceptance rate: about 70%, estimated from 23 of your recent offers.",
+                AutopilotText.detailsAcceptanceRate(shown));
+        assertEquals(AutopilotText.DETAILS_AT_GOAL, AutopilotText.detailsGoalProgress(shown));
+        assertTrue(AutopilotText.reportLine(shown).contains("; AR ~70% (estimate, 23 offers)"));
+        assertTrue(AutopilotText.logPlan(close, -1, NOW).contains(", ar ~70% estimate (23 counted), "));
     }
 
     @Test
@@ -394,10 +542,12 @@ public final class AutopilotTextTest {
         assertEquals(AutopilotText.Status.Kind.OFF, s.kind);
         assertNull("no plan while off", s.plan);
         assertNull(s.modeName());
-        assertEquals("Dasher's reading still counts", 55, s.arPercent());
+        assertEquals("Dasher's reading still counts", 55, s.shownArPercent());
+        assertEquals(55.0, s.exactArPercent(), 0);
         assertEquals(12, s.arAgeMinutes());
         AutopilotText.Status nothing = status(off, null, null, null);
-        assertEquals(-1, nothing.arPercent());
+        assertEquals(-1, nothing.shownArPercent());
+        assertEquals(-1, nothing.exactArPercent(), 0);
         assertEquals(-1, nothing.arAgeMinutes());
         assertEquals(Autopilot.ArSource.UNKNOWN, nothing.arSource);
         assertEquals("Autopilot off", AutopilotText.statusLine(s));
@@ -406,7 +556,9 @@ public final class AutopilotTextTest {
         assertEquals(Arrays.asList(
                 "Autopilot is off: offers are judged at exactly your minimums.",
                 "Acceptance rate: 55%, shown by Dasher 12 min ago."), AutopilotText.detailsLines(s));
-        assertEquals(Arrays.asList("Change goal", "Turn on", "Close"), AutopilotText.detailsButtons(s));
+        assertEquals("off: no Change goal, which would turn it on too", Arrays.asList("Turn on", "Close"),
+                AutopilotText.detailsButtons(s));
+        assertEquals("Autopilot off. Opens Autopilot details.", AutopilotText.chipDescription(s));
         assertEquals("Autopilot: off; goal 70%; bar 100%; AR 55% (Dasher, 12 min ago)", AutopilotText.reportLine(s));
         assertEquals(Arrays.asList("Autopilot is off: offers are judged at exactly your minimums."),
                 AutopilotText.detailsLines(status(off, null, null, null)));
@@ -454,6 +606,9 @@ public final class AutopilotTextTest {
                 + "tiers use acceptance-rate minimums — check the Dasher app for your current requirements.",
                 AutopilotText.ABOUT_ACCEPTANCE_RATE);
         assertEquals("Not now", AutopilotText.CHOOSER_NOT_NOW);
+        assertEquals("named under the choices while Autopilot is off", "Choosing one turns on Autopilot, which adjusts "
+                + "how much of your minimums an offer must meet. Not now leaves it off.",
+                AutopilotText.CHOOSER_TURNS_ON);
         assertEquals("Autopilot on · goal: acceptance rate 70% or more", AutopilotText.toastTurnedOn(70));
         assertEquals("Autopilot on · goal: acceptance rate 50% or more", AutopilotText.toastTurnedOn(50));
         assertEquals("Autopilot on · pay first", AutopilotText.toastTurnedOn(0));
@@ -503,6 +658,28 @@ public final class AutopilotTextTest {
         OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
         assertEquals(facts.summary() + "; below your minimums (85%), passed by Autopilot's 82% bar. Yours to accept.",
                 AutopilotText.belowMinimumsCard(facts, 85, 82));
+
+        // The homepage's words for an offer that passed only by the lowered bar, and which lines those are.
+        assertEquals("Passed below your minimums", AutopilotText.PASSED_BELOW_MINIMUMS);
+        FilterSettings at82 = FilterSettings.of(true, 400, 100, 25, 3).withAutopilot(true, 70)
+                .withMinimumScalePercent(82);
+        assertTrue("$5.75 against $6.75: 85%, passed by the 82% bar",
+                AutopilotText.passedBelowMinimums(line(facts, at82)));
+        assertFalse("$9.00 meets the minimums themselves",
+                AutopilotText.passedBelowMinimums(line(new OfferSnapshot(900, 6.6, 27, 2), at82)));
+        assertFalse("a decline is no pass", AutopilotText.passedBelowMinimums(line(new OfferSnapshot(300, 6.6, 27, 2),
+                at82)));
+        assertFalse("at exactly the minimums nothing passes below them", AutopilotText.passedBelowMinimums(
+                line(facts, FilterSettings.of(true, 400, 100, 25, 3))));
+        assertFalse(AutopilotText.passedBelowMinimums(null));
+    }
+
+    /** {@code facts} as a line decided under {@code rules}, as the screen reader records it. */
+    private static DecisionLog.Entry line(OfferSnapshot facts, FilterSettings rules) {
+        OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
+        return DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
+                decision.result == OfferRule.Result.DECLINE ? DecisionLog.Action.DECLINE_TAPPED
+                        : DecisionLog.Action.PASSES, true, java.util.Collections.<String>emptyList());
     }
 
     @Test

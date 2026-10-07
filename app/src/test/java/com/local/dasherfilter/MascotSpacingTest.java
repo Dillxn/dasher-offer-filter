@@ -49,10 +49,15 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
     }
 
     private void check(boolean split, String name) throws Exception {
-        FilterSettings rules = new FilterSettings(true, 1000, 200, 50, 500, 3)
-                .withHotspotProximity(50).withPerItem(50).withScoreByArea(true);
+        // Every control the constellation has: the three minimums, max stops, and Autopilot on with its bar below
+        // 100% (its button reading "82%" and its dashed shape drawn). The old $5.00 per stop is folded into the
+        // $10.00 minimum pay (2 x $5.00 = $10.00), as the 0.5.0 update does.
+        FilterSettings rules = FilterSettings.of(true, 1000, 200, 50, 3);
         FilterStore.save(app, rules);
-        OfferSnapshot offer = new OfferSnapshot(1200, 5.0, 20, 2).withFinalStopHotspotMiles(2.0).withItems(20, true);
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+        rules = FilterStore.load(app);
+        OfferSnapshot offer = new OfferSnapshot(1200, 5.0, 20, 2).withItems(20, true);
         DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, offer,
                 OfferRule.evaluate(offer, rules), DecisionLog.Action.PASSES, true, Collections.emptyList()));
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -84,9 +89,11 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             List<RectF> obstacles = new ArrayList<>();
             star.iconsAt(obstacles);
             for (int i = 0; i < AreaScore.AXES; i++) obstacles.add(star.axisLabelBox(i));
-            obstacles.add(star.scoreToggleBox());
-            obstacles.add(star.adaptiveBox());
+            obstacles.add(star.autopilotBox());
             obstacles.add(star.stopsBox());
+            obstacles.add(star.stopsPinBox());
+            assertNotNull("the Autopilot button is on the sky", star.autopilotBox());
+            assertFalse("with its dashed shape at 82%", star.autopilotShape().isEmpty());
             for (RectF box : obstacles) {
                 if (box == null) continue;
                 float nearestX = Math.max(box.left, Math.min(x, box.right));

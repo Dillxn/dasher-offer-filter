@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -79,7 +80,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void aBackgroundOfferWithoutPayRingsOnceSoItIsNotMissed() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -130,7 +131,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void realPayloadProducesReviewCardWithoutOpeningDasher() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -164,7 +165,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void tappingTheMascotPausesWithoutPressingSave() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
@@ -184,7 +185,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void reviewCardSaysWhichEvidenceIsMissing() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -200,7 +201,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     public void aBackgroundOfferWithAPlusAmountBesideATotalIsNeverHiddenOrDeclined() {
         // A notification's text may be cut short: the "+$" bound that can decline a screen offer is never used here.
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -226,7 +227,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void freshOfferOnAReusedKeyIsAnnouncedEvenWhenTheExpiryCallbackIsLate() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -249,7 +250,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void trackedOfferAndItsCardExpireTogether() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -313,7 +314,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
                 .putInt("max_stops", 3).commit();
 
         FilterSettings loaded = FilterStore.load(app);
-        assertEquals("the fee is not a per-stop minimum, so per stop starts off", 0, loaded.perStopCents);
+        assertArrayEquals("the fee is no minimum of any kind: only the minimums that were set", new int[] {700, 150, 0,
+                0, 0, 0}, loaded.minimums());
         assertFalse("the old key is gone", prefs.contains("stop"));
         assertFalse(prefs.contains("per_stop"));
         // Everything else is as it was.
@@ -338,7 +340,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
         // Per stop is retired as well (0.5.0): rules saved now write neither key, so nothing brings the fee back.
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 0, 3));
-        assertEquals(0, FilterStore.load(app).perStopCents);
+        assertArrayEquals(new int[] {700, 150, 0, 0, 0, 0}, FilterStore.load(app).minimums());
         assertFalse(prefs.contains("per_stop"));
         assertFalse(prefs.contains("stop"));
     }
@@ -353,7 +355,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertFalse("the old key is gone all the same", prefs.contains("stop"));
         assertTrue(loaded.enabled);
         assertEquals(700, loaded.flatCents);
-        assertEquals(0, loaded.perStopCents);
+        assertArrayEquals(new int[] {700, 0, 0, 0, 0, 0}, loaded.minimums());
         assertFalse(DiagnosticLog.read(app).contains("extra-stop fee"));
         assertEquals("No offer evaluated yet.", FilterStore.lastStatus(app));
         assertNull(FilterStore.takeStopFeeNotice(app));
@@ -395,7 +397,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             TextView shown = shownTextContaining(content, notice);
             assertNotNull("on the homepage, the first time it opens after the update", shown);
-            assertEquals("per stop starts off", 0, FilterStore.load(app).perStopCents);
+            assertArrayEquals("the fee became no minimum", new int[] {700, 0, 0, 0, 0, 0},
+                    FilterStore.load(app).minimums());
             assertNull("taken from the store as it is shown", FilterStore.takeStopFeeNotice(app));
 
             iconButton(content, "Settings").performClick();
@@ -422,7 +425,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void resumeTurnsAutoDeclineBackOnWithTheSavedRules() {
-        FilterStore.save(app, new FilterSettings(false, 2000, 150, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 150, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
@@ -441,18 +444,26 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     }
 
     @Test
-    public void withoutAnyRuleTheMascotPointsToTheHollowKnobs() {
-        FilterStore.save(app, new FilterSettings(false, 0, 0, 0, 0, 0));
+    public void withoutAnyRuleTheMascotOffersTypicalMinimumsOrTheHollowKnobs() {
+        FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Set up rules", mascot.action());
-            assertNotNull(shownTextContaining(content, MainActivity.START_HINT));
+            assertNotNull(shownTextContaining(content, "Tap to start with typical minimums"));
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertFalse(star.beckoned());
             mascot.performClick();
             settle();
+            android.app.AlertDialog starter = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("Start with typical minimums?",
+                    Shadows.shadowOf(starter).getTitle().toString());
+            assertFalse("nothing is saved by asking", FilterStore.load(app).hasAnyRule());
+            // "Set my own": the hollow knobs beckon, as the mascot's tap used to make them.
+            starter.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+            settle();
             assertFalse(FilterStore.load(app).enabled);
+            assertFalse(FilterStore.load(app).hasAnyRule());
             assertTrue("the hollow knobs beckon", star.beckoned());
             assertFalse("no page opens", settingsShown(content));
         }
@@ -492,7 +503,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void savingRulesKeepsAutoDeclinePaused() {
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -508,7 +519,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void everyButtonOnTheScreenHasALabel() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             List<Button> buttons = new ArrayList<>();
@@ -556,7 +567,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             assertTrue(findChart(content).getContentDescription().toString().startsWith("Chart of the last 1 offers: 0 passed, 1 declined, 0 need review."));
             openTicket(content);
-            assertNotNull(shownTextContaining(content, "Below your per-mile rate"));
+            assertNotNull(shownTextContaining(content, "Below your per-mile minimum"));
             assertNotNull(shownTextContaining(content, "Decline tapped · on screen"));
         }
     }
@@ -564,7 +575,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void whatTheExampleNeedsFollowsTheRulesAsTheyAreSet() {
-        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -572,7 +583,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             MinimumsStarView star = find(content, MinimumsStarView.class);
             // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops; screen readers hear it first.
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $7.00."));
+                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $7.00 at your minimums."));
             // $1.50 a mile on its knob, as a screen reader sets it.
             android.os.Bundle dollars = new android.os.Bundle();
             dollars.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 1.5f);
@@ -580,7 +591,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
                     dollars));
             assertEquals(150, FilterStore.load(app).perMileCents);
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $10.80."));
+                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $10.80 at your minimums."));
             // At most 1 stop, saved by an older version (the badge steps from 2).
             FilterStore.save(app, FilterStore.load(app).withMaxStops(1));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
@@ -638,7 +649,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void backgroundDecisionsAreRecorded() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -676,19 +687,56 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void reasonsAreShownInPlainWords() {
+        // 0.5.0's reasons, in the spec's words: the three minimums, Autopilot's bar, and the add-on's.
         assertEquals("Below your minimum pay", MainActivity.plainReason("flat minimum"));
-        assertEquals("Below your per-stop rate", MainActivity.plainReason("dollars per stop"));
-        // Recorded while per stop was a fee on top of the other minimums.
-        assertEquals("Below your per-mile rate (with stop fees)",
-                MainActivity.plainReason("dollars per mile and extra stops"));
+        assertEquals("Below your per-mile minimum", MainActivity.plainReason("dollars per mile"));
+        assertEquals("Below your hourly minimum", MainActivity.plainReason("dollars per hour"));
+        assertEquals("Below your per-mile minimum (Autopilot 82%)",
+                MainActivity.plainReason("82% bar: dollars per mile"));
+        assertEquals("Below your hourly minimum (Autopilot 110%)",
+                MainActivity.plainReason("110% bar: dollars per hour"));
+        assertEquals("Meets your minimums", MainActivity.plainReason("meets your minimums"));
+        assertEquals("Meets Autopilot's 110% bar", MainActivity.plainReason("meets the 110% bar"));
+        assertEquals("Below your minimums · passed by Autopilot's 82% bar",
+                MainActivity.plainReason("below your minimums; passes the 82% bar"));
+        assertEquals("Add-on meets your minimums",
+                MainActivity.plainReason("combined route and add-on meet your minimums"));
+        assertEquals("Add-on meets Autopilot's 110% bar",
+                MainActivity.plainReason("combined route and add-on meet the 110% bar"));
+        assertEquals("Add-on below your minimums · passed by Autopilot's 82% bar",
+                MainActivity.plainReason("combined route and add-on below your minimums; pass the 82% bar"));
+        assertEquals("Add-on pays too little for what it adds (Autopilot 82%)",
+                MainActivity.plainReason("82% bar: add-on marginal economics"));
+        assertEquals("Whole route: Below your hourly minimum (Autopilot 82%)",
+                MainActivity.plainReason("combined route fails: 82% bar: dollars per hour"));
+        assertEquals("Even at $8.35 with its +$: below your per-mile minimum",
+                MainActivity.plainReason("pay at most $8.35 with its +$ amount; dollars per mile"));
+        assertEquals("Even at $8.35 with its +$: below your per-mile minimum (Autopilot 82%)",
+                MainActivity.plainReason("pay at most $8.35 with its +$ amount; 82% bar: dollars per mile"));
         assertEquals("Too many stops (4, max 3)", MainActivity.plainReason("4 stops exceeds maximum 3"));
+        assertEquals("Whole route: Below your minimum pay",
+                MainActivity.plainReason("combined route fails: flat minimum"));
+        assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
+        // Recorded before 0.5.0, under the retired rules: their own words.
+        assertEquals("Below your per-minute rate", MainActivity.plainReason("dollars per minute"));
+        assertEquals("Below your per-stop rate", MainActivity.plainReason("dollars per stop"));
+        assertEquals("Below your per-minute rate (buffer 97%)",
+                MainActivity.plainReason("97% of baseline: dollars per minute"));
+        assertEquals("Meets your rules", MainActivity.plainReason("meets enabled rules"));
+        assertEquals("Meets your rules (buffer 97%)",
+                MainActivity.plainReason("meets enabled rules at 97% minimum scale"));
+        assertEquals("Area score 87% (needed 100%)", MainActivity.plainReason("score 87% (needs 100%)"));
+        assertEquals("Add-on meets your rules",
+                MainActivity.plainReason("combined route and add-on meet enabled rules"));
+        // Recorded while per stop was a fee on top of the other minimums.
+        assertEquals("Below your per-mile minimum (with stop fees)",
+                MainActivity.plainReason("dollars per mile and extra stops"));
         assertEquals("Not above last accepted $12.50",
                 MainActivity.plainReason("must beat last accepted payout $12.50"));
         assertEquals("Not above your highest accepted $12.50",
                 MainActivity.plainReason("must beat highest accepted payout $12.50"));
-        assertEquals("Whole route: Below your minimum pay",
-                MainActivity.plainReason("combined route fails: flat minimum"));
-        assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
+        assertEquals("Below your best accepted $0.59/min",
+                MainActivity.plainReason("must match best accepted $0.59/min"));
         assertEquals("Not above an offer you declined, $2.50/mi",
                 MainActivity.plainReason("must beat declined $2.50/mi"));
         DecisionLog.Entry fromNotification = new DecisionLog.Entry(1, DecisionLog.Source.NOTIFICATION, false,

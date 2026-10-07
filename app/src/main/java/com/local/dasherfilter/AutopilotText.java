@@ -11,9 +11,13 @@ import java.util.List;
  * a {@link Autopilot.Plan}, or plain numbers.
  *
  * <p>The words never promise earnings: pay per hour is only ever history ("paid"), the accepts still needed are "about"
- * and called an estimate, and no tier rule is claimed beyond "check the Dasher app". The acceptance rate is shown in
- * whole percent rounded down, so it never reads as the goal while it is still below it. Log lines ({@code log*}) are
- * fixed words and numbers only, never screen text.
+ * and called an estimate, and no tier rule is claimed beyond "check the Dasher app". Wherever the acceptance rate is
+ * shown (the status line, the chip, the details, the shared report's line and the plan's log line) it is the
+ * carried-forward rate in whole percent, rounded half up ({@link #shownPercent}), so no two of them ever disagree by a
+ * point; "below the goal" and the accepts still needed ({@code goal − shown}) follow that shown rate, so they never
+ * contradict it ("AR 70% → 70%"). Display only: the engine keeps its exact arithmetic, and so does what a report
+ * records ({@link Status#exactArPercent}). Screen readers hear the status in words ({@link #statusSaid}), never its
+ * symbols. Log lines ({@code log*}) are fixed words and numbers only, never screen text.
  */
 final class AutopilotText {
     // ---- The Autopilot button (the constellation's SCORE_ID slot) ----
@@ -32,6 +36,12 @@ final class AutopilotText {
     // ---- The goal chooser ----
 
     static final String CHOOSER_TITLE = "What matters more?";
+    /**
+     * Under the choices while Autopilot is off, so an answer never turns it on unawares (the chooser also opens after
+     * the starter's "Use these" and the first resume, when no one asked for Autopilot by name).
+     */
+    static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which adjusts how much of your minimums "
+            + "an offer must meet. Not now leaves it off.";
     static final String CHOOSER_ABOUT = "About acceptance rate";
     static final String CHOOSER_NOT_NOW = "Not now";
     static final String ABOUT_ACCEPTANCE_RATE = "DoorDash computes acceptance rate over your recent offers (it "
@@ -184,9 +194,13 @@ final class AutopilotText {
             return plan.mode == Autopilot.Mode.PASS_FLOOR ? Kind.PASS_FLOOR : Kind.PAY_FIRST;
         }
 
-        /** Autopilot is on with a goal, and the acceptance rate is known and below it (the amber ring and chip). */
+        /**
+         * Autopilot is on with a goal, and the acceptance rate is known and, as shown ({@link #shownArPercent}), below
+         * it: the one rule for amber, on the button's ring and on the chip alike.
+         */
         boolean belowGoal() {
-            return on && goal > 0 && arHundredths >= 0 && arHundredths < 100 * goal;
+            int shown = shownArPercent();
+            return on && goal > 0 && shown >= 0 && shown < goal;
         }
 
         /** Even the lowest bar passes too few offers for the goal. */
@@ -194,14 +208,34 @@ final class AutopilotText {
             return plan != null && plan.pinned;
         }
 
-        /** About how many more accepts reach the goal; 0 at or above it, or when unknown. */
-        int acceptsNeeded() {
-            return Autopilot.acceptsNeeded(goal, arHundredths);
+        /** The minimums are the typical ones already ($4.00, $1.00 a mile, $15 an hour): offering them is no change. */
+        boolean typicalMinimums() {
+            return AutopilotText.typicalMinimums(rules);
         }
 
-        /** The acceptance rate in whole percent, rounded down; -1 when unknown. */
-        int arPercent() {
-            return arHundredths < 0 ? -1 : arHundredths / 100;
+        /**
+         * About how many more accepts reach the goal: the goal less the rate as shown ("AR 9% → 70%: about 61 more
+         * accepts"); 0 at or above it, or when unknown. An estimate for display; the engine keeps its exact need.
+         */
+        int acceptsNeeded() {
+            return belowGoal() ? goal - shownArPercent() : 0;
+        }
+
+        /**
+         * The acceptance rate as every Autopilot text shows it: whole percent, rounded half up (55.90% shows as 56%,
+         * 54.90% as 55%); -1 when unknown. For display only: a report records {@link #exactArPercent}.
+         */
+        int shownArPercent() {
+            return shownPercent(arHundredths);
+        }
+
+        /**
+         * The acceptance rate exactly, to the hundredth of a percent (54.9), as the engine worked it out; -1 when
+         * unknown. What a report records: OfferReport's rules object takes its "arPercent" from here, never from
+         * {@link #shownArPercent}, whose rounding is for the eye only (the owner's decision D3).
+         */
+        double exactArPercent() {
+            return arHundredths < 0 ? -1 : arHundredths / 100.0;
         }
 
         /** Whole minutes since Dasher's latest reading was seen; -1 without one. */
@@ -330,9 +364,62 @@ final class AutopilotText {
         return "AR " + arShort(s) + " → " + s.goal + "%: about " + accepts + " more " + plural(accepts, "accept");
     }
 
-    /** "55%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded down. */
+    /** "56%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded half up. */
     private static String arShort(Status s) {
-        return (s.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + s.arHundredths / 100 + "%";
+        return (s.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + s.shownArPercent() + "%";
+    }
+
+    /**
+     * The status line as a screen reader says it, in whole sentences and words: no "→", "·", "~" or "AR" ("Autopilot
+     * bar 82 percent. Acceptance rate 55 percent, goal 70 percent: about 15 more accepts."). The same facts, in the
+     * same order, as {@link #statusLine}; the chip and the status line are heard so, with what a tap does.
+     */
+    static String statusSaid(Status s) {
+        switch (s.kind) {
+            case OFF:
+                return "Autopilot off.";
+            case WAITS:
+                return "Autopilot waits for screen reading.";
+            case NEEDS_MINIMUM:
+                return "Autopilot needs a pay, per-mile or hourly minimum.";
+            case PAUSED:
+                return barSaid(s) + " Auto-decline paused.";
+            case CHECKING:
+                return barSaid(s) + " Checking your offers.";
+            case LEARNING:
+                return barSaid(s) + " Learning, " + s.plan.counted + " of " + Autopilot.MIN_WINDOW + " offers.";
+            case PINNED:
+                return "Autopilot bar " + s.bar + " percent" + (s.bar == Autopilot.BAR_MIN ? ", the lowest." : ".")
+                        + " " + (s.belowGoal() ? progressSaid(s) : "Lower a minimum to pass more.");
+            case BELOW_GOAL:
+                return barSaid(s) + " " + progressSaid(s);
+            case AT_GOAL:
+                return barSaid(s) + " " + arSaid(s) + ", goal " + s.goal + " percent.";
+            case AR_UNKNOWN:
+                return barSaid(s) + " Goal " + s.goal + " percent. Acceptance rate not seen yet.";
+            case PASS_FLOOR:
+                return barSaid(s) + " Pay first, keeping 1 in 5 offers.";
+            default:
+                return barSaid(s) + " Pay first.";
+        }
+    }
+
+    /** "Autopilot bar 82 percent." */
+    private static String barSaid(Status s) {
+        return "Autopilot bar " + s.bar + " percent.";
+    }
+
+    /** "Acceptance rate 55 percent, goal 70 percent: about 15 more accepts." */
+    private static String progressSaid(Status s) {
+        int accepts = s.acceptsNeeded();
+        return arSaid(s) + ", goal " + s.goal + " percent: about " + accepts + " more " + plural(accepts, "accept")
+                + ".";
+    }
+
+    /** "Acceptance rate 55 percent" (Dasher's, carried forward), or "Estimated acceptance rate 31 percent". */
+    private static String arSaid(Status s) {
+        return (s.arSource == Autopilot.ArSource.ESTIMATE ? "Estimated acceptance rate " : "Acceptance rate ")
+                + s.shownArPercent() + " percent";
     }
 
     // ---- The compact / split chip ----
@@ -360,9 +447,12 @@ final class AutopilotText {
         return "Auto " + s.bar + "%" + (s.belowGoal() ? " ▲" : "");
     }
 
-    /** The chip's content description: the full status line, and what a tap does. */
+    /**
+     * What a screen reader hears for the chip and the status line: the whole status in words ({@link #statusSaid}),
+     * and what a tap does ("… Opens Autopilot details.").
+     */
     static String chipDescription(Status s) {
-        return statusLine(s) + ". Opens Autopilot details";
+        return statusSaid(s) + " Opens Autopilot details.";
     }
 
     // ---- The details dialog ----
@@ -403,7 +493,7 @@ final class AutopilotText {
      */
     static String detailsAcceptanceRate(Status s) {
         if (s.arSource == Autopilot.ArSource.UNKNOWN || s.arHundredths < 0) return s.on ? DETAILS_AR_NOT_SEEN : null;
-        int percent = s.arHundredths / 100;
+        int percent = s.shownArPercent();
         if (s.arSource == Autopilot.ArSource.ESTIMATE) {
             return "Acceptance rate: about " + percent + "%, estimated from " + s.arCounted + " of your recent offers.";
         }
@@ -479,24 +569,36 @@ final class AutopilotText {
     }
 
     /**
-     * While pinned: how few offers even the lowest bar passes, and what helps (turning off max stops only when it is
-     * set). Null otherwise.
+     * While pinned: how few offers even the lowest bar passes, and what helps: turning off max stops only when it is
+     * set, and typical minimums only when the minimums are not those already. Null otherwise.
      */
     static String detailsPinned(Status s) {
         if (s.plan == null || !s.plan.pinned) return null;
         int pass = s.plan.passAt(Autopilot.BAR_MIN);
-        String help = s.rules.maxStops > 0 ? "Lower a minimum, turn off max stops, or use typical minimums."
-                : "Lower a minimum or use typical minimums.";
+        List<String> help = new ArrayList<>();
+        help.add("Lower a minimum");
+        if (s.rules.maxStops > 0) help.add("turn off max stops");
+        if (!s.typicalMinimums()) help.add("use typical minimums");
+        String last = help.remove(help.size() - 1);
+        String advice = help.isEmpty() ? last : String.join(", ", help) + (help.size() > 1 ? ", or " : " or ") + last;
         return "Even at the lowest bar (" + Autopilot.BAR_MIN + "%) only " + pass + " of your last " + s.plan.counted
-                + " offers " + (pass == 1 ? "passes" : "pass") + ". " + help;
+                + " offers " + (pass == 1 ? "passes" : "pass") + ". " + advice + ".";
     }
 
-    /** The details' buttons, in order: "Change goal" ("Use typical minimums" while pinned), "Turn off"/"Turn on", "Close". */
+    /** Typical minimums offered while pinned: only when the minimums are not those already. */
+    private static boolean offersTypical(Status s) {
+        return s.pinned() && !s.typicalMinimums();
+    }
+
+    /**
+     * The details' buttons, in order. While on: "Change goal" ("Use typical minimums" while pinned, unless the
+     * minimums are those already), "Turn off", "Close". While off only "Turn on" (which asks for the goal) and "Close":
+     * a "Change goal" would turn Autopilot on too, which its words do not say.
+     */
     static List<String> detailsButtons(Status s) {
+        if (!s.on) return Collections.unmodifiableList(Arrays.asList(DETAILS_TURN_ON, DETAILS_CLOSE));
         return Collections.unmodifiableList(Arrays.asList(
-                s.pinned() ? DETAILS_TYPICAL_MINIMUMS : DETAILS_CHANGE_GOAL,
-                s.on ? DETAILS_TURN_OFF : DETAILS_TURN_ON,
-                DETAILS_CLOSE));
+                offersTypical(s) ? DETAILS_TYPICAL_MINIMUMS : DETAILS_CHANGE_GOAL, DETAILS_TURN_OFF, DETAILS_CLOSE));
     }
 
     // ---- Why the bar moved ----
@@ -532,6 +634,31 @@ final class AutopilotText {
     /** A passing offer below 100% of the minimums: why it passed, and that it is never auto-accepted. */
     static String ticketBelowMinimums(int barPercent) {
         return "Below your minimums: passed by Autopilot's " + barPercent + "% bar. Never auto-accepted.";
+    }
+
+    /**
+     * What the homepage calls an offer that passed only because Autopilot's bar was below 100% (the latest offer's
+     * line, its building and its marks on the constellation), so it never reads as a full pass: it is left to the user
+     * and never auto-accepted.
+     */
+    static final String PASSED_BELOW_MINIMUMS = "Passed below your minimums";
+
+    /**
+     * An offer that passed only because Autopilot's bar was below 100% (its score under 100, or its reason saying so,
+     * as an add-on's does): left to the user, never auto-accepted. Only a line this version decided.
+     */
+    static boolean passedBelowMinimums(DecisionLog.Entry entry) {
+        if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < DecisionLog.MODEL
+                || entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
+        return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
+                || entry.reason.contains("below your minimums");
+    }
+
+    /** The typical minimums ($4.00, $1.00 a mile, $15 an hour) are {@code rules}' already. */
+    static boolean typicalMinimums(FilterSettings rules) {
+        return rules != null && rules.flatCents == Autopilot.STARTER_FLAT_CENTS
+                && rules.perMileCents == Autopilot.STARTER_PER_MILE_CENTS
+                && rules.perMinuteCents == Autopilot.STARTER_PER_MINUTE_CENTS;
     }
 
     /**
@@ -590,7 +717,7 @@ final class AutopilotText {
 
     private static String reportAcceptanceRate(Status s) {
         if (s.arSource == Autopilot.ArSource.UNKNOWN || s.arHundredths < 0) return "AR unknown";
-        int percent = s.arHundredths / 100;
+        int percent = s.shownArPercent();
         if (s.arSource == Autopilot.ArSource.ESTIMATE) {
             return "AR ~" + percent + "% (estimate, " + s.arCounted + " " + plural(s.arCounted, "offer") + ")";
         }
@@ -639,7 +766,7 @@ final class AutopilotText {
 
     private static String logAcceptanceRate(Autopilot.Plan plan, long readingAt, long wallNow) {
         if (plan.arSource == Autopilot.ArSource.UNKNOWN || plan.arHundredths < 0) return "unknown";
-        int percent = plan.arHundredths / 100;
+        int percent = shownPercent(plan.arHundredths);
         if (plan.arSource == Autopilot.ArSource.ESTIMATE) {
             return "~" + percent + "% estimate (" + plan.arCounted + " counted)";
         }
@@ -673,6 +800,14 @@ final class AutopilotText {
     }
 
     // ---- Helpers ----
+
+    /**
+     * An acceptance rate in hundredths of a percent as Autopilot shows it: whole percent, rounded half up (5,590 → 56,
+     * 5,490 → 55, 6,950 → 70); -1 when unknown (negative).
+     */
+    static int shownPercent(int hundredths) {
+        return hundredths < 0 ? -1 : (hundredths + 50) / 100;
+    }
 
     /** "goal 70%" or "pay first". */
     private static String goalWords(int goal) {

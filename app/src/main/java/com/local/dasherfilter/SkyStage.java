@@ -3,7 +3,9 @@ package com.local.dasherfilter;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.RectF;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -81,11 +83,99 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
         this.title = title;
         this.lines = lines;
         this.sun = sun;
+        slop = ViewConfiguration.get(context).getScaledTouchSlop();
         // Behind to front: the constellation (added at the back when it is in the sky), the mascot and its counts,
         // then the header's buttons and the lines, which take their own touches first.
         addView(hero);
         addView(header);
         addView(lines);
+    }
+
+    // ---- A knob under a line of words: the line keeps its taps, the knob its drags. ----
+
+    private final int slop;
+    /**
+     * The knob within reach of where a finger went down that the constellation did not take (a line of words, the
+     * counts or the header took it first): its spoke, or -1; and where and when the finger went down.
+     */
+    private int coveredKnob = -1;
+    private float downX;
+    private float downY;
+    private long downTime;
+    /** The finger's drag was taken from what it went down on and is the constellation's now. */
+    private boolean handing;
+
+    /**
+     * A finger that went down on a line of words (or anything else in front of the constellation) within reach of a
+     * knob, and then moves along that knob's spoke, drags the knob: the line hears a cancel, and the constellation the
+     * whole drag from where it began. A tap, or a move any other way, stays the line's. So no line, at any font size,
+     * leaves a knob out of reach, and no knob takes a line's tap.
+     */
+    @Override public boolean onInterceptTouchEvent(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                handing = false;
+                downX = event.getX();
+                downY = event.getY();
+                downTime = event.getDownTime();
+                coveredKnob = holdsStar() ? star.knobNear(downX - star.getLeft(), downY - star.getTop()) : -1;
+                return false;
+            case MotionEvent.ACTION_MOVE: {
+                if (coveredKnob < 0 || handing) return handing;
+                // The constellation took this touch itself: it drags its own knobs.
+                if (star.touched()) {
+                    coveredKnob = -1;
+                    return false;
+                }
+                float dx = event.getX() - downX;
+                float dy = event.getY() - downY;
+                if (Math.hypot(dx, dy) <= slop) return false;
+                if (!MinimumsStarView.alongSpoke(coveredKnob, dx, dy)) {
+                    coveredKnob = -1;
+                    return false;
+                }
+                handing = true;
+                hand(MotionEvent.ACTION_DOWN, downX, downY, event.getEventTime());
+                hand(event);
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                coveredKnob = -1;
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * A drag taken from a line of words, passed on to the constellation whole: never a click of the stage's own (it has
+     * none), so there is no click to perform. Screen readers set each knob through the constellation's own nodes.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    @Override public boolean onTouchEvent(MotionEvent event) {
+        if (!handing) return super.onTouchEvent(event);
+        hand(event);
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            handing = false;
+            coveredKnob = -1;
+        }
+        return true;
+    }
+
+    /** {@code event} as the constellation sees it, in its own pixels. */
+    private void hand(MotionEvent event) {
+        MotionEvent moved = MotionEvent.obtain(event);
+        moved.offsetLocation(-star.getLeft(), -star.getTop());
+        star.dispatchTouchEvent(moved);
+        moved.recycle();
+    }
+
+    private void hand(int action, float x, float y, long eventTime) {
+        MotionEvent event = MotionEvent.obtain(downTime, eventTime, action, x - star.getLeft(), y - star.getTop(), 0);
+        star.dispatchTouchEvent(event);
+        event.recycle();
     }
 
     /** The constellation is in the sky (not up in the header). */
