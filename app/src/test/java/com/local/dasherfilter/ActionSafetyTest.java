@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
@@ -597,6 +598,25 @@ public class ActionSafetyTest {
         assertEquals("the slim peek", DasherTab.Look.PEEK, tab().look());
         assertFalse("which takes no touches", tabUp());
         assertEquals("nothing of Dasher's read while paused", reads, service.contentReads);
+    }
+
+    /**
+     * The read that brings the tab back after the user's tap is a timer's (never starve Dasher: the tap may be Navigate,
+     * Dasher busy handing over to the map): on the read budget, and Dasher may break off the prefetch of its nodes.
+     */
+    @Test
+    public void theReadAfterTheUsersTapLetsDasherBreakOffItsPrefetch() {
+        if (Build.VERSION.SDK_INT < 33) return; // Prefetch strategies are Android 13's.
+        OfferFilterService service = connect(finding());
+        dasherShows(finding());
+        userTapsDasher("Dash preferences");
+        idle();
+        int uninterruptible = service.uninterruptibleRootFetches;
+        int reads = service.contentReads;
+        pass(OfferFilterService.TAP_SETTLE_MS + 100);
+        assertTrue("Dasher still in front: the tab is back", tabUp());
+        assertTrue("a read brought it back", service.contentReads > reads);
+        assertEquals("never with uninterruptible prefetch", uninterruptible, service.uninterruptibleRootFetches);
     }
 
     private boolean tabShown() {
