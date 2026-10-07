@@ -122,6 +122,7 @@ Do every check here with auto-decline on and again with it paused, on the Galaxy
 - [ ] **Auto-accept:** with auto-accept confirmed in Settings, only a complete standalone offer at 100% of your minimums (or the bar, when higher) gets an Accept request, after about 0.7 s without touches. Record whether Dasher actually accepted it.
 - [ ] **Outcomes, not lessons:** accept an offer by hand: its history line says Accepted and its skyline flag is the green bag. Decline one by hand: it is counted on its line. Neither changes any minimum (nothing is learned in 0.5.0).
 - [ ] **Clear history:** removes Autopilot's acceptance-rate reading and its last change (the details then say the rate was not seen yet); the rules and Autopilot's settings stay.
+- [ ] **Minimums grow (0.5.1):** with Autopilot on and its bar at 103% or more for 30 offers over two days, the homepage card "Your minimums grew N%" appears at a quiet moment (never during an offer, a decline or a peek), its figures match the knobs, and the log has one "[autopilot] minimums grew" line. The next offers are asked the same as just before (the bar dropped to match). Undo puts the minimums back; OK keeps them; a knob change makes the card go. "Let my minimums grow" in Autopilot's details turns it off. Check the details dialog at 2× font in a short split window: its buttons stay whole.
 
 ## 13. Updates
 
