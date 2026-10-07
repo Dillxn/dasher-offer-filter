@@ -160,6 +160,9 @@ public final class BelowMinimumsCardTest {
         assertEquals(OfferAlerts.CHANNEL_ID, card.getChannelId());
         assertTrue(card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
         assertEquals("Store A offer meets your rules", title(card));
+        // In the words Peek's cards use, never the engine's ("KEEP: required at least $6.75 (meets your minimums)").
+        assertTrue(text(card), text(card).startsWith("Passes: $7.00 · "));
+        assertFalse(text(card), text(card).contains("KEEP") || text(card).contains("required at least"));
         DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
         assertEquals(OfferRule.Result.KEEP, line.result);
         assertEquals(OfferRule.MEETS_MINIMUMS, line.reason);

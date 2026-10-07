@@ -953,12 +953,15 @@ final class Peek {
 
     /**
      * What a card carries after a peek went back with a passing or unclear offer: "Passes: $12.50 · 5.1 mi · 22 min",
-     * "Unclear: $9.60 · 2 stops (pay not found)".
+     * "Unclear: $9.35 · 4.1 mi · 2 stops (miles, time or stops not readable)": the reason in everyday words
+     * ({@link MainActivity#plainReason}), never the engine's, and none where the figures already say it (pay not read).
      */
     static String cardText(OfferRule.Result result, OfferSnapshot read, String reason) {
         String line = cardFacts(read);
-        return result == OfferRule.Result.KEEP ? "Passes: " + line
-                : "Unclear: " + line + (reason == null || reason.isEmpty() ? "" : " (" + reason + ")");
+        if (result == OfferRule.Result.KEEP) return "Passes: " + line;
+        boolean said = reason == null || reason.isEmpty()
+                || (OfferRule.PAY_NOT_FOUND.equals(reason) && read.payCents == null && read.payAtMostCents == null);
+        return "Unclear: " + line + (said ? "" : " (" + MainActivity.inlineReason(reason) + ")");
     }
 
     /** A peeked offer's figures as its card shows them: "$12.50 · 5.1 mi · 22 min", "pay not read · 2 stops". */

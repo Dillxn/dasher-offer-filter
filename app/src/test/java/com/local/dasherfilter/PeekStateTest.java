@@ -141,6 +141,12 @@ public class PeekStateTest {
         String unclear = Peek.cardText(OfferRule.Result.REVIEW, OfferSnapshot.UNKNOWN, "pay not found");
         assertTrue(unclear.startsWith("Unclear: pay not read"));
         assertFalse(unclear.contains("$0"));
+        assertEquals("the figures already say it", "Unclear: pay not read", unclear);
+        // The reason in everyday words, never the engine's.
+        String noMinutes = Peek.cardText(OfferRule.Result.REVIEW, new OfferSnapshot(935, 4.1, null, 2),
+                OfferRule.VALUE_NOT_FOUND);
+        assertTrue(noMinutes, noMinutes.endsWith("(miles, time or stops not readable)"));
+        assertFalse(noMinutes, noMinutes.contains("enabled value"));
     }
     @Test public void privateFrontPackageIsNotInItsPrintableKindAndCanBeForgotten() {
         Peek peek = armed(0);

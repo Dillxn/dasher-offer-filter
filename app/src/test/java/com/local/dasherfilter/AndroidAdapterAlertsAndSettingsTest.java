@@ -198,6 +198,30 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         }
     }
 
+    @Test
+    public void aReviewCardSaysWhatIsMissingInEverydayWords() {
+        // An hourly minimum, and a notification with pay and miles but no time: never "an enabled value was not found".
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 25, 0));
+        ServiceController<OfferNotificationService> controller =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        try {
+            Notification payload = new Notification.Builder(app, "source")
+                    .setSmallIcon(android.R.drawable.stat_notify_more)
+                    .setContentTitle("New Delivery!")
+                    .setStyle(new Notification.InboxStyle().addLine("$9.35").addLine("4.1 mi"))
+                    .build();
+            controller.get().onNotificationPosted(new StatusBarNotification("com.doordash.driverapp",
+                    "com.doordash.driverapp", 3, "NEW_ORDER", 10001, 0, 0, payload,
+                    android.os.Process.myUserHandle(), System.currentTimeMillis()), null);
+            Notification card = notifications().getAllNotifications().get(0);
+            String text = card.extras.getCharSequence(Notification.EXTRA_TEXT).toString();
+            assertEquals("Dasher's notification doesn't show enough to judge it: miles, time or stops not readable. "
+                    + "Open Dasher and Offer Filter judges it.", text);
+        } finally {
+            controller.destroy();
+        }
+    }
+
     /**
      * Paused (auto-decline off, or no rule set), nothing of Dasher's is read (AGENTS, "Paused is a safe mode"): a card
      * for a background offer (DoorDash's channel silenced, or its alerting not known) never says Offer Filter will

@@ -1112,6 +1112,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         String detail = review ? reviewText(facts, decision, peeking)
                 : belowMinimums ? AutopilotText.belowMinimumsCard(facts, decision.scorePercent,
                         decision.minimumScalePercent)
+                // A passing card in the words Peek's cards use, never the engine's ("KEEP: required at least …").
+                : decision.result == OfferRule.Result.KEEP ? Peek.cardText(OfferRule.Result.KEEP, facts, "")
                 : facts.summary() + "; " + decision.summary();
         boolean posted = OfferAlerts.notifyOffer(this, offer.alertTag, contentIntent, shown, detail, ring,
                 offer.store);
@@ -1175,7 +1177,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         if (paused(decision)) return PAUSED_CARD;
         String what = facts.payCents == null && facts.payAtMostCents == null
                 ? "Dasher's notification shows no pay."
-                : "Dasher's notification doesn't show enough to judge it: " + decision.reason + ".";
+                : "Dasher's notification doesn't show enough to judge it: "
+                        + MainActivity.inlineReason(decision.reason) + ".";
         return what + (peeking ? " " + AppName.NAME + " is opening Dasher to read it."
                 : " Open Dasher and " + AppName.NAME + " judges it.");
     }

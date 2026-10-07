@@ -2251,6 +2251,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return "Rules: " + verdict + (plain.isEmpty() ? "" : " — " + lowerFirst(plain));
     }
 
+    /** A reason in everyday words, for the middle of a sentence: "miles, time or stops not readable". */
+    static String inlineReason(String reason) {
+        return lowerFirst(plainReason(reason));
+    }
+
     /** "Too many stops" as "too many stops"; a word in capitals ("ETA") stays as it is. */
     private static String lowerFirst(String text) {
         if (text.length() > 1 && Character.isUpperCase(text.charAt(1))) return text;
