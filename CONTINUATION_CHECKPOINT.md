@@ -1,3 +1,10 @@
+## October 7, 18:15 UTC — 0.5.0 release candidate supersedes .74
+
+- **The candidate is 0.5.0/code 80** on `claude/nifty-fermi-su0qus`, merged with main at `004c647`, so it carries .74's Settings-emblem link and the download page's legal links. .74 was never signed or published: don't sign or publish it, because 0.5.0 replaces it with the same version code. The live feed is still .72/code78.
+- What 0.5.0 holds and what was not verified: RELEASE_NOTES.md's 0.5.0 section. Its binding rules: the top of AGENTS.md. The launch gates still open, including the physical-phone checks, the feedback backend's hand deploy and the privacy@offerfilter.org forward: PUBLIC_BETA_PHONE_GATE.md.
+- The candidate passed the simulated gates before it was pushed: the dual-SDK suite (3,172 tests without failures), lint without errors, and the release gate's freeze/verify. It is not signed (no signing material in that environment), not published, and not installed on any phone.
+- The website's matching branch (Dillxn/offer-filter-site, `claude/nifty-fermi-su0qus`, merged with its main at `320b5ad`) adds the /install/ guide and the /terms/, /privacy/ and /license/ pages that the app and the download page link. Deploy it before merging this branch to main (PUBLIC_BETA_PHONE_GATE.md, Other launch gates).
+
 ## October 7, 04:21 UTC — current source and live feed reconciled
 
 - **Live feed is .72/code78**, source `792160775a9eb70080bba6ff80e6fc3306a03adf`, release `1437d5254279001bd7b34547bd28bcd483326a63`. Fresh unauthenticated HTTPS download matches the repository APK exactly: 1,226,254 bytes, SHA-256 `8d373be179d7f80a9f6e25c627c623f290c0acdb98ebb1c5dcbeb0f01eb76cba`, Git blob `d801d5fc69eddcd5e8f9243959e5552f7c5ab3fe`. This audit checked bytes/hash only; it did not rerun production UpdateTransport, certificate/embedded-package checks or a phone installation.
