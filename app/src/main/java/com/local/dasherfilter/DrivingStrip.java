@@ -25,7 +25,7 @@ import android.widget.TextView;
  * long press its goal. It stands at the status line's start and costs the strip no height ({@link AutopilotChip.Row}).
  * The strip fills its window, its words centred in it; like the homepage, it scrolls only where a very large font leaves
  * no other way (a long line needing the user, at twice the font, in a strip a third of a phone tall), so no word of
- * that line is ever cut off.
+ * that line, or of the verdict, is ever cut off.
  */
 @SuppressLint("ViewConstructor")
 final class DrivingStrip extends ScrollView {
@@ -66,7 +66,9 @@ final class DrivingStrip extends ScrollView {
         LinearLayout lines = ui.column();
         lines.setPadding(ui.dp(12), 0, 0, 0);
         verdict = ui.text("", 16, ui.ink, true);
-        verdict.setMaxLines(2);
+        // No line limit either: the caption's words ("Passed below your minimums", "Accept requested, not confirmed")
+        // take three lines at twice the font in a narrow strip, and a limit would cut the last of them off without a
+        // mark. The strip scrolls where a very large font leaves no other way.
         lines.addView(verdict, Ui.matchWidth());
         status = ui.text("", STATUS_SP, ui.inkSecondary, false);
         status.setMinHeight(ui.dp(48));

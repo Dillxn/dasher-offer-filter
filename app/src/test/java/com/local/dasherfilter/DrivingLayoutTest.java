@@ -484,6 +484,116 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         }
     }
 
+    // ---- The strip's verdict: every word, at any font ----
+
+    /** The homepage caption's words are the verdict's since the chip came, so its longest say a whole phrase more. */
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontAPassBelowTheMinimumsKeepsEveryWordOfItsVerdict() {
+        verdictAt(2f, "below", true);
+    }
+
+    @Test @Config(qualifiers = "w320dp-h280dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void inANarrowStripAtTwiceTheFontAPassBelowTheMinimumsKeepsEveryWordOfItsVerdict() {
+        verdictAt(2f, "below", true);
+    }
+
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontAnAutomaticAcceptanceKeepsEveryWordOfItsVerdict() {
+        verdictAt(2f, "automatic", true);
+    }
+
+    /** An automatic Accept Dasher has not confirmed yet: the longest verdict, in the narrowest strip. */
+    @Test @Config(qualifiers = "w320dp-h280dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTwiceTheFontEvenTheLongestVerdictKeepsEveryWord() {
+        verdictAt(2f, "requested", true);
+    }
+
+    /** At the normal font the longest verdict and the status fit a strip a third of a phone tall: no scrolling. */
+    @Test @Config(qualifiers = "w360dp-h240dp-xhdpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    public void atTheNormalFontTheLongestVerdictFitsAStripAThirdOfAPhoneTall() {
+        verdictAt(1f, "requested", false);
+    }
+
+    /**
+     * The strip at {@code fontScale} with Autopilot on and its latest offer one of the longest verdicts: one Autopilot
+     * let through below the minimums ("below"), one the app accepted by itself ("automatic"), or an automatic Accept
+     * Dasher has not confirmed ("requested"). Every word of the verdict is laid out inside its own height (no line
+     * limit cuts its last words off without a mark, as two lines did at twice the font) and the whole verdict is on
+     * screen; the strip scrolls only where {@code mayScroll}, and then the status line's end is a scroll away.
+     */
+    private void verdictAt(float fontScale, String kind, boolean mayScroll) {
+        RuntimeEnvironment.setFontScale(fontScale);
+        AutopilotRuntime.executorForTests = Runnable::run;
+        long at = System.currentTimeMillis() - 5_000;
+        String words;
+        if (kind.equals("below")) {
+            // $5.75 for 6.6 mi and 27 min asks $6.75 at the minimums, $5.54 at an 82% bar.
+            OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
+            OfferRule.Decision decision = OfferRule.evaluate(facts, FilterSettings.of(true, 400, 100, 25, 3)
+                    .withAutopilot(true, 70).withMinimumScalePercent(82));
+            DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
+                    DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75")).withTime(at));
+            words = "Latest · $5.75 · Passed below your minimums";
+        } else {
+            DecisionLog.Entry offer = new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false,
+                    new OfferSnapshot(1250, 3.0, 15, 2), 1000, OfferRule.Result.KEEP, "meets your minimums",
+                    DecisionLog.Action.PASSES, true, Collections.singletonList("$12.50"))
+                    .withStep(new DecisionLog.Step(DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED, at + 10,
+                            "automatic Accept requested"));
+            if (kind.equals("automatic")) {
+                offer = offer.withStep(new DecisionLog.Step(DecisionLog.StepKind.ACCEPTED_AUTOMATIC, at + 500,
+                        "automatic Accept was requested, and Dasher showed a delivery screen"));
+            }
+            DecisionLog.record(app, offer);
+            words = "Latest · $12.50 · " + (kind.equals("automatic") ? "Automatically accepted"
+                    : "Accept requested, not confirmed");
+        }
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        if (kind.equals("below")) assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
+        servicesUp();
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            layOut(content);
+            DrivingStrip strip = find(content, DrivingStrip.class);
+            assertEquals(words, strip.verdictText());
+            TextView verdict = shownTextContaining(strip, "Latest · ");
+            assertNotNull(verdict);
+            TextView status = shownTextContaining(strip, "Auto-decline is on");
+            assertNotNull(status);
+            View inner = strip.getChildAt(0);
+            String measured = "font " + fontScale + ", " + kind + ": strip " + strip.getHeight() + ", content "
+                    + inner.getHeight() + ", verdict " + verdict.getHeight() + " (" + verdict.getLineCount()
+                    + " lines, laid out " + verdict.getLayout().getHeight() + "), status " + status.getHeight();
+
+            // Every word of the verdict, inside its own height: none cut off without a mark.
+            assertEquals("every word: " + measured, words.length(),
+                    verdict.getLayout().getLineEnd(verdict.getLineCount() - 1));
+            assertEquals("never shortened with a mark either: " + measured, 0,
+                    verdict.getLayout().getEllipsisCount(verdict.getLineCount() - 1));
+            assertTrue("inside the verdict: " + measured, verdict.getLayout().getHeight()
+                    <= verdict.getHeight() - verdict.getTotalPaddingTop() - verdict.getTotalPaddingBottom());
+
+            // One window, unless a very large font leaves no other way; the whole verdict on screen as the strip
+            // opens, and the status line's end a scroll away.
+            boolean scrolls = inner.getHeight() > strip.getHeight();
+            if (!mayScroll) assertFalse("one window, no scrolling: " + measured, scrolls);
+            Rect visible = new Rect();
+            assertTrue(verdict.getGlobalVisibleRect(visible));
+            assertEquals("the whole verdict on screen: " + measured, verdict.getHeight(), visible.height());
+            if (scrolls) {
+                strip.scrollTo(0, inner.getHeight() - strip.getHeight());
+                layOut(content);
+            }
+            assertTrue(status.getGlobalVisibleRect(visible));
+            int[] where = new int[2];
+            status.getLocationInWindow(where);
+            assertEquals("the status line's end on screen: " + measured, where[1] + status.getHeight(),
+                    visible.bottom);
+        }
+    }
+
     // ---- Beside Dasher: the divider hint, once ----
 
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
