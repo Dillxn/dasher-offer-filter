@@ -459,6 +459,27 @@ public class AutopilotRuntimeTest {
         assertEquals(3, logged("commit "));
     }
 
+    /** Pinned at 50 by the acceptance rate, a bar of 52 goes down to 50: the deadband never holds it above the limit. */
+    @Test
+    public void aBarAboveTheAcceptanceRateLimitIsLoweredEvenWithinTheDeadband() {
+        minimums(2040, 400, 48);
+        history(20);
+        reading(9, 1);
+        FilterStore.setAutopilot(app, true, 70);
+        assertTrue(FilterStore.commitAutopilotBar(app, 100, 52));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.CONNECT);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(Autopilot.Mode.PINNED, plan.mode);
+        assertEquals(52, plan.current);
+        assertEquals(50, plan.target);
+        assertEquals(50, plan.barShare);
+        elapsed += Autopilot.MIN_COMMIT_SPACING_MS;
+        assertTrue(AutopilotRuntime.commitWanted(app));
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(50, bar());
+        assertEquals("commit 52% -> 50% (your minimums are high for these offers)", last(autopilotLog()));
+    }
+
     @Test
     public void raisesAreFivePointsAtLeastFiveMinutesAndThreeOffersApart() {
         minimums(400, 100, 25);

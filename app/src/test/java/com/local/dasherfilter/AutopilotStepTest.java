@@ -60,6 +60,29 @@ public final class AutopilotStepTest {
         assertStep("100 → 97 lowers to 97", 97, Autopilot.StepKind.LOWER, free(100, 97));
     }
 
+    /**
+     * The acceptance rate comes first (AGENTS: the bar is never above the highest bar at which enough of the last 100
+     * counted offers would pass): the deadband never holds the bar above that limit, the plan's share bar, however
+     * small the lowering. Below the limit, and for raises, it holds as before; the minute between commits still holds.
+     */
+    @Test
+    public void theDeadbandNeverHoldsTheBarAboveTheAcceptanceRateLimit() {
+        assertStep("100 → 98 with 98 the highest bar passing enough", 98, Autopilot.StepKind.LOWER,
+                Autopilot.step(100, 98, false, LONG_AGO, LONG_AGO, MANY, 98));
+        assertStep("pinned 52 → 50, the lowest", 50, Autopilot.StepKind.LOWER,
+                Autopilot.step(52, 50, false, LONG_AGO, LONG_AGO, MANY, 50));
+        assertStep("value below the limit: 85 → 83 still holds", 85, Autopilot.StepKind.DEADBAND,
+                Autopilot.step(85, 83, false, LONG_AGO, LONG_AGO, MANY, 90));
+        assertStep("a raise keeps its deadband", 85, Autopilot.StepKind.DEADBAND,
+                Autopilot.step(85, 87, false, LONG_AGO, LONG_AGO, MANY, 87));
+        assertStep("still a minute apart", 100, Autopilot.StepKind.SPACING,
+                Autopilot.step(100, 98, false, 30_000, LONG_AGO, MANY, 98));
+        assertStep("no limit known (a plan still learning)", 100, Autopilot.StepKind.DEADBAND,
+                Autopilot.step(100, 98, false, LONG_AGO, LONG_AGO, MANY, -1));
+        assertStep("near 100 it still snaps to exactly 100", 100, Autopilot.StepKind.SNAP,
+                Autopilot.step(102, 100, false, LONG_AGO, LONG_AGO, MANY, 100));
+    }
+
     @Test
     public void loweringGoesAtMostTwentyAtATime() {
         assertStep("100 → 82 in one commit", 82, Autopilot.StepKind.LOWER, free(100, 82));

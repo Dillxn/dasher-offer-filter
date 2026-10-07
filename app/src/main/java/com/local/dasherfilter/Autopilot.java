@@ -1105,14 +1105,25 @@ final class Autopilot {
 
     // ---- Commits ----
 
-    /**
-     * One commit decision, in order: a user's change jumps straight to the target; at the target, hold; within a
-     * minute of the last commit, hold; within 3 of 100 with 100 as the target, exactly 100; within 3, hold; down at most
-     * 20; up only after five minutes and three counted offers since the last raise, at most 5. The result is held to
-     * 50–150.
-     */
+    /** {@link #step(int, int, boolean, long, long, int, int)} with no acceptance-rate limit. */
     static Step step(int current, int target, boolean jump, long sinceCommitMs, long sinceRaiseMs,
                      int offersSinceRaise) {
+        return step(current, target, jump, sinceCommitMs, sinceRaiseMs, offersSinceRaise, -1);
+    }
+
+    /**
+     * One commit decision, in order: a user's change jumps straight to the target; at the target, hold; within a
+     * minute of the last commit, hold; within 3 of 100 with 100 as the target, exactly 100; within 3, hold, unless
+     * the bar is above the acceptance-rate limit and the target below it; down at most 20; up only after five minutes
+     * and three counted offers since the last raise, at most 5. The result is held to 50–150.
+     *
+     * @param limit the acceptance-rate limit, the plan's share bar ({@link Plan#barShare}), or -1 when it has none:
+     *     the bar is never above the highest bar at which enough offers would pass (AGENTS), so the deadband never
+     *     holds it there, and a lowering toward the target is made however small
+     */
+    static Step step(int current, int target, boolean jump, long sinceCommitMs, long sinceRaiseMs,
+                     int offersSinceRaise, int limit) {
+        boolean overLimit = limit >= BAR_MIN && current > limit && target < current;
         int next;
         StepKind kind;
         if (jump) {
@@ -1127,7 +1138,7 @@ final class Autopilot {
         } else if (target == BAR_OFF && Math.abs(current - BAR_OFF) < DEADBAND) {
             next = BAR_OFF;
             kind = StepKind.SNAP;
-        } else if (Math.abs(target - current) < DEADBAND) {
+        } else if (Math.abs(target - current) < DEADBAND && !overLimit) {
             next = current;
             kind = StepKind.DEADBAND;
         } else if (target < current) {

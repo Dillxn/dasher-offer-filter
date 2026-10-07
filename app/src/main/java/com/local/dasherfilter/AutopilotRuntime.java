@@ -521,7 +521,7 @@ final class AutopilotRuntime {
 
     private static Autopilot.Step step(Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
         return Autopilot.step(plan.current, plan.target, jump != null, elapsed - lastCommitElapsed,
-                elapsed - lastRaiseElapsed, plan.offersSinceRaise);
+                elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare);
     }
 
     /** Why a plan can no longer be used, in the spec's order, as its log line; null when it still can. */
