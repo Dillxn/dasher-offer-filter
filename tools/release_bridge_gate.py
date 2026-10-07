@@ -19,12 +19,13 @@ MIN_TESTS = 3240
 # The Android adapter suites a release must have run on both Android 8 and 15, paired case by case. 0.5.0 retired the
 # adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that
 # retires the learned minimums and Autopilot moving the bar only at a safe point with the acceptance rate read from
-# Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest.
+# Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest. 0.5.1's minimums grow only at
+# that same safe point, never while an offer, a decline or a peek is under way: MinimumsGrowthAdapterTest.
 ADAPTERS = (
     "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
     "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "ModelMigrationTest", "AutopilotCommitAdapterTest",
-    "ConfirmationArReadingAdapterTest", "ConsentGateTest",
+    "ConfirmationArReadingAdapterTest", "ConsentGateTest", "MinimumsGrowthAdapterTest",
 )
 ADAPTER_SOURCES = "app/src/test/java/com/local/dasherfilter/"
 
