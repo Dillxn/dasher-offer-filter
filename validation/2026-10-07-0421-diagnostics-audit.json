@@ -1,0 +1,89 @@
+{
+  "checked_at": "2026-10-07T04:21:14Z",
+  "base": "7ed9e30a42032ea7f833b95bd8a850b699c3f4b4",
+  "gitHub": {
+    "since": "2026-10-04T09:17:56Z",
+    "updatedItems": [
+      {
+        "number": 66,
+        "kind": "pull_request",
+        "status": "historical Peek candidate already in main lineage"
+      }
+    ],
+    "newDiagnosticIssues": [],
+    "mutation": "none"
+  },
+  "gmail": {
+    "account": "personal",
+    "queryAfter": "2026-10-04T09:17:56Z",
+    "diagnostics": [
+      {
+        "id": "1a10672e431e356f",
+        "version": "0.4.68",
+        "generated": "2026-10-04T09:35:15Z",
+        "finding": "Older unknown-pay target overlaps prior #63/#64 episode; no new accepted-learning evidence. No report token available for exact cross-channel receipt deduplication."
+      },
+      {
+        "id": "1a108cd44ecefaa4",
+        "version": "0.4.68",
+        "generated": "2026-10-04T21:08:22Z",
+        "finding": "Distinct later capture, overlapping retained history. Peek expired at original deadline; incomplete outcome evidence and manual-decline exclusions do not establish missed eligible acceptance."
+      },
+      {
+        "id": "1a108cd62a45feb2",
+        "version": "0.4.68",
+        "generated": "2026-10-04T21:23:40Z",
+        "finding": "Distinct later tail. Third empty Peek paused itself and returned to navigation; repeated history not new samples. No proof of same failure persisting after .71/.72."
+      },
+      {
+        "id": "1a10f22a708c32c4",
+        "version": "0.4.68",
+        "generated": "2026-10-06T00:38:16Z",
+        "finding": "Later capture: route-only then unclear outcome, progress=false, no confirmed accepted lesson. No retrospective acceptance or model change justified."
+      }
+    ],
+    "excluded": [
+      {
+        "id": "1a10748d36fb32c2",
+        "reason": "service account notice, not app diagnostics"
+      },
+      {
+        "id": "1a111ad88a4846a2",
+        "reason": "service account notice, not app diagnostics"
+      }
+    ],
+    "sends": 0,
+    "deletions": 0
+  },
+  "release": {
+    "version": "0.4.72",
+    "code": 78,
+    "source": "792160775a9eb70080bba6ff80e6fc3306a03adf",
+    "publication": "1437d5254279001bd7b34547bd28bcd483326a63",
+    "size": 1226254,
+    "sha256": "8d373be179d7f80a9f6e25c627c623f290c0acdb98ebb1c5dcbeb0f01eb76cba"
+  },
+  "currentSource": {
+    "version": "0.4.74",
+    "code": 80,
+    "commit": "7ed9e30a42032ea7f833b95bd8a850b699c3f4b4",
+    "status": "source on main; signed release feed remains .72",
+    "reportedValidation": "Commit message reports 2293 dual-SDK tests with no failures; not rerun or claimed independently verified in this audit"
+  },
+  "historicalBranches": {
+    "privacy69": "10d7eff59a6314a6542fab3e429b2a0899cddd84",
+    "status": "ancestor of fresh main; 17 commits ahead, zero behind; do not publish the obsolete candidate"
+  },
+  "changesThisAudit": "Sanitized continuation documentation only. No Android/source/build/test/signing/deployment, no credential access, no reports sent/edited/deleted.",
+  "remaining": "Current .74 needs exact-source full local release evidence, original signing and publisher/live verification; do not repeat old .69/.70 signing work. Current source retires end-user GitHub in favor of separately consented accountless feedback. Preserve current privacy/automatic-accept/touch/lock guards and other owners.",
+  "liveVerification": {
+    "at": "2026-10-07T04:21:44.579778Z",
+    "method": "Python HTTPS byte/hash comparison",
+    "manifestMatch": true,
+    "repoBlobMatch": true,
+    "gitBlob": "d801d5fc69eddcd5e8f9243959e5552f7c5ab3fe",
+    "productionUpdaterRun": false,
+    "certificateReverified": false,
+    "handsetClaim": false
+  }
+}
