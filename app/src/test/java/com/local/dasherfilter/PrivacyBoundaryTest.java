@@ -413,6 +413,61 @@ public class PrivacyBoundaryTest {
         DashSummary.flush();
     }
 
+    @Test public void theQuestionAsTheScreenReaderLogsItReachesTheSummaryWithoutTheRate() throws Exception {
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
+        Dashing.forgetCache();
+        Feedback.setAfterDash(app, true);
+        OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
+        org.robolectric.android.controller.ServiceController<OfferFilterService> reader =
+                org.robolectric.Robolectric.buildService(OfferFilterService.class).create();
+        try {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(1));
+            Dashing.seen(app);
+            long start = Dashing.currentStart(app);
+            // Dasher's question as the user's own decline brings it up, its rate drawn as two nodes.
+            android.view.accessibility.AccessibilityNodeInfo root = node("");
+            for (String label : new String[] {QUESTION, WARNING, "37", "%", "Decline offer", "Go back"}) {
+                org.robolectric.Shadows.shadowOf(root).addChild(node(label));
+            }
+            TestWindows.full(reader.get(), root);
+            android.view.accessibility.AccessibilityEvent event = android.view.accessibility.AccessibilityEvent.obtain(
+                    android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
+            event.setPackageName("com.doordash.driverapp");
+            reader.get().onAccessibilityEvent(event);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+
+            // The screen reader logs it under the phase the summary knows it by (DiagnosticLog.QUESTION_PHASE), and
+            // the rate stays in the log on the phone, for what the user shares.
+            String question = null;
+            for (String line : DiagnosticLog.read(app).split("\n")) {
+                if (line.contains("[" + DiagnosticLog.SCREEN_SOURCE + "] " + DiagnosticLog.QUESTION_PHASE + "|")) {
+                    question = line;
+                }
+            }
+            assertNotNull(DiagnosticLog.read(app), question);
+            assertTrue(question, question.contains(WARNING + ", 37, %, Decline offer"));
+
+            DashSummary.stuck(app, "waiting for the question");
+            DashSummary.flush();
+            org.json.JSONObject model = new org.json.JSONObject()
+                    .put("counts", new org.json.JSONObject(app.getSharedPreferences("dash_summary",
+                            Context.MODE_PRIVATE).getString("counts", "{}")))
+                    .put("anomalies", new org.json.JSONArray(app.getSharedPreferences("dash_summary",
+                            Context.MODE_PRIVATE).getString("anomalies", "[]")))
+                    .put("start", start);
+            String summary = DashSummary.build(app, start, start + 60_000L, DashSummary.End.DASH_OVER, model);
+            assertTrue(summary, summary.contains("] " + DiagnosticLog.QUESTION_PHASE + "|"));
+            assertTrue(summary, summary.contains(WARNING + ", #, %, Decline offer"));
+            assertFalse(summary, java.util.regex.Pattern.compile("(?<![:\\d])37(?!\\d)").matcher(summary).find());
+        } finally {
+            reader.destroy();
+            OfferFilterService.scanLooperForTests = null;
+            Feedback.setAfterDash(app, false);
+            DashSummary.flush();
+        }
+    }
+
     @Test public void clearingHistoryLeavesNoReadingAndNoCopyOfItOnThePhone() throws Exception {
         dasherShowedTheRate();
         // Clear history's own steps, in the order Settings must take them: the decisions and the watched waiting,

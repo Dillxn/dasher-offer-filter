@@ -58,8 +58,14 @@ final class DiagnosticLog {
     private static final int SCREENS_MAX_BYTES = 16 * 1024;
     private static final int SCREENS_KEEP_BYTES = 12 * 1024;
     /** The screens log's lines for Dasher's other screens, and for its turn-by-turn navigation. */
-    private static final String SCREEN_SOURCE = "screen";
+    static final String SCREEN_SOURCE = "screen";
     private static final String NAVIGATION_SOURCE = "navigation";
+    /**
+     * The phase of the screen reader's line for Dasher's decline question ("[screen] confirmation|…"), the line that
+     * shows the acceptance rate: the summary after a dash masks every number in its labels by this name
+     * ({@link DashSummary}), and by the question's own words wherever else they show.
+     */
+    static final String QUESTION_PHASE = "confirmation";
     /** Other screens this recent are never pushed out of the screens log by navigation ({@link #fitScreens}). */
     static final long SCREENS_PROTECTED_MS = 30 * 60_000L;
     private static final int MAX_MESSAGE_CHARS = 4096;
@@ -631,7 +637,12 @@ final class DiagnosticLog {
                 + "; failed writes=" + failedWrites.get();
     }
 
-    /** Removes both logs and every kept state (Clear history). */
+    /**
+     * Removes both logs and every kept state (Clear history). Clear history calls it after
+     * {@link AutopilotRuntime#cleared} (itself after the decisions and the watched waiting are cleared): once that has
+     * moved Autopilot's generation on, nothing worked out before it logs the acceptance rate, and a line it queued just
+     * before goes with the logs instead of landing in the new one.
+     */
     static void clear(Context context) {
         synchronized (LOCK) { clearGeneration++; }
         flush();

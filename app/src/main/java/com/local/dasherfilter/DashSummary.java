@@ -125,10 +125,12 @@ final class DashSummary {
             + "|plan failed: [\\w$]+"
             + "|ar exemptions ignored: \\d+ of \\d+ declines flagged");
     /**
-     * The decline question's own screen line ("[screen] confirmation|…", OfferFilterService's "confirmation" phase):
-     * all of its labels' numbers go, whatever its words. Any other line whose labels show the question goes the same.
+     * The decline question's own screen line ("[screen] confirmation|…", {@link DiagnosticLog#QUESTION_PHASE}): all of
+     * its labels' numbers go, whatever its words. Any other line whose labels show the question goes the same, so a
+     * renamed phase stays masked too.
      */
-    private static final String QUESTION_TAG = "[screen] confirmation|";
+    private static final String QUESTION_TAG =
+            "[" + DiagnosticLog.SCREEN_SOURCE + "] " + DiagnosticLog.QUESTION_PHASE + "|";
     /** Where a screen line's labels begin ("… labels=[…] metricParts=[…]"): its head before them is the app's own. */
     private static final String LABELS = "labels=[";
     private static final String METRIC_PARTS = "metricParts=[";
