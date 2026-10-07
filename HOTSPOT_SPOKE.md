@@ -1,4 +1,16 @@
-# Fifth spoke: hotspot proximity
+# Fifth spoke: hotspot proximity (retired in 0.5.0)
+
+> **Retired in 0.5.0. This page is kept as history; nothing below is a current rule.**
+>
+> The 0.5.0 rules (the owner's 6 October 2026 request for fewer measures that are not redundant, and the final 0.5.0 spec) removed the hotspot spoke. Nothing could ever measure its distance, and a saved hotspot rule did harm: every offer that would otherwise pass went to Review, score by area could no longer decline, auto-accept could never act, and the wait estimate became unreadable. An offer now has to meet three minimums (pay, pay per mile, pay per hour of Dasher's time estimate) plus an optional max stops. See AGENTS.md's 0.5.0 section and the README.
+>
+> What remains in 0.5.0:
+> - The first time 0.5.0 runs, its migration deletes the saved `hotspot_proximity_hundredths`. If that was the only rule, auto-decline is paused. The one-time "Your rules are simpler now" notice says "The hotspot rule is gone: its distance could never be read."
+> - `AreaScore.HOTSPOT = 4` is a reserved axis index. It is never drawn, read, scored or shown to screen readers, so the other axes' node ids stay stable.
+> - `OfferSnapshot.finalStopHotspotMiles` stays only so older history and wait records that name it still parse. Nothing sets it, no rule reads it, and it is never shown.
+> - `OfferParser` still keeps hotspot-labelled directions out of an offer's route miles and minutes (`HotspotParserContextTest`). That exclusion is parsing hygiene, not a hotspot reader.
+>
+> Do not bring the spoke back. A hotspot feature would need a new owner decision, a new spec and a verified reader that meets every requirement in "Live-data gap" below.
 
 Requested October 1, 2026: `1 / distance of last stop on offer from nearest hotspot`.
 The earlier handoff request at sequence 2307 identifies actual Dasher hotspot honeycombs, not the app's learned offer areas.
