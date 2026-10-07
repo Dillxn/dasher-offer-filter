@@ -631,6 +631,50 @@ public class ActionSafetyReviewTest {
         assertTrue("a new offer while the user is in Maps is peeked at: " + log(), startedDasher());
     }
 
+    /**
+     * AGENTS (Peek): an acceptance seen in the last 60 s does not start a peek. The user accepts an offer in Dasher and
+     * Navigate brings up Maps; another store's offer posted 20 s later never pulls Dasher back over the map (the
+     * owner's field report: Navigate's map does not stay).
+     */
+    @Test
+    public void noPeekWithinAMinuteOfTheUsersAccept() {
+        Dashing.seen(app);
+        AccessibilityNodeInfo shown = offer("$25.00", "0:35");
+        connect(DASHER_WIN, shown);
+        dasherShows(shown);
+        pass(500);
+        userTaps(accept, "Accept");
+        pass(1_000);
+        mapsInFront();
+        pass(20_000);
+        dasherPosts("New Order: Go to Chipotle", false);
+        pass(Peek.QUIET_WAIT_MS + 500);
+        assertFalse("no peek within a minute of the user's Accept: " + starts + "\n" + log(), startedDasher());
+        contains(log(), "[peek] skipped: you accepted an offer");
+    }
+
+    /**
+     * AGENTS (Peek): an active takeover does not start a peek. The user touches the screen during a decline (the offer
+     * is theirs), then goes to Maps; another store's offer posted 20 s later is not peeked at while the takeover holds.
+     */
+    @Test
+    public void noPeekWhileTheUsersTakeoverHolds() {
+        Dashing.seen(app);
+        AccessibilityNodeInfo shown = offer("$7.90", "0:35");
+        connect(DASHER_WIN, shown);
+        dasherShows(shown);
+        pass(400);
+        touch();
+        contains(log(), "touch during decline: the user's");
+        pass(1_000);
+        mapsInFront();
+        pass(20_000);
+        dasherPosts("New Order: Go to Chipotle", false);
+        pass(Peek.QUIET_WAIT_MS + 500);
+        assertFalse("no peek while the user's takeover holds: " + starts + "\n" + log(), startedDasher());
+        contains(log(), "[peek] skipped: you took over an offer");
+    }
+
     private int dasherStarts() {
         int count = 0;
         for (String started : starts) if (started.startsWith(DASHER)) count++;
