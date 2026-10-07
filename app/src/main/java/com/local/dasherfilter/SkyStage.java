@@ -148,6 +148,11 @@ final class SkyStage extends FrameLayout implements ScenePage.Over {
         }
     }
 
+    /**
+     * A drag taken from a line of words, passed on to the constellation whole: never a click of the stage's own (it has
+     * none), so there is no click to perform. Screen readers set each knob through the constellation's own nodes.
+     */
+    @SuppressLint("ClickableViewAccessibility")
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (!handing) return super.onTouchEvent(event);
         hand(event);

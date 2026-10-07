@@ -50,9 +50,9 @@ import java.util.regex.Pattern;
  * or on with the goal chooser; a long press changes the goal), whose status line stands under the skyline's caption
  * (a chip beside the caption where no button is on screen, or where the page has no room for the line). Settings holds
  * only what exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a
- * tip, each one row. Pause and
- * Resume take effect at once. The drawings move gently and shift with the phone's tilt while the app fills the screen,
- * unless Android's animations are off; in split screen they move calmly and the tilt sensor rests.
+ * tip, each one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt
+ * while the app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt
+ * sensor rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     /** The alerts permission's request code (asked by the setup checklist, answered here). */
@@ -2043,7 +2043,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             ticket.addView(score);
         }
         // Passed only because Autopilot lowered the bar: left to the user, never auto-accepted.
-        if (passedBelowMinimums(entry)) {
+        if (AutopilotText.passedBelowMinimums(entry)) {
             TextView below = ui.text(AutopilotText.ticketBelowMinimums(entry.barPercent), 14, ui.ink, true);
             below.setPadding(0, ui.dp(6), 0, 0);
             ticket.addView(below);
@@ -2105,20 +2105,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * A standalone offer that passed only because Autopilot's bar was below 100% (its score under 100, or its reason
-     * saying so): left to the user, never auto-accepted. Only a line this version decided.
-     */
-    static boolean passedBelowMinimums(DecisionLog.Entry entry) {
-        return AutopilotText.passedBelowMinimums(entry);
-    }
-
-    /**
      * Keep the most recent observed outcome prominent, without inventing one from a passed rule: accepted (by the
      * user, after an automatic request, or as an older version recorded it), not accepted (Dasher went back to the
      * wait for offers or the dash ended), counted as the user's own Decline (and an older version's verdict on one),
      * or not counted from what followed.
      */
-    static DecisionLog.Step latestOutcomeStep(DecisionLog.Entry entry) {
+    private static DecisionLog.Step latestOutcomeStep(DecisionLog.Entry entry) {
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
             DecisionLog.Step step = entry.steps.get(i);
             switch (step.kind) {

@@ -233,21 +233,32 @@ final class AutopilotChip extends TextView {
             fittedWords = wordsText;
             int alone = wordsHeight(wordsText, wordsFull, inner, false);
             fitStacked = false;
-            fitTight = false;
-            float step = (1f - least) / STEPS;
-            for (int i = 0; i <= STEPS; i++) {
-                float s = i == STEPS ? least : 1f - i * step;
-                if (besideHeight(chipText, wordsText, s, inner, false) <= alone) {
-                    fitScale = s;
-                    return;
-                }
-                if (step <= 0) break;
+            // The largest size that keeps the row to the words' own height, their lines as the page made them; else,
+            // their lines closed up, the largest that does so then.
+            for (boolean closed : new boolean[] {false, true}) {
+                fitTight = closed;
+                fitScale = largestFitting(chipText, wordsText, inner, closed, alone);
+                if (fitScale > 0) return;
             }
             int beside = besideHeight(chipText, wordsText, least, inner, true);
             int above = chipHeight(chipFull) + alone;
             fitStacked = above < beside;
             fitTight = !fitStacked;
             fitScale = fitStacked ? 1f : least;
+        }
+
+        /**
+         * The largest share of the full sizes, from 1 down to {@link #least}, at which the row side by side is no
+         * taller than {@code alone}; 0 when none is.
+         */
+        private float largestFitting(String chipText, String wordsText, int inner, boolean closed, int alone) {
+            float step = (1f - least) / STEPS;
+            for (int i = 0; i <= STEPS; i++) {
+                float s = i == STEPS ? least : 1f - i * step;
+                if (besideHeight(chipText, wordsText, s, inner, closed) <= alone) return s;
+                if (step <= 0) break;
+            }
+            return 0;
         }
 
         /**
