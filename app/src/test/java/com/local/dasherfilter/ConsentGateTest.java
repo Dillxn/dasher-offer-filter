@@ -55,7 +55,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
 
     @Test
     public void theScreenReaderReadsDecidesAndTapsNothingUntilTheNoticeIsAccepted() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferFilterService> controller = Robolectric.buildService(OfferFilterService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         try {
@@ -90,7 +90,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
 
     @Test
     public void theNotificationPathPostsHidesAndDeclinesNothingUntilTheNoticeIsAccepted() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try {
@@ -257,7 +257,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
     @Test
     public void anExistingInstallSeesTheNoticeOnceAfterThisUpdate() {
         // A phone in use before the notice existed: rules on, offers in its history, the map and sound settings.
-        FilterStore.save(app, new FilterSettings(true, 2000, 150, 0, 0, 3));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 3));
         FilterStore.setSilenceWhileDeclining(app, true);
         DecisionLog.record(app, declinedEntry());
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics.

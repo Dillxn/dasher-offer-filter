@@ -63,8 +63,10 @@ public class DecisionLogStepsTest {
         line = DecisionLog.recent(app, 1).get(0);
         assertEquals(DecisionLog.StepKind.ACCEPTED, line.steps.get(0).kind);
         String report = DecisionLog.report(app, 5);
-        assertTrue(report, report.contains("    learning ")
-                && report.contains(" Accepted: it closed with about 0:30 left"));
+        // Worded as the summary after a dash words it: what followed the offer, never learning.
+        assertTrue(report, report.matches("(?s).*\\n    then \\d\\d:\\d\\d:\\d\\d Accepted: it closed with about 0:30 "
+                + "left on its countdown\\n.*"));
+        assertFalse(report, report.contains("learning"));
     }
 
     @Test

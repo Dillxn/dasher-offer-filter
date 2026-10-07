@@ -44,7 +44,7 @@ public class ConsentReminderTest extends AndroidAdapterTestBase {
     @Before
     public void notYetAccepted() {
         ConsentedTestApp.forget(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
     }
 
     @Test

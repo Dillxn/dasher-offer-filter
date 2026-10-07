@@ -1200,8 +1200,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         offer.quietCard = null;
         if (offer.state.readOnScreen != null || (!OfferAlerts.showing(this, alertTag)
                 && !(offer.nativeCard && nativeAlert(offer) != NativeAlert.ABSENT))) return;
-        // Settings can change while Peek waits for quiet. Do not revive a card judged under an obsolete item
-        // floor (or any other changed decision); replay the current notification silently instead.
+        // The rules can change while Peek waits for quiet. Do not revive a card judged under obsolete minimums (or
+        // any other changed decision); replay the current notification silently instead.
         FilterSettings current = FilterStore.load(this);
         OfferRule.Decision now = decide(card.facts, card.labels, current);
         if (current.enabled != card.enabled || !now.summary().equals(card.decision.summary())) {

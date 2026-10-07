@@ -63,7 +63,7 @@ public class SameOfferAdapterTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.forgetCache();
         AreaMap.forgetCache();
         OfferSilencer.forgetCache();
@@ -491,7 +491,7 @@ public class SameOfferAdapterTest {
         assertEquals(1, notifications().size());
 
         // Pausing re-checks the notifications Android shows: that card is not the screen's to clear.
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         OfferNotificationService.rulesChanged();
         Shadows.shadowOf(Looper.getMainLooper()).idle();
         assertEquals("the card of an offer the screen never read stays", 1, notifications().size());

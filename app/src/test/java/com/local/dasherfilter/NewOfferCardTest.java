@@ -39,7 +39,9 @@ public class NewOfferCardTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 1300, 385, 41, 475, 3, true, 0));
+        // The README's rules as 0.5.0 keeps them: their $4.75 per stop folds into minimum pay as max($13.00, 2 × $4.75),
+        // and the adaptive minimum this suite once had on is retired.
+        FilterStore.save(app, FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3));
         DecisionLog.forgetCache();
         listener = Robolectric.buildService(OfferNotificationService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));

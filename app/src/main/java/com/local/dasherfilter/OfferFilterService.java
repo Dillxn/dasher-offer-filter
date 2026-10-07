@@ -6643,7 +6643,8 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean handleConfirmation(Scan confirmation, FilterSettings settings, long now) {
         if (consumeDeclineError()) return declineError.pending();
         if (minimumRulesChanged(FilterStore.load(this), SystemClock.uptimeMillis())) return false;
-        diagnostic("confirmation", confirmation, null, null);
+        // The phase DashSummary knows the question by (its rate masked there), never a literal of its own.
+        diagnostic(DiagnosticLog.QUESTION_PHASE, confirmation, null, null);
         // Dasher's question shows the acceptance rate (and whether declining this offer lowers it): Autopilot keeps
         // that one number, and the offer's mark, from a copy of the labels this read already has, parsed on its own
         // thread. Nothing more is read for it, and nothing here waits for it (the tap below included).
@@ -8679,7 +8680,7 @@ public final class OfferFilterService extends AccessibilityService {
                 + " " + readWin;
         if (signature.equals(lastDiagnosticSignature)) return;
         lastDiagnosticSignature = signature;
-        DiagnosticLog.log(this, "screen", labelsLine(signature, scan, false));
+        DiagnosticLog.log(this, DiagnosticLog.SCREEN_SOURCE, labelsLine(signature, scan, false));
     }
 
     /**

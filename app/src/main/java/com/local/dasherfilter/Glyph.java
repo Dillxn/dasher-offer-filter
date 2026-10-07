@@ -2,7 +2,6 @@ package com.local.dasherfilter;
 
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
-import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -11,16 +10,14 @@ import android.graphics.drawable.Drawable;
 
 /**
  * The app's small line icons, drawn on a 24-unit grid so they scale to any size without image files: a clock for
- * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, a
- * rising line for the adaptive minimum, dots for the stop count, sliders for settings, a back arrow, a warning
- * sign, the chevron at the end of a row that opens something, a dashed shape passing into a solid one for making the
- * learned minimums the set ones (in the constellation's learned and set colors, where it is given them), a curved
- * arrow back for undoing that, and an area chart (two crossing spokes and an offer's shape on them) for score by area,
- * its shape filled while the drawable's level is above 0, that is while score by area is on.
+ * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, sliders
+ * for settings, a back arrow, a warning sign, the chevron at the end of a row that opens something, and a phone whole
+ * or split for Dasher's screen. (The icons of the controls 0.5.0 retired, for the hotspot, the adaptive minimum,
+ * adopting and undoing it, and score by area, went with them.)
  */
 final class Glyph extends Drawable {
     enum Shape {
-        CLOCK, ROAD, PIN, HOTSPOT, COIN, BAG, HOME, TREND, STOPS, SLIDERS, BACK, SIGN, CHEVRON, SPLIT, ADOPT, UNDO, AREA,
+        CLOCK, ROAD, PIN, COIN, BAG, HOME, SLIDERS, BACK, SIGN, CHEVRON, SPLIT,
         /** A whole phone with a pin in its middle: Dasher's map filling the screen (Open Dasher). */
         PHONE
     }
@@ -30,20 +27,9 @@ final class Glyph extends Drawable {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final RectF oval = new RectF();
-    /**
-     * The learned minimums' dashes at this icon's scale, long dashes and short gaps as on the constellation: one dash
-     * to each side of the adopt icon's dashed shape (sides of 7.34), bent round its corner, and one gap in the middle
-     * of each side; the shape is drawn from the middle of a side, so it starts and ends in a gap.
-     */
-    private final DashPathEffect dashes = new DashPathEffect(new float[] {4.08f, 3.26f}, 5.71f);
-    /** The adopt icon's two shapes: the learned (dashed) one and the set (solid) one; the ink until given colors. */
-    private int learnedInk;
-    private int setInk;
 
     Glyph(Shape shape, int color, int sizePx) {
         this.shape = shape;
-        learnedInk = color;
-        setInk = color;
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeWidth(2f);
         stroke.setStrokeCap(Paint.Cap.ROUND);
@@ -54,14 +40,6 @@ final class Glyph extends Drawable {
         fill.setFakeBoldText(true);
         fill.setTextSize(13f);
         setBounds(0, 0, sizePx, sizePx);
-    }
-
-    /** The adopt icon's dashed shape in {@code learned} and its solid one in {@code set}, as on the constellation. */
-    void setAccents(int learned, int set) {
-        if (learned == learnedInk && set == setInk) return;
-        learnedInk = learned;
-        setInk = set;
-        invalidateSelf();
     }
 
     /** Draws a glyph of {@code size} pixels with its top-left corner at (x, y), outside any drawable bounds. */
@@ -102,15 +80,6 @@ final class Glyph extends Drawable {
                 canvas.drawPath(path, stroke);
                 canvas.drawCircle(12, 10, 2.5f, stroke);
                 break;
-            case HOTSPOT:
-                // A destination point within a hot area's rings, distinct from the per-stop pin.
-                canvas.drawCircle(12, 12, 3, fill);
-                oval.set(6, 6, 18, 18);
-                canvas.drawArc(oval, -55, 290, false, stroke);
-                oval.set(2.5f, 2.5f, 21.5f, 21.5f);
-                canvas.drawArc(oval, -35, 110, false, stroke);
-                canvas.drawArc(oval, 145, 110, false, stroke);
-                break;
             case COIN:
                 canvas.drawCircle(12, 12, 9, stroke);
                 canvas.drawText("$", 12, 16.5f, fill);
@@ -138,24 +107,6 @@ final class Glyph extends Drawable {
                 path.lineTo(13.5f, 15);
                 path.lineTo(13.5f, 20);
                 canvas.drawPath(path, stroke);
-                break;
-            case TREND:
-                path.moveTo(3, 17);
-                path.lineTo(9, 11);
-                path.lineTo(13, 15);
-                path.lineTo(21, 7);
-                canvas.drawPath(path, stroke);
-                path.reset();
-                path.moveTo(15, 7);
-                path.lineTo(21, 7);
-                path.lineTo(21, 13);
-                canvas.drawPath(path, stroke);
-                break;
-            case STOPS:
-                canvas.drawLine(3, 12, 21, 12, stroke);
-                canvas.drawCircle(5, 12, 2.2f, fill);
-                canvas.drawCircle(12, 12, 2.2f, fill);
-                canvas.drawCircle(19, 12, 2.2f, fill);
                 break;
             case BACK:
                 canvas.drawLine(20, 12, 4.5f, 12, stroke);
@@ -200,87 +151,6 @@ final class Glyph extends Drawable {
                 canvas.drawPath(path, stroke);
                 canvas.drawCircle(12, 11.6f, 1.1f, fill);
                 break;
-            case ADOPT: {
-                // The learned (dashed) shape passing into the set (solid) one, as on the constellation: dashed and
-                // purple, then a solid outline with a faint fill in blue, the chevron between them in the ink.
-                int ink = stroke.getColor();
-                float width = stroke.getStrokeWidth();
-                path.moveTo(3.2f, 8.8f);
-                path.lineTo(5, 5.6f);
-                path.lineTo(8.6f, 12);
-                path.lineTo(5, 18.4f);
-                path.lineTo(1.4f, 12);
-                path.close();
-                stroke.setColor(learnedInk);
-                stroke.setStrokeWidth(1.6f);
-                stroke.setStrokeCap(Paint.Cap.BUTT);
-                stroke.setPathEffect(dashes);
-                canvas.drawPath(path, stroke);
-                stroke.setPathEffect(null);
-                stroke.setStrokeCap(Paint.Cap.ROUND);
-                path.reset();
-                path.moveTo(19, 5.6f);
-                path.lineTo(22.6f, 12);
-                path.lineTo(19, 18.4f);
-                path.lineTo(15.4f, 12);
-                path.close();
-                int fillInk = fill.getColor();
-                fill.setColor((setInk & 0x00FFFFFF) | 0x40000000);
-                canvas.drawPath(path, fill);
-                fill.setColor(fillInk);
-                stroke.setColor(setInk);
-                stroke.setStrokeWidth(1.8f);
-                canvas.drawPath(path, stroke);
-                stroke.setColor(ink);
-                stroke.setStrokeWidth(width);
-                path.reset();
-                path.moveTo(10.9f, 9.8f);
-                path.lineTo(13.1f, 12);
-                path.lineTo(10.9f, 14.2f);
-                canvas.drawPath(path, stroke);
-                break;
-            }
-            case AREA: {
-                // An area chart: the constellation's two crossing spokes and an offer's shape on them; lit (score by
-                // area on), the shape is filled.
-                int ink = stroke.getColor();
-                float width = stroke.getStrokeWidth();
-                stroke.setColor((learnedInk & 0x00FFFFFF) | 0x80000000);
-                stroke.setStrokeWidth(1.1f);
-                canvas.drawLine(2.9f, 6.75f, 21.1f, 17.25f, stroke);
-                canvas.drawLine(21.1f, 6.75f, 2.9f, 17.25f, stroke);
-                path.moveTo(3.35f, 7f);
-                path.lineTo(18.05f, 8.5f);
-                path.lineTo(20.65f, 17f);
-                path.lineTo(6.35f, 15.25f);
-                path.close();
-                if (getLevel() > 0) {
-                    int fillInk = fill.getColor();
-                    fill.setColor((setInk & 0x00FFFFFF) | 0x70000000);
-                    canvas.drawPath(path, fill);
-                    fill.setColor(fillInk);
-                }
-                stroke.setColor(setInk);
-                stroke.setStrokeWidth(1.8f);
-                canvas.drawPath(path, stroke);
-                stroke.setColor(ink);
-                stroke.setStrokeWidth(width);
-                break;
-            }
-            case UNDO:
-                // A curved arrow back.
-                path.moveTo(9, 14);
-                path.lineTo(4, 9);
-                path.lineTo(9, 4);
-                canvas.drawPath(path, stroke);
-                path.reset();
-                path.moveTo(4, 9);
-                path.lineTo(14.5f, 9);
-                oval.set(9, 9, 20, 20);
-                path.arcTo(oval, -90, 180);
-                path.lineTo(11, 20);
-                canvas.drawPath(path, stroke);
-                break;
             case SLIDERS:
                 canvas.drawLine(3, 7, 21, 7, stroke);
                 canvas.drawLine(3, 17, 21, 17, stroke);
@@ -289,11 +159,6 @@ final class Glyph extends Drawable {
                 break;
         }
         canvas.restore();
-    }
-
-    @Override protected boolean onLevelChange(int level) {
-        invalidateSelf();
-        return true;
     }
 
     @Override public int getIntrinsicWidth() {

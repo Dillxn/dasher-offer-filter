@@ -245,7 +245,6 @@ public class AcceptedOfferCloseTest {
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
         assertEquals("Dasher went back to the wait for offers 3 s after it left", counted.detail);
         assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
-        assertNull("nothing is held to teach", counted.declined);
         assertNull("a declined offer is never accepted", counted.accepted);
     }
 
@@ -272,7 +271,6 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(PRE_DASH_HOME, 10_000);
         AcceptedOfferTracker.Note dropped = only(DecisionLog.StepKind.DECLINE_DROPPED);
         assertEquals("the dash ended or paused", dropped.detail);
-        assertNull(dropped.declined);
     }
 
     @Test
@@ -293,7 +291,6 @@ public class AcceptedOfferCloseTest {
         tracker.takeNotes();
         tracker.afterScreen(WAITING, 3_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertNull(counted.declined);
         assertEquals("Dasher went back to the wait for offers 1 s after it left", counted.detail);
 
         tracker.offerLeftAlone(OFFER, OFFER, OFFER, false, true, 35, false, 10_000);
@@ -304,7 +301,6 @@ public class AcceptedOfferCloseTest {
         assertEquals("after your Decline tap", only(DecisionLog.StepKind.DECLINE_QUESTION).detail);
         tracker.afterScreen(WAITING, 13_000);
         counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
-        assertNull(counted.declined);
         assertEquals("Dasher went back to the wait for offers 2 s after it left", counted.detail);
 
         // An add-on's decline by hand counts the same way.
@@ -336,14 +332,12 @@ public class AcceptedOfferCloseTest {
         tracker.declineTapped(1_500);
         AcceptedOfferTracker.Note tapped = only(DecisionLog.StepKind.DECLINE_TAPPED);
         assertEquals("it counts once Dasher goes back to the wait for offers or another offer comes", tapped.detail);
-        assertNull("nothing is held at the tap itself", tapped.declined);
         tracker.declineQuestion(2_000);
         assertEquals("after your Decline tap", only(DecisionLog.StepKind.DECLINE_QUESTION).detail);
         tracker.afterScreen(WAITING, 3_000);
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
         assertEquals("Dasher went back to the wait for offers 1 s after it left", counted.detail);
         assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
-        assertNull(counted.declined);
     }
 
     // ---- Accepting without a tap needs positive evidence the user was waiting (S1, S2) ----
@@ -527,7 +521,6 @@ public class AcceptedOfferCloseTest {
         tracker.afterScreen(DELIVERY, 3_300);
         AcceptedOfferTracker.Note dropped = only(DecisionLog.StepKind.DECLINE_DROPPED);
         assertEquals("Dasher showed a delivery screen next, so you may have accepted it after all", dropped.detail);
-        assertNull(dropped.declined);
     }
 
     @Test
@@ -545,7 +538,6 @@ public class AcceptedOfferCloseTest {
         assertEquals("Dasher's next screen was neither the wait for offers nor another offer (its words are in the "
                 + "screens log)", dropped.detail);
         assertEquals(PICKUP_UNKNOWN, dropped.screen);
-        assertNull(dropped.declined);
     }
 
     @Test
@@ -570,7 +562,6 @@ public class AcceptedOfferCloseTest {
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
         assertEquals("another offer came", counted.detail);
         assertEquals(OFFER.fingerprint(), counted.line.fingerprint());
-        assertNull(counted.declined);
 
         // The next offer after some other screen: nothing.
         tracker.afterScreen(WAITING, 80_000);
@@ -621,7 +612,6 @@ public class AcceptedOfferCloseTest {
         assertEquals("you went back to the offer", notes.get(2).detail);
         assertEquals("you began to decline it, so the delivery screen after it is no Accept", notes.get(3).detail);
         for (AcceptedOfferTracker.Note note : notes) {
-            assertNull("nothing is held as a decline", note.declined);
             assertNull("nor accepted", note.accepted);
         }
     }
@@ -637,7 +627,6 @@ public class AcceptedOfferCloseTest {
         AcceptedOfferTracker.Note counted = only(DecisionLog.StepKind.DECLINE_COUNTED);
         assertEquals("Dasher went back to the delivery under way", counted.detail);
         assertEquals(STACKED.fingerprint(), counted.line.fingerprint());
-        assertNull(counted.declined);
 
         // With no delivery under way before, a delivery screen next counts nothing.
         tracker.afterScreen(WAITING, 10_000);

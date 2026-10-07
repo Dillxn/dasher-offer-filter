@@ -52,7 +52,7 @@ public class DasherOverlayTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.forgetCache();
         OfferSilencer.forgetCache();
         ActiveRouteStore.clear(app);
@@ -354,7 +354,7 @@ public class DasherOverlayTest {
         show(screen("Finding offers"));
         assertEquals(DasherTab.Look.PEEK, tab.look());
         assertTrue((params(tab).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         // A route stored from an accepted offer tucks it away too, whatever the screen.
         show(screen("Finding offers"));
         assertEquals(DasherTab.Look.REST, tab.look());
@@ -367,7 +367,7 @@ public class DasherOverlayTest {
 
         // Over an offer it peeks too, takes no touches (they are all Dasher's), and nothing brings it out there.
         ActiveRouteStore.clear(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         show(offer("$25.00"));
         assertEquals(DasherTab.Look.PEEK, tab.look());
         assertTrue((params(tab).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);

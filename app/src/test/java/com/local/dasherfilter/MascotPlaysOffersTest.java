@@ -28,7 +28,7 @@ import static org.junit.Assert.assertNull;
 public class MascotPlaysOffersTest extends AndroidAdapterTestBase {
     @Test
     public void aNewOfferPlaysOutAsItWentOnceItsLineSettles() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.record(app, entry(System.currentTimeMillis() - 5_000, 900, OfferRule.Result.DECLINE,
                 DecisionLog.Action.DECLINE_TAPPED));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -60,7 +60,7 @@ public class MascotPlaysOffersTest extends AndroidAdapterTestBase {
 
     @Test
     public void anOldOfferAndAnyWhilePausedPlayNothing() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView hero = find(content, FilterHeroView.class);

@@ -91,7 +91,7 @@ public class ActionSafetyReviewTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -1043,7 +1043,7 @@ public class ActionSafetyReviewTest {
      */
     @Test
     public void withNoRuleSetAPaylessNotificationIsNeitherAPassNorACard() {
-        FilterStore.save(app, new FilterSettings(true, 0, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 0));
         connect(navWindow++, app(MAPS));
         Dashing.seen(app);
         pass(1_000);

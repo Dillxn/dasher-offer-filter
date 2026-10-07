@@ -807,9 +807,9 @@ final class Updater {
 
     /**
      * Shows Android's install confirmation: directly when the app is open, otherwise as a quiet notification (when
-     * notifications are allowed). Until confirmed it is still an update held back, so the homepage's "Update ready ·
-     * Install now" offers it again (its tap shows the confirmation again), and Settings points to the notification only
-     * when one was posted.
+     * notifications are allowed and the current notice is accepted). Until confirmed it is still an update held back,
+     * so the homepage's "Update ready · Install now" offers it again (its tap shows the confirmation again), and
+     * Settings points to the notification only when one was posted.
      */
     static void confirmation(Context context, Intent intent) {
         pendingConfirmation = intent;
@@ -838,8 +838,14 @@ final class Updater {
         });
     }
 
-    /** Android's confirmation as a quiet notification; whether it was posted (notifications may be off). */
+    /**
+     * Android's confirmation as a quiet notification; whether it was posted (notifications may be off). Never before
+     * the current first-run notice is accepted: the paused reminder is the one thing posted until then (as for
+     * {@link UpdateNotices#installsBlocked}). The confirmation still waits, held, so once the notice is accepted the
+     * homepage's "Update ready · Install now" shows it again.
+     */
     private static boolean postConfirmationNotice(Context context, Intent intent) {
+        if (!Consent.accepted(context)) return false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager == null || !manager.areNotificationsEnabled()) return false;
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)

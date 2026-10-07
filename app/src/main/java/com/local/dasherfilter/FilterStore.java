@@ -480,62 +480,6 @@ final class FilterStore {
         }
     }
 
-    // ---- Retired learning: inert until its last callers are removed ----
-
-    /** Retired with the adaptive minimum: what a decline by hand taught. Nothing is taught any more. */
-    @Deprecated
-    enum DeclineLesson {
-        /** A floor rose. */
-        TAUGHT,
-        /** Auto-decline or the adaptive minimum was off: nothing is learned then. */
-        SWITCHES_OFF,
-        /** The minimums already asked more than that offer (or it looked misread): nothing rose. */
-        NOTHING_NEW
-    }
-
-    /** Retired: declines by hand teach nothing in 0.5.0. Always {@link DeclineLesson#SWITCHES_OFF}; stores nothing. */
-    @Deprecated
-    static DeclineLesson learnFromDecline(Context context, OfferSnapshot declinedOffer) {
-        return DeclineLesson.SWITCHES_OFF;
-    }
-
-    /** Retired with the adaptive minimum: what a confirmed manual acceptance changed. */
-    @Deprecated
-    enum AcceptedLesson {
-        RAISED("at least one active minimum rose"),
-        RECORDED("a new accepted best was saved; this offer’s current dollar requirements did not change"),
-        NOTHING_NEW("no new accepted best; your existing minimums stay unchanged"),
-        SWITCHES_OFF("auto-decline or Adaptive minimum was off"),
-        PAY_UNKNOWN("its pay was not read");
-
-        final String reason;
-        AcceptedLesson(String reason) { this.reason = reason; }
-        boolean considered() { return this != SWITCHES_OFF && this != PAY_UNKNOWN; }
-    }
-
-    /** Retired: acceptances teach nothing in 0.5.0. Always false; stores nothing. */
-    @Deprecated
-    static boolean recordAccepted(Context context, OfferSnapshot accepted) {
-        return false;
-    }
-
-    /** Retired: acceptances teach nothing in 0.5.0. Always {@link AcceptedLesson#SWITCHES_OFF}; stores nothing. */
-    @Deprecated
-    static AcceptedLesson recordAcceptedLesson(Context context, OfferSnapshot accepted) {
-        return AcceptedLesson.SWITCHES_OFF;
-    }
-
-    /** Retired: there are no learned minimums to reset. Does nothing. */
-    @Deprecated
-    static void resetAccepted(Context context) {
-    }
-
-    /** Retired: learning times are no longer kept (0.5.0 removed them). Always three zeros, "not recorded". */
-    @Deprecated
-    static long[] learningTimes(Context context) {
-        return new long[] {0, 0, 0};
-    }
-
     // ---- Dasher's offer channel, status and switches ----
 
     static void recordDoorDashOfferChannel(Context context, String channelId) {

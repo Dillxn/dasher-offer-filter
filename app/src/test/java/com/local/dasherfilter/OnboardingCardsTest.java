@@ -141,7 +141,7 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
 
     @Test public void peeksCardShowsOnceWhenFilteringFirstRunsAndLeadsToItsSwitch() {
         app.getSharedPreferences(PeekIntroCard.PREFS, Context.MODE_PRIVATE).edit().clear().commit();
-        FilterStore.save(app, new FilterSettings(false, 700, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 700, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             tick();
@@ -165,7 +165,7 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
 
     @Test public void peeksCardStaysAwayWithPeekOffAndOkClosesItForGood() {
         app.getSharedPreferences(PeekIntroCard.PREFS, Context.MODE_PRIVATE).edit().clear().commit();
-        FilterStore.save(app, new FilterSettings(true, 700, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         FilterStore.setPeek(app, false);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

@@ -28,7 +28,7 @@ import org.robolectric.shadows.ShadowToast;
 @LooperMode(LooperMode.Mode.PAUSED)
 public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
     @Test public void tappingYellowReviewCountOpensItsReasonWithoutPausing() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         record(900, OfferRule.Result.REVIEW, "pay not found", 1);
         record(2500, OfferRule.Result.KEEP, "meets enabled rules", 2);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -48,7 +48,7 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
     }
 
     @Test public void eachCountOpensItsNewestMatchingOutcomeIncludingAnOlderRetainedReview() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         record(900, OfferRule.Result.REVIEW, "pay not found", 1);
         for (int i = 2; i <= DecisionChartView.SLOTS + 2; i++) record(2500 + i,
                 OfferRule.Result.KEEP, "meets enabled rules", i);
@@ -89,7 +89,7 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
     }
 
     @Test public void aSelectionRollingOutOfTheSkylineFallsBackToLatestWhileOlderCountTicketStaysOpen() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         record(900, OfferRule.Result.REVIEW, "pay not found", 1);
         for (int i = 2; i <= DecisionChartView.SLOTS + 2; i++) record(2500 + i,
                 OfferRule.Result.KEEP, "meets enabled rules", i);
@@ -115,7 +115,7 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
     }
 
     @Test public void emptyOrCanceledCountsNeverPauseOrStartFiltering() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
@@ -141,7 +141,7 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
     }
 
     @Test public void nativeAccessibleActionsHaveSeparateBoundsAndExactPurposes() {
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         record(900, OfferRule.Result.REVIEW, "pay not found", 1);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

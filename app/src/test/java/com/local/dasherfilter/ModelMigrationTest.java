@@ -562,17 +562,15 @@ public class ModelMigrationTest {
         assertNull(FilterStore.takeStopFeeNotice(app));
     }
 
-    @Test public void theRetiredLearningIsInert() {
+    @Test public void savingAndLoadingRulesWritesNoRetiredKey() {
+        // The learning API is gone (RetiredRulesSourceTest); what is left must never write a retired key back.
         FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
-        OfferSnapshot offer = new OfferSnapshot(2500, 7.2, 21, 2);
-        Map<String, ?> before = new HashMap<>(prefs().getAll());
-        assertFalse(FilterStore.recordAccepted(app, offer));
-        assertEquals(FilterStore.AcceptedLesson.SWITCHES_OFF, FilterStore.recordAcceptedLesson(app, offer));
-        assertEquals(FilterStore.DeclineLesson.SWITCHES_OFF, FilterStore.learnFromDecline(app, offer));
-        FilterStore.resetAccepted(app);
-        assertArrayEquals(new long[] {0, 0, 0}, FilterStore.learningTimes(app));
-        assertEquals("nothing is stored", before, prefs().getAll());
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TIER);
+        FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 82);
+        FilterStore.save(app, FilterStore.load(app).withMaxStops(3));
+        for (String key : FilterStore.RETIRED_KEYS) assertFalse(key, prefs().contains(key));
         assertArrayEquals(new int[] {1000, 0, 0, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertEquals(82, FilterStore.load(app).minimumScalePercent);
     }
 
     private JSONObject readNotice() {

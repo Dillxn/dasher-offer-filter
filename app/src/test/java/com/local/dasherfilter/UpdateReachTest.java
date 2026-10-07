@@ -411,6 +411,33 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
         assertEquals(Updater.CONFIRM_NOTICED, Updater.status(app));
     }
 
+    @Test public void anInstallConfirmationBeforeTheNoticeIsAcceptedPostsNothingThenAsBeforeAfterIt() throws Exception {
+        ShadowNotificationManager notices = Shadows.shadowOf(app.getSystemService(NotificationManager.class));
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        verifiedUpdate("99.0.0");
+        automaticCheck();
+        int session = Updater.prefs(app).getInt("session", -1);
+        assertTrue("handed to Android", session >= 0);
+
+        // Android asks the user to confirm it, with Offer Filter closed and an updated first-run notice not accepted.
+        ConsentedTestApp.forget(app);
+        new UpdateReceiver().onReceive(app, installResult(session, PackageInstaller.STATUS_PENDING_USER_ACTION)
+                .putExtra(Intent.EXTRA_INTENT, new Intent("synthetic.install.confirmation")));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertNull("before acceptance the paused reminder is the one thing posted",
+                notices.getNotification(AndroidAdapterTestBase.UPDATE_NOTICE_ID));
+        assertTrue(notices.getAllNotifications().isEmpty());
+        assertEquals("held, for its confirmation once the notice is accepted", "99.0.0", Updater.heldVersion(app));
+        assertEquals("no notification posted: none is mentioned", Updater.CONFIRM, Updater.status(app));
+
+        // With the notice accepted, Android's confirmation goes in its quiet notice as before.
+        ConsentedTestApp.accept(app);
+        Updater.confirmation(app, new Intent("synthetic.install.confirmation"));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertNotNull(notices.getNotification(AndroidAdapterTestBase.UPDATE_NOTICE_ID));
+        assertEquals(Updater.CONFIRM_NOTICED, Updater.status(app));
+    }
+
     @Test public void anInstallationAndroidBlockedIsNamedAndNotOfferedAgainUntilTheUserRetries() throws Exception {
         verifiedUpdate("99.0.0");
         automaticCheck();

@@ -851,9 +851,10 @@ final class DecisionLog {
                         .append(" | ").append(n.action.label)
                         .append('\n');
             }
+            // What became of the offer, as the summary after a dash words it ("then"): nothing is learned from it.
             SimpleDateFormat clock = new SimpleDateFormat("HH:mm:ss", Locale.US);
             for (Step step : entry.steps) {
-                out.append("    learning ").append(clock.format(new Date(step.at))).append(' ').append(step.text())
+                out.append("    then ").append(clock.format(new Date(step.at))).append(' ').append(step.text())
                         .append('\n');
             }
         }
