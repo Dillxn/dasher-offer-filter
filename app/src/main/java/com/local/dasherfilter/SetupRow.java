@@ -34,6 +34,8 @@ final class SetupRow {
     static final float LEAST_SCALE = 0.75f;
 
     final LinearLayout row;
+    /** What a tap on the line does (its Fix, Install now or Show). */
+    private final Runnable onTap;
     private final TextView badge;
     private final View sign;
     private final TextView text;
@@ -43,6 +45,7 @@ final class SetupRow {
     private String shown = "";
 
     SetupRow(Context context, Ui ui, LinearLayout parent, Runnable onTap) {
+        this.onTap = onTap;
         row = ui.row();
         row.setBackground(ui.pressable(16));
         row.setPadding(ui.dp(4), ui.dp(6), ui.dp(4), ui.dp(6));
@@ -72,6 +75,11 @@ final class SetupRow {
         row.addView(action);
         row.setVisibility(View.GONE);
         parent.addView(row, Ui.matchWidth());
+    }
+
+    /** What a tap on the line does, run from elsewhere (the driving strip's own tap on the same step). */
+    void tap() {
+        onTap.run();
     }
 
     /** Shows the line: {@code number} is the step's number for {@link Mark#STEP}, unused otherwise. */

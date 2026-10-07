@@ -100,7 +100,8 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
             list.performItemClick(null, 0, 0);
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertEquals("37.7700,-122.4100", opened.getData().getQueryParameter("destination"));
-            assertEquals(0, opened.getFlags());
+            assertEquals("the map in its own task, nothing cleared or reset", Intent.FLAG_ACTIVITY_NEW_TASK,
+                    opened.getFlags());
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);

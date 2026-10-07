@@ -26,34 +26,46 @@ public class PeekStateTest {
                 new ComponentName("com.doordash.driverapp", "Home"), at);
         return peek;
     }
-    @Test public void touchRestartsQuietAndTheWaitHasABound() {
+    @Test public void touchRestartsQuietOnceItsGestureCouldHaveEndedAndTheWaitHasABound() {
         Peek peek = armed(1_000);
         assertFalse(peek.quiet(1_699));
+        assertTrue(peek.quiet(1_700));
         peek.touchedWhileArming(1_650);
-        assertFalse(peek.quiet(2_000));
-        assertTrue(peek.quiet(2_350));
+        // The watch hears a gesture's first finger only: it may still be down for GESTURE_MS, and the quiet follows.
+        assertFalse("never 700 ms after a finger landed", peek.quiet(2_350));
+        assertFalse(peek.quiet(1_650 + Peek.GESTURE_MS + Peek.QUIET_MS - 1));
+        assertTrue(peek.quiet(1_650 + Peek.GESTURE_MS + Peek.QUIET_MS));
+        assertTrue(peek.touchedWhileArming());
         peek.touchedWhileArming(3_800);
         assertTrue(peek.quietTimedOut(4_000));
         assertFalse(peek.quiet(4_000));
+    }
+
+    @Test public void theKeyboardRestartsTheQuietFromWhenItWasSeen() {
+        Peek peek = armed(1_000);
+        peek.keyboardWhileArming(1_200);
+        assertFalse(peek.quiet(1_899));
+        assertTrue("a keyboard is no gesture: its quiet counts from when it was seen", peek.quiet(1_900));
+        assertTrue(peek.touchedWhileArming());
     }
     @Test public void gapStartsWhenThePeekEndsAndNotWhenItOpened() {
         Peek peek = armed(1_000);
         peek.opened(1_700, 1, 0);
         peek.up(2_000);
         peek.offerSign();
-        peek.end(true, false, 14_000);
+        peek.end(Peek.Outcome.DECLINED_BACK, true, 14_000, 0);
         assertNotNull(peek.refusal(request("two"), 18_999));
         assertNull(peek.refusal(request("two"), 19_000));
     }
     @Test public void failedLaunchDoesNotHoldTheNotificationAndTwoFailuresPause() {
         Peek peek = armed(0);
         peek.opened(700, 1, 0);
-        assertNull(peek.end(false, true, 6_700));
+        assertNull(peek.end(Peek.Outcome.OPEN_FAILED, false, 6_700, 0));
         assertNull(peek.refusal(request("new-post"), 11_700));
         peek.arm(request("new-post"), new Peek.Front(Peek.Back.HOME, "home", null, 1),
                 new ComponentName("com.doordash.driverapp", "Home"), 11_700);
         peek.opened(12_400, 2, 0);
-        assertNotNull(peek.end(false, true, 18_400));
+        assertNotNull(peek.end(Peek.Outcome.OPEN_FAILED, false, 18_400, 0));
     }
     @Test public void unrecognisedScreensNeverStartTheNoOfferClock() {
         Peek peek = armed(0);
@@ -133,7 +145,7 @@ public class PeekStateTest {
     @Test public void privateFrontPackageIsNotInItsPrintableKindAndCanBeForgotten() {
         Peek peek = armed(0);
         assertEquals("another app", peek.front().kind());
-        peek.end(false, false, 100);
+        peek.end(Peek.Outcome.INTERRUPTED, false, 100, 0);
         peek.forgetFront();
         assertNull(peek.front());
     }
@@ -143,10 +155,104 @@ public class PeekStateTest {
         peek.opened(700, 1, 0);
         peek.up(900);
         peek.screen(false, 1_000);
-        peek.end(false, false, 20_700);
+        peek.end(Peek.Outcome.TIMEOUT, false, 20_700, 0);
         Peek.Request next = new Peek.Request("one", first.postTime + 30_000, "Store", false, true, "next");
         assertNull(peek.refusal(next, 26_000));
     }
+    /** One more opened peek on {@code peek} at {@code at}: armed, opened, and (when {@code up}) Dasher seen up. */
+    private static long peekAt(Peek peek, long at, boolean up) {
+        peek.arm(new Peek.Request("k" + at, System.currentTimeMillis(), "Store", false, true, "k" + at),
+                new Peek.Front(Peek.Back.HOME, "home", null, 1), new ComponentName("com.doordash.driverapp", "Home"),
+                at);
+        peek.opened(at + 700, 1, 0);
+        if (up) peek.up(at + 900);
+        return at + 6_000;
+    }
+
+    @Test public void onlyWithdrawnOffersInARowWithinHalfAnHourAndOneDashCountTowardAPause() {
+        Peek peek = new Peek();
+        long at = 0;
+        // Interruptions (a lock, a touch, a split), the deadline and offers Dasher never drew never count.
+        for (Peek.Outcome outcome : new Peek.Outcome[] {Peek.Outcome.INTERRUPTED, Peek.Outcome.TIMEOUT,
+                Peek.Outcome.UNSHOWN, Peek.Outcome.INTERRUPTED, Peek.Outcome.TIMEOUT, Peek.Outcome.UNSHOWN}) {
+            at = peekAt(peek, at, true);
+            assertNull(outcome.name(), peek.end(outcome, false, at, 0));
+        }
+        // ...and do not begin the run afresh either: three withdrawn offers with interruptions between pause Peek.
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.INTERRUPTED, false, at, 0));
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+        at = peekAt(peek, at, true);
+        assertEquals("3 offers in a row were gone by the time Dasher showed",
+                peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+
+        // An offer read in between begins the run afresh.
+        for (int i = 0; i < 2; i++) {
+            at = peekAt(peek, at, true);
+            assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+        }
+        at = peekAt(peek, at, true);
+        peek.offerSign();
+        assertNull(peek.end(Peek.Outcome.DECLINED_BACK, true, at, 0));
+        at = peekAt(peek, at, true);
+        assertNull("a run of one", peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+
+        // Half an hour apart is not in a row.
+        at = peekAt(peek, at + Peek.STREAK_MS, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+        at = peekAt(peek, at + Peek.STREAK_MS, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 0));
+
+        // Another dash begins it afresh.
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 1_000));
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.WITHDRAWN, true, at, 1_000));
+        at = peekAt(peek, at, true);
+        assertNull("the first of a new dash", peek.end(Peek.Outcome.WITHDRAWN, true, at, 2_000));
+    }
+
+    @Test public void dasherComingUpBeginsTheFailedLaunchRunAfresh() {
+        Peek peek = new Peek();
+        long at = peekAt(peek, 0, false);
+        assertNull(peek.end(Peek.Outcome.OPEN_FAILED, false, at, 0));
+        at = peekAt(peek, at, true);
+        assertNull(peek.end(Peek.Outcome.INTERRUPTED, false, at, 0));
+        at = peekAt(peek, at, false);
+        assertNull("Dasher came up in between", peek.end(Peek.Outcome.OPEN_FAILED, false, at, 0));
+        at = peekAt(peek, at, false);
+        assertEquals("Dasher did not come up for 2 peeks in a row (the phone may block apps opening from the "
+                + "background)", peek.end(Peek.Outcome.OPEN_FAILED, false, at, 0));
+    }
+
+    @Test public void aLockedPeekResumesWithTheLockedTimeNotCounted() {
+        Peek peek = armed(0);
+        peek.opened(700, 1, 0);
+        peek.up(900);
+        peek.screen(true, 1_000);
+        peek.suspend(2_000);
+        assertTrue(peek.suspended());
+        assertEquals(2_000, peek.suspendedAt());
+        peek.resume(32_000);
+        assertFalse(peek.suspended());
+        assertEquals(30_700, peek.openedAt());
+        assertEquals(30_900, peek.upAt());
+        assertEquals("an empty screen before the lock proves nothing after it", Long.MIN_VALUE, peek.recognisedAt());
+        assertFalse(peek.lastRecognised());
+        assertFalse(peek.noOfferWaited(40_000));
+        peek.screen(true, 32_100);
+        assertEquals("the empty-screen interval starts from the first fresh read", 32_100, peek.recognisedAt());
+        assertFalse(peek.noOfferWaited(32_100 + Peek.NO_OFFER_MS - 1));
+        assertTrue(peek.noOfferWaited(32_100 + Peek.NO_OFFER_MS));
+        assertEquals(30_900 + Peek.PRESENT_MS, peek.presentationDueAt());
+        assertFalse("its 20 s count from the first open, the locked time aside", peek.pastDeadline(50_699));
+        assertTrue(peek.pastDeadline(50_700));
+        assertEquals(32_000, peek.resumedAt());
+    }
+
     @Test public void chainedOfferCannotExtendTheAbsoluteOpeningDeadline() {
         Peek peek = armed(0);
         peek.opened(700, 1, 0);

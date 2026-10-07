@@ -260,6 +260,18 @@ final class Ui {
         row.setPadding(row.getPaddingLeft(), two ? dp(6) : 0, row.getPaddingRight(), two ? dp(6) : 0);
     }
 
+    /** {@code title}, and under it {@code detail}, smaller and in secondary ink, as a list row shows them. */
+    CharSequence twoLines(String title, String detail) {
+        android.text.SpannableStringBuilder both = new android.text.SpannableStringBuilder(title).append('\n');
+        int start = both.length();
+        both.append(detail);
+        both.setSpan(new android.text.style.RelativeSizeSpan(13f / 15f), start, both.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        both.setSpan(new android.text.style.ForegroundColorSpan(inkSecondary), start, both.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return both;
+    }
+
     /** A few words of link text that open something, still a 48 dp touch target; screen readers hear a button. */
     Button link(String label, Runnable action) {
         Button button = new Button(context);

@@ -591,7 +591,9 @@ public final class DeclineErrorRecoveryAdapterTest {
         ShadowWindowManagerImpl windows = Shadow.extract(service.getSystemService(WindowManager.class));
         java.util.ArrayList<View> watches = new java.util.ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide)) watches.add(view);
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+                watches.add(view);
+            }
         }
         assertEquals("the pending recovery must retain its touch watch", 1, watches.size());
         long now = SystemClock.uptimeMillis();

@@ -9,7 +9,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** User-tapped map handoffs. No location lookup, gas data, destination storage or automatic task placement. */
+/**
+ * User-tapped map handoffs. No location lookup, gas data or destination storage. The map opens in its own task (as a
+ * launcher would open it, nothing cleared or reset), so it never stacks inside Offer Filter's, and Peek's way back to
+ * it finds the navigation it started.
+ */
 final class NavigationShortcuts {
     static final String MAPS = "com.google.android.apps.maps";
     static final String WAZE = "com.waze";
@@ -26,7 +30,7 @@ final class NavigationShortcuts {
         }
 
         Intent web() {
-            return new Intent(Intent.ACTION_VIEW, maps);
+            return new Intent(Intent.ACTION_VIEW, maps).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         }
     }
 
@@ -62,7 +66,8 @@ final class NavigationShortcuts {
     static Intent intent(PackageManager packages, Destination destination) {
         List<Intent> available = new ArrayList<>();
         Intent maps = destination.web().setPackage(MAPS);
-        Intent waze = new Intent(Intent.ACTION_VIEW, destination.waze).setPackage(WAZE);
+        Intent waze = new Intent(Intent.ACTION_VIEW, destination.waze).setPackage(WAZE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (maps.resolveActivity(packages) != null) available.add(maps);
         if (waze.resolveActivity(packages) != null) available.add(waze);
         if (available.isEmpty()) return destination.web();
@@ -78,7 +83,7 @@ final class NavigationShortcuts {
             return true;
         } catch (RuntimeException unavailable) {
             // An app can be disabled/uninstalled between resolution and launch. The universal URL still works
-            // in a browser; no package-bound fallback or task-clearing flags are carried into it.
+            // in a browser; no package-bound fallback or task-clearing flags are carried into it (its own task only).
             try {
                 activity.startActivity(destination.web());
                 return true;

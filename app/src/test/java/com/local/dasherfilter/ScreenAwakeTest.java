@@ -95,7 +95,7 @@ public class ScreenAwakeTest {
         assertFalse("the lease was acquired with a finite timeout", lock.isHeld());
     }
 
-    @Test public void anotherAppOrUncertainWindowsReleaseWithoutReadingTheirContent() {
+    @Test public void aStoppedScreenReaderOrAFailedCheckReleases() {
         awake.start();
         PowerManager.WakeLock lock = lock();
         visible.set(false);
@@ -105,9 +105,121 @@ public class ScreenAwakeTest {
         advanceCheck();
         assertTrue(lock.isHeld());
         awake.stop();
-        awake = new ScreenAwake(app, () -> { throw new IllegalStateException("windows unavailable"); });
+        awake = new ScreenAwake(app, () -> { throw new IllegalStateException("state unavailable"); });
         awake.start();
-        assertFalse("a window lookup failure cannot leave a hold", lock.isHeld());
+        assertFalse("a failed check cannot leave a hold", lock.isHeld());
+    }
+
+    /** The owner chose "Don't let it lock mid-dash", unless battery saver is on or the battery runs low. */
+    @Test public void batterySaverOrALowBatteryNotChargingLetsTheScreenTimeOut() {
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        Shadows.shadowOf(app.getSystemService(PowerManager.class)).setIsPowerSaveMode(true);
+        advanceCheck();
+        assertFalse("battery saver", lock.isHeld());
+        Shadows.shadowOf(app.getSystemService(PowerManager.class)).setIsPowerSaveMode(false);
+        advanceCheck();
+        assertTrue(lock.isHeld());
+
+        android.os.BatteryManager battery = app.getSystemService(android.os.BatteryManager.class);
+        Shadows.shadowOf(battery).setIsCharging(false);
+        Shadows.shadowOf(battery).setIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY,
+                ScreenAwake.LOW_BATTERY_PERCENT + 1);
+        advanceCheck();
+        assertTrue("above the low mark", lock.isHeld());
+        Shadows.shadowOf(battery).setIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY,
+                ScreenAwake.LOW_BATTERY_PERCENT);
+        advanceCheck();
+        assertFalse("20 % and not charging", lock.isHeld());
+        Shadows.shadowOf(battery).setIsCharging(true);
+        advanceCheck();
+        assertTrue("charging at 20 % holds again", lock.isHeld());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[awake] screen timeout released: battery saver is on"));
+        assertTrue(log, log.contains("[awake] screen timeout released: battery low"));
+        assertTrue(log, log.contains("[awake] screen timeout held: a dash is under way (any app in front)"));
+    }
+
+    @Test public void aDashPausedInDasherReleases() {
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        Dashing.paused(app);
+        advanceCheck();
+        assertFalse(lock.isHeld());
+        Dashing.forgetCache();
+        Dashing.seen(app);
+        advanceCheck();
+        assertTrue("the dash goes on", lock.isHeld());
+    }
+
+    /**
+     * A stale route or a dash whose end was never seen must never keep an unlocked phone on for long: with no sign of
+     * the dash for 15 minutes (an offer or its notification, Dasher's wait for offers, a pickup or delivery screen), the
+     * hold lets go though the dash itself still counts as on (its route stored); a new sign holds it again.
+     */
+    @Test public void aStoredRouteAloneNeverHoldsTheScreenOnceNothingOfTheDashWasSeenFor15Minutes() {
+        ActiveRouteStore.save(app, new OfferSnapshot(800, 3.0, 12, 2));
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        assertTrue(lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS - 3_000));
+        advanceCheck();
+        assertTrue("within 15 minutes of the last sign", lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+        advanceCheck();
+        assertTrue("the dash itself is still on (a route is stored)", Dashing.on(app));
+        assertFalse("a route alone holds nothing", lock.isHeld());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("[awake] screen timeout released: nothing of the dash seen for 15 minutes"));
+        Dashing.sawDash();
+        advanceCheck();
+        assertTrue("a fresh sign of the dash holds it again", lock.isHeld());
+        // Hours later, the route still stored and never ended: let go well before.
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(150));
+        advanceCheck();
+        assertFalse(lock.isHeld());
+        ActiveRouteStore.clear(app);
+    }
+
+    @Test public void dashersHomeBeforeADashLetsGoUntilTheDashIsSeenAgain() {
+        awake.start();
+        PowerManager.WakeLock lock = lock();
+        Dashing.homeSeen();
+        advanceCheck();
+        assertFalse(lock.isHeld());
+        assertTrue(DiagnosticLog.read(app).contains("[awake] screen timeout released: Dasher's home shows no dash"));
+        Dashing.seen(app);
+        advanceCheck();
+        assertTrue("the dash seen again", lock.isHeld());
+    }
+
+    /**
+     * With Dasher in front showing the dash (its wait for offers, read once and unchanged since), the hold goes on
+     * however long ago the dash was last seen to change; with another app in front, only within 15 minutes of a sign of
+     * the dash.
+     */
+    @Test public void dasherShowingTheDashHoldsAndAnotherAppNeedsAFreshSignOfIt() {
+        service = Robolectric.buildService(OfferFilterService.class).create();
+        OfferFilterService reader = service.get();
+        reader.onServiceConnected();
+        showWaiting(reader);
+        advanceCheck();
+        PowerManager.WakeLock lock = lock();
+        assertTrue(lock.isHeld());
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS + 60_000));
+        advanceCheck();
+        assertTrue("Dasher in front still shows the dash's wait for offers", lock.isHeld());
+        showWindow(reader, "com.google.android.apps.maps", "Head north on Main St");
+        advanceCheck();
+        assertFalse("another app in front, nothing of the dash seen for 15 minutes", lock.isHeld());
+        Dashing.seen(app);
+        advanceCheck();
+        assertTrue("an offer's notification (a sign of the dash) holds it again", lock.isHeld());
+        // Dasher's own earnings page (figures, no offer or dash screen) is no sign of the dash.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ScreenAwake.FRESH_MS + 60_000));
+        showWindow(reader, "com.doordash.driverapp", "Earnings this week $412.50");
+        advanceCheck();
+        assertFalse(lock.isHeld());
     }
 
     @Test public void pauseNoRulesDashEndAndPendingConsentEachRelease() {
@@ -133,13 +245,13 @@ public class ScreenAwakeTest {
         assertFalse("dash paused or ended", lock.isHeld());
     }
 
-    @Test public void pendingConsentNeverEvenAsksWhichWindowIsVisible() {
-        AtomicInteger windowReads = new AtomicInteger();
-        awake = new ScreenAwake(app, () -> { windowReads.incrementAndGet(); return true; });
+    @Test public void pendingConsentNeverEvenAsksWhetherTheScreenReaderIsUp() {
+        AtomicInteger readerChecks = new AtomicInteger();
+        awake = new ScreenAwake(app, () -> { readerChecks.incrementAndGet(); return true; });
         ConsentedTestApp.forget(app);
         awake.start();
         advanceCheck();
-        assertEquals(0, windowReads.get());
+        assertEquals(0, readerChecks.get());
         assertNull(ShadowPowerManager.getLatestWakeLock());
     }
 
@@ -199,9 +311,10 @@ public class ScreenAwakeTest {
         advanceCheck();
         PowerManager.WakeLock lock = lock();
         assertTrue(lock.isHeld());
-        showWindow(reader, "com.example.reader", "An unrelated app");
+        // The owner: "Don't let it lock mid-dash", whatever app is in front (a map, say), so Peek can still work.
+        showWindow(reader, "com.google.android.apps.maps", "Head north on Main St");
         advanceCheck();
-        assertFalse("Dasher only in the background must not hold the screen", lock.isHeld());
+        assertTrue("another app in front during the dash still holds off the timeout", lock.isHeld());
         showWaiting(reader);
         advanceCheck();
         assertTrue(lock.isHeld());
