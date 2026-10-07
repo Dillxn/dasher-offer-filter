@@ -631,7 +631,7 @@ public class AcceptanceEvidenceTest {
     @Test
     public void aNotificationDeclineIsMarkedBeforeItIsSent() {
         // Marked first: Dasher may react (and the screen reader read it) before send() returns. A send that fails
-        // stays marked, which only means nothing is learned for a minute.
+        // stays marked, which only means no delivery screen counts an offer as accepted for a minute.
         PendingIntent decline = PendingIntent.getBroadcast(app, 0, new Intent("test.decline"),
                 PendingIntent.FLAG_IMMUTABLE);
         decline.cancel();

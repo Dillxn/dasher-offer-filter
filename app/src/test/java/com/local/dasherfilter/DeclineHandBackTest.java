@@ -70,7 +70,7 @@ public class DeclineHandBackTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -338,7 +338,8 @@ public class DeclineHandBackTest {
     }
 
     @Test
-    public void takeoverFollowedByDeliveryShowsAcceptedWithoutTeaching() {
+    public void takeoverFollowedByDeliveryShowsAcceptedForDisplayOnly() {
+        FilterSettings before = FilterStore.load(app);
         OfferFilterService service = service();
         show(service, offer("$7.90", "0:35"));
         pass(300);
@@ -347,7 +348,13 @@ public class DeclineHandBackTest {
         DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
         assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(entry));
         assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
-        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_LEARNED));
+        contains(DecisionLog.report(app, 1), "delivery screen followed the offer you took over; display only");
+        // The user's acceptance of the offer they took over: never the app's automatic one, and no rule changes.
+        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        FilterSettings after = FilterStore.load(app);
+        assertTrue(Arrays.equals(before.minimums(), after.minimums()));
+        assertEquals(before.maxStops, after.maxStops);
+        assertEquals(before.minimumScalePercent, after.minimumScalePercent);
     }
 
     @Test

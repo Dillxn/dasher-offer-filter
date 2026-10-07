@@ -43,7 +43,7 @@ public final class AutoAcceptAdapterTest {
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 1000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         FilterStore.setAutoAcceptEnabled(app, true);
         ActiveRouteStore.clear(app); RestartSuppression.clear(app); AutoAcceptMemory.clear(app);
         DiagnosticLog.clear(app); DecisionLog.forgetCache(); DecisionLog.clear(app);
@@ -67,7 +67,7 @@ public final class AutoAcceptAdapterTest {
         assertEquals(0, clicks(accept)); pass(500); assertEquals(0, clicks(accept));
         pass(400); assertEquals(1, clicks(accept)); assertEquals(0, clicks(decline));
         assertNull(ActiveRouteStore.load(app));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
         assertTrue(DiagnosticLog.read(app).contains("Accept REQUESTED"));
         assertFalse(DiagnosticLog.read(app).contains("Accept NOT_SENT"));
         assertEquals(DecisionLog.Action.PASSES, DecisionLog.recent(app, 1).get(0).action);
@@ -241,7 +241,7 @@ public final class AutoAcceptAdapterTest {
         assertRulesUnchanged();
         assertTrue(DiagnosticLog.read(app).contains("automatic Accept was requested, and Dasher showed a delivery screen"));
     }
-    @Test public void serviceRestartSuppressesRepeatAndRetainsAutomaticLearningProvenance() {
+    @Test public void serviceRestartSuppressesRepeatAndRetainsAutomaticProvenance() {
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:30")); pass(900); assertEquals(1, clicks(accept));
         controller.destroy(); connect();
         show(offer("$20.00", "2 stops (4 mi) • 20 min", "0:29")); pass(900);
@@ -260,7 +260,7 @@ public final class AutoAcceptAdapterTest {
         assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(entry));
         assertRulesUnchanged();
     }
-    /** Nothing an acceptance shows teaches anything: the $10 minimum and its bar stay exactly as set. */
+    /** No acceptance changes any rule (0.5.0): the $10 minimum and its bar stay exactly as set. */
     private void assertRulesUnchanged() {
         FilterSettings now = FilterStore.load(app);
         assertArrayEquals(new int[] {1000, 0, 0, 0, 0, 0}, now.minimums());
@@ -277,7 +277,7 @@ public final class AutoAcceptAdapterTest {
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
         pass(16_000);
         assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
     }
     @Test public void idleEndsAutomaticConfirmationBeforeALaterUnrelatedDelivery() {
         show(node("Finding offers", false));
@@ -318,7 +318,7 @@ public final class AutoAcceptAdapterTest {
         show(node("Arrived at store", true));
         assertNull(ActiveRouteStore.load(app));
         assertFalse(DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
-        assertEquals(0, FilterStore.load(app).lastAcceptedCents);
+        assertRulesUnchanged();
     }
     @Test public void confirmedAutomaticRequestNeverSaysTheUserTappedAccept() {
         show(node("Finding offers", false));

@@ -51,7 +51,7 @@ public class ConfirmationLeftToYouTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -163,7 +163,7 @@ public class ConfirmationLeftToYouTest {
 
     @Test
     public void vanishedPlusPayDoesNotTurnTheSameUncertainOfferIntoAKnownFailure() {
-        FilterStore.save(app, new FilterSettings(true, 600, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 600, 0, 0, 0));
         OfferFilterService service = service();
         AccessibilityNodeInfo first = node(null, false);
         for (String label : new String[]{"+$1", "$5.75", "2 stops (7.2 mi) • 21 min", "0:35"}) {
@@ -179,7 +179,7 @@ public class ConfirmationLeftToYouTest {
 
     @Test
     public void aLargerFreshBonusNeverInheritsTheSmallerCeiling() throws Exception {
-        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 800, 0, 0, 0));
         OfferFilterService service = service();
         show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         show(service, bonusOffer("+$2", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34"));
@@ -188,7 +188,7 @@ public class ConfirmationLeftToYouTest {
 
     @Test
     public void newQualifierInvalidatesTheOldCeilingEvenAfterItDisappears() throws Exception {
-        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 800, 0, 0, 0));
         OfferFilterService service = service();
         show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34", "per delivery"));
@@ -209,7 +209,7 @@ public class ConfirmationLeftToYouTest {
 
     @Test
     public void aSecondBonusInvalidatesTheOldCeiling() throws Exception {
-        FilterStore.save(app, new FilterSettings(true, 800, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 800, 0, 0, 0));
         OfferFilterService service = service();
         show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:35"));
         show(service, bonusOffer("+$1", "$7.00", "2 stops (7.2 mi) • 21 min", "0:34", "+$2"));
@@ -219,7 +219,7 @@ public class ConfirmationLeftToYouTest {
 
     @Test
     public void changedStackCountCannotReuseTheOldBoundOrBecomeExactPay() throws Exception {
-        FilterStore.save(app, new FilterSettings(true, 1500, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1500, 0, 0, 0));
         OfferFilterService service = service();
         show(service, bonusOffer("+$1", "$13.00", "3 stops (7.0 mi) • 33 min", "0:35",
                 "Pick up 2 orders", "Multiple dropoffs (2 stops)"));

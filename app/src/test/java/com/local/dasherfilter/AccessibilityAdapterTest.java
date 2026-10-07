@@ -53,7 +53,7 @@ public class AccessibilityAdapterTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, new FilterSettings(true, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         DecisionLog.forgetCache();
         OfferSilencer.forgetCache();
         // Reads run on the main looper here, so each event is read before show() returns; ScannerThreadTest runs
@@ -846,7 +846,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void pauseRevokesPendingConfirmation() {
         show(offer("$7.90"));
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
 
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
@@ -892,7 +892,7 @@ public class AccessibilityAdapterTest {
     public void pausedNothingOfDasherIsReadSoNothingIsDeclinedOrRecorded() {
         // Paused is the safe mode (the 6 October 2026 incident): not one node of Dasher's is read, so an offer is
         // neither declined nor written to the history, and the status says so.
-        FilterStore.save(app, new FilterSettings(false, 2000, 0, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         AccessibilityNodeInfo root = offer("$7.90");
         show(root);
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
