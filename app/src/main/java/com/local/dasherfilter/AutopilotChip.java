@@ -149,6 +149,9 @@ final class AutopilotChip extends TextView {
             chip.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.AT_MOST), any);
             int beside = inner - chip.getMeasuredWidth() - gap;
             if (beside > 0) {
+                // Its lines are read from the layout this measure makes: never one Android's measure cache skipped
+                // (the chip's words changing back to an earlier width would otherwise read the wider layout's lines).
+                words.forceLayout();
                 words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY), any);
                 Layout layout = words.getLayout();
                 stacked = layout != null && layout.getLineCount() > MOST_LINES_BESIDE;

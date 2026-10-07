@@ -257,6 +257,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final float SKY_WITH_MAP_SHORT = 1f;
     private static final float SKY_WHOLE = 1.7f;
     private AreaMapView areaMap;
+    /** The road along the bottom of a whole screen: scenery, so it gives way first ({@link RoadScroll}). */
+    private View road;
+    private static final int ROAD_DP = 78;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
     private double[] areaHere;
@@ -320,8 +323,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
         scene = new ScenePage(this, ui);
-        mainPage = addPage(root, scene);
-        settingsPage = addPage(root, ui.column());
+        mainPage = addPage(root, scene, new RoadScroll());
+        settingsPage = addPage(root, ui.column(), new ScrollView(this));
         buildMain((LinearLayout) mainPage.getChildAt(0));
         buildSettings((LinearLayout) settingsPage.getChildAt(0));
         buildSheet(root);
@@ -566,8 +569,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Pages ----
 
-    private ScrollView addPage(FrameLayout root, LinearLayout page) {
-        ScrollView scroll = new ScrollView(this);
+    private ScrollView addPage(FrameLayout root, LinearLayout page, ScrollView scroll) {
         // The main page fills exactly one screen; it scrolls only if a very large font leaves no other way.
         scroll.setFillViewport(true);
         scroll.setVisibility(View.GONE);
@@ -653,6 +655,40 @@ public final class MainActivity extends Activity implements Updater.Busy {
         body.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(12));
         page.addView(body, Ui.matchWidth());
         return body;
+    }
+
+    /**
+     * The main page's scroller. The page fills exactly one screen; before it would have to scroll (a 640 dp phone with
+     * Autopilot's status line in the ground, say), the road, which is only scenery, gives up the height the page lacks,
+     * down to none. It scrolls only when that is not enough: a very large font.
+     */
+    private final class RoadScroll extends ScrollView {
+        RoadScroll() {
+            super(MainActivity.this);
+        }
+
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            boolean shown = road != null && road.getVisibility() == View.VISIBLE;
+            if (shown) roadHeight(ui.dp(ROAD_DP));
+            super.onMeasure(widthSpec, heightSpec);
+            View page = getChildAt(0);
+            if (!shown || page == null) return;
+            int lack = page.getMeasuredHeight() - (getMeasuredHeight() - getPaddingTop() - getPaddingBottom());
+            if (lack <= 0) return;
+            roadHeight(Math.max(0, ui.dp(ROAD_DP) - lack));
+            super.onMeasure(widthSpec, heightSpec);
+        }
+
+        /** The road at {@code height}, measured afresh (never from Android's measure cache) with the page above it. */
+        private void roadHeight(int height) {
+            ViewGroup.LayoutParams params = road.getLayoutParams();
+            if (params.height == height) return;
+            params.height = height;
+            for (View at = road; at != null && at != this; at = at.getParent() instanceof View
+                    ? (View) at.getParent() : null) {
+                at.forceLayout();
+            }
+        }
     }
 
     /** The drawn hills and road a page ends on. */
@@ -832,7 +868,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         addAreas(body);
         // The road needs a whole screen; in a short window (beside Dasher or not) the page ends at the skyline or
         // the map, and a window changing size builds the page again.
-        View road = ground(page, 78);
+        road = ground(page, ROAD_DP);
         road.setVisibility(compact || getResources().getConfiguration().fontScale >= 1.5f
                 ? View.GONE : View.VISIBLE);
         // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
@@ -2332,6 +2368,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         FilterStore.save(this, saved.withEnabled(true));
+        // Autopilot's plans are for the rules with their switch: a plan made while paused says nothing now, so one is
+        // asked for, for display. Never AutopilotRuntime.rulesChanged: resuming changes no minimum (and makes no jump).
+        AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.USER);
         rulesChanged();
         toast("Auto-decline is on.");
         if (saved.hasMonetaryRule() && !saved.autopilot && !FilterStore.goalAsked(this)) chooseAutopilotGoal();
