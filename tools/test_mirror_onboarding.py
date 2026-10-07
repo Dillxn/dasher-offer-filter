@@ -77,6 +77,14 @@ class MirrorOnboardingTest(unittest.TestCase):
                 self.assertIn(phrase, self.page.text)
         self.assertNotIn("Updates can't install", self.page.text, "Settings has no such row since 0.5.0")
 
+    def test_a_0472_install_held_for_a_dash_it_never_saw_end_is_told_how_to_update(self):
+        # 0.4.72 installs by itself only after a dash end it read; it has no Install now row and no 8-hour limit.
+        for phrase in ("Already on 0.4.72?", "Update ready: installs after your dash",
+                       "tap Updates once with Dasher not on screen", "install this download over it",
+                       "From 0.5.0, when an update is ready", "from 0.5.0, or eight quiet hours"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.page.text)
+
     def test_beta_risks_and_behavior_defaults_are_explicit(self):
         for phrase in ("Experimental beta", "real-phone", "acceptance rate", "deactivate",
                        "Don't handle your phone while driving", "Peek is on by default",

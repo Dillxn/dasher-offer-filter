@@ -189,12 +189,16 @@ it is not needed for filtering.</li>
 <h2>Updates</h2>
 <p>Already installed? Install over the existing cloud-signed 0.4.x app; don't uninstall for a normal update.
 The retired 0.3.1 signing chain is different.</p>
+<p>Already on 0.4.72? It installs an update by itself only after it has seen your dash end. If its Settings says
+<b>Update ready: installs after your dash</b> while you are not dashing (for example with {name}'s Accessibility
+turned off), tap <b>Updates</b> once with Dasher not on screen, or install this download over it. Turn Accessibility
+back on afterwards if you switched it off.</p>
 <p>For in-app updates, tap <b>Fix</b> beside <b>Allow updates</b> on {name}'s homepage and enable <b>Allow from this
-source</b>. This is separate from your browser's first-install permission. When an update is ready and no dash is on,
-the homepage shows <b>Update ready · Install now</b>; in Settings, <b>Updates</b> says where updates stand and a tap
-checks now. Android may request installation confirmation; review its prompt. Automatic installation waits for an
-observed dash end (or eight quiet hours with the screen off and nothing of a dash seen), while a manual check can
-update mid-dash when Dasher is not on screen.</p>
+source</b>. This is separate from your browser's first-install permission. From 0.5.0, when an update is ready and
+no dash is on, the homepage shows <b>Update ready · Install now</b>; in Settings, <b>Updates</b> says where updates
+stand and a tap checks now. Android may request installation confirmation; review its prompt. Automatic installation
+waits for an observed dash end (from 0.5.0, or eight quiet hours with the screen off and nothing of a dash seen),
+while a manual check can update mid-dash when Dasher is not on screen.</p>
 <p><a href="https://offerfilter.org/#help">Help and setup</a> ·
 {legal}.
 The Terms and Privacy are dated beta terms. Privacy, data-deletion and security questions only:
