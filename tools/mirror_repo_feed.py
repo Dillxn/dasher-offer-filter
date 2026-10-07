@@ -152,9 +152,9 @@ if you want in-app updates. This is separate from your browser's first-install p
 now. Android may request installation confirmation; review its prompt. Automatic installation waits for an observed
 dash end, while a manual check can update mid-dash when Dasher is not on screen.</p>
 <p><a href="https://dillxn.github.io/offer-filter-site/#help">Help and setup</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/TERMS.md">Terms of use</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/PRIVACY.md">Privacy</a> ·
-<a href="https://github.com/Dillxn/offer-filter-site/blob/app-source/LICENSE">MIT License</a>.
+<a href="https://github.com/Dillxn/dasher-offer-filter/blob/main/TERMS.md">Terms of use</a> ·
+<a href="https://github.com/Dillxn/dasher-offer-filter/blob/main/PRIVACY.md">Privacy</a> ·
+<a href="https://github.com/Dillxn/dasher-offer-filter/blob/main/LICENSE">MIT License</a>.
 The Terms and Privacy are drafts, not legal advice; have a lawyer review them before public release.</p>
 <p><a href="/verification.json">Verification</a> · <a href="/signing-receipt.txt">Signing receipt</a></p>
 </body></html>

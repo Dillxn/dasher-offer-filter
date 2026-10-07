@@ -72,7 +72,7 @@ class MirrorOnboardingTest(unittest.TestCase):
                 self.assertIn(phrase, self.page.text)
 
     def test_public_notices_and_existing_verification_links(self):
-        base = "https://github.com/Dillxn/offer-filter-site/blob/app-source/"
+        base = "https://github.com/Dillxn/dasher-offer-filter/blob/main/"
         for destination in (base + "PRIVACY.md", base + "TERMS.md", base + "LICENSE",
                             "/verification.json", "/signing-receipt.txt", "/OfferFilter.apk",
                             "https://dillxn.github.io/offer-filter-site/#help"):
