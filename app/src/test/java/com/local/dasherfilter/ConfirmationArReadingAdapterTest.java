@@ -179,7 +179,10 @@ public final class ConfirmationArReadingAdapterTest {
     @Test public void autopilotsThreadIsStartedAsScreenReadingConnects() {
         AutopilotRuntime.executorForTests = null;
         assertFalse("Autopilot is off: nothing of it plans", FilterStore.load(app).autopilot);
+        int warmed = AutopilotRuntime.WARMED.get();
         service();
+        // Counted, since a thread an earlier test of this process started would also be alive here.
+        assertEquals("the connection asks for the thread once", warmed + 1, AutopilotRuntime.WARMED.get());
         assertTrue("the offer-autopilot thread runs from the connection on", autopilotThreadAlive());
     }
 

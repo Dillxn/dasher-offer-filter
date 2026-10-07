@@ -329,8 +329,10 @@ public class StopReportsTest extends AndroidAdapterTestBase {
         assertEquals("", StopReports.section(app));
         assertFalse(StopReports.unacknowledged(app));
 
-        // Accepting the notice starts it: the record is read now.
+        // Accepting the notice starts it: the crash handler goes in, and the record is read now.
         Consent.accept(app);
+        assertTrue("the crash handler goes in as the notice is accepted",
+                Thread.getDefaultUncaughtExceptionHandler() != before);
         StopReports.flush();
         assertTrue(StopReports.section(app), StopReports.section(app).contains("crash, app in front"));
         assertTrue(StopReports.unacknowledged(app));

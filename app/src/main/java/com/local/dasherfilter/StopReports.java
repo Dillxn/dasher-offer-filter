@@ -50,6 +50,9 @@ final class StopReports {
         return thread;
     });
     private static volatile boolean installed;
+    /** The handler {@link #install} put in, and the one it replaced: only {@link #forgetCache} (tests) uses them. */
+    private static Thread.UncaughtExceptionHandler ours;
+    private static Thread.UncaughtExceptionHandler replaced;
     private static volatile Object checkedFor;
 
     /** One stop, as kept and as a report carries it. */
@@ -82,8 +85,9 @@ final class StopReports {
             installed = true;
             File note = new File(context.getApplicationContext().getFilesDir(), NOTE);
             String version = Updater.version(context.getApplicationContext());
-            Thread.setDefaultUncaughtExceptionHandler(handler(note, version,
-                    Thread.getDefaultUncaughtExceptionHandler()));
+            replaced = Thread.getDefaultUncaughtExceptionHandler();
+            ours = handler(note, version, replaced);
+            Thread.setDefaultUncaughtExceptionHandler(ours);
         }
     }
 
@@ -341,9 +345,21 @@ final class StopReports {
         }
     }
 
-    /** As a new process would: the next start reads the record again. For tests. */
+    /**
+     * As a new process would: the next start reads the record again, and no crash handler is in (the one installed is
+     * taken out again while it is still the default). For tests, so none inherits an earlier one's handler: the
+     * check that nothing is installed before the notice is accepted would otherwise pass however the gate behaved.
+     */
     static void forgetCache() {
         checkedFor = null;
+        synchronized (StopReports.class) {
+            if (installed && Thread.getDefaultUncaughtExceptionHandler() == ours) {
+                Thread.setDefaultUncaughtExceptionHandler(replaced);
+            }
+            installed = false;
+            ours = null;
+            replaced = null;
+        }
     }
 
     private StopReports() {}

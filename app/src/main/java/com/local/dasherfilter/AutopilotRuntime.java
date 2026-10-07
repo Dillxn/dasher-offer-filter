@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
@@ -182,6 +183,12 @@ final class AutopilotRuntime {
         }
     }
 
+    /**
+     * How many times {@link #warm} was asked (the screen reader, as it connects): what a test checks, since the thread
+     * itself is the process's and an earlier test may have started it.
+     */
+    static final AtomicInteger WARMED = new AtomicInteger();
+
     /** The "offer-autopilot" thread, created on first use, at background priority. */
     private static final class Worker {
         static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(work -> {
@@ -219,6 +226,7 @@ final class AutopilotRuntime {
      * process; nothing while the tests run Autopilot elsewhere ({@link #executorForTests}).
      */
     static void warm() {
+        WARMED.incrementAndGet();
         if (executorForTests != null) return;
         try {
             Worker.EXECUTOR.execute(() -> { });
