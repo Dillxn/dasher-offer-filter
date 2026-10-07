@@ -123,7 +123,7 @@ public class BundledNotesTest {
         String card = String.join(" ", news);
         for (String headline : new String[] {"Your minimums grow", Growth.LEAST_BAR + "% or more",
                 Growth.OFFERS + " offers over " + Growth.LEAST_DAYS + " days",
-                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "All three minimums grow together",
+                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "All the minimums you set grow together",
                 "max stops never changes", "lower its bar to protect your acceptance rate", "Turn growth off"}) {
             assertTrue(headline, card.contains(headline));
         }

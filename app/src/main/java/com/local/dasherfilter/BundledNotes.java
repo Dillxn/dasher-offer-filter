@@ -60,8 +60,8 @@ final class BundledNotes {
         release("0.5.1",
                 "Your minimums grow: when Autopilot's bar stays at 103% or more for 30 offers over 2 days, that gain "
                         + "moves into your minimums, at most 10% at a time.",
-                "A note says what grew and why, with Undo. All three minimums grow together; max stops never "
-                        + "changes.",
+                "A note says what grew and why, with Undo. All the minimums you set grow together; max stops "
+                        + "never changes.",
                 "Autopilot can still lower its bar to protect your acceptance rate. Turn growth off in Autopilot's "
                         + "details.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
