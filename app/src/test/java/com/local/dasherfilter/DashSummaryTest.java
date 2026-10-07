@@ -515,6 +515,14 @@ public class DashSummaryTest {
                 DashSummary.withoutAcceptanceRate(Arrays.asList("$7.90", "100% of tips")));
     }
 
+    /**
+     * The rate's figure standing on its own anywhere in a text ("37%", "37 percent", "AR 37", "37, %"), in any digits;
+     * never part of a word or a longer number (a feedback reference "37f3a024", "1370"), a clock (":37") or a decimal
+     * ("$3.37"), which are not the rate.
+     */
+    private static final java.util.regex.Pattern RATE_FIGURE =
+            java.util.regex.Pattern.compile("(?<![\\w:.])37(?![\\w:])|\uFF13\uFF17");
+
     /** Dasher's question as the screen reader logs it, its labels in between. */
     private static String questionLine(String labels) {
         return " [screen] confirmation|||false|true win=full/-/dasher/100 labels=[Are you sure you want to decline "
@@ -526,7 +534,7 @@ public class DashSummaryTest {
     public void theRateNeverLeavesInAnyWayItCanBeWritten() {
         // Dasher's question, its rate written every way a screen reader may hand it over: never a digit of it.
         String masked = questionLine("#%");
-        for (String rate : new String[] {"9%", "9 %", "9 %", "9 %", "９％", "9﹪", "9 percent",
+        for (String rate : new String[] {"9%", "9 %", "9\u00A0%", "9\u202F%", "\uFF19\uFF05", "9\uFE6A", "9 percent",
                 "9 Percent", "9percent", "9 per cent", "9 pct", "9 PCT", "9.5%"}) {
             assertEquals(rate, masked, DashSummary.withoutAcceptanceRate(questionLine(rate)));
         }
@@ -634,7 +642,7 @@ public class DashSummaryTest {
         assertTrue(summary, summary.contains("\n    then " + DashSummary.relative(now + 1_000L - start)
                 + " Not counted from what followed: acceptance rate #%\n"));
         assertTrue("the decision's own figures stay", summary.contains("| DECLINE | pay $5.75 | needed $6.25"));
-        assertFalse(summary, summary.contains("37"));
+        assertFalse(summary, RATE_FIGURE.matcher(summary).find());
     }
 
     @Test
@@ -670,7 +678,7 @@ public class DashSummaryTest {
         assertEquals(tried + 1, service.count());
         String sent = summarySent(tried);
         assertEquals(token, service.requests().get(tried).getString("reportToken"));
-        assertFalse(sent, sent.contains("37"));
+        assertFalse(sent, RATE_FIGURE.matcher(sent).find());
         assertFalse(sent, sent.contains("33 more"));
         assertFalse(sent, sent.contains("ar reading"));
         assertFalse(sent, sent.contains("RECOVERY: need"));
@@ -695,7 +703,7 @@ public class DashSummaryTest {
         DashSummary.flush();
         String built = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
                 modelForTest(start));
-        assertFalse(built, built.contains("37"));
+        assertFalse(built, RATE_FIGURE.matcher(built).find());
         assertEquals(built, DashSummary.remask(built));
         assertEquals(built, FeedbackOutbox.remask(FeedbackOutbox.TEXT, true, built));
         // What the user sends themselves keeps what they chose to send: only the personal masking applies to it.

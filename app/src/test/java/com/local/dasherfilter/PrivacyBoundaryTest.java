@@ -36,6 +36,13 @@ public class PrivacyBoundaryTest {
     private static final String WARNING = "Declining this offer may lower your acceptance rate";
     /** Dasher's question as the screen reader hands it over: the rate (37%, a figure nothing else here shows). */
     private static final List<String> ASKED = Arrays.asList(QUESTION, WARNING, "37%", "Decline offer", "Go back");
+    /**
+     * The rate's figure standing on its own anywhere in a text ("37%", "37 percent", "AR 37", "37, %"), in any digits;
+     * never part of a word or a longer number (a feedback reference "37f3a024", "1370"), a clock (":37") or a decimal
+     * ("$3.37"), which are not the rate.
+     */
+    private static final java.util.regex.Pattern RATE_FIGURE =
+            java.util.regex.Pattern.compile("(?<![\\w:.])37(?![\\w:])|\uFF13\uFF17");
     /** The worked example's offers, newest first: pay in cents, miles, minutes; two stops each. */
     private static final int[] PAY = {1625, 975, 700, 1350, 575, 800, 2250, 600, 1100, 350, 925, 1490, 400, 1050,
             725, 1700, 875, 500, 1225, 650};
@@ -371,7 +378,7 @@ public class PrivacyBoundaryTest {
         long start = Dashing.currentStart(app);
         // The same question as other screen readers or another Dasher may hand it over: the rate written out, split
         // into two labels, abbreviated, or among an offer's own labels with no screen line of its own.
-        for (String rate : new String[] {"37 percent", "37, %", "37 pct", "３７％"}) {
+        for (String rate : new String[] {"37 percent", "37, %", "37 pct", "\uFF13\uFF17\uFF05"}) {
             DiagnosticLog.log(app, "screen", "confirmation|||false|true win=full/-/dasher/100 labels=[" + QUESTION
                     + ", " + WARNING + ", " + rate + ", Decline offer, Go back] metricParts=[]");
         }
@@ -403,9 +410,8 @@ public class PrivacyBoundaryTest {
         assertTrue(summary, summary.contains("read: [" + QUESTION + ", XX #%, Decline offer]"));
         assertTrue(summary, summary.contains("read: [$5.75, Declining this $5.75 offer xxx lower your acceptance rate "
                 + "to # xxxxxxx]"));
-        // Not one 37 anywhere, written however: a clock's ":37" alone would not be the rate.
-        assertFalse(summary, java.util.regex.Pattern.compile("(?<![:\\d])37(?!\\d)|３７").matcher(summary)
-                .find());
+        // Not one 37 anywhere, written however.
+        assertFalse(summary, RATE_FIGURE.matcher(summary).find());
         assertFalse(summary, summary.contains("ar reading"));
         assertFalse(summary, java.util.regex.Pattern.compile("\\[autopilot\\] plan \\d").matcher(summary).find());
         assertTrue("Autopilot's lines without the rate stay", summary.contains("[autopilot] on; goal 70%"));
@@ -459,7 +465,7 @@ public class PrivacyBoundaryTest {
             String summary = DashSummary.build(app, start, start + 60_000L, DashSummary.End.DASH_OVER, model);
             assertTrue(summary, summary.contains("] " + DiagnosticLog.QUESTION_PHASE + "|"));
             assertTrue(summary, summary.contains(WARNING + ", #, %, Decline offer"));
-            assertFalse(summary, java.util.regex.Pattern.compile("(?<![:\\d])37(?!\\d)").matcher(summary).find());
+            assertFalse(summary, RATE_FIGURE.matcher(summary).find());
         } finally {
             reader.destroy();
             OfferFilterService.scanLooperForTests = null;
@@ -479,7 +485,7 @@ public class PrivacyBoundaryTest {
         AutopilotRuntime.cleared(app);
         DiagnosticLog.clear(app);
 
-        assertFalse("no copy of the rate in the log either", DiagnosticLog.read(app).contains("37"));
+        assertFalse("no copy of the rate in the log either", RATE_FIGURE.matcher(DiagnosticLog.read(app)).find());
         assertNull(AutopilotStore.reading(app, wall));
         assertFalse(app.getSharedPreferences(AutopilotStore.PREFS, Context.MODE_PRIVATE).contains("ar_percent"));
         assertTrue("the switch, goal and minimums stay", FilterStore.load(app).autopilot);
