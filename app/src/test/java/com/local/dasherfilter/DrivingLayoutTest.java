@@ -247,7 +247,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             starter.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             refreshed();
             assertEquals("how to reach the knobs, which are not in the strip",
-                    "Drag the divider to give Offer Filter more room, then drag a knob to set a minimum.",
+                    "Drag the divider for more room, then drag a knob.",
                     ShadowToast.getTextOfLatestToast());
             assertTrue(strip.isShown());
             assertFalse("nothing saved", FilterStore.load(app).hasAnyRule());

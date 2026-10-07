@@ -450,8 +450,8 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             shownIcon(content, "Split screen with Dasher").performClick();
             assertEquals("asked to split, then opened recent apps", Arrays.asList("split", "recents"), asked);
-            assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()
-                    .startsWith("Tap Offer Filter's icon above its card and choose split screen."));
+            assertEquals("Tap Offer Filter's icon above its card → split screen",
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
             // The user splits it from recent apps half a minute later: Dasher still opens in the other half.

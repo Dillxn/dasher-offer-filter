@@ -83,8 +83,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * "Set my own" in the driving strip, which has no knobs: how to reach them, as the strip's own line says it
      * ({@link DrivingStrip}: "drag the divider to set one").
      */
-    static final String KNOBS_BEYOND_STRIP = "Drag the divider to give " + AppName.NAME + " more room, then drag a "
-            + "knob to set a minimum.";
+    static final String KNOBS_BEYOND_STRIP = "Drag the divider for more room, then drag a knob.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your rules are simpler now";

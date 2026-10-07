@@ -200,8 +200,15 @@ final class DasherSplit {
     }
 
     private static String floatingHint() {
-        return "Open " + AppName.NAME + " in full screen, then choose Split screen with Dasher.";
+        return FLOATING_HINT;
     }
+
+    /** In a floating window: Android splits only a full-screen app. */
+    static final String FLOATING_HINT = "Open " + AppName.NAME + " in full screen, then choose Split screen with Dasher.";
+    /** Screen reading off: Android's split action is asked through it. */
+    static final String SCREEN_READING_FIRST = "Turn on screen reading first: the split goes through it.";
+    /** Android refused to open recent apps too: the user opens them. */
+    static final String RECENTS_REFUSED = "Open recent apps, then " + AppName.NAME + "'s icon → split screen";
 
     /**
      * The tap. Already split, Dasher opens in the other half; otherwise the screen is split first and Dasher opens
@@ -234,7 +241,7 @@ final class DasherSplit {
         }
         if (!OfferFilterService.isConnected()) {
             log(activity, "tap: screen reading is off, nothing asked");
-            return "Turn on screen reading first: Android splits the screen for " + AppName.NAME + " through it.";
+            return SCREEN_READING_FIRST;
         }
         requestedAt = SystemClock.uptimeMillis();
         waitMs = PENDING_MS;
@@ -285,8 +292,7 @@ final class DasherSplit {
         }
         requestedAt = 0;
         log(activity, "Android refused to open recent apps");
-        return "This phone did not split the screen. Open recent apps and choose split screen from " + AppName.NAME
-                + "'s icon.";
+        return RECENTS_REFUSED;
     }
 
     /** "pixel", "samsung" or "other": the phone's maker, for words that match what its recent apps show. */
@@ -303,16 +309,14 @@ final class DasherSplit {
      * other by itself; elsewhere, the general words.
      */
     static String hint(String phone) {
+        // Shown over recent apps, which are open already: what to tap, short enough for a toast's two lines.
         switch (phone) {
             case "pixel":
-                return "In recent apps, tap " + AppName.NAME + "'s icon above its card, choose Split screen, then tap "
-                        + "Dasher.";
+                return "Tap " + AppName.NAME + "'s icon above its card → Split screen, then Dasher";
             case "samsung":
-                return "In recent apps, tap " + AppName.NAME + "'s icon above its card and choose Open in split screen "
-                        + "view. Dasher then opens in the other half.";
+                return "Tap " + AppName.NAME + "'s icon above its card → Open in split screen view";
             default:
-                return "Tap " + AppName.NAME + "'s icon above its card and choose split screen. Dasher then opens in "
-                        + "the other half.";
+                return "Tap " + AppName.NAME + "'s icon above its card → split screen";
         }
     }
 

@@ -147,7 +147,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             assertEquals(Arrays.asList(AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN,
                     AccessibilityService.GLOBAL_ACTION_RECENTS),
                     Shadows.shadowOf(service.get()).getGlobalActionsPerformed());
-            assertEquals("In recent apps, tap Offer Filter's icon above its card, choose Split screen, then tap Dasher.",
+            assertEquals("Tap Offer Filter's icon above its card → Split screen, then Dasher",
                     ShadowToast.getTextOfLatestToast());
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
             String log = DiagnosticLog.read(app);
@@ -180,8 +180,8 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
-            assertEquals("In recent apps, tap Offer Filter's icon above its card and choose Open in split screen view. "
-                    + "Dasher then opens in the other half.", ShadowToast.getTextOfLatestToast());
+            assertEquals("Tap Offer Filter's icon above its card → Open in split screen view",
+                    ShadowToast.getTextOfLatestToast());
             contains(DiagnosticLog.read(app), "[split] tap: Android refused the split request");
             contains(DiagnosticLog.read(app), "[split] recent apps opened, with the samsung hint");
         } finally {

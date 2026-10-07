@@ -64,12 +64,20 @@ final class SetupChecklist {
     static final int FOLD_FROM = 3;
     /** The listener's name in Android's list of apps with notification access (strings.xml listener_name). */
     static final String LISTENER_NAME = AppName.NAME + " background offers";
-    /** Where the accessibility list keeps downloaded apps, for phones that do not let an app open its own page. */
-    static final String FIND_IN_LIST = "In Accessibility, open Downloaded apps (or Installed apps) → " + AppName.NAME
-            + ", and turn it on.";
+    /**
+     * Where the accessibility list keeps downloaded apps, for phones that do not let an app open its own page. Each
+     * toast on Android's pages keeps to {@link #TOAST_MOST} characters, the action first: from Android 12 a text toast
+     * shows two lines at most and cuts the rest (ToastWordsTest).
+     */
+    static final String FIND_IN_LIST = "Downloaded apps (or Installed apps) → " + AppName.NAME + " → turn it on";
     static final String RESTART_ON_PAGE = "Turn " + AppName.NAME + " off, then on again.";
-    static final String RESTART_IN_LIST = "In Accessibility, open Downloaded apps (or Installed apps) → "
-            + AppName.NAME + ", then turn it off and on again.";
+    static final String RESTART_IN_LIST = "Downloaded apps (or Installed apps) → " + AppName.NAME
+            + " → turn it off and on";
+    /**
+     * The most characters a toast on one of Android's pages may have: two lines of a 300 dp text toast hold about 85 at
+     * the default font, fewer at the larger fonts many drivers use.
+     */
+    static final int TOAST_MOST = 72;
     /** Back from App info, on the service's own page. */
     static final String NOW_ON_PAGE = "Now turn on " + AppName.NAME + " here.";
     static final String FIND_LISTENER = "Turn on " + LISTENER_NAME + " here.";
