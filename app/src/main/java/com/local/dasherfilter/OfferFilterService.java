@@ -4808,8 +4808,8 @@ public final class OfferFilterService extends AccessibilityService {
                 : result == OfferRule.Result.KEEP ? "the offer passes your rules" : "the offer needs your review";
         if (!paused && navigating()) {
             String text = addOn != null ? Peek.addOnCardText(result, addOn.incremental, reason)
-                    : decision.belowMinimums
-                    ? AutopilotText.belowMinimumsCard(read, decision.scorePercent, decision.minimumScalePercent)
+                    : decision.belowMinimums ? AutopilotText.belowMinimumsCard(peekCardFacts(read),
+                            decision.scorePercent, decision.minimumScalePercent)
                     : Peek.cardText(result, read, reason);
             OfferSnapshot facts = addOn != null ? addOn.incremental : read;
             // The peeked post's own card, when the reading folded none in (and the peek follows no newer offer).
@@ -4826,6 +4826,13 @@ public final class OfferFilterService extends AccessibilityService {
             return;
         }
         peekOver("left Dasher up because " + why, Peek.Outcome.LEFT_WITH_USER);
+    }
+
+    /** A peeked offer's figures as its card shows them ({@link Peek#cardText}): "$5.75 · 6.6 mi · 27 min · 2 stops". */
+    private static String peekCardFacts(OfferSnapshot read) {
+        String pay = read.payCents != null ? DecisionLog.money(read.payCents) : "pay not read";
+        return read.miles == null && read.minutes == null && read.stops == null ? pay
+                : pay + " · " + DecisionLog.facts(read);
     }
 
     /**
