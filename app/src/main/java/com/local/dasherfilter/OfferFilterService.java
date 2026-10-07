@@ -8783,28 +8783,33 @@ public final class OfferFilterService extends AccessibilityService {
         }
 
         /**
-         * What the click was on, for the log: its node's class and the label its event or node holds. Only what the
-         * event and its node already hold: nothing is asked of Dasher.
+         * What the click was on, for the log: its node's class and a fixed action category (an Accept or a Decline
+         * control, by the words its event or node holds), never a label: click diagnostics keep only shape and action
+         * category, never event, ancestor or child text (PRIVACY.md). Only what the event and its node already hold:
+         * nothing is asked of Dasher.
          */
         String shape() {
-            String label = !text.isEmpty() ? String.join(" ", text) : description;
+            List<String> words = new ArrayList<>(text);
+            words.add(description);
             String kind = "";
             if (source != null) {
                 try {
                     CharSequence name = source.getClassName();
                     if (name != null) kind = name.toString().substring(name.toString().lastIndexOf('.') + 1);
-                    if (label.isEmpty() && source.getText() != null) {
-                        label = OfferEvidence.normalize(source.getText().toString());
-                    }
-                    if (label.isEmpty() && source.getContentDescription() != null) {
-                        label = OfferEvidence.normalize(source.getContentDescription().toString());
-                    }
+                    if (source.getText() != null) words.add(source.getText().toString());
+                    if (source.getContentDescription() != null) words.add(source.getContentDescription().toString());
                 } catch (RuntimeException gone) {
                     // Named by what was read before the node went away.
                 }
             }
-            return (kind.isEmpty() ? "a control" : kind) + (label.isEmpty() ? "" : " \"" + label + "\"")
-                    + (source == null ? ", no node" : "");
+            boolean accept = false;
+            boolean decline = false;
+            for (String word : words) {
+                accept |= OfferControls.isButton(word, "accept");
+                decline |= OfferControls.isButton(word, "decline");
+            }
+            String category = accept == decline ? "" : accept ? ", Accept" : ", Decline";
+            return (kind.isEmpty() ? "a control" : kind) + category + (source == null ? ", no node" : "");
         }
     }
 

@@ -42,6 +42,7 @@ import org.robolectric.shadows.ShadowToast;
 import org.robolectric.shadows.ShadowWindowManagerImpl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -436,6 +437,88 @@ public class DeclineHandBackTest {
             assertTrue(what + ": its question is left to the user", confirmTaps.isEmpty());
             assertEquals(what, DecisionLog.Action.USER_TOOK_OVER, lastAction());
             cents += 10;
+        }
+    }
+
+    /**
+     * PRIVACY.md: "Click diagnostics retain the control shape and action category, never its text labels." The click
+     * that hands a decline back is no exception: Dasher's click event can carry a View-based control's words (a card's
+     * merged text, a customer's name among them) or the clicked node can hold its own, and none of them reaches the
+     * log, a shared report or the summary after a dash. Only the node's class and a fixed category (Accept, Decline).
+     */
+    @Test
+    public void theHandBackLineNamesYourTapOnDasherByItsShapeNeverItsWords() throws Exception {
+        OfferFilterService service = service();
+        String store = "Chipotle Mexican Grill - Short Vine";
+        String[][] eventWords = {
+                {"Go back"},
+                {store, "Deliver to Robin Q", "Customer note: ring twice", "Clifton Heights"},
+                {},
+                {"Accept"},
+        };
+        int cents = 760;
+        long firstClick = 0;
+        for (int i = 0; i < eventWords.length; i++) {
+            show(service, idle());
+            pass(2_000);
+            AccessibilityNodeInfo shown = offer("$" + cents / 100 + "." + cents % 100, "0:35");
+            // The third holds its own words: a clickable text, as a Compose Text with a click handler is.
+            AccessibilityNodeInfo control = node(i == 2 ? store : null, true);
+            Shadows.shadowOf(shown).addChild(control);
+            List<Long> first = taps(decline, true);
+            show(service, shown);
+            assertEquals(1, first.size());
+
+            pass(120);
+            AccessibilityEvent tap = event(AccessibilityEvent.TYPE_VIEW_CLICKED);
+            tap.setEventTime(SystemClock.uptimeMillis());
+            for (String word : eventWords[i]) tap.getText().add(word);
+            ((ShadowAccessibilityRecord) Shadow.extract(tap)).setSourceNode(control);
+            if (firstClick == 0) firstClick = System.currentTimeMillis();
+            service.onAccessibilityEvent(tap);
+            idle(service);
+            pass(500);
+            cents += 10;
+        }
+
+        List<String> handBacks = new ArrayList<>();
+        for (String line : DiagnosticLog.read(app).split("\n")) {
+            if (line.contains("your tap on Dasher")) handBacks.add(line);
+        }
+        assertEquals(handBacks.toString(), eventWords.length, handBacks.size());
+        for (String line : handBacks) noLabels(line);
+        // The node's class, as Android names it ("a control" when it names none), then the fixed category if any.
+        assertTrue(handBacks.get(0), handBacks.get(0).matches(".*\\((a control|\\w+)\\); automatic decline stopped"));
+        assertTrue(handBacks.get(3),
+                handBacks.get(3).matches(".*\\((a control|\\w+), Accept\\); automatic decline stopped"));
+
+        // A shared report, and the summary after a dash with a counted problem 5 s after the first click.
+        int reported = 0;
+        for (String line : DiagnosticLog.fullReport(app).split("\n")) {
+            if (!line.contains("your tap on Dasher")) continue;
+            reported++;
+            noLabels(line);
+        }
+        assertEquals(eventWords.length, reported);
+        org.json.JSONObject model = new org.json.JSONObject();
+        model.put("counts", new org.json.JSONObject());
+        model.put("anomalies", new org.json.JSONArray().put(new org.json.JSONObject().put("t", firstClick + 5_000)
+                .put("what", "decline still showing (question seen; not confirmed)")));
+        String summary = DashSummary.build(app, firstClick - 60_000, firstClick + 60_000, DashSummary.End.DASH_OVER,
+                model);
+        int summarized = 0;
+        for (String line : summary.split("\n")) {
+            if (!line.contains("your tap on Dasher")) continue;
+            summarized++;
+            noLabels(line);
+        }
+        assertTrue("the summary's excerpt around the problem carries the line: " + summary, summarized > 0);
+    }
+
+    private static void noLabels(String line) {
+        for (String word : new String[] {"Go back", "Chipotle", "Short Vine", "Clifton", "Customer", "[name]",
+                "[instructions]", "\""}) {
+            assertFalse(word + " in: " + line, line.contains(word));
         }
     }
 
