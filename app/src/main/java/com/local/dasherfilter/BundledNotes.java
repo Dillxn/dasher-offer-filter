@@ -21,7 +21,7 @@ import java.util.Map;
  */
 final class BundledNotes {
     /** The docs package's one switch: true once every line below is final (and none is a placeholder). */
-    static final boolean WRITTEN = false;
+    static final boolean WRITTEN = true;
     /** How a line still to be written starts. */
     static final String PLACEHOLDER = "[DOCS PACKAGE:";
 
@@ -29,16 +29,26 @@ final class BundledNotes {
     private static final Map<String, List<String>> RELEASES = new LinkedHashMap<>();
 
     static {
-        // What changed in the notice since the one before it. Two or three short lines, plain words.
+        // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 is
+        // first published with 0.5.0; its reader last accepted notice 13.
         notice(14,
-                "[DOCS PACKAGE: what changed in notice 14, line 1 (e.g. feedback no longer needs GitHub)]",
-                "[DOCS PACKAGE: line 2, or delete this line]");
+                "Feedback needs no account: GitHub is gone, and feedback leaves only when you tap Send. Masked "
+                        + "diagnostics after each dash stay off unless you turn them on.",
+                "New, optional Autopilot moves your cutoff and can let offers below your minimums through to you. "
+                        + "Dasher's latest acceptance rate is kept up to 7 days.",
+                "During a dash your unlocked screen won't time out, and Peek can check an offer that came while the "
+                        + "phone was locked. The Terms now name Ohio law.");
         // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
-        // the versionName that ships: the release is 0.5.0 (AGENTS.md), so the docs package renames this key with
-        // app/build.gradle's versionName (BundledNotesTest requires the current versionName's entry).
-        release("0.4.73",
-                "[DOCS PACKAGE: what is new in 0.4.73, line 1]",
-                "[DOCS PACKAGE: line 2, or delete this line]");
+        // the versionName that ships (BundledNotesTest requires the current versionName's entry).
+        release("0.5.0",
+                "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
+                        + "you pick: acceptance rate 70%, 50%, or pay first.",
+                "Fewer missed offers: Peek taps Dasher's own notification when an offer won't show, catches offers "
+                        + "that came while locked, and your screen stays on mid-dash.",
+                "Dasher stays responsive: its maps aren't read and quiet screens are read less. Feedback needs no "
+                        + "account: Settings → Send anonymous feedback.");
+        // 0.4.73 never shipped, and the build carries its name until the release takes 0.5.0's: no card for it.
+        release("0.4.73");
     }
 
     private BundledNotes() {}

@@ -11,7 +11,12 @@ import android.content.SharedPreferences;
  * "Not now" closes the app and stores nothing. Nothing here ever turns consent off again.
  */
 final class Consent {
-    /** Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. */
+    /**
+     * Raised when the notice, the terms or the privacy text change in substance, so everyone sees them once more. 14
+     * (first published with 0.5.0; 13 was the last published notice) covers accountless feedback, Autopilot and the
+     * acceptance-rate reading it keeps, the screen held on during a dash, Peek's unlock catch-up and the dated beta
+     * terms and privacy policy.
+     */
     static final int VERSION = 14;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
@@ -25,18 +30,26 @@ final class Consent {
                 + "Only continue if you understand and accept that risk."},
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
-                + "on offers below your minimums. Auto-accept is off by default; if you separately enable it in Settings, "
-                + "it can accept matching offers and commit you to a delivery. If Dasher shows an error and gets stuck during a decline, "
-                + "it may go Back and retry, at most twice. Your touch stops it. It can briefly turn offer sound down."},
+                + "on offers below your minimums. Optional Autopilot moves that cutoff by itself, using your recent offers, "
+                + "how often they come and the acceptance rate Dasher shows when you decline; to protect your acceptance "
+                + "goal it can let offers below your minimums through for you to decide. Auto-accept is off by default; if "
+                + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
+                + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
+                + "most twice. Your touch stops it. It can briefly turn offer sound down. During a dash it keeps your "
+                + "unlocked screen from timing out; it never wakes or unlocks it."},
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
-                + "background offer, then return to your previous app. Turn Peek off in Settings."},
+                + "background offer (also just after you unlock, for one that came while it was locked), then return to "
+                + "your previous app. Turn Peek off in Settings."},
         {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "
                 + "account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
-                + "have no age-based expiry. A local wait estimate uses up to 200 numeric offer and observed-wait records in a rolling "
-                + "24-hour window; these are not shared. Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
+                + "have no age-based expiry. The wait estimate and Autopilot use up to 200 numeric offer and observed-wait "
+                + "records in a rolling 24-hour window, which are not shared, and the app keeps the latest acceptance rate "
+                + "Dasher showed (one number, up to 7 days), even with Autopilot off; it leaves only in reports you share or "
+                + "send yourself, never in the summary after a dash. "
+                + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
                 + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
                 + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "
                 + "Settings (off by default). What you type is sent as written, not masked. No feedback or diagnostics leave before "

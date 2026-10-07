@@ -59,4 +59,34 @@ public class BundledNotesTest {
         assertEquals(latest, older.subList(older.size() - latest.size(), older.size()));
         assertEquals(Arrays.asList(), BundledNotes.whatsNew("0.0.1", true));
     }
+
+    /**
+     * The 0.5.0 words are written: two or three lines for whoever accepted notice 13 (the last one published), two or
+     * three for the 0.5.0 card, the headline changes in each; and no card for 0.4.73, which never shipped though the
+     * build carries its name until the release takes 0.5.0's.
+     */
+    @Test public void theWordsFor050AreWrittenAnd0473ShowsNothing() {
+        assertTrue(BundledNotes.WRITTEN);
+        List<String> changed = BundledNotes.noticeChanges(13);
+        assertTrue(changed.toString(), changed.size() >= 2 && changed.size() <= 3);
+        assertEquals(changed, BundledNotes.noticeChanges(Consent.VERSION - 1));
+        String notice = String.join(" ", changed);
+        for (String headline : new String[] {"Feedback needs no account", "Autopilot", "acceptance rate", "7 days",
+                "screen won't time out", "Peek", "Ohio"}) {
+            assertTrue(headline, notice.contains(headline));
+        }
+        List<String> news = BundledNotes.whatsNew("0.5.0");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"Autopilot", "acceptance rate 70%, 50%, or pay first", "Peek",
+                "while locked", "screen stays on", "Dasher stays responsive", "Send anonymous feedback"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        assertTrue("0.4.73 opts out", BundledNotes.hasRelease("0.4.73"));
+        assertTrue(BundledNotes.whatsNew("0.4.73").isEmpty());
+        for (String line : BundledNotes.allLines()) {
+            assertFalse("the app's name only through AppName: " + line, line.contains("Offer Filter"));
+            assertFalse(line, line.contains("0.4.73"));
+        }
+    }
 }
