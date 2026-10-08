@@ -62,8 +62,13 @@ public class CardTapAdapterTest {
     private static final String TAP_SCREEN = "com.local.dasherfilter.OpenDasherActivity";
     private static final ComponentName DASHER_HOME =
             new ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home");
+    /**
+     * Flags that would clear or reorder Dasher's task. RESET_TASK_IF_NEEDED is not among them: Android's home screen
+     * opens every app with it, and without it a task begun at another of Dasher's screens got a new start screen
+     * stacked over its navigation (0.5.4); it is left out only for an activity that clears its task on launch.
+     */
     private static final int CLEARS_OR_RESETS = Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_CLEAR_TASK
-            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+            | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
 
     private Application app;
     private ServiceController<OfferNotificationService> listener;
@@ -175,6 +180,27 @@ public class CardTapAdapterTest {
         return window;
     }
 
+    /**
+     * The owner, 8 October 2026 (0.5.3): Dasher opened by the Split button showed "Searching for offers" while its
+     * navigation went on talking underneath. Dasher is now started as Android's home screen starts it, with
+     * RESET_TASK_IF_NEEDED, so an existing task comes to the front as it was; but never for a launcher activity that
+     * clears its task when launched that way, which the flag would reset.
+     */
+    @Test
+    public void dasherOpensAsItsHomeScreenIconOpensItButNeverResetsATaskThatClearsOnLaunch() {
+        dasherInstalled();
+        Intent launch = DasherSplit.launcher(app);
+        assertTrue("an existing task comes forward as it was, never a new start screen on it",
+                (launch.getFlags() & Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0);
+        assertTrue((DasherSplit.dasher(app).getFlags() & Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0);
+        android.content.pm.ActivityInfo home = Shadows.shadowOf(app.getPackageManager())
+                .addActivityIfNotPresent(DASHER_HOME);
+        home.flags |= android.content.pm.ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH;
+        Shadows.shadowOf(app.getPackageManager()).addOrUpdateActivity(home);
+        assertEquals("a launcher that clears its task on launch is started as before", 0,
+                DasherSplit.launcher(app).getFlags() & Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+    }
+
     @Test
     public void splitAndCardLaunchUseTheActualLauncherWithoutAPackageBoundTaskIntent() throws Exception {
         dasherInstalled();
@@ -191,6 +217,8 @@ public class CardTapAdapterTest {
         assertNull("a package-bound intent can create another start screen on older Android", launch.getPackage());
         assertTrue(launch.hasCategory(Intent.CATEGORY_LAUNCHER));
         assertEquals(0, launch.getFlags() & CLEARS_OR_RESETS);
+        assertEquals("as the home screen opens it", Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+                launch.getFlags());
         Intent adjacent = DasherSplit.dasher(app);
         assertEquals(DASHER_HOME, adjacent.getComponent());
         assertNull(adjacent.getPackage());
@@ -211,8 +239,8 @@ public class CardTapAdapterTest {
         assertEquals(DASHER_HOME, opened.getComponent());
         assertEquals(Intent.ACTION_MAIN, opened.getAction());
         assertTrue(opened.hasCategory(Intent.CATEGORY_LAUNCHER));
-        assertEquals("Dasher's own task comes forward as it is: nothing cleared, reset or reordered",
-                Intent.FLAG_ACTIVITY_NEW_TASK, opened.getFlags());
+        assertEquals("Dasher's own task comes forward as it is, as the home screen opens it: nothing cleared or reordered",
+                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, opened.getFlags());
         assertEquals("the card is cleared", 0, notifications().size());
         assertTrue("the tap screen is gone at once", tapped.get().isFinishing());
         assertNull("nothing else is opened", Shadows.shadowOf(app).getNextStartedActivity());
@@ -231,7 +259,7 @@ public class CardTapAdapterTest {
         assertNotNull(opened);
         assertEquals(DASHER_HOME, opened.getComponent());
         assertEquals("Dasher's launch intent into the other half, as the Split button opens it",
-                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, opened.getFlags());
+                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, opened.getFlags());
         assertEquals(0, notifications().size());
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("[alert] card tapped → opened Dasher (in the other half)"));
@@ -254,7 +282,7 @@ public class CardTapAdapterTest {
                 assertNotNull(opened);
                 assertEquals(DASHER_HOME, opened.getComponent());
                 assertEquals("Dasher's plain launch intent: its task comes forward in its own half",
-                        Intent.FLAG_ACTIVITY_NEW_TASK, opened.getFlags());
+                        Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, opened.getFlags());
                 assertEquals(0, opened.getFlags() & CLEARS_OR_RESETS);
                 assertEquals(0, notifications().size());
                 String log = DiagnosticLog.read(app);
@@ -274,7 +302,8 @@ public class CardTapAdapterTest {
             assertTrue(OfferFilterService.dasherBeside());
             try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
                 Intent launch = Shadows.shadowOf(app).getNextStartedActivity();
-                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, launch.getFlags());
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, launch.getFlags());
                 assertEquals("only the user-requested launch", 0, launch.getFlags() & CLEARS_OR_RESETS);
             }
         } finally { reading.destroy(); }
@@ -286,7 +315,7 @@ public class CardTapAdapterTest {
         try {
             reading.get().windowSource = () -> null;
             try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
-                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
                 assertEquals("the card was still handled", 0, notifications().size());
             }
         } finally { reading.destroy(); }
@@ -299,7 +328,7 @@ public class CardTapAdapterTest {
             Set<Integer> known = ReflectionHelpers.getField(reading.get(), "otherWindows");
             known.clear();
             try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store A", null)), true)) {
-                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+                assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
             }
         } finally { reading.destroy(); }
     }
@@ -332,7 +361,7 @@ public class CardTapAdapterTest {
                     return windows;
                 };
                 try (ActivityController<? extends Activity> tapped = tap(tapScreenOf(cardFor("Store " + state, null)), true)) {
-                    assertEquals(state, Intent.FLAG_ACTIVITY_NEW_TASK,
+                    assertEquals(state, Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
                             Shadows.shadowOf(app).getNextStartedActivity().getFlags());
                     assertNull(state + " must not cause a retry", Shadows.shadowOf(app).getNextStartedActivity());
                 }
@@ -349,7 +378,7 @@ public class CardTapAdapterTest {
             Shadows.shadowOf(tapped.get()).setInMultiWindowMode(true);
             floatingWindow(tapped.get());
             tapped.setup();
-            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
         } finally { reading.destroy(); }
     }
 
@@ -362,7 +391,7 @@ public class CardTapAdapterTest {
             Shadows.shadowOf(tapped.get()).setInMultiWindowMode(true);
             tapped.get().enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build());
             tapped.setup();
-            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, Shadows.shadowOf(app).getNextStartedActivity().getFlags());
         } finally { tapped.destroy(); reading.destroy(); }
     }
 

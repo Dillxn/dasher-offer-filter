@@ -76,6 +76,10 @@ final class BundledNotes {
                         + "pulls Dasher back over your map.",
                 "The split button now splits the screen in one tap, Dasher beside this app; recent apps open only "
                         + "if your phone doesn't split for it.");
+        release("0.5.4",
+                "Dasher opens as its own icon opens it: its navigation comes back as it was, never hidden under "
+                        + "\"Searching for offers\".",
+                "That covers the split button, Peek and taps on this app's cards.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

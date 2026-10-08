@@ -4749,7 +4749,8 @@ public final class OfferFilterService extends AccessibilityService {
             abandonArming(request, OPENED_BY_USER);
             return;
         }
-        Intent dasher = launcherIntent(peek.dasher());
+        // As Dasher's icon opens it: never a new start screen stacked over its navigation (DasherSplit.asItsIconOpensIt).
+        Intent dasher = DasherSplit.asItsIconOpensIt(this, launcherIntent(peek.dasher()));
         // Publish authority before the Binder call: it can block while touches or new posts arrive on the main
         // thread. Nothing that happens during that call may be swallowed by taking a new baseline afterwards.
         peek.opened(Peek.now(), OfferNotificationService.generation(), peekActions.get());

@@ -361,7 +361,9 @@ public class PeekTest {
         Intent opened = started();
         assertNotNull("Dasher is brought up", opened);
         assertEquals(DASHER_HOME, opened.getComponent());
-        assertEquals("as its launcher icon opens it: nothing cleared or reset", AS_A_LAUNCHER_DOES,
+        assertEquals("as its launcher icon opens it (the home screen's reset-if-needed: never a new start screen "
+                + "stacked over its navigation), nothing cleared", AS_A_LAUNCHER_DOES
+                | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
                 opened.getFlags());
         assertNull("explicit component only, like the launcher", opened.getPackage());
     }

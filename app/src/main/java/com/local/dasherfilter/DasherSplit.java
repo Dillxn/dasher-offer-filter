@@ -92,10 +92,34 @@ final class DasherSplit {
 
     /**
      * Dasher's own launch intent as its launcher icon starts it: its task comes to the front showing whatever it
-     * was showing, such as an offer. Nothing in it is cleared or reset. Null when Dasher is not installed.
+     * was showing, such as an offer or its turn-by-turn navigation. Null when Dasher is not installed.
      */
     static Intent launcher(Context context) {
-        return launcher(context, DASHER_PACKAGE);
+        Intent launch = launcher(context, DASHER_PACKAGE);
+        return launch == null ? null : asItsIconOpensIt(context, launch);
+    }
+
+    /**
+     * {@code launch} with the flag Android's home screen adds to every app it opens (Launcher3: NEW_TASK |
+     * RESET_TASK_IF_NEEDED). Without it, when Dasher's task began at another of its screens (Dasher opened from its
+     * notification, as during a dash), Android starts a new launcher screen on top of that task: Dasher came up
+     * showing "Searching for offers" while its navigation went on talking underneath (the owner, 8 October 2026, after
+     * the Split button on 0.5.3; "this has happened before"). With it, an existing task comes to the front as it was
+     * and nothing new is started on it. Never for an activity that clears its task when launched that way
+     * (clearTaskOnLaunch; Dasher's launcher reports it does not), nor when that cannot be told: then as before.
+     */
+    static Intent asItsIconOpensIt(Context context, Intent launch) {
+        ComponentName component = launch.getComponent();
+        if (component == null) return launch;
+        try {
+            ActivityInfo info = context.getPackageManager().getActivityInfo(component, 0);
+            if ((info.flags & ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH) == 0) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            }
+        } catch (PackageManager.NameNotFoundException | RuntimeException unknown) {
+            // Not known: launched as before, with nothing that could reset it.
+        }
+        return launch;
     }
 
     /** Resolve the actual launcher entry, not an INFO front door, and preserve the existing task. */

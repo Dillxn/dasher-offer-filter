@@ -158,7 +158,19 @@ public class BundledNotesTest {
                 "one tap", "recent apps"}) {
             assertTrue(headline, card.contains(headline));
         }
-        assertEquals("this build is 0.5.3: its card is the one written for it", news,
+    }
+
+    /** 0.5.4 (the owner, 8 October 2026): Dasher's navigation hidden under a new start screen. */
+    @Test public void theWordsFor054AreWritten() {
+        assertEquals(15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.4");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"as its own icon opens it", "navigation", "Searching for offers",
+                "split button", "Peek"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        assertEquals("this build is 0.5.4: its card is the one written for it", news,
                 BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
     }
 

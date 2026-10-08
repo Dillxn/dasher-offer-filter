@@ -1,3 +1,10 @@
+## 0.5.4 — Dasher's navigation no longer hidden under "Searching for offers"
+
+Version 0.5.4 (code 84). It follows 0.5.3. The notice stays at 15, and the terms and privacy texts are 0.5.2's.
+
+- **"It didn't show the navigation inside of the DoorDash app ... the screen was just showing searching for offers"** while Dasher's directions went on talking (the owner, 8 October 2026, after the Split button on 0.5.3; "this has happened before"). Offer Filter opened Dasher by its launcher screen but without the flag Android's home screen adds to every app it opens (RESET_TASK_IF_NEEDED, left out since 0.4.5x on a worry that it could reset a task). When Dasher's task began at another of its screens (opened from its notification, as during a dash), Android then started a new start screen on top of Dasher's navigation. Now the Split button, Peek and taps on Offer Filter's cards open Dasher exactly as its icon does: its task comes to the front as it was. Never with that flag for a launcher activity that clears its task on launch (Dasher's does not), so nothing of Dasher's is ever reset by it. Until 0.5.4 arrives, opening Dasher's settings and going back brings the navigation back, as the owner found.
+- **Evidence boundaries:** simulation only (CardTapAdapterTest, PeekTest and the split classes on simulated Android 8 and 15). Android's handling of the flag is the platform's own (Launcher3 opens apps this way); a handset shows it.
+
 ## 0.5.3 — Directions work during a delivery; one-tap split screen
 
 Version 0.5.3 (code 83). It follows 0.5.2. The notice stays at 15, and the terms and privacy texts are 0.5.2's: nothing new is read, kept or sent.
