@@ -1,3 +1,10 @@
+## October 8, 05:15 UTC — 0.5.4 and 0.5.5 published
+
+- **Live feed is 0.5.5/code 85**: source `43a95bf` (the fluid homepage merged onto 0.5.4), release commit `48edd69` on main, Render deploy `dep-db3id4gm7kps73eqr5p0`, APK SHA-256 `a5eabef921a4e653406a2406dd0487e37303f9673fa31041e9faebfc3ff02199` (1,340,942 bytes), original signer; verify_channel passed. Gate: 3,345 dual-SDK tests, lint without errors.
+- **0.5.4/code 84** (release `be5445d`, source `dd0f711`): Dasher is started as its home-screen icon starts it (RESET_TASK_IF_NEEDED, DasherSplit.asItsIconOpensIt; never for a launcher that clears its task on launch): the owner saw "Searching for offers" over Dasher's own navigation after the Split button, since a task begun at another of Dasher's screens got a new start screen stacked on it.
+- **0.5.5**: one fluid homepage (FluidLayout/ScenePage; wip/fluid-split and its review merged in `7c1e140`/`502e880`/`43a95bf`).
+- Next: 0.6.0 (wip/area-060: the area score with the 0.4.x learner, Autopilot on top, permit wording, notice 16) after its review, merged onto 0.5.5 with version code 86 or later. The owner on 8 October: "purple is still less than green so to my eyes adaptive mins isn't working" (the live 0.5.x has no learner; Autopilot was at its 50% floor for the acceptance rate).
+
 ## October 8, 03:40 UTC — 0.5.3 published (Directions during a delivery; one-tap split)
 
 - **Live feed is 0.5.3/code 83**: source `0473d3555f547fe1ff7268baec0a22227076a5bd`, release commit `2b22189` on main, Render deploy `dep-db3h0jtg1s2s73ae2lhg`. APK SHA-256 `35c09a4586ae540980476f1066c46c973257b9a618c42f7e2918ed003ad7b4ea`, original signer; verify_channel passed. Gate: 3,313 dual-SDK tests, lint without errors.
