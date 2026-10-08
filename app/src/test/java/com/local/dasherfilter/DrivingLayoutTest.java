@@ -748,7 +748,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertNotNull(swap);
             assertEquals(DASHER_HOME, swap.getComponent());
             assertEquals("Dasher into this half, as its launcher opens it: no adjacent launch, nothing cleared",
-                    Intent.FLAG_ACTIVITY_NEW_TASK, swap.getFlags());
+                    Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, swap.getFlags());
             logSays("[split] tap in split screen during a dash: Dasher's launch intent into this half (the other half "
                     + "stays)");
 
@@ -792,7 +792,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertNotNull(opened);
             assertEquals(DASHER_HOME, opened.getComponent());
             assertTrue(opened.hasCategory(Intent.CATEGORY_LAUNCHER));
-            assertEquals("as its launcher icon opens it: its task as it was, never beside", Intent.FLAG_ACTIVITY_NEW_TASK,
+            assertEquals("as its launcher icon opens it: its task as it was, never beside", Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
                     opened.getFlags());
             logSays("[split] Open Dasher tapped: Dasher's launch intent");
         }
