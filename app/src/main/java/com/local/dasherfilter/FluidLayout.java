@@ -207,36 +207,38 @@ final class FluidLayout {
         return areaLine ? dp(AREA_LINE_DP) : 0;
     }
 
-    /** The ground's height (the caption, the skyline, the map and its area's line) at each of the same steps. */
+    /**
+     * The ground's height (the caption, the skyline, the map and its area's line) at each of the same steps. The map
+     * takes its area's line's room while the line is not shown, so the steps are the same either way.
+     */
     private float[] groundSteps() {
-        float area = areaHeight();
+        float area = dp(AREA_LINE_DP);
         float horizon = dp(CAPTION_DP + CHART_LEAST_DP);
         return new float[] {dp(CAPTION_DP + CHART_DP + MAP_DP) + area, horizon + dp(MAP_DP) + area,
                 horizon + dp(MAP_MIDDLE_DP) + area, dp(MAP_MIDDLE_DP) + area, dp(MAP_LEAST_DP) + area};
     }
 
     /**
-     * The ground in a column {@code height} tall: {caption, skyline, map, how much of the skyline is there}. Taller than
-     * every part reads well at, the room goes to the skyline and the map by weight; shorter, the skyline comes to its
-     * least, the map to a little less, the skyline and its caption shrink away, and the map to its least and below.
+     * The ground in a column {@code height} tall: {caption, skyline, how much of the skyline is there}; the map takes
+     * the rest, over its area's line. Taller than every part reads well at, the room goes to the skyline and the map
+     * by weight; shorter, the skyline comes to its least, the map to a little less, the skyline and its caption shrink
+     * away, and the map to its least and below.
      */
     private float[] groundColumn(float height) {
         float[] b = groundSteps();
-        float area = areaHeight();
         float caption = dp(CAPTION_DP);
         float chartLeast = dp(CHART_LEAST_DP);
         if (height >= b[0]) {
-            float more = height - b[0];
             float share = CHART_WEIGHT / (CHART_WEIGHT + MAP_WEIGHT);
-            return new float[] {caption, dp(CHART_DP) + more * share, dp(MAP_DP) + more * (1 - share), 1};
+            return new float[] {caption, dp(CHART_DP) + (height - b[0]) * share, 1};
         }
-        if (height >= b[1]) return new float[] {caption, chartLeast + height - b[1], dp(MAP_DP), 1};
-        if (height >= b[2]) return new float[] {caption, chartLeast, dp(MAP_MIDDLE_DP) + height - b[2], 1};
+        if (height >= b[1]) return new float[] {caption, chartLeast + height - b[1], 1};
+        if (height >= b[2]) return new float[] {caption, chartLeast, 1};
         if (height >= b[3]) {
             float shown = (height - b[3]) / (caption + chartLeast);
-            return new float[] {caption * shown, chartLeast * shown, dp(MAP_MIDDLE_DP), shown};
+            return new float[] {caption * shown, chartLeast * shown, shown};
         }
-        return new float[] {0, 0, Math.max(0, height - area), 0};
+        return new float[] {0, 0, 0};
     }
 
     /**
@@ -390,7 +392,7 @@ final class FluidLayout {
         float[] ground = groundColumn(bottom - groundTop);
         caption.set(groundLeft, groundTop, width, groundTop + ground[0]);
         chart.set(groundLeft, caption.bottom, width, caption.bottom + ground[1]);
-        horizonShown = ground[3];
+        horizonShown = ground[2];
         float area = Math.min(areaHeight(), Math.max(0, bottom - chart.bottom));
         map.set(groundLeft, chart.bottom, width, Math.max(chart.bottom, bottom - area));
         this.area.set(groundLeft, bottom - area, width, bottom);
