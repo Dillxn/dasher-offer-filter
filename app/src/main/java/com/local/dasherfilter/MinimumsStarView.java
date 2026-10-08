@@ -300,7 +300,10 @@ final class MinimumsStarView extends View {
     private static final int BUTTON_FROM_DP = 74;
     /** The spokes' names are wholly there on a circle of the least radius the page uses, gone at this radius (dp). */
     private static final int NAMES_FROM_DP = 44;
-    /** A name, or a ring's dollars, is gone once what it keeps clear of comes this many dp onto it. */
+    /**
+     * A name, or a ring's dollars, fades over this many dp: gone once an icon, a knob, the view's edge, the badge or the
+     * button comes this far onto it, and a name wholly there only this far from other words.
+     */
     private static final int NAME_FADE_DP = 8;
     /** The badge's steps after off: 2 stops (one order) to this many. */
     static final int MOST_STOPS = 10;
@@ -834,9 +837,11 @@ final class MinimumsStarView extends View {
      * Where each spoke's name stands, and how much of it is there. Each has one place at every size: beside its icon,
      * on the side towards the middle (pay's on its right, per mile's and per hour's on their left), and the max stops
      * name over the badge and its pin. No knob, shape or offer's mark ever stands there (they stand on the spokes, which
-     * run from the icons' other sides), so as the window's size changes a name moves only with its icon; where the
-     * circle grows too small for the names, or the Autopilot button, the badge, the rings' dollars or a name before it
-     * comes onto its place, it fades out rather than move (the icons and screen readers still say what each spoke is).
+     * run from the icons' other sides), so as the window's size changes a name moves only with its icon. Where the
+     * circle grows too small for the names, or an icon, the view's edge, the Autopilot button or the badge comes onto a
+     * name, it fades out (going under the button and the badge) rather than move; as the rings' dollars or a name before
+     * it come near, it fades out before they touch, so no words are ever seen one over another (the icons and screen
+     * readers still say what each spoke is).
      */
     private void placeAxisLabels() {
         for (RectF box : axisLabels) box.setEmpty();
@@ -875,19 +880,21 @@ final class MinimumsStarView extends View {
                 room = Math.min(room, outside(padded, at[0], at[1]) - ui.dp(9));
             }
             float shown = Math.min(small, nameFade(room));
-            // Then what it gives way to: the badge (always wholly there), and each of the rest only as much as it is.
+            // Then what it gives way to: the badge (always wholly there) and the button, drawn over it, which it goes
+            // under as it fades; and other words, the rings' dollars and the names before it, gone before they would
+            // touch, so no words are ever seen one over another.
             if (badge) shown = Math.min(shown, nameFade(apart(padded, stopsBox)));
             if (button > 0) {
                 float off = outside(padded, buttonX, buttonY) - ui.dp(BUTTON_DP) / 2f;
                 shown = Math.min(shown, Math.max(nameFade(off), 1 - button));
             }
             for (int i = 0; i < levelBoxes.size(); i++) {
-                shown = Math.min(shown, Math.max(nameFade(apart(padded, levelBoxes.get(i))), 1 - levelShown.get(i)));
+                shown = Math.min(shown, giveWay(apart(box, levelBoxes.get(i)), levelShown.get(i)));
             }
             for (int before : AreaScore.DRAW_ORDER) {
                 if (before == axis) break;
                 if (axisLabels[before].isEmpty()) continue;
-                shown = Math.min(shown, Math.max(nameFade(apart(padded, axisLabels[before])), 1 - axisShown[before]));
+                shown = Math.min(shown, giveWay(apart(box, axisLabels[before]), axisShown[before]));
             }
             axisShown[axis] = shown;
             if (shown <= 0) box.setEmpty();
@@ -918,6 +925,16 @@ final class MinimumsStarView extends View {
      */
     private float nameFade(float room) {
         return within(room + ui.dp(NAME_FADE_DP + 2), ui.dp(NAME_FADE_DP));
+    }
+
+    /**
+     * How much of a name is there {@code gap} from other words (less than 0: onto them), which are {@code there} of the
+     * way there: wholly while {@link #NAME_FADE_DP} or more from them, fading as they come nearer and gone before they
+     * touch, so no words are ever seen one over another; while those come or go (under half there), the more of the
+     * name the less of them, so neither pops.
+     */
+    private float giveWay(float gap, float there) {
+        return Math.max(within(gap, ui.dp(NAME_FADE_DP)), 1 - within(there, 0.5f));
     }
 
     /** The names, each as much as it is there; under the badge and the button, so one fading out goes behind them. */

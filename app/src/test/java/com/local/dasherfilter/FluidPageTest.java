@@ -418,7 +418,8 @@ public class FluidPageTest extends AndroidAdapterTestBase {
      * grew a few dp). Wherever the radar is wholly there: each part moves only with the circle, never more in a step
      * than the circle's own middle and radius and the radar's box carry it; it comes in or goes only by fading, at most
      * {@link #PARTS_MOST_FADE} of it in a step; the button is used (and heard) only while it is wholly there, clear of
-     * every knob's reach; and no part wholly there overlaps another or leaves the radar.
+     * every knob's reach; no part wholly there overlaps another or leaves the radar; and two names that overlap only
+     * cross-fade, together never more than wholly one, so no words are seen one over another.
      */
     private void radarParts(int widthDp, float fontScale) throws Exception {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -521,36 +522,27 @@ public class FluidPageTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * The radar's own parts that are wholly there: inside the radar, apart from one another, the button clear of
-     * every knob's reach and used (and heard) only then, and the badge's whole 48 dp target inside the radar.
+     * The radar's own parts: those wholly there inside the radar and apart from one another; two names only
+     * cross-fading where they overlap, so no words are seen one over another; the button clear of every knob's reach
+     * and used (and heard) only while wholly there; and the badge's whole 48 dp target inside the radar.
      */
     private static void assertRadarParts(String where, Radar radar, MinimumsStarView star, Ui ui) {
-        List<String> whole = new ArrayList<>();
-        for (Map.Entry<String, Float> part : radar.shown.entrySet()) {
-            if (part.getValue() >= 1) whole.add(part.getKey());
-        }
-        for (int i = 0; i < whole.size(); i++) {
-            RectF a = radar.parts.get(whole.get(i));
-            assertTrue(where + ": the " + whole.get(i) + " inside the radar " + a + " / " + radar.box,
-                    a.left >= radar.box.left - 1 && a.right <= radar.box.right + 1 && a.top >= radar.box.top - 1
+        List<String> names = new ArrayList<>(radar.shown.keySet());
+        for (int i = 0; i < names.size(); i++) {
+            RectF a = radar.parts.get(names.get(i));
+            float aShown = radar.shown.get(names.get(i));
+            assertTrue(where + ": the " + names.get(i) + " inside the radar " + a + " / " + radar.box, aShown < 1
+                    || a.left >= radar.box.left - 1 && a.right <= radar.box.right + 1 && a.top >= radar.box.top - 1
                             && a.bottom <= radar.box.bottom + 1);
-            for (int j = i + 1; j < whole.size(); j++) {
-                RectF b = radar.parts.get(whole.get(j));
-                boolean overlap;
-                if (whole.get(i).equals("button") || whole.get(j).equals("button")) {
-                    // The button is round: no other part comes inside its circle.
-                    RectF round = whole.get(i).equals("button") ? a : b;
-                    RectF other = round == a ? b : a;
-                    float dx = Math.max(0, Math.max(other.left - round.centerX(), round.centerX() - other.right));
-                    float dy = Math.max(0, Math.max(other.top - round.centerY(), round.centerY() - other.bottom));
-                    overlap = Math.hypot(dx, dy) < round.width() / 2 - 1;
-                } else {
-                    float across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-                    float down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-                    overlap = across > 1 && down > 1;
-                }
-                assertFalse(where + ": the " + whole.get(i) + " " + a + " overlaps the " + whole.get(j) + " " + b,
-                        overlap);
+            for (int j = i + 1; j < names.size(); j++) {
+                RectF b = radar.parts.get(names.get(j));
+                float bShown = radar.shown.get(names.get(j));
+                // Two names only cross-fade, together never more than wholly one; a name fading may go under the badge
+                // or the button (drawn over it), never while both are wholly there.
+                boolean words = names.get(i).startsWith("name") && names.get(j).startsWith("name");
+                assertFalse(where + ": the " + names.get(i) + " " + a + " (" + aShown + " there) overlaps the "
+                        + names.get(j) + " " + b + " (" + bShown + " there)", overlap(names.get(i), a, names.get(j), b)
+                        && (words ? aShown + bShown > 1.01f : aShown >= 1 && bShown >= 1));
             }
         }
         boolean used = radar.shown.containsKey("button") && radar.shown.get("button") >= 1;
@@ -573,6 +565,20 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         badge.getBoundsInParent(bounds);
         assertTrue(where + ": the badge's whole target inside the radar " + bounds, bounds.top >= -1
                 && bounds.bottom <= star.getHeight() + 1 && bounds.height() >= ui.dp(48) - 1);
+    }
+
+    /** Whether two of the radar's parts overlap: the button by its round shape as drawn, the rest by their boxes. */
+    private static boolean overlap(String aName, RectF a, String bName, RectF b) {
+        if (aName.equals("button") || bName.equals("button")) {
+            RectF round = aName.equals("button") ? a : b;
+            RectF other = round == a ? b : a;
+            float dx = Math.max(0, Math.max(other.left - round.centerX(), round.centerX() - other.right));
+            float dy = Math.max(0, Math.max(other.top - round.centerY(), round.centerY() - other.bottom));
+            return Math.hypot(dx, dy) < round.width() / 2 - 1;
+        }
+        float across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        float down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        return across > 1 && down > 1;
     }
 
     private static boolean contains(int[] values, int value) {
