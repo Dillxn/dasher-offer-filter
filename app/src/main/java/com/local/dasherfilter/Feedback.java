@@ -39,7 +39,7 @@ import org.json.JSONObject;
  * <p>Nothing leaves before the current notice is accepted, and nothing is built or sent on the main thread.
  */
 final class Feedback {
-    static final String ENDPOINT = "https://zlnfvqyyjsltmkmmpgzp.supabase.co/functions/v1/offer-filter-feedback";
+    static final String ENDPOINT = "https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback";
     static final int MAX_MESSAGE_CHARS = 4000;
     static final int MAX_PARTS = 4;
     static final int MAX_PART_CHARS = 50_000;

@@ -1,8 +1,8 @@
 # Accountless feedback service
 
-The Supabase Edge Function `offer-filter-feedback` (project `offer-filter-feedback`, ref `zlnfvqyyjsltmkmmpgzp`)
+The Supabase Edge Function `offer-filter-feedback` (project `offer-filter-feedback`, ref `nwglojlrzfbsibtoqjzc`)
 receives Offer Filter's anonymous feedback, offer reports and opt-in diagnostics, and the website's feedback form.
-The app posts to `https://zlnfvqyyjsltmkmmpgzp.supabase.co/functions/v1/offer-filter-feedback`.
+The app posts to `https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback`.
 
 Nothing here is deployed by CI. Deploy by hand, in the order below.
 
@@ -75,7 +75,7 @@ Only the service role can read or write any of this. Public clients have no data
 Requirements: the [Supabase CLI](https://supabase.com/docs/guides/cli) logged in with access to the project. Run
 from this folder (`backend/anonymous-feedback`).
 
-1. **Link the project** (once): `supabase link --project-ref zlnfvqyyjsltmkmmpgzp`
+1. **Link the project** (once): `supabase link --project-ref nwglojlrzfbsibtoqjzc`
 2. **Apply the migration first.** Either `supabase db push` (applies `supabase/migrations/`), or paste
    `supabase/migrations/20261006120000_feedback_hardening.sql` into the dashboard's SQL editor and run it. It is
    safe while the old function is live (the old `submit_offer_filter_feedback` is left as it was) and safe to run
@@ -90,7 +90,7 @@ from this folder (`backend/anonymous-feedback`).
 5. **Smoke test** (with made-up text only):
 
    ```sh
-   URL=https://zlnfvqyyjsltmkmmpgzp.supabase.co/functions/v1/offer-filter-feedback
+   URL=https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback
    curl -si -X OPTIONS "$URL" -H 'Origin: https://offerfilter.org' | grep -i -E '^HTTP|max-age'
    curl -si -X POST "$URL" -H 'Content-Type: application/json' \
      -d '{"kind":"feedback","category":"general","message":"Deployment smoke test","appVersion":"0.5.0"}'

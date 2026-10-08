@@ -29,7 +29,7 @@ public class FeedbackTest {
 
     @Test
     public void endpointIsTheExactHttpsFunctionAndTestsNeverReachIt() {
-        assertEquals("https://zlnfvqyyjsltmkmmpgzp.supabase.co/functions/v1/offer-filter-feedback", Feedback.ENDPOINT);
+        assertEquals("https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback", Feedback.ENDPOINT);
         assertTrue("ConsentedTestApp installs a fake", Feedback.transport instanceof FakeFeedbackTransport);
     }
 
