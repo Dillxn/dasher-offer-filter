@@ -1,3 +1,9 @@
+## October 8, 03:40 UTC — 0.5.3 published (Directions during a delivery; one-tap split)
+
+- **Live feed is 0.5.3/code 83**: source `0473d3555f547fe1ff7268baec0a22227076a5bd`, release commit `2b22189` on main, Render deploy `dep-db3h0jtg1s2s73ae2lhg`. APK SHA-256 `35c09a4586ae540980476f1066c46c973257b9a618c42f7e2918ed003ad7b4ea`, original signer; verify_channel passed. Gate: 3,313 dual-SDK tests, lint without errors.
+- 0.5.3: DoorDash's re-post of the order being delivered no longer makes Peek reopen Dasher over the Directions' map (OfferNotificationService.HELD_FOR_DELIVERY; the owner: every Directions tap during a delivery bounced back); the Split tap starts Dasher beside first (DasherSplit.adjacentFirst, Android 12L+). The owner, 8 October: "you never for any project need approval if you're using best judgment" (AGENTS.md's first section).
+- The 0.6.0 branch (wip/area-060) numbered itself 82: it must take 84 or later. The fluid homepage (wip/fluid-split) is in review.
+
 ## October 8, 02:30 UTC — 0.5.2 published (fixes from the owner's dash report)
 
 - **Live feed is 0.5.2/code 82**: source `dcb884f1fb33b295c34f56b00a082cd79181f8c5`, release commit `174deef` on main, Render deploy `dep-db3fvdfavr4c739kq3f0`. APK 1,353,230 bytes, SHA-256 `a8b4ac42388b47ce15b42e73a4373f5d63946dec76114cd9bd82a5bd8e461299`, original signer. Signed with tools/sign-local.sh (key read from the Render service's environment into that process only): 3,298 dual-SDK tests, lint without errors, inputs unchanged.
