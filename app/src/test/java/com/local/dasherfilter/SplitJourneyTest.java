@@ -9,7 +9,9 @@ import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Collections;
 import org.junit.After;
 import org.junit.Test;
@@ -133,6 +135,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ShadowBuild.setManufacturer("Google");
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -175,6 +178,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         DasherSplit.split = () -> false;
         DasherSplit.recents = () -> true;
         ServiceController<OfferFilterService> service = connectedService();
@@ -195,11 +199,86 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
      * Back on the page not split, the tap is over: no split is waited for, and a split made by hand later opens
      * nothing by itself.
      */
+    /**
+     * The owner's Android 16 Samsung refuses the split action every time (from Android 15 it is SystemUI's to offer),
+     * so the tap only ever opened recent apps. From Android 12L the tap first starts Dasher beside this screen
+     * (launch adjacent), which the phone answers by splitting the screen itself: one tap, nothing asked of Android's
+     * split action, and the split it makes opens nothing more.
+     */
+    @Test
+    public void aTapFromFullScreenStartsDasherBesideAndTheSplitItMakesOpensNothingMore() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> true;
+        List<String> asked = new ArrayList<>();
+        DasherSplit.split = () -> asked.add("split");
+        DasherSplit.recents = () -> asked.add("recents");
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            assertTrue("Dasher's own launcher, beside this screen", launchesDasherBeside(opened));
+            assertTrue("its existing task, never a second one",
+                    (opened.getFlags() & Intent.FLAG_ACTIVITY_NEW_TASK) != 0
+                            && (opened.getFlags() & Intent.FLAG_ACTIVITY_MULTIPLE_TASK) == 0);
+            assertTrue("nothing asked of Android's split action or recent apps: " + asked, asked.isEmpty());
+            assertNull(org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            // The phone splits the screen: Offer Filter in its half, Dasher in the other.
+            activity.pause();
+            splitWithDasherBelow(service.get());
+            enterSplit(activity);
+            activity.resume();
+            idle();
+            assertNull("the split it made opens nothing more", Shadows.shadowOf(app).getNextStartedActivity());
+            pass(DasherSplit.VERIFY_MS + 100);
+            assertTrue("and never recent apps: " + asked, asked.isEmpty());
+            assertFalse(DasherSplit.pending());
+            contains(DiagnosticLog.read(app), "[split] tap: Dasher's launch intent beside this screen (launch adjacent)");
+            contains(DiagnosticLog.read(app), "[split] split by Dasher's launch-adjacent start; nothing more opened");
+        } finally {
+            service.destroy();
+        }
+    }
+
+    /** A phone that opens Dasher full screen instead: recent apps then, with the phone's words, as before. */
+    @Test
+    public void anAdjacentStartThatDoesNotSplitOpensRecentAppsWithThePhonesWords() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> true;
+        List<String> asked = new ArrayList<>();
+        DasherSplit.split = () -> asked.add("split");
+        DasherSplit.recents = () -> asked.add("recents");
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            assertTrue(launchesDasherBeside(Shadows.shadowOf(app).getNextStartedActivity()));
+            // Dasher came up full screen over the page.
+            activity.pause();
+            pass(DasherSplit.VERIFY_MS + 100);
+            assertEquals("recent apps, never Android's split action", Arrays.asList("recents"), asked);
+            assertEquals("Tap Offer Filter's icon above its card → Open in split screen view",
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            contains(DiagnosticLog.read(app), "[split] no split 1500 ms after Dasher's launch-adjacent start: opening recent apps");
+            // A split made there within the minute still opens Dasher beside.
+            pass(20_000);
+            enterSplit(activity);
+            activity.resume();
+            idle();
+            assertTrue(launchesDasherBeside(Shadows.shadowOf(app).getNextStartedActivity()));
+        } finally {
+            service.destroy();
+        }
+    }
+
     @Test
     public void backOnThePageWithoutASplitTheTapIsOver() {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         DasherSplit.split = () -> false;
         DasherSplit.recents = () -> true;
         ServiceController<OfferFilterService> service = connectedService();
@@ -228,6 +307,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         DasherSplit.split = () -> false;
         DasherSplit.recents = () -> true;
         ServiceController<OfferFilterService> service = connectedService();
@@ -251,6 +331,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     public void aSplitWithinTheCheckOpensDasherOnceAndNoRecentApps() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
@@ -274,6 +355,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     public void leavingThePageBeforeTheCheckOpensNothingAndSaysWhy() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
@@ -292,6 +374,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     public void aPendingSplitDoesNotLaunchAgainAfterAndroidAlreadyPairedDasher() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
@@ -323,6 +406,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     public void splitWithoutDasherBesideTheButtonPutsDasherInTheOtherHalf() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);

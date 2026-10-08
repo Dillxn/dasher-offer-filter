@@ -792,6 +792,7 @@ public class PeekTest {
 
     /** The user's tap on Split, refused, recent apps opened over the page (a plain activity stands in for it). */
     private void splitTapWaitingInRecentApps() {
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         DasherSplit.split = () -> false;
         DasherSplit.recents = () -> true;
         android.app.Activity page = Robolectric.buildActivity(android.app.Activity.class).setup().get();

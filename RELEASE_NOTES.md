@@ -1,3 +1,8 @@
+## Unreleased
+
+### One-tap split screen
+- **The Split button splits the screen in one tap.** From Android 12L it first opens Dasher beside Offer Filter (Android's "launch adjacent"), which the phone answers by splitting the screen itself: Offer Filter in one half, Dasher in the other. On Android 15 and later many phones, the owner's Samsung on Android 16 among them, refuse the split request the app used to make, so the button only ever opened recent apps there. If the phone opens Dasher full screen instead, recent apps open 1.5 s later with the phone's words, as before. Dasher's own task moves beside, its offer and all; no second Dasher is ever started. Decided on best judgment (the owner, 8 October 2026: "you never for any project need approval if you're using best judgment").
+
 ## 0.5.2 — offers that never showed, false takeovers, split screen and slow reads
 
 Version 0.5.2 (code 82). It follows 0.5.1. The notice stays at 15: nothing new is read, kept or sent. Every fix comes from the owner's diagnostics report of 7 October 2026 (0.5.1, a Samsung on Android 16, dashing with Offer Filter beside Dasher in split screen).

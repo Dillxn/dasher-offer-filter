@@ -23,9 +23,11 @@ import java.util.function.Consumer;
 
 /**
  * Split screen with Dasher, at the user's tap only: Offer Filter above, Dasher below, so Dasher stays on screen with
- * its offers in view (and its offers are still read and declined at once) while the map here is looked at. Android
- * gives apps no way to enter split screen themselves, so Offer Filter's screen reading asks for it, the same as
- * Android's own Split screen accessibility shortcut, and Dasher is then opened in the other half. Android saying it
+ * its offers in view (and its offers are still read and declined at once) while the map here is looked at. From
+ * Android 12L the tap first starts Dasher beside this screen (launch adjacent), which the phone answers by splitting
+ * the screen itself ({@link #adjacentFirst}). Before that, and when it does not split, Offer Filter's screen reading
+ * asks for the split, the same as Android's own Split screen accessibility shortcut, and Dasher is then opened in the
+ * other half. Android saying it
  * took that request means only that it passed it on: many newer phones (Pixels from Android 13) then do nothing,
  * since split screen lives in the launcher's recent apps. So {@link #VERIFY_MS} after a request Android took, the
  * screen is looked at again, and when it did not split (or Android refused the request), recent apps are opened
@@ -55,6 +57,16 @@ final class DasherSplit {
     /** Asks Android to split the screen, then to open recent apps; replaced only by tests. */
     static java.util.function.BooleanSupplier split = OfferFilterService::splitScreen;
     static java.util.function.BooleanSupplier recents = OfferFilterService::openRecents;
+    /**
+     * Whether a tap from full screen first starts Dasher beside this screen (launch adjacent), which from Android 12L
+     * the phone may answer by splitting the screen itself, before asking for the split action: from Android 15 that
+     * action is SystemUI's to offer, and phones such as the owner's Samsung on Android 16 refuse every request for it,
+     * so the tap only ever opened recent apps (the owner, 8 October 2026, deciding by best judgment). Replaced only by
+     * tests.
+     */
+    static java.util.function.BooleanSupplier adjacentFirst = DasherSplit::adjacentByDefault;
+    /** The tap's own launch-adjacent start is what may split the screen: that split opens nothing more. */
+    private static volatile boolean launchedBeside;
 
     /** When the user last tapped Split (uptime), 0 when nothing is waiting. */
     private static volatile long requestedAt;
@@ -251,6 +263,20 @@ final class DasherSplit {
         requestedAt = SystemClock.uptimeMillis();
         waitMs = PENDING_MS;
         away = false;
+        launchedBeside = false;
+        if (adjacentFirst.getAsBoolean()) {
+            // Dasher's own launcher, NEW_TASK | LAUNCH_ADJACENT ({@link #dasher}), never MULTIPLE_TASK: Dasher's task,
+            // its offer and all, moves beside this screen; no second Dasher task. Looked at again as a request
+            // Android took is: no split by then, and recent apps open with the phone's words, as before.
+            if (open(activity, dasher) == null) {
+                launchedBeside = true;
+                log(activity, "tap: Dasher's launch intent beside this screen (launch adjacent); looking again in "
+                        + VERIFY_MS + " ms");
+                verifyLater(activity, later);
+                return null;
+            }
+            log(activity, "tap: Dasher's launch-adjacent start was refused");
+        }
         if (split.getAsBoolean()) {
             log(activity, "tap: Android took the split request; looking again in " + VERIFY_MS + " ms");
             verifyLater(activity, later);
@@ -317,6 +343,11 @@ final class DasherSplit {
         log(context, "left recent apps for " + front + " without a split: the tap is over");
     }
 
+    /** From Android 12L (API 32) a full-screen app's launch-adjacent start may split the screen. */
+    static boolean adjacentByDefault() {
+        return Build.VERSION.SDK_INT >= 32;
+    }
+
     /** "pixel", "samsung" or "other": the phone's maker, for words that match what its recent apps show. */
     static String phone() {
         String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.US);
@@ -353,6 +384,19 @@ final class DasherSplit {
                 verifier = null;
                 Activity shown = page.get();
                 if (requestedAt == 0 || shown == null || shown.isFinishing()) return;
+                if (launchedBeside) {
+                    launchedBeside = false;
+                    if (inSplit(shown) || OfferFilterService.dasherBesideNow()) {
+                        requestedAt = 0;
+                        log(shown, "split with Dasher beside " + VERIFY_MS + " ms after its launch-adjacent start");
+                        return;
+                    }
+                    log(shown, "no split " + VERIFY_MS + " ms after Dasher's launch-adjacent start: opening recent "
+                            + "apps");
+                    String said = byHand(shown);
+                    if (said != null && later != null) later.accept(said);
+                    return;
+                }
                 if (floating(shown)) {
                     requestedAt = 0;
                     log(shown, "floating window after split request: nothing opened");
@@ -382,7 +426,8 @@ final class DasherSplit {
      */
     static void paused(Activity activity) {
         if (requestedAt != 0) away = true;
-        if (verify == null) return;
+        // Dasher coming up beside (or over) this screen pauses it either way: the look at the split still comes.
+        if (verify == null || launchedBeside) return;
         cancelVerify();
         if (requestedAt != 0) {
             waitMs = BY_HAND_MS;
@@ -408,6 +453,12 @@ final class DasherSplit {
         }
         away = false;
         cancelVerify();
+        if (launchedBeside) {
+            launchedBeside = false;
+            requestedAt = 0;
+            log(activity, "split by Dasher's launch-adjacent start; nothing more opened");
+            return;
+        }
         if (floating(activity)) {
             requestedAt = 0;
             log(activity, "floating window after split request: nothing opened");
@@ -461,7 +512,9 @@ final class DasherSplit {
         cancelVerify();
         requestedAt = 0;
         away = false;
+        launchedBeside = false;
         loggedSplit = null;
+        adjacentFirst = DasherSplit::adjacentByDefault;
         split = OfferFilterService::splitScreen;
         recents = OfferFilterService::openRecents;
     }

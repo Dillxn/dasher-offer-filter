@@ -397,6 +397,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         }
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -435,6 +436,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     public void aPhoneThatWillNotSplitOpensRecentAppsAndDasherStillFollows() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         List<String> asked = new ArrayList<>();
         DasherSplit.split = () -> {
             asked.add("split");
@@ -495,6 +497,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     public void aSplitLongAfterTheTapOpensNothing() {
         dasherInstalled();
         DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         DasherSplit.split = () -> false;
         DasherSplit.recents = () -> true;
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
