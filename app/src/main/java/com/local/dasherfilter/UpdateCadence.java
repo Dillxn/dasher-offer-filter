@@ -22,7 +22,7 @@ final class UpdateCadence {
         TURNED_ON,
         /** The one-shot retry job after a failure or a deferred install. */
         RETRY,
-        /** Offer Filter's screen came back (or was recreated, as a split resize or day and night do). */
+        /** Offer Filter's screen came back (or was recreated, as day and night do; a resize only lays it out). */
         RESUMED,
         /** The screen reader or the notification listener connected. */
         CONNECTED,

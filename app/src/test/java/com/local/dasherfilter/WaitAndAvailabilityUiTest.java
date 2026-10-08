@@ -185,12 +185,12 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A short window (half a split screen beside another app, then beside Dasher): with Autopilot off Next match works
-     * as before; with it on the ground's line is Autopilot's, and in a short window that is no line at all (its chip, or
-     * beside Dasher its button, says the status), so Next match never takes a row under the chip.
+     * At every window size (half a split screen here, beside another app, then beside Dasher) the status line beside
+     * Autopilot's chip is the wait while Autopilot is off and Autopilot's own status while it is on, so Next match never
+     * takes a row under the chip; the chip is there either way.
      */
     @Test @Config(qualifiers = "w411dp-h360dp-420dpi")
-    public void aShortWindowShowsNoNextMatchWhileAutopilotIsOn() {
+    public void theStatusLineIsTheWaitWithAutopilotOffAndItsStatusWithItOn() {
         FilterStore.save(app, rules());
         java.util.List<QualifyingWait.Sample> samples = new java.util.ArrayList<>();
         for (int i = 0; i < 5; i++) samples.add(new QualifyingWait.Sample(
@@ -209,24 +209,25 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             QualifyingWaitStore.screen(app, true, DasherScene.WAITING, null, false, false);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertTrue("a short window", find(content, MinimumsStarView.class).beside());
-            assertNotNull("Autopilot off: Next match as before", shownTextContaining(content, "Next match:"));
+            assertNotNull("Autopilot off: Next match", shownTextContaining(content, "Next match:"));
+            assertTrue("in the status line", statusLine(content).getText().toString().startsWith("Next match:"));
+            assertTrue(find(content, AutopilotChip.class).isShown());
 
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             layOut(content);
             assertNull("Autopilot on: no Next match under the chip", shownTextContaining(content, "Next match:"));
-            assertNull("nor a status line", shownTextContaining(content, "Autopilot 100%"));
+            assertTrue("its status instead", statusLine(content).getText().toString().startsWith("Autopilot "));
             assertTrue("the chip says it", find(content, AutopilotChip.class).isShown());
 
-            // Beside Dasher: the button says it, and still no Next match.
+            // Beside Dasher: the same page, the same line.
             OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
             layOut(content);
-            assertFalse("the constellation is the sky beside Dasher", find(content, MinimumsStarView.class).beside());
             assertNull(shownTextContaining(content, "Next match:"));
-            assertFalse("the button, not the chip", find(content, AutopilotChip.class).isShown());
+            assertTrue(statusLine(content).getText().toString().startsWith("Autopilot "));
+            assertTrue("the chip as well", find(content, AutopilotChip.class).isShown());
 
             AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
             OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());

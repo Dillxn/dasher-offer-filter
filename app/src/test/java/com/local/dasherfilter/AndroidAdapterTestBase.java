@@ -369,6 +369,39 @@ abstract class AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * The window resized to {@code qualifiers} ("+h420dp", say) as a dragged divider resizes it: Android tells the
+     * screen its new size (which it takes without being made again) and its window's, and lays the window out again.
+     */
+    static void resizeWindow(org.robolectric.android.controller.ActivityController<?> controller, String qualifiers) {
+        RuntimeEnvironment.setQualifiers(qualifiers);
+        controller.configurationChange();
+        try {
+            View decor = controller.get().getWindow().getDecorView();
+            Object root = View.class.getMethod("getViewRootImpl").invoke(decor);
+            org.robolectric.shadows.ShadowViewRootImpl window = org.robolectric.shadow.api.Shadow.extract(root);
+            window.callDispatchResized();
+        } catch (ReflectiveOperationException unreachable) {
+            throw new AssertionError(unreachable);
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    /** The homepage's strip along the top, its words beside the mascot: the verdict, then the chip and the status. */
+    static android.widget.LinearLayout stripWords(View content) {
+        return (android.widget.LinearLayout) find(content, ScenePage.class).getChildAt(0);
+    }
+
+    /** The latest offer's verdict, at the top of the homepage. */
+    static TextView verdictLine(View content) {
+        return (TextView) stripWords(content).getChildAt(0);
+    }
+
+    /** The status line beside Autopilot's chip, under the verdict. */
+    static TextView statusLine(View content) {
+        return (TextView) ((ViewGroup) stripWords(content).getChildAt(1)).getChildAt(1);
+    }
+
     /** The first view of {@code type} in the tree, or null. */
     static <T extends View> T find(View view, Class<T> type) {
         if (type.isInstance(view)) return type.cast(view);

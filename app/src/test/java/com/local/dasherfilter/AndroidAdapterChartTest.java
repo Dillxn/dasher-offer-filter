@@ -808,9 +808,14 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * In a short split screen with another app the radar is the same radar beside the map (0.5.1 put it in the header
+     * there without its knobs, and a tap swapped it with the map): its knobs and its Autopilot button work there, for
+     * fingers and screen readers, with the strip's chip still on screen and the map still beside it.
+     */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void inAShortSplitWithAnotherAppTheHeaderChartHasNoKnobsOrButton() {
+    public void inAShortSplitWithAnotherAppTheRadarKeepsItsKnobsAndButtonBesideTheMap() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
@@ -819,40 +824,17 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue("up in the header", star.beside());
-            assertNull("no knobs", star.knobAt(1));
-            assertNull("no Autopilot button: the chip under the mascot stands for it", star.autopilotBox());
-            assertNotNull(find(content, AutopilotChip.class));
-            assertTrue(find(content, AutopilotChip.class).isShown());
-            assertNull("no knobs for screen readers either", star.getAccessibilityNodeProvider());
-            // A drag across it sets nothing; a tap spreads it across the sky, with its knobs.
-            float x = star.getWidth() * 0.6f;
-            float y = star.getHeight() / 2f;
-            long now = android.os.SystemClock.uptimeMillis();
-            star.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0));
-            star.dispatchTouchEvent(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_MOVE, x + 60, y - 30, 0));
-            star.dispatchTouchEvent(MotionEvent.obtain(now, now + 100, MotionEvent.ACTION_UP, x + 60, y - 30, 0));
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
-            tap((ViewGroup) star.getParent(), star.getLeft() + x, star.getTop() + y);
-            settleSky(content);
-            assertFalse("no page opens", settingsShown(content));
-            assertFalse("out of the header", star.beside());
-            assertTrue("into the sky", star.backdrop());
+            assertEquals("wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
+            assertTrue("in the sky", star.backdrop());
             assertNotNull("with its knobs", star.knobAt(1));
             assertNotNull("and the Autopilot button", star.autopilotBox());
-            assertFalse("which is Autopilot's one control now: no chip repeats it",
-                    find(content, AutopilotChip.class).isShown());
-            assertEquals("the map makes room", View.GONE, find(content, AreaMapView.class).getVisibility());
-
-            // A tap on its circle, away from everything on it, puts it back in the header with the map.
-            ViewGroup sky = (ViewGroup) star.getParent();
-            tap(sky, star.skyX() + star.skyRadius() * 0.5f, star.skyY());
-            settleSky(content);
-            assertTrue("back in the header", star.beside());
-            assertTrue("and the chip with it", find(content, AutopilotChip.class).isShown());
-            assertEquals(View.VISIBLE, find(content, AreaMapView.class).getVisibility());
-            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
+            assertTrue("the strip's chip as well", find(content, AutopilotChip.class).isShown());
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue("the map beside it", map.isShown() && star.getRight() <= map.getLeft());
+            assertTrue(act(star, AreaScore.MILE, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertEquals("a knob sets its minimum here as anywhere", 155, FilterStore.load(app).perMileCents);
+            assertFalse("no page opens", settingsShown(content));
         }
     }
 

@@ -240,8 +240,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     private void render(boolean split, String name, DecisionLog.StepKind status, String outcome, boolean autopilot)
             throws Exception {
         FilterStore.save(app, RULES);
-        // Autopilot on below 100%: its status line on a whole screen with room for it, else its chip beside the
-        // caption (a short pane with the constellation in its header); beside Dasher its button alone.
+        // Autopilot on below 100%: its chip and status line in the strip at the top, at every size.
         if (autopilot) withAutopilotAt(82);
         DecisionLog.record(app, entry(System.currentTimeMillis(), 1835, status));
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -258,16 +257,24 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             TextView caption = shownTextContaining(content, "Latest · $18.35 · " + outcome);
             assertNotNull(caption);
-            assertTrue(caption.getHeight() >= new Ui(app).dp(48));
-            assertTrue(caption.getWidth() >= new Ui(app).dp(48));
             ScenePage scene = find(content, ScenePage.class);
+            // The skyline's caption while the skyline is wholly there; in a window too short for it (it goes before the
+            // constellation and the map), the verdict at the top of the page, which says the same offer and opens it.
+            View target = scene.shown(caption) >= 1 ? caption : stripWords(content);
+            if (target != caption) {
+                assertTrue("the verdict names the offer: " + verdictLine(content).getText(),
+                        verdictLine(content).getText().toString().contains("$18.35"));
+            }
+            assertTrue(target.getHeight() >= new Ui(app).dp(48));
+            assertTrue(target.getWidth() >= new Ui(app).dp(48));
             assertTrue("main scene fits its window: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
                     scene.getHeight() <= ((View) scene.getParent()).getHeight());
             Rect visible = new Rect();
-            assertTrue(caption.getGlobalVisibleRect(visible));
-            assertEquals("whole target remains on screen", caption.getHeight(), visible.height());
+            assertTrue(target.getGlobalVisibleRect(visible));
+            assertEquals("whole target remains on screen", target.getHeight(), visible.height());
             assertTrue("all wrapped lines fit", caption.getLayout().getHeight()
-                    <= caption.getHeight() - caption.getPaddingTop() - caption.getPaddingBottom());
+                    <= caption.getHeight() - caption.getPaddingTop() - caption.getPaddingBottom()
+                    || target != caption);
             Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
             content.draw(new Canvas(bitmap));
             File dir = new File("build/reports/offer-caption");
@@ -275,21 +282,21 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             try (FileOutputStream stream = new FileOutputStream(new File(dir, name + ".png"))) {
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
             } finally { bitmap.recycle(); }
-            if (find(content, MinimumsStarView.class).beside()) {
-                AreaMapView map = find(content, AreaMapView.class);
+            AreaMapView map = find(content, AreaMapView.class);
+            if (scene.shown(map) >= 1) {
                 int[] mapAt = new int[2], rootAt = new int[2];
                 map.getLocationOnScreen(mapAt);
                 content.getLocationOnScreen(rootAt);
                 tap((ViewGroup) content, mapAt[0] - rootAt[0] + map.getWidth() / 2f,
                         mapAt[1] - rootAt[1] + map.getHeight() / 2f);
-                assertNotNull("compact map remains a usable target",
+                assertNotNull("the map wholly there is a usable target",
                         Shadows.shadowOf(activity.get()).getLastRequestedPermission());
             }
-            int[] captionAt = new int[2], contentAt = new int[2];
-            caption.getLocationOnScreen(captionAt);
+            int[] targetAt = new int[2], contentAt = new int[2];
+            target.getLocationOnScreen(targetAt);
             content.getLocationOnScreen(contentAt);
-            tap((ViewGroup) content, captionAt[0] - contentAt[0] + caption.getWidth() / 2f,
-                    captionAt[1] - contentAt[1] + caption.getHeight() / 2f);
+            tap((ViewGroup) content, targetAt[0] - contentAt[0] + target.getWidth() / 2f,
+                    targetAt[1] - contentAt[1] + target.getHeight() / 2f);
             assertNotNull("real coordinate tap opens the displayed offer", shownTextContaining(content, "Read: $18.35"));
             assertTrue(FilterStore.load(app).enabled);
         } finally {

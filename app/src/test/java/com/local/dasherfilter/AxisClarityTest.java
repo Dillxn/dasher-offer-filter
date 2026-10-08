@@ -110,8 +110,12 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Half of a split screen with another app: the constellation, wholly there beside the map, names every spoke as on
+     * a whole screen (0.5.1 put a compact copy in the header there, its names hidden until a tap spread it out).
+     */
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void compactHeaderKeepsItsTapToExpandAndThenShowsEveryName() {
+    public void halfOfASplitScreenNamesEverySpokeBesideTheMap() {
         FilterStore.save(app, RULES);
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
@@ -120,17 +124,11 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(star.beside());
-            for (int axis = 0; axis < AreaScore.AXES; axis++) {
-                assertNull("the compact header does not cram in expanded labels", star.axisLabelBox(axis));
-                assertNull("the header is a single expand target", star.knobAt(axis));
-            }
-            tap((ViewGroup) star.getParent(), star.getLeft() + star.getWidth() * 0.6f,
-                    star.getTop() + star.getHeight() / 2f);
-            settleSky(content);
-            assertTrue("the original tap still expands the constellation", star.backdrop());
+            assertEquals("wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
+            assertTrue("as the sky", star.backdrop());
             assertNamedAxes(star);
-            assertEquals(View.GONE, find(content, AreaMapView.class).getVisibility());
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue("beside the map", map.isShown() && star.getRight() <= map.getLeft());
             assertArrayEquals("opening the legend never changes a minimum", RULES.minimums(),
                     FilterStore.load(app).minimums());
         } finally {

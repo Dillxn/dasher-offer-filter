@@ -1,3 +1,20 @@
+## Unreleased
+
+Not released yet; the version stays 0.5.1 (code 81).
+
+### One homepage at every window size
+- **The owner, 7 October 2026, on 0.5.1's split screen:** "I do not like how it only shows the map or the radar"; "it should be gradual and seamless". The homepage no longer switches between a driving strip, a page with the constellation in its header and a page without its map beside Dasher: it is one layout, and every part of it changes size gradually as the window does, nothing jumping or popping in or out.
+- **The latest offer's verdict is at the top at every size,** on one line where it fits: what became of it, why and how long ago ("Declined $4.10 · 9 mi: below your per-mile minimum · 2 min ago"); a tap opens its ticket. The mascot, Autopilot's chip and the filter's status stand with it, and a setup step or a note that needs you stays under the header.
+- **The constellation and the offer map stand together** wherever both fit at a size they work at: side by side in a short or wide window, one above the other in a tall one, turning gradually between the two, with nothing to tap to swap them. As the window gets shorter the road, the counts, the skyline and last the constellation and the map shrink and fade away, in that order, and come back the same way.
+- **Dragging the divider only lays the page out again:** the screen is no longer made again at each size, so nothing else waits on it.
+
+### Fixed
+- **Update news shows once.** After an update whose notice says what changed (as 0.5.0 to 0.5.1 did), accepting the notice counts that version's What is new card as seen, so the homepage no longer tells the same news again.
+- **At twice the font** a setup step's number is no longer cut off, and the max stops badge keeps its whole touch target inside the constellation wherever it can.
+
+### Evidence boundaries
+- **Simulation only:** plain Java tests of the layout at every window size a pixel apart, and the real page swept from 220 to 900 dp tall on simulated Android 8 and 15 (Robolectric). No phone has shown the new layout yet.
+
 ## 0.5.1 — your minimums grow
 
 Version 0.5.1 (code 81). It follows 0.5.0. Everyone sees the notice once more (notice 15), because Autopilot can now change your minimums.

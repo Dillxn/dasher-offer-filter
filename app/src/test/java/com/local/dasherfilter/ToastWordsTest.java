@@ -24,7 +24,7 @@ public final class ToastWordsTest {
                 SetupChecklist.RECONNECT_ON_PAGE, SetupChecklist.RECONNECT_IN_LIST, SetupChecklist.ALLOW_SOURCE,
                 SetupChecklist.ALLOW_NOTIFICATIONS, DasherSplit.hint("pixel"), DasherSplit.hint("samsung"),
                 DasherSplit.hint("other"), DasherSplit.FLOATING_HINT, DasherSplit.SCREEN_READING_FIRST,
-                DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_BEYOND_STRIP,
+                DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
                 MainActivity.FIRST_RULE, LocationRationale.PATH, "Not allowed. " + LocationRationale.PATH,
         };
         for (String toast : toasts) {

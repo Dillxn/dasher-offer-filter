@@ -378,9 +378,14 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * In a short split screen with another app the radar is the same radar, beside the map (0.5.1 put it in the header
+     * there, its offers out of reach): wholly there, its offers reach screen readers, and a tap inside the chosen
+     * offer's shape opens it, as at full size.
+     */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void inAShortSplitWithAnotherAppTheHeaderChartOnlyMovesIntoTheSky() {
+    public void inAShortSplitWithAnotherAppTheRadarsOffersOpenAsAtFullSize() {
         seed(RULES);
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
@@ -390,18 +395,19 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
-            assertTrue("up in the header", star.beside());
-            assertNull("no offers for screen readers there", star.getAccessibilityNodeProvider());
-            assertNull(star.markAt(OLDER, 0));
-            // Its middle lies inside both offers' shapes; a tap there opens no offer: it spreads the chart across
-            // the sky, where its knobs are.
-            tap((ViewGroup) star.getParent(), star.getLeft() + star.getWidth() / 2f,
-                    star.getTop() + star.getHeight() / 2f);
-            assertFalse(star.beside());
+            assertEquals("wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
+            assertTrue("beside the map", star.getRight() <= find(content, AreaMapView.class).getLeft());
+            chart.select(0);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNotNull("its offers reach screen readers",
+                    star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID));
+            float[] inBoth = insideBoth(star);
+            assertNotNull("a place inside both shapes, clear of every mark and knob", inBoth);
+            tapThrough(content, star, inBoth);
+            assertEquals(Integer.valueOf(975), chart.selectedEntry().facts.payCents);
+            assertNotNull(shownTextContaining(content, "Read: $9.75"));
+            assertEquals(OLDER, star.openedOffer());
             assertFalse(settingsShown(content));
-            assertEquals(Integer.valueOf(2400), chart.selectedEntry().facts.payCents);
-            assertEquals(-1, star.openedOffer());
-            assertNull(shownTextContaining(content, "Read: $"));
         }
     }
 
