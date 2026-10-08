@@ -136,7 +136,7 @@ abstract class AndroidAdapterTestBase {
             activity.setContentView(scroll);
             layOut();
             show();
-            star.compose(scroll.getWidth() / 2f, ui.dp(240), ui.dp(180), Collections.emptyList());
+            star.compose(scroll.getWidth() / 2f, ui.dp(240), ui.dp(180));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900));
         }
 
@@ -270,6 +270,11 @@ abstract class AndroidAdapterTestBase {
         return false;
     }
 
+    /** A tap at ({@code x}, {@code y}) in the constellation's own pixels, through the page it stands in. */
+    static void tapStar(MinimumsStarView star, float x, float y) {
+        tap((ViewGroup) star.getParent(), star.getLeft() + x, star.getTop() + y);
+    }
+
     /** A finger down and up at ({@code x}, {@code y}) in {@code parent}, as the screen delivers it. */
     static void tap(ViewGroup parent, float x, float y) {
         long now = android.os.SystemClock.uptimeMillis();
@@ -367,6 +372,51 @@ abstract class AndroidAdapterTestBase {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) collectButtons(group.getChildAt(i), out);
         }
+    }
+
+    /**
+     * The window resized to {@code qualifiers} ("+h420dp", say) as a dragged divider resizes it: Android tells the
+     * screen its new size (which it takes without being made again) and its window's, and lays the window out again.
+     */
+    static void resizeWindow(org.robolectric.android.controller.ActivityController<?> controller, String qualifiers) {
+        RuntimeEnvironment.setQualifiers(qualifiers);
+        controller.configurationChange();
+        try {
+            View decor = controller.get().getWindow().getDecorView();
+            Object root = View.class.getMethod("getViewRootImpl").invoke(decor);
+            org.robolectric.shadows.ShadowViewRootImpl window = org.robolectric.shadow.api.Shadow.extract(root);
+            window.callDispatchResized();
+        } catch (ReflectiveOperationException unreachable) {
+            throw new AssertionError(unreachable);
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    /** The homepage's strip along the top, its words beside the mascot: the verdict, then the chip and the status. */
+    static android.widget.LinearLayout stripWords(View content) {
+        return (android.widget.LinearLayout) find(content, ScenePage.class).getChildAt(0);
+    }
+
+    /** The latest offer's verdict, at the top of the homepage. */
+    static TextView verdictLine(View content) {
+        return (TextView) stripWords(content).getChildAt(0);
+    }
+
+    /** The status line beside Autopilot's chip, under the verdict. */
+    static TextView statusLine(View content) {
+        return (TextView) ((ViewGroup) stripWords(content).getChildAt(1)).getChildAt(1);
+    }
+
+    /** The homepage's header: the empty title and the round buttons (Navigate, Dasher, the sun, Settings). */
+    static View pageHeader(View content) {
+        return (View) iconButton(content, "Settings").getParent();
+    }
+
+    /** Where {@code view} stands, in its window's pixels. */
+    static android.graphics.RectF inWindow(View view) {
+        int[] at = new int[2];
+        view.getLocationInWindow(at);
+        return new android.graphics.RectF(at[0], at[1], at[0] + view.getWidth(), at[1] + view.getHeight());
     }
 
     /** The first view of {@code type} in the tree, or null. */

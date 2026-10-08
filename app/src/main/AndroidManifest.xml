@@ -31,8 +31,12 @@
         android:label="@string/app_name"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
+        <!-- The homepage is one fluid layout: a window resized (a split screen's divider dragged, the phone turned) only
+             lays it out again, gradually, rather than making the screen again (which flickers and reads Dasher's
+             windows anew). Day and night, the font size and the display's density still make it again. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:exported="true" />
         <!-- Keep these alias names stable across updates. MainActivity itself is never disabled, so existing
              consent/update intents and earlier home-screen shortcuts still address the same real Activity. -->

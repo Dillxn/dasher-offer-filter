@@ -80,6 +80,11 @@ final class BundledNotes {
                 "Dasher opens as its own icon opens it: its navigation comes back as it was, never hidden under "
                         + "\"Searching for offers\".",
                 "That covers the split button, Peek and taps on this app's cards.");
+        release("0.5.5",
+                "One homepage at every window size: the radar and the offer map stand together, and everything "
+                        + "resizes gradually as you drag the divider.",
+                "The latest offer's verdict is always at the top, with why and how long ago; tap it for the "
+                        + "ticket.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

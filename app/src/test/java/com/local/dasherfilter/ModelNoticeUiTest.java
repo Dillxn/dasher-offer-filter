@@ -29,6 +29,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -220,40 +221,38 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A third of a split screen is the driving strip (the mascot, the latest verdict, the status: nothing else, so
-     * Dasher's map keeps two thirds): the notice waits there, kept in the store, since nothing it names is on screen
-     * and a dialog that only a button closes would stand in the strip a driver glances at. Dragging the divider back
-     * makes the screen again with the page, and the notice comes on it.
+     * In a window too short for the constellation (a third of a split screen, the setup's lines under the header) the
+     * notice waits, kept in the store: nothing it names is on screen, and a dialog that only a button closes would stand
+     * over the strip a driver glances at. The strip's own controls work as ever. The divider dragged back lays the same
+     * screen out again with the constellation wholly there, and the notice comes on it.
      */
-    @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
-    public void inTheDrivingStripTheNoticeWaitsForThePage() {
+    @Test @Config(qualifiers = "w411dp-h260dp-420dpi")
+    public void inAWindowTooShortForTheConstellationTheNoticeWaitsForIt() {
         ownerShape(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {
             refreshed();
-            DrivingStrip strip = find(page(activity), DrivingStrip.class);
-            assertNotNull("a third of a split screen: the strip", strip);
-            assertTrue(strip.isShown());
+            View content = page(activity);
+            ScenePage scene = find(content, ScenePage.class);
+            assertFalse("the constellation is not wholly there", scene.stageShown());
             assertNull("no dialog over the strip", ShadowAlertDialog.getLatestAlertDialog());
             refreshed();
             assertNull("nor at a later refresh", ShadowAlertDialog.getLatestAlertDialog());
             assertNotNull("kept for the page", FilterStore.peekModelNotice(app));
             // The strip's own controls work as ever, nothing in their way.
-            find(strip, DrivingStrip.MascotButton.class).performClick();
+            find(content, FilterHeroView.class).mascotControl().performClick();
             idle();
             assertFalse("the mascot pauses", FilterStore.load(app).enabled);
             assertNull(ShadowAlertDialog.getLatestAlertDialog());
 
-            // The divider dragged back: the screen made again, now with the page, and the notice on it.
-            RuntimeEnvironment.setQualifiers("w411dp-h914dp-420dpi");
-            activity.recreate();
+            // The divider dragged back: the same screen laid out again, the constellation there, the notice on it.
+            resizeWindow(activity, "w411dp-h914dp-420dpi");
             refreshed();
-            View content = page(activity);
-            assertNull("the page, not the strip", find(content, DrivingStrip.class));
-            assertTrue(find(content, MinimumsStarView.class).isShown());
+            assertSame("laid out again, not made again", scene, find(page(activity), ScenePage.class));
+            assertTrue(scene.stageShown());
             AlertDialog notice = notice();
-            assertNotNull("the notice, once the page shows", notice);
+            assertNotNull("the notice, once the constellation shows", notice);
             assertEquals(OWNER_LINES, message(notice));
             notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();

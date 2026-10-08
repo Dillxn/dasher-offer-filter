@@ -41,18 +41,21 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The app's two pages, kept quiet. The main page is one picture: a sky where the minimums, as a very large
- * constellation with recent offers marked (tap an offer for its ticket), spread behind the mascot in its ring and the
- * dash's three counts (the mascot is the one button: a tap pauses or resumes), with a line only when something needs
- * the user; then recent offers as a skyline on the horizon (tap for a ticket); and, on the ground below it on a whole
- * screen, a map of where offers pay best. Every rule lives on the constellation and saves at once: the knobs (pay, per
- * mile and per hour, hollow until set), the max stops badge by the pin, and the Autopilot button (a tap turns it off,
- * or on with the goal chooser; a long press changes the goal), whose status line stands under the skyline's caption
- * (a chip beside the caption where no button is on screen, or where the page has no room for the line). Settings holds
- * only what exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a
- * tip, each one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt
- * while the app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt
- * sensor rests.
+ * The app's two pages, kept quiet. The main page is one picture in one fluid layout ({@link ScenePage},
+ * {@link FluidLayout}), the same at every window size: along the top the strip, the mascot in its ring (the one button
+ * that pauses or resumes) beside the latest offer's verdict (what happened and why, how long ago) and, under it,
+ * Autopilot's chip and the status line; the header's buttons; the dash's three counts; a line only when something needs
+ * the user; then the minimums as a constellation with recent offers marked (tap an offer for its ticket), the skyline
+ * of recent offers under it (tap for a ticket), and beside or below them a map of where offers pay best; the road along
+ * the bottom. Every rule lives on the constellation and saves at once: the knobs (pay, per mile and per hour, hollow
+ * until set), the max stops badge by the pin, and the Autopilot button (a tap turns it off, or on with the goal
+ * chooser; a long press changes the goal). As the window shrinks, the road, the counts, the skyline and at last the
+ * constellation with the map shrink and fade away, in that order, never all at once; the strip, the header and the
+ * lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only what
+ * exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip, each
+ * one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt while the
+ * app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt sensor
+ * rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
     /** The alerts permission's request code (asked by the setup checklist, answered here). */
@@ -61,16 +64,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
     private static final String SIGNATURE_LINK = "https://jesuslovesyou.xyz/";
-    /** A split-screen window shorter than this gets the compact homepage; any window at all under the second. */
-    static final int COMPACT_SPLIT_HEIGHT_DP = 600;
-    static final int COMPACT_HEIGHT_DP = 400;
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
-    private static final String SKY_CHOSEN = "sky_chosen";
     /**
-     * With no rule saved, the line under the skyline's caption (never over the constellation's knobs): the fewest
-     * words that say how to begin. It opens the starter.
+     * With no rule saved, the status line under the verdict: the fewest words that say how to begin. It opens the
+     * starter.
      */
     static final String START_LINE = "Tap to start with typical minimums";
     static final String STARTER_TITLE = "Start with typical minimums?";
@@ -80,11 +79,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String STARTER_OWN = "Set my own";
     /** Said with the knobs' beckoning, when the user chose to set a first minimum by hand. */
     static final String KNOBS_HINT = "Drag a knob to start. Each knob sets a minimum.";
+    /** "Set my own" in a window too short for the constellation (it has faded away): how to reach its knobs. */
+    static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
     /**
-     * "Set my own" in the driving strip, which has no knobs: how to reach them, as the strip's own line says it
-     * ({@link DrivingStrip}: "drag the divider to set one").
+     * The status line while auto-decline is paused with Autopilot off (with it on, the line is Autopilot's,
+     * "auto-decline paused" among its states), and while it is on with nothing else to say.
      */
-    static final String KNOBS_BEYOND_STRIP = "Drag the divider for more room, then drag a knob.";
+    static final String PAUSED_LINE = "Paused · nothing is declined";
+    static final String ON_LINE = "Auto-decline is on";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your rules are simpler now";
@@ -113,11 +115,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
             + "stay.";
     /** The view of Autopilot's details' words, over "Let my minimums grow" ({@link #showAutopilotDetails}). */
     static final int DETAILS_WORDS_ID = 0x4F460104;
-    /** What the ground's one line shows: nothing, the start, Autopilot's status, or the wait for a matching offer. */
-    private static final int SLOT_NONE = 0;
+    /**
+     * What the status line says: the start, paused, Autopilot's status, the wait for a matching offer, or that
+     * auto-decline is on. All but the last are a tap away from their own dialog (or resume).
+     */
     private static final int SLOT_START = 1;
-    private static final int SLOT_AUTOPILOT = 2;
-    private static final int SLOT_WAIT = 3;
+    private static final int SLOT_PAUSED = 2;
+    private static final int SLOT_AUTOPILOT = 3;
+    private static final int SLOT_WAIT = 4;
+    private static final int SLOT_ON = 5;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ReportShare reportShare = new ReportShare();
@@ -146,14 +152,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private boolean resumed;
     private boolean started;
     private Ui ui;
+    /** The main page's scroller: it scrolls only where even the strip, the header and the lines need more. */
     private ScrollView mainPage;
     private ScenePage scene;
     /** The header's Split with Dasher button (Put Dasher beside once split), while Dasher is not beside already. */
     private View splitButton;
     /** The header's one-tap Open Dasher, filling the screen (F22). */
     private View openDasherButton;
-    /** Offer Filter's half at about a third of a split screen: the strip in place of the page; null otherwise. */
-    private DrivingStrip strip;
     /** The split screen's own lines: the divider hint beside Dasher, and the layout note beside another app. */
     private SplitLines splitLines;
     private FrameLayout root;
@@ -171,18 +176,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private ScrollView notice;
 
-    // Main page: the mascot.
-    private TextView stateLine;
-    private TextView offerCaption;
-    /** The ground's one line: the start, Autopilot's status line, or the wait ({@code slot} says which). */
-    private TextView waitEstimateLine;
-    private int slot = SLOT_NONE;
-    /**
-     * Autopilot's chip beside the caption (never a row of its own): where no Autopilot button is on screen, or where
-     * a whole screen has no room for the status line ({@link #chipOnGround}); the chips another strip hosts too.
-     */
+    // Main page: the strip along the top.
+    /** The latest offer's verdict with, under it, the chip and the status line; a tap opens that offer's ticket. */
+    private LinearLayout stripWords;
+    private SetupRow.Words verdictLine;
+    /** The status line beside the chip: the start, paused, Autopilot's status or the wait ({@code slot} says which). */
+    private TextView statusLine;
+    private int slot = SLOT_ON;
+    /** Autopilot's chip at the status line's start, at every size: a tap opens the details, a long press the goal. */
     private AutopilotChip chip;
-    private final List<AutopilotChip> chips = new java.util.ArrayList<>();
+    /** The skyline's caption: the chosen offer's line ("Latest" or "Selected"), a tap opening its ticket. */
+    private TextView offerCaption;
     /** What Autopilot is doing, as last shown. */
     private AutopilotText.Status autopilotStatus;
     /** Told on the main thread after a plan or a commit: the page shows the new status. */
@@ -201,8 +205,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Peek paused itself for a while (never the Settings switch): why, and Resume. */
     private Readiness peekPaused;
     /**
-     * The sky's lines that need the user: setup, an update, Peek paused, a stop, the split screen's layout note, the
-     * one-time cards and note.
+     * The lines that need the user, under the header: setup, an update, Peek paused, a stop, the split screen's layout
+     * note, the one-time cards and note.
      */
     private LinearLayout problems;
     private LinearLayout routeRow;
@@ -237,56 +241,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
-    /**
-     * A short window (half a split screen): the constellation moves into the header beside the sun, drawn with its
-     * icons beside the circle; the page keeps the mascot, its counts, the skyline and the map, and drops the road.
-     */
-    private boolean compact;
-    /** The main page's header, whose left holds the constellation in a short window. */
-    private LinearLayout mainHeader;
+    /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
     private AppearanceButton sunButton;
     private long appearanceCheckedAt = -1;
     private boolean changingAppearance;
-    /**
-     * The main page's sky: the header, the mascot with its counts and the page's few lines, with the constellation
-     * drawn large behind them all whenever it is not up in the header.
-     */
-    private SkyStage sky;
-    private LinearLayout.LayoutParams skyParams;
-    /** Below the sky: the skyline, and on a whole screen the map. */
-    private LinearLayout.LayoutParams groundParams;
-    /** The skyline's share of the ground, which a short window with the map holds at a fixed height instead. */
-    private LinearLayout.LayoutParams chartParams;
-    /** The skyline's height, weighted out of the ground, in a short window beside another app and its map. */
-    private static final int CHART_SHORT_DP = 56;
-    /**
-     * Split with Dasher: Dasher's own map is on screen in the other half, so this page shows no map of its own
-     * (the pointer over Dasher points to the best area); the constellation and the skyline take its room.
-     */
-    private boolean besideDasher;
-    /**
-     * In a short window beside another app, the user tapped the header's constellation: it spreads across the sky with
-     * its knobs (the map making room) until its circle is tapped again.
-     */
-    private boolean skyChosen;
-    /** No map on the page now: beside Dasher, or a short window whose sky the constellation was chosen into. */
-    private boolean noMap;
-    private boolean arranged;
-    /** How tall the constellation stands in the header of a short window. */
-    static final int HEADER_STAR_DP = 72;
-    /**
-     * The sky's share of the page, on top of what must be in it, beside Dasher, in a short window with the map, and
-     * on a whole screen; the ground (the skyline, and the map where there is one) takes the rest.
-     */
-    private static final float SKY_BESIDE_DASHER = 2.8f;
-    private static final float SKY_WITH_MAP_SHORT = 1f;
-    private static final float SKY_WHOLE = 1.7f;
     private AreaMapView areaMap;
-    /** The road along the bottom of a whole screen: scenery, so it gives way first ({@link RoadScroll}). */
-    private View road;
-    private static final int ROAD_DP = 78;
     private AreaMap.Cell shownArea;
     private String shownAreas = "";
     private double[] areaHere;
@@ -316,7 +277,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
     private GrowthCard growthCard;
     private WhatsNewCard whatsNew;
-    /** This screen was made fresh (not recreated by a resize or day and night): its first resume checks at once. */
+    /** This screen was made fresh (not recreated by day and night): its first resume checks at once. */
     private boolean freshScreen;
 
     /** Day or night as chosen with the sun and moon, for every view and dialog of this screen. */
@@ -346,26 +307,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (state != null) {
             feeNotice = state.getString(FEE_NOTICE);
             feeNoticeAsked = state.getBoolean(FEE_NOTICE + "_asked", false);
-            skyChosen = state.getBoolean(SKY_CHOSEN, false);
         }
 
         root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
         scene = new ScenePage(this, ui);
-        mainPage = addPage(root, scene, new RoadScroll());
-        settingsPage = addPage(root, ui.column(), new ScrollView(this));
-        buildMain((LinearLayout) mainPage.getChildAt(0));
-        buildSettings((LinearLayout) settingsPage.getChildAt(0));
+        mainPage = addPage(root, scene);
+        LinearLayout settings = ui.column();
+        settingsPage = addPage(root, settings);
+        buildMain(scene);
+        buildSettings(settings);
         buildSheet(root);
         updatingCover = new UpdatingCover(this, ui, root);
-        // About a third of a split screen: one strip in place of the page (the divider gives Dasher's map the rest),
-        // with Autopilot's chip as the layout's one Autopilot control (the page and its button are not shown there).
-        if (DrivingStrip.wanted(this)) {
-            strip = new DrivingStrip(this, ui, this::toggleAutoDecline, newAutopilotChip());
-            root.addView(strip, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            SplitLines.markHintShown(this);
-        }
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
         root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -400,7 +353,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         notice.setVisibility(shown ? View.VISIBLE : View.GONE);
         if (shown) {
             mainPage.setVisibility(View.GONE);
-            if (strip != null) strip.setVisibility(View.GONE);
             if (splitLines != null) splitLines.pageChanged();
             settingsPage.setVisibility(View.GONE);
             sheet.setVisibility(View.GONE);
@@ -438,7 +390,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Taken once from the store: a recreated page (a resize, day and night) keeps showing it until it is tapped.
         if (feeNotice != null) state.putString(FEE_NOTICE, feeNotice);
         state.putBoolean(FEE_NOTICE + "_asked", feeNoticeAsked);
-        state.putBoolean(SKY_CHOSEN, skyChosen);
         feedbackDialogs.save(state);
     }
 
@@ -617,8 +568,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Pages ----
 
-    private ScrollView addPage(FrameLayout root, LinearLayout page, ScrollView scroll) {
+    private ScrollView addPage(FrameLayout root, View page) {
         // The main page fills exactly one screen; it scrolls only if a very large font leaves no other way.
+        ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setVisibility(View.GONE);
         scroll.addView(page, Ui.matchWidth());
@@ -629,12 +581,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Swaps the pages in place; each keeps its own scroll position. */
     private void showSettings(boolean settings) {
-        View shown = settings ? settingsPage : strip != null ? strip : mainPage;
+        View shown = settings ? settingsPage : mainPage;
         boolean changed = shown.getVisibility() != View.VISIBLE;
         showingSettings = settings;
-        // In a third of a split screen the strip stands in for the main page.
-        mainPage.setVisibility(settings || strip != null ? View.GONE : View.VISIBLE);
-        if (strip != null) strip.setVisibility(settings ? View.GONE : View.VISIBLE);
+        mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
         if (splitLines != null) splitLines.pageChanged();
         if (!settings) cancelReportShare();
@@ -655,8 +605,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout header = ui.row();
         // The main page's sky is the whole scene behind it; Settings has its own strip of sky.
         if (back) header.setBackground(new Scenery(Scenery.Part.SKY, ui));
-        header.setPadding(ui.dp(back ? 8 : 20), ui.dp(back ? 18 : 10), ui.dp(12), ui.dp(back ? 12 : 4));
-        header.setMinimumHeight(ui.dp(back ? 84 : 62));
+        header.setPadding(ui.dp(back ? 8 : 12), ui.dp(back ? 18 : 0), ui.dp(back ? 12 : 8), ui.dp(back ? 12 : 0));
+        header.setMinimumHeight(ui.dp(back ? 84 : 56));
         if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
         // The main page's picture needs no title; screen readers still hear it.
         TextView name = ui.text(back ? title : "", 22, ui.ink, true);
@@ -665,7 +615,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
         if (!back) {
-            mainHeader = header;
             mainTitle = name;
             header.addView(iconButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
             // One tap to Dasher filling the screen (with the tab over it), at the user's tap only.
@@ -706,47 +655,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** The padded column a page's content goes in, between its sky and its ground. */
     private LinearLayout body(LinearLayout page) {
-        return body(page, ui.column());
-    }
-
-    private LinearLayout body(LinearLayout page, LinearLayout body) {
+        LinearLayout body = ui.column();
         body.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(12));
         page.addView(body, Ui.matchWidth());
         return body;
-    }
-
-    /**
-     * The main page's scroller. The page fills exactly one screen; before it would have to scroll (a 640 dp phone with
-     * Autopilot's status line in the ground, say), the road, which is only scenery, gives up the height the page lacks,
-     * down to none. It scrolls only when that is not enough: a very large font.
-     */
-    private final class RoadScroll extends ScrollView {
-        RoadScroll() {
-            super(MainActivity.this);
-        }
-
-        @Override protected void onMeasure(int widthSpec, int heightSpec) {
-            boolean shown = road != null && road.getVisibility() == View.VISIBLE;
-            if (shown) roadHeight(ui.dp(ROAD_DP));
-            super.onMeasure(widthSpec, heightSpec);
-            View page = getChildAt(0);
-            if (!shown || page == null) return;
-            int lack = page.getMeasuredHeight() - (getMeasuredHeight() - getPaddingTop() - getPaddingBottom());
-            if (lack <= 0) return;
-            roadHeight(Math.max(0, ui.dp(ROAD_DP) - lack));
-            super.onMeasure(widthSpec, heightSpec);
-        }
-
-        /** The road at {@code height}, measured afresh (never from Android's measure cache) with the page above it. */
-        private void roadHeight(int height) {
-            ViewGroup.LayoutParams params = road.getLayoutParams();
-            if (params.height == height) return;
-            params.height = height;
-            for (View at = road; at != null && at != this; at = at.getParent() instanceof View
-                    ? (View) at.getParent() : null) {
-                at.forceLayout();
-            }
-        }
     }
 
     /** The drawn hills and road a page ends on. */
@@ -756,11 +668,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ground.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         page.addView(ground, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(heightDp)));
         return ground;
-    }
-
-    /** A share of the height left on one screen. */
-    private static LinearLayout.LayoutParams share(float weight) {
-        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, weight);
     }
 
     private void buildSheet(FrameLayout root) {
@@ -823,58 +730,46 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Main page ----
 
-    private void buildMain(LinearLayout page) {
-        int heightDp = getResources().getConfiguration().screenHeightDp;
-        compact = heightDp < COMPACT_HEIGHT_DP || (isInMultiWindowMode() && heightDp < COMPACT_SPLIT_HEIGHT_DP);
+    private void buildMain(ScenePage page) {
         View header = header(AppName.NAME, false);
 
-        // The mascot is the button: a tap pauses, resumes, or with no rule yet offers typical minimums.
+        // The strip along the top: the mascot is the button (a tap pauses, resumes, or with no rule yet offers typical
+        // minimums), beside the latest offer's verdict and, under it, Autopilot's chip and the status line.
         hero = new FilterHeroView(this, ui);
         hero.setOnMascotClickListener(tapped -> toggleAutoDecline());
         hero.setOnCountClickListener(this::openLatestCountedOffer);
-        // Words only when something needs the user: paused. On, the picture says it all; with no rule yet, the start
-        // line stands under the skyline's caption, clear of the constellation's hollow knobs.
+        stripWords = ui.column();
+        stripWords.setBackground(ui.pressable(12));
+        // A tap on the verdict opens that offer's ticket (the chip and the status line keep their own taps).
+        stripWords.setOnClickListener(tapped -> openLatestOffer());
+        stripWords.setClickable(false);
+        // 15 sp, as every homepage line; at a large font, a little smaller by the least that keeps it to two lines (as
+        // a setup step's words), so even the longest verdict stays whole on screen in a small window.
+        verdictLine = new SetupRow.Words(this);
+        verdictLine.setTextColor(ui.ink);
+        verdictLine.setTypeface(Ui.MEDIUM);
+        verdictLine.setLineSpacing(0, 1.15f);
+        verdictLine.setPadding(0, ui.dp(4), 0, 0);
+        stripWords.addView(verdictLine, Ui.matchWidth());
+        // The status line, 14 sp and at least 48 dp: with no rule, the start; with Autopilot on, its status in every
+        // state, a tap opening its details; else, with Autopilot off, paused (a tap resumes), the wait for a matching
+        // offer, or that auto-decline is on. Never a live region: Autopilot moving its bar by itself is never announced.
+        statusLine = ui.text("", 14, ui.inkSecondary, false);
+        statusLine.setMinHeight(ui.dp(48));
+        statusLine.setGravity(Gravity.CENTER_VERTICAL);
+        statusLine.setOnClickListener(tapped -> statusTapped());
+        // Autopilot's chip at the status line's start, at every size: beside its 48 dp line it costs no height.
+        chip = new AutopilotChip(this, ui);
+        chip.setOnClickListener(tapped -> showAutopilotDetails());
+        chip.setOnLongClickListener(held -> {
+            chooseAutopilotGoal();
+            return true;
+        });
+        stripWords.addView(new AutopilotChip.Row(this, ui, chip, statusLine, 14), Ui.matchWidth());
+
+        // The lines that need the user, under the header.
         LinearLayout lines = ui.column();
         lines.setPadding(ui.dp(16), 0, ui.dp(16), 0);
-        stateLine = ui.text("", 16, ui.ink, true);
-        stateLine.setGravity(Gravity.CENTER_HORIZONTAL);
-        // Only as wide as its words (and the veil the sky fades under them), so the constellation's knobs beside the
-        // words take their own touches rather than this line.
-        stateLine.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4));
-        stateLine.setOnClickListener(tapped -> toggleAutoDecline());
-        LinearLayout.LayoutParams stateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        stateParams.gravity = Gravity.CENTER_HORIZONTAL;
-        lines.addView(stateLine, stateParams);
-        offerCaption = ui.text("", 13, ui.ink, true);
-        offerCaption.setGravity(Gravity.CENTER);
-        offerCaption.setMinHeight(ui.dp(48));
-        offerCaption.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
-        offerCaption.setOnClickListener(tapped -> {
-            if (chart.selectedEntry() != null) setTicketOpen(true);
-        });
-        // One line under the caption, 13 sp and at least 48 dp: with no rule, the start; with Autopilot on (a whole
-        // page with room for it), its status, a tap opening its details; else, with Autopilot off, the wait for a
-        // matching offer, as before. Never a live region: Autopilot moving its bar by itself is never announced.
-        waitEstimateLine = ui.text("", 13, ui.inkSecondary, false);
-        waitEstimateLine.setMinHeight(ui.dp(48));
-        waitEstimateLine.setGravity(Gravity.CENTER);
-        waitEstimateLine.setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8));
-        waitEstimateLine.setOnClickListener(tapped -> {
-            if (slot == SLOT_START) {
-                showStarter();
-            } else if (slot == SLOT_AUTOPILOT) {
-                showAutopilotDetails();
-            } else {
-                OwnWindowTouches.show(new AlertDialog.Builder(this)
-                        .setTitle("Time until a matching offer")
-                        .setMessage(QualifyingWaitStore.estimate(this, FilterStore.load(this)).detail())
-                        .setPositiveButton("OK", null));
-            }
-        });
-        LinearLayout.LayoutParams waitParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        waitParams.gravity = Gravity.CENTER_HORIZONTAL;
         problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
         checklist = new SetupChecklist(this, ui, problems, NOTIFICATION_PERMISSION_REQUEST);
@@ -912,56 +807,45 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }));
         lines.addView(routeRow);
 
-        // One picture from top to bottom: the sky, where the minimums' constellation spreads behind the mascot and
-        // its counts; the offers as a skyline on the horizon; the map on the ground; and the road along the bottom.
+        // Then the stage: the minimums' constellation with the skyline's caption and the skyline under it, above the
+        // map in a tall window and beside it in a wide one; and the road along the bottom.
         addMinimums();
-        sky = new SkyStage(this, ui, minimums, hero, header, mainTitle, lines, sunButton);
-        // What must be in the sky (the header, the counts and the lines), then its share of the rest.
-        skyParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        page.addView(sky, skyParams);
-        // The skyline and the map share the ground, each keeping the least it reads well at.
-        LinearLayout body = body(page, new LeastColumn(this));
-        groundParams = share(1);
-        body.setLayoutParams(groundParams);
-        // A stable target identifies the displayed shape and opens its ticket, clear of the minimum knobs. Autopilot's
-        // chip stands at its start, under the mascot, where the page shows it (refresh): beside the words, costing the
-        // page no height, so the header gains no row and the ground keeps its 0.4.x height.
-        chip = newAutopilotChip();
-        chip.setVisibility(View.GONE);
-        body.addView(new AutopilotChip.Row(this, ui, chip, offerCaption), Ui.matchWidth());
-        body.addView(waitEstimateLine, waitParams);
-        addOffers(body);
-        addAreas(body);
-        // The road needs a whole screen; in a short window (beside Dasher or not) the page ends at the skyline or
-        // the map, and a window changing size builds the page again.
-        road = ground(page, ROAD_DP);
-        road.setVisibility(compact || getResources().getConfiguration().fontScale >= 1.5f
-                ? View.GONE : View.VISIBLE);
+        offerCaption = caption(13, ui.ink);
+        offerCaption.setPadding(ui.dp(12), 0, ui.dp(12), 0);
+        offerCaption.setOnClickListener(tapped -> {
+            if (chart.selectedEntry() != null) setTicketOpen(true);
+        });
+        addOffers();
+        addAreas();
+        View road = new View(this);
+        road.setBackground(new Scenery(Scenery.Part.GROUND, ui));
+        page.setParts(stripWords, hero, header, lines, minimums, offerCaption, chart, areaMap, areaLine, road);
         // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
         mainTitle.setId(View.generateViewId());
-        minimums.setAccessibilityTraversalAfter(mainTitle.getId());
-        if (compact) {
-            // Half a screen holds the whole picture only if each part settles for a little less.
-            chart.setLeastDp(52);
-            chartParams.topMargin = 0;
-            areaMap.setLeastDp(84);
-            areaLine.setMinHeight(ui.dp(32));
-            body.setPadding(body.getPaddingLeft(), 0, body.getPaddingRight(), ui.dp(4));
-            // Keep every shortcut reachable even with the constellation beside another app's short pane.
-            mainHeader.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), 0);
-            for (int i = 0; i < mainHeader.getChildCount(); i++) {
-                View child = mainHeader.getChildAt(i);
-                if (child == mainTitle || child == sunButton) continue;
-                child.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-            }
-            sunButton.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)));
+        stripWords.setId(View.generateViewId());
+        mainTitle.setAccessibilityTraversalBefore(stripWords.getId());
+    }
+
+    /**
+     * A caption of {@code sp} words in its 48 dp row, wherever the page puts it (its width changes with the window): one
+     * line where the words fit, else two, smaller by the least that fits, never below three quarters of the user's size
+     * nor below the default size; only words longer still are cut short with a mark (screen readers hear the whole of
+     * it). Lines without the font's own padding above and below: with it, two lines at the least size came out taller
+     * than the row at twice the font on Android 8.
+     */
+    private TextView caption(float sp, int color) {
+        TextView line = ui.text("", sp, color, true);
+        line.setMaxLines(2);
+        line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        line.setGravity(Gravity.CENTER);
+        line.setLineSpacing(0, 1f);
+        line.setIncludeFontPadding(false);
+        int full = Math.round(line.getTextSize());
+        int least = Math.min(full, Math.max(Math.round(full * SetupRow.LEAST_SCALE), ui.dp(sp)));
+        if (least < full) {
+            line.setAutoSizeTextTypeUniformWithConfiguration(least, full, 1, android.util.TypedValue.COMPLEX_UNIT_PX);
         }
-        arrangeForSplit();
-        // The skyline's street (12 dp above the chart's bottom) is the horizon.
-        scene.setHorizon(chart, ui.dp(11), offerCaption);
-        // The scene's stars, clouds and signpost keep out from under the sky's words and icons.
-        scene.setOver(sky, sky);
+        return line;
     }
 
     /** Split screen with Dasher in the other half (as the screen reader last saw it). */
@@ -969,73 +853,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return isInMultiWindowMode() && OfferFilterService.dasherBeside();
     }
 
-    /**
-     * Beside Dasher, no map of our own (Dasher's is right there): the sky takes nearly all the room, the
-     * constellation spread across it, over a skyline. In any other short window the map stays, the skyline keeps a
-     * fixed height above it, and the constellation moves into the header, its icons beside the circle; a tap on it
-     * there spreads it across the sky with its knobs, as beside Dasher (the map making room), and a tap on its circle
-     * puts it back. A whole screen shows everything, the sky above the map. (The road is set once, when the page is
-     * built.)
-     */
-    private void arrangeForSplit() {
-        boolean beside = besideDasherNow();
-        boolean mapless = beside || (compact && skyChosen);
-        if (arranged && beside == besideDasher && mapless == noMap) return;
-        arranged = true;
-        besideDasher = beside;
-        noMap = mapless;
-        areaMap.setVisibility(mapless ? View.GONE : View.VISIBLE);
-        if (mapless || shownArea == null) areaLine.setVisibility(View.GONE);
-        else areaLine.setVisibility(View.VISIBLE);
-        boolean inHeader = compact && !mapless;
-        placeConstellation(inHeader);
-        // In a short window the constellation's tap moves it between the header and the sky; elsewhere it has none.
-        boolean movable = compact && !beside;
-        minimums.setOnClickListener(movable ? tapped -> chooseSky(!skyChosen) : null);
-        minimums.setClickable(movable);
-        minimums.setClickLabel(!movable ? null : inHeader ? "set the minimums" : "show the map");
-        // Beside another app the map needs the room, so the skyline stands at a fixed height rather than a share.
-        chartParams.height = inHeader ? ui.dp(CHART_SHORT_DP) : 0;
-        chartParams.weight = inHeader ? 0 : 0.7f;
-        chart.setLayoutParams(chartParams);
-        // The sky's share against the ground's (the skyline, and the map where there is one).
-        skyParams.weight = mapless ? SKY_BESIDE_DASHER : inHeader ? SKY_WITH_MAP_SHORT : SKY_WHOLE;
-        groundParams.weight = mapless ? 0.7f : inHeader ? 3.2f : 1.7f;
-        sky.requestLayout();
-    }
-
-    /** In a short window, the constellation spread across the sky with its knobs ({@code on}), or in the header. */
-    private void chooseSky(boolean on) {
-        if (!compact || besideDasher || skyChosen == on) return;
-        skyChosen = on;
-        arrangeForSplit();
-        // The start line follows the knobs (see refresh).
-        refresh();
-        if (on) minimums.beckon();
-    }
-
-    /** The constellation is the sky, with its knobs (a whole screen, beside Dasher, or chosen into a short window's sky). */
-    private boolean knobsInSky() {
-        return !compact || noMap;
-    }
-
-    /** The constellation in the header's left (drawn with its icons beside the circle), or spread across the sky. */
-    private void placeConstellation(boolean inHeader) {
-        ViewGroup now = (ViewGroup) minimums.getParent();
-        if (now != null && inHeader == (now == mainHeader)) return;
-        if (now != null) now.removeView(minimums);
-        minimums.setBeside(inHeader);
-        if (inHeader) {
-            // Clear of the split screen's handle at the middle of the top edge.
-            int size = getResources().getConfiguration().screenWidthDp < 344 ? 56 : HEADER_STAR_DP;
-            mainHeader.addView(minimums, 0, new LinearLayout.LayoutParams(
-                    ui.dp(MinimumsStarView.besideWidthDp(size)), ui.dp(size)));
-        } else {
-            sky.holdStar();
-        }
-    }
-
-    private void addOffers(LinearLayout body) {
+    private void addOffers() {
         chart = new DecisionChartView(this, ui);
         chart.setOnSelect(entry -> {
             countTicket = null;
@@ -1046,9 +864,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
         chart.setOnClickListener(tapped -> setTicketOpen(true));
-        chartParams = share(0.7f);
-        chartParams.topMargin = ui.dp(6);
-        body.addView(chart, chartParams);
         // The ticket unfolds in the sheet over the page.
         ticket = ui.column();
         ticketShape = new Decor.Ticket(ui);
@@ -1076,9 +891,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         setTicketOpen(true);
     }
 
+    /** A tap on the verdict: the latest offer's ticket, as a tap on its building opens it. */
+    private void openLatestOffer() {
+        refreshHistory();
+        if (!recentEntries.isEmpty()) openOffer(recentEntries.get(0));
+    }
+
     /**
-     * The minimums' constellation, where every rule is set. The sky or the header holds it, as the window allows. In
-     * the sky its knobs set the minimums and its badge the max stops, each saved at once through {@link FilterStore},
+     * The minimums' constellation, where every rule is set, in the page's sky at every window size where it fits. Its
+     * knobs set the minimums and its badge the max stops, each saved at once through {@link FilterStore},
      * and its Autopilot button turns Autopilot off (or on, through the goal chooser) and, held, changes the goal; a tap
      * on a marked offer opens its ticket, as its building in the skyline does, and a tap off every offer while an older
      * one is chosen chooses the newest again.
@@ -1172,31 +993,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     // ---- Autopilot ----
-
-    /**
-     * Autopilot's chip, wired: a tap opens the details, a long press the goal chooser. For any strip on this screen
-     * that hosts one: while it is attached it follows Autopilot's status with the page's own.
-     */
-    AutopilotChip newAutopilotChip() {
-        AutopilotChip made = new AutopilotChip(this, ui);
-        made.setOnClickListener(tapped -> showAutopilotDetails());
-        made.setOnLongClickListener(held -> {
-            chooseAutopilotGoal();
-            return true;
-        });
-        if (autopilotStatus != null) made.show(autopilotStatus);
-        made.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            @Override public void onViewAttachedToWindow(View attached) {
-                if (!chips.contains(made)) chips.add(made);
-                if (autopilotStatus != null) made.show(autopilotStatus);
-            }
-
-            @Override public void onViewDetachedFromWindow(View detached) {
-                chips.remove(made);
-            }
-        });
-        return made;
-    }
 
     /** What Autopilot is doing now (finalSpec explainability), as the button, the chip and the status line say it. */
     private AutopilotText.Status autopilotStatus() {
@@ -1315,7 +1111,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * With no rule yet: "Start with typical minimums?" "Use these" saves $4.00, $1.00 a mile and $15 an hour (auto-decline
      * stays paused; the mascot turns it on) and asks for Autopilot's goal; "Set my own" makes the hollow knobs beckon
-     * (in the driving strip, which has none, it says how to reach them).
+     * (in a window too short for them, it says how to reach them).
      */
     private void showStarter() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
@@ -1373,8 +1169,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * The one-time 0.5.0 notice ({@link FilterStore#peekModelNotice}): what changed, in the owner's order, and, when the
      * minimums would have passed fewer than one in five of the last offers, the pass check and "Use typical minimums"
      * (unless the minimums are the typical ones already: then the check, with OK and "Set up Autopilot"). It stays
-     * until a button is tapped (a recreated screen shows it again), and only ever opens over the page, never the
-     * driving strip ({@link #refresh}).
+     * until a button is tapped (a recreated screen shows it again), and only ever opens once the constellation is on
+     * screen ({@link #refresh}).
      */
     private void showModelNotice(String json) {
         org.json.JSONObject facts;
@@ -1477,10 +1273,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The ground: the offer areas as a map, always on the page, and one line under it naming the chosen area, which
-     * opens it in Maps. Before location is allowed (or with mapping turned off), a tap on the ground asks for it.
+     * The ground: the offer areas as a map, beside or under the constellation at every window size where they fit, and
+     * one line under it naming the chosen area, which opens it in Maps. Before location is allowed (or with mapping
+     * turned off), a tap on the map asks for it.
      */
-    private void addAreas(LinearLayout body) {
+    private void addAreas() {
         areaMap = new AreaMapView(this, ui);
         areaMap.setOnSelect(cell -> {
             pickedArea = true;
@@ -1493,19 +1290,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
             if (!AreaMap.hasPermission(this)) askForLocation();
         });
-        // In a short window the map is what the page is for, beside Dasher's own.
-        LinearLayout.LayoutParams mapParams = share(compact ? 2f : 1f);
-        mapParams.topMargin = ui.dp(2);
-        body.addView(areaMap, mapParams);
-        areaLine = ui.text("", 13, ui.ink, true);
-        // A rate and its sample count can wrap at large font sizes; keep the two caption lines compact.
-        areaLine.setLineSpacing(0, 1f);
-        areaLine.setGravity(Gravity.CENTER);
-        areaLine.setMinHeight(ui.dp(36));
+        // One line where it fits (else two, its rate and count a little smaller), a 48 dp target under the map.
+        areaLine = caption(13, ui.ink);
+        areaLine.setPadding(ui.dp(16), 0, ui.dp(16), 0);
         areaLine.setBackground(ui.pressable(12));
         areaLine.setOnClickListener(tapped -> openArea());
         areaLine.setVisibility(View.GONE);
-        body.addView(areaLine, Ui.matchWidth());
     }
 
     // ---- Settings page ----
@@ -1704,27 +1494,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void refresh() {
         refreshScreenAwake();
-        if (stateLine == null || noticeShown()) return;
+        if (statusLine == null || noticeShown()) return;
         if (refreshAppearance()) return;
-        arrangeForSplit();
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
-        // With no rule yet, the start line: on the ground, under the latest offer's line, while the constellation's
-        // knobs are in the sky, so it never covers one; in the sky under the mascot while a short window's header holds
-        // the constellation (no knob in the sky to cover, and its ground has no row to spare).
-        boolean startOnGround = knobsInSky();
-        if (saved.enabled) {
-            stateLine.setText("");
-            hero.setAction("Pause auto-decline");
-        } else if (saved.hasAnyRule()) {
-            stateLine.setText("Paused");
-            hero.setAction("Resume auto-decline");
-        } else {
-            stateLine.setText(startOnGround ? "" : START_LINE);
-            hero.setAction("Set up rules");
-        }
-        stateLine.setVisibility(saved.enabled || (!saved.hasAnyRule() && startOnGround) ? View.GONE : View.VISIBLE);
+        hero.setAction(saved.enabled ? "Pause auto-decline" : saved.hasAnyRule() ? "Resume auto-decline"
+                : "Set up rules");
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
             String label = DasherSplit.label(this);
@@ -1733,13 +1509,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         if (openDasherButton != null) {
-            int open = DasherSplit.opens(this, dasherInstalled.get(), compact) ? View.VISIBLE : View.GONE;
+            int open = DasherSplit.opens(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE;
             if (openDasherButton.getVisibility() != open) openDasherButton.setVisibility(open);
         }
         if (splitLines != null) splitLines.refresh(besideDasherNow(), dasherInstalled.get());
 
         boolean readerConnected = OfferFilterService.isConnected();
-        // Setup prompts take precedence over optional timing, especially at large font sizes in a short window.
         readyForOffers = saved.enabled && saved.hasAnyRule() && readerConnected
                 && OfferNotificationService.isConnected() && alertsAllowed.get();
         QualifyingWait.Estimate estimate = QualifyingWaitStore.estimate(this, saved);
@@ -1747,14 +1522,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 && QualifyingWaitStore.observingWaiting(this);
         AutopilotText.Status status = autopilotStatus();
         refreshAutopilot(status);
-        // The sky's lines first: one that needs the user takes its room before Autopilot's status line does.
         checklist.refresh(readerConnected, alertsAllowed.get());
         updateReady.refresh(checklist.installsAllowed());
         // Only while the Settings switch is on: Peek turned off there is the user's own choice, not a pause.
         String paused = FilterStore.peek(this) ? Peek.pausedWhy(this) : null;
         if (paused != null) peekPaused.problem("Peek paused: " + paused);
         peekPaused.update(paused == null);
-        if (strip != null) refreshStrip(saved, paused);
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
@@ -1763,30 +1536,24 @@ public final class MainActivity extends Activity implements Updater.Busy {
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("On a route: " + route.summary());
-        boolean chipShown = chipOnGround(saved);
-        if (chipShown != (chip.getVisibility() == View.VISIBLE)) {
-            chip.setVisibility(chipShown ? View.VISIBLE : View.GONE);
-        }
-        // The ground's one line: the start with no rule (while the knobs are in the sky). While Autopilot is on, the
-        // line is Autopilot's: its status on a whole screen with room for it, else nothing (its chip, or beside Dasher
-        // its button, says it), never Next match. With Autopilot off, the wait, as before.
+        // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
+        // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that
+        // nothing is declined (a tap resumes), else the wait, or that auto-decline is on.
         if (!saved.hasAnyRule()) {
-            if (startOnGround) showSlot(SLOT_START, START_LINE, null, ui.link);
-            else showSlot(SLOT_NONE, null, null, ui.inkSecondary);
+            showSlot(SLOT_START, START_LINE, null, ui.link);
         } else if (saved.autopilot) {
-            if (compact || chipShown) {
-                showSlot(SLOT_NONE, null, null, ui.inkSecondary);
-            } else {
-                showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
-                        ui.inkSecondary);
-            }
+            showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
+                    ui.inkSecondary);
+        } else if (!saved.enabled) {
+            showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ". Resume auto-decline", ui.ink);
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
-            showSlot(SLOT_NONE, null, null, ui.inkSecondary);
+            showSlot(SLOT_ON, ON_LINE, null, ui.inkSecondary);
         }
 
         refreshHistory();
+        refreshVerdict();
         refreshOfferCaption(chart.selectedEntry());
         refreshLive();
         // Rules saved elsewhere, and Autopilot moving its bar or another goal chosen without a new offer in the
@@ -1801,10 +1568,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
         updatingCover.refresh();
         refreshSettings();
-        // The one-time 0.5.0 notice, once the screen is up (never behind the first-run notice), and only with the page:
-        // the driving strip (a third of a split screen) shows none of what it names, and only a button closes it, so
-        // there it waits in the store until the divider gives the page back (the screen is made again).
-        if (started && strip == null && !modelNoticeAsked) {
+        // The one-time 0.5.0 notice, once the screen is up (never behind the first-run notice), and only once the
+        // constellation it speaks of is on screen: in a window too short for it, it waits in the store (only a button
+        // closes it) until the window gives the page room.
+        if (started && scene.stageShown() && !modelNoticeAsked) {
             modelNoticeAsked = true;
             String notice = FilterStore.peekModelNotice(this);
             if (notice != null) showModelNotice(notice);
@@ -1812,77 +1579,75 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot as everything on the page shows it: the constellation's button (and its dashed shape), and the chips,
+     * Autopilot as everything on the page shows it: the constellation's button (and its dashed shape), and the chip,
      * amber by one rule (below the goal). Quiet: nothing is announced when Autopilot moves the bar by itself.
      */
     private void refreshAutopilot(AutopilotText.Status status) {
         autopilotStatus = status;
         minimums.setAutopilot(status.on, status.bar, status.belowGoal());
-        for (AutopilotChip each : chips) each.show(status);
+        chip.show(status);
     }
 
     /**
-     * Whether Autopilot's chip stands beside the latest offer's line now. One Autopilot control on screen: in a short
-     * window with the constellation up in the header no Autopilot button shows, so the chip is Autopilot's control
-     * there, on or off ("Auto off" being the way in); beside Dasher, or with the constellation chosen into a short
-     * window's sky, its button is, and the chip would only repeat it (and cost the ground its room). On a whole screen
-     * the button is in the sky and, while Autopilot is on, its status line stands in Next match's place; the chip takes
-     * the status over only where the page has no room for that line: at a very large font, where the road is gone and
-     * nothing else gives way, or while a line in the sky needs the user (a setup step, an update, a note), which takes
-     * its room first. Beside the line the chip costs no height ({@link AutopilotChip.Row}).
+     * The status line, as {@code which} says: its words, what screen readers hear, its ink, and whether a tap does
+     * something.
      */
-    private boolean chipOnGround(FilterSettings saved) {
-        if (compact) return !knobsInSky();
-        return saved.autopilot && (road.getVisibility() != View.VISIBLE || skyLineShown());
-    }
-
-    /** A line in the sky needs the user: a setup step, an update, a stop, a one-time card or note, a route. */
-    private boolean skyLineShown() {
-        if (routeRow.getVisibility() != View.GONE) return true;
-        for (int i = 0; i < problems.getChildCount(); i++) {
-            if (problems.getChildAt(i).getVisibility() != View.GONE) return true;
-        }
-        return false;
-    }
-
-    /** The ground's one line, as {@code which} says ({@link #SLOT_NONE} hides it). */
     private void showSlot(int which, String words, String said, int color) {
         slot = which;
-        waitEstimateLine.setVisibility(which == SLOT_NONE ? View.GONE : View.VISIBLE);
-        if (which == SLOT_NONE) return;
-        if (!words.contentEquals(waitEstimateLine.getText())) waitEstimateLine.setText(words);
-        if (!java.util.Objects.equals(said, waitEstimateLine.getContentDescription() == null ? null
-                : waitEstimateLine.getContentDescription().toString())) {
-            waitEstimateLine.setContentDescription(said);
+        if (!words.contentEquals(statusLine.getText())) statusLine.setText(words);
+        if (!java.util.Objects.equals(said, statusLine.getContentDescription() == null ? null
+                : statusLine.getContentDescription().toString())) {
+            statusLine.setContentDescription(said);
         }
-        if (waitEstimateLine.getCurrentTextColor() != color) waitEstimateLine.setTextColor(color);
-        waitEstimateLine.setTypeface(which == SLOT_START ? Ui.MEDIUM : android.graphics.Typeface.DEFAULT);
+        if (statusLine.getCurrentTextColor() != color) statusLine.setTextColor(color);
+        android.graphics.Typeface face = which == SLOT_START || which == SLOT_PAUSED ? Ui.MEDIUM
+                : android.graphics.Typeface.DEFAULT;
+        if (statusLine.getTypeface() != face) statusLine.setTypeface(face);
+        statusLine.setClickable(which != SLOT_ON);
+    }
+
+    /** The status line's tap: the starter, resume, Autopilot's details, or how long until a matching offer. */
+    private void statusTapped() {
+        switch (slot) {
+            case SLOT_START:
+                showStarter();
+                break;
+            case SLOT_PAUSED:
+                toggleAutoDecline();
+                break;
+            case SLOT_AUTOPILOT:
+                showAutopilotDetails();
+                break;
+            case SLOT_WAIT:
+                OwnWindowTouches.show(new AlertDialog.Builder(this)
+                        .setTitle("Time until a matching offer")
+                        .setMessage(QualifyingWaitStore.estimate(this, FilterStore.load(this)).detail())
+                        .setPositiveButton("OK", null));
+                break;
+            default:
+                break;
+        }
     }
 
     /**
-     * The strip in a third of a split screen: the mascot, the latest offer's verdict, and the filter's status, or the
-     * one thing that needs the user (the homepage's first setup step, Peek paused, or this layout needing a tap), its
-     * tap the same fix.
+     * The latest offer's verdict at the top of the page, at every window size (the owner: an offer dinged in split
+     * screen and Dasher showed only "Finding offers"): what became of it and why, with how long ago; a tap opens its
+     * ticket. With no offer yet, whether everything is ready for one.
      */
-    private void refreshStrip(FilterSettings saved, String peekPausedWhy) {
-        FilterHeroView.State state = saved.enabled ? FilterHeroView.State.ON
-                : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF;
-        // The homepage's first setup step, in its words (SetupChecklist), its tap that step's own Fix.
-        String problem = checklist.firstStep();
-        Runnable fix = problem == null ? null : checklist::fixFirst;
-        if (problem == null
-                && SplitLines.noteWanted(this, DasherSplit.inSplit(this), besideDasherNow(), dasherInstalled.get())) {
-            problem = SplitLines.LAYOUT_NOTE_SHORT;
-            fix = this::swapInDasher;
-        } else if (problem == null && peekPausedWhy != null) {
-            problem = "Peek paused: " + peekPausedWhy + " · Resume";
-            fix = () -> {
-                Peek.resumeNow(this);
-                refresh();
-            };
+    private void refreshVerdict() {
+        DecisionLog.Entry latest = recentEntries.isEmpty() ? null : recentEntries.get(0);
+        String words = latest == null ? (readyForOffers ? "Waiting for offers" : "No offers yet")
+                : verdict(latest, System.currentTimeMillis());
+        if (!words.contentEquals(verdictLine.getText())) verdictLine.setText(words);
+        // Sized, and its height kept, for the longest "how long ago" of the hour after the offer: the minutes passing
+        // never move the page.
+        verdictLine.fitTo(latest == null ? null : verdict(latest, LONGEST_AGO));
+        String said = latest == null ? null : words + ". Open offer details";
+        if (!java.util.Objects.equals(said, stripWords.getContentDescription() == null ? null
+                : stripWords.getContentDescription().toString())) {
+            stripWords.setContentDescription(said);
         }
-        refreshHistory();
-        strip.show(state, recentEntries.isEmpty() ? null : recentEntries.get(0), readyForOffers, problem, fix);
+        if (stripWords.isClickable() != (latest != null)) stripWords.setClickable(latest != null);
     }
 
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
@@ -1957,7 +1722,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         noteNewOffer(recent);
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
-        chart.setVisibility(empty ? View.GONE : View.VISIBLE);
         if (empty) {
             countTicket = null;
             ticketOpen = false;
@@ -2090,8 +1854,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void refreshOfferCaption(DecisionLog.Entry entry) {
         if (entry == null) {
-            String empty = readyForOffers ? "Waiting for offers" : "No offers yet.";
-            if (!empty.contentEquals(offerCaption.getText())) offerCaption.setText(empty);
+            // No offer yet: the verdict at the top says so, and the skyline under it.
+            if (offerCaption.length() > 0) offerCaption.setText("");
             offerCaption.setContentDescription(null);
             offerCaption.setClickable(false);
             return;
@@ -2112,7 +1876,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Qualify acceptance only when the stored observation distinguishes its source: "Automatically accepted" after the
      * app's own Accept request, "Accepted by you" after the user's; older lines by their old steps. An offer that
      * passed only by Autopilot's lowered bar never reads as a full pass: "Passed below your minimums" (left to the
-     * user). The driving strip's verdict says the same ({@link DrivingStrip}).
+     * user). The verdict at the top of the page says the same ({@link #verdict}).
      */
     static String captionOutcome(DecisionLog.Entry entry) {
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
@@ -2137,6 +1901,42 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     || step.kind == DecisionLog.StepKind.ACCEPTED_MINIMUMS_UNCHANGED) return "Accepted by you";
         }
         return DecisionLog.Outcome.ACCEPTED.said;
+    }
+
+    /**
+     * The latest offer's verdict, in one line where it fits: what became of it ({@link #captionOutcome}'s words), its pay
+     * and miles, why ({@link #reasonLine}'s words, without the outcome's own words again), and how long ago: "Declined
+     * $4.10 · 9 mi: below your per-mile minimum · 2 min ago", "Passed $7.00 · 6.6 mi: meets your minimums · just now".
+     */
+    static String verdict(DecisionLog.Entry entry, long now) {
+        return verdict(entry, ago(now - entry.at));
+    }
+
+    /** The longest "how long ago" a verdict says in the hour after its offer ("1 h ago" and on are shorter). */
+    private static final String LONGEST_AGO = "59 min ago";
+
+    /** The verdict for {@code entry}, saying how long ago in {@code ago}'s words. */
+    private static String verdict(DecisionLog.Entry entry, String ago) {
+        String outcome = captionOutcome(entry);
+        StringBuilder line = new StringBuilder(outcome).append(' ')
+                .append(entry.facts.payCents == null ? "pay unread" : DecisionLog.money(entry.facts.payCents));
+        if (entry.facts.miles != null) {
+            double miles = entry.facts.miles;
+            line.append(" · ").append(miles == Math.rint(miles) ? String.valueOf((long) miles) : String.valueOf(miles))
+                    .append(" mi");
+        }
+        String why = reasonLine(entry);
+        String below = "Below your minimums · ";
+        if (outcome.equals(AutopilotText.PASSED_BELOW_MINIMUMS) && why.startsWith(below)) {
+            why = why.substring(below.length());
+        }
+        if (!why.isEmpty()) line.append(": ").append(lowerFirst(why));
+        return line.append(" · ").append(ago).toString();
+    }
+
+    /** How long ago, in a few words: "just now", "12 min ago", "3 h ago" (under two days), "4 days ago". */
+    static String ago(long ms) {
+        return ms < 60_000 ? "just now" : AutopilotText.ago(ms);
     }
 
     /**
@@ -2452,8 +2252,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             areaMap.setEmptyMessage("Offers will pin here");
         }
         List<AreaMap.Cell> shownCells = on ? cells : java.util.Collections.<AreaMap.Cell>emptyList();
-        // With the map hidden (beside Dasher, say) only the signpost's place name uses where the phone is.
-        double[] here = on && permitted ? this.here.get(noMap ? ASK_EVERY_MS : HERE_EVERY_MS) : null;
+        // With the map faded away (a short window) only the signpost's place name uses where the phone is.
+        double[] here = on && permitted ? this.here.get(scene.stageShown() ? HERE_EVERY_MS : ASK_EVERY_MS) : null;
         String shown = on + "/" + AreaMap.version() + "/" + Places.version() + "/" + (here == null ? "-"
                 : Math.round(here[0] * 2000) + "," + Math.round(here[1] * 2000));
         if (shown.equals(shownAreas)) return;
@@ -2499,7 +2299,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 + (where.isEmpty() ? "" : " · " + where) + " · " + rate;
         areaLine.setContentDescription(spoken + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
                 + when(cell.lastAt) + ". Opens it in Maps.");
-        areaLine.setVisibility(noMap ? View.GONE : View.VISIBLE);
+        if (areaLine.getVisibility() != View.VISIBLE) areaLine.setVisibility(View.VISIBLE);
     }
 
     private void openArea() {
@@ -2511,7 +2311,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 cell.longitude()))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
-    /** Always available in the header, including when the Atlas is hidden beside Dasher. */
+    /** Always available in the header, at every window size, including when the map has faded away. */
     private void chooseNavigation() {
         boolean areasOn = AreaMap.enabled(this);
         AreaMap.Cell best = areasOn ? NavigationShortcuts.best(AreaMap.cells(this)) : null;
@@ -2565,17 +2365,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * "Set my own": the constellation's hollow knobs beckon (in a short window it first leaves the header for the
-     * sky, where they are), and screen readers hear how to begin. The driving strip has no knobs: there it says how to
-     * reach them (a toast, which screen readers hear too) and leaves the page it stands in for as it was.
+     * "Set my own": the constellation's hollow knobs beckon, and screen readers hear how to begin. In a window too
+     * short for the constellation (it has faded away) it says how to reach them (a toast, which screen readers hear too).
      */
     private void beckonKnobs() {
-        if (strip != null) {
-            toast(KNOBS_BEYOND_STRIP);
+        if (!scene.stageShown()) {
+            toast(KNOBS_NEED_ROOM);
             return;
         }
-        if (compact && !besideDasher && !skyChosen) chooseSky(true);
-        else minimums.beckon();
+        minimums.beckon();
         hero.announceForAccessibility(KNOBS_HINT);
     }
 

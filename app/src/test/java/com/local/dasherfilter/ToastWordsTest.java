@@ -8,10 +8,10 @@ import org.robolectric.annotation.Config;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The toasts that guide the user over Android's own pages (setup, split screen) and the driving strip keep to two
- * lines: from Android 12 a text toast shows at most two lines of a 300 dp toast and cuts the rest with an ellipsis
- * (SystemUI's text_toast.xml), so a long toast loses its last words, often the action itself ("…then turn it off and on
- * again"). Each keeps to {@link SetupChecklist#TOAST_MOST} characters, with the action in it.
+ * The toasts that guide the user over Android's own pages (setup, split screen) and in a window too short for the
+ * knobs keep to two lines: from Android 12 a text toast shows at most two lines of a 300 dp toast and cuts the rest
+ * with an ellipsis (SystemUI's text_toast.xml), so a long toast loses its last words, often the action itself ("…then
+ * turn it off and on again"). Each keeps to {@link SetupChecklist#TOAST_MOST} characters, with the action in it.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -24,7 +24,7 @@ public final class ToastWordsTest {
                 SetupChecklist.RECONNECT_ON_PAGE, SetupChecklist.RECONNECT_IN_LIST, SetupChecklist.ALLOW_SOURCE,
                 SetupChecklist.ALLOW_NOTIFICATIONS, DasherSplit.hint("pixel"), DasherSplit.hint("samsung"),
                 DasherSplit.hint("other"), DasherSplit.FLOATING_HINT, DasherSplit.SCREEN_READING_FIRST,
-                DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_BEYOND_STRIP,
+                DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
                 MainActivity.FIRST_RULE, LocationRationale.PATH, "Not allowed. " + LocationRationale.PATH,
         };
         for (String toast : toasts) {

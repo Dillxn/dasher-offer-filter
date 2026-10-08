@@ -23,7 +23,13 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 
-/** A smaller filter control leaves the offer plot legible without reducing its usable touch target. */
+/**
+ * The mascot, a small ring at the start of the strip along the top (0.5.1 floated it over the constellation, under the
+ * counts), keeps a whole touch target and leaves the radar, its knobs, icons, labels and buttons wholly clear, in a
+ * phone's whole screen, a narrow phone, half a split screen beside Dasher and at twice the font. The counts stand in
+ * their own row under the header, each a whole target that opens its offer without pausing, wherever the window has
+ * room for them (a short split gives their row to the radar and the map).
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -37,7 +43,7 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
     public void splitLeavesTheAxesAndControlsClear() throws Exception { check(true, "split"); }
 
     @Test @Config(qualifiers = "w360dp-h396dp-xhdpi")
-    public void smallSamsungSplitAnchorsTheMascotBelowTheCounts() throws Exception { check(true, "samsung-split"); }
+    public void smallSamsungSplitKeepsTheMascotAtTheStripsStart() throws Exception { check(true, "samsung-split"); }
 
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
     public void narrowPhoneKeepsAUsableControl() throws Exception { check(false, "narrow"); }
@@ -70,35 +76,43 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
+            ScenePage page = find(content, ScenePage.class);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             FilterHeroView hero = find(content, FilterHeroView.class);
             Ui ui = new Ui(app);
             assertTrue(hero.placed());
+            // In the page's pixels.
             float x = hero.getLeft() + hero.mascotX(), y = hero.getTop() + hero.mascotY();
             float r = hero.mascotRadius();
-            assertTrue("smaller drawing", r <= ui.dp(36));
+            assertTrue("a small drawing", r <= ui.dp(36));
             assertTrue("at least a 44dp control", r * 2 >= ui.dp(44));
-            assertTrue("near the left edge", x - r >= 0 && x - r <= ui.dp(7));
-            assertTrue("raised above the plot center", y < star.skyY() - ui.dp(12));
+            View control = hero.mascotControl();
+            assertTrue("a whole 48 dp target", control.getWidth() >= ui.dp(48) && control.getHeight() >= ui.dp(48));
+            assertTrue("near the left edge, inside the page", x - r >= 0 && x - r <= ui.dp(16));
+            assertTrue("at the top of the page", y - r >= 0 && y - r <= ui.dp(12));
+            View header = page.getChildAt(2);
+            assertTrue("above the header", y + r <= header.getTop() + 1);
+            assertTrue("and above the radar", y + r <= star.getTop());
             RectF counts = new RectF();
             hero.countsAt(counts);
             counts.offset(hero.getLeft(), hero.getTop());
-            assertTrue("below the counts", y - r >= counts.bottom);
-            assertTrue("at the top below the counters, not beside the plot center",
-                    y - r <= counts.bottom + ui.dp(20));
+            if (page.countsShown() > 0) {
+                assertTrue("the counts in their own row under the header", counts.top >= header.getBottom() - 1);
+            }
             List<RectF> obstacles = new ArrayList<>();
             star.iconsAt(obstacles);
             for (int i = 0; i < AreaScore.AXES; i++) obstacles.add(star.axisLabelBox(i));
             obstacles.add(star.autopilotBox());
             obstacles.add(star.stopsBox());
             obstacles.add(star.stopsPinBox());
-            assertNotNull("the Autopilot button is on the sky", star.autopilotBox());
+            assertEquals("the radar wholly there", 1f, page.shown(star), 0f);
             assertFalse("with its dashed shape at 82%", star.autopilotShape().isEmpty());
             for (RectF box : obstacles) {
                 if (box == null) continue;
+                box.offset(star.getLeft(), star.getTop());
                 float nearestX = Math.max(box.left, Math.min(x, box.right));
                 float nearestY = Math.max(box.top, Math.min(y, box.bottom));
-                assertTrue("mascot leaves axis/control clear: " + box,
+                assertTrue("the mascot leaves the radar's icons, labels and buttons clear: " + box,
                         Math.hypot(x - nearestX, y - nearestY) >= r);
             }
             Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
@@ -108,17 +122,23 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             try (FileOutputStream stream = new FileOutputStream(new File(out, name + ".png"))) {
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
             } finally { bitmap.recycle(); }
-            for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
-                android.widget.Button control = hero.countControl(tally);
-                assertTrue("native count target stays at least 48dp wide", control.getWidth() >= ui.dp(48));
-                assertTrue("native count target stays at least 48dp tall", control.getHeight() >= ui.dp(48));
+            if (page.countsShown() >= 1) {
+                for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
+                    android.widget.Button count = hero.countControl(tally);
+                    assertTrue("native count target stays at least 48dp wide", count.getWidth() >= ui.dp(48));
+                    assertTrue("native count target stays at least 48dp tall", count.getHeight() >= ui.dp(48));
+                }
+                tap(page, counts.centerX() - hero.countsAt(new RectF()), counts.centerY());
+                assertTrue("inspecting a count never pauses", FilterStore.load(app).enabled);
+                assertNotNull("the count opens its existing offer ticket", find(content, OfferCardView.class));
+                activity.get().onBackPressed();
+            } else {
+                for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
+                    assertFalse("with their row given to the radar and the map, the counts take no touch",
+                            hero.countControl(tally).isShown());
+                }
             }
-            tap((android.view.ViewGroup) star.getParent(), counts.centerX() - hero.countsAt(new RectF()),
-                    counts.centerY());
-            assertTrue("inspecting a count never pauses", FilterStore.load(app).enabled);
-            assertNotNull("the count opens its existing offer ticket", find(content, OfferCardView.class));
-            activity.get().onBackPressed();
-            tap((android.view.ViewGroup) star.getParent(), x, y);
+            tap(page, x, y);
             assertFalse("tap still pauses filtering", FilterStore.load(app).enabled);
         } finally {
             listener.destroy();

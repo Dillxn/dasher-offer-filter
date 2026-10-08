@@ -24,11 +24,9 @@ import android.widget.TextView;
  *
  * <p>Screen readers hear the whole status in words and what a tap does ({@link AutopilotText#chipDescription}), and
  * the long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar
- * change never interrupts TalkBack while driving. The homepage shows it beside the latest offer's line ({@link Row}),
- * where no Autopilot button is on screen (a short window with the constellation up in the header), or where a whole
- * screen has no room for the status line; the header gains no row. The driving strip of a short split screen hosts
- * another, beside its status line, as that layout's one Autopilot control ({@code MainActivity.newAutopilotChip},
- * {@link DrivingStrip}).
+ * change never interrupts TalkBack while driving. The homepage shows it at every window size at the start of the
+ * status line, under the latest offer's verdict in the strip along the top ({@link Row}), so Autopilot stays one tap
+ * away however short the window (the constellation's button with it while the constellation is on screen).
  */
 @SuppressLint("ViewConstructor")
 final class AutopilotChip extends TextView {
@@ -113,8 +111,8 @@ final class AutopilotChip extends TextView {
     }
 
     /**
-     * The chip beside a line of words (the latest offer's), the chip at the start, costing the page no height: the row
-     * keeps the height the words have alone across its whole width (their 0.4.x height). Where the words would wrap
+     * The chip beside a line of words (the status line), the chip at the start, costing the page no height: the row
+     * keeps the height the words have alone across its whole width. Where the words would wrap
      * onto more lines beside the chip (a large font, a narrow window), the chip's words and the line's shrink together
      * by the least that keeps the row that tall, never below three quarters of the user's size nor below the default
      * size (as a setup line's words do, {@link SetupRow.Words}); where even that is not enough (twice the font on the
@@ -152,15 +150,10 @@ final class AutopilotChip extends TextView {
         private float fitScale = 1f;
         private boolean fitTight;
 
-        /** The chip beside words of the chip's own size, 13 sp (the homepage's latest offer's line). */
-        Row(Context context, Ui ui, TextView chip, TextView words) {
-            this(context, ui, chip, words, SP);
-        }
-
         /**
-         * The chip beside {@code words} whose own size is {@code wordsSp} (their size at the normal font: the driving
-         * strip's status line is 14 sp). The two shrink together by one share, so it stops where either would go
-         * below its own floor: three quarters of the user's size, and never below its default size.
+         * The chip beside {@code words} whose own size is {@code wordsSp} (their size at the normal font: the status
+         * line is 14 sp). The two shrink together by one share, so it stops where either would go below its own floor:
+         * three quarters of the user's size, and never below its default size.
          */
         Row(Context context, Ui ui, TextView chip, TextView words, float wordsSp) {
             super(context);

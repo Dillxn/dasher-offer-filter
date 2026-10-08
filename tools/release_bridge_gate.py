@@ -10,12 +10,13 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 # Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks: Android 8 and 15) at its last recount, the
-# 0.5.1 candidate with the minimums' growth after its review's fixes (3,242 in 154 suites on 7 October 2026: 1,261
-# cases on Android 8, the rest on Android 15 or the plain JVM; 3,240 before them; 0.5.0's release candidate had 3,172
-# in 149 suites, 1,234 on Android 8, after its final review's fixes; 3,122 in 146 suites at the release integration
-# before them, 2,358 after the accountless-feedback review fixes the day before). Raise it as tests are added; a run
-# below it is missing tests.
-MIN_TESTS = 3242
+# fluid homepage after its review's fixes (3,272 in 156 suites on 8 October 2026: 1,271 cases on Android 8, the rest on
+# Android 15 or the plain JVM, FluidLayoutTest and FluidPageTest among them; 3,266 before them); the 0.5.1 candidate
+# with the minimums' growth had 3,242 in 154 suites, 1,261 on Android 8, after its review's fixes (3,240 before them);
+# 0.5.0's release candidate had 3,172 in 149 suites, 1,234 on Android 8, after its final review's fixes; 3,122 in 146
+# suites at the release integration before them, 2,358 after the accountless-feedback review fixes the day before.
+# Raise it as tests are added; a run below it is missing tests.
+MIN_TESTS = 3272
 
 # The Android adapter suites a release must have run on both Android 8 and 15, paired case by case. 0.5.0 retired the
 # adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that

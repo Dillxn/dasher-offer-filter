@@ -51,8 +51,6 @@ final class DecisionChartView extends View {
     private static final long[] NICE_DOLLARS = {10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000};
 
     private final Ui ui;
-    /** The least height it reads well at, when the page asks with no limit; less in a short window. */
-    private int leastDp = 64;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -136,14 +134,9 @@ final class DecisionChartView extends View {
         return selected >= 0 && selected < entries.size() ? entries.get(selected) : null;
     }
 
-    void setLeastDp(int dp) {
-        leastDp = dp;
-        requestLayout();
-    }
-
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         // Asked with no limit (the page working out what fits one screen), it answers the least it reads well at.
-        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(leastDp)
+        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(FluidLayout.CHART_LEAST_DP)
                 : resolveSize(ui.dp(160), heightSpec);
         setMeasuredDimension(MeasureSpec.getSize(widthSpec), height);
     }

@@ -34,8 +34,6 @@ final class SetupRow {
     static final float LEAST_SCALE = 0.75f;
 
     final LinearLayout row;
-    /** What a tap on the line does (its Fix, Install now or Show). */
-    private final Runnable onTap;
     private final TextView badge;
     private final View sign;
     private final TextView text;
@@ -44,8 +42,8 @@ final class SetupRow {
     private final int quiet;
     private String shown = "";
 
+    /** @param onTap what a tap on the line does (its Fix, Install now or Show) */
     SetupRow(Context context, Ui ui, LinearLayout parent, Runnable onTap) {
-        this.onTap = onTap;
         row = ui.row();
         row.setBackground(ui.pressable(16));
         row.setPadding(ui.dp(4), ui.dp(6), ui.dp(4), ui.dp(6));
@@ -56,9 +54,14 @@ final class SetupRow {
         badge = ui.text("", 12, ui.onAccent, true);
         badge.setGravity(Gravity.CENTER);
         badge.setIncludeFontPadding(false);
-        badge.setBackground(ui.rounded(ui.accent, 0, 11));
+        // A circle that holds its number at the user's font size, up to twice the default too.
+        android.graphics.Paint.FontMetrics metrics = badge.getPaint().getFontMetrics();
+        int size = Math.max(ui.dp(22), (int) Math.ceil(metrics.descent - metrics.ascent) + ui.dp(4));
+        android.graphics.drawable.GradientDrawable circle = ui.rounded(ui.accent, 0, 0);
+        circle.setCornerRadius(size / 2f);
+        badge.setBackground(circle);
         badge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(badge, new LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)));
+        row.addView(badge, new LinearLayout.LayoutParams(size, size));
         sign = new View(context);
         sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
         sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -75,11 +78,6 @@ final class SetupRow {
         row.addView(action);
         row.setVisibility(View.GONE);
         parent.addView(row, Ui.matchWidth());
-    }
-
-    /** What a tap on the line does, run from elsewhere (the driving strip's own tap on the same step). */
-    void tap() {
-        onTap.run();
     }
 
     /** Shows the line: {@code number} is the step's number for {@link Mark#STEP}, unused otherwise. */
@@ -118,18 +116,24 @@ final class SetupRow {
     }
 
     /**
-     * A step's words at the user's text size, unless they would take more than two lines: a large font on a narrow
-     * phone ("Allow / notification / access"). Then a little smaller, by the least that keeps them to two lines (or,
-     * for longer words, to as few as it can), never below {@link #LEAST_SCALE} of the user's size nor below the
-     * default size, so a line to fix still leaves the homepage's sky and map in one screen.
+     * A step's words (or the homepage's verdict) at the user's text size, unless they would take more than two lines:
+     * a large font on a narrow phone ("Allow / notification / access"). Then a little smaller, by the least that keeps
+     * them to two lines (or, for longer words, to as few as it can), never below {@link #LEAST_SCALE} of the user's
+     * size nor below the default size, so a line to fix still leaves the homepage's sky and map in one screen. Words
+     * that change as they stand (the verdict's "how long ago") are fitted, and kept their height, as their longest
+     * ({@link #fitTo}), so neither their size nor the page under them moves as they change.
      */
     static final class Words extends TextView {
         private final float full;
         private final float least;
         private final TextPaint measuring = new TextPaint();
+        /** What the size and the height kept are worked out for; null: the words shown. */
+        private String fitTo;
         private String fittedText;
         private int fittedWidth = -1;
         private float fittedSize;
+        /** The height those words take at that size, the space above and below aside. */
+        private int fittedHeight;
 
         Words(Context context) {
             super(context);
@@ -140,17 +144,34 @@ final class SetupRow {
             least = Math.min(full, Math.max(full * LEAST_SCALE, unscaled));
         }
 
+        /**
+         * Works out the size, and keeps the height, for {@code longest} rather than the words shown: the longest the
+         * words shown will grow to while they stand (null: the words shown).
+         */
+        void fitTo(String longest) {
+            if (java.util.Objects.equals(longest, fitTo)) return;
+            fitTo = longest;
+            requestLayout();
+        }
+
         @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int width = MeasureSpec.getSize(widthMeasureSpec) - getCompoundPaddingLeft() - getCompoundPaddingRight();
-            if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && width > 0) {
+            boolean fits = MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && width > 0;
+            if (fits) {
                 float size = fitting(width);
                 if (size != getTextSize()) super.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
             }
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            if (fits && fitTo != null) {
+                int kept = fittedHeight + getCompoundPaddingTop() + getCompoundPaddingBottom();
+                if (kept > getMeasuredHeight()) {
+                    setMeasuredDimension(getMeasuredWidth(), resolveSize(kept, heightMeasureSpec));
+                }
+            }
         }
 
         private float fitting(int width) {
-            CharSequence words = getText();
+            CharSequence words = fitTo != null ? fitTo : getText();
             if (width == fittedWidth && fittedText != null && fittedText.contentEquals(words)) return fittedSize;
             // Largest first: the first size with fewer lines is the largest with that many.
             float size = full;
@@ -166,18 +187,24 @@ final class SetupRow {
             fittedText = words.toString();
             fittedWidth = width;
             fittedSize = size;
+            fittedHeight = layout(words, size, width).getHeight();
             return size;
         }
 
         private int lines(CharSequence words, float size, int width) {
+            return layout(words, size, width).getLineCount();
+        }
+
+        /** {@code words} laid out at {@code size} across {@code width}, as this view lays its own out. */
+        private StaticLayout layout(CharSequence words, float size, int width) {
             measuring.set(getPaint());
             measuring.setTextSize(size);
             return StaticLayout.Builder.obtain(words, 0, words.length(), measuring, width)
                     .setBreakStrategy(getBreakStrategy())
                     .setHyphenationFrequency(getHyphenationFrequency())
                     .setIncludePad(getIncludeFontPadding())
-                    .build()
-                    .getLineCount();
+                    .setLineSpacing(getLineSpacingExtra(), getLineSpacingMultiplier())
+                    .build();
         }
     }
 }

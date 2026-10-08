@@ -34,11 +34,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The minimums grew (0.5.1), on the real homepage: the one-time note in the sky, "Your minimums grew 8%" over one line
- * of what grew and why, with Undo and OK; it stays until a button is tapped (a recreated screen shows it again), and
- * goes with its Undo once the minimums change any other way or Clear history runs; Undo puts the minimums back as the
- * user's change; nothing is announced and no live region is used; Autopilot's details say when the minimums last grew
- * and hold "Let my minimums grow", on by default.
+ * The minimums grew (0.5.1), on the real homepage: the one-time note among the page's lines, "Your minimums grew 8%"
+ * over one line of what grew and why, with Undo and OK; it stays until a button is tapped (a recreated screen shows it
+ * again), and goes with its Undo once the minimums change any other way or Clear history runs; Undo puts the minimums
+ * back as the user's change; nothing is announced and no live region is used; Autopilot's details say when the minimums
+ * last grew and hold "Let my minimums grow", on by default.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
@@ -53,6 +53,8 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
             + "to $16.20.";
 
     private long grewAt;
+    /** Midday now, whatever hour the suite runs at, so the offers' days are the same days ({@link MiddayZone}). */
+    private MiddayZone zone;
 
     @Before public void grown() {
         AutopilotRuntime.forgetCache();
@@ -64,6 +66,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         // The typical minimums, set three days ago; Autopilot on at 108%; 30 offers it judged at 108% since, over two
         // days; then its commit at a safe point (as the screen reader makes it) grows them.
         long wall = System.currentTimeMillis();
+        zone = new MiddayZone(wall);
         FilterStore.wallClock = () -> wall - 3 * 24 * HOUR;
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
         FilterStore.wallClock = System::currentTimeMillis;
@@ -82,6 +85,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     }
 
     @After public void plansOnTheirOwnThread() {
+        if (zone != null) zone.restore();
         RuntimeEnvironment.setFontScale(1f);
         FilterStore.wallClock = System::currentTimeMillis;
         AutopilotRuntime.executorForTests = null;
@@ -332,10 +336,20 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         return shownTextContaining(content, "Your minimums grew");
     }
 
-    /** Opens Autopilot's details (the constellation's button's action) and returns the switch in them. */
+    /**
+     * Opens Autopilot's details and returns the switch in them: by the constellation's button's action, or where the
+     * window has no room for the constellation (a short window at the largest font), by a tap on the strip's chip,
+     * which opens the same details at every size.
+     */
     private Switch detailsSwitch(View content) {
         MinimumsStarView star = find(content, MinimumsStarView.class);
-        assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
+        if (find(content, ScenePage.class).shown(star) >= 1 && star.autopilotShown()) {
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
+        } else {
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertTrue("the strip's chip", chip.isShown());
+            chip.performClick();
+        }
         idle();
         AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
         assertEquals(AutopilotText.DETAILS_TITLE, String.valueOf(Shadows.shadowOf(details).getTitle()));

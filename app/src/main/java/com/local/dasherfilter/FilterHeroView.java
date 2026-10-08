@@ -27,22 +27,23 @@ import java.util.function.Consumer;
  * skyline's badge); paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
  * follows the observed decline outcome; a hidden notification counts as review, never filtered.
  *
- * <p>In the page's sky ({@link SkyStage}) the mascot and the counts are placed apart, over the constellation behind
- * them: the stage says where each stands, and only a touch (or a screen reader's finger) on the mascot or the counts is
- * theirs; anywhere else in this view it goes on to the constellation below.
+ * <p>The page ({@link ScenePage}) places the mascot and the counts apart: the mascot at the start of the strip along
+ * the top, the counts in their own row under the header, where they shrink and fade out with the row when the window
+ * is short (their targets then gone). Only a touch (or a screen reader's finger) on the mascot or the counts is
+ * theirs; anywhere else in this view it goes on to what stands below.
  */
 @SuppressLint("ViewConstructor")
 final class FilterHeroView extends FrameLayout {
     enum State { ON, PAUSED, OFF }
 
-    /** The drawing's own size; narrower screens scale it down whole. */
-    private static final int DESIGN_WIDTH_DP = 320;
-    private static final int DESIGN_HEIGHT_DP = 268;
-    /** The drawing (ring, mascot, ticket) takes the design's top; the counts under it keep their own size. */
-    private static final int ART_HEIGHT_DP = 196;
-    private static final int COUNTS_HEIGHT_DP = 66;
-    /** The least share of its size the drawing shrinks to when a screen is short. */
-    private static final float MIN_SHARE = 0.3f;
+    /**
+     * The counts' height (the heading, the numbers and the totals under them); their three columns stand this share of
+     * the width given apart, at most so far; and the two outer columns take this much more than that across.
+     */
+    static final int COUNTS_HEIGHT_DP = 66;
+    static final float COUNTS_SPACING_SHARE = 0.3f;
+    static final int COUNTS_SPACING_MOST_DP = 96;
+    static final int COUNTS_ENDS_DP = 64;
     private static final float ON_SWEEP = 324;
     private static final float PAUSED_SWEEP = 228;
     private static final long RING_DRAW_MS = 1100;
@@ -89,13 +90,17 @@ final class FilterHeroView extends FrameLayout {
     private String dashLabel = "No dash yet";
     /** Whether the app is watching a dash; the page shows it with searchlights, screen readers hear it here. */
     private boolean watching;
-    /** Placed by the page's sky: where the mascot's ring stands and how large, and where the counts stand. */
+    /**
+     * Placed by the page: where the mascot's ring stands and how large, where the counts stand at their full size, and
+     * how much of them is there (1: wholly; less while their row shrinks away, drawn that much smaller and fainter).
+     */
     private boolean placed;
     private float mascotX;
     private float mascotY;
     private float mascotRadius;
     private final RectF countsBox = new RectF();
     private float countsSpacing;
+    private float countsShown = 1;
     /** Where the counts are drawn this frame, which the twinkling stars keep out of. */
     private final RectF countsDrawn = new RectF();
     // Real controls over the drawing keep touch, keyboard and accessibility boundaries identical.
@@ -164,22 +169,19 @@ final class FilterHeroView extends FrameLayout {
     }
 
     private void layoutControls() {
-        if (getWidth() <= 0 || getHeight() <= 0) return;
-        float scale = scale();
-        float art = ui.dp(ART_HEIGHT_DP) * scale;
-        float x = placed ? mascotX : sideBySide() ? art / 2f : getWidth() / 2f;
-        float y = placed ? mascotY : (sideBySide() ? (getHeight() - art) / 2f : artTop(scale))
-                + ui.dp(RING_MIDDLE_DP) * scale;
-        float radius = placed ? mascotRadius : ui.dp(RING_OUTER_DP) * scale;
-        float reach = Math.max(ui.dp(24), radius);
-        layoutControl(mascotControl, new RectF(x - reach, y - reach, x + reach, y + reach));
+        if (getWidth() <= 0 || getHeight() <= 0 || !placed) return;
+        float reach = Math.max(ui.dp(24), mascotRadius);
+        layoutControl(mascotControl, new RectF(mascotX - reach, mascotY - reach, mascotX + reach, mascotY + reach));
         RectF counts = new RectF();
         float spacing = countsAt(counts);
-        // Midpoints between the drawn columns divide the targets, including their totals.
+        // Midpoints between the drawn columns divide the targets, including their totals. While the counts' row
+        // shrinks away they take no touch and screen readers do not reach them.
+        int shown = countsShown >= 1 ? VISIBLE : INVISIBLE;
         for (int i = 0; i < countControls.length; i++) {
             float left = i == 0 ? counts.left : counts.centerX() + (i - 1.5f) * spacing;
             float right = i == 2 ? counts.right : counts.centerX() + (i - 0.5f) * spacing;
             layoutControl(countControls[i], new RectF(left, counts.top, right, counts.bottom));
+            if (countControls[i].getVisibility() != shown) countControls[i].setVisibility(shown);
         }
     }
 
@@ -198,29 +200,24 @@ final class FilterHeroView extends FrameLayout {
 
     /**
      * Draws the mascot's ring, of outer {@code radius}, around ({@code x}, {@code y}), and the counts in {@code counts}
-     * with their columns {@code spacing} apart, all in this view's pixels. Touches elsewhere in the view pass through.
+     * (their full size) with their columns {@code spacing} apart, {@code shown} of them there (from their top's
+     * middle), all in this view's pixels. Touches elsewhere in the view pass through.
      */
-    void place(float x, float y, float radius, RectF counts, float spacing) {
+    void place(float x, float y, float radius, RectF counts, float spacing, float shown) {
+        float amount = Math.max(0, Math.min(1, shown));
         boolean moved = !placed || x != mascotX || y != mascotY || radius != mascotRadius
-                || !counts.equals(countsBox) || spacing != countsSpacing;
+                || !counts.equals(countsBox) || spacing != countsSpacing || amount != countsShown;
         placed = true;
         mascotX = x;
         mascotY = y;
         mascotRadius = radius;
         countsBox.set(counts);
         countsSpacing = spacing;
+        countsShown = amount;
         if (moved) {
             layoutControls();
             invalidate();
         }
-    }
-
-    /** Back to drawing the mascot with its counts beside or under it, filling the view. */
-    void unplace() {
-        if (!placed) return;
-        placed = false;
-        layoutControls();
-        invalidate();
     }
 
     boolean placed() {
@@ -239,21 +236,6 @@ final class FilterHeroView extends FrameLayout {
     /** The placed mascot's ring, outer edge, from its middle. */
     float mascotRadius() {
         return mascotRadius;
-    }
-
-    /** How tall the counts are: the heading, the numbers and the totals under them. */
-    float countsHeight() {
-        return ui.dp(COUNTS_HEIGHT_DP);
-    }
-
-    /** How far apart the counts' three columns stand in {@code room} of width. */
-    float countsSpacing(float room) {
-        return Math.min(ui.dp(96), room * 0.3f);
-    }
-
-    /** How wide the three counts are with their columns {@code spacing} apart. */
-    float countsWidth(float spacing) {
-        return 2 * spacing + ui.dp(64);
     }
 
     /** What a tap does, in words for screen readers. */
@@ -316,120 +298,70 @@ final class FilterHeroView extends FrameLayout {
         }
     }
 
-    private float designWidth(float width) {
-        return Math.max(width, ui.dp(DESIGN_WIDTH_DP));
-    }
-
-    /**
-     * As tall as the design at this width, or whatever the page gives it on one screen; asked with no limit (the
-     * page working out what fits), it answers the least it reads well at.
-     */
+    /** Whatever the page gives it; asked with no limit, the mascot's ring with the counts under it. */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        float scale = width / designWidth(width);
-        int design = Math.round(ui.dp(ART_HEIGHT_DP) * scale) + ui.dp(COUNTS_HEIGHT_DP);
-        // Side by side, the drawing and the counts share one short row.
-        int least = Math.max(ui.dp(COUNTS_HEIGHT_DP) + ui.dp(16),
-                Math.round(ui.dp(ART_HEIGHT_DP) * scale * MIN_SHARE));
-        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? least
-                : resolveSize(design, heightSpec);
-        setMeasuredDimension(width, height);
+        int least = ui.dp(2 * RING_OUTER_DP / 3) + ui.dp(COUNTS_HEIGHT_DP);
+        setMeasuredDimension(width, MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? least
+                : MeasureSpec.getSize(heightSpec));
     }
 
-    /**
-     * Wide and short (a phone's one-screen page), the drawing stands at the left with the counts beside it; tall
-     * enough, the counts sit under it.
-     */
-    boolean sideBySide() {
-        return getHeight() > 0 && getHeight() < ui.dp(ART_HEIGHT_DP) * 0.8f + ui.dp(COUNTS_HEIGHT_DP)
-                && getWidth() >= getHeight() * 1.9f;
-    }
-
-    /** The drawing's scale: the design fitted to the width, and to the height left above (or beside) the counts. */
-    private float scale() {
-        float byWidth = getWidth() / designWidth(getWidth());
-        if (getHeight() <= 0) return byWidth;
-        if (sideBySide()) return Math.min(getHeight() / (float) ui.dp(ART_HEIGHT_DP), getWidth() * 0.44f / ui.dp(ART_HEIGHT_DP));
-        float byHeight = (getHeight() - ui.dp(COUNTS_HEIGHT_DP)) / (float) ui.dp(ART_HEIGHT_DP);
-        return Math.max(0.2f, Math.min(byWidth, byHeight));
-    }
-
-    /** Where the drawing starts, so the drawing and the counts sit centred in the height given. */
-    private float artTop(float scale) {
-        return Math.max(0, (getHeight() - ui.dp(ART_HEIGHT_DP) * scale - ui.dp(COUNTS_HEIGHT_DP)) / 2);
-    }
-
+    /** Until the page places it, nothing is drawn. */
     @Override protected void onDraw(Canvas canvas) {
-        if (placed) {
-            drawPlaced(canvas);
-            if (state != State.OFF) Motion.next(this);
-            return;
-        }
-        float scale = scale();
-        boolean side = sideBySide();
-        float artSize = ui.dp(ART_HEIGHT_DP) * scale;
-        // Side by side, the drawing's own width is one design height, centred in its square at the left.
-        float designWidth = side ? ui.dp(ART_HEIGHT_DP) : getWidth() / scale;
-        float artTop = side ? (getHeight() - artSize) / 2 : artTop(scale);
-        canvas.save();
-        canvas.translate(0, artTop);
-        canvas.scale(scale, scale);
-        float cx = designWidth / 2;
-        float spacing = countsAt(countsDrawn);
-        // Tilting the phone slides the ring and its stars (far) against an offer's ticket (near).
-        slide(canvas, -4);
-        drawRing(canvas, cx);
-        drawTwinkles(canvas, cx, false, 0, artTop, scale);
-        canvas.restore();
-        drawOfferPlayed(canvas, cx, true);
-        drawMascot(canvas, cx);
-        drawOfferPlayed(canvas, cx, false);
-        canvas.restore();
-        drawCounts(canvas, countsDrawn.centerX(), spacing, countsDrawn.top);
+        if (!placed) return;
+        drawPlaced(canvas);
         if (state != State.OFF) Motion.next(this);
     }
 
     /**
-     * Where the counts stand, in this view's pixels, into {@code out}; answers how far apart their columns are. Placed,
-     * where the sky put them; otherwise beside the drawing (wide and short) or under it. They keep the page's text size
-     * however small the drawing is.
+     * Where the counts stand at their full size, in this view's pixels, into {@code out}; answers how far apart their
+     * columns are. While their row shrinks away they are drawn smaller, from their top's middle ({@link #countsShown}).
      */
     float countsAt(RectF out) {
-        if (placed) {
-            out.set(countsBox);
-            return countsSpacing;
+        out.set(countsBox);
+        float shown = countsShown;
+        if (shown < 1) {
+            float middle = countsBox.centerX();
+            out.set(middle - countsBox.width() / 2 * shown, countsBox.top, middle + countsBox.width() / 2 * shown,
+                    countsBox.top + countsBox.height() * shown);
         }
-        float scale = scale();
-        boolean side = sideBySide();
-        float artSize = ui.dp(ART_HEIGHT_DP) * scale;
-        float x = side ? artSize + (getWidth() - artSize) / 2f : getWidth() / 2f;
-        float spacing = countsSpacing(side ? getWidth() - artSize : getWidth());
-        float top = side ? (getHeight() - ui.dp(COUNTS_HEIGHT_DP)) / 2f : artTop(scale) + artSize;
-        float wide = countsWidth(spacing);
-        out.set(x - wide / 2, top, x + wide / 2, top + countsHeight());
-        return spacing;
+        return countsSpacing * shown;
+    }
+
+    /** How much of the counts is there: 1 wholly, less while their row shrinks away (for tests too). */
+    float countsShown() {
+        return countsShown;
     }
 
     /**
-     * Placed in the sky: the ring, the mascot and its ticket scaled to the ring's radius around its middle; the few
-     * stars that twinkle around it only on the side away from the constellation; the counts where they were placed.
+     * The ring, the mascot and its ticket scaled to the ring's radius around its middle; the few stars that twinkle
+     * around it only on its left; the counts where they were placed, as much of them as is there.
      */
     private void drawPlaced(Canvas canvas) {
         float scale = mascotRadius / ui.dp(RING_OUTER_DP);
-        countsDrawn.set(countsBox);
+        countsAt(countsDrawn);
         canvas.save();
         canvas.translate(mascotX, mascotY);
         canvas.scale(scale, scale);
         canvas.translate(0, -ui.dp(RING_MIDDLE_DP));
         slide(canvas, -4);
         drawRing(canvas, 0);
-        drawTwinkles(canvas, 0, true, mascotX, mascotY - ui.dp(RING_MIDDLE_DP) * scale, scale);
+        drawTwinkles(canvas, mascotX, mascotY - ui.dp(RING_MIDDLE_DP) * scale, scale);
         canvas.restore();
         drawOfferPlayed(canvas, 0, true);
         drawMascot(canvas, 0);
         drawOfferPlayed(canvas, 0, false);
         canvas.restore();
+        if (countsShown <= 0) return;
+        if (countsShown >= 1) {
+            drawCounts(canvas, countsBox.centerX(), countsSpacing, countsBox.top);
+            return;
+        }
+        int faded = canvas.saveLayerAlpha(countsBox.left - ui.dp(8), countsBox.top - ui.dp(8),
+                countsBox.right + ui.dp(8), countsBox.bottom + ui.dp(8), Math.round(255 * countsShown));
+        canvas.scale(countsShown, countsShown, countsBox.centerX(), countsBox.top);
         drawCounts(canvas, countsBox.centerX(), countsSpacing, countsBox.top);
+        canvas.restoreToCount(faded);
     }
 
     private void slide(Canvas canvas, float depth) {
@@ -466,18 +398,18 @@ final class FilterHeroView extends FrameLayout {
     }
 
     /**
-     * Small stars around the ring that brighten and fade in turn; none while off, and none on the counts. With
-     * {@code leftOnly}, only those on its left, so none is taken for one of the constellation's sparkles on its right.
-     * The drawing is scaled by {@code scale} from ({@code x}, {@code y}) in this view.
+     * Small stars around the ring that brighten and fade in turn; none while off, none on the counts, and only those on
+     * its left, away from the words beside it. The drawing is scaled by {@code scale} from ({@code x}, {@code y}) in
+     * this view.
      */
-    private void drawTwinkles(Canvas canvas, float cx, boolean leftOnly, float x, float y, float scale) {
+    private void drawTwinkles(Canvas canvas, float x, float y, float scale) {
         if (state == State.OFF) return;
         int color = ui.dark ? 0xFFE9E2C8 : 0xFFE0B94F;
         float margin = ui.dp(6);
         for (int i = 0; i < TWINKLES.length; i++) {
             float[] star = TWINKLES[i];
-            if (leftOnly && star[0] > 0) continue;
-            float atX = x + (cx + ui.dp(star[0])) * scale;
+            if (star[0] > 0) continue;
+            float atX = x + ui.dp(star[0]) * scale;
             float atY = y + ui.dp(star[1]) * scale;
             if (atX > countsDrawn.left - margin && atX < countsDrawn.right + margin
                     && atY > countsDrawn.top - margin && atY < countsDrawn.bottom + margin) {
@@ -485,7 +417,7 @@ final class FilterHeroView extends FrameLayout {
             }
             float twinkle = 0.5f + 0.5f * Motion.wave(2.4f + i * 0.45f, i * 0.23f);
             fill.setColor(withAlpha(color, (int) (40 + 150 * twinkle)));
-            sparkle(canvas, cx + ui.dp(star[0]), ui.dp(star[1]), ui.dp(star[2]) * (0.55f + 0.45f * twinkle));
+            sparkle(canvas, ui.dp(star[0]), ui.dp(star[1]), ui.dp(star[2]) * (0.55f + 0.45f * twinkle));
         }
     }
 

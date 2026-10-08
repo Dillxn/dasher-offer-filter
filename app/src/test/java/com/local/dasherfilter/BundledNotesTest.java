@@ -170,7 +170,19 @@ public class BundledNotesTest {
                 "split button", "Peek"}) {
             assertTrue(headline, card.contains(headline));
         }
-        assertEquals("this build is 0.5.4: its card is the one written for it", news,
+    }
+
+    /** 0.5.5 (the owner, 7 October 2026): one fluid homepage. */
+    @Test public void theWordsFor055AreWritten() {
+        assertEquals(15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.5");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"every window size", "radar", "offer map", "gradually",
+                "verdict", "at the top"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        assertEquals("this build is 0.5.5: its card is the one written for it", news,
                 BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
     }
 

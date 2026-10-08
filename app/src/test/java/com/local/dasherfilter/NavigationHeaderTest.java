@@ -22,7 +22,7 @@ import org.robolectric.annotation.LooperMode;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.shadows.ShadowAlertDialog;
 
-/** The shortcuts remain reachable with the Atlas hidden, in the compact header and with a large font. */
+/** The shortcuts remain reachable with the map on its way out of a small window, and with a large font. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35})
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -53,16 +53,22 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * A narrow short window at twice the font keeps every header control; the constellation there is either wholly
+     * there at its least circle or on its way out, never squeezed smaller with its knobs in reach.
+     */
     @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
-    public void narrowShortHeaderKeepsAllControlsAndItsConstellationReachable() {
+    public void narrowShortHeaderKeepsAllControlsAndTheConstellationNeverSqueezed() {
         RuntimeEnvironment.setFontScale(2f);
         dasherInstalled();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertHeaderFits(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(star.beside());
-            assertTrue(star.getHeight() >= new Ui(app).dp(48));
+            float shown = find(content, ScenePage.class).shown(star);
+            assertTrue("wholly there at its least, or on its way out and out of reach: " + shown, shown >= 1
+                    ? star.skyRadius() >= new Ui(app).dp(FluidLayout.RADIUS_LEAST_DP) - 1
+                    : star.getImportantForAccessibility() == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             assertTrue(iconDescribed(content, "Offer Filter").getWidth() > 0);
             render(content, "short-320-large-font");
             iconDescribed(content, "Navigate").performClick();
@@ -74,8 +80,12 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
-    public void besideDasherNavigationWorksWhileAtlasIsHidden() {
+    /**
+     * A third of a narrow phone beside Dasher, a line to fix taking its room: the map is on its way out (a 360 dp half
+     * keeps it whole), and Navigate in the header still takes the user to the best area.
+     */
+    @Test @Config(qualifiers = "w320dp-h300dp-xhdpi")
+    public void besideDasherNavigationWorksWithTheMapOnItsWayOut() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         for (int pay : new int[] {1000, 1100, 1200}) noteOfferAt(37.775, -122.415, pay, 5);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -86,7 +96,8 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertHeaderFits(content);
-            assertFalse(find(content, AreaMapView.class).isShown());
+            assertTrue("the map on its way out of this small window",
+                    find(content, ScenePage.class).shown(find(content, AreaMapView.class)) < 1);
             render(content, "split-dasher-320");
             iconDescribed(content, "Navigate").performClick();
             ListView list = ShadowAlertDialog.getLatestAlertDialog().getListView();

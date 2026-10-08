@@ -5,12 +5,12 @@ import android.widget.LinearLayout;
 import java.util.function.LongConsumer;
 
 /**
- * The homepage's one-time note that the minimums grew ({@link Growth}, 0.5.1), a card in the sky like the other
- * one-time cards ({@link OnboardingCard}): "Your minimums grew 8%" over one line of what grew and why, then Undo and OK.
- * It stays until a button is tapped and goes, with its Undo, once the minimums change any other way or Clear history
- * runs ({@link AutopilotRuntime#growthNote}). Quiet: no live region and nothing announced (the change was automatic);
- * screen readers hear its words without symbols. It is part of the page, never over Dasher, so it never covers an
- * offer, and the driving strip, which shows none of the sky, shows none of it (it waits for the page).
+ * The homepage's one-time note that the minimums grew ({@link Growth}, 0.5.1), a card among the page's lines like the
+ * other one-time cards ({@link OnboardingCard}): "Your minimums grew 8%" over one line of what grew and why, then Undo
+ * and OK. It stays until a button is tapped and goes, with its Undo, once the minimums change any other way or Clear
+ * history runs ({@link AutopilotRuntime#growthNote}). Quiet: no live region and nothing announced (the change was
+ * automatic); screen readers hear its words without symbols. It is part of the page, never over Dasher, so it never
+ * covers an offer; the lines never fade, so it shows at every window size.
  */
 final class GrowthCard {
     private final Context context;
