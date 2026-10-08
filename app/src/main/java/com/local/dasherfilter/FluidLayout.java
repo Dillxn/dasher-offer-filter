@@ -53,10 +53,11 @@ final class FluidLayout {
     static final float CHART_WEIGHT = 0.7f;
     static final float MAP_WEIGHT = 1f;
     /**
-     * The radar and the ground stand side by side while the room under the lines is at most this share of the page's
-     * width tall; taller, they turn towards one above the other.
+     * The radar and the ground stand side by side while the room under the lines is at most {@link #SIDE_FROM_DP} and
+     * {@link #SIDE_SHARE} of the page's width tall; taller, they turn towards one above the other.
      */
-    static final float SIDE_SHARE = 0.95f;
+    static final float SIDE_FROM_DP = 180;
+    static final float SIDE_SHARE = 0.5f;
     /** The fastest any part moves while the stage turns, against the window's edge. */
     static final float TURN_RATE = 2f;
     /** Side by side, the ground keeps at least this width (its skyline's buildings), and the radar at most this share. */
@@ -276,44 +277,47 @@ final class FluidLayout {
         return Math.max(side, Math.min(radarWidth(dp(RADIUS_LEAST_DP)), width / 2f));
     }
 
-    /** Works out where everything stands. */
-    void solve() {
-        float fixed = fixedHeight();
-        float avail = height - fixed;
+    /**
+     * What the road and the counts take of the room under the lines, {road, counts}: they give way to the stage where
+     * every part reads well one above the other (the most it ever needs, so neither comes back only to fade again as the
+     * stage turns), the road first.
+     */
+    private float[] giveWay(float avail) {
         float[] a = radarSteps();
         float[] b = groundSteps();
-        // The road and the counts give way to the stage where every part reads well one above the other (the most it
-        // ever needs, so neither comes back only to fade again as the stage turns); the stage is wholly there down to
-        // its least as it stands now.
         float comfortable = a[0] + b[0];
-        float roadMost = dp(ROAD_DP);
-        float countsMost = dp(COUNTS_DP);
-        float roadHeight;
-        float countsHeight;
-        if (avail >= roadMost + countsMost + comfortable) {
-            roadHeight = roadMost;
-            countsHeight = countsMost;
-        } else if (avail >= countsMost + comfortable) {
-            roadHeight = avail - countsMost - comfortable;
-            countsHeight = countsMost;
-        } else if (avail >= comfortable) {
-            roadHeight = 0;
-            countsHeight = avail - comfortable;
-        } else {
-            roadHeight = 0;
-            countsHeight = 0;
-        }
+        float road = dp(ROAD_DP);
+        float counts = dp(COUNTS_DP);
+        if (avail >= road + counts + comfortable) return new float[] {road, counts};
+        if (avail >= counts + comfortable) return new float[] {avail - counts - comfortable, counts};
+        return new float[] {0, Math.max(0, avail - comfortable)};
+    }
+
+    /** Works out where everything stands. */
+    void solve() {
+        float avail = height - fixedHeight();
+        float[] given = giveWay(avail);
+        float roadHeight = given[0];
+        float countsHeight = given[1];
         float stageHeight = Math.max(0, avail - roadHeight - countsHeight);
-        // How far the stage has turned from side by side, in pixels each moving part has moved: nothing while the room
-        // under the lines is at most SIDE_SHARE of the width, then TURN_RATE pixels for every pixel it grows, less what
-        // the counts and the road take of it meanwhile (the stage moving down with the counts' row as they come back),
-        // so no part ever moves more than TURN_RATE times as fast as the window's edge.
-        float travelled = Math.max(0, TURN_RATE * Math.max(0, avail - SIDE_SHARE * width) - countsHeight - roadHeight);
-        turn = turned(stageHeight, travelled);
+        // The stage turns from side by side once the room under the lines is more than SIDE_FROM_DP and SIDE_SHARE of
+        // the width, and holds the radar and the whole skyline one above the other (so the skyline never fades as the
+        // stage turns); from there its parts move TURN_RATE pixels for every pixel the room grows, less what the
+        // counts and the road take of it meanwhile (the stage moving down with the counts' row as they come back), so
+        // no part ever moves more than TURN_RATE times as fast as the window's edge. Side by side, the radar's column
+        // is as wide as the stage's height asks; the turn keeps the width it had where it began.
+        float[] a = radarSteps();
+        float[] b = groundSteps();
+        float start = Math.max(dp(SIDE_FROM_DP) + SIDE_SHARE * width, a[2] + b[2]);
+        float[] givenAtStart = giveWay(start);
+        float stageAtStart = Math.max(0, start - givenAtStart[0] - givenAtStart[1]);
+        float travelled = Math.max(0, TURN_RATE * Math.max(0, avail - start) - countsHeight - roadHeight);
+        measureTurn(stageHeight, Math.min(stageHeight, stageAtStart));
+        turn = 1 - 0.5f * Math.min(1, travelled / down) - 0.5f * Math.min(1, Math.max(0, travelled - down) / across);
         int last = a.length - 1;
         float least = a[last] + b[last] + turn * (Math.max(a[last], b[last]) - a[last] - b[last]);
-        roadShown = roadHeight / roadMost;
-        countsShown = countsHeight / countsMost;
+        roadShown = roadHeight / dp(ROAD_DP);
+        countsShown = countsHeight / dp(COUNTS_DP);
         stageShown = least > 0 ? Math.min(1, stageHeight / least) : 1;
 
         float y = 0;
@@ -330,7 +334,7 @@ final class FluidLayout {
         countsSpacing = Math.min(dp(FilterHeroView.COUNTS_SPACING_MOST_DP),
                 (width - 2 * dp(SIDE_DP)) * FilterHeroView.COUNTS_SPACING_SHARE);
         float countsWidth = 2 * countsSpacing + dp(FilterHeroView.COUNTS_ENDS_DP);
-        counts.set((width - countsWidth) / 2, y, (width + countsWidth) / 2, y + countsMost);
+        counts.set((width - countsWidth) / 2, y, (width + countsWidth) / 2, y + dp(COUNTS_DP));
         y = countsRow.bottom;
         lines.set(0, y, width, y + linesHeight);
         y = lines.bottom;
@@ -341,19 +345,26 @@ final class FluidLayout {
         total = Math.round(Math.max(height, road.bottom));
     }
 
+    // The turn's measures for the stage as it stands: the radar's column's height one above the other, its width and
+    // height side by side, and how far the turn's first and second halves move their parts.
+    private float above;
+    private float side;
+    private float sideHeight;
+    private float down;
+    private float across;
+
     /**
-     * How far through the turn a stage {@code height} tall is, having moved its parts {@code travelled} pixels: 1 side by
-     * side, a half once the radar's column and the ground's stand at their heights one above the other, 0 once they
-     * have widened over and under each other.
+     * The turn's measures for a stage {@code height} tall whose radar's column side by side is as wide as a stage
+     * {@code sideFor} tall asks: in the turn's first half the ground's column moves down beside the radar's, which takes
+     * the height it has one above the other; in its second half the radar's column widens over the ground's and the
+     * ground's under the radar's. Each half is as long as the farthest any edge moves in it.
      */
-    private float turned(float height, float travelled) {
-        float above = stacked(height)[0];
-        float side = sideWidth(height);
-        float down = Math.max(1, Math.max(above, Math.abs(Math.min(height, tallest(side)) - above)));
-        float across = Math.max(1, Math.max(side, width - side));
-        float first = Math.min(1, travelled / down);
-        float second = Math.min(1, Math.max(0, travelled - down) / across);
-        return 1 - 0.5f * first - 0.5f * second;
+    private void measureTurn(float height, float sideFor) {
+        above = stacked(height)[0];
+        side = sideWidth(sideFor);
+        sideHeight = Math.min(height, tallest(side));
+        down = Math.max(1, Math.max(above, Math.abs(sideHeight - above)));
+        across = Math.max(1, Math.max(side, width - side));
     }
 
     /**
@@ -364,16 +375,16 @@ final class FluidLayout {
      * over the ground and the ground's to the left under it, until the two stand one above the other.
      */
     private void arrange(float height, float travelled) {
-        float above = stacked(height)[0];
-        float side = sideWidth(height);
-        float sideHeight = Math.min(height, tallest(side));
         float top = stage.top;
         float groundTop = top + Math.min(above, travelled);
-        float radarBottom = top + (sideHeight > above ? Math.max(above, sideHeight - travelled)
+        // A radar taller side by side than one above the other keeps its height as long as it can, so its bottom never
+        // moves with both the turn and its own column's width at once.
+        float radarBottom = top + (sideHeight > above
+                ? Math.max(above, Math.min(sideHeight, above + down - travelled))
                 : Math.min(above, sideHeight + travelled));
-        float across = Math.max(0, travelled - Math.max(above, Math.abs(sideHeight - above)));
-        float radarRight = Math.min(width, side + across);
-        float groundLeft = Math.max(0, side - across);
+        float over = Math.max(0, travelled - down);
+        float radarRight = Math.min(width, side + over);
+        float groundLeft = Math.max(0, side - over);
         float bottom = top + height;
         radar.set(0, top, radarRight, radarBottom);
         float[] ground = groundColumn(bottom - groundTop);

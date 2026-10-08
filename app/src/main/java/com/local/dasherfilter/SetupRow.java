@@ -54,9 +54,14 @@ final class SetupRow {
         badge = ui.text("", 12, ui.onAccent, true);
         badge.setGravity(Gravity.CENTER);
         badge.setIncludeFontPadding(false);
-        badge.setBackground(ui.rounded(ui.accent, 0, 11));
+        // A circle that holds its number at the user's font size, up to twice the default too.
+        android.graphics.Paint.FontMetrics metrics = badge.getPaint().getFontMetrics();
+        int size = Math.max(ui.dp(22), (int) Math.ceil(metrics.descent - metrics.ascent) + ui.dp(4));
+        android.graphics.drawable.GradientDrawable circle = ui.rounded(ui.accent, 0, 0);
+        circle.setCornerRadius(size / 2f);
+        badge.setBackground(circle);
         badge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(badge, new LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)));
+        row.addView(badge, new LinearLayout.LayoutParams(size, size));
         sign = new View(context);
         sign.setBackground(new Glyph(Glyph.Shape.SIGN, Ui.CRITICAL, ui.dp(20)));
         sign.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);

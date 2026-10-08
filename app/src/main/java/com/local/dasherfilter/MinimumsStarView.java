@@ -362,6 +362,8 @@ final class MinimumsStarView extends View {
     /** The max stops badge: the saved limit (0 for none), where it stands, a finger on it, dragging it, and to what. */
     private int maxStops;
     private final RectF stopsBox = new RectF();
+    /** How far in from the view's edges the badge is being placed. */
+    private float badgeEdge;
     private final TextPaint badgeText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private boolean stopsPressed;
     private boolean stopsDragging;
@@ -2436,17 +2438,21 @@ final class MinimumsStarView extends View {
                 {iconLeft - gap - width, middle - height / 2},
                 {(iconLeft + iconRight) / 2 - width / 2, iconBottom + gap},
                 {(iconLeft + iconRight) / 2 - width / 2, iconTop - gap - height}};
-        for (float[] place : places) {
-            stopsBox.set(place[0], place[1], place[0] + width, place[1] + height);
-            if (badgeFits() && pairStopsIcon(anchor)) return true;
-        }
-        for (int step = 1; step <= 20; step++) {
-            for (int side : new int[] {-1, 1}) {
-                for (int across = 0; across <= 12; across++) {
-                    float left = iconRight + gap + across * ui.dp(18);
-                    float top = middle - height / 2 + side * step * ui.dp(12);
-                    stopsBox.set(left, top, left + width, top + height);
-                    if (badgeFits() && pairStopsIcon(anchor)) return true;
+        // First where its whole 48 dp target is inside the view; only where there is none, a little in from the edge.
+        for (float edge : new float[] {Math.max(ui.dp(4), (ui.dp(BUTTON_DP) - height) / 2), ui.dp(4)}) {
+            badgeEdge = edge;
+            for (float[] place : places) {
+                stopsBox.set(place[0], place[1], place[0] + width, place[1] + height);
+                if (badgeFits() && pairStopsIcon(anchor)) return true;
+            }
+            for (int step = 1; step <= 20; step++) {
+                for (int side : new int[] {-1, 1}) {
+                    for (int across = 0; across <= 12; across++) {
+                        float left = iconRight + gap + across * ui.dp(18);
+                        float top = middle - height / 2 + side * step * ui.dp(12);
+                        stopsBox.set(left, top, left + width, top + height);
+                        if (badgeFits() && pairStopsIcon(anchor)) return true;
+                    }
                 }
             }
         }
@@ -2485,7 +2491,7 @@ final class MinimumsStarView extends View {
     }
 
     private boolean badgeFits() {
-        float margin = ui.dp(4);
+        float margin = badgeEdge;
         if (stopsBox.left < margin || stopsBox.top < margin || stopsBox.right > getWidth() - margin
                 || stopsBox.bottom > getHeight() - margin) {
             return false;
