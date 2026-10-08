@@ -95,6 +95,17 @@ public class NavigationShortcutsTest extends AndroidAdapterTestBase {
         }
     }
 
+    @Test public void manifestDeclaresMapPackagesForPackageVisibility() throws Exception {
+        // NavigationShortcuts.intent() finds the Maps/Waze handlers with PackageManager.resolveActivity.
+        // On API 30+ those calls see nothing unless the manifest's <queries> names the packages; without
+        // them every Navigate tap silently falls back to the browser instead of the map app. This guards
+        // the declaration itself, which the shadowed package manager in the tests above cannot catch.
+        java.nio.file.Path manifest = java.nio.file.Paths.get("src/main/AndroidManifest.xml");
+        String xml = new String(java.nio.file.Files.readAllBytes(manifest), java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(xml.contains("<package android:name=\"com.google.android.apps.maps\""));
+        assertTrue(xml.contains("<package android:name=\"com.waze\""));
+    }
+
     public static class VanishingMapActivity extends Activity {
         int attempts;
         Intent opened;
