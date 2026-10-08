@@ -4778,7 +4778,9 @@ public final class OfferFilterService extends AccessibilityService {
         // A peeked offer counts only what is read during the peek: nothing of the wait for offers before it, and no
         // decline held by hand goes on through it.
         acceptedTracker.peekBegan();
-        Peek.log(this, "opening Dasher for " + request.what() + " (was in front: " + peek.front().kind() + ")");
+        // A delivery under way says so: a peek then is for another store's offer (the order's own re-posts are held).
+        Peek.log(this, "opening Dasher for " + request.what() + " (was in front: " + peek.front().kind() + ")"
+                + (ActiveRouteStore.load(this) != null ? "; a delivery under way" : ""));
         schedulePeekTick();
     }
 

@@ -146,7 +146,19 @@ public class BundledNotesTest {
         for (String outcome : new String[] {"never miss", "every offer", "guarantee", "always"}) {
             assertFalse(outcome, card.toLowerCase(java.util.Locale.US).contains(outcome));
         }
-        assertEquals("this build is 0.5.2: its card is the one written for it", news,
+    }
+
+    /** 0.5.3 (the owner, 8 October 2026): Directions during a delivery, and the one-tap split. */
+    @Test public void theWordsFor053AreWritten() {
+        assertEquals("nothing new is read, kept or sent: no new notice", 15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.3");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"Directions work during a delivery", "re-post", "your map",
+                "one tap", "recent apps"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        assertEquals("this build is 0.5.3: its card is the one written for it", news,
                 BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
     }
 

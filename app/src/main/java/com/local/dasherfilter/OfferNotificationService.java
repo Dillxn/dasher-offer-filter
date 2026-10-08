@@ -89,6 +89,24 @@ public final class OfferNotificationService extends NotificationListenerService 
      * peek's, a card watch's or a card's own first: the screen reader never sends one a second time for that offer.
      */
     private final java.util.Set<String> ownTapsSent = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * The stores (by merchant) whose offer notifications began an incarnation lately, with when (elapsed time), kept
+     * {@link OfferPairing#OFFER_MS} whether or not that incarnation still lives (Dasher may take an offer's notification
+     * down as it is accepted). Main thread only.
+     */
+    private final LinkedHashMap<String, Long> recentOffers = new LinkedHashMap<>();
+    /**
+     * The stores (by merchant) of the orders being delivered: of each offer whose notification began within
+     * {@link OfferPairing#OFFER_MS} before a delivery, pickup or route screen of Dasher's ({@link #screenShowedRoute}, as
+     * {@link TrackedOffer#routeAfter}: perhaps accepted), with when that screen was read (elapsed time). Main thread
+     * only. Unlike {@link TrackedOffer#heldInDasherUntil}, this outlives the offer's incarnation: it lasts the delivery,
+     * until the wait for offers, the dash's end or Dasher's home ({@link #screenShowedNoRoute}), or
+     * {@link #DELIVERY_HOLD_MS}. DoorDash posts the order's notification again long after its offer (as Dasher leaves
+     * the screen for the map its Directions open: the owner, 8 October 2026, "No matter how many times I click
+     * Directions it just keeps going back to the same screen"), and a peek for that post pulls Dasher back over the
+     * map. A post naming such a store is never peeked at ({@link #HELD_FOR_DELIVERY}).
+     */
+    private final LinkedHashMap<String, Long> deliveries = new LinkedHashMap<>();
 
     /** One incarnation's latest post, immutable. */
     private static final class DasherPost {
@@ -542,6 +560,17 @@ public final class OfferNotificationService extends NotificationListenerService 
                 long since = at - offer.state.createdAt;
                 if (since >= 0 && since < OfferPairing.OFFER_MS) offer.routeAfter = true;
             }
+            // The stores of those offers, whether or not their notifications are still posted: the delivery's own.
+            for (Map.Entry<String, Long> recent : service.recentOffers.entrySet()) {
+                long since = at - recent.getValue();
+                if (since < 0 || since >= OfferPairing.OFFER_MS || service.deliveries.containsKey(recent.getKey())) {
+                    continue;
+                }
+                if (service.deliveries.size() >= MAX_TRACKED_OFFERS) {
+                    service.deliveries.remove(service.deliveries.keySet().iterator().next());
+                }
+                service.deliveries.put(recent.getKey(), at);
+            }
         });
     }
 
@@ -557,6 +586,8 @@ public final class OfferNotificationService extends NotificationListenerService 
                 offer.routeAfter = false;
                 offer.mayBeAcceptedUntil = 0;
             }
+            // No delivery under way: the next post naming that store is an offer of its own.
+            service.deliveries.clear();
         });
     }
 
@@ -673,6 +704,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             boolean foreground = OfferFilterService.isDasherOnScreenNow();
             TrackedOffer offer = track(source, merchant(labels), labels.toString(), labels, foreground, replay);
             offer.store = store(labels);
+            if (offer.freshPost) noteRecentOffer(offer.merchant, offer.state.createdAt);
             FilterStore.recordDoorDashOfferChannel(this, notification.getChannelId());
             if (offer.readCard && !replay) {
                 revokePeek(offer.alertTag);
@@ -783,6 +815,10 @@ public final class OfferNotificationService extends NotificationListenerService 
                 // A re-post of the offer the user had in Dasher (and left it for a map, say): never brought back
                 // over them; Dasher's own notification, and the card when one is due, are the way in.
                 if (why == null && offer.heldInDasherUntil > SystemClock.elapsedRealtime()) why = HELD_IN_DASHER;
+                // Dasher's notification of the order being delivered, posted again minutes after its offer (as Dasher
+                // leaves the screen for its Directions' map): never brought back over that map either.
+                boolean delivering = delivering(offer.merchant, SystemClock.elapsedRealtime());
+                if (why == null && delivering) why = HELD_FOR_DELIVERY;
                 if (why == null) {
                     peek = request;
                 } else {
@@ -793,7 +829,8 @@ public final class OfferNotificationService extends NotificationListenerService 
                     Peek.skipped(this, why);
                     // Dasher on screen draws the offer itself; if it draws none of it, its own notification tap
                     // follows once, where a peek would have been allowed were Dasher elsewhere.
-                    if (foreground && !replay && offer.heldInDasherUntil <= SystemClock.elapsedRealtime()) {
+                    if (foreground && !replay && offer.heldInDasherUntil <= SystemClock.elapsedRealtime()
+                            && !delivering) {
                         // Never for an offer Dasher's screen already showed (read before its notification came).
                         long shownAgo = DecisionLog.screenReadAgo(this, DecisionLog.Entry.of(
                                 DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
@@ -1231,6 +1268,46 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /** Why a re-post of an offer the user had in Dasher is not peeked at ({@link TrackedOffer#heldInDasherUntil}). */
     static final String HELD_IN_DASHER = "a re-post of the offer you had in Dasher (it may still be up)";
+
+    /** Why Dasher's post naming the store of the order being delivered is not peeked at ({@link #deliveries}). */
+    static final String HELD_FOR_DELIVERY = "Dasher's post for the order you are delivering (the same store)";
+
+    /** A delivery's hold on its store lasts at most this long, as a stored route does ({@link ActiveRouteStore}). */
+    static final long DELIVERY_HOLD_MS = 3 * 60 * 60_000L;
+
+    /** Main thread: an offer's notification naming {@code merchant} began an incarnation at {@code at} (elapsed time). */
+    private void noteRecentOffer(String merchant, long at) {
+        if (merchant == null || merchant.isEmpty()) return;
+        java.util.Iterator<Map.Entry<String, Long>> recent = recentOffers.entrySet().iterator();
+        while (recent.hasNext()) {
+            long age = at - recent.next().getValue();
+            if (age < 0 || age >= OfferPairing.OFFER_MS) recent.remove();
+        }
+        recentOffers.remove(merchant);
+        if (recentOffers.size() >= MAX_TRACKED_OFFERS) recentOffers.remove(recentOffers.keySet().iterator().next());
+        recentOffers.put(merchant, at);
+    }
+
+    /**
+     * Whether a post naming {@code merchant} names the store of an order being delivered ({@link #deliveries}): one a
+     * delivery, pickup or route screen followed, with no wait for offers, dash's end or Dasher's home read since. Holds
+     * older than {@link #DELIVERY_HOLD_MS} go. Main thread.
+     */
+    private boolean delivering(String merchant, long now) {
+        if (merchant == null || merchant.isEmpty()) return false;
+        java.util.Iterator<Map.Entry<String, Long>> held = deliveries.entrySet().iterator();
+        boolean same = false;
+        while (held.hasNext()) {
+            Map.Entry<String, Long> entry = held.next();
+            long age = now - entry.getValue();
+            if (age < 0 || age >= DELIVERY_HOLD_MS) {
+                held.remove();
+            } else if (sameStore(entry.getKey(), merchant)) {
+                same = true;
+            }
+        }
+        return same;
+    }
 
     /** An offer's notification with no rule set: nothing to meet, so it is left to the user ({@link #decide}). */
     static final String NO_RULE = "no rule is set";

@@ -1,4 +1,9 @@
-## Unreleased
+## 0.5.3 — Directions work during a delivery; one-tap split screen
+
+Version 0.5.3 (code 83). It follows 0.5.2. The notice stays at 15, and the terms and privacy texts are 0.5.2's: nothing new is read, kept or sent.
+
+### Directions work during a delivery
+- **"No matter how many times I click directions it just keeps going back to the same screen"** (the owner, 8 October 2026, every delivery). When Dasher leaves the screen for its Directions' map, DoorDash posts the order's notification again ("New Order: Go to <store>"). Offer Filter held such re-posts for only a minute after the offer, so minutes into a delivery it took the re-post for a fresh offer: Peek opened Dasher over the map, and 2.5 s later tapped Dasher's own notification, which opens the offer's screen. Now a post naming the store of the order you are delivering is never peeked at during that delivery (until Dasher's wait for offers, the dash's end, or 3 hours); another store's offer still is. "[peek] skipped: Dasher's post for the order you are delivering (the same store)" says so, and a peek during a delivery now says "a delivery under way". Reproduced in simulation (DirectionsDuringDeliveryTest); that DoorDash re-posts the order exactly then is from the earlier "Navigate's map does not stay" reports, and the next report will confirm it on the owner's phone.
 
 ### One-tap split screen
 - **The Split button splits the screen in one tap.** From Android 12L it first opens Dasher beside Offer Filter (Android's "launch adjacent"), which the phone answers by splitting the screen itself: Offer Filter in one half, Dasher in the other. On Android 15 and later many phones, the owner's Samsung on Android 16 among them, refuse the split request the app used to make, so the button only ever opened recent apps there. If the phone opens Dasher full screen instead, recent apps open 1.5 s later with the phone's words, as before. Dasher's own task moves beside, its offer and all; no second Dasher is ever started. Decided on best judgment (the owner, 8 October 2026: "you never for any project need approval if you're using best judgment").

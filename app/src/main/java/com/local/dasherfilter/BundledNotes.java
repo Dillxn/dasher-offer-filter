@@ -71,6 +71,11 @@ final class BundledNotes {
                         + "left unmade no longer holds back Peek.",
                 "Offers are read sooner after their notification, Dasher's question is tapped as soon as it shows "
                         + "in split screen, and directions keep talking.");
+        release("0.5.3",
+                "Directions work during a delivery: DoorDash's re-post of the order you are delivering no longer "
+                        + "pulls Dasher back over your map.",
+                "The split button now splits the screen in one tap, Dasher beside this app; recent apps open only "
+                        + "if your phone doesn't split for it.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 
