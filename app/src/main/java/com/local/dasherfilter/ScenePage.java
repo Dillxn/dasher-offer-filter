@@ -252,7 +252,7 @@ final class ScenePage extends ViewGroup {
         place(lines, fluid.lines);
         place(star, fluid.radar);
         star.compose(fluid.radarX - Math.round(fluid.radar.left), fluid.radarY - Math.round(fluid.radar.top),
-                fluid.radius, java.util.Collections.<MinimumsStarView.Veil>emptyList());
+                fluid.radius);
         place(caption, fluid.caption);
         place(chart, fluid.chart);
         place(map, fluid.map);

@@ -53,8 +53,8 @@ import java.util.Locale;
  * an icon, the badge or the button is the constellation's; the empty sky around it takes none.
  *
  * <p>As the sky, the set minimums are knobs: each spoke's round star, ringed so it reads as something to take hold of
- * (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle, a little further out where a
- * line of words or the mascot covers that place, so every one stays in reach), grows under a finger and can be dragged
+ * (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle), grows under a finger and
+ * can be dragged
  * along its spoke, in steps, with a light tick at each; pressing or focusing shows its name and value before moving it,
  * and letting go saves it at once. A knob keeps its exact value until the finger has moved it half a step along its
  * spoke, so a wobble never snaps it to a step; it is taken only by a finger moving along its spoke, so a scroll of the
@@ -191,17 +191,14 @@ final class MinimumsStarView extends View {
     private final Glyph[] icons = new Glyph[ICONS.length];
     /** How much of their full size the stars and marks are drawn at: less on a small circle. */
     private float detail = 1;
-    /** Where the page put the circle (a radius of 0 until it has), and where anything sits on it to fade under. */
+    /** Where the page put the circle (a radius of 0 until it has). */
     private float skyX;
     private float skyY;
     private float skyRadius;
-    private final List<Veil> veils = new ArrayList<>();
-    private final Paint veilPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFade = new Paint();
     private final Paint sideFade = new Paint();
     private float edgeFadeFor = Float.NaN;
     private float sideFadeFor = Float.NaN;
-    private final RectF veilBox = new RectF();
     /** As the sky: the rings' dollars (bold, in a soft halo of the sky's color) and where each was last drawn. */
     private final TextPaint levelText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final List<RectF> levelBoxes = new ArrayList<>();
@@ -263,9 +260,9 @@ final class MinimumsStarView extends View {
      * page, stand apart); dragged back inside it, a rule is off.
      */
     static final int KNOB_REST_DP = 32;
-    /** Covered by words or the mascot there, a hollow knob steps out along its spoke this far at a time. */
+    /** Too near the view's edge there, a hollow knob steps out along its spoke this far at a time... */
     private static final int REST_STEP_DP = 4;
-    /** ...keeping its middle at least this far from the words, so a finger finds it. */
+    /** ...keeping its middle at least this far inside the view, so a finger finds it. */
     private static final int REST_CLEAR_DP = 10;
     /** A knob set so low it rests inside that place turns off only when pushed this much further in. */
     private static final int OFF_PUSH_DP = 12;
@@ -381,29 +378,6 @@ final class MinimumsStarView extends View {
     private final int[] onScreen = new int[2];
     private String lastSaid = "";
 
-    /** A place on the sky where words or the mascot sit, and how far (0 to 1) the constellation fades under it. */
-    static final class Veil {
-        final RectF box;
-        final boolean round;
-        final float fade;
-
-        Veil(RectF box, boolean round, float fade) {
-            this.box = new RectF(box);
-            this.round = round;
-            this.fade = fade;
-        }
-
-        @Override public boolean equals(Object other) {
-            if (!(other instanceof Veil)) return false;
-            Veil veil = (Veil) other;
-            return box.equals(veil.box) && round == veil.round && fade == veil.fade;
-        }
-
-        @Override public int hashCode() {
-            return box.hashCode() * 31 + (round ? 1 : 0);
-        }
-    }
-
     MinimumsStarView(Context context, Ui ui) {
         super(context);
         this.ui = ui;
@@ -422,7 +396,6 @@ final class MinimumsStarView extends View {
         axisText.setTextAlign(Paint.Align.LEFT);
         axisText.setColor(ui.dark ? 0xFFE0E8EE : 0xFF394D5A);
         axisText.setShadowLayer(ui.dp(3), 0, 0, ui.dark ? 0xFF0D1428 : 0xFFE7EEF2);
-        veilPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         edgeFade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         sideFade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         levelText.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,
@@ -746,15 +719,13 @@ final class MinimumsStarView extends View {
 
     /**
      * Draws the constellation as the page's sky: its circle of {@code radius} around ({@code x}, {@code y}), in this
-     * view's pixels, faded under each of {@code over}.
+     * view's pixels.
      */
-    void compose(float x, float y, float radius, List<Veil> over) {
-        boolean moved = x != skyX || y != skyY || radius != skyRadius || !veils.equals(over);
+    void compose(float x, float y, float radius) {
+        boolean moved = x != skyX || y != skyY || radius != skyRadius;
         skyX = x;
         skyY = y;
         skyRadius = radius;
-        veils.clear();
-        veils.addAll(over);
         if (moved) {
             layoutMoved = true;
             restStale = true;
@@ -790,34 +761,15 @@ final class MinimumsStarView extends View {
         return backdropAbove(radius);
     }
 
-    /**
-     * As the sky, the room kept above the middle: the circle's top half and an icon's room over it, as the page has
-     * always laid out (the counts and the mascot stand in it, and the Autopilot button may).
-     */
+    /** As the sky, the room kept above the middle: the circle's top half and an icon's room over it. */
     float backdropAbove(float radius) {
         return radius + ui.dp(ICON_GAP_DP) + backdropIcon();
     }
 
-    float backdropBelow(float radius) {
-        // The lower rim belongs to the scene: the page's lines cross it, as they always have.
-        return radius + ui.dp(2);
-    }
-
-    /** As the sky, the width from the circle's middle to the outer edge of an icon at a spoke's end. */
-    float backdropHalfWidth(float radius) {
-        return COS * radius + ui.dp(ICON_OUT_DP) + backdropIcon() / 2;
-    }
-
-    /** As the sky, the height from the circle's middle to the ends of its spokes. */
-    static float spokeHalfHeight(float radius) {
-        return SIN * radius;
-    }
-
     /**
      * As the sky, where spoke {@code axis}'s icon stands, into {@code out}: above an upper spoke's end and below a lower
-     * one's; where a line of words crosses that place, on the spoke's other side instead (above a lower spoke's end,
-     * clear of the mascot). Answers false when words cross both places: the icon waits, hidden, until the line goes.
-     * The per-stop pin is there only with the badge it anchors (the knobs on); hotspot and per item have none.
+     * one's; where the view has no room there, on the spoke's other side instead. The per-stop pin is there only with
+     * the badge it anchors (the knobs on); hotspot and per item have none.
      */
     private boolean skyIcon(int axis, float cx, float cy, float radius, RectF out) {
         if (axis < 0 || axis >= ICONS.length) return false;
@@ -837,12 +789,10 @@ final class MinimumsStarView extends View {
             boolean under = below == (side == 0);
             float top = under ? tip[1] + ui.dp(ICON_GAP_DP) : tip[1] - ui.dp(ICON_GAP_DP) - size;
             out.set(middle - size / 2, top, middle + size / 2, top + size);
-            if (out.top >= ui.dp(2) && out.bottom <= getHeight() - ui.dp(2)
-                    && !underWords(out) && (side == 0 || !onMascot(out))) return true;
+            if (out.top >= ui.dp(2) && out.bottom <= getHeight() - ui.dp(2)) return true;
         }
         if (axis == AreaScore.STOP) {
-            // Keep the max-stops control reachable by moving its pin a little inward and upward, clear of both the
-            // words and the mascot.
+            // Keep the max-stops control reachable by moving its pin a little inward and upward.
             float preferredTop = tip[1] - ui.dp(ICON_GAP_DP) - size;
             for (int rise = 0; rise <= 3; rise++) {
                 for (int inward = 1; inward <= 4; inward++) {
@@ -850,8 +800,7 @@ final class MinimumsStarView extends View {
                     float top = preferredTop - rise * ui.dp(24);
                     out.set(left, top, left + size, top + size);
                     if (out.left >= ui.dp(4) && out.right <= getWidth() - ui.dp(4) && out.top >= ui.dp(4)
-                            && out.bottom <= getHeight() - ui.dp(4) && !underWords(out) && !onMascot(out)
-                            && iconClearOfKnobs(out)) return true;
+                            && out.bottom <= getHeight() - ui.dp(4) && iconClearOfKnobs(out)) return true;
                 }
             }
         }
@@ -980,10 +929,9 @@ final class MinimumsStarView extends View {
         float margin = ui.dp(4);
         x = Math.max(margin + width / 2, Math.min(getWidth() - margin - width / 2, x));
         RectF box = new RectF(x - width / 2, y - height / 2, x + width / 2, y + height / 2);
-        if (box.top < margin || box.bottom > getHeight() - margin || box.width() > getWidth() - 2 * margin
-                || underWords(box) || onMascot(box)) return false;
-        // The sun/moon is another round veil, not a text row or the mascot, and must stay clear too.
-        for (Veil veil : veils) if (veil.round && RectF.intersects(box, veil.box)) return false;
+        if (box.top < margin || box.bottom > getHeight() - margin || box.width() > getWidth() - 2 * margin) {
+            return false;
+        }
         RectF padded = new RectF(box);
         padded.inset(-ui.dp(2), -ui.dp(2));
         for (RectF icon : iconBoxes) if (icon != null && RectF.intersects(padded, icon)) return false;
@@ -1089,8 +1037,7 @@ final class MinimumsStarView extends View {
 
     /**
      * As the page's sky: the rings, spokes, offers, shapes and icons in one layer, the rings fading out at the view's
-     * top and bottom edges, and everything faded where words or the mascot sit (the mascot's disc cut out); then, over
-     * it, the rings' dollars in their halos, and the controls.
+     * edges; then, over it, the rings' dollars in their halos, and the controls.
      */
     private void drawSky(Canvas canvas) {
         float cx = skyX;
@@ -1115,7 +1062,6 @@ final class MinimumsStarView extends View {
                     Math.round(iconBox.bottom));
             icons[i].draw(canvas);
         }
-        for (Veil veil : veils) drawVeil(canvas, veil.box, veil.round, veil.fade);
         canvas.restoreToCount(layer);
         // The held knob's readout is placed first, so the rings' dollars it would cover step aside for it.
         if (readoutAxis() >= 0) placeReadout(cx, cy, radius);
@@ -1140,42 +1086,6 @@ final class MinimumsStarView extends View {
     private float skyDetail() {
         return Math.max(0.6f, Math.min(1, skyRadius / ui.dp(45)))
                 + Math.max(0, Math.min(0.35f, (skyRadius - ui.dp(100)) / ui.dp(150)));
-    }
-
-    /** Whether {@code box} meets any of the words the stage laid over the sky. */
-    private boolean underWords(RectF box) {
-        for (Veil veil : veils) if (!veil.round && RectF.intersects(veil.box, box)) return true;
-        return false;
-    }
-
-    /** Whether the point ({@code x}, {@code y}) lies under any of the words the stage laid over the sky. */
-    private boolean underWords(float x, float y) {
-        for (Veil veil : veils) if (!veil.round && veil.box.contains(x, y)) return true;
-        return false;
-    }
-
-    /** Whether {@code box} comes within a little of the mascot's disc (the round veil cut out in full). */
-    private boolean onMascot(RectF box) {
-        for (Veil veil : veils) {
-            if (!veil.round || veil.fade < 1) continue;
-            float reach = veil.box.width() / 2 + ui.dp(10);
-            float dx = Math.max(0, Math.max(box.left - veil.box.centerX(), veil.box.centerX() - box.right));
-            float dy = Math.max(0, Math.max(box.top - veil.box.centerY(), veil.box.centerY() - box.bottom));
-            if (dx * dx + dy * dy < reach * reach) return true;
-        }
-        return false;
-    }
-
-    /** The mascot owns its full ring plus its touch halo, ten dp beyond the inner painted-out disc. */
-    private boolean onMascot(float x, float y) {
-        for (Veil veil : veils) {
-            if (!veil.round || veil.fade < 1) continue;
-            float reach = veil.box.width() / 2 + ui.dp(10);
-            float dx = x - veil.box.centerX();
-            float dy = y - veil.box.centerY();
-            if (dx * dx + dy * dy < reach * reach) return true;
-        }
-        return false;
     }
 
     /**
@@ -1207,41 +1117,6 @@ final class MinimumsStarView extends View {
                         android.graphics.Shader.TileMode.CLAMP));
             }
             canvas.drawRect(0, 0, width, height, sideFade);
-        }
-    }
-
-    /**
-     * Fades the constellation under {@code box}, in three steps from its edge inwards so the fade has no hard edge. A
-     * round veil faded in full (the mascot's disc) is cut out altogether inside its feathered edge.
-     */
-    private void drawVeil(Canvas canvas, RectF box, boolean round, float fade) {
-        float feather = ui.dp(7);
-        if (round && fade >= 1) {
-            float reach = box.width() / 2;
-            float[] alphas = {0.35f, 0.5f, 1f};
-            for (int step = 0; step < 3; step++) {
-                float at = reach + feather * (1 - step);
-                if (at <= 0) continue;
-                veilPaint.setColor(Math.round(255 * alphas[step]) << 24);
-                canvas.drawCircle(box.centerX(), box.centerY(), at, veilPaint);
-            }
-            return;
-        }
-        float each = 1 - (float) Math.cbrt(1 - Math.max(0, Math.min(0.99f, fade)));
-        veilPaint.setColor(Math.round(255 * each) << 24);
-        for (int step = 0; step < 3; step++) {
-            float inset = feather * (step - 1);
-            if (round) {
-                float reach = box.width() / 2 - inset;
-                if (reach > 0) canvas.drawCircle(box.centerX(), box.centerY(), reach, veilPaint);
-            } else {
-                veilBox.set(box);
-                veilBox.inset(inset, inset);
-                if (veilBox.width() > 0 && veilBox.height() > 0) {
-                    float corner = Math.min(ui.dp(16), veilBox.height() / 2);
-                    canvas.drawRoundRect(veilBox, corner, corner, veilPaint);
-                }
-            }
         }
     }
 
@@ -1710,10 +1585,9 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Where each hollow knob rests: {@link #KNOB_REST_DP} out along its spoke, or, where a line of words or the mascot
-     * covers that place, the nearest place further out along it that is clear of them (its middle at least
-     * {@link #REST_CLEAR_DP} from any words) and inside the page, so a first rule can always be dragged; failing that,
-     * where it was.
+     * Where each hollow knob rests: {@link #KNOB_REST_DP} out along its spoke, or, where that place is too near the
+     * view's edge, the nearest place further out along it with its middle at least {@link #REST_CLEAR_DP} inside the
+     * view, so a first rule can always be dragged; failing that, where it was.
      */
     private void placeRests() {
         restStale = false;
@@ -1727,8 +1601,9 @@ final class MinimumsStarView extends View {
             for (float d = least; d <= most; d += ui.dp(REST_STEP_DP)) {
                 float[] at = point(skyX, skyY, skyRadius, axis, d / skyRadius);
                 around.set(at[0] - clear, at[1] - clear, at[0] + clear, at[1] + clear);
-                if (around.left < 0 || around.top < 0 || around.right > getWidth() || around.bottom > getHeight()
-                        || underWords(around) || onMascot(at[0], at[1])) continue;
+                if (around.left < 0 || around.top < 0 || around.right > getWidth() || around.bottom > getHeight()) {
+                    continue;
+                }
                 restAt[axis] = d;
                 break;
             }
@@ -1909,8 +1784,7 @@ final class MinimumsStarView extends View {
 
     /**
      * The marked offer a touch at ({@code x}, {@code y}) is for: the one with a mark (as drawn now) nearest within
-     * reach, else the topmost polygon under the finger; -1 for none. A spoke's icon keeps its own touch; a mark faded
-     * under a line of words, or cut out under the mascot, is left to them, as is a polygon there.
+     * reach, else the topmost polygon under the finger; -1 for none. A spoke's icon keeps its own touch.
      */
     private int offerAt(float x, float y) {
         if (!offersOn() || outer <= 0 || marks.isEmpty() || onIcon(x, y, 0)) return -1;
@@ -1922,7 +1796,7 @@ final class MinimumsStarView extends View {
         for (int m : order) {
             for (int axis : SPOKES) {
                 float[] at = markPoint(m, axis, glide);
-                if (at == null || underWords(at[0], at[1]) || onMascot(at[0], at[1])) continue;
+                if (at == null) continue;
                 float dx = x - at[0];
                 float dy = y - at[1];
                 // Where two marks are as near, the one drawn on top.
@@ -1932,7 +1806,7 @@ final class MinimumsStarView extends View {
                 }
             }
         }
-        if (found >= 0 || underWords(x, y) || onMascot(x, y)) return found;
+        if (found >= 0) return found;
         for (int m : order) {
             List<float[]> polygon = offerPolygon(skyX, skyY, skyRadius, m, glide);
             if (polygon.size() >= 3 && inside(polygon, x, y)) return m;
@@ -1958,11 +1832,11 @@ final class MinimumsStarView extends View {
         return true;
     }
 
-    /** A visible, selectable mark on spoke {@code axis}, excluding text/mascot masks (for interaction tests). */
+    /** A visible, selectable mark on spoke {@code axis} (for interaction tests). */
     float[] markAt(int m, int axis) {
         if (!backdrop() || m < 0 || m >= marks.size()) return null;
         float[] at = markPoint(m, axis, Motion.settle(glideStart, GLIDE_MS));
-        return at == null || underWords(at[0], at[1]) || onMascot(at[0], at[1]) ? null : at;
+        return at;
     }
 
     /** The marked offer whose ticket is open, newest first (for tests); -1 for none. */
@@ -2311,8 +2185,8 @@ final class MinimumsStarView extends View {
 
     /**
      * Where the held knob's readout stands, into the pill box: above the knob, clear of the finger, where that is
-     * inside the page and clear of the words and the mascot; else beside it (towards the page's middle, then away),
-     * else below it; else above it, kept inside the page.
+     * inside the page; else beside it (towards the page's middle, then away), else below it; else above it, kept inside
+     * the page.
      */
     private void placeReadout(float cx, float cy, float radius) {
         int axis = readoutAxis();
@@ -2335,7 +2209,7 @@ final class MinimumsStarView extends View {
             pillBox.set(left, top, left + width, top + height);
             if (i == places.length) return;
             boolean moved = Math.abs(left - place[0]) > ui.dp(24) || Math.abs(top - place[1]) > ui.dp(1);
-            if (!moved && !underWords(pillBox) && !onMascot(pillBox)) return;
+            if (!moved) return;
         }
     }
 
@@ -2476,7 +2350,7 @@ final class MinimumsStarView extends View {
             candidate.set(place[0], place[1], place[0] + size, place[1] + size);
             if (candidate.left < ui.dp(4) || candidate.right > getWidth() - ui.dp(4)
                     || candidate.top < ui.dp(4) || candidate.bottom > getHeight() - ui.dp(4)
-                    || underWords(candidate) || onMascot(candidate) || !iconClearOfKnobs(candidate)) continue;
+                    || !iconClearOfKnobs(candidate)) continue;
             boolean clear = true;
             for (int axis : SPOKES) {
                 if (skyIcon(axis, skyX, skyY, skyRadius, other) && RectF.intersects(candidate, other)) clear = false;
@@ -2496,7 +2370,6 @@ final class MinimumsStarView extends View {
                 || stopsBox.bottom > getHeight() - margin) {
             return false;
         }
-        if (underWords(stopsBox) || onMascot(stopsBox)) return false;
         RectF icon = new RectF();
         for (int i = 0; i < ICONS.length; i++) {
             if (skyIcon(i, skyX, skyY, skyRadius, icon) && RectF.intersects(icon, stopsBox)) return false;
@@ -2689,7 +2562,6 @@ final class MinimumsStarView extends View {
         }
         RectF around = new RectF(box);
         around.inset(-ui.dp(4), -ui.dp(4));
-        if (underWords(around) || onMascot(box)) return false;
         for (RectF other : others) if (other != null && RectF.intersects(other, around)) return false;
         if (stopsForButtons && RectF.intersects(stopsBox, around)) return false;
         for (RectF label : levelBoxes) if (RectF.intersects(label, around)) return false;

@@ -136,7 +136,7 @@ abstract class AndroidAdapterTestBase {
             activity.setContentView(scroll);
             layOut();
             show();
-            star.compose(scroll.getWidth() / 2f, ui.dp(240), ui.dp(180), Collections.emptyList());
+            star.compose(scroll.getWidth() / 2f, ui.dp(240), ui.dp(180));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900));
         }
 
