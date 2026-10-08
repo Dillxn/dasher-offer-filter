@@ -751,9 +751,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         verdictLine.setLineSpacing(0, 1.15f);
         verdictLine.setPadding(0, ui.dp(4), 0, 0);
         stripWords.addView(verdictLine, Ui.matchWidth());
-        // The status line, 14 sp and at least 48 dp: with no rule, the start; paused, that nothing is declined; with
-        // Autopilot on, its status, a tap opening its details; else, with Autopilot off, the wait for a matching offer,
-        // or that auto-decline is on. Never a live region: Autopilot moving its bar by itself is never announced.
+        // The status line, 14 sp and at least 48 dp: with no rule, the start; with Autopilot on, its status in every
+        // state, a tap opening its details; else, with Autopilot off, paused (a tap resumes), the wait for a matching
+        // offer, or that auto-decline is on. Never a live region: Autopilot moving its bar by itself is never announced.
         statusLine = ui.text("", 14, ui.inkSecondary, false);
         statusLine.setMinHeight(ui.dp(48));
         statusLine.setGravity(Gravity.CENTER_VERTICAL);

@@ -60,6 +60,9 @@ final class ScenePage extends ViewGroup {
 
     private final Ui ui;
     private final FluidLayout fluid;
+    /** Where the mascot's drawing and its counts stand, worked out at each layout into the same two boxes. */
+    private final FluidLayout.Box heroBox = new FluidLayout.Box();
+    private final android.graphics.RectF countsBox = new android.graphics.RectF();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path farHills = new Path();
     private final Path nearHills = new Path();
@@ -227,13 +230,12 @@ final class ScenePage extends ViewGroup {
         part.layout(Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom));
     }
 
-    /** The mascot's drawing: from the mascot down to the counts' row, across both. */
+    /** The mascot's drawing: from the mascot down to the counts' row, across both (one box, reused). */
     private FluidLayout.Box heroBox() {
-        FluidLayout.Box box = new FluidLayout.Box();
-        box.set((float) Math.floor(Math.min(fluid.mascot.left, fluid.counts.left)), fluid.mascot.top,
+        heroBox.set((float) Math.floor(Math.min(fluid.mascot.left, fluid.counts.left)), fluid.mascot.top,
                 (float) Math.ceil(Math.max(fluid.mascot.right, fluid.counts.right)),
                 (float) Math.ceil(Math.max(fluid.mascot.bottom, fluid.countsRow.bottom)));
-        return box;
+        return heroBox;
     }
 
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
@@ -241,11 +243,11 @@ final class ScenePage extends ViewGroup {
         FluidLayout.Box heroBox = heroBox();
         place(hero, heroBox);
         float mascotRadius = fluid.mascot.width() / 2;
-        android.graphics.RectF counts = new android.graphics.RectF(fluid.counts.left - heroBox.left,
-                fluid.counts.top - heroBox.top, fluid.counts.right - heroBox.left, fluid.counts.bottom - heroBox.top);
+        countsBox.set(fluid.counts.left - heroBox.left, fluid.counts.top - heroBox.top,
+                fluid.counts.right - heroBox.left, fluid.counts.bottom - heroBox.top);
         hero.place((fluid.mascot.left + fluid.mascot.right) / 2 - heroBox.left,
-                (fluid.mascot.top + fluid.mascot.bottom) / 2 - heroBox.top, mascotRadius, counts, fluid.countsSpacing,
-                fluid.countsShown);
+                (fluid.mascot.top + fluid.mascot.bottom) / 2 - heroBox.top, mascotRadius, countsBox,
+                fluid.countsSpacing, fluid.countsShown);
         place(header, fluid.header);
         place(lines, fluid.lines);
         place(star, fluid.radar);
@@ -259,8 +261,8 @@ final class ScenePage extends ViewGroup {
         road.setAlpha(fluid.roadShown);
         float stage = fluid.stageShown;
         float horizon = stage * fluid.horizonShown;
-        float[] now = {stage, horizon, horizon, stage, stage};
-        for (int i = 0; i < fading.length; i++) show(i, now[i]);
+        // The constellation, the skyline's caption, the skyline, the map and its area's line.
+        for (int i = 0; i < fading.length; i++) show(i, i == 1 || i == 2 ? horizon : stage);
     }
 
     /**
