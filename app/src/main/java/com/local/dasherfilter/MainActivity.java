@@ -830,7 +830,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * A caption of {@code sp} words in its 48 dp row, wherever the page puts it (its width changes with the window): one
      * line where the words fit, else two, smaller by the least that fits, never below three quarters of the user's size
      * nor below the default size; only words longer still are cut short with a mark (screen readers hear the whole of
-     * it).
+     * it). Lines without the font's own padding above and below: with it, two lines at the least size came out taller
+     * than the row at twice the font on Android 8.
      */
     private TextView caption(float sp, int color) {
         TextView line = ui.text("", sp, color, true);
@@ -838,6 +839,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         line.setEllipsize(android.text.TextUtils.TruncateAt.END);
         line.setGravity(Gravity.CENTER);
         line.setLineSpacing(0, 1f);
+        line.setIncludeFontPadding(false);
         int full = Math.round(line.getTextSize());
         int least = Math.min(full, Math.max(Math.round(full * SetupRow.LEAST_SCALE), ui.dp(sp)));
         if (least < full) {
