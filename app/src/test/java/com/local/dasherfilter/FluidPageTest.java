@@ -326,6 +326,62 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         controller.pause().stop().destroy();
     }
 
+    // ---- The minutes passing ----
+
+    /**
+     * A split screen beside another app during a dash, at twice the font: as the minutes pass after the latest offer
+     * ("just now", "1 min ago", "12 min ago", "59 min ago", "1 h ago") the verdict at the top keeps its size and its
+     * height, so nothing under it moves (0.5.1's words in its place: at a minute the verdict grew a third line, its words
+     * a quarter larger, and the radar under it shrank away). The same offer at each age, the same window.
+     */
+    @Test @Config(qualifiers = "w411dp-h370dp-420dpi")
+    public void theMinutesPassingNeverMoveThePage() throws Exception {
+        RuntimeEnvironment.setFontScale(2f);
+        AutopilotRuntime.executorForTests = Runnable::run;
+        dasherInstalled();
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        servicesUp();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        String[] agos = {"just now", "1 min ago", "12 min ago", "59 min ago", "1 h ago"};
+        long[] ages = {0, 61_000, 12 * 60_000 + 5_000, 59 * 60_000 + 5_000, 61 * 60_000};
+        Float size = null;
+        Integer height = null;
+        RectF radar = null;
+        Float shown = null;
+        for (int i = 0; i < ages.length; i++) {
+            DecisionLog.forgetCache();
+            DecisionLog.clear(app);
+            DecisionLog.Entry offer = declinedEntry();
+            DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() - ages[i], offer.source,
+                    offer.addOn, offer.facts, offer.requiredCents, offer.result, offer.reason, offer.action,
+                    offer.autoDecline, offer.evidence));
+            ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class);
+            Shadows.shadowOf(controller.get()).setInMultiWindowMode(true);
+            controller.setup();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
+            View content = controller.get().findViewById(android.R.id.content);
+            layOut(content);
+            ScenePage page = find(content, ScenePage.class);
+            TextView verdict = (TextView) ((LinearLayout) page.getChildAt(0)).getChildAt(0);
+            MinimumsStarView star = find(page, MinimumsStarView.class);
+            String said = verdict.getText().toString();
+            assertTrue(said, said.startsWith("Declined $7.90 · 7.2 mi: ") && said.endsWith(" · " + agos[i]));
+            assertWhole(said, verdict);
+            if (size == null) {
+                size = verdict.getTextSize();
+                height = verdict.getHeight();
+                radar = box(star, page);
+                shown = page.shown(star);
+            } else {
+                assertEquals(said + ": the same size", size, verdict.getTextSize(), 0.01f);
+                assertEquals(said + ": the same height", (int) height, verdict.getHeight());
+                assertEquals(said + ": the radar where it was", radar, box(star, page));
+                assertEquals(said + ": as much of it there", shown, page.shown(star), 0f);
+            }
+            controller.pause().stop().destroy();
+        }
+    }
+
     // ---- The radar's own parts, 2 dp at a time ----
 
     /** The window heights the radar's own parts are swept over, in dp, and the step. */
@@ -651,7 +707,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         }
     }
 
-    /** No words cut off: each line of words wholly there is laid out inside its height, every word or a mark. */
+    /** No words cut off: each line of words wholly there is laid out inside its height, every word of it. */
     private static void assertWords(String where, ScenePage page) {
         List<TextView> texts = new ArrayList<>();
         collectTexts(page, texts);
@@ -662,9 +718,10 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             String what = where + ": \"" + text.getText() + "\"";
             assertTrue(what + " inside its height", layout.getHeight()
                     <= text.getHeight() - text.getTotalPaddingTop() - text.getTotalPaddingBottom() + 1);
-            if (text.getEllipsize() == null) {
-                assertEquals(what + ": every word", text.getText().length(), layout.getLineEnd(lines - 1));
-            }
+            // Every word, none cut short with a mark: the skyline's caption takes a second line before it would cut
+            // its outcome off in a narrow column at a large font.
+            assertEquals(what + ": every word", text.getText().length(), layout.getLineEnd(lines - 1));
+            assertEquals(what + ": none cut short", 0, layout.getEllipsisCount(lines - 1));
         }
     }
 

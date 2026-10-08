@@ -179,7 +179,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Main page: the strip along the top.
     /** The latest offer's verdict with, under it, the chip and the status line; a tap opens that offer's ticket. */
     private LinearLayout stripWords;
-    private TextView verdictLine;
+    private SetupRow.Words verdictLine;
     /** The status line beside the chip: the start, paused, Autopilot's status or the wait ({@code slot} says which). */
     private TextView statusLine;
     private int slot = SLOT_ON;
@@ -810,7 +810,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Then the stage: the minimums' constellation with the skyline's caption and the skyline under it, above the
         // map in a tall window and beside it in a wide one; and the road along the bottom.
         addMinimums();
-        offerCaption = oneLine(13, ui.ink);
+        offerCaption = caption(13, ui.ink);
         offerCaption.setPadding(ui.dp(12), 0, ui.dp(12), 0);
         offerCaption.setOnClickListener(tapped -> {
             if (chart.selectedEntry() != null) setTicketOpen(true);
@@ -827,13 +827,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * One line of {@code sp} words that keeps one line wherever the page puts it (its width changes with the window):
-     * smaller by the least that fits, never below three quarters of the user's size nor below the default size, else
-     * cut short with a mark (screen readers hear the whole of it).
+     * A caption of {@code sp} words in its 48 dp row, wherever the page puts it (its width changes with the window): one
+     * line where the words fit, else two, smaller by the least that fits, never below three quarters of the user's size
+     * nor below the default size; only words longer still are cut short with a mark (screen readers hear the whole of
+     * it).
      */
-    private TextView oneLine(float sp, int color) {
+    private TextView caption(float sp, int color) {
         TextView line = ui.text("", sp, color, true);
-        line.setMaxLines(1);
+        line.setMaxLines(2);
         line.setEllipsize(android.text.TextUtils.TruncateAt.END);
         line.setGravity(Gravity.CENTER);
         line.setLineSpacing(0, 1f);
@@ -1287,8 +1288,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
             if (!AreaMap.hasPermission(this)) askForLocation();
         });
-        // One line (its rate and sample count shrink to fit it), a 48 dp target under the map.
-        areaLine = oneLine(13, ui.ink);
+        // One line where it fits (else two, its rate and count a little smaller), a 48 dp target under the map.
+        areaLine = caption(13, ui.ink);
         areaLine.setPadding(ui.dp(16), 0, ui.dp(16), 0);
         areaLine.setBackground(ui.pressable(12));
         areaLine.setOnClickListener(tapped -> openArea());
@@ -1636,6 +1637,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String words = latest == null ? (readyForOffers ? "Waiting for offers" : "No offers yet")
                 : verdict(latest, System.currentTimeMillis());
         if (!words.contentEquals(verdictLine.getText())) verdictLine.setText(words);
+        // Sized, and its height kept, for the longest "how long ago" of the hour after the offer: the minutes passing
+        // never move the page.
+        verdictLine.fitTo(latest == null ? null : verdict(latest, LONGEST_AGO));
         String said = latest == null ? null : words + ". Open offer details";
         if (!java.util.Objects.equals(said, stripWords.getContentDescription() == null ? null
                 : stripWords.getContentDescription().toString())) {
@@ -1903,6 +1907,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * $4.10 · 9 mi: below your per-mile minimum · 2 min ago", "Passed $7.00 · 6.6 mi: meets your minimums · just now".
      */
     static String verdict(DecisionLog.Entry entry, long now) {
+        return verdict(entry, ago(now - entry.at));
+    }
+
+    /** The longest "how long ago" a verdict says in the hour after its offer ("1 h ago" and on are shorter). */
+    private static final String LONGEST_AGO = "59 min ago";
+
+    /** The verdict for {@code entry}, saying how long ago in {@code ago}'s words. */
+    private static String verdict(DecisionLog.Entry entry, String ago) {
         String outcome = captionOutcome(entry);
         StringBuilder line = new StringBuilder(outcome).append(' ')
                 .append(entry.facts.payCents == null ? "pay unread" : DecisionLog.money(entry.facts.payCents));
@@ -1917,7 +1929,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             why = why.substring(below.length());
         }
         if (!why.isEmpty()) line.append(": ").append(lowerFirst(why));
-        return line.append(" · ").append(ago(now - entry.at)).toString();
+        return line.append(" · ").append(ago).toString();
     }
 
     /** How long ago, in a few words: "just now", "12 min ago", "3 h ago" (under two days), "4 days ago". */
