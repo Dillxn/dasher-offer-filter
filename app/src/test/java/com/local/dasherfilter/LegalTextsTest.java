@@ -26,11 +26,11 @@ public final class LegalTextsTest {
     /**
      * The beta texts' effective date, the one place the tests name it (ConsentGateTest reads it here). A release that
      * changes them sets it to the day the texts are published: in TERMS.md's and PRIVACY.md's second line and here,
-     * then runs tools/legal_texts.py. 0.5.1's texts are dated the same day as 0.5.0's.
+     * then runs tools/legal_texts.py. 0.5.1's texts are dated the same day as 0.5.0's; 0.5.2's the day after.
      */
-    static final String EFFECTIVE = "7 October 2026";
+    static final String EFFECTIVE = "8 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String FOR_VERSION = "0.5.1";
+    static final String FOR_VERSION = "0.5.2";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

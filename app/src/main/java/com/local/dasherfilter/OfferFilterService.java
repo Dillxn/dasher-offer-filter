@@ -692,6 +692,13 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean confirmRetryPending;
     /** Whether this read showed a question about declining (taken for the declined offer's or not). */
     private boolean readShowsQuestion;
+    /**
+     * Whether this read found the declined offer's question with no Decline in it that can be tapped yet: its sheet
+     * still sliding up into Dasher's half, the lower part (its Decline among it) below the edge, which Android reports
+     * not visible to the user. It comes on screen with no event of Dasher's, and Android's list of windows may not say
+     * so for a while: the poll reads it again at its next tick ({@link #confirmPoll}). Nothing off screen is tapped.
+     */
+    private boolean questionDrawing;
     /** Whether this read left a window that might be Dasher's question unread (too many, too big, or no root). */
     private boolean questionLookIncomplete;
     /** Dasher's other windows this read listed and read, looking for the question. */
@@ -703,6 +710,16 @@ public final class OfferFilterService extends AccessibilityService {
     private int questionMissRepeats;
     /** Why the app's last tap was refused, for the log. */
     private String lastRefusal = "";
+    /** A first-step Decline Android refused is tried this many times at most, each on a fresh read. */
+    static final int MAX_REFUSED_TRIES = DeclineState.MAX_ATTEMPTS;
+    /** The offer ({@link DeclineState#offerKey}) whose first-step Decline Android refused, "" for none. */
+    private String refusedKey = "";
+    /** How many times, the last one when (uptime), and the user's clicks on Dasher counted then. */
+    private int refusedTries;
+    private long refusedAt = NEVER;
+    private long refusedClicks;
+    /** The user's clicks on Dasher counted as this read began. */
+    private long readClicks;
     /** Reads waiting for Dasher's question cut short in a row by a window change. */
     private int cutReads;
     /** The window changes so far as this read began, and how many nodes it reads at most. */
@@ -925,6 +942,12 @@ public final class OfferFilterService extends AccessibilityService {
     private final ReadBudget budget = new ReadBudget();
     private final ReadLoad load = new ReadLoad();
     /**
+     * The last minute's read load line, also put on each turn-by-turn navigation line of the screens log, which a
+     * report keeps long enough to show what reading cost Dasher while it navigated (the owner, 7 October 2026:
+     * "navigation is still sometimes broken in door dash app").
+     */
+    private String lastLoadLine = "";
+    /**
      * Whether the last read showed a sign of an offer for scheduling the next one ({@link #schedulingEvidence}): as
      * {@link #offerEvidence}, less the figures a screen Dasher's own words name explains itself (a dash's earnings, an
      * order's total, a route's travel time and distance).
@@ -1109,8 +1132,9 @@ public final class OfferFilterService extends AccessibilityService {
      * After the first Decline tap, every {@link #CONFIRM_POLL_MS}: Dasher's question is looked for. A read that
      * Dasher's events asked for comes first and looks anyway; otherwise Android's list of windows is asked for (not
      * Dasher), and the windows are read (each at most once, and only so far) when that list, or Dasher's events,
-     * changed since the last read began. A quiet window gets a bounded read once a second in case Dasher omitted
-     * its event. Ends after {@link #CONFIRM_POLL_WINDOW_MS}, or once the question is tapped.
+     * changed since the last read began, or when the last read found the question still coming on screen
+     * ({@link #questionDrawing}). A quiet window gets a bounded read once a second in case Dasher omitted its event.
+     * Ends after {@link #CONFIRM_POLL_WINDOW_MS}, or once the question is tapped.
      */
     private final Runnable confirmPoll = new Runnable() {
         @Override public void run() {
@@ -1122,7 +1146,7 @@ public final class OfferFilterService extends AccessibilityService {
                 return;
             }
             if (queued.get() == QUEUED_NONE
-                    && (dasherEvents.get() != lastReadEvents || windowsChangedSinceLastLook()
+                    && (dasherEvents.get() != lastReadEvents || windowsChangedSinceLastLook() || questionDrawing
                     || now - lastScanEndAt >= CONFIRM_QUIET_READ_MS)) {
                 // Once the question is tapped, the offer closing is read again every moment, as after any read.
                 if (checkOffer("confirmation poll", now, MAX_CONFIRM_NODES)) scheduleRecheck();
@@ -1138,6 +1162,12 @@ public final class OfferFilterService extends AccessibilityService {
         long now = SystemClock.uptimeMillis();
         if (!declineState.hasPendingConfirmation(now) || declineState.confirmationTries() == 0) return;
         if (checkOffer("confirmation retry", now, MAX_SCAN_NODES)) scheduleRecheck();
+        watchWindows();
+    };
+    /** {@link #CONFIRM_RETRY_MS} after Android refused a first-step Decline: read afresh, even without an event. */
+    private final Runnable refusalRetry = () -> {
+        if (stopped || refusedKey.isEmpty()) return;
+        if (checkOffer("refused-Decline retry", SystemClock.uptimeMillis(), MAX_SCAN_NODES)) scheduleRecheck();
         watchWindows();
     };
     /** A taken first-step request stalled: read afresh before its patient, bounded retry, even without an event. */
@@ -5771,6 +5801,7 @@ public final class OfferFilterService extends AccessibilityService {
         readRootNanos = 0;
         readTraversalNanos = 0;
         lastReadEvents = dasherEvents.get();
+        readClicks = dasherClicks.get();
         readOfferChecks = offerChecks.get();
         readWindowChanges = windowChanges.get();
         readTrigger = trigger;
@@ -5783,6 +5814,7 @@ public final class OfferFilterService extends AccessibilityService {
         sceneLabels = null;
         readSkipped = false;
         readShowsQuestion = false;
+        questionDrawing = false;
         readFigures = false;
         readTooBig = false;
         questionLookIncomplete = false;
@@ -5969,7 +6001,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (!readContent) return;
         contentReads++;
-        load.read(!readEvidence, scanNodes, ended - started, readCut, readMaps);
+        load.read(!readEvidence, scanNodes, ended - started, readCut, readMaps, !routineRead);
         long median = budget.fetched(readSlowestFetchMs, !readEvidence, ended);
         if (median >= 0) yielded(median, ended);
         noteMapSkip();
@@ -6011,7 +6043,8 @@ public final class OfferFilterService extends AccessibilityService {
     private void logReadLoad() {
         loadTickPending = false;
         if (stopped || !load.any()) return;
-        DiagnosticLog.log(this, "screen", load.take(budget.median()));
+        lastLoadLine = load.take(budget.median());
+        DiagnosticLog.log(this, "screen", lastLoadLine);
     }
 
     /** Paused: auto-decline off, or no rule set (the homepage calls both paused). Nothing of Dasher's is read then. */
@@ -6510,6 +6543,9 @@ public final class OfferFilterService extends AccessibilityService {
             cancelAutoAccept(true, "foreground_unknown");
             declineError.notBlank();
             readSkipped = true;
+            // Dasher's question's own window, just opened, may give no root yet: a [confirm] line, which a full report
+            // keeps (it drops the [scan] lines first).
+            if (awaitingConfirmation(now)) noteLook("question not read: Android gave no root for the active window");
             return settings.enabled;
         }
         peekSaw(look, now);
@@ -6566,6 +6602,8 @@ public final class OfferFilterService extends AccessibilityService {
                     : "by a newer event of Dasher's";
             DiagnosticLog.log(this, "scan", "read cut short " + why + ", after " + scan.visited + " nodes, "
                     + (SystemClock.uptimeMillis() - now) + " ms");
+            // A [confirm] line too, which a full report keeps (it drops the [scan] lines first).
+            if (awaitingConfirmation(now)) noteLook("question not read: the read was cut short " + why);
             return true;
         }
         cutReads = 0;
@@ -6913,8 +6951,11 @@ public final class OfferFilterService extends AccessibilityService {
         }
         String found = "found in " + confirmation.where;
         if (selected < 0) {
+            // Its sheet is still sliding up ("win=split/bottom/dasher/26" while Dasher's half is 48): its Decline is
+            // below the edge, not visible to the user, never tapped. The poll looks again at its next tick.
+            questionDrawing = true;
             noteLook("question " + found + ", but no Decline in it can be tapped (" + confirmation.declineLabels.size()
-                    + " tappable)");
+                    + " tappable" + (confirmation.declineOffScreen ? "; its Decline is not on screen yet" : "") + ")");
             return true;
         }
         if (!declineState.mayConfirm(at)) {
@@ -7454,8 +7495,10 @@ public final class OfferFilterService extends AccessibilityService {
         }
         String facts = (offer.miles != null ? ",distance" : "") + (offer.minutes != null ? ",duration" : "")
                 + (offer.stops != null ? ",stops" : "");
+        String noCeiling = OfferParser.noCeilingReason(scan.text, scan.metricParts);
         String line = "pay not found: money labels whole=" + whole + " bare-$=" + bare + " digits=" + digits
-                + " dot=" + dot + "; controls=both; facts=" + facts.substring(1);
+                + " dot=" + dot + "; controls=both; facts=" + facts.substring(1)
+                + (noCeiling == null ? "" : "; no +$ ceiling: " + noCeiling);
         if (line.equals(lastPayNotFound)) return;
         lastPayNotFound = line;
         DiagnosticLog.log(this, "screen", line);
@@ -7469,6 +7512,7 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void noteResized() {
         int share = shareOf(readWin);
+        boolean split = readWin.startsWith("win=split");
         boolean facts = offerOnScreen || offerEvidence;
         long now = Peek.now();
         if (resizedAt != NEVER) {
@@ -7482,7 +7526,8 @@ public final class OfferFilterService extends AccessibilityService {
                 resizedAt = NEVER;
             }
         }
-        if (share > 0 && dasherShare > 0 && Math.abs(share - dasherShare) >= 2) {
+        // Full screen both times, a change is one of Dasher's sheets sliding up (Android lists it alone), not a resize.
+        if (share > 0 && dasherShare > 0 && Math.abs(share - dasherShare) >= 2 && (split || dasherSplit)) {
             String change = dasherShare + "%→" + share + "%";
             if (dasherFactsUp) {
                 DiagnosticLog.log(this, "split", "Dasher resized " + change + "; offer facts already up");
@@ -7497,9 +7542,15 @@ public final class OfferFilterService extends AccessibilityService {
                 resizedFrom = resizedFrom.substring(0, resizedFrom.indexOf('→')) + "→" + share + "%";
             }
         }
-        if (share > 0 || readWin.startsWith("win=hidden")) dasherShare = share;
+        if (share > 0 || readWin.startsWith("win=hidden")) {
+            dasherShare = share;
+            dasherSplit = split;
+        }
         dasherFactsUp = facts;
     }
+
+    /** Whether Dasher's share was last taken in split screen (for the resize line). */
+    private boolean dasherSplit;
 
     /** Whether the last read showed any of an offer (for the resize line: facts already up as it resized). */
     private boolean dasherFactsUp;
@@ -7633,7 +7684,11 @@ public final class OfferFilterService extends AccessibilityService {
                     && boundedLabels.containsAll(payBoundLabels(scan.text));
             offer = withUnknownPay(offer, inheritedBoundAllowed ? boundedOffer.payAtMostCents : null);
         }
-        if (newCountdown) newScreenInstancePending = true;
+        if (newCountdown) {
+            newScreenInstancePending = true;
+            // A new showing of an offer gets its own refused-Decline tries.
+            refusedKey = "";
+        }
         if (newCountdown && ((takeover != Takeover.NONE && offer.agreesWith(takeover.offer))
                 || offer.agreesWith(declinedOffer))) {
             forgetTakeover("new instance (countdown)");
@@ -7827,6 +7882,28 @@ public final class OfferFilterService extends AccessibilityService {
             if (key.equals(declinedKey)) logIfStuck(scan, now);
             return declineState.hasPendingConfirmation(now);
         }
+        // Android refused this offer's Decline before: tried again only on a fresh read, CONFIRM_RETRY_MS after the
+        // last refusal, MAX_REFUSED_TRIES times in all, and never once the user tapped Dasher since (an Accept of
+        // theirs, say): the offer is then theirs. Its line already says Android refused it.
+        if (key.equals(refusedKey)) {
+            String stop = refusedTries >= MAX_REFUSED_TRIES ? "tried " + refusedTries + " times"
+                    : dasherClicks.get() != refusedClicks ? "you tapped Dasher" : null;
+            boolean wait = stop == null && now - refusedAt < CONFIRM_RETRY_MS;
+            if (stop != null || wait) {
+                diagnostic(phase, scan, offer, decision);
+                // Nothing was declined: what the user does with it still reaches its line.
+                acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn, false, secondsLeft,
+                        routeStored, now);
+                applyNotes();
+                if (stop != null && refusedTries < MAX_REFUSED_TRIES) {
+                    // Once: the tries are used up from here on, which the last refusal's line already said.
+                    refusedTries = MAX_REFUSED_TRIES;
+                    DiagnosticLog.log(this, "accessibility", "refused Decline not tried again: " + stop
+                            + "; left to you");
+                }
+                return wait;
+            }
+        }
         // A restart may only recover suppression, never tap authority. Persist before Android can take the request.
         if ((!episode.active(now) || !episode.covers(key, offer))
                 && !RestartSuppression.remember(this, offer, secondsLeft)) {
@@ -7860,7 +7937,14 @@ public final class OfferFilterService extends AccessibilityService {
             return true;
         }
         // After the tap, so nothing delays it; ahead of this offer's line, so the offer before has its step first.
-        acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
+        if (tap == Tap.REFUSED) {
+            // Android took no Decline: nothing was declined, so the offer is watched as one left alone, and the user's
+            // own Accept or Decline of it still reaches its line.
+            acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn, false, secondsLeft, routeStored,
+                    now);
+        } else {
+            acceptedTracker.offerDeclinedByApp(decision.basis, isAddOn, now);
+        }
         applyNotes();
         boolean peeked = peekReads(offer);
         if (tap == Tap.TAKEN_OVER) {
@@ -7870,6 +7954,7 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
         if (tap == Tap.TAPPED) {
+            refusedKey = "";
             boolean firstTap = !key.equals(declinedKey) || !declineState.hasPendingConfirmation(now);
             long remaining = secondsLeft >= 0 ? Math.max(0, secondsLeft * 1000L - (ownTapAt - now)) : -1;
             declineState.readDuration(tappedAt - currentReadStartedAt);
@@ -7919,10 +8004,26 @@ public final class OfferFilterService extends AccessibilityService {
                     + "; sound playing: " + OfferSilencer.playing(this));
             status("Decline requested: " + detail + "\n" + decision.summary());
         } else {
-            DiagnosticLog.log(this, "accessibility", "first-step Decline REFUSED: " + lastRefusal);
+            if (!key.equals(refusedKey)) {
+                // A tap of the user's on Dasher from this read's start on (an Accept, say) ends the retries.
+                refusedKey = key;
+                refusedTries = 0;
+                refusedClicks = readClicks;
+            }
+            refusedTries++;
+            refusedAt = SystemClock.uptimeMillis();
+            boolean retry = refusedTries < MAX_REFUSED_TRIES;
+            DiagnosticLog.log(this, "accessibility", "first-step Decline REFUSED (try " + refusedTries + "/"
+                    + MAX_REFUSED_TRIES + "): " + lastRefusal + (retry ? "; reading again" : "; left to you"));
             record(scan, isAddOn, decision, settings, DecisionLog.Action.DECLINE_REFUSED, peeked);
             if (peeked) peekOver("left Dasher up because Android refused the Decline", Peek.Outcome.LEFT_WITH_USER);
+            if (retry) {
+                // A fresh read, even without an event of Dasher's: the retry taps the node that read finds.
+                scanner.removeCallbacks(refusalRetry);
+                scanner.postAtTime(refusalRetry, refusedAt + CONFIRM_RETRY_MS);
+            }
             status("Decline click was not accepted by Android. No completion claimed.");
+            return retry;
         }
         return true;
     }
@@ -8331,7 +8432,10 @@ public final class OfferFilterService extends AccessibilityService {
         if (isTakenOver(offer, now)) return Tap.TAKEN_OVER;
         if (held && declineUnderWay(now) && !offer.contradicts(declinedOffer)) return Tap.HELD;
         // The service stopped (Accessibility turned off, an update) while this read was under way: nothing is tapped.
-        if (stopped) return Tap.REFUSED;
+        if (stopped) {
+            lastRefusal = "screen reading stopped";
+            return Tap.REFUSED;
+        }
         String refusal = clickRefusal(node);
         if (refusal != null) {
             // Nothing is asked of Android, so no echo can come: no echo window opens.
@@ -8347,7 +8451,10 @@ public final class OfferFilterService extends AccessibilityService {
                 || (decidedRules != null && !decidedRules.equals(AutoAccept.rulesKey(current)))) {
             return Tap.RULES_CHANGED;
         }
-        if (!phoneReadable() || scannerFaulted) return Tap.REFUSED;
+        if (!phoneReadable() || scannerFaulted) {
+            lastRefusal = scannerFaulted ? "screen reading faulted" : "the screen went off or locked";
+            return Tap.REFUSED;
+        }
         ownTapAt = now;
         ownTapTarget = node;
         // For the touch watch and the clicks: a touch from here until OWN_ACTION_ECHO_MS after the call returns is
@@ -8359,15 +8466,56 @@ public final class OfferFilterService extends AccessibilityService {
         } finally {
             ownTaps.ended(SystemClock.uptimeMillis(), tapped);
         }
-        lastRefusal = tapped ? "" : "Android refused the click";
+        lastRefusal = tapped ? "" : refusedClick(node);
         return tapped ? Tap.TAPPED : Tap.REFUSED;
+    }
+
+    /**
+     * Why Android refused a click it was asked for, in fixed words: Dasher redrew the control since the read (the node
+     * is gone), or the control is still there, as it now says. One call into Dasher, and only after a refusal.
+     */
+    private static String refusedClick(AccessibilityNodeInfo node) {
+        try {
+            if (!node.refresh()) return "Android refused the click: Dasher redrew the control after the read";
+            return "Android refused the click: the control is still there (" + (node.isVisibleToUser() ? "visible" : "hidden")
+                    + ", " + (node.isEnabled() ? "enabled" : "disabled") + ", "
+                    + (hasClickAction(node) ? "clickable" : "not clickable") + ")";
+        } catch (RuntimeException unavailable) {
+            return "Android refused the click";
+        }
     }
 
     /** Whether Dasher can still be read, as just before a tap: its window is active, or its half of a split screen. */
     private boolean dasherStillReadable(AccessibilityNodeInfo target) {
-        boolean visible = knownDasherVisible(target == null ? -1 : target.getWindowId());
-        if (!visible) lastRefusal = "Dasher's target window is no longer visible";
+        int targetId = target == null ? -1 : target.getWindowId();
+        boolean visible = knownDasherVisible(targetId);
+        if (!visible) lastRefusal = "Dasher's target window is no longer visible (" + hiddenBecause(targetId) + ")";
         return visible;
+    }
+
+    /** Why {@link #knownDasherVisible} said no, in fixed words, from Android's list of windows alone (for the log). */
+    private String hiddenBecause(int targetId) {
+        if (!phoneReadable() || scannerFaulted) return "the screen is off or locked";
+        List<AccessibilityWindowInfo> windows;
+        try { windows = windowSource.get(); } catch (RuntimeException unavailable) { windows = null; }
+        if (windows == null || windows.isEmpty()) return "Android listed no windows";
+        AccessibilityWindowInfo activeApp = null;
+        AccessibilityWindowInfo target = null;
+        for (AccessibilityWindowInfo window : windows) {
+            if (window.isActive() && window.getType() == AccessibilityWindowInfo.TYPE_SYSTEM) {
+                return "a system surface is active";
+            }
+            if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            if (window.isActive()) activeApp = window;
+            // As knownDasherVisible: a known Dasher window, the target's own when its ID is real.
+            boolean known = dasherWindowIds.contains(window.getId())
+                    || (!realWindowId(window.getId()) && window == lastReadableWindow);
+            if (known && (!realWindowId(targetId) || window.getId() == targetId)) target = window;
+        }
+        if (target == null) return "its window is no longer listed as Dasher's";
+        if (activeApp == null) return "no app window is active";
+        String cover = SplitWindows.covered(windows, target, target == activeApp ? null : activeApp);
+        return cover != null ? cover : "another app's window is active";
     }
 
     /** Window metadata only: never asks an app's UI thread for a root, including on the notification main thread. */
@@ -8793,7 +8941,12 @@ public final class OfferFilterService extends AccessibilityService {
         if (DasherScene.showsNavigation(withParts(scan))) {
             if (lastNavigationAt != NEVER && now - lastNavigationAt < NAVIGATION_SCREEN_MS) return false;
             lastNavigationAt = now;
-            DiagnosticLog.logNavigation(this, labelsLine(kind, scan, true));
+            Supplier<String> labels = labelsLine(kind, scan, true);
+            String tail = " " + readWin + (lastLoadLine.isEmpty() ? "" : " | " + lastLoadLine);
+            DiagnosticLog.logNavigation(this, () -> {
+                String line = labels.get();
+                return DiagnosticLog.NOT_KEPT.equals(line) ? line : line + tail;
+            });
             return true;
         }
         // Its words, digits and a trailing ".", "!", "?" or "…" aside: Dasher's animated "Finding offers." /
@@ -9165,6 +9318,8 @@ public final class OfferFilterService extends AccessibilityService {
         /** Whether an Accept or Decline label showed, with or without a button to tap yet. */
         boolean acceptLabel;
         boolean declineLabel;
+        /** Whether a Decline label is in the tree but not on screen (a sheet still sliding up): never a target. */
+        boolean declineOffScreen;
         /** Any visible enabled click target blocks global Back, even an unrecognized control. */
         boolean actionable;
         boolean truncated;
@@ -9211,6 +9366,8 @@ public final class OfferFilterService extends AccessibilityService {
                 if (own.isEmpty() && node.getContentDescription() != null) {
                     own = OfferEvidence.normalize(node.getContentDescription().toString());
                 }
+            } else if (declineWord(node.getText()) || declineWord(node.getContentDescription())) {
+                declineOffScreen = true;
             }
             List<String> childLabels = new ArrayList<>();
             int children = node.getChildCount();
@@ -9236,6 +9393,11 @@ public final class OfferFilterService extends AccessibilityService {
             }
             metricParts.addAll(OfferParser.joinMetricSiblings(childLabels));
             return own.isEmpty() && children == 1 && childLabels.size() == 1 ? childLabels.get(0) : own;
+        }
+
+        /** Whether a node's words are a Decline button's ("Decline", "Decline offer"), as {@link #addLabel} tells. */
+        private static boolean declineWord(CharSequence value) {
+            return value != null && OfferControls.isButton(OfferEvidence.normalize(value.toString()), "decline");
         }
 
         /** A map view ({@link MapNodes#isMap}) whose own words show nothing of an offer. */

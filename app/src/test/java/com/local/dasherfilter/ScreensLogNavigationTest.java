@@ -133,6 +133,28 @@ public class ScreensLogNavigationTest {
 
     // Before: the log kept its newest 12 KB whatever they were, so a hundred minutes of navigation pushed the pickup
     // screens out of the log and the report.
+    /**
+     * "navigation is still sometimes broken in door dash app" (the owner, 7 October 2026): each navigation line carries
+     * where Dasher was and the last minute's read load, so a report shows what reading cost Dasher while it navigated.
+     */
+    @Test
+    public void eachNavigationLineCarriesWhereDasherWasAndTheLastMinutesReadLoad() {
+        for (int update = 0; update < 100; update++) {
+            navigation(update);
+            ShadowSystemClock.advanceBy(Duration.ofMillis(1_500));
+            // The minute's load line is taken on the scanner's own timer.
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        }
+        String kept = screens();
+        assertEquals(kept, 3, count(kept, " [navigation] "));
+        assertTrue(kept, kept.contains("mph"));
+        assertTrue("where Dasher was: " + kept, kept.matches("(?s).*\\[navigation\\] [^\\n]* win=[a-z]+/.*"));
+        assertTrue("the minute's load, after the first minute: " + kept, kept.matches(
+                "(?s).*\\[navigation\\] [^\\n]* \\| read load: \\d+ reads/min \\(fact-free \\d+\\), nodes \\d+, "
+                        + "[^\\n]*, at once \\d+.*"));
+        assertEquals("the labels' count of mph is the lines' count", count(kept, "mph"), count(kept, " [navigation] "));
+    }
+
     @Test
     public void thePickupScreensSurviveAHundredNavigationUpdates() {
         // The pickup leg after an Accept.

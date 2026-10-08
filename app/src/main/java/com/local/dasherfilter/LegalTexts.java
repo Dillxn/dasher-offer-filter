@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 7 October 2026 · for {app} 0.5.1
+            Beta terms, effective 8 October 2026 · for {app} 0.5.2
 
             ## What {app} is
 
@@ -89,15 +89,18 @@ final class LegalTexts {
             using after completion evidence; while navigation is detected, it also returns for passing or unclear \
             offers and leaves a card. Otherwise those offers stay in Dasher. If Dasher opens without showing the \
             offer's details, Peek may tap Dasher's own offer notification once; if they still don't show, it leaves \
-            a card saying so and, while you navigate, returns to your map first. Your touch on Dasher or an app \
-            switch ends that automatic return (a touch made before Dasher appeared, meant for the app you were in, \
-            still lets a completed automatic decline take you back). If the phone locks during Peek, Peek waits up \
-            to 60 seconds for you to unlock it; an offer that arrives while the phone is locked can be opened when \
-            you unlock within 40 seconds of it, unless you open Dasher yourself first. Within a minute of an \
-            offer's first notification, a re-post of it does not open Dasher again when you already had that offer \
-            in Dasher or may have accepted it. After repeated withdrawn offers or failed launches, Peek pauses \
-            itself until your next dash or for 15 minutes; after an error, until your next dash or until you tap \
-            Resume on the homepage. Peek never turns off its Settings switch. You can turn Peek off in Settings.
+            a card saying so and, while you navigate, returns to your map first. When Dasher is already on screen \
+            (in front or beside the app) still showing its wait for offers 5 seconds after an offer's notification, \
+            with none of that offer drawn, Peek may tap that notification once the same way; never over another of \
+            Dasher's screens or after you touch Dasher. Your touch on Dasher or an app switch ends that automatic \
+            return (a touch made before Dasher appeared, meant for the app you were in, still lets a completed \
+            automatic decline take you back). If the phone locks during Peek, Peek waits up to 60 seconds for you \
+            to unlock it; an offer that arrives while the phone is locked can be opened when you unlock within 40 \
+            seconds of it, unless you open Dasher yourself first. Within a minute of an offer's first notification, \
+            a re-post of it does not open Dasher again when you already had that offer in Dasher or may have \
+            accepted it. After repeated withdrawn offers or failed launches, Peek pauses itself until your next \
+            dash or for 15 minutes; after an error, until your next dash or until you tap Resume on the homepage. \
+            Peek never turns off its Settings switch. You can turn Peek off in Settings.
             - When you tap one of its offer cards, it opens Dasher; if Dasher comes up without the offer, it may \
             tap Dasher's own offer notification once. After an offer that left you in Dasher from a navigation app \
             ends without being accepted, a Back to map button can take you back; it opens your map only when you \
@@ -108,8 +111,8 @@ final class LegalTexts {
             is at 20% or less and not charging. It never wakes or unlocks the phone; the power button still turns \
             the screen off. This uses more battery.
             - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then \
-            put them back. During Peek it touches only the alarm stream, leaving media and navigation audio alone. \
-            You can turn this off in Settings.
+            put them back. During Peek, a delivery or turn-by-turn navigation it touches only the alarm stream, \
+            leaving media and navigation audio alone. You can turn this off in Settings.
             - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does \
             not decline an order.
             - It updates itself from its public signed update feed without requiring an account. An update it finds \
@@ -177,7 +180,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 7 October 2026 · for {app} 0.5.1
+            Beta privacy policy, effective 8 October 2026 · for {app} 0.5.2
 
             {app} does not require an {app} account and has no ads or analytics. It does not sell or rent your \
             data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -214,10 +217,11 @@ final class LegalTexts {
             not read that app's text. To tell which app a window belongs to, it asks Android once for that window's \
             top element and uses only its app identifier. It also checks screen lock, keyboard and window state, \
             call/audio mode, and Android's available microphone/camera-in-use indicators; it does not record audio \
-            or images. If Dasher opens without showing the offer's details, Peek (or, after you tap one of the \
-            app's offer cards, the screen reader) may send Dasher's own offer-notification tap once for that offer, \
-            an intent Dasher itself made; when you tap a card saying Dasher didn't show the offer, it opens \
-            Dasher's own offer screen first, and Dasher's launcher if nothing of Dasher's comes up.
+            or images. If Dasher opens without showing the offer's details, or is already on screen still showing \
+            its wait for offers 5 seconds after an offer's notification, Peek (or, after you tap one of the app's \
+            offer cards, the screen reader) may send Dasher's own offer-notification tap once for that offer, an \
+            intent Dasher itself made; when you tap a card saying Dasher didn't show the offer, it opens Dasher's \
+            own offer screen first, and Dasher's launcher if nothing of Dasher's comes up.
             - When you tap one of the app's offer cards, it checks Android's window information and the identifier \
             of the app you tapped it from, only to offer a Back to map button when that app is a navigation app \
             (Google Maps, Google Maps Go or Waze). After an update installed while {app}'s screen was open, it \

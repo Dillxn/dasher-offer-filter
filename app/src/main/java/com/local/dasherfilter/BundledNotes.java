@@ -64,6 +64,13 @@ final class BundledNotes {
                         + "never changes.",
                 "Autopilot can still lower its bar to protect your acceptance rate. Turn growth off in Autopilot's "
                         + "details.");
+        release("0.5.2",
+                "An offer that rings while Dasher is on screen but never shows now gets Dasher's own notification "
+                        + "tapped once after 5 s, in split screen too.",
+                "The app's own Decline tap, reported late by a busy phone, no longer counts as your touch. A split "
+                        + "left unmade no longer holds back Peek.",
+                "Offers are read sooner after their notification, Dasher's question is tapped as soon as it shows "
+                        + "in split screen, and directions keep talking.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

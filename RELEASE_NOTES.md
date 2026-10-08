@@ -1,3 +1,34 @@
+## 0.5.2 — offers that never showed, false takeovers, split screen and slow reads
+
+Version 0.5.2 (code 82). It follows 0.5.1. The notice stays at 15: nothing new is read, kept or sent. Every fix comes from the owner's diagnostics report of 7 October 2026 (0.5.1, a Samsung on Android 16, dashing with Offer Filter beside Dasher in split screen).
+
+### Offers that rang but never showed
+- **"An offer just dinged in split screen mode but the dd app never showed the offer… just said finding offers."** Two of the report's offers did this: their notifications came, Dasher was on screen, so Peek stood down, and nothing brought the offer up. Now, where Peek would be allowed were Dasher elsewhere, an offer whose notification comes with Dasher on screen (in front, or beside Offer Filter) is watched: when 5 s later Dasher still shows its wait for offers and none of the offer, Offer Filter sends Dasher's own notification tap once, as Peek does when Dasher opens without the offer. Never over a delivery, navigation or any other of Dasher's screens, never after you touch Dasher, never with Peek off. "[alert] on screen: …" lines say what was done.
+
+### Auto-decline no longer stops for a touch you never made
+- **During a peek, Offer Filter's own Decline tap stopped the decline as "You touched the screen".** Since Android 10, an accessibility tap is reported back to the app's touch watch as a touch, stamped when Offer Filter's busy main thread got to it, here 209 ms after the tap, past the 150 ms allowed for it. Such a report (Android gives it no input device and no tool type, which a finger always has) up to 5 s after one of the app's own taps is now known as that tap's echo. A real finger is judged exactly as before.
+
+### Split screen
+- **A split left unmade no longer holds back Peek for a minute.** On this phone Android refuses every split request (from Android 15 the split action is the system's to offer, and many phones offer none), so recent apps open with the hint. Coming back to Offer Filter without splitting used to keep Peek waiting 60 s for the split; an offer 37 s later got no peek and was read 16.5 s after it came. Now coming back ends the wait, and leaving recent apps for another app ends it too. Recent apps themselves still hold Peek back while you make the split. A refused tap says when the phone lists no split action at all.
+- **Dasher's question is tapped as soon as its Decline is on screen.** In split screen Dasher's "Are you sure…?" sheet slides up into its half, its Decline still below the edge at first, and Offer Filter waited up to a second to look again. It now looks every 100 ms (for the 3 s it watches for the question) until the Decline shows; nothing off screen is ever tapped.
+- **"Dasher resized" lines no longer come from Dasher's sheets sliding up.** In split screen, Dasher's share is its side of the divider.
+
+### Reading and the report
+- **Offers are read sooner after their notification.** A notification's check waited behind a slow read of "Finding offers" still under way (0.5 to 1.2 s in the report); that read now stops at once for it.
+- **Offer screens are back in reports.** Every offer card's "Guaranteed earnings for completing the offer." made the privacy filter take it for an earnings page, so reports, history lines and problem reports lost every offer's words. Earnings pages, wallets and cards are still never kept, and a store's address on the card is now masked whole.
+- **A Decline Android refuses is tried again at most 4 times, each on a fresh read, and never after you tap Dasher.** In the report, Android refused one Decline (19:15, an offer whose most possible pay, $12.80 with its +$ amount, was about half what the per-mile minimum asked). The retry had no limit and kept going even after a tap of yours on Accept, and the refused tap was written up as a decline. A refused tap now leaves the offer yours on its line (your own Accept or Decline still reaches it), and the log says why Android refused (Dasher redrew the control, the window was covered, the screen locked).
+- **"pay not found" lines say why no "+$" ceiling was read** (for example, the +$ amount and the total not side by side), in fixed words only.
+- **Navigation lines in a report carry the last minute's read load** (reads, nodes, the slowest read, Dasher's answering time, reads made at once), so the next report can show what reading cost Dasher while it navigated ("navigation is still sometimes broken in door dash app").
+- **Directions keep talking.** While declining during a delivery or turn-by-turn navigation, only Dasher's ring is turned down: spoken directions share the media stream and are never muted. Dasher's directions to a zone are never taken for its wait for offers.
+- **Update news shows once.** An update whose notice already said what changed shows no "What is new" card after it.
+
+### Terms and privacy
+- Dated 8 October 2026 for 0.5.2. They say that Peek may also tap Dasher's own notification once when Dasher is on screen still waiting 5 s after an offer's notification, and that during a delivery or navigation only the alarm stream is turned down. The notice stays at 15: nothing new is read, kept or sent.
+
+### Evidence boundaries
+- **Simulation only:** plain Java tests and simulated Android 8 and 15 (Robolectric). No phone has run 0.5.2 yet. Dasher's reaction to its own notification tap while it is on screen in split screen, and the shape of Android's report of an accessibility tap on this phone, are for the next report: its "[alert] on screen" lines and "(Android's report of its click)" echo lines say what happened.
+- **Not changed, for the owner to decide:** opening Dasher beside Offer Filter from full screen in one tap (launch-adjacent; AGENTS.md lists it as not approved), and reading Dasher's navigation screens less often than once a second.
+
 ## 0.5.1 — your minimums grow
 
 Version 0.5.1 (code 81). It follows 0.5.0. Everyone sees the notice once more (notice 15), because Autopilot can now change your minimums.

@@ -111,7 +111,9 @@ final class SplitWindows {
      *   <li>active: whose window is active ({@code dasher}, {@code ours}, {@code other}, {@code system} for the
      *       shade, a keyboard or any other system window, {@code none});
      *   <li>share: how much of the display Dasher's window takes, in percent of its height (of its width when the
-     *       halves are side by side); 0 when hidden.
+     *       halves are side by side); 0 when hidden. Split, it is Dasher's side of the divider: while a sheet of
+     *       Dasher's is up (its offer, its question), Android lists that sheet alone for Dasher, the window under it
+     *       covered, and the sheet's bounds grow as it slides up, so its size is not Dasher's half's.
      * </ul>
      *
      * @param owner whose each listed application window is
@@ -122,6 +124,7 @@ final class SplitWindows {
         Rect screen = new Rect(display);
         Rect bounds = new Rect();
         boolean split = false;
+        Rect divider = new Rect();
         AccessibilityWindowInfo dasher = null;
         long dasherArea = -1;
         String active = "none";
@@ -130,11 +133,14 @@ final class SplitWindows {
             int type = window.getType();
             window.getBoundsInScreen(bounds);
             if (!bounds.isEmpty()) screen.union(bounds);
-            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
+            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) {
+                split = true;
+                if (!bounds.isEmpty()) divider.set(bounds);
+            }
             Owner whose = type == AccessibilityWindowInfo.TYPE_APPLICATION ? owner.apply(window) : null;
             if (whose == Owner.DASHER) {
                 long area = (long) bounds.width() * bounds.height();
-                // Dasher's own dialogs are windows too: its half is the biggest of them.
+                // Dasher's own dialogs are windows too: its half is the biggest of them, when Android lists it.
                 if (area > dasherArea) {
                     dasher = window;
                     dasherArea = area;
@@ -159,12 +165,31 @@ final class SplitWindows {
                 float dy = (bounds.exactCenterY() - screen.exactCenterY()) / screen.height();
                 sideBySide = Math.abs(dx) > Math.abs(dy);
                 edge = sideBySide ? (dx < 0 ? "left" : "right") : (dy < 0 ? "top" : "bottom");
+                // Dasher's half is its side of the divider, whatever size its front window is (a sheet sliding up).
+                Rect half = besideDivider(screen, divider, edge);
+                if (half != null) bounds.set(half);
             }
             share = Math.round(100f * (sideBySide ? bounds.width() / (float) screen.width()
                     : bounds.height() / (float) screen.height()));
             share = Math.max(0, Math.min(100, share));
         }
         return "win=" + layout + "/" + edge + "/" + active + "/" + share;
+    }
+
+    /**
+     * The screen on {@code edge}'s side of the divider, or null when the divider's bounds are not known (some phones
+     * list it without them) or leave nothing on that side: then Dasher's biggest window stands in, as before.
+     */
+    private static Rect besideDivider(Rect screen, Rect divider, String edge) {
+        if (divider.isEmpty() || !Rect.intersects(screen, divider)) return null;
+        Rect half = new Rect(screen);
+        switch (edge) {
+            case "top": half.bottom = divider.top; break;
+            case "bottom": half.top = divider.bottom; break;
+            case "left": half.right = divider.left; break;
+            default: half.left = divider.right; break;
+        }
+        return half.isEmpty() ? null : half;
     }
 
     private SplitWindows() {}

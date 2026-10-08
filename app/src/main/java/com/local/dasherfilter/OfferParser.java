@@ -98,6 +98,24 @@ final class OfferParser {
     }
 
     /**
+     * For the log only: why a screen whose pay was not read got no "+$" ceiling either ({@link #payWithPlusAmount}),
+     * in fixed words, never the screen's own; null when it has pay or a ceiling.
+     */
+    static String noCeilingReason(List<String> visibleText, List<String> metricParts) {
+        if (!OfferEvidence.bounded(visibleText) || !OfferEvidence.bounded(metricParts)) return "too many labels";
+        List<String> lines = distinctNormalized(visibleText, new ArrayList<>());
+        List<String> routeLabels = routeMetricLabels(visibleText);
+        Set<String> excluded = excludedRouteMetrics(visibleText, routeLabels);
+        List<String> safeParts = routeMetricLabels(metricParts);
+        safeParts.removeIf(excluded::contains);
+        List<String> metrics = distinctNormalized(safeParts, distinctNormalized(routeLabels, new ArrayList<>()));
+        if (OfferEvidence.malformedMoney(lines)) return "a malformed or ranged amount";
+        if (parsePay(lines) != null) return null;
+        String[] why = new String[1];
+        return plusCeiling(lines, metrics, parseStops(metrics), why) != null ? null : why[0];
+    }
+
+    /**
      * Route-metric input only; never hotspot acquisition. Blank excluded entries preserve sibling boundaries.
      * A hotspot label owns immediately following bare travel components until distinct nonmetric wording or
      * explicit offer evidence (such as a compact stops line) establishes a different context.
@@ -248,14 +266,19 @@ final class OfferParser {
      * travel, partial/conflicting counts, rates, labeled pay or multiplier qualifiers have no such ceiling.
      */
     private static Integer payWithPlusAmount(List<String> lines, List<String> metrics, Integer stops) {
-        if (stops == null || AddOnOffer.isLikely(lines)) return null;
+        return plusCeiling(lines, metrics, stops, null);
+    }
+
+    /** {@link #payWithPlusAmount}; when there is no ceiling and {@code why} is given, why[0] says why in fixed words. */
+    private static Integer plusCeiling(List<String> lines, List<String> metrics, Integer stops, String[] why) {
+        if (stops == null) return none(why, "stops not read");
+        if (AddOnOffer.isLikely(lines)) return none(why, "add-on wording");
         for (String line : metrics) {
-            if (ADDED_TRAVEL.matcher(line).find() || QUALIFIER.matcher(line).find()) {
-                return null;
-            }
+            if (ADDED_TRAVEL.matcher(line).find()) return none(why, "added travel");
+            if (QUALIFIER.matcher(line).find()) return none(why, "a per-order or up-to qualifier");
         }
         Integer orders = bonusOrderCeiling(metrics, stops);
-        if (orders == null) return null;
+        if (orders == null) return none(why, "pickup, dropoff or order counts");
         Integer plus = null;
         Integer total = null;
         int plusAt = -1;
@@ -265,25 +288,39 @@ final class OfferParser {
             Matcher money = MONEY.matcher(line);
             if (!money.find()) continue;
             String lower = line.toLowerCase(Locale.US);
-            if (isRate(lower) || lower.contains("guaranteed") || lower.contains("total pay")) return null;
+            if (isRate(lower)) return none(why, "a rate");
+            if (lower.contains("guaranteed") || lower.contains("total pay")) return none(why, "labeled pay");
             Matcher bare = BARE_PLUS_AMOUNT.matcher(line);
             if (bare.matches()) {
-                if (plus != null) return null;
+                if (plus != null) return none(why, "two +$ amounts");
                 plus = cents(bare.group(1));
                 plusAt = i;
                 continue;
             }
             do {
-                if (isIncrement(line, money.start())) return null;
+                if (isIncrement(line, money.start())) return none(why, "a +$ amount with words or beside a total");
                 int amount = cents(money.group(1));
-                if (total != null && total != amount) return null;
+                if (total != null && total != amount) return none(why, "two totals");
                 total = amount;
                 totalAt = i;
             } while (money.find());
         }
-        if (plus == null || total == null || !besideEachOther(lines, plusAt, totalAt)) return null;
+        if (plus == null) return none(why, "no +$ amount");
+        if (total == null) return none(why, "no whole total");
+        if (!besideEachOther(lines, plusAt, totalAt)) {
+            int between = 0;
+            for (int i = Math.min(plusAt, totalAt) + 1; i < Math.max(plusAt, totalAt); i++) {
+                if (!offerChrome(lines.get(i))) between++;
+            }
+            return none(why, "+$ amount and total not side by side (" + between + " other labels between)");
+        }
         long ceiling = (long) total + (long) plus * orders;
-        return ceiling <= Integer.MAX_VALUE ? (int) ceiling : null;
+        return ceiling <= Integer.MAX_VALUE ? (int) ceiling : none(why, "too large");
+    }
+
+    private static Integer none(String[] why, String reason) {
+        if (why != null) why[0] = reason;
+        return null;
     }
 
     /**
