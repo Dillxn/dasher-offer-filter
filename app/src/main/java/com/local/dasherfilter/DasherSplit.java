@@ -146,10 +146,10 @@ final class DasherSplit {
 
     /**
      * Whether the header's Open Dasher shows (F22): Dasher installed, and this screen filling the screen (in split
-     * screen the split button puts Dasher on screen; a short window has no room in its header).
+     * screen the split button puts Dasher on screen).
      */
-    static boolean opens(Activity activity, boolean dasherInstalled, boolean shortWindow) {
-        return dasherInstalled && !shortWindow && !activity.isInMultiWindowMode();
+    static boolean opens(Activity activity, boolean dasherInstalled) {
+        return dasherInstalled && !activity.isInMultiWindowMode();
     }
 
     /**

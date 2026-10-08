@@ -45,13 +45,12 @@ import java.util.Locale;
  * sky, by night they shine. Each spoke is marked by its icon and a short plain-language label; screen readers hear the
  * whole of it and what the example offer needs at exactly the minimums.
  *
- * <p>The spokes stand {@link #SPREAD} degrees above and below level, to the left and to the right, so a wide sky (or a
- * short header) holds a wide chart. On a whole screen or beside Dasher it is the page's sky itself: the page's
- * {@link SkyStage} puts one very large circle where it fits, its faint rings running on past the page's edges and
- * behind the header, the rings' dollars along the level line on the right, and the chart faded wherever the stage says
- * words or the mascot sit on it (the mascot's disc cut out of it altogether). Its points and icons only ever lie along
- * the spokes, which the stage keeps inside the page and clear of the counts and the buttons. Only a touch on the
- * circle, an icon, the badge or the button is the constellation's; the empty sky around it takes none.
+ * <p>The spokes stand {@link #SPREAD} degrees above and below level, to the left and to the right, so a wide sky holds
+ * a wide chart. It stands in the page's sky in a box of its own, above the skyline and above or beside the map
+ * ({@link FluidLayout}), at every window size: the page puts the largest circle there that keeps the spokes' icons inside
+ * the box ({@link #compose}), its faint rings fading out where they run on past the box's edges, the rings' dollars
+ * along the level line on the right. Its points and icons only ever lie along the spokes. Only a touch on the circle,
+ * an icon, the badge or the button is the constellation's; the empty sky around it takes none.
  *
  * <p>As the sky, the set minimums are knobs: each spoke's round star, ringed so it reads as something to take hold of
  * (or, on a spoke with no set minimum, a small hollow knob resting just outside the middle, a little further out where a
@@ -68,7 +67,7 @@ import java.util.Locale;
  * page's ({@link Changes#toggleAutopilot}: off while on; while off, the goal chooser), a long press asks for the goal
  * at any time; it has no drag. The button's words and ring follow the bar quietly: nothing is announced when Autopilot
  * moves it. Screen readers reach each knob and the badge as adjustable controls and the button as a switch, with the
- * long press and the details among its actions. In a header the chart takes a tap only.
+ * long press and the details among its actions.
  *
  * <p>The displayed offer's points are joined in the spokes' order, leaving out a spoke it did not say. Other offers
  * remain in history and can be selected on the skyline; their hidden polygons receive no touches or accessibility
@@ -78,8 +77,8 @@ import java.util.Locale;
  * marks opens it, and failing that a tap inside its polygon does. The page opens it exactly as a tap on its building in
  * the skyline does, so both show it chosen; while its ticket is open its polygon and marks stand out, and a finger
  * going down on an offer picks it out lightly first. The knobs, the badge and the button keep their touches first; a
- * tap on the circle that is on no offer is the chart's own (in a short window it moves the chart between the header
- * and the sky; elsewhere it does nothing). Screen readers reach the one displayed offer after the knobs and buttons
+ * tap on the circle that is on no offer goes back to the newest offer while an older one is chosen, and otherwise does
+ * nothing. Screen readers reach the one displayed offer after the knobs and buttons
  * ("Offer $9.75, 3.3 mi, 18 min, 2 stops, declined"), and a double-tap opens its ticket.
  */
 @SuppressLint("ViewConstructor")
@@ -96,7 +95,7 @@ final class MinimumsStarView extends View {
     private static final int ICON_DP = 18;
     /**
      * The spokes stand this many degrees above and below level: top-left, top-right, bottom-right (and the pin at the
-     * bottom-left). The same in a header and as the sky, so the shapes look alike wherever the chart is.
+     * bottom-left).
      */
     static final float SPREAD = AreaScore.SPREAD;
     /** The spokes' angles, shared with the score. */
@@ -125,8 +124,6 @@ final class MinimumsStarView extends View {
     private static final double MARK_REACH = 1.02;
     /** ...and offers side by side on a spoke step this many dp aside from each other (at full detail). */
     private static final float MARK_STEP_DP = 2.2f;
-    /** The smallest circle, in dp, the constellation is drawn in when a screen is short. */
-    private static final int MIN_WINDOW_DP = 40;
     /** As the page's sky, the icons at the spokes' ends are a little larger. */
     private static final int BACKDROP_ICON_DP = 22;
     /**
@@ -138,7 +135,6 @@ final class MinimumsStarView extends View {
     /** As the sky, the rings fade out over this much of the view's top and bottom edges rather than stop at them. */
     private static final int EDGE_FADE_DP = 28;
     private final Ui ui;
-    private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint axisText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF[] axisLabels = new RectF[AreaScore.AXES];
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -193,21 +189,18 @@ final class MinimumsStarView extends View {
     /** What screen readers last learned of the knobs, the badge and the offers: they are told when that changes. */
     private String nodesKey = "";
     private final Glyph[] icons = new Glyph[ICONS.length];
-    /**
-     * In a short window's header the icons stand beside the circle rather than at its corners, so the circle can be
-     * as tall as the header allows.
-     */
-    private boolean beside;
     /** How much of their full size the stars and marks are drawn at: less on a small circle. */
     private float detail = 1;
-    /** Where the page's sky put the circle (a radius of 0 until it has), and where words or the mascot sit on it. */
+    /** Where the page put the circle (a radius of 0 until it has), and where anything sits on it to fade under. */
     private float skyX;
     private float skyY;
     private float skyRadius;
     private final List<Veil> veils = new ArrayList<>();
     private final Paint veilPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFade = new Paint();
+    private final Paint sideFade = new Paint();
     private float edgeFadeFor = Float.NaN;
+    private float sideFadeFor = Float.NaN;
     private final RectF veilBox = new RectF();
     /** As the sky: the rings' dollars (bold, in a soft halo of the sky's color) and where each was last drawn. */
     private final TextPaint levelText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -377,8 +370,6 @@ final class MinimumsStarView extends View {
     private boolean stopsForButtons;
     /** When the hollow knobs last beckoned (uptime); 0 for never. */
     private long beckonedAt;
-    /** What a screen reader's double-tap on the chart does, while it is a button (in a short window); null for none. */
-    private String clickLabel;
     private final Nodes nodes = new Nodes();
     private int focusedNode = NO_NODE;
     /** The offer a screen reader's focus is on (by when it was recorded), so it goes when that offer moves or goes. */
@@ -431,6 +422,7 @@ final class MinimumsStarView extends View {
         axisText.setShadowLayer(ui.dp(3), 0, 0, ui.dark ? 0xFF0D1428 : 0xFFE7EEF2);
         veilPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         edgeFade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+        sideFade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         levelText.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,
                 android.graphics.Typeface.BOLD));
         levelText.setTextSize(Math.min(ui.sp(12), ui.dp(16)));
@@ -748,21 +740,7 @@ final class MinimumsStarView extends View {
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
 
-    // ---- Layout: the constellation's circle, with a spoke icon at each corner (or beside it, in a header). ----
-
-    /** Draws it for a short window's header: the icons beside the circle, the circle as tall as the header. */
-    void setBeside(boolean on) {
-        if (on == beside) return;
-        beside = on;
-        requestLayout();
-        invalidate();
-    }
-
-    boolean beside() {
-        return beside;
-    }
-
-    // ---- The page's sky: one large circle, placed by the page, behind the mascot and the counts. ----
+    // ---- The page's sky: one circle, placed by the page in the constellation's own box. ----
 
     /**
      * Draws the constellation as the page's sky: its circle of {@code radius} around ({@code x}, {@code y}), in this
@@ -782,9 +760,9 @@ final class MinimumsStarView extends View {
         }
     }
 
-    /** Drawn as the page's sky, rather than in a header or a row of its own. */
+    /** Drawn as the page's sky: the page has placed its circle (nothing is drawn until it has). */
     boolean backdrop() {
-        return !beside && skyRadius > 0;
+        return skyRadius > 0;
     }
 
     /** The circle's radius as the page's sky, in pixels; 0 when it is not the sky. */
@@ -919,7 +897,7 @@ final class MinimumsStarView extends View {
         }
     }
 
-    /** The expanded constellation spells out each icon; the collapsed header keeps its one expand target. */
+    /** The constellation spells out each icon's name beside it. */
     String axisLabelText(int axis) {
         return axis >= 0 && axis < AXIS_LABELS.length ? AXIS_LABELS[axis] : "";
     }
@@ -932,7 +910,7 @@ final class MinimumsStarView extends View {
 
     private void placeAxisLabels() {
         for (RectF box : axisLabels) box.setEmpty();
-        // A constrained sky can also draw the miniature header-sized constellation without setting beside.
+        // A small circle (in a short window) has no room for the names; its icons and screen readers say them.
         if (!backdrop() || skyRadius < ui.dp(48) || getWidth() <= 0 || getHeight() <= 0) return;
         if (knobsOn()) {
             placeStops();
@@ -1088,74 +1066,16 @@ final class MinimumsStarView extends View {
         return super.dispatchHoverEvent(event);
     }
 
-    /** The width a header gives it at {@code heightDp} tall: the circle, and an icon with a little room each side. */
-    static int besideWidthDp(int heightDp) {
-        return heightDp - 8 + 2 * (ICON_DP + 8);
-    }
-
-    /** Room under the circle; there is no key, the icons and the colors being the same as everywhere else. */
-    private float keyHeight() {
-        return ui.dp(4);
-    }
-
-    private float nameWidth() {
-        return ui.dp(ICON_DP);
-    }
-
-    /** The circle's radius: as large as fits with the icons outside it at the spokes' ends, up to 130 dp. */
-    private float windowRadius(float width) {
-        float room = (width / 2 - nameWidth() - ui.dp(2)) / COS - ui.dp(6);
-        return Math.max(ui.dp(MIN_WINDOW_DP), Math.min(ui.dp(130), room));
-    }
-
-    /**
-     * As tall as the circle at this width needs, or whatever the page gives it on one screen; asked with no limit
-     * (the page working out what fits), it answers the least it reads well at.
-     */
+    /** Whatever the page gives it (its own box); asked with no limit, a circle of the least radius the page uses. */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        float window = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? MIN_WINDOW_DP * ui.dp(1)
-                : windowRadius(width);
-        setMeasuredDimension(width, resolveSize(Math.round(2 * window + ui.dp(8) + keyHeight()), heightSpec));
-    }
-
-    /** The circle's radius at this size: as wide as fits, and no taller than the height given. */
-    private float window(float width, float height) {
-        float byHeight = (height - ui.dp(8) - keyHeight()) / 2;
-        return Math.max(ui.dp(MIN_WINDOW_DP) * 0.8f, Math.min(windowRadius(width), byHeight));
+        int least = Math.round(2 * ui.dp(FluidLayout.RADIUS_LEAST_DP) + 2 * ui.dp(ICON_GAP_DP + BACKDROP_ICON_DP));
+        setMeasuredDimension(width, resolveSize(least, heightSpec));
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        if (backdrop()) {
-            drawSky(canvas);
-            nextFrame();
-            return;
-        }
-        float width = getWidth();
-        float window = window(width, getHeight());
-        float cx = width / 2;
-        // The circle and its key, centred in the height given.
-        float top = Math.max(0, (getHeight() - (2 * window + ui.dp(8) + keyHeight())) / 2);
-        float cy = top + window + ui.dp(4);
-        float radius = window - ui.dp(12);
-        if (beside) {
-            cy = getHeight() / 2f;
-            radius = Math.max(ui.dp(12), Math.min(getHeight() / 2f - ui.dp(4), width / 2f - ui.dp(ICON_DP + 8)));
-        }
-        detail = Math.max(0.6f, Math.min(1, radius / ui.dp(45)));
-
-        drawGrid(canvas, cx, cy, radius);
-        drawOfferShapes(canvas, cx, cy, radius);
-        drawMarks(canvas, cx, cy, radius);
-        float glide = Motion.settle(glideStart, GLIDE_MS);
-        holdSet();
-        drawMinimums(canvas, cx, cy, radius, glide);
-        drawChosenOutline(canvas, cx, cy, radius);
-        // The three minimums' icons; the pin is the badge's, which only the sky has.
-        for (int i : SPOKES) {
-            if (beside) drawIconBeside(canvas, i, cx, cy, radius);
-            else drawIcon(canvas, i, cx, cy, window, width, ui.dp(ICON_DP));
-        }
+        if (!backdrop()) return;
+        drawSky(canvas);
         nextFrame();
     }
 
@@ -1177,7 +1097,7 @@ final class MinimumsStarView extends View {
         detail = skyDetail();
         int layer = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
         drawGrid(canvas, cx, cy, radius);
-        fadeEdges(canvas, cy, radius);
+        fadeEdges(canvas, cx, cy, radius);
         drawOfferShapes(canvas, cx, cy, radius);
         drawMarks(canvas, cx, cy, radius);
         float glide = Motion.settle(glideStart, GLIDE_MS);
@@ -1256,20 +1176,36 @@ final class MinimumsStarView extends View {
         return false;
     }
 
-    /** Where the circle runs past the view's top or bottom, its rings fade out over the last stretch before the edge. */
-    private void fadeEdges(Canvas canvas, float cy, float radius) {
+    /**
+     * Where the circle runs past the view's edges (its box's: the rim may stand wider than the spokes' icons), its rings
+     * fade out over the last stretch before the edge rather than stop at it.
+     */
+    private void fadeEdges(Canvas canvas, float cx, float cy, float radius) {
         float band = ui.dp(EDGE_FADE_DP);
         float height = getHeight();
-        if (cy - radius >= band && cy + radius <= height - band) return;
-        if (edgeFadeFor != height) {
-            edgeFadeFor = height;
-            float top = band / height;
-            edgeFade.setShader(new android.graphics.LinearGradient(0, 0, 0, height,
-                    new int[] {0xFF000000, 0x00000000, 0x00000000, 0xFF000000},
-                    new float[] {0, Math.min(0.5f, top), Math.max(0.5f, 1 - top), 1},
-                    android.graphics.Shader.TileMode.CLAMP));
+        float width = getWidth();
+        if (cy - radius < band || cy + radius > height - band) {
+            if (edgeFadeFor != height) {
+                edgeFadeFor = height;
+                float top = band / height;
+                edgeFade.setShader(new android.graphics.LinearGradient(0, 0, 0, height,
+                        new int[] {0xFF000000, 0x00000000, 0x00000000, 0xFF000000},
+                        new float[] {0, Math.min(0.5f, top), Math.max(0.5f, 1 - top), 1},
+                        android.graphics.Shader.TileMode.CLAMP));
+            }
+            canvas.drawRect(0, 0, width, height, edgeFade);
         }
-        canvas.drawRect(0, 0, getWidth(), height, edgeFade);
+        if (cx - radius < band || cx + radius > width - band) {
+            if (sideFadeFor != width) {
+                sideFadeFor = width;
+                float side = band / width;
+                sideFade.setShader(new android.graphics.LinearGradient(0, 0, width, 0,
+                        new int[] {0xFF000000, 0x00000000, 0x00000000, 0xFF000000},
+                        new float[] {0, Math.min(0.5f, side), Math.max(0.5f, 1 - side), 1},
+                        android.graphics.Shader.TileMode.CLAMP));
+            }
+            canvas.drawRect(0, 0, width, height, sideFade);
+        }
     }
 
     /**
@@ -1337,7 +1273,7 @@ final class MinimumsStarView extends View {
                 edgeCrossing(auto, autoFrom, autoTo, glide, cx, radius)};
         float clear = ui.dp(4) + ui.dp(1) * Math.max(1, detail);
         float before = -Float.MAX_VALUE;
-        for (int ring : labelRings(false)) {
+        for (int ring : LABELED_RINGS) {
             String words = levelLabel(ring);
             float width = levelText.measureText(words);
             float at = cx + radius * ring / rings;
@@ -1389,12 +1325,10 @@ final class MinimumsStarView extends View {
         return "$" + (ringCents * ring / 100);
     }
 
-    /** The rings that are labeled: the middle and outer rings (only the outer on a small circle). */
-    private static int[] labelRings(boolean small) {
-        return small ? new int[] {3} : new int[] {2, 3};
-    }
+    /** The rings that are labeled: the middle and the outer ring. */
+    private static final int[] LABELED_RINGS = {2, 3};
 
-    /** Faint rings and the three spokes, with the rings' dollars between the two upper spokes in a header. */
+    /** Faint rings and the three spokes. */
     private void drawGrid(Canvas canvas, float cx, float cy, float radius) {
         line.setPathEffect(null);
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
@@ -1410,16 +1344,6 @@ final class MinimumsStarView extends View {
         for (int i : SPOKES) {
             float[] tip = point(cx, cy, radius, i, 1);
             canvas.drawLine(cx, cy, tip[0], tip[1], line);
-        }
-        if (outer <= 0 || backdrop()) return;
-        text.setFakeBoldText(false);
-        text.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
-        text.setColor(ui.dark ? 0x80FFFFFF : 0xB0214066);
-        text.setTextAlign(Paint.Align.CENTER);
-        float baseline = -(text.getFontMetrics().ascent + text.getFontMetrics().descent) / 2;
-        for (int ring : labelRings(radius < ui.dp(40))) {
-            float out = radius * ring / rings;
-            canvas.drawText(levelLabel(ring), cx + out * 0.5f, cy - out * COS + baseline, text);
         }
     }
 
@@ -1595,7 +1519,7 @@ final class MinimumsStarView extends View {
         return m >= 0 && m < marks.size() && m == strongShape();
     }
 
-    /** The marked offer whose ticket is open, as the sky shows it (a header's chart stays as it was); -1 for none. */
+    /** The marked offer whose ticket is open, as the sky shows it; -1 for none. */
     private int opened() {
         return openAt < 0 || !backdrop() ? -1 : markTimes.indexOf(openAt);
     }
@@ -1738,33 +1662,9 @@ final class MinimumsStarView extends View {
         }
     }
 
-    /** In a header, a spoke's icon beside the circle on its side, above or below the middle as its spoke points. */
-    private void drawIconBeside(Canvas canvas, int axis, float cx, float cy, float radius) {
-        boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
-        boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP;
-        int size = ui.dp(ICON_DP);
-        int left = Math.round(right ? cx + radius + ui.dp(6) : cx - radius - ui.dp(6) - size);
-        int top = Math.round(below ? cy + ui.dp(2) : cy - ui.dp(2) - size);
-        icons[axis].setBounds(left, top, left + size, top + size);
-        icons[axis].draw(canvas);
-    }
-
-    /** A spoke's icon just outside the circle at its corner. */
-    private void drawIcon(Canvas canvas, int axis, float cx, float cy, float window, float width, int size) {
-        boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
-        boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP;
-        float[] corner = point(cx, cy, window + ui.dp(4), axis, 1);
-        int left = Math.round(right ? corner[0] : corner[0] - size);
-        int top = Math.round(below ? corner[1] : corner[1] - size);
-        left = Math.max(0, Math.min(Math.round(width) - size, left));
-        top = Math.max(0, top);
-        icons[axis].setBounds(left, top, left + size, top + size);
-        icons[axis].draw(canvas);
-    }
-
     // ---- Knobs: the set minimums, dragged along their spokes (as the sky only). ----
 
-    /** Knobs, the badge and the button are on: as the page's sky (a whole screen, or beside Dasher), never a header. */
+    /** Knobs, the badge and the button are on: as the page's sky, once the page has placed it and said how it saves. */
     private boolean knobsOn() {
         return backdrop() && changes != null;
     }
@@ -1929,9 +1829,7 @@ final class MinimumsStarView extends View {
 
     /**
      * The knob, badge or button a touch at ({@code x}, {@code y}) is for, the nearest within reach; NO_NODE for none.
-     * A knob faded under a line of words still takes a touch that reaches it: a line that takes touches stands in
-     * front and keeps its own taps, and the page's sky hands this view a drag that sets out from such a line along a
-     * knob's spoke ({@link SkyStage}), so every knob stays in reach (screen readers reach each one by swiping too).
+     * Screen readers reach each one by swiping too.
      */
     private int target(float x, float y) {
         if (!knobsOn()) return NO_NODE;
@@ -1985,11 +1883,6 @@ final class MinimumsStarView extends View {
     private float knobDistance(int axis, float x, float y) {
         float[] at = point(skyX, skyY, skyRadius, axis, knobFraction(axis, Motion.settle(glideStart, GLIDE_MS)));
         return (x - at[0]) * (x - at[0]) + (y - at[1]) * (y - at[1]);
-    }
-
-    /** A finger is on this view now (it took the touch), for the sky around it to tell. */
-    boolean touched() {
-        return touching;
     }
 
     // ---- Marked offers: a tap on one opens its ticket (as the sky only). ----
@@ -2091,8 +1984,7 @@ final class MinimumsStarView extends View {
      * Autopilot button is the page's (Autopilot off, or the goal chooser) and holding it asks for the goal, a finger
      * moving off it doing neither; a tap on a marked offer (on no knob or button) opens its ticket; a tap on the max
      * stops badge steps it and a drag across it steps it either way; any other tap on the circle, a knob's included,
-     * goes back to the newest offer while an older one is chosen, else is the chart's own click. In a header, the
-     * chart is one button.
+     * goes back to the newest offer while an older one is chosen, else is the chart's own click.
      */
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (!knobsOn() && !offersOn() && !touching) return super.onTouchEvent(event);
@@ -2880,19 +2772,6 @@ final class MinimumsStarView extends View {
     }
 
     // ---- Screen readers: each knob and the badge an adjustable control, the Autopilot button a switch. ----
-
-    /** What a screen reader's double-tap on the chart does while it is a button (a short window); null for none. */
-    void setClickLabel(String label) {
-        clickLabel = label;
-    }
-
-    @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        super.onInitializeAccessibilityNodeInfo(info);
-        if (clickLabel != null && isClickable()) {
-            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
-                    clickLabel));
-        }
-    }
 
     @SuppressWarnings("deprecation")
     private void say(String words) {

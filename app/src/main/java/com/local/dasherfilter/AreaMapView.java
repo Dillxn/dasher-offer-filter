@@ -74,8 +74,6 @@ final class AreaMapView extends View {
     /** Keeps the land only where the edge ramps allow: multiplies what was drawn by the ramp's alpha. */
     private final Paint fade = new Paint();
     private final RectF strip = new RectF();
-    /** The least height it reads well at, when the page asks with no limit; less in a short window. */
-    private int leastDp = 96;
     /** Where the place names already drawn this frame are, so none is drawn over another. */
     private final RectF[] namePills = {new RectF(), new RectF(), new RectF()};
     private int namesShown;
@@ -248,10 +246,10 @@ final class AreaMapView extends View {
                 + "not a road route. North is up. Recorded history, not a prediction. Use Explain offer map for the key.";
     }
 
-    /** Whatever the page gives it on one screen; asked with no limit, the least it reads well at. */
+    /** Whatever the page gives it; asked with no limit, the least it reads well at ({@link FluidLayout}). */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(leastDp)
+        int height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? ui.dp(FluidLayout.MAP_LEAST_DP)
                 : resolveSize(Math.min(ui.dp(320), Math.max(ui.dp(220), width)), heightSpec);
         setMeasuredDimension(width, height);
     }
@@ -510,11 +508,6 @@ final class AreaMapView extends View {
         }
         namePills[namesShown++].set(pill);
         drawLabel(canvas, shown, cx, cy);
-    }
-
-    void setLeastDp(int dp) {
-        leastDp = dp;
-        requestLayout();
     }
 
     /** How many place names the last drawing showed (for tests). */

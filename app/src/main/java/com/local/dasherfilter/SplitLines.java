@@ -13,8 +13,9 @@ import android.widget.TextView;
 /**
  * What only a split screen needs on the homepage (the owner: "the user isn't juggling multiple windows (dasher, filter,
  * gps) and can just flow"). Beside Dasher, once ever: a hint that dragging the divider toward Offer Filter gives
- * Dasher's map more room (Offer Filter's half then becomes a strip, {@link DrivingStrip}). It lies over the bottom of
- * the page for a few seconds and takes no touches and no room, so the page under it is laid out as without it. During
+ * Dasher's map more room (Offer Filter's half then keeps its strip along the top, the rest shrinking away gradually,
+ * {@link FluidLayout}). It lies over the bottom of the page for a few seconds and takes no touches and no room, so the
+ * page under it is laid out as without it. During
  * a dash beside another app (a map, say), with Peek on: a readiness line saying background offers need a tap in this
  * layout, with Swap, which puts Dasher in Offer Filter's own half so the map stays ({@link DasherSplit#swapIn}).
  */
@@ -22,8 +23,6 @@ final class SplitLines {
     static final String HINT = "Drag the divider toward " + AppName.NAME + " to give Dasher's map more room";
     static final String LAYOUT_NOTE = "Background offers need a tap in this layout — use Dasher full screen, or Maps "
             + "with Dasher beside";
-    /** The layout note, short, for the strip's one status line. */
-    static final String LAYOUT_NOTE_SHORT = "Background offers need a tap here · Swap in Dasher";
     /** How long the hint stays up; it is never shown again. */
     static final long HINT_MS = 10_000;
     private static final String PREFS = "split_lines";
@@ -160,7 +159,7 @@ final class SplitLines {
         return prefs(context).getBoolean(HINT_SHOWN, false);
     }
 
-    /** The strip was reached, or the hint shown: it is never shown again. */
+    /** The hint was shown: it is never shown again. */
     static void markHintShown(Context context) {
         if (!hintShown(context)) prefs(context).edit().putBoolean(HINT_SHOWN, true).apply();
     }

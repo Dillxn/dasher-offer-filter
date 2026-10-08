@@ -30,8 +30,8 @@ import java.util.List;
  * update waits for it.</li>
  * </ol>
  * With three or more to do, only the first shows, and the rest fold into one line, "N more to set up", whose tap shows
- * them all: the lines cross the constellation's lower part, and five of them would shrink it to a sliver under words,
- * its knobs out of reach just as the start line says to drag one.
+ * them all: the lines take their room from the constellation and the map under them, and five of them would shrink
+ * those away just as the start line says to drag a knob.
  *
  * <p>An access granted but not working gets its own words and fix instead of a page whose switch is already on:
  * "Turn Offer Filter off and on in Accessibility" opens the service's page, and "Reconnect notification access" asks
@@ -118,8 +118,6 @@ final class SetupChecklist {
     /** What the page said last time, so a tap on the folded line can lay the steps out at once. */
     private boolean lastReaderConnected;
     private boolean lastAlertsAllowed;
-    /** The first step still to do as the last refresh found it, Allow updates aside; null when none. */
-    private Line first;
 
     /**
      * @param parent        the homepage column the lines go in, in this order
@@ -175,20 +173,6 @@ final class SetupChecklist {
     /** Whether this app may install its updates ("Install unknown apps"), as Android said lately. */
     boolean installsAllowed() {
         return installsAllowed.get();
-    }
-
-    /**
-     * The first step still to do, in its line's words, as the last {@link #refresh} found it; Allow updates aside (an
-     * update waits for the dash's end anyway). The driving strip in a third of a split screen shows it alone. Null when
-     * none.
-     */
-    String firstStep() {
-        return first == null ? null : first.words;
-    }
-
-    /** The first step's Fix ({@link #firstStep}), as a tap on its line runs it. */
-    void fixFirst() {
-        if (first != null) first.row.tap();
     }
 
     /** One line to show, in the checklist's order. */
@@ -252,12 +236,6 @@ final class SetupChecklist {
         // Allowed (from this line, the notice or Settings): the notice goes and Settings stops asking for it.
         if (allowed) Updater.installsAllowed(activity);
 
-        first = null;
-        for (Line line : lines) {
-            if (line.row == updates) continue;
-            first = line;
-            break;
-        }
         boolean fold = !unfolded && lines.size() >= FOLD_FROM;
         int showing = fold ? 1 : lines.size();
         for (SetupRow row : new SetupRow[] {restricted, accessibility, notifications, alerts, updates}) {

@@ -442,9 +442,9 @@ final class AutopilotText {
                 + s.shownArPercent() + " percent";
     }
 
-    // ---- The compact / split chip ----
+    // ---- The chip ----
 
-    /** The one-line chip of the compact header: "Auto off", "Auto learning", "Auto 82%", "Auto 82% ▲" (below the goal). */
+    /** The one-line chip under the verdict: "Auto off", "Auto learning", "Auto 82%", "Auto 82% ▲" (below the goal). */
     static String chip(Status s) {
         switch (s.kind) {
             case OFF:

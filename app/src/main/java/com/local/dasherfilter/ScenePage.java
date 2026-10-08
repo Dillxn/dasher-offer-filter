@@ -8,21 +8,29 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 
 /**
- * The main page as one illustration. A sky runs from the top of the page down to the horizon, where the offers'
- * skyline stands; the ground runs from there down to the road at the bottom. By day the sky is a soft morning blue
- * warming towards the horizon, with a sun and drifting clouds; by night (dark theme) it is deep blue, with a moon and
- * stars. The mascot, its state and the minimums' constellation sit in the sky; the chosen offer and the map on the
- * ground. Each region stays light enough (or dark enough) for the page's own text. While the user is dashing, two
- * searchlights sweep the sky from the horizon: the app is watching. Tilting the phone slides the far layers a little;
- * with Android's animations off, everything rests (the searchlights stand still). No star shines and no cloud drifts
- * under the sky's words (a cloud fades as it passes behind them), and the signpost keeps clear of the skyline, the
- * sky's words and its icons.
+ * The main page as one illustration, and its one fluid layout ({@link FluidLayout}). A sky runs from the top of the page
+ * down to the horizon, the offers' skyline's street; the ground runs from there down to the road at the bottom. The
+ * strip (the mascot, the latest offer's verdict, Autopilot's chip and the status line), the header's buttons, the
+ * dash's counts and the lines that need the user stand along the top; under them the minimums' constellation with the
+ * skyline under it, above the offer map in a tall window and beside it in a wide one; then the road. Every part keeps
+ * its place at every window size and only its size changes, continuously: what must go at a small size shrinks and
+ * fades out over a range of heights, least important first, and is used again (touched, heard) only once it is wholly
+ * there. A resize does nothing but lay the page out and draw it.
+ *
+ * <p>By day the sky is a soft morning blue warming towards the horizon, with a sun and drifting clouds; by night (dark
+ * theme) it is deep blue, with a moon and stars. Each region stays light enough (or dark enough) for the page's own
+ * text. While the user is dashing, two searchlights sweep the sky from the horizon: the app is watching. Tilting the
+ * phone slides the far layers a little; with Android's animations off, everything rests (the searchlights stand still).
+ * No star shines and no cloud drifts under the page's words (a cloud fades as it passes behind them), and the signpost
+ * keeps clear of the skyline, the words and the constellation's icons.
  */
 @SuppressLint("ViewConstructor")
-final class ScenePage extends LeastColumn {
+final class ScenePage extends ViewGroup {
     /** How far, in dp, each layer slides at full tilt: the farther away, the less. */
     private static final float STARS_DEPTH = 3;
     private static final float SUN_DEPTH = 5;
@@ -31,6 +39,8 @@ final class ScenePage extends LeastColumn {
     private static final float NEAR_HILL_DEPTH = 7;
     /** How far, in dp, the signpost may rise from the hills to clear the skyline before it is left out. */
     private static final int SIGN_RISE_DP = 64;
+    /** The skyline's street, this far above the skyline's bottom, is the horizon. */
+    private static final int STREET_DP = 11;
     /** Stars across the whole night sky: position as shares of the sky, size in dp, twinkle phase. */
     private static final float[][] STARS = new float[46][4];
 
@@ -45,6 +55,7 @@ final class ScenePage extends LeastColumn {
     }
 
     private final Ui ui;
+    private final FluidLayout fluid;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path farHills = new Path();
     private final Path nearHills = new Path();
@@ -55,9 +66,6 @@ final class ScenePage extends LeastColumn {
     private float beamFor = Float.NaN;
     private boolean watching;
     private long watchingSince;
-    private View horizon;
-    private int horizonInset;
-    private View fallback;
     private View sunAnchor;
     /** The neighbourhood the phone is in, on a signpost on the hills; null hides it. */
     private String place;
@@ -70,34 +78,62 @@ final class ScenePage extends LeastColumn {
     private Shader sunGlow;
     private float shadedFor = Float.NaN;
     private float hillsFor = Float.NaN;
-    /** What stands over the sky (its words and icons), and where they stand this frame, in this page's pixels. */
-    private View overView;
-    private Over over;
+    /** Where the page's words and the constellation's icons stand this frame, in this page's pixels. */
     private final java.util.List<android.graphics.RectF> words = new java.util.ArrayList<>();
     private final java.util.List<android.graphics.RectF> overIcons = new java.util.ArrayList<>();
 
-    /** A view over the sky that says where its words and icons stand, in its own pixels. */
-    interface Over {
-        void wordsAt(java.util.List<android.graphics.RectF> out);
-
-        void iconsAt(java.util.List<android.graphics.RectF> out);
-    }
+    // ---- The page's parts, in the order screen readers reach them ----
+    private FilterHeroView hero;
+    private View strip;
+    private View header;
+    private View lines;
+    private MinimumsStarView star;
+    private View caption;
+    private DecisionChartView chart;
+    private AreaMapView map;
+    private View area;
+    private View road;
+    /** The parts that fade, with how much of each is there now and whether screen readers may reach it then. */
+    private View[] fading = new View[0];
+    private float[] shown = new float[0];
+    private int[] heard = new int[0];
+    /** A finger that went down on a part on its way out: the page keeps the whole touch, and nothing acts on it. */
+    private boolean swallowing;
 
     ScenePage(Context context, Ui ui) {
         super(context);
         this.ui = ui;
-        setOrientation(VERTICAL);
+        fluid = new FluidLayout(context.getResources().getDisplayMetrics().density);
         setWillNotDraw(false);
     }
 
     /**
-     * The horizon is {@code insetPx} above the bottom of {@code view} (the skyline's street), or the bottom of
-     * {@code otherwise} while that view is hidden.
+     * The page's parts, added in the order screen readers reach them: the strip's words (the verdict, the chip and the
+     * status line), the mascot with the counts, the header, the lines, the constellation, the skyline's caption, the
+     * skyline, the map, its area's line and the road. Only the mascot's drawing spans more than its row (the counts
+     * stand under the header), and it takes no touch but on the mascot and the counts.
      */
-    void setHorizon(View view, int insetPx, View otherwise) {
-        horizon = view;
-        horizonInset = insetPx;
-        fallback = otherwise;
+    void setParts(View strip, FilterHeroView hero, View header, View lines, MinimumsStarView star, View caption,
+                  DecisionChartView chart, AreaMapView map, View area, View road) {
+        this.strip = strip;
+        this.hero = hero;
+        this.header = header;
+        this.lines = lines;
+        this.star = star;
+        this.caption = caption;
+        this.chart = chart;
+        this.map = map;
+        this.area = area;
+        this.road = road;
+        for (View part : new View[] {strip, hero, header, lines, star, caption, chart, map, area, road}) addView(part);
+        road.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        fading = new View[] {star, caption, chart, map, area};
+        shown = new float[fading.length];
+        heard = new int[fading.length];
+        for (int i = 0; i < fading.length; i++) {
+            shown[i] = 1;
+            heard[i] = fading[i].getImportantForAccessibility();
+        }
     }
 
     /** The color at the very top of the sky, for behind the status bar. */
@@ -124,33 +160,209 @@ final class ScenePage extends LeastColumn {
         invalidate();
     }
 
-    /** Stars and clouds keep out from under {@code view}'s words, and the signpost from its words and icons. */
-    void setOver(View view, Over source) {
-        overView = view;
-        over = source;
-    }
-
     /** Where the signpost's board was last drawn, in this page's pixels; null when it was left out (for tests). */
     android.graphics.RectF signBoard() {
         return place == null || signBoard.isEmpty() ? null : new android.graphics.RectF(signBoard);
     }
 
-    /** Where the sky's words stand this frame, in this page's pixels (for tests). */
+    /** Where the page's words stand this frame, in this page's pixels (for tests). */
     java.util.List<android.graphics.RectF> words() {
         gatherOver();
         return new java.util.ArrayList<>(words);
     }
 
+    /** The sun (or moon) is drawn over this view, which is its button. */
+    void setSunAnchor(View view) {
+        sunAnchor = view;
+    }
+
+    // ---- The fluid layout ----
+
+    /**
+     * Exactly the height given, the parts sharing it ({@link FluidLayout}); asked with no limit (the page's scroller
+     * working out whether it fits), only what never goes: the strip, the header and the lines. The scroller then gives
+     * it the screen, or, where even those need more (a very large font in a small window), it scrolls by the
+     * difference, everything else gone.
+     */
+    @Override protected void onMeasure(int widthSpec, int heightSpec) {
+        int width = MeasureSpec.getSize(widthSpec);
+        int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+        strip.measure(exactly(fluid.wordsWidth(width)), any);
+        header.measure(exactly(width), any);
+        lines.measure(exactly(width), any);
+        fluid.width = width;
+        fluid.height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? 0 : MeasureSpec.getSize(heightSpec);
+        fluid.wordsHeight = strip.getMeasuredHeight();
+        fluid.headerHeight = header.getMeasuredHeight();
+        fluid.linesHeight = lines.getMeasuredHeight();
+        fluid.areaLine = area.getVisibility() != GONE;
+        fluid.solve();
+        measure(hero, heroBox());
+        measure(star, fluid.radar);
+        measure(caption, fluid.caption);
+        measure(chart, fluid.chart);
+        measure(map, fluid.map);
+        measure(area, fluid.area);
+        measure(road, fluid.road);
+        setMeasuredDimension(width, fluid.total);
+    }
+
+    private static int exactly(float size) {
+        return MeasureSpec.makeMeasureSpec(Math.max(0, Math.round(size)), MeasureSpec.EXACTLY);
+    }
+
+    private static void measure(View part, FluidLayout.Box box) {
+        part.measure(exactly(Math.round(box.right) - Math.round(box.left)),
+                exactly(Math.round(box.bottom) - Math.round(box.top)));
+    }
+
+    private static void place(View part, FluidLayout.Box box) {
+        part.layout(Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom));
+    }
+
+    /** The mascot's drawing: from the mascot down to the counts' row, across both. */
+    private FluidLayout.Box heroBox() {
+        FluidLayout.Box box = new FluidLayout.Box();
+        box.set((float) Math.floor(Math.min(fluid.mascot.left, fluid.counts.left)), fluid.mascot.top,
+                (float) Math.ceil(Math.max(fluid.mascot.right, fluid.counts.right)),
+                (float) Math.ceil(Math.max(fluid.mascot.bottom, fluid.countsRow.bottom)));
+        return box;
+    }
+
+    @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        place(strip, fluid.words);
+        FluidLayout.Box heroBox = heroBox();
+        place(hero, heroBox);
+        float mascotRadius = fluid.mascot.width() / 2;
+        android.graphics.RectF counts = new android.graphics.RectF(fluid.counts.left - heroBox.left,
+                fluid.counts.top - heroBox.top, fluid.counts.right - heroBox.left, fluid.counts.bottom - heroBox.top);
+        hero.place((fluid.mascot.left + fluid.mascot.right) / 2 - heroBox.left,
+                (fluid.mascot.top + fluid.mascot.bottom) / 2 - heroBox.top, mascotRadius, counts, fluid.countsSpacing,
+                fluid.countsShown);
+        place(header, fluid.header);
+        place(lines, fluid.lines);
+        place(star, fluid.radar);
+        star.compose(fluid.radarX - Math.round(fluid.radar.left), fluid.radarY - Math.round(fluid.radar.top),
+                fluid.radius, java.util.Collections.<MinimumsStarView.Veil>emptyList());
+        place(caption, fluid.caption);
+        place(chart, fluid.chart);
+        place(map, fluid.map);
+        place(area, fluid.area);
+        place(road, fluid.road);
+        road.setAlpha(fluid.roadShown);
+        float stage = fluid.stageShown;
+        float horizon = stage * fluid.horizonShown;
+        float[] now = {stage, horizon, horizon, stage, stage};
+        for (int i = 0; i < fading.length; i++) show(i, now[i]);
+    }
+
+    /**
+     * Part {@code i} at {@code amount} (0 to 1): drawn that faded, and reached by screen readers (and touched) only
+     * while it is wholly there.
+     */
+    private void show(int i, float amount) {
+        View part = fading[i];
+        if (part.getAlpha() != amount) part.setAlpha(amount);
+        shown[i] = amount;
+        int importance = amount >= 1 ? heard[i] : IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS;
+        if (part.getImportantForAccessibility() != importance) part.setImportantForAccessibility(importance);
+    }
+
+    /** How much of {@code part} is there now: 1 wholly (it is used), 0 gone, between on its way out (for tests too). */
+    float shown(View part) {
+        if (part == hero) return 1;
+        if (part == road) return fluid.roadShown;
+        for (int i = 0; i < fading.length; i++) if (fading[i] == part) return shown[i];
+        return 1;
+    }
+
+    /** How much of the dash's counts is there now. */
+    float countsShown() {
+        return fluid.countsShown;
+    }
+
+    /** The constellation and the map are wholly there (for the one-time notices that name them, and the knobs). */
+    boolean stageShown() {
+        return fluid.stageShown >= 1 && getHeight() > 0;
+    }
+
+    /** From the radar above the map (0) to side by side (1) (for tests). */
+    float turn() {
+        return fluid.turn;
+    }
+
+    /** A finger going down on a part on its way out is the page's: nothing there acts on it, nor on its drag. */
+    @Override public boolean onInterceptTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) swallowing = onFading(event.getX(), event.getY());
+        return swallowing;
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    @Override public boolean onTouchEvent(MotionEvent event) {
+        if (!swallowing) return super.onTouchEvent(event);
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) swallowing = false;
+        return true;
+    }
+
+    private boolean onFading(float x, float y) {
+        for (int i = fading.length - 1; i >= 0; i--) {
+            View part = fading[i];
+            if (part.getVisibility() != VISIBLE || x < part.getLeft() || x >= part.getRight() || y < part.getTop()
+                    || y >= part.getBottom()) continue;
+            return shown[i] < 1;
+        }
+        return false;
+    }
+
+    /** Where the horizon is, in this page's coordinates: the skyline's street, or where the skyline would stand. */
+    float horizonY() {
+        if (chart == null || chart.getHeight() <= 0 && chart.getTop() <= 0) return getHeight() * 0.6f;
+        return Math.max(chart.getTop(), chart.getBottom() - ui.dp(STREET_DP));
+    }
+
     private void gatherOver() {
         words.clear();
         overIcons.clear();
-        if (over == null || overView == null || !overView.isShown() || overView.getHeight() <= 0) return;
-        over.wordsAt(words);
-        over.iconsAt(overIcons);
-        float x = left(overView);
-        float y = top(overView);
-        for (android.graphics.RectF box : words) box.offset(x, y);
-        for (android.graphics.RectF box : overIcons) box.offset(x, y);
+        if (strip == null || getHeight() <= 0) return;
+        addWords(strip);
+        if (fluid.countsShown > 0) {
+            android.graphics.RectF counts = new android.graphics.RectF();
+            hero.countsAt(counts);
+            counts.offset(hero.getLeft(), hero.getTop());
+            counts.inset(-ui.dp(4), -ui.dp(2));
+            words.add(counts);
+        }
+        addRows(lines, 0, 0);
+        if (shown(caption) > 0) addWords(caption);
+        if (area.getVisibility() == VISIBLE && shown(area) > 0) addWords(area);
+        if (shown(star) > 0 && star.getHeight() > 0) {
+            int from = words.size();
+            star.wordsAt(words);
+            for (int i = from; i < words.size(); i++) words.get(i).offset(star.getLeft(), star.getTop());
+            star.iconsAt(overIcons);
+            for (android.graphics.RectF box : overIcons) box.offset(star.getLeft(), star.getTop());
+        }
+    }
+
+    /** Each row of a column of lines (the setup steps, the cards), where its words stand. */
+    private void addRows(View view, float dx, float dy) {
+        if (view.getVisibility() != VISIBLE || view.getHeight() <= 0) return;
+        if (view instanceof android.widget.LinearLayout
+                && ((android.widget.LinearLayout) view).getOrientation() == android.widget.LinearLayout.VERTICAL) {
+            ViewGroup column = (ViewGroup) view;
+            for (int i = 0; i < column.getChildCount(); i++) {
+                addRows(column.getChildAt(i), dx + view.getLeft(), dy + view.getTop());
+            }
+            return;
+        }
+        words.add(new android.graphics.RectF(dx + view.getLeft(), dy + view.getTop(), dx + view.getRight(),
+                dy + view.getBottom()));
+    }
+
+    private void addWords(View part) {
+        if (part.getVisibility() != VISIBLE || part.getHeight() <= 0) return;
+        words.add(new android.graphics.RectF(part.getLeft(), part.getTop(), part.getRight(), part.getBottom()));
     }
 
     /** Whether ({@code x}, {@code y}) is within {@code margin} of any of the sky's words. */
@@ -162,22 +374,6 @@ final class ScenePage extends LeastColumn {
             }
         }
         return false;
-    }
-
-    /** The sun (or moon) is drawn over this view, which is its button. */
-    void setSunAnchor(View view) {
-        sunAnchor = view;
-    }
-
-    /** Where the horizon is, in this page's coordinates. */
-    float horizonY() {
-        if (horizon != null && horizon.getVisibility() == VISIBLE && horizon.getHeight() > 0) {
-            return top(horizon) + horizon.getHeight() - horizonInset;
-        }
-        if (fallback != null && fallback.getVisibility() == VISIBLE && fallback.getHeight() > 0) {
-            return top(fallback) + fallback.getHeight() + ui.dp(24);
-        }
-        return getHeight() * 0.6f;
     }
 
     private float top(View view) {
@@ -402,10 +598,9 @@ final class ScenePage extends LeastColumn {
 
     /** The board's middle at {@code x}: at {@code rest}, or over the skyline's buildings and flags standing under it. */
     private float overSkyline(float x, float halfWidth, float halfHeight, float gap, float rest) {
-        if (!(horizon instanceof DecisionChartView) || !horizon.isShown() || horizon.getHeight() <= 0) return rest;
-        float chartLeft = left(horizon);
-        float highest = top(horizon) + ((DecisionChartView) horizon).highestWithin(x - halfWidth - gap - chartLeft,
-                x + halfWidth + gap - chartLeft);
+        if (chart == null || shown(chart) <= 0 || chart.getHeight() <= 0) return rest;
+        float chartLeft = left(chart);
+        float highest = top(chart) + chart.highestWithin(x - halfWidth - gap - chartLeft, x + halfWidth + gap - chartLeft);
         return Math.min(rest, highest - gap - halfHeight);
     }
 
