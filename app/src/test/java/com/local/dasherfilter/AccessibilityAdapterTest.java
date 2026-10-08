@@ -653,6 +653,29 @@ public class AccessibilityAdapterTest {
         assertEquals(8, audio().getStreamVolume(AudioManager.STREAM_MUSIC));
     }
 
+    /**
+     * During a delivery (a route stored, its screens read) only Dasher's ring is turned down: spoken directions, Dasher's
+     * own or a map's, share the media stream with whatever else plays, and are never muted (0.5.2).
+     */
+    @Test
+    public void duringADeliveryOnlyDashersRingIsTurnedDownSoSpokenDirectionsPlayOn() {
+        audio().setStreamVolume(AudioManager.STREAM_ALARM, 5, 0);
+        audio().setStreamVolume(AudioManager.STREAM_MUSIC, 8, 0);
+        ActiveRouteStore.save(app, new OfferSnapshot(2500, 10.0, null, 2));
+        show(node("Arrived at store", false));
+        playing(true, AudioAttributes.USAGE_ALARM, AudioAttributes.USAGE_MEDIA,
+                AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE);
+
+        show(offer("$7.90"));
+        assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
+        assertEquals(alarmFloor(), audio().getStreamVolume(AudioManager.STREAM_ALARM));
+        assertFalse("media, spoken directions with it, plays on", audio().isStreamMute(AudioManager.STREAM_MUSIC));
+        assertEquals(8, audio().getStreamVolume(AudioManager.STREAM_MUSIC));
+
+        finishDecline();
+        assertEquals(5, audio().getStreamVolume(AudioManager.STREAM_ALARM));
+    }
+
     @Test
     public void passingAndUnreadableOffersAreNeverSilenced() {
         audio().setStreamVolume(AudioManager.STREAM_ALARM, 5, 0);

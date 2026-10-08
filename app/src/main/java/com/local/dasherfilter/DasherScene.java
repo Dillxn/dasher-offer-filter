@@ -60,13 +60,16 @@ enum DasherScene {
      * A read screen with no sign of an offer on it: a delivery when a route is stored or the screen shows one (that
      * comes first, whatever else the screen shows), waiting when it shows the wait for offers, else unknown. Dasher's
      * question before it ends a dash is not the wait for offers, whatever it is drawn over; navigation alone (its
-     * speed, distances and turns) is neither.
+     * speed, distances and turns) is neither, and neither is navigation over the wait's own words (driving to a zone,
+     * "Zone offer wait" under the turns): nothing of the app's that acts only over the wait (the guide, the chip,
+     * Dasher's own notification tap for an offer it did not draw) ever acts over turn-by-turn directions.
      */
     static DasherScene of(List<String> labels, boolean routeStored) {
         if (labels == null) return UNKNOWN;
         if (showsNewOffer(labels)) return OFFER;
         if (routeStored || showsRoute(labels)) return ROUTE;
         if (showsEndDashQuestion(labels)) return UNKNOWN;
+        if (showsNavigation(labels)) return UNKNOWN;
         if (showsWaiting(labels)) return WAITING;
         return UNKNOWN;
     }

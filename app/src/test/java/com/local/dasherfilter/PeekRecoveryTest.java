@@ -2398,6 +2398,18 @@ public class PeekRecoveryTest {
     }
 
     @Test
+    public void dashersOwnTapIsNeverSentOverTurnByTurnDirectionsToAZone() {
+        // Driving to a zone: Dasher's directions over its wait's own words are not the wait.
+        connect(dasherScreen("US 50 East", "400 ft", "--", "mph", "7 min", "2.4 mi", "Exit", "Finding offers",
+                "Zone offer wait"));
+        dasherEvent();
+        postListed("Taco Bell", false);
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue(log(app), ownTaps.isEmpty());
+        contains(log(app), "Dasher's own notification tap: skipped (Dasher isn't showing its wait for offers)");
+    }
+
+    @Test
     public void withPeekOffTheOfferOnScreenIsLeftToDasher() {
         FilterStore.setPeek(app, false);
         connect(finding());

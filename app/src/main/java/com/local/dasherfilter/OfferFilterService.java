@@ -369,6 +369,12 @@ public final class OfferFilterService extends AccessibilityService {
     private volatile long eventsQueuedAt;
     /** Every event of Dasher's so far: work that is not essential stops at its next step when this changes. */
     private final AtomicLong dasherEvents = new AtomicLong();
+    /**
+     * Every check an offer's notification asked for so far ({@link #requestCheckFromNotification}): a read under way of a
+     * screen with nothing of an offer on it stops at its next call into Dasher when this changes, and the check, first
+     * in the queue, reads the newest screen.
+     */
+    private final AtomicLong offerChecks = new AtomicLong();
     /** Every window change so far (not content changes or clicks): a read waiting for Dasher's question stops on it. */
     private final AtomicLong windowChanges = new AtomicLong();
     /**
@@ -680,6 +686,8 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean confirmPollPending;
     /** Dasher's events as the last read began: a poll reads when they, or the windows, changed since. */
     private long lastReadEvents = -1;
+    /** The offer notifications' checks as this read began ({@link #offerChecks}). */
+    private long readOfferChecks;
     /** A read is due {@link #CONFIRM_RETRY_MS} after the last try at Dasher's question. */
     private boolean confirmRetryPending;
     /** Whether this read showed a question about declining (taken for the declined offer's or not). */
@@ -1594,6 +1602,8 @@ public final class OfferFilterService extends AccessibilityService {
         OfferFilterService service = active;
         if (service == null) return;
         long at = SystemClock.uptimeMillis();
+        // Before it is queued: a read under way of a screen with nothing of an offer stops for it at its next node.
+        service.offerChecks.incrementAndGet();
         service.scanner.postAtFrontOfQueue(() -> {
             if (service.stopped) return;
             // Perhaps an offer: for the next moments nothing is held back on the read budget, and Dasher's slowness
@@ -5758,6 +5768,7 @@ public final class OfferFilterService extends AccessibilityService {
         readRootNanos = 0;
         readTraversalNanos = 0;
         lastReadEvents = dasherEvents.get();
+        readOfferChecks = offerChecks.get();
         readWindowChanges = windowChanges.get();
         readTrigger = trigger;
         readWaitedMs = Math.max(0, started - eventAt);
@@ -6442,9 +6453,9 @@ public final class OfferFilterService extends AccessibilityService {
             onMainFirst(syncWatch);
         }
         boolean quiet = declining && mayQuiet() && FilterStore.silenceWhileDeclining(this);
-        // During a peek only Dasher's ring is turned down (the alarm stream): the app the user was in, a map's spoken
-        // directions say, plays on media.
-        if (quiet) silencer.start(peeking, firstTapAt);
+        // During a peek, a delivery or turn-by-turn navigation only Dasher's ring is turned down (the alarm stream):
+        // the app the user was in, and spoken directions (Dasher's own or a map's), play on media.
+        if (quiet) silencer.start(peeking || deliveryCalm, firstTapAt);
         else silencer.stop();
     }
 
@@ -6515,16 +6526,19 @@ public final class OfferFilterService extends AccessibilityService {
         // own window, perhaps): the read for that change, first in the queue, reads the new window at once. A few in a
         // row at most, so a stream of window changes cannot keep every read from finishing.
         BooleanSupplier stop = null;
+        long checks = readOfferChecks;
         if ("acceptance observation".equals(readTrigger)) {
             long events = lastReadEvents;
             long changes = readWindowChanges;
-            stop = () -> dasherEvents.get() != events || windowChanges.get() != changes;
+            stop = () -> dasherEvents.get() != events || windowChanges.get() != changes || offerChecks.get() != checks;
         } else if (awaitingConfirmation(now) && cutReads < MAX_CUT_READS) {
             long changes = readWindowChanges;
             stop = () -> windowChanges.get() != changes;
         } else if (!busyPublished && cutReads < MAX_CUT_READS) {
+            // Nothing of an offer up: this read yields to an event of Dasher's put first in the queue, and to an offer's
+            // notification asking for a check (MAX_CUT_READS in a row at most).
             long events = lastReadEvents;
-            stop = () -> dasherEvents.get() != events && queued.get() == QUEUED_FRONT;
+            stop = () -> (dasherEvents.get() != events && queued.get() == QUEUED_FRONT) || offerChecks.get() != checks;
         }
         Scan scan = read(root, readCap, stop);
         if ("acceptance observation".equals(readTrigger) && (stopped || !Consent.accepted(this)
@@ -6544,8 +6558,11 @@ public final class OfferFilterService extends AccessibilityService {
             declineError.notBlank();
             cutReads++;
             readSkipped = true;
-            DiagnosticLog.log(this, "scan", "read cut short by a window change while the question is awaited, after "
-                    + scan.visited + " nodes, " + (SystemClock.uptimeMillis() - now) + " ms");
+            String why = offerChecks.get() != readOfferChecks ? "for an offer's notification"
+                    : awaitingConfirmation(now) ? "by a window change while the question is awaited"
+                    : "by a newer event of Dasher's";
+            DiagnosticLog.log(this, "scan", "read cut short " + why + ", after " + scan.visited + " nodes, "
+                    + (SystemClock.uptimeMillis() - now) + " ms");
             return true;
         }
         cutReads = 0;
@@ -7893,6 +7910,9 @@ public final class OfferFilterService extends AccessibilityService {
             if (retryAt >= 0) scanner.postAtTime(declineRetry, retryAt);
             DiagnosticLog.log(this, "accessibility", "first-step Decline REQUESTED: " + detail
                     + "; read after " + readTrigger + " (waited " + ReadLoad.ms(readWaitedMs) + ")"
+                    + (readWaitedMs > 0 && lastReadDurationMs > 0 ? "; the read before: " + lastCompletedTrigger
+                            + ", " + ReadLoad.ms(lastReadDurationMs) : "")
+                    + "; tapped " + ReadLoad.ms(tappedAt - currentReadStartedAt) + " into its read"
                     + "; sound playing: " + OfferSilencer.playing(this));
             status("Decline requested: " + detail + "\n" + decision.summary());
         } else {

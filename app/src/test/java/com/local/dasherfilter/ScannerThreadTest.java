@@ -1258,6 +1258,53 @@ public class ScannerThreadTest {
                 + "awaited, after "));
     }
 
+    /**
+     * The owner's report of 7 October 2026: offers were read 0.5 to 1.2 s after their notification asked for a check
+     * ("read after check (waited 1158 ms)"), the check queued behind a read of the wait for offers that nothing broke
+     * off while Dasher, drawing the offer, answered slowly. An offer's notification now cuts such a read at its next
+     * node, and the check reads the offer at once.
+     */
+    @Test
+    public void anOffersNotificationCutsAReadOfTheWaitForOffersUnderWay() throws Exception {
+        OfferFilterService service = service(false);
+        AccessibilityNodeInfo waiting = idle();
+        for (int i = 0; i < 40; i++) Shadows.shadowOf(waiting).addChild(node("Row " + i, false));
+        show(service, waiting);
+        pass(service, 1_000);
+
+        // Dasher's wait for offers changes and is read again, Dasher answering 50 ms a node as it draws.
+        CountDownLatch reading = new CountDownLatch(1);
+        OfferFilterService.nodeFetchForTests = () -> {
+            reading.countDown();
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED));
+        assertTrue(reading.await(2, TimeUnit.SECONDS));
+
+        // The offer is drawn, and its notification asks for a check.
+        AccessibilityNodeInfo shown = offer("$7.90");
+        AtomicLong tappedAt = new AtomicLong();
+        Shadows.shadowOf(decline).setOnPerformActionListener((action, args) -> {
+            tappedAt.set(System.nanoTime());
+            return true;
+        });
+        dasherShows(service, shown);
+        long askedAt = System.nanoTime();
+        OfferFilterService.requestCheckFromNotification();
+        settle(service);
+
+        assertTrue("declined", tappedAt.get() != 0);
+        long tappedMs = (tappedAt.get() - askedAt) / 1_000_000L;
+        System.out.println("offer tapped " + tappedMs + " ms after its notification's check");
+        // Before, the read of the wait went on node by node (about 2 s), then the offer was read.
+        assertTrue("tapped " + tappedMs + " ms after the check was asked for", tappedMs < 1_000);
+        assertEquals(1, count(DiagnosticLog.read(app), "[scan] read cut short for an offer's notification, after "));
+    }
+
     @Test
     public void whileItsQuestionIsAwaitedTheOffersWindowIsReadOnceARead() {
         OfferFilterService service = service(true);

@@ -74,9 +74,11 @@ final class PersonalText {
             if (words.length() > 0) words.append('|');
             words.append(Pattern.quote(marker).replace(" ", "\\E[\\p{Z}\\s]+\\Q"));
         }
-        // A few spellings of the same words: plurals, "Dasher Direct", "Exp date", "Valid through".
+        // A few spellings of the same words: plurals, "Dasher Direct", "Exp date", "Valid through". "Earnings" is an
+        // earnings page's, never the "Earnings Mode" switch nor every offer card's own "Guaranteed earnings for
+        // completing the offer." (0.5.1's report: each offer screen was dropped as a payment one).
         words.append("|dasher[\\p{Z}\\s]*direct|exp\\.?[\\p{Z}\\s]+date|valid[\\p{Z}\\s]+through|taxes|balances"
-                + "|payouts|wallets|earnings(?![\\p{Z}\\s]+mode\\b)");
+                + "|payouts|wallets|earnings(?![\\p{Z}\\s]+(?:mode|for[\\p{Z}\\s]+completing)\\b)");
         return Pattern.compile("(?<![\\p{L}\\d])(?i:" + words + ")(?![\\p{L}\\d])"
                 + "|(?<![\\w$.,/#-])1099(?:-[A-Za-z]{1,4})?(?![\\w.,/]|-\\d| [\\p{Lu}\\d])");
     }
@@ -382,9 +384,11 @@ final class PersonalText {
         out = CARD_VALUE.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(CARD));
         if (!wholeLabel) out = CARD_VALUE_ITEM.matcher(out).replaceAll("$1$2$3" + Matcher.quoteReplacement(CARD));
         out = PHONE_NUMBER.matcher(out).replaceAll(Matcher.quoteReplacement(PHONE));
+        // The house and street before the town: a town's pattern takes a street's last words for a town ("53 East 4th
+        // Street, 45202 OH", a store's address on Dasher's offer card, kept "53 East 4th").
+        out = HOUSE_AND_STREET.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = CITY_STATE_ZIP.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = CITY_ZIP_STATE.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
-        out = HOUSE_AND_STREET.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = UNIT.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(ADDRESS));
         if (navigation) {
             out = (wholeLabel ? NAVIGATION_STREET_LABEL : NAVIGATION_STREET_ITEM).matcher(out)

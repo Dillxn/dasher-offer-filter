@@ -9,6 +9,17 @@ import org.junit.Test;
 
 /** What the tab and guide over Dasher make of a screen with no sign of an offer on it. */
 public class DasherSceneTest {
+    /**
+     * Driving to a zone, Dasher's turn-by-turn directions over its wait's own words are not the wait: nothing that acts
+     * only over the wait (the guide, the chip, Dasher's own notification tap) ever acts over directions (0.5.2).
+     */
+    @Test public void navigationOverTheWaitsWordsIsNotTheWait() {
+        assertEquals(DasherScene.WAITING, of(false, "Finding offers", "Zone offer wait", "1-2 min"));
+        assertEquals(DasherScene.UNKNOWN, of(false, "US 50 East", "400 ft", "--", "mph", "7 min", "2.4 mi",
+                "Exit", "Finding offers", "Zone offer wait", "1-2 min"));
+        assertEquals(DasherScene.UNKNOWN, of(false, "Turn left onto Elm Rd", "300 ft", "Finding offers"));
+    }
+
     @Test public void capturedInDashControlsProveWaitingOnlyTogetherAndWithoutCompetingScreens() {
         assertTrue(OfferEvidence.isIdle(Arrays.asList("This dash", "$0.00", "Dash Preferences", "Safety tools")));
         assertEquals(DasherScene.WAITING, of(false, "This dash", "Dash Preferences", "Safety tools"));
