@@ -270,6 +270,11 @@ abstract class AndroidAdapterTestBase {
         return false;
     }
 
+    /** A tap at ({@code x}, {@code y}) in the constellation's own pixels, through the page it stands in. */
+    static void tapStar(MinimumsStarView star, float x, float y) {
+        tap((ViewGroup) star.getParent(), star.getLeft() + x, star.getTop() + y);
+    }
+
     /** A finger down and up at ({@code x}, {@code y}) in {@code parent}, as the screen delivers it. */
     static void tap(ViewGroup parent, float x, float y) {
         long now = android.os.SystemClock.uptimeMillis();

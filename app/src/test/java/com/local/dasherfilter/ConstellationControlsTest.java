@@ -91,11 +91,11 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertTrue("the scene keeps its clouds and stars off it", containsPoint(icons, badge.centerX(),
                     badge.centerY()));
 
-            tap(sky, badge.centerX(), badge.centerY());
+            tapStar(star, badge.centerX(), badge.centerY());
             assertEquals("off to 2 stops (one order)", 2, FilterStore.load(app).maxStops);
             assertEquals("≤2", star.stopsWords());
             assertEquals("Max stops, 2", star.lastSaid());
-            tap(sky, star.stopsBox().centerX(), star.stopsBox().centerY());
+            tapStar(star, star.stopsBox().centerX(), star.stopsBox().centerY());
             assertEquals(3, FilterStore.load(app).maxStops);
             FilterSettings saved = FilterStore.load(app);
             assertTrue("still on", saved.enabled);
@@ -107,7 +107,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             settleSky(content);
             assertEquals("≤10", star.stopsWords());
-            tap(sky, star.stopsBox().centerX(), star.stopsBox().centerY());
+            tapStar(star, star.stopsBox().centerX(), star.stopsBox().centerY());
             assertEquals(0, FilterStore.load(app).maxStops);
             assertEquals("≤∞", star.stopsWords());
         }
@@ -184,7 +184,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNotNull("with no rule, the start line", shownTextContaining(content, MainActivity.START_LINE));
             MinimumsStarView star = find(content, MinimumsStarView.class);
             RectF badge = star.stopsBox();
-            tap((ViewGroup) star.getParent(), badge.centerX(), badge.centerY());
+            tapStar(star, badge.centerX(), badge.centerY());
             FilterSettings saved = FilterStore.load(app);
             assertEquals(2, saved.maxStops);
             assertFalse(saved.enabled);
@@ -227,7 +227,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNull(node(star, MinimumsStarView.ADAPTIVE_ID));
 
             // Off: a tap asks for the goal first, and asking changes nothing.
-            tap(sky, button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull("the goal chooser", chooser);
             assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
@@ -252,7 +252,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a tier, acceptance rate 50 percent "
                     + "or more.", node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
             button = star.autopilotBox();
-            tap(sky, button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             FilterSettings off = FilterStore.load(app);
             assertFalse(off.autopilot);
             assertEquals(100, off.minimumScalePercent);
@@ -294,7 +294,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
                 assertFalse("clear of the setup line " + box + " / " + button, RectF.intersects(box, button));
             }
             ShadowAlertDialog.reset();
-            tap((ViewGroup) star.getParent(), button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             assertEquals("the button takes its own taps there", AutopilotText.CHOOSER_TITLE,
                     Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).getTitle().toString());
         }
@@ -312,7 +312,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
 
             // Held: the chooser, with the stored goal checked; Not now leaves everything, and the lift is no tap.
             ShadowAlertDialog.reset();
-            hold(sky, star.autopilotBox());
+            hold(star, star.autopilotBox());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(chooser);
             assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
@@ -325,7 +325,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
 
             // Held again: pay first, while it stays on.
             settleSky(content);
-            hold(sky, star.autopilotBox());
+            hold(star, star.autopilotBox());
             chooser = ShadowAlertDialog.getLatestAlertDialog();
             Shadows.shadowOf(chooser).clickOnItem(2);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
@@ -341,6 +341,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             RectF button = star.autopilotBox();
             ShadowAlertDialog.reset();
             long now = android.os.SystemClock.uptimeMillis();
+            button.offset(star.getLeft(), star.getTop());
             sky.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, button.centerX(),
                     button.centerY(), 0));
             for (int step = 1; step <= 6; step++) {
@@ -461,11 +462,12 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
         }
     }
 
-    /** A finger held on {@code box} past Android's long-press time, then lifted. */
-    private static void hold(ViewGroup sky, RectF box) {
+    /** A finger held on {@code box} (in {@code star}'s pixels) past Android's long-press time, then lifted. */
+    private static void hold(MinimumsStarView star, RectF box) {
+        ViewGroup sky = (ViewGroup) star.getParent();
         long now = android.os.SystemClock.uptimeMillis();
-        float x = box.centerX();
-        float y = box.centerY();
+        float x = star.getLeft() + box.centerX();
+        float y = star.getTop() + box.centerY();
         sky.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0));
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(
                 Duration.ofMillis(ViewConfiguration.getLongPressTimeout() + 100));

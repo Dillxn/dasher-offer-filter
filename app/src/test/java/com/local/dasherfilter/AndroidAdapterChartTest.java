@@ -264,7 +264,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertFalse("a tap on the mascot pauses", FilterStore.load(app).enabled);
             assertFalse(settingsShown(content));
 
-            tap(sky, middleX, middleY);
+            tapStar(star, middleX, middleY);
             assertFalse("a tap on the constellation is the constellation's: it does not resume",
                     FilterStore.load(app).enabled);
             assertFalse("and opens no page", settingsShown(content));
@@ -624,11 +624,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // A tap on the circle away from the knobs and the offer's shape, and a tap on a knob, open nothing (the
             // minimums are all here) and set nothing.
             ViewGroup sky = (ViewGroup) star.getParent();
-            tap(sky, middle[0] + star.skyRadius() * 0.85f, middle[1]);
+            tapStar(star, middle[0] + star.skyRadius() * 0.85f, middle[1]);
             assertFalse(settingsShown(content));
             settleSky(content);
             float[] pay = star.knobAt(0);
-            tap(sky, pay[0], pay[1]);
+            tapStar(star, pay[0], pay[1]);
             assertFalse(settingsShown(content));
             assertEquals("a tap sets nothing", 1000, FilterStore.load(app).flatCents);
         }
@@ -753,7 +753,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
             // While off, its tap asks for the goal; one tap on a goal turns Autopilot on with it.
             ViewGroup sky = (ViewGroup) star.getParent();
-            tap(sky, button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(chooser);
             assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
@@ -772,7 +772,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // While on, its tap turns it off, back to exactly the minimums.
             settleSky(content);
             button = star.autopilotBox();
-            tap(sky, button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             FilterSettings off = FilterStore.load(app);
             assertFalse(off.autopilot);
             assertEquals(100, off.minimumScalePercent);
@@ -996,7 +996,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("beside the word, not under it: " + knob[0] + " / " + wordLeft + "+" + paused.getWidth(),
                     knob[0] > wordLeft + paused.getWidth());
 
-            tap(sky, knob[0], knob[1]);
+            tapStar(star, knob[0], knob[1]);
             assertFalse("a tap on the knob does not resume", FilterStore.load(app).enabled);
             assertFalse("and opens no page", settingsShown(content));
             settleSky(content);
@@ -1090,7 +1090,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             ShadowAlertDialog.reset();
             android.graphics.RectF button = star.autopilotBox();
             assertNotNull(button);
-            tap((ViewGroup) star.getParent(), button.centerX(), button.centerY());
+            tapStar(star, button.centerX(), button.centerY());
             assertEquals("Set a pay, per-mile or hourly minimum first.", ShadowToast.getTextOfLatestToast());
             assertNull("no chooser", ShadowAlertDialog.getLatestAlertDialog());
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));

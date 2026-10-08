@@ -294,7 +294,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
             // A tap turns it off: "Auto" over "Off", offers judged at exactly the minimums again.
             RectF box = star.autopilotBox();
-            tap((ViewGroup) star.getParent(), box.centerX(), box.centerY());
+            tapStar(star, box.centerX(), box.centerY());
             settleSky(content);
             drawn = drawnWords(star);
             assertTrue(drawn.toString(), drawn.contains(AutopilotText.BUTTON_TITLE) && drawn.contains("Off"));
@@ -322,7 +322,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             RectF box = star.autopilotBox();
-            tap((ViewGroup) star.getParent(), box.centerX(), box.centerY());
+            tapStar(star, box.centerX(), box.centerY());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull("the goal chooser", chooser);
             assertOwnsItsTouches(chooser);
@@ -365,11 +365,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
             // Off, then on again with pay first.
             box = star.autopilotBox();
-            tap((ViewGroup) star.getParent(), box.centerX(), box.centerY());
+            tapStar(star, box.centerX(), box.centerY());
             assertFalse(FilterStore.load(app).autopilot);
             settleSky(content);
             box = star.autopilotBox();
-            tap((ViewGroup) star.getParent(), box.centerX(), box.centerY());
+            tapStar(star, box.centerX(), box.centerY());
             chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("the stored goal is checked now", 1, chooser.getListView().getCheckedItemPosition());
             Shadows.shadowOf(chooser).clickOnItem(2);
