@@ -119,6 +119,7 @@ public class PeekTest {
         if (screen != null) screen.destroy();
         OfferFilterService.scanLooperForTests = null;
         OfferFilterService.forgetScreenState();
+        DasherSplit.forget();
     }
 
     // ---- The phone ----
@@ -787,6 +788,36 @@ public class PeekTest {
         ConsentedTestApp.forget(app);
         notPeeked("the notice isn't accepted yet");
         assertTrue("nothing decided", DecisionLog.recent(app, 10).isEmpty());
+    }
+
+    /** The user's tap on Split, refused, recent apps opened over the page (a plain activity stands in for it). */
+    private void splitTapWaitingInRecentApps() {
+        DasherSplit.split = () -> false;
+        DasherSplit.recents = () -> true;
+        android.app.Activity page = Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        DasherSplit.start(page, said -> { });
+        DasherSplit.paused(page);
+        assertTrue("the tap waits for the split", DasherSplit.pending());
+    }
+
+    @Test
+    public void notWhileASplitIsBeingSetUpInRecentApps() {
+        // Recent apps are the home app's window: the split is being made there.
+        connect(app(LAUNCHER));
+        splitTapWaitingInRecentApps();
+        notPeeked(OfferFilterService.SPLIT_SETUP);
+        assertEquals("its card, as today", 1, cards());
+    }
+
+    @Test
+    public void recentAppsLeftForAnotherAppWithoutASplitNoLongerHoldBackThePeek() {
+        // The user left recent apps for the map without splitting: the tap is over, and the offer is peeked at.
+        connect(app(MAPS));
+        splitTapWaitingInRecentApps();
+        post("Taco Bell");
+        dasherOpened();
+        contains(log(app), "[split] left recent apps for a navigation app without a split: the tap is over");
+        assertFalse(DasherSplit.pending());
     }
 
     @Test

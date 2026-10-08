@@ -1533,6 +1533,29 @@ public final class OfferFilterService extends AccessibilityService {
         return onScreen;
     }
 
+    /** Why a peek waits while the user's tap on Split is still waiting for the screen to split. */
+    static final String SPLIT_SETUP = "a split screen with Dasher is being set up";
+
+    /**
+     * Whether this phone lists Android's split action for accessibility services (Android 11 and later can say):
+     * from Android 15 the action is SystemUI's to offer, and a phone that lists none refuses every request for it.
+     * Null when Android cannot say.
+     */
+    static Boolean splitActionListed() {
+        OfferFilterService service = active;
+        if (service == null || Build.VERSION.SDK_INT < 30) return null;
+        try {
+            List<AccessibilityNodeInfo.AccessibilityAction> actions = service.getSystemActions();
+            if (actions == null || actions.isEmpty()) return null;
+            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                if (action.getId() == GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN) return true;
+            }
+            return false;
+        } catch (RuntimeException unknown) {
+            return null;
+        }
+    }
+
     /**
      * At the user's tap on Split with Dasher: asks Android to split the screen, as its own Split screen accessibility
      * shortcut does. Never called otherwise.
@@ -4006,7 +4029,7 @@ public final class OfferFilterService extends AccessibilityService {
                 phone = phoneRefusal();
                 why = phone;
             }
-            if (why == null) why = busyRefusal(now);
+            if (why == null) why = busyRefusal(now, false);
             if (why == null && screen.dasherReadable) why = "Dasher is on screen";
             // The user opened Dasher from one of our cards (its launch may still be coming): never a peek over that.
             if (why == null && (cardOpen != null || ownFirstTag != null
@@ -4026,6 +4049,12 @@ public final class OfferFilterService extends AccessibilityService {
                 if (why == null) {
                     front = front(look);
                     why = frontRefusal(front, look);
+                }
+                // A split is made in recent apps (the home app's window in front) or over this app's own screen;
+                // another app full screen in front means recent apps were left for it without one: the tap is over.
+                if (why == null && DasherSplit.pending()) {
+                    if (front.back == Peek.Back.APP) DasherSplit.abandon(this, front.kind());
+                    else why = SPLIT_SETUP;
                 }
             }
             ComponentName dasher = why == null ? launcher(DASHER_PACKAGE) : null;
@@ -4161,9 +4190,17 @@ public final class OfferFilterService extends AccessibilityService {
      * installing, a takeover in force, or an acceptance (or Accept tap) seen lately.
      */
     private String busyRefusal(long now) {
+        return busyRefusal(now, true);
+    }
+
+    /**
+     * @param split whether a split with Dasher still being set up refuses here; a peek's start judges it by the app
+     *     in front instead ({@link #startPeek})
+     */
+    private String busyRefusal(long now, boolean split) {
         String device = deviceRefusal();
         if (device != null) return device;
-        if (DasherSplit.pending()) return "a split screen with Dasher is being set up";
+        if (split && DasherSplit.pending()) return SPLIT_SETUP;
         if (Updater.installing(this)) return "an update is installing";
         long uptime = SystemClock.uptimeMillis();
         if (takeover != Takeover.NONE && uptime - takeover.at < TAKEOVER_MS) {
@@ -5621,7 +5658,7 @@ public final class OfferFilterService extends AccessibilityService {
         else if (pausedNow()) why = "auto-decline was paused";
         if (why == null) why = phoneRefusal();
         if (why == null) why = deviceRefusal();
-        if (why == null && DasherSplit.pending()) why = "a split screen with Dasher is being set up";
+        if (why == null && DasherSplit.pending()) why = SPLIT_SETUP;
         if (why == null && Updater.installing(this)) why = "an update is installing";
         // A touch while Dasher opened, before the lock, not judged yet (Dasher was not seen up): never forgiven.
         if (why == null && peek.phase() == Peek.Phase.OPENING && peekActions.get() != peek.actions()) {

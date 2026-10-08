@@ -189,6 +189,64 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * The owner's report of 7 October 2026: the tap was refused, recent apps opened, the user went back to Offer Filter
+     * without a split, and an offer 37 s after the tap got no peek ("a split screen with Dasher is being set up").
+     * Back on the page not split, the tap is over: no split is waited for, and a split made by hand later opens
+     * nothing by itself.
+     */
+    @Test
+    public void backOnThePageWithoutASplitTheTapIsOver() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.split = () -> false;
+        DasherSplit.recents = () -> true;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            assertTrue("the tap waits for the split", DasherSplit.pending());
+            // Recent apps over the page, then back on it, still full screen.
+            activity.pause();
+            pass(10_000);
+            assertTrue("in recent apps the tap still waits", DasherSplit.pending());
+            activity.resume();
+            idle();
+            assertFalse("back on the page without a split, nothing waits", DasherSplit.pending());
+            contains(DiagnosticLog.read(app), "[split] back on Offer Filter without a split: the tap is over");
+            while (Shadows.shadowOf(app).getNextStartedActivity() != null) { /* Nothing of the tap's. */ }
+            enterSplit(activity);
+            idle();
+            assertNull("a split made later opens nothing by itself", Shadows.shadowOf(app).getNextStartedActivity());
+        } finally {
+            service.destroy();
+        }
+    }
+
+    @Test
+    public void aSplitMadeInRecentAppsStillOpensDasherBeside() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.split = () -> false;
+        DasherSplit.recents = () -> true;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            activity.pause();
+            pass(5_000);
+            // "Open in split screen view" on Offer Filter's card: the page comes back in its half of the split.
+            Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
+            activity.resume();
+            idle();
+            assertTrue(launchesDasherBeside(Shadows.shadowOf(app).getNextStartedActivity()));
+            assertNull("once", Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+        } finally {
+            service.destroy();
+        }
+    }
+
     @Test
     public void aSplitWithinTheCheckOpensDasherOnceAndNoRecentApps() {
         dasherInstalled();

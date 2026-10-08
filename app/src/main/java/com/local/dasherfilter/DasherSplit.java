@@ -60,6 +60,11 @@ final class DasherSplit {
     private static volatile long requestedAt;
     /** How long that tap waits for the split. */
     private static volatile long waitMs = PENDING_MS;
+    /**
+     * Offer Filter's screen was left since that tap (recent apps over it): back on it not split, no split was made
+     * there, and the tap is over ({@link #resumed}), so Peek may bring Dasher up again at once.
+     */
+    private static volatile boolean away;
     /** The look {@link #VERIFY_MS} after a request Android took, while it is due. Main thread only. */
     private static Handler verifier;
     private static Runnable verify;
@@ -245,12 +250,16 @@ final class DasherSplit {
         }
         requestedAt = SystemClock.uptimeMillis();
         waitMs = PENDING_MS;
+        away = false;
         if (split.getAsBoolean()) {
             log(activity, "tap: Android took the split request; looking again in " + VERIFY_MS + " ms");
             verifyLater(activity, later);
             return null;
         }
-        log(activity, "tap: Android refused the split request");
+        // From Android 15 the split action is SystemUI's to offer, and many phones offer none: say so when Android can.
+        log(activity, "tap: Android refused the split request"
+                + (Boolean.FALSE.equals(OfferFilterService.splitActionListed())
+                        ? " (this phone lists no split action for apps)" : ""));
         return byHand(activity);
     }
 
@@ -293,6 +302,19 @@ final class DasherSplit {
         requestedAt = 0;
         log(activity, "Android refused to open recent apps");
         return RECENTS_REFUSED;
+    }
+
+    /**
+     * Another app came up full screen in front while a tap waited (any thread, as a peek looks): recent apps were
+     * left for it without a split, and the tap is over.
+     *
+     * @param front what that app is, in words that never name it ("another app", "a navigation app")
+     */
+    static void abandon(Context context, String front) {
+        if (!pending()) return;
+        requestedAt = 0;
+        away = false;
+        log(context, "left recent apps for " + front + " without a split: the tap is over");
     }
 
     /** "pixel", "samsung" or "other": the phone's maker, for words that match what its recent apps show. */
@@ -359,6 +381,7 @@ final class DasherSplit {
      * took may have opened recent apps itself, so the tap then waits as long as one made from recent apps.
      */
     static void paused(Activity activity) {
+        if (requestedAt != 0) away = true;
         if (verify == null) return;
         cancelVerify();
         if (requestedAt != 0) {
@@ -370,7 +393,20 @@ final class DasherSplit {
 
     /** Once the screen is split after a tap, Dasher opens in the other half; a late or unasked split opens nothing. */
     static void resumed(Activity activity) {
-        if (requestedAt == 0 || !activity.isInMultiWindowMode()) return;
+        if (requestedAt == 0) return;
+        if (!activity.isInMultiWindowMode()) {
+            // Back on this screen full screen after leaving it (recent apps): no split was made there. The tap is
+            // over, so Peek may bring Dasher up again at once; a split made by hand later opens nothing (the button,
+            // "Put Dasher beside" by then, does). The owner's report of 7 October 2026: an offer 37 s after a refused
+            // tap got no peek, the user long back on this screen.
+            if (!away) return;
+            boolean waiting = pending();
+            requestedAt = 0;
+            away = false;
+            if (waiting) log(activity, "back on " + AppName.NAME + " without a split: the tap is over");
+            return;
+        }
+        away = false;
         cancelVerify();
         if (floating(activity)) {
             requestedAt = 0;
@@ -424,6 +460,7 @@ final class DasherSplit {
     static void forget() {
         cancelVerify();
         requestedAt = 0;
+        away = false;
         loggedSplit = null;
         split = OfferFilterService::splitScreen;
         recents = OfferFilterService::openRecents;
