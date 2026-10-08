@@ -53,6 +53,8 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
             + "to $16.20.";
 
     private long grewAt;
+    /** Midday now, whatever hour the suite runs at, so the offers' days are the same days ({@link MiddayZone}). */
+    private MiddayZone zone;
 
     @Before public void grown() {
         AutopilotRuntime.forgetCache();
@@ -64,6 +66,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         // The typical minimums, set three days ago; Autopilot on at 108%; 30 offers it judged at 108% since, over two
         // days; then its commit at a safe point (as the screen reader makes it) grows them.
         long wall = System.currentTimeMillis();
+        zone = new MiddayZone(wall);
         FilterStore.wallClock = () -> wall - 3 * 24 * HOUR;
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
         FilterStore.wallClock = System::currentTimeMillis;
@@ -82,6 +85,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     }
 
     @After public void plansOnTheirOwnThread() {
+        if (zone != null) zone.restore();
         RuntimeEnvironment.setFontScale(1f);
         FilterStore.wallClock = System::currentTimeMillis;
         AutopilotRuntime.executorForTests = null;

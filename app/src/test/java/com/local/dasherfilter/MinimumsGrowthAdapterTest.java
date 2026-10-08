@@ -76,6 +76,8 @@ public final class MinimumsGrowthAdapterTest {
     private final List<String> unsafe = new CopyOnWriteArrayList<>();
     private boolean offerUp;
     private long offerGone = Long.MIN_VALUE / 2;
+    /** Midday now, whatever hour the suite runs at, so the offers' days are the same days ({@link MiddayZone}). */
+    private MiddayZone zone;
 
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
@@ -98,6 +100,7 @@ public final class MinimumsGrowthAdapterTest {
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         // The typical minimums, set three days ago; Autopilot on at 108%.
         long wall = System.currentTimeMillis();
+        zone = new MiddayZone(wall);
         FilterStore.wallClock = () -> wall - 3 * 24 * HOUR;
         FilterStore.save(app, STARTER);
         FilterStore.wallClock = System::currentTimeMillis;
@@ -120,6 +123,7 @@ public final class MinimumsGrowthAdapterTest {
     }
 
     @After public void tearDown() {
+        if (zone != null) zone.restore();
         AutopilotRuntime.beforeWriteForTests = null;
         FilterStore.wallClock = System::currentTimeMillis;
         if (controller != null) controller.destroy();

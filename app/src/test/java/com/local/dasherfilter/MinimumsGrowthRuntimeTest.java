@@ -40,6 +40,8 @@ public class MinimumsGrowthRuntimeTest {
 
     private Application app;
     private long wall;
+    /** Midday now, whatever hour the suite runs at, so the offers' days are the same days ({@link MiddayZone}). */
+    private MiddayZone zone;
     private long elapsed;
     private long since;
     private int requests;
@@ -47,6 +49,7 @@ public class MinimumsGrowthRuntimeTest {
     @Before public void setUp() {
         app = RuntimeEnvironment.getApplication();
         wall = System.currentTimeMillis();
+        zone = new MiddayZone(wall);
         elapsed = 90_000_000L;
         since = wall - 3 * 24 * HOUR;
         AutopilotRuntime.wallClock = () -> wall;
@@ -71,6 +74,7 @@ public class MinimumsGrowthRuntimeTest {
     }
 
     @After public void tearDown() {
+        zone.restore();
         AutopilotRuntime.forgetCache();
         AutopilotRuntime.beforeWriteForTests = null;
         AutopilotRuntime.wallClock = System::currentTimeMillis;
