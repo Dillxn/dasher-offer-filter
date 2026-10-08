@@ -2302,4 +2302,109 @@ public class PeekRecoveryTest {
         }
         assertNull("a peek the lock held never counts as empty at its deadline", Peek.pausedWhy(app));
     }
+
+    // ---- Dasher on screen, and an offer it never draws (the owner, 7 October 2026, in split screen) ----
+
+    /** Offer Filter's own half above (the one the user last touched), Dasher's below showing {@code dasher}. */
+    private void splitBesideOfferFilter(AccessibilityNodeInfo dasher) {
+        OfferFilterService service = screen.get();
+        AccessibilityNodeInfo ours = node(app.getPackageName(), "Offer Filter", false);
+        Shadows.shadowOf(service).setWindows(Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, dasher, false, BOTTOM_HALF)));
+        Shadows.shadowOf(service).setRootInActiveWindow(ours);
+    }
+
+    /**
+     * "an offer just dinged in split screen mode but the dd app never showed the offer", "just said finding offers":
+     * with Dasher on screen no peek is due, so nothing brought the offer up. Now Dasher's own notification tap is sent
+     * once, 5 s after the post, when Dasher's half still shows its wait for offers and none of the offer.
+     */
+    @Test
+    public void anOfferDasherBesideNeverDrawsGetsDashersOwnTapOnceAndNoLaunch() {
+        connect(app(OTHER));
+        splitBesideOfferFilter(finding());
+        dasherEvent();
+        StatusBarNotification source = postListed("Taco Bell", false);
+        contains(log(app), "[peek] skipped: Dasher is on screen");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS - 300);
+        assertTrue("Dasher has its moment to draw the offer: " + log(app), ownTaps.isEmpty());
+        pass(600);
+        assertEquals("Dasher's own notification tap, once: " + log(app), 1, ownTaps.size());
+        assertEquals(source.getNotification().contentIntent, ownTaps.get(0));
+        contains(log(app), "[alert] on screen: Dasher showed none of the offer 5.");
+        contains(log(app), "Dasher's own notification tap: requested (split screen)");
+        assertNull("Dasher is never launched over the split", started());
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS * 3);
+        assertEquals("never twice", 1, ownTaps.size());
+    }
+
+    @Test
+    public void anOfferDasherInFrontNeverDrawsGetsDashersOwnTapOnce() {
+        connect(finding());
+        dasherEvent();
+        postListed("Taco Bell", false);
+        contains(log(app), "[peek] skipped: Dasher is on screen");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertEquals("Dasher's own notification tap, once: " + log(app), 1, ownTaps.size());
+        assertFalse(log(app), log(app).contains("requested (split screen)"));
+        assertNull(started());
+    }
+
+    @Test
+    public void anOfferDasherOnScreenDrawsInTimeNeedsNoTapOfItsOwn() {
+        connect(app(OTHER));
+        splitBesideOfferFilter(finding());
+        dasherEvent();
+        postListed("Taco Bell", false);
+        pass(2_000);
+        splitBesideOfferFilter(offer("$25.00"));
+        dasherEvent();
+        // Back to the wait once the offer went: never a tap for the offer already read.
+        pass(1_000);
+        splitBesideOfferFilter(finding());
+        dasherEvent();
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS * 2);
+        assertTrue(log(app), ownTaps.isEmpty());
+        assertFalse(log(app), log(app).contains("[alert] on screen:"));
+    }
+
+    @Test
+    public void dashersOwnTapIsNeverSentOverAnotherOfDashersScreensOrAfterTheUsersTap() {
+        // A delivery or navigation screen, not the wait for offers: the offer may be on its way over it, and the
+        // user's screen is never swapped for it.
+        connect(dasherScreen("Heading to Taco Bell", "Directions", "Arrived at store"));
+        dasherEvent();
+        postListed("Taco Bell", false);
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue(log(app), ownTaps.isEmpty());
+        contains(log(app), "Dasher's own notification tap: skipped (Dasher isn't showing its wait for offers)");
+
+        // The user tapped Dasher meanwhile: theirs to do.
+        if (screen != null) screen.destroy();
+        screen = null;
+        OfferFilterService.forgetScreenState();
+        DiagnosticLog.clear(app);
+        connect(finding());
+        dasherEvent();
+        pass(Peek.GAP_MS);
+        postListed("Burger Barn", false);
+        pass(1_000);
+        tapOnDasher(SystemClock.uptimeMillis());
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue(log(app), ownTaps.isEmpty());
+        contains(log(app), "Dasher's own notification tap: skipped (you tapped Dasher)");
+    }
+
+    @Test
+    public void withPeekOffTheOfferOnScreenIsLeftToDasher() {
+        FilterStore.setPeek(app, false);
+        connect(finding());
+        dasherEvent();
+        postListed("Taco Bell", false);
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue(log(app), ownTaps.isEmpty());
+        assertFalse(log(app), log(app).contains("[alert] on screen:"));
+    }
 }

@@ -167,6 +167,12 @@ public final class OfferFilterService extends AccessibilityService {
      * named in the log this long, by their class only, at most {@link #LAUNCH_WINDOW_LINES} for each launch.
      */
     static final long LAUNCH_WATCH_MS = 8_000;
+    /**
+     * An offer's notification came with Dasher on screen: Dasher draws the offer within about 4 s of it (the
+     * owner's report of 7 October 2026), so with none of it drawn this long after, Dasher's own notification tap is
+     * sent once ({@link #offerPostedOnScreen}).
+     */
+    static final long ON_SCREEN_DRAW_MS = 5_000;
     static final int LAUNCH_WINDOW_LINES = 6;
     /** Dasher's window changing after its own notification tap is not Dasher leaving the screen, this long. */
     static final long OWN_TAP_SETTLE_MS = 2_000;
@@ -587,6 +593,11 @@ public final class OfferFilterService extends AccessibilityService {
     /** A card tap opened Dasher with its launcher: Dasher's own notification tap may follow once. */
     private CardOpen cardOpen;
     /**
+     * An offer's notification came with Dasher already on screen: Dasher's own notification tap follows once if Dasher
+     * draws none of the offer ({@link #offerPostedOnScreen}).
+     */
+    private OnScreenWait onScreenWait;
+    /**
      * A card that says Dasher did not show its offer sent Dasher's own notification intent first: its tag, when
      * (Peek's clock) and Dasher's own window changes then. Dasher's launcher follows once if nothing of Dasher's came.
      */
@@ -763,6 +774,25 @@ public final class OfferFilterService extends AccessibilityService {
             this.tag = tag;
             this.own = own;
             this.openedAt = openedAt;
+            this.clicks = clicks;
+        }
+    }
+
+    /** An offer's notification that came while Dasher was on screen, waiting for Dasher to draw the offer. */
+    private static final class OnScreenWait {
+        final String tag;
+        final PendingIntent own;
+        /** When the notification path handed it over (Peek's clock). */
+        final long postedAt;
+        /** The same on the screen reader's clock (uptime), as {@link #offerReadAt} is kept. */
+        final long postedUptime;
+        final long clicks;
+
+        OnScreenWait(String tag, PendingIntent own, long postedAt, long postedUptime, long clicks) {
+            this.tag = tag;
+            this.own = own;
+            this.postedAt = postedAt;
+            this.postedUptime = postedUptime;
             this.clicks = clicks;
         }
     }
@@ -2202,6 +2232,7 @@ public final class OfferFilterService extends AccessibilityService {
             peekOver("ended because screen reading stopped", Peek.Outcome.INTERRUPTED);
             lockedPost = null;
             cardOpen = null;
+            onScreenWait = null;
             ownFirstTag = null;
             unlockRetryUntil = NEVER;
             forgetBackCheck();
@@ -2262,6 +2293,7 @@ public final class OfferFilterService extends AccessibilityService {
         peekReturning = false;
         lockedPost = null;
         cardOpen = null;
+        onScreenWait = null;
         ownFirstTag = null;
         unlockRetryUntil = NEVER;
         backToMap = null;
@@ -2324,6 +2356,8 @@ public final class OfferFilterService extends AccessibilityService {
         // A peek is held (memory only) for an unlock in time; one still arming is no peek, its post kept for it.
         peekSuspend();
         cardOpen = null;
+        onScreenWait = null;
+        scanner.removeCallbacks(onScreenCheck);
         ownFirstTag = null;
         scanner.removeCallbacks(ownFirstCheck);
         screen = Screen.NOT_SHOWN;
@@ -3771,6 +3805,101 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "alert", "card: Dasher's own notification tap: requested");
         } catch (PendingIntent.CanceledException | RuntimeException refused) {
             DiagnosticLog.log(this, "alert", "card: Dasher's own notification tap: refused ("
+                    + refused.getClass().getSimpleName() + ")");
+        }
+    }
+
+    /**
+     * An offer's notification came while Dasher was on screen (main thread, from the notification path, only where a
+     * peek would be allowed were Dasher elsewhere): Dasher draws the offer itself, and the screen reader takes it from
+     * there. Dasher sometimes never does: its notification rings and its screen goes on showing "Finding offers" (the
+     * owner, 7 October 2026, in split screen: "an offer just dinged in split screen mode but the dd app never showed
+     * the offer"), as a peek's Dasher sometimes didn't until something made it lay out again. So when
+     * {@link #ON_SCREEN_DRAW_MS} after the post a fresh read still shows Dasher's wait for offers and none of the
+     * offer, with no click of the user's on Dasher since, nothing of the app's under way and the offer's notification
+     * still posted (its very post), Dasher's own notification tap is sent once for that offer by any path, as a
+     * peek's is: in its half of a split screen too, where it stays. "[alert] on screen: …" lines say what was done.
+     */
+    static void offerPostedOnScreen(String tag, PendingIntent own) {
+        OfferFilterService service = active;
+        if (service == null || service.stopped || tag == null) return;
+        long clicks = service.dasherClicks.get();
+        service.scanner.post(() -> service.watchOnScreen(tag, own, clicks));
+    }
+
+    private void watchOnScreen(String tag, PendingIntent own, long clicks) {
+        if (stopped || scannerFaulted || !Consent.accepted(this)) return;
+        onScreenWait = new OnScreenWait(tag, own, Peek.now(), SystemClock.uptimeMillis(), clicks);
+        scanner.removeCallbacks(onScreenCheck);
+        scanner.postDelayed(onScreenCheck, ON_SCREEN_DRAW_MS);
+    }
+
+    private final Runnable onScreenCheck = this::onScreenCheck;
+
+    /** After a read: the offer, or what may be it, drawn on Dasher's screen ends the wait (nothing of Dasher's needed). */
+    private void noteOnScreenRead() {
+        if (onScreenWait == null || !readShowsOffer()) return;
+        onScreenWait = null;
+        scanner.removeCallbacks(onScreenCheck);
+    }
+
+    /** {@link #ON_SCREEN_DRAW_MS} after an offer's notification with Dasher on screen ({@link #offerPostedOnScreen}). */
+    private void onScreenCheck() {
+        OnScreenWait wait = onScreenWait;
+        if (wait == null || stopped || scannerFaulted) return;
+        if (queued.get() != QUEUED_NONE || quietScanPending) {
+            // Dasher's latest change is not read yet: the offer may be drawing in it. This comes back after that read.
+            scanner.postDelayed(onScreenCheck, CONFIRM_POLL_MS);
+            return;
+        }
+        String skip = null;
+        if (!Consent.accepted(this)) skip = "the notice isn't accepted";
+        else if (!phoneReadable()) skip = "the phone locked";
+        // Paused, nothing of Dasher's is read: no read can say the offer did not show.
+        else if (pausedNow()) skip = "auto-decline is paused";
+        if (skip == null) {
+            // What Dasher shows now, whatever its last event: one read (an offer drawn by now is read, and judged, as
+            // any is).
+            scanNow(SystemClock.uptimeMillis(), "check for an offer not drawn");
+            if (onScreenWait != wait) return;
+        }
+        onScreenWait = null;
+        long now = SystemClock.uptimeMillis();
+        OfferNotificationService.DasherTap tap = null;
+        if (skip == null) {
+            if (dasherClicks.get() != wait.clicks) skip = "you tapped Dasher";
+            else if (readShowsOffer()) skip = "offer showing";
+            // An offer read since its notification came is this one, judged as any is.
+            else if (offerReadAt != NEVER && offerReadAt >= wait.postedUptime) skip = "an offer was read since";
+            else if (peek.active() || declineUnderWay(now) || declineState.hasPendingConfirmation(now)) {
+                skip = "a peek or a decline is under way";
+            } else if (scene != DasherScene.WAITING) skip = "Dasher isn't showing its wait for offers";
+        }
+        if (skip == null) {
+            tap = OfferNotificationService.cardTap(wait.tag, wait.own);
+            skip = tap.skip;
+        }
+        if (skip == null) {
+            DasherPlace place = placeNow();
+            if (place == null || !place.dasherShown) skip = "Dasher isn't on screen";
+            else if (dasherClicks.get() != wait.clicks) skip = "you tapped Dasher";
+        }
+        // Once for the offer, whichever path asks: never after a peek's or a card's own tap for it.
+        if (skip == null && !OfferNotificationService.claimOwnTap(wait.tag)) skip = "sent for this offer already";
+        String after = "Dasher showed none of the offer " + Peek.seconds(Peek.now() - wait.postedAt)
+                + " after its notification";
+        if (skip != null) {
+            DiagnosticLog.log(this, "alert", "on screen: " + after + "; Dasher's own notification tap: skipped ("
+                    + skip + ")");
+            return;
+        }
+        watchLaunch();
+        try {
+            ownTapSender.send(tap.intent, DasherOwnIntent.options(false));
+            DiagnosticLog.log(this, "alert", "on screen: " + after + "; Dasher's own notification tap: requested"
+                    + (screen.split ? " (split screen)" : ""));
+        } catch (PendingIntent.CanceledException | RuntimeException refused) {
+            DiagnosticLog.log(this, "alert", "on screen: " + after + "; Dasher's own notification tap: refused ("
                     + refused.getClass().getSimpleName() + ")");
         }
     }
@@ -5659,6 +5788,7 @@ public final class OfferFilterService extends AccessibilityService {
             noteBackToMapRead();
             noteResized();
             noteCardOpenRead();
+            noteOnScreenRead();
             syncWaitRead();
             // Shown again only by a read begun after the last window change, and after the user's last tap on Dasher
             // settled (that tap may have taken them to another app).

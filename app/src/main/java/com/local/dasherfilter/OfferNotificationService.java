@@ -791,6 +791,17 @@ public final class OfferNotificationService extends NotificationListenerService 
                     // may open Dasher for the offer after the unlock.
                     invalidatePeekForKey(source.getKey(), !request.fresh && !replay);
                     Peek.skipped(this, why);
+                    // Dasher on screen draws the offer itself; if it draws none of it, its own notification tap
+                    // follows once, where a peek would have been allowed were Dasher elsewhere.
+                    if (foreground && !replay && offer.heldInDasherUntil <= SystemClock.elapsedRealtime()) {
+                        // Never for an offer Dasher's screen already showed (read before its notification came).
+                        long shownAgo = DecisionLog.screenReadAgo(this, DecisionLog.Entry.of(
+                                DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
+                                DecisionLog.Action.CHECK_BELL, settings.enabled, labels));
+                        if (OfferFilterService.peekRefusal(this, request, settings, false, shownAgo) == null) {
+                            OfferFilterService.offerPostedOnScreen(offer.alertTag, notification.contentIntent);
+                        }
+                    }
                 }
             }
 
