@@ -137,6 +137,8 @@ final class MinimumsStarView extends View {
     private final Ui ui;
     private final TextPaint axisText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF[] axisLabels = new RectF[AreaScore.AXES];
+    /** How much of each spoke's name is there (1: wholly, 0: gone; {@link #placeAxisLabels}). */
+    private final float[] axisShown = new float[AreaScore.AXES];
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -203,10 +205,8 @@ final class MinimumsStarView extends View {
     private final TextPaint levelText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final List<RectF> levelBoxes = new ArrayList<>();
     private final List<String> levelWords = new ArrayList<>();
+    private final List<Float> levelShown = new ArrayList<>();
     private final RectF iconBox = new RectF();
-    /** A moved max-stops badge keeps its pin beside it; placement itself always starts from the spoke endpoint. */
-    private final RectF stopsIcon = new RectF();
-    private boolean placingStops;
 
     // ---- Autopilot, as the button shows it. ----
 
@@ -287,8 +287,21 @@ final class MinimumsStarView extends View {
     /** Each marked offer's id: this plus its place among them, newest first. */
     static final int OFFER_ID = NAMES.length + 4;
     static final String STOPS_SAID = "Max stops";
-    /** Where the Autopilot button may stand: in columns this far apart, below the middle (else above it). */
-    private static final int BUTTONS_APART_DP = 60;
+    /**
+     * The Autopilot button's middle stands up to this far left of the circle's (dp), where the max stops badge leaves
+     * room, so the per-hour name beside its clock keeps clear of it on a smaller circle.
+     */
+    private static final int BUTTON_LEFT_DP = 10;
+    /**
+     * The Autopilot button is wholly there on a circle of at least this radius, in dp, and gone on one of at most the
+     * second, growing from its middle in between ({@link #placeButton}).
+     */
+    private static final int BUTTON_WHOLE_DP = 82;
+    private static final int BUTTON_FROM_DP = 74;
+    /** The spokes' names are wholly there on a circle of the least radius the page uses, gone at this radius (dp). */
+    private static final int NAMES_FROM_DP = 44;
+    /** A name, or a ring's dollars, is gone once what it keeps clear of comes this many dp onto it. */
+    private static final int NAME_FADE_DP = 8;
     /** The badge's steps after off: 2 stops (one order) to this many. */
     static final int MOST_STOPS = 10;
     /** A finger moving across the badge steps it once every this many dp. */
@@ -339,10 +352,10 @@ final class MinimumsStarView extends View {
     /** Where each hollow knob rests, in pixels out along its spoke ({@link #placeRests}); stale after a change. */
     private final float[] restAt = new float[NAMES.length];
     private boolean restStale = true;
-    /** The Autopilot button: where it stands, whether it found a place, and a finger on it (held long). */
+    /** The Autopilot button: its middle, the box it is drawn in (smaller while it fades), and a finger on it. */
+    private float buttonX;
+    private float buttonY;
     private final RectF scoreBox = new RectF();
-    private boolean buttonPlaced;
-    private boolean buttonStale = true;
     private boolean autoPressed;
     private boolean autoHeld;
     private final Runnable holdAuto = () -> {
@@ -354,19 +367,13 @@ final class MinimumsStarView extends View {
         if (changes != null) changes.chooseAutopilotGoal();
     };
     private final TextPaint buttonText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    /** The circle moved or the view changed size since the button was placed. */
-    private boolean layoutMoved = true;
     /** The max stops badge: the saved limit (0 for none), where it stands, a finger on it, dragging it, and to what. */
     private int maxStops;
     private final RectF stopsBox = new RectF();
-    /** How far in from the view's edges the badge is being placed. */
-    private float badgeEdge;
     private final TextPaint badgeText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private boolean stopsPressed;
     private boolean stopsDragging;
     private int stopsValue;
-    /** The badge stood where it does while the button was placed (clear of it). */
-    private boolean stopsForButtons;
     /** When the hollow knobs last beckoned (uptime); 0 for never. */
     private long beckonedAt;
     private final Nodes nodes = new Nodes();
@@ -469,7 +476,6 @@ final class MinimumsStarView extends View {
         exampleMinutes = example.minutes;
         exampleStops = example.stops;
         exampleFacts = example;
-        buttonStale = true;
         restStale = true;
         needs = needs(rules, example);
         markOffers(recent, rules, example);
@@ -727,7 +733,6 @@ final class MinimumsStarView extends View {
         skyY = y;
         skyRadius = radius;
         if (moved) {
-            layoutMoved = true;
             restStale = true;
             invalidate();
         }
@@ -756,16 +761,6 @@ final class MinimumsStarView extends View {
         return ui.dp(BACKDROP_ICON_DP);
     }
 
-    /** As the sky, the height from the circle's middle to the outer edge of an icon at a spoke's end. */
-    float backdropHalfHeight(float radius) {
-        return backdropAbove(radius);
-    }
-
-    /** As the sky, the room kept above the middle: the circle's top half and an icon's room over it. */
-    float backdropAbove(float radius) {
-        return radius + ui.dp(ICON_GAP_DP) + backdropIcon();
-    }
-
     /**
      * As the sky, where spoke {@code axis}'s icon stands, into {@code out}: above an upper spoke's end and below a lower
      * one's; where the view has no room there, on the spoke's other side instead. The per-stop pin is there only with
@@ -773,13 +768,7 @@ final class MinimumsStarView extends View {
      */
     private boolean skyIcon(int axis, float cx, float cy, float radius, RectF out) {
         if (axis < 0 || axis >= ICONS.length) return false;
-        if (axis == AreaScore.STOP) {
-            if (!knobsOn()) return false;
-            if (!placingStops && !stopsIcon.isEmpty()) {
-                out.set(stopsIcon);
-                return true;
-            }
-        }
+        if (axis == AreaScore.STOP && !knobsOn()) return false;
         float[] tip = point(cx, cy, radius, axis, 1);
         boolean right = axis == AreaScore.MILE || axis == AreaScore.MINUTE;
         boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP;
@@ -791,50 +780,24 @@ final class MinimumsStarView extends View {
             out.set(middle - size / 2, top, middle + size / 2, top + size);
             if (out.top >= ui.dp(2) && out.bottom <= getHeight() - ui.dp(2)) return true;
         }
-        if (axis == AreaScore.STOP) {
-            // Keep the max-stops control reachable by moving its pin a little inward and upward.
-            float preferredTop = tip[1] - ui.dp(ICON_GAP_DP) - size;
-            for (int rise = 0; rise <= 3; rise++) {
-                for (int inward = 1; inward <= 4; inward++) {
-                    float left = middle - size / 2 + inward * ui.dp(24);
-                    float top = preferredTop - rise * ui.dp(24);
-                    out.set(left, top, left + size, top + size);
-                    if (out.left >= ui.dp(4) && out.right <= getWidth() - ui.dp(4) && out.top >= ui.dp(4)
-                            && out.bottom <= getHeight() - ui.dp(4) && iconClearOfKnobs(out)) return true;
-                }
-            }
-        }
         return false;
-    }
-
-    private boolean iconClearOfKnobs(RectF box) {
-        float glide = Motion.settle(glideStart, GLIDE_MS);
-        float clear = ui.dp(KNOB_REACH_DP);
-        for (int axis : SPOKES) {
-            float[] at = point(skyX, skyY, skyRadius, axis, knobFraction(axis, glide));
-            float dx = Math.max(0, Math.max(box.left - at[0], at[0] - box.right));
-            float dy = Math.max(0, Math.max(box.top - at[1], at[1] - box.bottom));
-            if (dx * dx + dy * dy < clear * clear) return false;
-        }
-        return true;
     }
 
     /** As the sky, the icons' boxes as shown now (the Autopilot button's and the badge's too), in this view's pixels. */
     void iconsAt(List<RectF> out) {
         if (!backdrop()) return;
-        if (knobsOn()) placeStops();
         for (int i = 0; i < ICONS.length; i++) {
             RectF box = new RectF();
             if (skyIcon(i, skyX, skyY, skyRadius, box)) out.add(box);
         }
-        if (autopilotShown()) out.add(new RectF(scoreBox));
+        if (placeButton() > 0) out.add(new RectF(scoreBox));
         if (stopsShown()) out.add(new RectF(stopsBox));
     }
 
-    /** As the sky, where the rings' dollars stand now, halo and all, in this view's pixels. */
+    /** As the sky, where the rings' dollars and the spokes' names stand now, halo and all, in this view's pixels. */
     void wordsAt(List<RectF> out) {
         if (!backdrop()) return;
-        placeLevelLabels(skyX, skyY, skyRadius, Motion.settle(glideStart, GLIDE_MS));
+        placeLevelLabels(skyX, skyY, skyRadius);
         for (RectF box : levelBoxes) {
             RectF halo = new RectF(box);
             halo.inset(-ui.dp(3), -ui.dp(3));
@@ -853,115 +816,126 @@ final class MinimumsStarView extends View {
         return axis >= 0 && axis < AXIS_LABELS.length ? AXIS_LABELS[axis] : "";
     }
 
+    /** Where spoke {@code axis}'s name stands now, in this view's pixels; null while it is gone (for tests). */
     RectF axisLabelBox(int axis) {
         if (axis < 0 || axis >= axisLabels.length) return null;
         placeAxisLabels();
         return axisLabels[axis].isEmpty() ? null : new RectF(axisLabels[axis]);
     }
 
+    /** How much of spoke {@code axis}'s name is there now: 1 wholly, 0 gone, between while it fades (for tests). */
+    float axisLabelShown(int axis) {
+        if (axis < 0 || axis >= axisLabels.length) return 0;
+        placeAxisLabels();
+        return axisShown[axis];
+    }
+
+    /**
+     * Where each spoke's name stands, and how much of it is there. Each has one place at every size: beside its icon,
+     * on the side towards the middle (pay's on its right, per mile's and per hour's on their left), and the max stops
+     * name over the badge and its pin. No knob, shape or offer's mark ever stands there (they stand on the spokes, which
+     * run from the icons' other sides), so as the window's size changes a name moves only with its icon; where the
+     * circle grows too small for the names, or the Autopilot button, the badge, the rings' dollars or a name before it
+     * comes onto its place, it fades out rather than move (the icons and screen readers still say what each spoke is).
+     */
     private void placeAxisLabels() {
         for (RectF box : axisLabels) box.setEmpty();
-        // A small circle (in a short window) has no room for the names; its icons and screen readers say them.
-        if (!backdrop() || skyRadius < ui.dp(48) || getWidth() <= 0 || getHeight() <= 0) return;
-        if (knobsOn()) {
-            placeStops();
-            placeButton();
-        }
-        RectF[] iconBoxes = new RectF[NAMES.length];
-        for (int i = 0; i < ICONS.length; i++) {
-            RectF icon = new RectF();
-            if (skyIcon(i, skyX, skyY, skyRadius, icon)) iconBoxes[i] = icon;
-        }
+        Arrays.fill(axisShown, 0);
+        if (!backdrop() || getWidth() <= 0 || getHeight() <= 0) return;
+        float small = within(skyRadius - ui.dp(NAMES_FROM_DP), ui.dp(FluidLayout.RADIUS_LEAST_DP - NAMES_FROM_DP));
+        if (small <= 0) return;
+        boolean knobs = knobsOn();
+        float button = knobs ? placeButton() : 0;
+        boolean badge = knobs && stopsShown();
+        placeLevelLabels(skyX, skyY, skyRadius);
         float height = Math.max(ui.dp(11), Ui.lineHeight(axisText));
         float gap = ui.dp(3);
-        for (int axis : AreaScore.DRAW_ORDER) {
-            if (AXIS_LABELS[axis].isEmpty() || (axis == AreaScore.STOP && iconBoxes[axis] == null)) continue;
-            float width = Math.max(ui.dp(1), axisText.measureText(AXIS_LABELS[axis]));
-            RectF icon = iconBoxes[axis];
-            float[] tip = point(skyX, skyY, skyRadius, axis, 1);
-            float anchorX = icon == null ? tip[0] : icon.centerX();
-            float anchorY = icon == null ? tip[1] : icon.centerY();
-            float halfIcon = icon == null ? 0 : icon.height() / 2;
-            boolean placed = false;
-            // First attach the name directly below/above/beside its icon.
-            float[][] near = {{anchorX, anchorY + halfIcon + gap + height / 2},
-                    {anchorX, anchorY - halfIcon - gap - height / 2},
-                    {anchorX + halfIcon + gap + width / 2, anchorY},
-                    {anchorX - halfIcon - gap - width / 2, anchorY}};
-            for (float[] at : near) {
-                if (tryAxisLabel(axis, at[0], at[1], width, height, iconBoxes)) {
-                    placed = true;
-                    break;
-                }
-            }
-            // Setup text can cover a spoke's tip. Keep its name on the same ray, nearer the middle instead.
-            for (float fraction : new float[] {0.9f, 0.75f, 0.6f, 0.45f}) {
-                if (placed || axis == AreaScore.STOP) break;
-                float[] at = point(skyX, skyY, skyRadius, axis, fraction);
-                for (int side : new int[] {-1, 1}) {
-                    if (tryAxisLabel(axis, at[0], at[1] + side * (height / 2 + ui.dp(7)),
-                            width, height, iconBoxes)) {
-                        placed = true;
-                        break;
-                    }
-                }
-            }
-            // A very short expanded sky may need the closest free place on that side of the circle.
-            if (!placed) {
-                RectF best = null;
-                double closest = Double.MAX_VALUE;
-                float step = Math.max(ui.dp(14), height + gap);
-                for (float y = gap + height / 2; y < getHeight() - height / 2 - gap; y += step) {
-                    for (float x = gap + width / 2; x < getWidth() - width / 2 - gap; x += ui.dp(24)) {
-                        double distance = Math.hypot(x - anchorX, y - anchorY);
-                        if (distance >= closest || !tryAxisLabel(axis, x, y, width, height, iconBoxes)) continue;
-                        closest = distance;
-                        best = new RectF(axisLabels[axis]);
-                        axisLabels[axis].setEmpty();
-                    }
-                }
-                if (best != null) axisLabels[axis].set(best);
-            }
-        }
-    }
-
-    private boolean tryAxisLabel(int axis, float x, float y, float width, float height, RectF[] iconBoxes) {
         float margin = ui.dp(4);
-        x = Math.max(margin + width / 2, Math.min(getWidth() - margin - width / 2, x));
-        RectF box = new RectF(x - width / 2, y - height / 2, x + width / 2, y + height / 2);
-        if (box.top < margin || box.bottom > getHeight() - margin || box.width() > getWidth() - 2 * margin) {
-            return false;
+        RectF padded = new RectF();
+        for (int axis : AreaScore.DRAW_ORDER) {
+            if (AXIS_LABELS[axis].isEmpty() || !skyIcon(axis, skyX, skyY, skyRadius, iconBox)) continue;
+            float width = Math.max(ui.dp(1), axisText.measureText(AXIS_LABELS[axis]));
+            float left = axis == AreaScore.PAY ? iconBox.right + gap
+                    : axis == AreaScore.STOP ? iconBox.left : iconBox.left - gap - width;
+            float top = axis == AreaScore.STOP
+                    ? Math.min(iconBox.top, badge ? stopsBox.top : iconBox.top) - margin - height
+                    : iconBox.centerY() - height / 2;
+            left = Math.max(margin, Math.min(getWidth() - margin - width, left));
+            RectF box = axisLabels[axis];
+            box.set(left, top, left + width, top + height);
+            padded.set(box);
+            padded.inset(-ui.dp(2), -ui.dp(2));
+            // Its own room: inside the view, off the icons and the knobs.
+            float room = Math.min(box.top - margin, getHeight() - margin - box.bottom);
+            for (int i = 0; i < ICONS.length; i++) {
+                if (skyIcon(i, skyX, skyY, skyRadius, iconBox)) room = Math.min(room, apart(padded, iconBox));
+            }
+            if (knobs) for (int i : SPOKES) {
+                float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, 1));
+                room = Math.min(room, outside(padded, at[0], at[1]) - ui.dp(9));
+            }
+            float shown = Math.min(small, nameFade(room));
+            // Then what it gives way to: the badge (always wholly there), and each of the rest only as much as it is.
+            if (badge) shown = Math.min(shown, nameFade(apart(padded, stopsBox)));
+            if (button > 0) {
+                float off = outside(padded, buttonX, buttonY) - ui.dp(BUTTON_DP) / 2f;
+                shown = Math.min(shown, Math.max(nameFade(off), 1 - button));
+            }
+            for (int i = 0; i < levelBoxes.size(); i++) {
+                shown = Math.min(shown, Math.max(nameFade(apart(padded, levelBoxes.get(i))), 1 - levelShown.get(i)));
+            }
+            for (int before : AreaScore.DRAW_ORDER) {
+                if (before == axis) break;
+                if (axisLabels[before].isEmpty()) continue;
+                shown = Math.min(shown, Math.max(nameFade(apart(padded, axisLabels[before])), 1 - axisShown[before]));
+            }
+            axisShown[axis] = shown;
+            if (shown <= 0) box.setEmpty();
         }
-        RectF padded = new RectF(box);
-        padded.inset(-ui.dp(2), -ui.dp(2));
-        for (RectF icon : iconBoxes) if (icon != null && RectF.intersects(padded, icon)) return false;
-        for (int i = 0; i < axisLabels.length; i++) {
-            if (i != axis && !axisLabels[i].isEmpty() && RectF.intersects(padded, axisLabels[i])) return false;
-        }
-        for (RectF level : levelBoxes) if (RectF.intersects(padded, level)) return false;
-        if (buttonPlaced && RectF.intersects(padded, scoreBox)) return false;
-        if (!stopsBox.isEmpty() && RectF.intersects(padded, stopsBox)) return false;
-        if (knobsOn()) for (int i : SPOKES) {
-            float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, 1));
-            float dx = Math.max(0, Math.max(padded.left - at[0], at[0] - padded.right));
-            float dy = Math.max(0, Math.max(padded.top - at[1], at[1] - padded.bottom));
-            if (Math.hypot(dx, dy) < ui.dp(9)) return false;
-        }
-        axisLabels[axis].set(box);
-        return true;
     }
 
+    /** How far apart two boxes stand: the gap between them, or, where they overlap, minus how far they overlap. */
+    private static float apart(RectF a, RectF b) {
+        return Math.max(Math.max(b.left - a.right, a.left - b.right), Math.max(b.top - a.bottom, a.top - b.bottom));
+    }
+
+    /** How far ({@code x}, {@code y}) stands outside {@code box}; 0 inside it. */
+    private static float outside(RectF box, float x, float y) {
+        float dx = Math.max(0, Math.max(box.left - x, x - box.right));
+        float dy = Math.max(0, Math.max(box.top - y, y - box.bottom));
+        return (float) Math.hypot(dx, dy);
+    }
+
+    /** {@code amount} of {@code range}, from 0 to 1. */
+    private static float within(float amount, float range) {
+        return range <= 0 ? (amount >= 0 ? 1 : 0) : Math.max(0, Math.min(1, amount / range));
+    }
+
+    /**
+     * How much of a name (or a ring's dollars) is there with {@code room} to spare around it (counted from a little
+     * outside it): wholly while what it keeps clear of does not touch it, fading as that comes onto it, gone once it is
+     * {@link #NAME_FADE_DP} onto it.
+     */
+    private float nameFade(float room) {
+        return within(room + ui.dp(NAME_FADE_DP + 2), ui.dp(NAME_FADE_DP));
+    }
+
+    /** The names, each as much as it is there; under the badge and the button, so one fading out goes behind them. */
     private void drawAxisLabels(Canvas canvas) {
         placeAxisLabels();
+        int alpha = axisText.getAlpha();
         for (int i = 0; i < axisLabels.length; i++) {
             RectF box = axisLabels[i];
-            if (!box.isEmpty()) canvas.drawText(AXIS_LABELS[i], box.left, box.top - axisText.ascent(), axisText);
+            if (box.isEmpty()) continue;
+            axisText.setAlpha(Math.round(alpha * axisShown[i]));
+            canvas.drawText(AXIS_LABELS[i], box.left, box.top - axisText.ascent(), axisText);
         }
+        axisText.setAlpha(alpha);
     }
 
     /** The rings' dollars as the sky shows them now, left to right (for tests). */
     List<String> levelWords() {
-        if (backdrop()) placeLevelLabels(skyX, skyY, skyRadius, Motion.settle(glideStart, GLIDE_MS));
+        if (backdrop()) placeLevelLabels(skyX, skyY, skyRadius);
         return new ArrayList<>(levelWords);
     }
 
@@ -1055,7 +1029,6 @@ final class MinimumsStarView extends View {
         drawChosenOutline(canvas, cx, cy, radius);
         boolean knobs = knobsOn();
         if (knobs) drawKnobs(canvas, cx, cy, radius, glide);
-        if (knobs) placeStops();
         for (int i = 0; i < ICONS.length; i++) {
             if (!skyIcon(i, cx, cy, radius, iconBox)) continue;
             icons[i].setBounds(Math.round(iconBox.left), Math.round(iconBox.top), Math.round(iconBox.right),
@@ -1065,13 +1038,14 @@ final class MinimumsStarView extends View {
         canvas.restoreToCount(layer);
         // The held knob's readout is placed first, so the rings' dollars it would cover step aside for it.
         if (readoutAxis() >= 0) placeReadout(cx, cy, radius);
-        drawLevelLabels(canvas, cx, cy, radius, glide);
+        drawLevelLabels(canvas, cx, cy, radius);
         if (!knobs) return;
-        // Over everything, never faded: the button, the badge, the names, and the knob under the finger (with what it
-        // is set to, once it moves).
-        if (autopilotShown()) drawAutopilot(canvas);
-        if (stopsShown()) drawStops(canvas);
+        // Over everything: the names (each as much as it is there), the badge and the button over them, and the knob
+        // under the finger (with what it is set to, once it moves).
         drawAxisLabels(canvas);
+        if (stopsShown()) drawStops(canvas);
+        float button = placeButton();
+        if (button > 0) drawAutopilot(canvas, button);
         if (dragging) {
             drawHeld(canvas, point(cx, cy, radius, held, heldFraction()), dragValue, true);
         } else if (pressing()) {
@@ -1121,80 +1095,61 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * As the sky, the middle and outer rings' dollars along the level line on the right, each just inside its ring,
-     * or just outside it where a shape's edge or a spoke's icon is there; a ring whose dollars would leave the page,
-     * run into another's, or find a shape's edge or an icon on both sides goes without.
+     * As the sky, the middle and outer rings' dollars along the level line on the right, each just inside its ring, as
+     * much of each as is there; one under the held knob's readout is left out while it shows.
      */
-    private void drawLevelLabels(Canvas canvas, float cx, float cy, float radius, float glide) {
-        placeLevelLabels(cx, cy, radius, glide);
+    private void drawLevelLabels(Canvas canvas, float cx, float cy, float radius) {
+        placeLevelLabels(cx, cy, radius);
         Paint.FontMetrics metrics = levelText.getFontMetrics();
         float baseline = cy - (metrics.ascent + metrics.descent) / 2;
         levelText.setTextAlign(Paint.Align.LEFT);
+        int alpha = levelText.getAlpha();
         for (int i = 0; i < levelBoxes.size(); i++) {
             if (readoutAxis() >= 0 && RectF.intersects(levelBoxes.get(i), pillBox)) continue;
+            levelText.setAlpha(Math.round(alpha * levelShown.get(i)));
             // Twice, so the halo is soft but full.
             canvas.drawText(levelWords.get(i), levelBoxes.get(i).left, baseline, levelText);
             canvas.drawText(levelWords.get(i), levelBoxes.get(i).left, baseline, levelText);
         }
+        levelText.setAlpha(alpha);
     }
 
-    /** Works out where the rings' dollars stand (see {@link #drawLevelLabels}), into the level lists. */
-    private void placeLevelLabels(float cx, float cy, float radius, float glide) {
+    /**
+     * Works out where the rings' dollars stand (see {@link #drawLevelLabels}), into the level lists, with how much of
+     * each is there. Each has one place at every size, just inside its ring on the level line, so as the window's size
+     * changes it moves only with the circle; a shape's edge may run under it (its halo keeps it clear to read), and
+     * where a spoke's icon, the view's edge or the inner ring's dollars come onto it, it fades out rather than move.
+     */
+    private void placeLevelLabels(float cx, float cy, float radius) {
         levelBoxes.clear();
         levelWords.clear();
+        levelShown.clear();
         if (outer <= 0) return;
         Paint.FontMetrics metrics = levelText.getFontMetrics();
         float baseline = cy - (metrics.ascent + metrics.descent) / 2;
-        holdSet();
-        float[] edges = {edgeCrossing(drawnSet, drawnFrom, drawnTo, glide, cx, radius),
-                edgeCrossing(auto, autoFrom, autoTo, glide, cx, radius)};
-        float clear = ui.dp(4) + ui.dp(1) * Math.max(1, detail);
-        float before = -Float.MAX_VALUE;
+        RectF inner = null;
+        float innerShown = 0;
         for (int ring : LABELED_RINGS) {
             String words = levelLabel(ring);
             float width = levelText.measureText(words);
-            float at = cx + radius * ring / rings;
-            for (int side = 0; side < 2; side++) {
-                float left = side == 0 ? at - ui.dp(5) - width : at + ui.dp(5);
-                RectF box = new RectF(left, baseline + metrics.ascent, left + width, baseline + metrics.descent);
-                if (box.left < before + ui.dp(8) || box.right > getWidth() - ui.dp(6)) continue;
-                boolean onEdge = false;
-                for (float edge : edges) onEdge |= !Float.isNaN(edge) && edge > box.left - clear && edge < box.right + clear;
-                if (onEdge || onIcon(box, cx, cy, radius)) continue;
+            float right = cx + radius * ring / rings - ui.dp(5);
+            RectF box = new RectF(right - width, baseline + metrics.ascent, right, baseline + metrics.descent);
+            float room = Math.min(box.left - ui.dp(6), getWidth() - ui.dp(6) - box.right);
+            for (int i = 0; i < ICONS.length; i++) {
+                if (skyIcon(i, cx, cy, radius, iconBox)) room = Math.min(room, apart(box, iconBox));
+            }
+            float shown = nameFade(room);
+            if (inner != null) {
+                shown = Math.min(shown, Math.max(nameFade(box.left - inner.right - ui.dp(8)), 1 - innerShown));
+            }
+            if (shown > 0) {
                 levelBoxes.add(box);
                 levelWords.add(words);
-                before = box.right;
-                break;
+                levelShown.add(shown);
             }
+            inner = box;
+            innerShown = shown;
         }
-    }
-
-    /**
-     * Whether {@code box} meets a spoke's icon in the sky: on a small circle the outer ring's dollars would otherwise
-     * stand on the per-hour clock.
-     */
-    private boolean onIcon(RectF box, float cx, float cy, float radius) {
-        if (!backdrop()) return false;
-        for (int i = 0; i < ICONS.length; i++) {
-            if (skyIcon(i, cx, cy, radius, iconBox) && RectF.intersects(iconBox, box)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Where a shape's right-hand edge (from the per-mile spoke's point to the per-hour one's) crosses the level line
-     * as drawn now; NaN when the shape is not drawn.
-     */
-    private float edgeCrossing(double[] values, float[] from, float[] to, float glide, float cx, float radius) {
-        boolean any = false;
-        for (double value : values) any |= !Double.isNaN(value);
-        if (!any) return Float.NaN;
-        float upper = Double.isNaN(values[AreaScore.MILE]) ? 0
-                : from[AreaScore.MILE] + (to[AreaScore.MILE] - from[AreaScore.MILE]) * glide;
-        float lower = Double.isNaN(values[AreaScore.MINUTE]) ? 0
-                : from[AreaScore.MINUTE] + (to[AreaScore.MINUTE] - from[AreaScore.MINUTE]) * glide;
-        if (upper + lower <= 0) return cx;
-        return cx + radius * COS * 2 * upper * lower / (upper + lower);
     }
 
     /** A ring's label: its dollars ("$12"). */
@@ -1359,22 +1314,6 @@ final class MinimumsStarView extends View {
             axes[axis] = point(cx, cy, radius, axis, shown);
         }
         return orderedPolygon(axes, cx, cy);
-    }
-
-    /**
-     * How far below ({@code side} 1) or above (-1) the middle a closed polygon's edges cross the upright line at
-     * {@code x}; 0 where none does.
-     */
-    private static float uprightReach(List<float[]> polygon, float x, float cy, int side) {
-        float reach = 0;
-        for (int i = 0; i < polygon.size() && polygon.size() >= 2; i++) {
-            float[] a = polygon.get(i);
-            float[] b = polygon.get((i + 1) % polygon.size());
-            if (a[0] == b[0] || (a[0] - x) * (b[0] - x) > 0) continue;
-            float y = a[1] + (x - a[0]) * (b[1] - a[1]) / (b[0] - a[0]);
-            reach = Math.max(reach, (y - cy) * side);
-        }
-        return reach;
     }
 
     /** The latest or skyline-selected offer's polygon; hidden history stays out of the everyday constellation. */
@@ -2060,7 +1999,6 @@ final class MinimumsStarView extends View {
         keepTouch(false);
         takeScale();
         inUnits();
-        buttonStale = true;
         restStale = true;
         if (save && value != setRates[axis] && changes != null) changes.setMinimum(axis, value);
         glideTo();
@@ -2274,22 +2212,13 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Where the max stops badge stands, into its box: beside the per-stop pin, towards the middle (else outwards, below
-     * or above it), inside the page and clear of the words, the mascot, the other icons, the rings' dollars and the
-     * knobs' reach; failing all of those, towards the middle all the same. While a finger drags it, it stays where it
-     * was. False while the pin is hidden (a line of words over both its places).
+     * Where the max stops badge stands, into its box: beside the per-stop pin, towards the middle, level with it, or as
+     * much higher as keeps its whole 48 dp target inside the view. One place at every size, clear of every knob (none
+     * stands on the pin's spoke, and the pay and per-hour spokes run from the middle away from it), so as the window's
+     * size changes it moves only with the pin. While a finger drags it, it stays where it was. False while the pin is
+     * not shown.
      */
     private boolean placeStops() {
-        if (!stopsDragging) stopsIcon.setEmpty();
-        placingStops = true;
-        try {
-            return placeStopsFromSpoke();
-        } finally {
-            placingStops = false;
-        }
-    }
-
-    private boolean placeStopsFromSpoke() {
         if (!backdrop()) return false;
         String words = stopsWords();
         float height = Math.max(ui.dp(26), Ui.lineHeight(badgeText) + ui.dp(8));
@@ -2299,90 +2228,9 @@ final class MinimumsStarView extends View {
             return true;
         }
         if (!skyIcon(AreaScore.STOP, skyX, skyY, skyRadius, iconBox)) return false;
-        float iconLeft = iconBox.left;
-        float iconRight = iconBox.right;
-        float iconTop = iconBox.top;
-        float iconBottom = iconBox.bottom;
-        float middle = iconBox.centerY();
-        RectF anchor = new RectF(iconBox);
-        float gap = ui.dp(8);
-        // The pin stands down and to the left: towards the middle is to the right.
-        float[][] places = {
-                {iconRight + gap, middle - height / 2},
-                {iconLeft - gap - width, middle - height / 2},
-                {(iconLeft + iconRight) / 2 - width / 2, iconBottom + gap},
-                {(iconLeft + iconRight) / 2 - width / 2, iconTop - gap - height}};
-        // First where its whole 48 dp target is inside the view; only where there is none, a little in from the edge.
-        for (float edge : new float[] {Math.max(ui.dp(4), (ui.dp(BUTTON_DP) - height) / 2), ui.dp(4)}) {
-            badgeEdge = edge;
-            for (float[] place : places) {
-                stopsBox.set(place[0], place[1], place[0] + width, place[1] + height);
-                if (badgeFits() && pairStopsIcon(anchor)) return true;
-            }
-            for (int step = 1; step <= 20; step++) {
-                for (int side : new int[] {-1, 1}) {
-                    for (int across = 0; across <= 12; across++) {
-                        float left = iconRight + gap + across * ui.dp(18);
-                        float top = middle - height / 2 + side * step * ui.dp(12);
-                        stopsBox.set(left, top, left + width, top + height);
-                        if (badgeFits() && pairStopsIcon(anchor)) return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /** A distant clear badge position carries the pin with it, as one visual control; at most four local looks. */
-    private boolean pairStopsIcon(RectF original) {
-        if (Math.hypot(stopsBox.centerX() - original.centerX(), stopsBox.centerY() - original.centerY())
-                <= ui.dp(80)) return true;
-        float size = backdropIcon();
-        float gap = ui.dp(8);
-        float[][] places = {
-                {stopsBox.left - gap - size, stopsBox.centerY() - size / 2},
-                {stopsBox.right + gap, stopsBox.centerY() - size / 2},
-                {stopsBox.centerX() - size / 2, stopsBox.top - gap - size},
-                {stopsBox.centerX() - size / 2, stopsBox.bottom + gap}};
-        RectF candidate = new RectF();
-        RectF other = new RectF();
-        for (float[] place : places) {
-            candidate.set(place[0], place[1], place[0] + size, place[1] + size);
-            if (candidate.left < ui.dp(4) || candidate.right > getWidth() - ui.dp(4)
-                    || candidate.top < ui.dp(4) || candidate.bottom > getHeight() - ui.dp(4)
-                    || !iconClearOfKnobs(candidate)) continue;
-            boolean clear = true;
-            for (int axis : SPOKES) {
-                if (skyIcon(axis, skyX, skyY, skyRadius, other) && RectF.intersects(candidate, other)) clear = false;
-            }
-            for (RectF label : levelBoxes) if (RectF.intersects(candidate, label)) clear = false;
-            if (clear) {
-                stopsIcon.set(candidate);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean badgeFits() {
-        float margin = badgeEdge;
-        if (stopsBox.left < margin || stopsBox.top < margin || stopsBox.right > getWidth() - margin
-                || stopsBox.bottom > getHeight() - margin) {
-            return false;
-        }
-        RectF icon = new RectF();
-        for (int i = 0; i < ICONS.length; i++) {
-            if (skyIcon(i, skyX, skyY, skyRadius, icon) && RectF.intersects(icon, stopsBox)) return false;
-        }
-        for (RectF label : levelBoxes) if (RectF.intersects(label, stopsBox)) return false;
-        float clear = ui.dp(KNOB_REACH_DP);
-        float glide = Motion.settle(glideStart, GLIDE_MS);
-        for (int i : SPOKES) {
-            float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, glide));
-            float dx = Math.max(0, Math.max(stopsBox.left - at[0], at[0] - stopsBox.right));
-            float dy = Math.max(0, Math.max(stopsBox.top - at[1], at[1] - stopsBox.bottom));
-            if (dx * dx + dy * dy < clear * clear) return false;
-        }
+        float middle = Math.min(iconBox.centerY(), getHeight() - Math.max(ui.dp(BUTTON_DP), height) / 2);
+        float left = iconBox.right + ui.dp(8);
+        stopsBox.set(left, middle - height / 2, left + width, middle + height / 2);
         return true;
     }
 
@@ -2450,14 +2298,24 @@ final class MinimumsStarView extends View {
 
     // ---- The Autopilot button. ----
 
-    /** The Autopilot button: shown as the sky whenever it finds a place. */
+    /** The Autopilot button: shown as the sky, and used, while it is wholly there ({@link #placeButton}). */
     boolean autopilotShown() {
-        return knobsOn() && placeButton();
+        return knobsOn() && placeButton() >= 1;
     }
 
-    /** Where the Autopilot button stands, in this view's pixels (for tests); null when it is not shown. */
+    /** Where the Autopilot button stands, in this view's pixels (for tests); null when it is not wholly there. */
     RectF autopilotBox() {
         return autopilotShown() ? new RectF(scoreBox) : null;
+    }
+
+    /** How much of the Autopilot button is there: 1 wholly (and used), 0 gone, between while it fades (for tests). */
+    float autopilotAmount() {
+        return placeButton();
+    }
+
+    /** Where the Autopilot button is drawn, in this view's pixels, smaller while it fades (for tests); null when gone. */
+    RectF autopilotDrawn() {
+        return placeButton() > 0 ? new RectF(scoreBox) : null;
     }
 
     /** Recent offer {@code m}'s polygon (newest first) where it is heading, in this view's pixels (for tests). */
@@ -2478,112 +2336,46 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * Where the Autopilot button stands: where the old row of three buttons had its middle, straight below the
-     * circle's middle just outside where the shapes cross there (else above the middle, else a column aside, else the
-     * nearest clear sky), clear of the knobs, the icons, the max stops badge, the rings' dollars, the words and the
-     * mascot. Worked out from where the shapes are heading, so it does not drift while they glide, and not at all
-     * while a knob is held.
+     * How much of the Autopilot button is there (1: wholly, and used; 0: gone), and where it stands, into its box. It has
+     * one place at every size, about where the old row of three buttons had its middle: below the circle's middle, a
+     * little to the left (or further right, as far as the max stops badge needs), on the side of the line the pay and
+     * per-hour spokes make through the middle that has no knob, with its reach and a knob's clear of that line, and so
+     * of every knob, set or resting, and of every shape and offer's mark (they all stand on the spokes, on the line or
+     * beyond it). As the window's size changes it moves only with the circle: on a circle too small for it, it shrinks and
+     * fades away over a range of sizes ({@link #BUTTON_WHOLE_DP} down to {@link #BUTTON_FROM_DP} dp of radius), and
+     * as the view's edge would cut it, rather than move, Autopilot's chip at the top of the page standing in for it.
      */
-    private boolean placeButton() {
-        if (dragging || (!buttonStale && !layoutMoved)) return buttonPlaced;
-        buttonStale = false;
-        layoutMoved = false;
+    private float placeButton() {
+        if (!knobsOn()) return 0;
         float half = ui.dp(BUTTON_DP) / 2f;
-        float band = backdropHalfHeight(skyRadius) - half;
-        placeLevelLabels(skyX, skyY, skyRadius, 1);
-        stopsForButtons = placeStops();
-        return buttonPlaced = placeAlone(scoreBox, half, band);
-    }
-
-    /** One button in a place of its own, below the middle (else above it), clear of {@code others}. */
-    private boolean placeAlone(RectF box, float half, float band, RectF... others) {
-        for (int pass = 0; pass < 2; pass++) {
-            for (int side = 1; side >= -1; side -= 2) {
-                float from = half + ui.dp(KNOB_REST_DP);
-                if (pass == 0) from = Math.max(from, shapesReach(side, new float[] {skyX}) + ui.dp(10) + half);
-                for (float d = from; d <= band; d += ui.dp(2)) {
-                    for (int column : new int[] {0, -1, 1, -2, 2}) {
-                        float x = skyX + column * ui.dp(BUTTONS_APART_DP);
-                        box.set(x - half, skyY + side * d - half, x + half, skyY + side * d + half);
-                        if (buttonFits(box, others)) return true;
-                    }
-                }
-            }
-        }
-        // A short sky can leave neither row: search the remaining open sky, keeping the same 48 dp target and every
-        // collision guard instead of hiding the control.
-        RectF best = null;
-        double nearest = Double.MAX_VALUE;
-        float step = ui.dp(8);
-        for (float y = ui.dp(4) + half; y <= getHeight() - ui.dp(4) - half; y += step) {
-            for (float x = ui.dp(4) + half; x <= getWidth() - ui.dp(4) - half; x += step) {
-                box.set(x - half, y - half, x + half, y + half);
-                if (!buttonFits(box, others)) continue;
-                double distance = Math.hypot(x - skyX, y - (skyY + band));
-                if (distance < nearest) {
-                    nearest = distance;
-                    best = new RectF(box);
-                }
-            }
-        }
-        if (best != null) {
-            box.set(best);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * How far below ({@code side} 1) or above (-1) the middle the shapes' edges cross the upright lines at {@code xs},
-     * as they are heading: the set shape and Autopilot's.
-     */
-    private float shapesReach(int side, float[] xs) {
-        List<List<float[]>> shapes = new ArrayList<>();
-        List<float[]> minimums = shapePolygon(set, setFrom, setTo, 1, skyX, skyY, skyRadius);
-        if (minimums != null) shapes.add(minimums);
-        List<float[]> autopilot = shapePolygon(auto, autoFrom, autoTo, 1, skyX, skyY, skyRadius);
-        if (autopilot != null) shapes.add(autopilot);
-        float reach = 0;
-        for (List<float[]> shape : shapes) {
-            for (float x : xs) reach = Math.max(reach, uprightReach(shape, x, skyY, side));
-        }
-        return reach;
-    }
-
-    /**
-     * Whether a button at {@code box} fits: in the page, clear of words, the mascot, labels, icons, the max stops
-     * badge, knobs and {@code others}.
-     */
-    private boolean buttonFits(RectF box, RectF... others) {
-        float margin = ui.dp(4);
-        if (box.left < margin || box.top < margin || box.right > getWidth() - margin
-                || box.bottom > getHeight() - margin) {
-            return false;
-        }
-        RectF around = new RectF(box);
-        around.inset(-ui.dp(4), -ui.dp(4));
-        for (RectF other : others) if (other != null && RectF.intersects(other, around)) return false;
-        if (stopsForButtons && RectF.intersects(stopsBox, around)) return false;
-        for (RectF label : levelBoxes) if (RectF.intersects(label, around)) return false;
-        for (int i = 0; i < ICONS.length; i++) {
-            if (skyIcon(i, skyX, skyY, skyRadius, iconBox) && RectF.intersects(iconBox, around)) return false;
-        }
-        float clear = ui.dp(KNOB_REACH_DP) + box.width() / 2;
-        for (int i : SPOKES) {
-            float[] at = point(skyX, skyY, skyRadius, i, Double.isNaN(set[i]) ? restFraction(i) : setTo[i]);
-            if (Math.hypot(at[0] - box.centerX(), at[1] - box.centerY()) < clear) return false;
-        }
-        return true;
+        float aside = -ui.dp(BUTTON_LEFT_DP);
+        if (placeStops()) aside = Math.max(aside, stopsBox.right + ui.dp(4) + half - skyX);
+        // Square to the line the pay and per-hour spokes make through the middle, SPREAD degrees off level.
+        float below = (ui.dp(KNOB_REACH_DP) + half + SIN * aside) / COS;
+        buttonX = skyX + aside;
+        buttonY = skyY + below;
+        float amount = within(skyRadius - ui.dp(BUTTON_FROM_DP), ui.dp(BUTTON_WHOLE_DP - BUTTON_FROM_DP));
+        float room = Math.min(Math.min(buttonX, getWidth() - buttonX), Math.min(buttonY, getHeight() - buttonY));
+        amount = Math.min(amount, within(room, half));
+        float drawn = half * amount;
+        scoreBox.set(buttonX - drawn, buttonY - drawn, buttonX + drawn, buttonY + drawn);
+        return amount;
     }
 
     /**
      * The Autopilot button, a round 48 dp button like the header's: "Auto" (9 sp) over its bar ("82%") or "Off";
-     * ringed 2 dp in Autopilot's purple while on, amber while below the goal (as the chip), 1 dp grey while off.
+     * ringed 2 dp in Autopilot's purple while on, amber while below the goal (as the chip), 1 dp grey while off. While it
+     * comes in or goes it is drawn smaller and fainter, from its middle.
      */
-    private void drawAutopilot(Canvas canvas) {
-        float x = scoreBox.centerX();
-        float y = scoreBox.centerY();
-        float radius = scoreBox.width() / 2;
+    private void drawAutopilot(Canvas canvas, float amount) {
+        float x = buttonX;
+        float y = buttonY;
+        float radius = ui.dp(BUTTON_DP) / 2f;
+        int saved = canvas.getSaveCount();
+        if (amount < 1) {
+            canvas.saveLayerAlpha(x - radius, y - radius, x + radius, y + radius, Math.round(255 * amount));
+            canvas.scale(amount, amount, x, y);
+        }
         fill.setColor(autoPressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
         canvas.drawCircle(x, y, radius, fill);
         int ring = buttonRing();
@@ -2600,6 +2392,7 @@ final class MinimumsStarView extends View {
         buttonText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
         fitButtonText(label, room);
         canvas.drawText(label, x, y + ui.dp(12), buttonText);
+        canvas.restoreToCount(saved);
     }
 
     /**
@@ -2640,7 +2433,6 @@ final class MinimumsStarView extends View {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        layoutMoved = true;
         restStale = true;
     }
 

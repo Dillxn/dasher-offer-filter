@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -323,6 +324,199 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         }
         assertTrue(name + ": side by side somewhere", sawBesides || widthDp < 400);
         controller.pause().stop().destroy();
+    }
+
+    // ---- The radar's own parts, 2 dp at a time ----
+
+    /** The window heights the radar's own parts are swept over, in dp, and the step. */
+    private static final int PARTS_FROM_DP = 260;
+    private static final int PARTS_STEP_DP = 2;
+    /** The most any of the radar's own parts fades in or out in one 2 dp step. */
+    private static final float PARTS_MOST_FADE = 0.5f;
+
+    @Test @Config(qualifiers = "w411dp-h260dp-xhdpi")
+    public void theRadarsOwnPartsBesideAnotherAppMoveOnlyWithItAndFadeRatherThanJump() throws Exception {
+        radarParts(411, 1f);
+    }
+
+    @Test @Config(qualifiers = "w360dp-h260dp-xhdpi")
+    public void theRadarsOwnPartsAtTwiceTheFontMoveOnlyWithItAndFadeRatherThanJump() throws Exception {
+        radarParts(360, 2f);
+    }
+
+    /** The radar's circle and box, and its own parts with how much of each is there, in the page's pixels. */
+    private static final class Radar {
+        float x;
+        float y;
+        float radius;
+        RectF box;
+        final Map<String, RectF> parts = new LinkedHashMap<>();
+        final Map<String, Float> shown = new LinkedHashMap<>();
+    }
+
+    /**
+     * The radar's own parts (the Autopilot button, the max stops badge, the spokes' names and the knobs) as a split
+     * screen beside another app grows from {@link #PARTS_FROM_DP} to {@link #TO_DP}, {@link #PARTS_STEP_DP} dp at a
+     * time, during a dash with Autopilot on and max stops set (0.5.1's search put each where it found room, so the
+     * button leapt across the circle, the badge and the names hopped from side to side and came and went as the circle
+     * grew a few dp). Wherever the radar is wholly there: each part moves only with the circle, never more in a step
+     * than the circle's own middle and radius and the radar's box carry it; it comes in or goes only by fading, at most
+     * {@link #PARTS_MOST_FADE} of it in a step; the button is used (and heard) only while it is wholly there, clear of
+     * every knob's reach; and no part wholly there overlaps another or leaves the radar.
+     */
+    private void radarParts(int widthDp, float fontScale) throws Exception {
+        RuntimeEnvironment.setFontScale(fontScale);
+        AutopilotRuntime.executorForTests = Runnable::run;
+        Appearance.choose(app, Appearance.Mode.NIGHT);
+        dasherInstalled();
+        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        DecisionLog.record(app, declinedEntry());
+        servicesUp();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        RuntimeEnvironment.setQualifiers("+w" + widthDp + "dp-h" + PARTS_FROM_DP + "dp");
+        RuntimeEnvironment.setFontScale(fontScale);
+        ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(controller.get()).setInMultiWindowMode(true);
+        controller.setup();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
+        MainActivity activity = controller.get();
+        Ui ui = new Ui(activity);
+        ScenePage page = find(activity.findViewById(android.R.id.content), ScenePage.class);
+        MinimumsStarView star = find(page, MinimumsStarView.class);
+        Radar before = null;
+        Map<String, Integer> whollyAt = new LinkedHashMap<>();
+        for (int heightDp = PARTS_FROM_DP; heightDp <= TO_DP; heightDp += PARTS_STEP_DP) {
+            resize(controller, widthDp, heightDp, fontScale);
+            String where = widthDp + " dp wide at " + heightDp + " dp, font " + fontScale;
+            if (page.shown(star) < 1) {
+                before = null;
+                continue;
+            }
+            Radar now = radar(page, star);
+            for (Map.Entry<String, Float> part : now.shown.entrySet()) {
+                if (part.getValue() >= 1 && !whollyAt.containsKey(part.getKey())) {
+                    whollyAt.put(part.getKey(), heightDp);
+                }
+            }
+            assertRadarParts(where, now, star, ui);
+            if (before != null) {
+                // The most the circle's own middle and radius, and the radar's box, carry a part in this step.
+                float most = 2 * (Math.abs(now.x - before.x) + Math.abs(now.y - before.y)
+                        + Math.abs(now.radius - before.radius)) + Math.abs(now.box.top - before.box.top)
+                        + Math.abs(now.box.bottom - before.box.bottom) + ui.dp(3);
+                Set<String> names = new java.util.LinkedHashSet<>(before.shown.keySet());
+                names.addAll(now.shown.keySet());
+                for (String name : names) {
+                    float was = before.shown.containsKey(name) ? before.shown.get(name) : 0;
+                    float is = now.shown.containsKey(name) ? now.shown.get(name) : 0;
+                    assertTrue(where + ": the " + name + " popped from " + was + " to " + is,
+                            Math.abs(is - was) <= PARTS_MOST_FADE);
+                    RectF a = before.parts.get(name);
+                    RectF b = now.parts.get(name);
+                    if (a == null || b == null) continue;
+                    float moved = (float) Math.hypot(a.centerX() - b.centerX(), a.centerY() - b.centerY());
+                    assertTrue(where + ": the " + name + " jumped " + moved + " px from " + a + " to " + b
+                            + " (the circle's own move allows " + most + ")", moved <= most);
+                }
+            }
+            before = now;
+        }
+        for (String part : new String[] {"button", "badge", "name 0", "name 1", "name 2", "name 3"}) {
+            assertTrue(widthDp + " dp wide, font " + fontScale + ": the " + part + " wholly there somewhere",
+                    whollyAt.containsKey(part));
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /** Where the radar's own parts stand now, in the page's pixels, with how much of each is there. */
+    private static Radar radar(ScenePage page, MinimumsStarView star) {
+        Radar radar = new Radar();
+        float left = star.getLeft();
+        float top = star.getTop();
+        radar.x = left + star.skyX();
+        radar.y = top + star.skyY();
+        radar.radius = star.skyRadius();
+        radar.box = new RectF(left, top, star.getRight(), star.getBottom());
+        RectF button = star.autopilotDrawn();
+        if (button != null) {
+            button.offset(left, top);
+            radar.parts.put("button", button);
+            radar.shown.put("button", star.autopilotAmount());
+        }
+        RectF badge = star.stopsBox();
+        if (badge != null) {
+            badge.offset(left, top);
+            radar.parts.put("badge", badge);
+            radar.shown.put("badge", 1f);
+        }
+        for (int axis = 0; axis <= AreaScore.STOP; axis++) {
+            RectF name = star.axisLabelBox(axis);
+            if (name == null) continue;
+            name.offset(left, top);
+            radar.parts.put("name " + axis, name);
+            radar.shown.put("name " + axis, star.axisLabelShown(axis));
+        }
+        for (int axis : MinimumsStarView.SPOKES) {
+            float[] knob = star.knobAt(axis);
+            if (knob == null) continue;
+            radar.parts.put("knob " + axis, new RectF(left + knob[0], top + knob[1], left + knob[0], top + knob[1]));
+        }
+        return radar;
+    }
+
+    /**
+     * The radar's own parts that are wholly there: inside the radar, apart from one another, the button clear of
+     * every knob's reach and used (and heard) only then, and the badge's whole 48 dp target inside the radar.
+     */
+    private static void assertRadarParts(String where, Radar radar, MinimumsStarView star, Ui ui) {
+        List<String> whole = new ArrayList<>();
+        for (Map.Entry<String, Float> part : radar.shown.entrySet()) {
+            if (part.getValue() >= 1) whole.add(part.getKey());
+        }
+        for (int i = 0; i < whole.size(); i++) {
+            RectF a = radar.parts.get(whole.get(i));
+            assertTrue(where + ": the " + whole.get(i) + " inside the radar " + a + " / " + radar.box,
+                    a.left >= radar.box.left - 1 && a.right <= radar.box.right + 1 && a.top >= radar.box.top - 1
+                            && a.bottom <= radar.box.bottom + 1);
+            for (int j = i + 1; j < whole.size(); j++) {
+                RectF b = radar.parts.get(whole.get(j));
+                boolean overlap;
+                if (whole.get(i).equals("button") || whole.get(j).equals("button")) {
+                    // The button is round: no other part comes inside its circle.
+                    RectF round = whole.get(i).equals("button") ? a : b;
+                    RectF other = round == a ? b : a;
+                    float dx = Math.max(0, Math.max(other.left - round.centerX(), round.centerX() - other.right));
+                    float dy = Math.max(0, Math.max(other.top - round.centerY(), round.centerY() - other.bottom));
+                    overlap = Math.hypot(dx, dy) < round.width() / 2 - 1;
+                } else {
+                    float across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                    float down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                    overlap = across > 1 && down > 1;
+                }
+                assertFalse(where + ": the " + whole.get(i) + " " + a + " overlaps the " + whole.get(j) + " " + b,
+                        overlap);
+            }
+        }
+        boolean used = radar.shown.containsKey("button") && radar.shown.get("button") >= 1;
+        android.view.accessibility.AccessibilityNodeInfo node = node(star, MinimumsStarView.SCORE_ID);
+        assertEquals(where + ": the button used (and heard) only while wholly there", used, star.autopilotBox() != null);
+        assertEquals(where + ": the button heard only while wholly there", used, node != null);
+        if (used) {
+            RectF button = radar.parts.get("button");
+            for (Map.Entry<String, RectF> part : radar.parts.entrySet()) {
+                if (!part.getKey().startsWith("knob")) continue;
+                float apart = (float) Math.hypot(part.getValue().centerX() - button.centerX(),
+                        part.getValue().centerY() - button.centerY());
+                assertTrue(where + ": the button clear of the " + part.getKey() + "'s reach, " + apart + " px",
+                        apart >= ui.dp(48) - 1);
+            }
+        }
+        android.view.accessibility.AccessibilityNodeInfo badge = node(star, MinimumsStarView.STOPS_ID);
+        assertNotNull(where + ": the badge heard", badge);
+        Rect bounds = new Rect();
+        badge.getBoundsInParent(bounds);
+        assertTrue(where + ": the badge's whole target inside the radar " + bounds, bounds.top >= -1
+                && bounds.bottom <= star.getHeight() + 1 && bounds.height() >= ui.dp(48) - 1);
     }
 
     private static boolean contains(int[] values, int value) {

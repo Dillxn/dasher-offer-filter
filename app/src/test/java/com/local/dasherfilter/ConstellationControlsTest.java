@@ -214,8 +214,8 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNotNull("one round button by the chart", button);
             Ui ui = new Ui(app);
             assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
-            assertEquals("where the row of three had its middle: on the circle's upright line", star.skyX(),
-                    button.centerX(), 1);
+            assertTrue("about where the row of three had its middle: by the circle's upright line, at most 10 dp left of "
+                    + "it", button.centerX() <= star.skyX() + 1 && button.centerX() >= star.skyX() - ui.dp(10) - 1);
             assertTrue("below the middle, as the row stood: " + button + " / " + star.skyY(),
                     button.centerY() > star.skyY());
             for (int axis : MinimumsStarView.SPOKES) {
@@ -270,7 +270,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
     /**
      * Screen reading and notification access still to set up: their lines stand under the header, above the radar
      * (0.5.1 stood them at the sky's foot, across the constellation's lower half, and the button moved above the
-     * middle for them), so the button keeps its own place on the circle's upright line below the middle, clear of
+     * middle for them), so the button keeps its own place by the circle's upright line below the middle, clear of
      * them, and takes its own taps there.
      */
     @Test
@@ -284,7 +284,8 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNotNull("a setup line to do", setup);
             RectF button = star.autopilotBox();
             assertNotNull(button);
-            assertEquals("on the circle's upright line", star.skyX(), button.centerX(), 1);
+            assertTrue("by the circle's upright line, at most 10 dp left of it", button.centerX() <= star.skyX() + 1
+                    && button.centerX() >= star.skyX() - new Ui(app).dp(10) - 1);
             assertTrue("below the middle, where the row of three stood", button.centerY() > star.skyY());
             int[] starAt = new int[2];
             star.getLocationInWindow(starAt);
