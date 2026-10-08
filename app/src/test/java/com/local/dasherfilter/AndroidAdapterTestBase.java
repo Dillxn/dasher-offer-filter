@@ -407,6 +407,18 @@ abstract class AndroidAdapterTestBase {
         return (TextView) ((ViewGroup) stripWords(content).getChildAt(1)).getChildAt(1);
     }
 
+    /** The homepage's header: the empty title and the round buttons (Navigate, Dasher, the sun, Settings). */
+    static View pageHeader(View content) {
+        return (View) iconButton(content, "Settings").getParent();
+    }
+
+    /** Where {@code view} stands, in its window's pixels. */
+    static android.graphics.RectF inWindow(View view) {
+        int[] at = new int[2];
+        view.getLocationInWindow(at);
+        return new android.graphics.RectF(at[0], at[1], at[0] + view.getWidth(), at[1] + view.getHeight());
+    }
+
     /** The first view of {@code type} in the tree, or null. */
     static <T extends View> T find(View view, Class<T> type) {
         if (type.isInstance(view)) return type.cast(view);

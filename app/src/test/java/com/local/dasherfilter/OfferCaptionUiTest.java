@@ -140,7 +140,9 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             DecisionLog.clear(app);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertNull(shownTextContaining(content, "Selected ·"));
-            assertNotNull(shownTextContaining(content, "No offers yet."));
+            assertNull("the skyline's caption says nothing without an offer", shownTextContaining(content, "Latest ·"));
+            assertEquals("the verdict at the top says so", "No offers yet",
+                    verdictLine(content).getText().toString());
         }
     }
 
@@ -292,11 +294,14 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
                 assertNotNull("the map wholly there is a usable target",
                         Shadows.shadowOf(activity.get()).getLastRequestedPermission());
             }
+            // On the caption, or on the verdict's own words (the chip and the status line under them in the strip keep
+            // their own taps).
+            View words = target == caption ? caption : verdictLine(content);
             int[] targetAt = new int[2], contentAt = new int[2];
-            target.getLocationOnScreen(targetAt);
+            words.getLocationOnScreen(targetAt);
             content.getLocationOnScreen(contentAt);
-            tap((ViewGroup) content, targetAt[0] - contentAt[0] + target.getWidth() / 2f,
-                    targetAt[1] - contentAt[1] + target.getHeight() / 2f);
+            tap((ViewGroup) content, targetAt[0] - contentAt[0] + words.getWidth() / 2f,
+                    targetAt[1] - contentAt[1] + words.getHeight() / 2f);
             assertNotNull("real coordinate tap opens the displayed offer", shownTextContaining(content, "Read: $18.35"));
             assertTrue(FilterStore.load(app).enabled);
         } finally {

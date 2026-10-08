@@ -80,7 +80,11 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(qualifiers = "w320dp-h360dp-xhdpi")
+    /**
+     * A third of a narrow phone beside Dasher, a line to fix taking its room: the map is on its way out (a 360 dp half
+     * keeps it whole), and Navigate in the header still takes the user to the best area.
+     */
+    @Test @Config(qualifiers = "w320dp-h300dp-xhdpi")
     public void besideDasherNavigationWorksWithTheMapOnItsWayOut() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         for (int pay : new int[] {1000, 1100, 1200}) noteOfferAt(37.775, -122.415, pay, 5);

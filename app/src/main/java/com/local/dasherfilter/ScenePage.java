@@ -37,6 +37,10 @@ final class ScenePage extends ViewGroup {
     private static final float CLOUD_DEPTH = 8;
     private static final float FAR_HILL_DEPTH = 4;
     private static final float NEAR_HILL_DEPTH = 7;
+    /** The sun's disc's radius (the moon's is smaller), and how high the far and near hills rise, in dp. */
+    private static final int SUN_DP = 21;
+    private static final int FAR_HILL_DP = 46;
+    private static final int NEAR_HILL_DP = 26;
     /** How far, in dp, the signpost may rise from the hills to clear the skyline before it is left out. */
     private static final int SIGN_RISE_DP = 64;
     /** The skyline's street, this far above the skyline's bottom, is the horizon. */
@@ -77,7 +81,10 @@ final class ScenePage extends ViewGroup {
     private Shader ground;
     private Shader sunGlow;
     private float shadedFor = Float.NaN;
-    private float hillsFor = Float.NaN;
+    /** The horizon, width and rise the hills were last shaped for. */
+    private float hillsLine = Float.NaN;
+    private float hillsWidth = Float.NaN;
+    private float hillsRise = Float.NaN;
     /** Where the page's words and the constellation's icons stand this frame, in this page's pixels. */
     private final java.util.List<android.graphics.RectF> words = new java.util.ArrayList<>();
     private final java.util.List<android.graphics.RectF> overIcons = new java.util.ArrayList<>();
@@ -478,7 +485,7 @@ final class ScenePage extends ViewGroup {
             canvas.drawPath(moon, fill);
         } else {
             fill.setColor(0xFFFFE3A0);
-            canvas.drawCircle(x, y, ui.dp(21), fill);
+            canvas.drawCircle(x, y, ui.dp(SUN_DP), fill);
             fill.setColor(0xFFF8C85A);
             canvas.drawCircle(x, y, ui.dp(16), fill);
         }
@@ -613,13 +620,20 @@ final class ScenePage extends ViewGroup {
         return null;
     }
 
-    /** Two ranges of hills along the horizon, behind the skyline, the nearer darker. */
+    /**
+     * Two ranges of hills along the horizon, behind the skyline, the nearer darker. They never rise over the sun (or
+     * moon), the header's day and night button: where the horizon comes up near it (a short window, the skyline gone),
+     * they flatten as it comes.
+     */
     private void drawHills(Canvas canvas, float width, float line) {
-        if (hillsFor != line * 31 + width) {
-            hillsFor = line * 31 + width;
+        float rise = Math.max(0, Math.min(1, (line - sunBottom()) / ui.dp(FAR_HILL_DP)));
+        if (line != hillsLine || width != hillsWidth || rise != hillsRise) {
+            hillsLine = line;
+            hillsWidth = width;
+            hillsRise = rise;
             float over = ui.dp(12);
-            hills(farHills, -over, width + over, line, ui.dp(46), 3.0);
-            hills(nearHills, -over, width + over, line, ui.dp(26), 5.0);
+            hills(farHills, -over, width + over, line, ui.dp(FAR_HILL_DP) * rise, 3.0);
+            hills(nearHills, -over, width + over, line, ui.dp(NEAR_HILL_DP) * rise, 5.0);
         }
         canvas.save();
         canvas.translate(-Tilt.x() * ui.dp(FAR_HILL_DEPTH), 0);
@@ -631,6 +645,24 @@ final class ScenePage extends ViewGroup {
         fill.setColor(ui.dark ? 0xFF151B28 : 0xFFD2DCC6);
         canvas.drawPath(nearHills, fill);
         canvas.restore();
+    }
+
+    /**
+     * The lowest the sun's (or moon's) disc reaches, in this page's pixels, with the phone tilted as far as it slides
+     * it; 0 before its button is laid out.
+     */
+    float sunBottom() {
+        if (sunAnchor == null || sunAnchor.getWidth() <= 0) return 0;
+        return top(sunAnchor) + sunAnchor.getHeight() / 2f + ui.dp(SUN_DP + SUN_DEPTH);
+    }
+
+    /** The highest the hills rise as last drawn, in this page's pixels (for tests). */
+    float hillsTop() {
+        android.graphics.RectF bounds = new android.graphics.RectF();
+        farHills.computeBounds(bounds, true);
+        android.graphics.RectF near = new android.graphics.RectF();
+        nearHills.computeBounds(near, true);
+        return Math.min(bounds.top, near.top);
     }
 
     /** Rolling hills whose tops reach {@code rise} above {@code line}, with {@code waves} crests across. */

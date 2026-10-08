@@ -33,7 +33,9 @@ import static org.junit.Assert.assertTrue;
  * offer is plotted or exposed for touch and screen readers; history stays selectable in the skyline. Autopilot's dashed
  * shape takes no touches. The rules: $5 pay, $3.00 a mile, $12 an hour ($0.20 a minute), at most 3 stops (an old $1.00
  * a stop folds into the $5 minimum pay); the newest offer ($24.00 for 6 mi, 25 min, 2 stops) passes and is the chart's
- * example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles.
+ * example, the older one ($9.75 for 3.3 mi, 18 min, 2 stops) is declined for its miles. Set up as during a dash, when
+ * offers come: screen reading and background offers on, so no setup line takes the radar's room (the lines stand
+ * above it and share the page with it, where 0.5.1's crossed it).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
@@ -43,6 +45,15 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
     /** The newest offer is mark 0, the older one mark 1. */
     private static final int NEWEST = 0;
     private static final int OLDER = 1;
+
+    private org.robolectric.android.controller.ServiceController<OfferFilterService> screen;
+    private org.robolectric.android.controller.ServiceController<OfferNotificationService> listener;
+
+    @org.junit.After
+    public void stopServices() {
+        if (listener != null && OfferNotificationService.isConnected()) listener.destroy();
+        if (screen != null) screen.destroy();
+    }
 
     @Test
     public void aTapOnAnOffersMarkOpensItsTicketAndBothChartsShowItChosen() {
@@ -62,8 +73,11 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertNull("the previous offer no longer has a hidden touch target", star.markAt(NEWEST, 0));
             float[] mark = clearestMark(star, OLDER);
-            assertTrue("a mark well clear of every knob and other mark", clearance(star, mark, OLDER)
-                    > new Ui(app).dp(30));
+            assertTrue("a mark well clear of every knob and other mark: " + clearance(star, mark, OLDER) + " px at "
+                    + java.util.Arrays.toString(mark) + ", radius " + star.skyRadius() + ", radar " + star.getWidth()
+                    + "x" + star.getHeight() + ", button " + star.autopilotBox() + ", badge " + star.stopsBox()
+                    + ", knobs " + java.util.Arrays.toString(star.knobAt(0)) + java.util.Arrays.toString(star.knobAt(1))
+                    + java.util.Arrays.toString(star.knobAt(2)), clearance(star, mark, OLDER) > new Ui(app).dp(30));
             touch(content, star, MotionEvent.ACTION_DOWN, mark);
             assertEquals("a finger on it picks it out lightly", OLDER, star.pressedOffer());
             touch(content, star, MotionEvent.ACTION_UP, mark);
@@ -399,8 +413,8 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             assertTrue("beside the map", star.getRight() <= find(content, AreaMapView.class).getLeft());
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertNotNull("its offers reach screen readers",
-                    star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID));
+            assertNotNull("its offers reach screen readers", star.getAccessibilityNodeProvider()
+                    .createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER));
             float[] inBoth = insideBoth(star);
             assertNotNull("a place inside both shapes, clear of every mark and knob", inBoth);
             tapThrough(content, star, inBoth);
@@ -419,11 +433,19 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
         assertTrue(FilterStore.commitAutopilotBar(app, 100, bar));
     }
 
-    /** The rules, an older declined offer three minutes ago and the newest passing one a minute ago. */
+    /**
+     * The rules, an older declined offer three minutes ago and the newest passing one a minute ago, set up as during a
+     * dash (screen reading and background offers on).
+     */
     private void seed(FilterSettings rules) {
         FilterStore.save(app, rules);
         record(rules, 180_000, 975, 3.3, 18, 2);
         record(rules, 60_000, 2400, 6.0, 25, 2);
+        screen = Robolectric.buildService(OfferFilterService.class).create();
+        screen.get().onServiceConnected();
+        listener = Robolectric.buildService(OfferNotificationService.class).create();
+        listener.get().onListenerConnected();
+        settle();
     }
 
     private void record(FilterSettings rules, long ago, int pay, double miles, int minutes, int stops) {
@@ -453,7 +475,11 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
         return best;
     }
 
-    /** How far {@code at} is from the nearest knob, button or mark (offer {@code skip}'s own marks aside). */
+    /**
+     * How far {@code at} is from the nearest knob or mark (offer {@code skip}'s own marks aside), or from the edge of the
+     * Autopilot button or the max stops badge (each a 48 dp target; 0.5.1 measured from twice as far out, which the
+     * fluid page's smaller radar on a phone leaves no mark clear of).
+     */
     private static double clearance(MinimumsStarView star, float[] at, int skip) {
         double clear = Double.MAX_VALUE;
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
@@ -466,7 +492,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
         }
         for (android.graphics.RectF control : new android.graphics.RectF[] {star.autopilotBox(), star.stopsBox()}) {
             if (control != null) clear = Math.min(clear,
-                    Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width());
+                    Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width() / 2);
         }
         return clear;
     }

@@ -307,8 +307,11 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             activity.start().resume().visible();
             idle();
             assertTrue("Dasher beside, seen at once", OfferFilterService.dasherBeside());
-            AreaMapView map = find(activity.get().findViewById(android.R.id.content), AreaMapView.class);
-            assertEquals("no map of our own beside Dasher's", View.GONE, map.getVisibility());
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNull("so the header offers no Put Dasher beside", shownIcon(content, DasherSplit.BESIDE_LABEL));
+            // 0.5.1 hid the page's own map beside Dasher's; the fluid page keeps it, whoever is beside (the owner: "I do
+            // not like how it only shows the map or the radar").
+            assertEquals("the page's own map stays", View.VISIBLE, find(content, AreaMapView.class).getVisibility());
         } finally {
             activity.pause().stop().destroy();
             service.destroy();

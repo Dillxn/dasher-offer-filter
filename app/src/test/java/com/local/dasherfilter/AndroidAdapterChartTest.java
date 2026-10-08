@@ -232,9 +232,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
+    /** Beside Dasher the mascot, at the strip's start, and the constellation under it each take their own taps. */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherTheMascotAndTheConstellationBehindItEachTakeTheirOwnTaps() {
+    public void besideDasherTheMascotAndTheConstellationEachTakeTheirOwnTaps() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         FilterStore.save(app, FilterSettings.of(true, 2000, 150, 0, 0));
         DecisionLog.record(app, declinedEntry());
@@ -253,12 +254,12 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
-            assertTrue("the mascot and its counts float over the constellation", mascot.placed());
+            assertTrue("the page placed the mascot", mascot.placed());
             float middleX = star.skyX();
             float middleY = star.skyY();
             assertTrue("the upper-left mascot leaves the plot center clear",
-                    Math.hypot(middleX - mascot.getLeft() - mascot.mascotX(),
-                            middleY - mascot.getTop() - mascot.mascotY()) > mascot.mascotRadius());
+                    Math.hypot(star.getLeft() + middleX - mascot.getLeft() - mascot.mascotX(),
+                            star.getTop() + middleY - mascot.getTop() - mascot.mascotY()) > mascot.mascotRadius());
 
             tap(sky, mascot.getLeft() + mascot.mascotX(), mascot.getTop() + mascot.mascotY());
             assertFalse("a tap on the mascot pauses", FilterStore.load(app).enabled);
@@ -275,9 +276,16 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Half of a split screen beside Dasher (0.5.1 showed only the constellation there, no map): the radar and the map
+     * side by side under the strip and the header, the radar's three spokes with their knobs and icons, the max stops
+     * pin and badge and the Autopilot button all inside its own box, and the strip's words kept clear of the scene's
+     * stars. A line asking for a fix stands under the header, above the radar and the map, which give it their room:
+     * it never crosses a knob or an icon (0.5.1's line crossed the constellation's lower part).
+     */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherThreeSpokesFitTheHeightAndALineDoesNotShrinkThem() throws Exception {
+    public void besideDasherTheRadarAndTheMapShareTheHalfAndALineToFixStandsAboveThem() throws Exception {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -290,25 +298,25 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            layOut(content);
+            settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            FilterHeroView mascot = find(content, FilterHeroView.class);
+            AreaMapView map = find(content, AreaMapView.class);
             ScenePage scene = find(content, ScenePage.class);
-            View sky = (View) star.getParent();
             assertNull("nothing to fix yet", shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
+            assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
+            assertEquals("and the map beside it", 1f, scene.shown(map), 0f);
+            assertTrue("side by side, the radar on the left", star.getRight() <= map.getLeft());
+            android.graphics.RectF strip = inWindow(stripWords(content));
+            android.graphics.RectF header = inWindow(pageHeader(content));
+            assertTrue("both under the strip and the header", inWindow(star).top >= header.bottom - 1
+                    && inWindow(map).top >= header.bottom - 1 && header.top >= strip.bottom - 1);
             float radius = star.skyRadius();
-            int width = sky.getWidth();
-            assertTrue("its middle a little right of the page's", star.skyX() > width / 2f);
-            android.graphics.RectF counts = new android.graphics.RectF();
-            mascot.countsAt(counts);
-            counts.offset(mascot.getLeft(), mascot.getTop());
-            assertTrue("the circle stands below the counts", star.skyY() - radius >= counts.bottom);
+            assertTrue("a circle the knobs work at: " + radius,
+                    radius >= new Ui(app).dp(FluidLayout.RADIUS_LEAST_DP) - 1);
             for (int axis : MinimumsStarView.SPOKES) assertNotNull("knob " + axis, star.knobAt(axis));
             for (int axis : new int[] {AreaScore.STOP, AreaScore.HOTSPOT, AreaScore.ITEM}) {
                 assertNull("no knob on a retired spoke: " + axis, star.knobAt(axis));
             }
-            List<android.graphics.RectF> icons = new ArrayList<>();
-            star.iconsAt(icons);
             java.lang.reflect.Method iconAt = MinimumsStarView.class.getDeclaredMethod("skyIcon", int.class,
                     float.class, float.class, float.class, android.graphics.RectF.class);
             iconAt.setAccessible(true);
@@ -316,50 +324,50 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 android.graphics.RectF box = new android.graphics.RectF();
                 boolean visible = (Boolean) iconAt.invoke(star, axis, star.skyX(), star.skyY(), radius, box);
                 boolean shown = axis != AreaScore.HOTSPOT && axis != AreaScore.ITEM;
-                assertEquals("axis " + axis + " at " + box + "; sky=" + star.getWidth() + "x" + star.getHeight()
+                assertEquals("axis " + axis + " at " + box + "; radar=" + star.getWidth() + "x" + star.getHeight()
                         + ", center=" + star.skyX() + "," + star.skyY() + ", radius=" + radius + ", stops="
                         + star.stopsBox(), shown, visible);
             }
+            List<android.graphics.RectF> icons = new ArrayList<>();
+            star.iconsAt(icons);
             assertEquals("the three spokes' icons, the max stops pin and its badge, and the Autopilot button; button="
                     + star.autopilotBox() + "; stops=" + star.stopsBox(), 6, icons.size());
             for (android.graphics.RectF icon : icons) {
-                assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
-                assertFalse("and clear of the counts: " + icon, android.graphics.RectF.intersects(icon, counts));
+                assertTrue("each icon inside the radar's own box: " + icon + " in " + star.getWidth() + "x"
+                        + star.getHeight(), icon.left >= 0 && icon.top >= 0 && icon.right <= star.getWidth()
+                        && icon.bottom <= star.getHeight());
             }
             assertFalse("the rings' dollars are on the page", star.levelWords().isEmpty());
-            List<android.graphics.RectF> words = scene.words();
-            assertTrue("the scene knows the counts are words, so no star lands on them",
-                    containsPoint(words, counts.centerX() + sky.getLeft(), counts.centerY() + sky.getTop()));
+            android.graphics.RectF page = inWindow(scene);
+            android.graphics.RectF verdict = inWindow(verdictLine(content));
+            assertTrue("the scene knows the verdict is words, so no star lands on it", containsPoint(scene.words(),
+                    verdict.centerX() - page.left, verdict.centerY() - page.top));
 
-            // Background offers go off: the line asking for a fix crosses the circle's lower part; the circle keeps
-            // its size, and the mascot stays above the line.
+            // Background offers go off: the line asking for a fix stands under the header, above the radar and the
+            // map, which give it their room; the radar keeps its knobs and every icon, none under the line.
             listener.destroy();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            layOut(content);
+            settleSky(content);
             TextView problem = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
             assertNotNull(problem);
-            View row = (View) problem.getParent();
-            assertEquals("a line does not shrink the constellation", radius, star.skyRadius(), 1f);
-            int[] rowAt = new int[2];
-            int[] skyAt = new int[2];
-            row.getLocationInWindow(rowAt);
-            sky.getLocationInWindow(skyAt);
-            float rowTop = rowAt[1] - skyAt[1];
-            assertTrue("the mascot stands above the line", mascot.getTop() + mascot.mascotY() < rowTop);
-            android.graphics.RectF rowBox = new android.graphics.RectF(rowAt[0] - skyAt[0], rowTop,
-                    rowAt[0] - skyAt[0] + row.getWidth(), rowTop + row.getHeight());
+            android.graphics.RectF row = inWindow((View) problem.getParent());
+            assertTrue("the line under the header: " + row + " / " + inWindow(pageHeader(content)),
+                    row.top >= inWindow(pageHeader(content)).bottom - 1);
+            android.graphics.RectF radar = inWindow(star);
+            assertTrue("above the radar and the map: " + row + " / " + radar, row.bottom <= radar.top + 1
+                    && row.bottom <= inWindow(map).top + 1);
+            assertEquals("the radar still wholly there, a little smaller at most", 1f, scene.shown(star), 0f);
+            assertTrue("never larger for the line", star.skyRadius() <= radius + 1);
+            for (int axis : MinimumsStarView.SPOKES) assertNotNull("knob " + axis, star.knobAt(axis));
             icons.clear();
             star.iconsAt(icons);
-            assertEquals("every icon still shows, the lower ones stepped above their spokes' ends (and the badge and "
-                    + "the button)", 6, icons.size());
+            assertEquals("every icon still shows (the badge and the button too)", 6, icons.size());
             for (android.graphics.RectF icon : icons) {
-                assertTrue("each icon inside the page: " + icon, icon.left >= 0 && icon.right <= width);
-                assertFalse("and clear of the line: " + icon + " / " + rowBox,
-                        android.graphics.RectF.intersects(icon, rowBox));
+                assertTrue("each icon inside the radar's own box, below the line: " + icon, icon.left >= 0
+                        && icon.top >= 0 && icon.right <= star.getWidth() && icon.bottom <= star.getHeight());
             }
             assertTrue("the scene knows the line is words too", containsPoint(scene.words(),
-                    rowAt[0] + row.getWidth() / 2f - skyAt[0] + sky.getLeft(), rowTop + row.getHeight() / 2f
-                            + sky.getTop()));
+                    row.centerX() - page.left, row.centerY() - page.top));
         } finally {
             if (OfferNotificationService.isConnected()) listener.destroy();
             service.destroy();
@@ -367,9 +375,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * A fresh page beside Dasher with two setup steps to do (0.5.1 crossed the constellation with them and put the
+     * start on the ground): the start is the strip's status line at the top, the two steps stand under the header,
+     * and the radar under them keeps every hollow knob, wholly there with the map beside it. The mascot stands in the
+     * strip above them all.
+     */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherOnAFreshPageTwoLinesCrossTheConstellationAndTheMascotRisesAboveThem() {
+    public void besideDasherOnAFreshPageTheStartTopsThePageAndTwoStepsStandAboveTheRadar() {
         FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
         Shadows.shadowOf(app.getSystemService(android.app.NotificationManager.class)).setNotificationsEnabled(false);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -379,51 +393,38 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            layOut(content);
-            Ui ui = new Ui(app);
+            settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             FilterHeroView mascot = find(content, FilterHeroView.class);
-            View sky = (View) star.getParent();
-            int[] skyAt = new int[2];
-            sky.getLocationInWindow(skyAt);
+            ScenePage scene = find(content, ScenePage.class);
+            android.graphics.RectF header = inWindow(pageHeader(content));
             float linesTop = Float.MAX_VALUE;
+            float linesBottom = 0;
             for (String line : new String[] {SetupChecklist.NOTIFICATIONS, SetupChecklist.ALERTS}) {
                 TextView shown = shownTextContaining(content, line);
                 assertNotNull(line, shown);
-                int[] at = new int[2];
-                shown.getLocationInWindow(at);
-                linesTop = Math.min(linesTop, at[1] - skyAt[1]);
+                android.graphics.RectF row = inWindow((View) shown.getParent());
+                linesTop = Math.min(linesTop, row.top);
+                linesBottom = Math.max(linesBottom, row.bottom);
             }
-            // With no rule yet, the start stands on the ground, under the latest offer's line, never in the sky.
-            TextView start = shownTextContaining(content, MainActivity.START_LINE);
-            assertNotNull(start);
-            int[] startAt = new int[2];
-            start.getLocationInWindow(startAt);
-            assertTrue("below the sky", startAt[1] >= skyAt[1] + sky.getHeight());
+            assertTrue("the steps under the header", linesTop >= header.bottom - 1);
+            // With no rule yet, the start is the strip's status line, at the top of the page.
+            TextView start = statusLine(content);
+            assertEquals(MainActivity.START_LINE, start.getText().toString());
+            assertTrue("the start above the header", inWindow(start).bottom <= header.top + 1);
+            assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
+            assertTrue("under the steps", inWindow(star).top >= linesBottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
-                assertNotNull("every hollow knob stays with both lines: " + axis, star.knobAt(axis));
+                assertNotNull("every hollow knob stays with both steps: " + axis, star.knobAt(axis));
             }
-            assertTrue("the upper spokes stay inside the short window", star.skyY() - star.skyRadius() >= 0);
-            assertTrue("they cross its lower part", star.skyY() + star.skyRadius() > linesTop);
-            float mascotY = mascot.getTop() + mascot.mascotY();
-            float mascotX = mascot.getLeft() + mascot.mascotX();
-            assertTrue("the mascot rises above them", mascotY + mascot.mascotRadius() <= linesTop);
-            android.graphics.RectF counts = new android.graphics.RectF();
-            mascot.countsAt(counts);
-            counts.offset(mascot.getLeft(), mascot.getTop());
-            assertTrue("and stays below the counts", mascotY - mascot.mascotRadius() >= counts.bottom);
-            assertTrue("inside the page", mascotX - mascot.mascotRadius() >= 0);
-            // Above and left of the plot, clear of the finite upper spoke actually drawn. Its extension beyond
-            // the outer ring no longer forces the mascot back down beside the graph's center.
-            double spread = Math.toRadians(MinimumsStarView.SPREAD);
-            double dx = -star.skyRadius() * Math.cos(spread);
-            double dy = -star.skyRadius() * Math.sin(spread);
-            double projection = Math.max(0, Math.min(1,
-                    ((mascotX - star.skyX()) * dx + (mascotY - star.skyY()) * dy) / (dx * dx + dy * dy)));
-            double fromUpperSpoke = Math.hypot(mascotX - star.skyX() - projection * dx,
-                    mascotY - star.skyY() - projection * dy);
-            assertTrue("clear of the upper left spoke: " + fromUpperSpoke,
-                    fromUpperSpoke >= mascot.mascotRadius() + ui.dp(8));
+            assertTrue("the upper spokes inside the radar's box", star.skyY() - star.skyRadius() >= 0);
+            AreaMapView map = find(content, AreaMapView.class);
+            assertEquals("the map beside it", 1f, scene.shown(map), 0f);
+            android.graphics.RectF page = inWindow(scene);
+            float mascotY = page.top + mascot.getTop() + mascot.mascotY();
+            float mascotX = page.left + mascot.getLeft() + mascot.mascotX();
+            assertTrue("the mascot in the strip, above the header", mascotY + mascot.mascotRadius() <= header.top + 1);
+            assertTrue("inside the page", mascotX - mascot.mascotRadius() >= page.left);
         } finally {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);
@@ -436,18 +437,22 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         everyKnobStaysInReachOfTheLines(false);
     }
 
+    /**
+     * Beside Dasher in a half tall enough for the radar at twice the font with its steps to do (in a shorter one the
+     * strip, the header and the steps take the whole half and the radar waits for room: FluidPageTest).
+     */
     @Test
-    @Config(qualifiers = "w411dp-h410dp-420dpi")
+    @Config(qualifiers = "w411dp-h640dp-420dpi")
     public void besideDasherAtTwiceTheFontSizeEveryKnobStaysInReachOfTheLines() {
         everyKnobStaysInReachOfTheLines(true);
     }
 
     /**
-     * A fresh page at twice the font size with setup still to do. The start line stands on the ground, so neither it
-     * nor a setup line covers a hollow knob, and each knob takes a drag along its spoke. Where a set knob can stand
-     * under a setup line (a high per-hour minimum near the outer ring, low on the right, on a whole screen; beside
-     * Dasher none can), it still takes a drag that sets out from it along its spoke, while a tap there stays the
-     * line's.
+     * A fresh page at twice the font size with setup still to do (0.5.1 crossed the constellation with the setup lines,
+     * so a set knob could stand under one, and put the start on the ground): the start is the strip's status line at
+     * the top, the setup lines stand under the header and the radar under them, wholly there, so no line covers a
+     * knob, hollow or set, anywhere along its spoke; each hollow knob takes a drag along its spoke, and the per-hour
+     * knob takes one from wherever it stands.
      */
     private void everyKnobStaysInReachOfTheLines(boolean beside) {
         RuntimeEnvironment.setFontScale(2f);
@@ -465,15 +470,14 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             Ui ui = new Ui(app);
-            assertNotNull("a setup line to do", lineAt(content, star, null, SETUP_LINES));
-            TextView start = shownTextContaining(content, MainActivity.START_LINE);
-            assertNotNull("the start line", start);
-            int[] startAt = new int[2];
-            int[] skyAt = new int[2];
-            start.getLocationInWindow(startAt);
-            ((View) star.getParent()).getLocationInWindow(skyAt);
-            assertTrue("the start line stands on the ground, below the sky and its knobs",
-                    startAt[1] >= skyAt[1] + ((View) star.getParent()).getHeight());
+            View line = lineAt(content, star, null, SETUP_LINES);
+            assertNotNull("a setup line to do", line);
+            TextView start = statusLine(content);
+            assertEquals("the start is the strip's status line", MainActivity.START_LINE, start.getText().toString());
+            assertTrue("at the top, above the header",
+                    inWindow(start).bottom <= inWindow(pageHeader(content)).top + 1);
+            assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
+            assertTrue("under the lines", inWindow(star).top >= inWindow(line).bottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertNotNull(knob);
@@ -490,43 +494,25 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             }
             assertFalse("auto-decline stays paused", FilterStore.load(app).enabled);
 
-            // A per-hour minimum high enough that its knob stands under a setup line.
-            View covering = null;
-            float[] knob = null;
-            for (int cents = 10; cents <= 400 && covering == null; cents += 2) {
+            // A per-hour minimum anywhere from $6 to $240 an hour: its knob is never under a setup line.
+            for (int cents = 10; cents <= 400; cents += 10) {
                 stillBesideDasher(beside);
                 FilterStore.save(app, FilterSettings.of(false, 0, 0, cents, 0));
                 Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
                 settleSky(content);
-                knob = star.knobAt(AreaScore.MINUTE);
+                float[] knob = star.knobAt(AreaScore.MINUTE);
                 assertNotNull("the per-hour knob shows at " + cents + " cents a minute", knob);
-                covering = lineAt(content, star, knob, SETUP_LINES);
+                assertNull("no line over it at " + cents + " cents a minute",
+                        lineAt(content, star, knob, SETUP_LINES));
             }
-            if (beside && covering == null) {
-                // Beside Dasher the setup lines stand clear of every per-hour position the loop above tried, from
-                // $6 to $240 an hour: no knob there is ever under one, so there is nothing to hand over.
-                return;
-            }
-            assertNotNull("a per-hour knob can stand under a setup line here", covering);
-            int before = FilterStore.load(app).perMinuteCents;
-            // A tap there is the line's: it opens what the line fixes and sets nothing.
-            Shadows.shadowOf(app).clearNextStartedActivities();
-            ShadowAlertDialog.reset();
-            float[] point = inContent(content, star, knob);
-            tap((ViewGroup) content, point[0], point[1]);
-            assertTrue("the covering line's tap", Shadows.shadowOf(app).getNextStartedActivity() != null
-                    || ShadowAlertDialog.getLatestAlertDialog() != null);
-            assertEquals("a tap sets nothing", before, FilterStore.load(app).perMinuteCents);
-            if (ShadowAlertDialog.getLatestAlertDialog() != null) ShadowAlertDialog.getLatestAlertDialog().dismiss();
-            activity.get().onWindowFocusChanged(true);
+            // From where it stands, at $240 an hour, it takes a drag in along its spoke.
             stillBesideDasher(beside);
             settleSky(content);
-            // A drag from it along its spoke is the knob's: the line hands it over.
-            knob = star.knobAt(AreaScore.MINUTE);
-            assertNotNull("still under the line", lineAt(content, star, knob, SETUP_LINES));
+            int before = FilterStore.load(app).perMinuteCents;
+            float[] knob = star.knobAt(AreaScore.MINUTE);
             dragKnob(content, star, knob, alongSpoke(knob, AreaScore.MINUTE, -ui.dp(40), 0), null);
             int after = FilterStore.load(app).perMinuteCents;
-            assertTrue("the covered knob took its drag: " + before + " -> " + after, after > 0 && after < before);
+            assertTrue("the knob took its drag: " + before + " -> " + after, after > 0 && after < before);
             assertFalse("still paused", FilterStore.load(app).enabled);
         } finally {
             service.destroy();
@@ -961,11 +947,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Paused beside Dasher with a step to do: the line saying so is the strip's status line at the top of the page, and
+     * the radar's knobs stand under the header and the step, so neither covers the other (0.5.1's "Paused" stood in
+     * the sky among the knobs). A tap on the per-hour knob does not resume and a drag from it sets its minimum; a tap
+     * on the line still resumes.
+     */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void besideDasherAKnobNearPausedTakesItsOwnTouchesAndTheWordStillResumes() {
-        // The per-hour knob can stand near the Paused line. The knob must stay clear of its words, and touching or
-        // dragging either control must still reach only that control.
+    public void besideDasherThePausedLineTopsThePageAndAKnobTakesItsOwnTouches() {
         FilterStore.save(app, FilterSettings.of(false, 2000, 150, 75, 0));
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -977,24 +967,18 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            ViewGroup sky = (ViewGroup) star.getParent();
             assertNotNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
-            TextView paused = findText(content, "Paused");
-            assertNotNull(paused);
-            int[] wordAt = new int[2];
-            int[] skyAt = new int[2];
-            paused.getLocationInWindow(wordAt);
-            sky.getLocationInWindow(skyAt);
-            float wordLeft = wordAt[0] - skyAt[0];
-            float wordTop = wordAt[1] - skyAt[1];
+            TextView paused = statusLine(content);
+            assertEquals(MainActivity.PAUSED_LINE, paused.getText().toString());
+            assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
             float[] knob = star.knobAt(2);
             assertNotNull(knob);
-            android.graphics.RectF wordBounds = new android.graphics.RectF(wordLeft, wordTop,
-                    wordLeft + paused.getWidth(), wordTop + paused.getHeight());
-            wordBounds.inset(-new Ui(app).dp(10), -new Ui(app).dp(10));
-            assertFalse("the painted knob does not cover the Paused word", wordBounds.contains(knob[0], knob[1]));
-            assertTrue("beside the word, not under it: " + knob[0] + " / " + wordLeft + "+" + paused.getWidth(),
-                    knob[0] > wordLeft + paused.getWidth());
+            android.graphics.RectF line = inWindow(paused);
+            android.graphics.RectF radar = inWindow(star);
+            assertTrue("the line at the top, the radar under the header: " + line + " / " + radar,
+                    line.bottom <= inWindow(pageHeader(content)).top + 1
+                            && radar.top >= inWindow(pageHeader(content)).bottom - 1);
+            assertFalse("the knob nowhere near the line", line.contains(radar.left + knob[0], radar.top + knob[1]));
 
             tapStar(star, knob[0], knob[1]);
             assertFalse("a tap on the knob does not resume", FilterStore.load(app).enabled);
@@ -1006,11 +990,11 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     FilterStore.load(app).perMinuteCents > 75);
             assertFalse("still paused", FilterStore.load(app).enabled);
 
-            // The word itself still resumes.
+            // The line itself still resumes.
             settleSky(content);
-            paused = findText(content, "Paused");
-            paused.getLocationInWindow(wordAt);
-            tap(sky, wordAt[0] - skyAt[0] + paused.getWidth() / 2f, wordAt[1] - skyAt[1] + paused.getHeight() / 2f);
+            android.graphics.RectF at = inWindow(statusLine(content));
+            android.graphics.RectF page = inWindow(content);
+            tap((ViewGroup) content, at.centerX() - page.left, at.centerY() - page.top);
             assertTrue(FilterStore.load(app).enabled);
         } finally {
             service.destroy();

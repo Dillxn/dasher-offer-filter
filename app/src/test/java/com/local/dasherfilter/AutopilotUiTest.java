@@ -112,8 +112,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * Set up as while dashing: the screen reader and background offers both on, so no line in the sky needs the user
-     * and a whole screen has room for Autopilot's status line.
+     * Set up as while dashing: the screen reader and background offers both on, so no line under the header needs the
+     * user.
      */
     private void setUpForDashing() {
         connectReader();
@@ -356,10 +356,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.goalAsked(app));
             assertEquals("Autopilot on · goal: acceptance rate 50% or more", ShadowToast.getTextOfLatestToast());
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] on; goal 50%"));
-            // Screen reading still needs setting up: that line takes the room first, and the chip says Autopilot
-            // waits.
+            // Screen reading still needs setting up: its step stands under the header, and the strip's status line and
+            // its chip say Autopilot waits.
             refreshed();
-            assertNull(shownLineStarting(content, "Autopilot "));
+            assertNotNull(shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
+            assertEquals("Autopilot waits for screen reading", statusLine(content).getText().toString());
             assertEquals("Auto waits", find(content, AutopilotChip.class).getText().toString());
             assertTrue(find(content, AutopilotChip.class).isShown());
 
@@ -456,12 +457,13 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             assertNull("off: the line is the wait's, as before", shownLineStarting(content, "Autopilot "));
 
-            // Without screen reading a setup line needs the user, and takes the room first: Autopilot's status stands
-            // in its chip beside the latest offer's line, heard in words.
+            // Without screen reading a setup step needs the user, under the header; the strip's status line still
+            // says what Autopilot is doing (0.5.1 gave the step the room and said it in the chip alone), and so does
+            // its chip, heard in words.
             FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
             refreshed();
-            assertNotNull("setup first", shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
-            assertNull(shownLineStarting(content, "Autopilot "));
+            assertNotNull("setup to do", shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
+            assertEquals("Autopilot waits for screen reading", autopilotLine(content));
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip waits = find(content, AutopilotChip.class);
             assertTrue(waits.isShown());
@@ -534,38 +536,40 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, star.getAccessibilityLiveRegion());
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, chip.getAccessibilityLiveRegion());
-            assertEquals("a whole screen with room for the line has no chip", View.GONE, chip.getVisibility());
-            assertEquals("its words follow all the same", "Auto 50% lowest", chip.getText().toString());
+            assertTrue("the chip at the line's start at every size, on a whole screen too", chip.isShown());
+            assertEquals("its words follow the bar", "Auto 50% lowest", chip.getText().toString());
         } finally {
             listener.destroy();
         }
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
-    public void onASmallPhoneTheStatusLineKeepsThePageOneScreenAsTheRoadGivesWay() {
+    public void onASmallPhoneTheStatusLineKeepsThePageOneScreenAsTheStageGivesWay() {
         statusLineOnASmallPhone(1f);
     }
 
     @Test @Config(qualifiers = "w360dp-h640dp-xhdpi")
-    public void onA360By640PhoneTheStatusLineKeepsThePageOneScreenAsTheRoadGivesWay() {
+    public void onA360By640PhoneTheStatusLineKeepsThePageOneScreenAsTheStageGivesWay() {
         statusLineOnASmallPhone(1f);
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
-    public void atTwiceTheFontSizeOnASmallPhoneTheStatusStandsInTheChipAndThePageStaysOneScreen() {
+    public void atTwiceTheFontSizeOnASmallPhoneTheStatusLineStaysWholeAndThePageOneScreen() {
         statusLineOnASmallPhone(2f);
     }
 
     @Test @Config(qualifiers = "w360dp-h640dp-xhdpi")
-    public void atOneAndAHalfTimesTheFontSizeTheStatusStandsInTheChipAndThePageStaysOneScreen() {
+    public void atOneAndAHalfTimesTheFontSizeTheStatusLineStaysWholeAndThePageOneScreen() {
         statusLineOnASmallPhone(1.5f);
     }
 
     /**
-     * A 640 dp phone, set up, Autopilot on: its status line takes a row of the ground. The road (scenery) gives up the
-     * height it needs, so the page stays one screen; with Autopilot off again the road has its full 78 dp back. At a
-     * very large font there is no road to give, so the status stands in its chip beside the latest offer's line, which
-     * costs no height: the page stays one screen, the caption whole, the skyline and the map at their least.
+     * A 640 dp phone, set up, Autopilot on (0.5.1 gave its status line a row of the ground, the road giving way, and at
+     * a very large font said the status in the chip instead): at every font size the status line is the strip's, the
+     * chip at its start, both whole on screen, and the page is one screen, the stage under them sharing the rest: each
+     * of its parts wholly there at no less than it reads at, or on its way out, least important first (the road, the
+     * counts, the skyline, then the radar and the map together, which this phone keeps). Off again, the shorter status
+     * line gives the stage its room back: nothing is fainter for it.
      */
     private void statusLineOnASmallPhone(float fontScale) {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -580,72 +584,96 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
+            refreshed();
+            layOut(content);
             Ui ui = new Ui(activity.get());
             ScenePage scene = find(content, ScenePage.class);
             View window = (View) scene.getParent();
-            View road = scene.getChildAt(scene.getChildCount() - 1);
+            String words = "Autopilot 100% · AR 53% → 70%: about 17 more accepts";
+            if (fontScale <= 1f) assertEquals(words, autopilotLine(content));
+            layOut(content);
+            TextView line = statusLine(content);
+            assertEquals(words, line.getText().toString());
+            assertNull("never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertEquals("Auto 100% ▲", chip.getText().toString());
+            assertEquals("Autopilot bar 100 percent. Acceptance rate 53 percent, goal 70 percent: about 17 more "
+                    + "accepts. Opens Autopilot details.", String.valueOf(chip.getContentDescription()));
+            assertSame("at the line's start", line.getParent(), chip.getParent());
             Rect visible = new Rect();
-            if (fontScale < 1.5f) {
-                assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
-                layOut(content);
-                TextView line = shownLineStarting(content, "Autopilot ");
-                assertTrue(line.getGlobalVisibleRect(visible));
-                assertEquals("the whole line on screen", line.getHeight(), visible.height());
-                assertTrue("all its words", line.getLayout().getHeight()
-                        <= line.getHeight() - line.getPaddingTop() - line.getPaddingBottom());
-                assertTrue("one screen: " + scene.getHeight() + " in " + window.getHeight(),
-                        scene.getHeight() <= window.getHeight());
-                assertEquals(View.VISIBLE, road.getVisibility());
-                assertTrue("the road gave way: " + road.getHeight(), road.getHeight() < ui.dp(78));
-
-                // Off: no status line, and the road has its full height again.
-                AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
-                refreshed();
-                layOut(content);
-                assertNull(shownLineStarting(content, "Autopilot "));
-                assertEquals(ui.dp(78), road.getHeight());
-                assertTrue(scene.getHeight() <= window.getHeight());
-            } else {
-                refreshed();
-                layOut(content);
-                assertEquals("no road at a very large font", View.GONE, road.getVisibility());
-                assertNull("no status line: its chip says it", shownLineStarting(content, "Autopilot "));
-                assertNull("and never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
-                AutopilotChip chip = find(content, AutopilotChip.class);
-                assertTrue(chip.isShown());
-                assertEquals("Auto 100% ▲", chip.getText().toString());
-                assertEquals("Autopilot bar 100 percent. Acceptance rate 53 percent, goal 70 percent: about 17 more "
-                        + "accepts. Opens Autopilot details.", String.valueOf(chip.getContentDescription()));
-                assertTrue(chip.getGlobalVisibleRect(visible));
-                assertEquals("the whole chip on screen", chip.getHeight(), visible.height());
-                assertFalse("beside the latest offer's line", ((AutopilotChip.Row) chip.getParent()).stacked());
-                TextView caption = shownTextContaining(content, "Latest · ");
-                assertTrue(caption.getGlobalVisibleRect(visible));
-                assertEquals("the caption whole", caption.getHeight(), visible.height());
-                assertTrue("all its lines", caption.getLayout().getHeight()
-                        <= caption.getHeight() - caption.getPaddingTop() - caption.getPaddingBottom());
-                assertTrue("one screen: " + scene.getHeight() + " in " + window.getHeight(),
-                        scene.getHeight() <= window.getHeight());
-                DecisionChartView chart = find(content, DecisionChartView.class);
-                assertTrue("the skyline keeps its least: " + chart.getHeight(), chart.getHeight() >= ui.dp(64) - 1);
-                assertTrue("the map keeps its least", find(content, AreaMapView.class).getHeight() >= ui.dp(96) - 1);
-                // A tap opens the details, as the status line's would.
-                chip.performClick();
-                idle();
-                assertEquals(AutopilotText.DETAILS_TITLE, title(ShadowAlertDialog.getLatestAlertDialog()));
+            for (View part : new View[] {verdictLine(content), chip, line}) {
+                assertTrue(part.getGlobalVisibleRect(visible));
+                assertEquals("whole on screen: " + part, part.getHeight(), visible.height());
             }
+            assertEquals("every word of the line", words.length(), line.getLayout().getLineEnd(line.getLineCount() - 1));
+            assertTrue("inside its height", line.getLayout().getHeight()
+                    <= line.getHeight() - line.getPaddingTop() - line.getPaddingBottom());
+            assertTrue("one screen: " + scene.getHeight() + " in " + window.getHeight(),
+                    scene.getHeight() <= window.getHeight());
+            float[] on = stageAsItStands(content, ui);
+
+            // Off: no Autopilot line, the chip the way back in, and the stage has at least the room it had.
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            refreshed();
+            layOut(content);
+            assertNull(shownLineStarting(content, "Autopilot "));
+            assertEquals("Auto off", chip.getText().toString());
+            assertTrue(chip.isShown());
+            assertTrue(scene.getHeight() <= window.getHeight());
+            float[] off = stageAsItStands(content, ui);
+            for (int i = 0; i < on.length; i++) {
+                assertTrue("nothing fainter with the shorter line: " + java.util.Arrays.toString(on) + " / "
+                        + java.util.Arrays.toString(off), off[i] >= on[i] - 0.001f);
+            }
+
+            // A tap on the chip opens the details, as the status line's would.
+            AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+            refreshed();
+            chip.performClick();
+            idle();
+            assertEquals(AutopilotText.DETAILS_TITLE, title(ShadowAlertDialog.getLatestAlertDialog()));
         } finally {
             listener.destroy();
         }
     }
 
     /**
-     * A whole screen with a line in the sky that needs the user (here notification access): the line takes the room
-     * first, and Autopilot's status stands in its chip beside the latest offer's line; once the line goes, the status
-     * line is back in Next match's place and the chip goes.
+     * How much of each part of the stage is there, {road, counts, skyline, radar and map}, each checked whole at no
+     * less than it reads at or on its way out in its order.
+     */
+    private static float[] stageAsItStands(View content, Ui ui) {
+        ScenePage scene = find(content, ScenePage.class);
+        View road = scene.getChildAt(scene.getChildCount() - 1);
+        DecisionChartView chart = find(content, DecisionChartView.class);
+        MinimumsStarView star = find(content, MinimumsStarView.class);
+        AreaMapView map = find(content, AreaMapView.class);
+        float[] shown = {scene.shown(road), scene.countsShown(), scene.shown(chart), scene.shown(star)};
+        String said = java.util.Arrays.toString(shown);
+        for (int i = 1; i < shown.length; i++) {
+            if (shown[i] < 1) assertEquals("the " + i + "th fades only once those before it are gone: " + said, 0f,
+                    shown[i - 1], 0f);
+        }
+        assertEquals("the radar and the map go together", shown[3], scene.shown(map), 0f);
+        assertTrue("this phone keeps the radar and the map: " + said, shown[3] >= 1);
+        if (shown[2] >= 1) {
+            assertTrue("the skyline at its least at least: " + chart.getHeight(),
+                    chart.getHeight() >= ui.dp(FluidLayout.CHART_LEAST_DP) - 1);
+        }
+        assertTrue("the radar's knobs at their least circle at least: " + star.skyRadius(),
+                star.skyRadius() >= ui.dp(FluidLayout.RADIUS_LEAST_DP) - 1);
+        assertTrue("the map at its least at least: " + map.getHeight(),
+                map.getHeight() >= ui.dp(FluidLayout.MAP_LEAST_DP) - 1);
+        return shown;
+    }
+
+    /**
+     * A whole screen with a line that needs the user (here notification access): the line stands under the header and
+     * takes its room from the stage, and Autopilot's status line stays in the strip with its chip (0.5.1 gave the line
+     * the status line's room, the status in the chip alone); the page stays one screen. Once the line goes, the stage
+     * has its room back, and the status line and the chip are as they were.
      */
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
-    public void aLineToFixTakesTheRoomFirstAndTheStatusStandsInTheChipUntilItGoes() {
+    public void aLineToFixStandsUnderTheHeaderAndAutopilotsStatusLineStaysInTheStrip() {
         connectReader();
         minimums(400, 100, 25);
         history(0, 20);
@@ -657,33 +685,41 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             settleSky(content);
             refreshed();
-            assertNotNull("background offers are off: a line to fix", shownTextContaining(content,
-                    SetupChecklist.NOTIFICATIONS));
-            assertNull(shownLineStarting(content, "Autopilot "));
+            TextView fix = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
+            assertNotNull("background offers are off: a line to fix", fix);
+            assertTrue("under the header", inWindow((View) fix.getParent()).top
+                    >= inWindow(pageHeader(content)).bottom - 1);
+            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
             AutopilotChip chip = find(content, AutopilotChip.class);
-            assertTrue(chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             layOut(content);
             ScenePage scene = find(content, ScenePage.class);
             assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
+            float[] withLine = stageAsItStands(content, new Ui(activity.get()));
 
             listener.get().onListenerConnected();
             refreshed();
+            layOut(content);
             assertNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
             assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
+            float[] without = stageAsItStands(content, new Ui(activity.get()));
+            for (int i = 0; i < withLine.length; i++) {
+                assertTrue("the line's room back: " + java.util.Arrays.toString(withLine) + " / "
+                        + java.util.Arrays.toString(without), without[i] >= withLine[i] - 0.001f);
+            }
         } finally {
             listener.destroy();
         }
     }
 
     /**
-     * The window flows' own line in the sky, "Peek paused: …" with Resume, needs the user as a setup line does: it
-     * takes the room first, so Autopilot's status stands in its chip beside the latest offer's line (no status line
-     * beside the chip, no Next match) and the page stays one screen; Resume takes the line away and the status line is
-     * back in Next match's place, the chip gone.
+     * The window flows' own line, "Peek paused: …" with Resume, needs the user as a setup line does: it stands under
+     * the header, and Autopilot's status line stays in the strip with its chip (no Next match), the page one screen
+     * (0.5.1 gave the line the status line's room); Resume takes the line away and the status line is as it was.
      */
     @Test @Config(qualifiers = "w320dp-h640dp-xhdpi")
-    public void aPeekPausedLineTakesTheRoomFirstAndTheStatusStandsInTheChipUntilResume() {
+    public void aPeekPausedLineStandsUnderTheHeaderUntilResumeAndTheStatusLineStays() {
         setUpForDashing();
         minimums(400, 100, 25);
         history(0, 20);
@@ -696,18 +732,19 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             TextView paused = shownTextContaining(content, "Peek paused: ");
             assertNotNull("Peek paused itself: a line that needs the user", paused);
-            assertNull("no status line: the line takes the room first", shownLineStarting(content, "Autopilot "));
+            assertTrue("under the header", inWindow((View) paused.getParent()).top
+                    >= inWindow(pageHeader(content)).bottom - 1);
+            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
             assertNull("and never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
             AutopilotChip chip = find(content, AutopilotChip.class);
-            assertTrue("the chip says it", chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             layOut(content);
-            assertFalse("beside the latest offer's line", ((AutopilotChip.Row) chip.getParent()).stacked());
+            assertFalse("beside the status line", ((AutopilotChip.Row) chip.getParent()).stacked());
             ScenePage scene = find(content, ScenePage.class);
             assertTrue("one screen: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
                     scene.getHeight() <= ((View) scene.getParent()).getHeight());
 
-            // Resume: the line goes, and the status line is back in Next match's place.
+            // Resume: the line goes, and the status line is as it was.
             ((View) paused.getParent()).performClick();
             refreshed();
             assertNull(Peek.pausedWhy(app));
@@ -717,7 +754,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     }
 
     @Test @Config(qualifiers = "w360dp-h360dp-xhdpi")
-    public void inA360DpTallSplitBesideAMapTheLayoutNoteTakesTheSkyAndTheChipCostsNothing() {
+    public void inA360DpTallSplitBesideAMapTheLayoutNoteStandsUnderTheHeaderAndTheChipAddsNoHeightOfItsOwn() {
         layoutNoteInAShortPane(1f);
     }
 
@@ -728,9 +765,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     /**
      * A 360 dp-tall split beside a map during a dash: the window flows' layout note (with Swap) is a line under the
-     * header, and Autopilot's chip stands at the start of its status line in the strip (no Next match). What the chip
-     * costs the page is only what its row grows: nothing at the normal size, and at twice the font only once the words
-     * are at their least size. The note's tap is still Swap.
+     * header (0.5.1 put it in the sky, the constellation up in the header), and Autopilot's chip stands at the start of
+     * its status line in the strip (no Next match). The chip adds no height of its own: the row is the chip's 48 dp or
+     * the status line's words beside it, whichever is taller, and what the chip costs the page is only what its row
+     * grows: Autopilot's long status wrapping once more beside it in a narrow window at the normal size, nothing
+     * shrinking, and at twice the font only once the words are at their least size. The note's tap is still Swap.
      */
     private void layoutNoteInAShortPane(float fontScale) {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -772,14 +811,15 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             layOut(content);
             String measured = "strip " + withChip + " (" + withoutChip + " without the chip), row " + rowWith + " ("
                     + rowAlone + "), line " + shrunk + " of " + full;
+            assertEquals("the row is the chip's or its words', whichever is taller: " + measured,
+                    Math.max(chip.getHeight(), line.getHeight()), rowWith);
             assertTrue("the chip costs the page no more than its row grows: " + measured,
                     withChip - withoutChip <= Math.max(0, rowWith - rowAlone));
+            float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full, TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, 14, app.getResources().getDisplayMetrics())));
             if (fontScale <= 1f) {
-                assertEquals("at the normal size nothing: " + measured, rowAlone, rowWith);
-                assertEquals(measured, withoutChip, withChip);
+                assertEquals("at the normal size nothing shrinks: " + measured, full, shrunk, 0.01f);
             } else if (rowWith > rowAlone) {
-                float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full, TypedValue.applyDimension(
-                        TypedValue.COMPLEX_UNIT_DIP, 14, app.getResources().getDisplayMetrics())));
                 assertEquals("taller than the words alone only at their least size: " + measured, least, shrunk, 0.5f);
             }
 
@@ -1067,15 +1107,60 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     }
 
     /**
+     * Beside Dasher in a half with room for the radar's Autopilot button beside its knobs (in a shorter one the chip
+     * is Autopilot's control alone, as in 0.5.1's short windows): the button and the chip agree, amber below the goal,
+     * and both say Off once Autopilot is off.
+     */
+    @Test @Config(qualifiers = "w411dp-h600dp-420dpi")
+    public void besideDasherWhereTheRadarHasRoomItsButtonAgreesWithTheChip() {
+        setUpForDashing();
+        minimums(400, 100, 25);
+        history(0, 20);
+        reading(55, 12);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+        ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
+        Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
+        try (ActivityController<MainActivity> activity = built.setup()) {
+            View content = page(activity);
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            refreshed();
+            settleSky(content);
+            Ui ui = new Ui(activity.get());
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
+            assertTrue("with its Autopilot button", star.autopilotShown());
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertTrue(chip.isShown());
+            assertEquals("Auto 100% ▲", chip.getText().toString());
+            assertEquals("amber below the goal, the chip", AutopilotChip.amber(ui), chip.getCurrentTextColor());
+            assertEquals("and the button", AutopilotChip.amber(ui), star.buttonRing());
+
+            AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+            OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
+            refreshed();
+            settleSky(content);
+            assertEquals("Auto off", chip.getText().toString());
+            assertTrue("the button says Off", drawnWords(star).contains("Off"));
+        } finally {
+            OfferFilterService.sawDasherBeside(0);
+        }
+    }
+
+    /**
      * Half of a split screen, 360 dp tall, set up as while dashing (screen reading and background offers on), with
-     * Autopilot on below its goal, beside another app or beside Dasher (the page is the same either way): Autopilot's
-     * chip at the start of its status line in the strip, whole, on screen, a 48 dp target, readable by day and night,
-     * heard in words, a tap opening the details and a long press the chooser. It never stands on a line of its own and
-     * costs no more height than the status line has alone: beside it the words shrink only as far as that needs, never
-     * below three quarters of the user's size nor below the default size. The page is one screen and no Next match
-     * takes a row while Autopilot is on; the map, wherever it is wholly there, keeps its readable least; and wherever
-     * the radar is wholly there its Autopilot button agrees with the chip, amber below the goal. Off, the chip stays as
-     * the way back in.
+     * Autopilot on below its goal, beside another app or beside Dasher (the page is the same either way; 0.5.1 put the
+     * constellation in the header beside another app, the chip beside the latest offer's caption): Autopilot's chip at
+     * the start of its status line in the strip, whole, on screen, a 48 dp target, readable by day and night, heard in
+     * words, a tap opening the details and a long press the chooser. It never stands on a line of its own and adds no
+     * height of its own: the row is the chip's 48 dp or the status line's words beside it, whichever is taller; beside
+     * it the words shrink only as far as keeping to the lines they have alone needs, never below three quarters of the
+     * user's size nor below the default size (at the normal size they keep it, Autopilot's long status wrapping beside
+     * the chip in a narrow pane). The verdict is whole on screen as the page opens, and the chip and the status line
+     * too wherever the strip fits the pane; the page is one screen, or at twice the font, where the strip and the
+     * header need more than the pane, it scrolls by the difference with the stage gone. No Next match takes a row while Autopilot is on; the map, wherever it is wholly there, keeps its
+     * readable least; wherever the radar has room for its Autopilot button beside its knobs, the button agrees with the
+     * chip, amber below the goal. Off, the chip stays as the way back in.
      */
     private void chipInAShortPane(boolean night, float fontScale, boolean besideDasher) {
         Appearance.choose(app, night ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
@@ -1104,10 +1189,6 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     + "Opens Autopilot details.", String.valueOf(chip.getContentDescription()));
             assertTrue("a 48 dp target", chip.getHeight() >= ui.dp(48) - 1 && chip.getWidth() >= ui.dp(48) - 1);
             assertEquals("one line, never cut short", 0, chip.getLayout().getEllipsisCount(0));
-            Rect visible = new Rect();
-            assertTrue(chip.getGlobalVisibleRect(visible));
-            assertEquals("the whole chip is on screen", chip.getHeight(), visible.height());
-            assertEquals(chip.getWidth(), visible.width());
             assertTrue("readable: " + Integer.toHexString(chip.getCurrentTextColor()),
                     contrast(chip.getCurrentTextColor(), ui.surface) >= 4.5);
             assertEquals("amber below the goal", AutopilotChip.amber(ui), chip.getCurrentTextColor());
@@ -1116,21 +1197,43 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     System.currentTimeMillis(), true)), line.getText().toString());
             assertEquals("every word of it", line.getText().length(),
                     line.getLayout().getLineEnd(line.getLineCount() - 1));
-            assertTrue(line.getGlobalVisibleRect(visible));
-            assertEquals("the whole line on screen", line.getHeight(), visible.height());
             assertNull("never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
 
-            // What the chip costs the page: never a line of its own, nor more than the words' own height.
+            // The verdict whole on screen as the page opens; the chip and its line too, wherever the strip fits the
+            // pane (at twice the font on Android 8, whose fonts grow linearly, it can run past a 360 dp pane: then
+            // they are a scroll away).
             ScenePage scene = find(content, ScenePage.class);
-            View window = (View) scene.getParent();
+            android.widget.ScrollView window = (android.widget.ScrollView) scene.getParent();
+            Rect visible = new Rect();
+            assertTrue(verdictLine(content).getGlobalVisibleRect(visible));
+            assertEquals("the whole verdict on screen", verdictLine(content).getHeight(), visible.height());
+            boolean stripFits = inWindow(stripWords(content)).bottom <= window.getHeight();
+            if (!stripFits) {
+                assertTrue("only at twice the font", fontScale >= 2f);
+                window.scrollTo(0, window.getChildAt(0).getHeight() - window.getHeight());
+                layOut(content);
+            }
+            assertTrue(chip.getGlobalVisibleRect(visible));
+            assertEquals("the whole chip is on screen", chip.getHeight(), visible.height());
+            assertEquals(chip.getWidth(), visible.width());
+            assertTrue(line.getGlobalVisibleRect(visible));
+            assertEquals("the whole line on screen", line.getHeight(), visible.height());
+            window.scrollTo(0, 0);
+            layOut(content);
+
+            // What the chip costs the page: beside the words, never more than their own height there; on a line of its
+            // own above them only where that is shorter still, a chip at twice the font (Android 8's linear fonts)
+            // leaving the words beside it too little of a 320 dp pane (0.5.1's chip had the whole width, beside the
+            // caption).
             AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
             assertSame(row, line.getParent());
             int rowWith = row.getHeight();
             float shrunk = line.getTextSize();
+            boolean stacked = row.stacked();
             String before = "scale " + row.textScale() + ", tight " + row.tight() + ", chip " + chip.getWidth() + "x"
                     + chip.getHeight() + ", line " + line.getWidth() + "x" + line.getHeight() + " in "
                     + line.getLineCount() + " lines '" + line.getText() + "', row " + rowWith;
-            assertFalse("never a line of its own: " + before, row.stacked());
+            assertTrue("a line of its own only at twice the font: " + before, !stacked || fontScale >= 2f);
             chip.setVisibility(View.GONE);
             layOut(content);
             int rowAlone = row.getHeight();
@@ -1140,8 +1243,17 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             chip.setVisibility(View.VISIBLE);
             layOut(content);
             assertEquals("the same row again: " + before + " / " + gone, rowWith, row.getHeight());
-            assertTrue("one screen: " + scene.getHeight() + " in " + window.getHeight() + "; " + before + " / " + gone,
-                    scene.getHeight() <= window.getHeight());
+            assertEquals("beside: the chip's or the words' height, whichever is taller; above: the two: " + before,
+                    stacked ? chip.getHeight() + line.getHeight() : Math.max(chip.getHeight(), line.getHeight()),
+                    rowWith);
+            assertTrue(verdictLine(content).getGlobalVisibleRect(visible));
+            assertEquals("the whole verdict on screen", verdictLine(content).getHeight(), visible.height());
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            if (scene.getHeight() > window.getHeight()) {
+                assertTrue("scrolling only at a very large font: " + scene.getHeight() + " in " + window.getHeight()
+                        + "; " + before + " / " + gone, fontScale >= 2f);
+                assertEquals("with the stage gone", 0f, scene.shown(star), 0f);
+            }
             android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
             float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full,
                     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 14, metrics)));
@@ -1150,21 +1262,16 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             float chipFull = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, AutopilotChip.SP, metrics);
             assertTrue(chip.getTextSize() >= Math.min(chipFull, Math.max(SetupRow.LEAST_SCALE * chipFull,
                     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, AutopilotChip.SP, metrics))) - 0.5f);
-            if (rowWith > rowAlone) {
+            if (rowWith > rowAlone && !stacked) {
                 assertEquals("taller than the words alone only once they are at their least size: " + before + " / "
                         + gone, least, shrunk, 0.5f);
             }
-            if (fontScale <= 1f) {
-                assertEquals("at the normal size nothing shrinks", full, shrunk, 0.01f);
-                assertEquals("and the chip adds no height", rowAlone, rowWith);
-            }
+            if (fontScale <= 1f) assertEquals("at the normal size nothing shrinks", full, shrunk, 0.01f);
             AreaMapView map = find(content, AreaMapView.class);
             assertTrue("the map keeps its readable least wherever it is wholly there",
                     scene.shown(map) < 1 || map.getHeight() >= ui.dp(84) - 1);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            boolean radar = scene.shown(star) >= 1;
+            boolean radar = scene.shown(star) >= 1 && star.autopilotShown();
             if (radar) {
-                assertNotNull("the radar's Autopilot button", star.autopilotBox());
                 assertEquals("amber below the goal, as the chip is", AutopilotChip.amber(ui), star.buttonRing());
             }
 
@@ -1198,9 +1305,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("Auto off", chip.getText().toString());
             assertTrue(chip.isShown());
             assertTrue(contrast(chip.getCurrentTextColor(), ui.surface) >= 4.5);
-            assertFalse(row.stacked());
-            assertTrue("one screen", scene.getHeight() <= window.getHeight());
-            if (radar) assertTrue("the button says Off", drawnWords(star).contains("Off"));
+            assertTrue("a line of its own only at twice the font", !row.stacked() || fontScale >= 2f);
+            assertTrue("one screen, or only what never goes", scene.getHeight() <= window.getHeight()
+                    || scene.shown(star) == 0);
+            if (radar && star.autopilotShown()) assertTrue("the button says Off", drawnWords(star).contains("Off"));
 
             // On again: its words take their earlier width, and the row decides as it did then.
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -1208,7 +1316,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             layOut(content);
             assertEquals("Auto 100% ▲", chip.getText().toString());
-            assertFalse(row.stacked());
+            assertEquals(stacked, row.stacked());
             assertEquals(rowHeight, row.getHeight());
         } finally {
             OfferFilterService.sawDasherBeside(0);

@@ -52,7 +52,9 @@ import static org.junit.Assert.assertTrue;
  * outside the page;</li>
  * <li>from one size to the next nothing jumps (no edge moves more than {@link FluidLayout#TURN_RATE} times the
  * window's change, give or take {@link #ROUNDING_DP}) and nothing pops in or out (no part fades by more than
- * {@link #MOST_FADE} in a step).</li>
+ * {@link #MOST_FADE} in a step);</li>
+ * <li>drawn, the hills never rise over the sun (by day) or the moon (by night), the header's day and night button,
+ * even where the skyline has gone and the horizon comes up to the header.</li>
  * </ul>
  *
  * The pictures go to {@code app/build/reports/fluid-layout/}. {@link FluidLayoutTest} checks the arithmetic itself at
@@ -308,9 +310,16 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                 }
             }
             before = now;
+
+            // Drawn: the hills never rise over the sun (or moon) up by the header's buttons, whose button it is, even
+            // where the skyline has gone and the horizon comes up to the header.
+            Bitmap drawn = drawn(content);
+            assertTrue(where + ": the hills under the sun, " + page.hillsTop() + " / " + page.sunBottom(),
+                    page.sunBottom() > 0 && page.hillsTop() >= page.sunBottom() - 1);
             if (android.os.Build.VERSION.SDK_INT >= 35 && contains(PICTURED, heightDp)) {
-                picture(content, name + "-" + heightDp + "dp");
+                picture(drawn, name + "-" + heightDp + "dp");
             }
+            drawn.recycle();
         }
         assertTrue(name + ": side by side somewhere", sawBesides || widthDp < 400);
         controller.pause().stop().destroy();
@@ -473,18 +482,21 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         }
     }
 
-    /** The window as drawn, into {@link #PICTURES}. */
-    private void picture(View content, String name) throws Exception {
+    /** The window as drawn. */
+    private Bitmap drawn(View content) {
         Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         canvas.drawColor(new Ui(app).page);
         content.draw(canvas);
+        return bitmap;
+    }
+
+    /** The window as drawn, into {@link #PICTURES}. */
+    private static void picture(Bitmap bitmap, String name) throws Exception {
         File directory = new File(PICTURES);
         assertTrue(directory.isDirectory() || directory.mkdirs());
         try (FileOutputStream out = new FileOutputStream(new File(directory, name + ".png"))) {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, out));
-        } finally {
-            bitmap.recycle();
         }
     }
 }

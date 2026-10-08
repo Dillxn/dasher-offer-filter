@@ -199,7 +199,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
     @Test
     public void theAutopilotButtonTurnsAutopilotOnThroughTheGoalChooserAndOffAgainKeepingTheRules() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
-        // Set up (screen reading and notification access on): no setup line stands in the sky's lower half.
+        // Set up (screen reading and notification access on): no setup line stands under the header.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
         ServiceController<OfferNotificationService> listener =
@@ -267,20 +267,25 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Screen reading and notification access still to set up: their lines stand under the header, above the radar
+     * (0.5.1 stood them at the sky's foot, across the constellation's lower half, and the button moved above the
+     * middle for them), so the button keeps its own place on the circle's upright line below the middle, clear of
+     * them, and takes its own taps there.
+     */
     @Test
-    public void withSetupLinesInTheSkysLowerHalfTheButtonStandsAboveTheMiddleClearOfThem() {
-        // Screen reading and notification access still to set up: their two lines stand at the sky's foot.
+    public void withSetupLinesToDoTheButtonKeepsItsPlaceBelowTheMiddleClearOfThem() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             TextView setup = shownTextContaining(content, "Turn on Offer Filter in Accessibility");
-            assertNotNull("a setup line in the sky", setup);
+            assertNotNull("a setup line to do", setup);
             RectF button = star.autopilotBox();
             assertNotNull(button);
-            assertEquals("still on the circle's upright line", star.skyX(), button.centerX(), 1);
-            assertTrue("above the middle, since the lines take the room below", button.centerY() < star.skyY());
+            assertEquals("on the circle's upright line", star.skyX(), button.centerX(), 1);
+            assertTrue("below the middle, where the row of three stood", button.centerY() > star.skyY());
             int[] starAt = new int[2];
             star.getLocationInWindow(starAt);
             for (String words : new String[] {"Turn on Offer Filter in Accessibility", "Allow notification access"}) {
@@ -291,6 +296,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
                 row.getLocationInWindow(rowAt);
                 RectF box = new RectF(rowAt[0] - starAt[0], rowAt[1] - starAt[1],
                         rowAt[0] - starAt[0] + row.getWidth(), rowAt[1] - starAt[1] + row.getHeight());
+                assertTrue("the line above the radar: " + box, box.bottom <= 1);
                 assertFalse("clear of the setup line " + box + " / " + button, RectF.intersects(box, button));
             }
             ShadowAlertDialog.reset();

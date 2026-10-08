@@ -146,6 +146,13 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                 dialog.getWindow().getCallback().getClass().getName().endsWith("OwnWindowTouches$TrackedCallback"));
     }
 
+    /** Where {@code view}'s bottom stands in its window, in pixels. */
+    private static int inWindowBottom(View view) {
+        int[] at = new int[2];
+        view.getLocationInWindow(at);
+        return at[1] + view.getHeight();
+    }
+
     /** {@code view} wholly on screen as the page opens (without scrolling). */
     private static void assertWhollyOnScreen(String what, View view) {
         Rect visible = new Rect();
@@ -221,7 +228,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = splitScreen()) {
             View content = content(activity);
             layOut(content);
-            assertEquals("Waiting for offers", verdictLine(content).getText().toString());
+            assertEquals("no offer yet, and not ready for one while a step is to do", "No offers yet",
+                    verdictLine(content).getText().toString());
             TextView step = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
             assertNotNull("the step to do, on the page", step);
             assertWhollyOnScreen("the step", step);
@@ -326,10 +334,12 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         }
     }
 
+    /** A phone on its side during a dash: the radar and the map side by side under the strip (0.5.1 kept them too). */
     @Test @Config(qualifiers = "w700dp-h300dp-420dpi")
     public void aShortFullScreenShowsTheRadarAndTheMapSideBySide() {
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
+        servicesUp();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = content(activity);
             refreshed();
@@ -415,10 +425,11 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertOwnsItsTouches(chooser);
             chooser.dismiss();
 
-            // The radar, wholly there in this window, has its own Auto button too.
+            // The radar is wholly there in this window, at its least, its knobs working; its own Auto button needs
+            // more room beside them, so here, as in 0.5.1's short windows, the chip is Autopilot's control.
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertEquals(1f, find(content, ScenePage.class).shown(star), 0f);
-            assertTrue("the radar's Auto button", star.autopilotShown());
+            for (int axis : MinimumsStarView.SPOKES) assertNotNull("knob " + axis, star.knobAt(axis));
 
             // Off: still there, the way back in, still at no height.
             AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
@@ -483,10 +494,13 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
 
     /**
      * The strip at {@code fontScale}, Autopilot on, and Peek paused with its longest reason ("peek") or not ("on"):
-     * the mascot, the verdict, the whole chip (one line, a 48 dp target, never below three quarters of the user's size
-     * nor the default size) and every word of Autopilot's status line are on screen as the page opens; the line saying
-     * why Peek paused is whole on the page, a scroll away at most. At the normal size the chip costs the line no
-     * height.
+     * the mascot, the whole verdict, the whole chip (one line, a 48 dp target, never below three quarters of the user's
+     * size nor the default size) and every word of Autopilot's status line; the mascot and the verdict on screen as
+     * the page opens, and the chip and the status line too wherever the strip fits the window (at twice the font in a
+     * third of a phone it may not: they are then a scroll away, as 0.5.1's strip scrolled to its line). The line
+     * saying why Peek paused is whole on the page, a scroll away at most. The chip adds no height of its own: the row
+     * is the chip's 48 dp or the status line's words beside it, whichever is taller, and at the normal size nothing
+     * shrinks.
      */
     private void stripAt(float fontScale, String line) {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -531,19 +545,21 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertTrue("inside the line: " + measured, status.getLayout().getHeight()
                     <= status.getHeight() - status.getTotalPaddingTop() - status.getTotalPaddingBottom());
             assertTrue(status.getHeight() >= ui.dp(48) - 1);
-            for (View part : new View[] {find(content, FilterHeroView.class).mascotControl(), verdictLine(content),
-                    chip, status}) {
-                assertWhollyOnScreen(part + "; " + measured, part);
-            }
-            if (fontScale <= 1f) {
-                chip.setVisibility(View.GONE);
+            assertWhollyOnScreen("the mascot; " + measured, find(content, FilterHeroView.class).mascotControl());
+            assertWhollyOnScreen("the verdict; " + measured, verdictLine(content));
+            android.widget.ScrollView scroller = (android.widget.ScrollView) find(content, ScenePage.class).getParent();
+            int windowHeight = scroller.getHeight();
+            boolean stripFits = inWindowBottom(stripWords(content)) <= windowHeight;
+            if (fontScale <= 1f) assertTrue("at the normal size the strip fits: " + measured, stripFits);
+            if (!stripFits) {
+                scroller.scrollTo(0, Math.max(0, scroller.getChildAt(0).getHeight() - windowHeight));
                 layOut(content);
-                int alone = row.getHeight();
-                chip.setVisibility(View.VISIBLE);
-                layOut(content);
-                assertEquals("at the normal size the chip costs the line no height: " + measured, alone,
-                        row.getHeight());
             }
+            for (View part : new View[] {chip, status}) assertWhollyOnScreen(part + "; " + measured, part);
+            scroller.scrollTo(0, 0);
+            layOut(content);
+            assertEquals("the row is the chip's or its words', whichever is taller: " + measured,
+                    Math.max(chip.getHeight(), status.getHeight()), row.getHeight());
 
             // Why Peek paused: whole on the page, its Resume its own; a scroll away at most.
             if (line.equals("peek")) {
@@ -551,13 +567,18 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                 assertNotNull(paused);
                 assertEquals("every word", paused.getText().length(),
                         paused.getLayout().getLineEnd(paused.getLineCount() - 1));
-                android.widget.ScrollView scroller = (android.widget.ScrollView) find(content, ScenePage.class)
-                        .getParent();
                 scroller.scrollTo(0, Math.max(0, scroller.getChildAt(0).getHeight() - scroller.getHeight()));
                 layOut(content);
+                // At twice the font in a third of a phone the line can be taller than the window: its end, then.
                 Rect visible = new Rect();
                 assertTrue(paused.getGlobalVisibleRect(visible));
-                assertEquals("its end on screen, scrolled to: " + measured, paused.getHeight(), visible.height());
+                int[] at = new int[2];
+                paused.getLocationInWindow(at);
+                assertEquals("its end on screen, scrolled to: " + measured, at[1] + paused.getHeight(), visible.bottom);
+                if (paused.getHeight() <= scroller.getHeight()) {
+                    assertEquals("whole, where the window holds it: " + measured, paused.getHeight(),
+                            visible.height());
+                }
                 ((View) paused.getParent()).performClick();
                 assertNull("Resume: Peek works again", Peek.pausedWhy(app));
             }

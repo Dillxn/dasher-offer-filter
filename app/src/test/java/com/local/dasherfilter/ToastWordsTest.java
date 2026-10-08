@@ -8,10 +8,10 @@ import org.robolectric.annotation.Config;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The toasts that guide the user over Android's own pages (setup, split screen) and the driving strip keep to two
- * lines: from Android 12 a text toast shows at most two lines of a 300 dp toast and cuts the rest with an ellipsis
- * (SystemUI's text_toast.xml), so a long toast loses its last words, often the action itself ("…then turn it off and on
- * again"). Each keeps to {@link SetupChecklist#TOAST_MOST} characters, with the action in it.
+ * The toasts that guide the user over Android's own pages (setup, split screen) and in a window too short for the
+ * knobs keep to two lines: from Android 12 a text toast shows at most two lines of a 300 dp toast and cuts the rest
+ * with an ellipsis (SystemUI's text_toast.xml), so a long toast loses its last words, often the action itself ("…then
+ * turn it off and on again"). Each keeps to {@link SetupChecklist#TOAST_MOST} characters, with the action in it.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)

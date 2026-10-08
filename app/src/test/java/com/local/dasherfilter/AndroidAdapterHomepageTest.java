@@ -242,7 +242,13 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * A phone's whole screen is one scene, the horizon at the skyline's street. (0.5.1's page measured to the least
+     * its parts read at given no more than the screen; the fluid page shares out exactly the window it is given, as a
+     * phone's window gives it, so it is laid out at the screen's size.)
+     */
     @Test
+    @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void theMainPageIsOneSceneWithItsHorizonAtTheSkylinesStreet() {
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -250,9 +256,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             ScenePage scene = find(content, ScenePage.class);
             DecisionChartView chart = find(content, DecisionChartView.class);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            content.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(2340, View.MeasureSpec.AT_MOST));
-            content.layout(0, 0, 1080, 2340);
+            layOut(content);
+            assertEquals("the skyline wholly there", 1f, scene.shown(chart), 0f);
             int[] sceneAt = new int[2];
             int[] chartAt = new int[2];
             int[] starAt = new int[2];
@@ -264,11 +269,11 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue("the constellation is in the sky, above the skyline", starAt[1] < chartAt[1]);
             assertEquals("a whole screen has it wholly there", 1f, scene.shown(star), 0f);
             assertNotSame("not in the header", iconDescribed(content, "Settings").getParent(), star.getParent());
-            assertTrue("drawn as the sky itself, behind the mascot", star.backdrop());
+            assertTrue("drawn as the sky itself", star.backdrop());
 
-            // Bitmap drawing of the whole scene works in both themes.
-            android.graphics.Bitmap page = android.graphics.Bitmap.createBitmap(1080, Math.max(1, scene.getHeight()),
-                    android.graphics.Bitmap.Config.ARGB_8888);
+            // Bitmap drawing of the whole scene works.
+            android.graphics.Bitmap page = android.graphics.Bitmap.createBitmap(scene.getWidth(),
+                    Math.max(1, scene.getHeight()), android.graphics.Bitmap.Config.ARGB_8888);
             scene.draw(new android.graphics.Canvas(page));
         }
     }
@@ -518,14 +523,11 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Test
     @Config(qualifiers = "w320dp-h640dp-xhdpi")
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    public void aLargeFontAndALineToFixKeepTheSkylineAndTheMapAtTheirLeast() {
+    public void aLargeFontAndALineToFixKeepEveryPartWholeOrOnItsWayOut() {
         largeFontAndALineToFix(false);
     }
 
-    /**
-     * The same with Autopilot on: the line to fix takes its room first, so Autopilot's status stands in its chip beside
-     * the latest offer's line (no status line in the ground), and the page is still one screen.
-     */
+    /** The same with Autopilot on: its status is the strip's status line, the chip at its start. */
     @Test
     @Config(qualifiers = "w320dp-h640dp-xhdpi")
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -533,6 +535,15 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         largeFontAndALineToFix(true);
     }
 
+    /**
+     * A 640 dp phone at twice the font, a line to fix and the busiest constellation, on a dash, Autopilot off or on.
+     * 0.5.1 held the skyline and the map at fixed leasts here and, with Autopilot on, said its status in a chip instead
+     * of a line; the fluid page gives the strip (the verdict, the chip and the status line, Autopilot's while it is on),
+     * the header and the line what they need, all whole on one screen, and shares the rest: each part of the stage is
+     * wholly there at no less than it reads at (the skyline at its least, the radar's knobs at their least circle, the
+     * map at its least with the line naming the best area under it) or on its way out, the skyline before the radar
+     * and the map, which go together.
+     */
     private void largeFontAndALineToFix(boolean autopilot) {
         RuntimeEnvironment.setFontScale(2f);
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
@@ -550,7 +561,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
-        // On a dash, so the counts above the constellation are this dash's, with the totals under them.
+        // On a dash, so the counts are this dash's, with the totals under them.
         Dashing.forgetCache();
         Dashing.seen(app);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -559,32 +570,47 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertNotNull("background offers are off: a line to fix", shownTextContaining(content,
                     SetupChecklist.NOTIFICATIONS));
             Ui ui = new Ui(activity.get());
+            ScenePage scene = find(content, ScenePage.class);
+            android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
+            assertTrue("one screen: " + scene.getHeight() + " in " + page.getHeight(),
+                    scene.getHeight() <= page.getHeight());
             DecisionChartView chart = findChart(content);
             AreaMapView map = find(content, AreaMapView.class);
-            assertTrue("the skyline keeps its least: " + chart.getHeight(), chart.getHeight() >= ui.dp(64));
-            assertTrue("the map keeps its least: " + map.getHeight(), map.getHeight() >= ui.dp(96));
-            assertNotNull("the line naming the best area stands under it",
-                    shownTextContaining(content, "/mi"));
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue("the constellation is still the sky", star.backdrop());
-            android.widget.ScrollView page = (android.widget.ScrollView) ((View) star.getParent().getParent())
-                    .getParent();
-            View column = page.getChildAt(0);
-            assertTrue("one screen: " + column.getHeight() + " in " + page.getHeight(),
-                    column.getHeight() <= page.getHeight());
+            float skyline = scene.shown(chart);
+            float stage = scene.shown(star);
+            assertEquals("the radar and the map go together", stage, scene.shown(map), 0f);
+            assertTrue("the skyline goes before them: skyline " + skyline + ", radar and map " + stage,
+                    skyline <= 0 || stage >= 1);
+            assertTrue("this phone keeps the radar and the map: " + stage, stage >= 1);
+            if (skyline >= 1) {
+                assertTrue("the skyline whole at its least at least: " + chart.getHeight(),
+                        chart.getHeight() >= ui.dp(FluidLayout.CHART_LEAST_DP) - 1);
+            }
+            assertTrue("the radar's knobs at their least circle at least: " + star.skyRadius(),
+                    star.skyRadius() >= ui.dp(FluidLayout.RADIUS_LEAST_DP) - 1);
+            assertTrue("the constellation is the sky", star.backdrop());
+            assertTrue("the map at its least at least: " + map.getHeight(),
+                    map.getHeight() >= ui.dp(FluidLayout.MAP_LEAST_DP) - 1);
+            assertNotNull("the line naming the best area stands under it", shownTextContaining(content, "/mi"));
+
+            // The strip: the verdict and the chip whole on screen, the chip at the status line's start.
+            android.graphics.Rect visible = new android.graphics.Rect();
+            TextView verdict = verdictLine(content);
+            assertTrue(verdict.getGlobalVisibleRect(visible));
+            assertEquals("the verdict whole", verdict.getHeight(), visible.height());
             AutopilotChip chip = find(content, AutopilotChip.class);
+            TextView status = statusLine(content);
+            assertTrue("the chip at the status line's start", chip.isShown() && chip.getParent() == status.getParent());
+            assertTrue(chip.getGlobalVisibleRect(visible));
+            assertEquals("whole", chip.getHeight(), visible.height());
+            assertTrue(status.getGlobalVisibleRect(visible));
+            assertEquals("the status line whole", status.getHeight(), visible.height());
             if (autopilot) {
-                assertNull("no status line: the line to fix takes the room first",
-                        shownTextContaining(content, "Autopilot 100%"));
-                assertTrue("the chip says it, beside the latest offer's line", chip.isShown());
-                android.graphics.Rect visible = new android.graphics.Rect();
-                assertTrue(chip.getGlobalVisibleRect(visible));
-                assertEquals("whole", chip.getHeight(), visible.height());
-                TextView caption = shownTextContaining(content, "Latest · ");
-                assertTrue(caption.getGlobalVisibleRect(visible));
-                assertEquals("the latest offer's line whole", caption.getHeight(), visible.height());
+                assertTrue("the status line is Autopilot's: " + status.getText(),
+                        status.getText().toString().startsWith("Autopilot 100%"));
             } else {
-                assertFalse("off on a whole screen: the button in the sky is the way in", chip.isShown());
+                assertEquals("off, the chip is the way in", "Auto off", chip.getText().toString());
             }
         } finally {
             service.destroy();

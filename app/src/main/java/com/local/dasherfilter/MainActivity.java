@@ -67,7 +67,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final Pattern TOO_MANY_STOPS = Pattern.compile("(\\d+) stops exceeds maximum (\\d+)");
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
-    /** With no rule saved, the status line under the verdict: the fewest words that say how to begin. It opens the starter. */
+    /**
+     * With no rule saved, the status line under the verdict: the fewest words that say how to begin. It opens the
+     * starter.
+     */
     static final String START_LINE = "Tap to start with typical minimums";
     static final String STARTER_TITLE = "Start with typical minimums?";
     static final String STARTER_TEXT = "$4.00 per offer · $1.00 per mile · $15 per hour of trip time. These are "
@@ -78,7 +81,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String KNOBS_HINT = "Drag a knob to start. Each knob sets a minimum.";
     /** "Set my own" in a window too short for the constellation (it has faded away): how to reach its knobs. */
     static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
-    /** The status line while auto-decline is paused, and while it is on with nothing else to say. */
+    /**
+     * The status line while auto-decline is paused with Autopilot off (with it on, the line is Autopilot's,
+     * "auto-decline paused" among its states), and while it is on with nothing else to say.
+     */
     static final String PAUSED_LINE = "Paused · nothing is declined";
     static final String ON_LINE = "Auto-decline is on";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
@@ -737,7 +743,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // A tap on the verdict opens that offer's ticket (the chip and the status line keep their own taps).
         stripWords.setOnClickListener(tapped -> openLatestOffer());
         stripWords.setClickable(false);
-        verdictLine = ui.text("", 15, ui.ink, true);
+        // 15 sp, as every homepage line; at a large font, a little smaller by the least that keeps it to two lines (as
+        // a setup step's words), so even the longest verdict stays whole on screen in a small window.
+        verdictLine = new SetupRow.Words(this);
+        verdictLine.setTextColor(ui.ink);
+        verdictLine.setTypeface(Ui.MEDIUM);
+        verdictLine.setLineSpacing(0, 1.15f);
         verdictLine.setPadding(0, ui.dp(4), 0, 0);
         stripWords.addView(verdictLine, Ui.matchWidth());
         // The status line, 14 sp and at least 48 dp: with no rule, the start; paused, that nothing is declined; with
@@ -1522,15 +1533,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
         if (route != null) routeNote.setText("On a route: " + route.summary());
-        // The status line beside the chip: the start with no rule; paused, that nothing is declined; with Autopilot
-        // on, its status; with Autopilot off, the wait, or that auto-decline is on.
+        // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
+        // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that
+        // nothing is declined (a tap resumes), else the wait, or that auto-decline is on.
         if (!saved.hasAnyRule()) {
             showSlot(SLOT_START, START_LINE, null, ui.link);
-        } else if (!saved.enabled) {
-            showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ". Resume auto-decline", ui.ink);
         } else if (saved.autopilot) {
             showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                     ui.inkSecondary);
+        } else if (!saved.enabled) {
+            showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ". Resume auto-decline", ui.ink);
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
@@ -1573,7 +1585,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         chip.show(status);
     }
 
-    /** The status line, as {@code which} says: its words, what screen readers hear, its ink, and whether a tap does something. */
+    /**
+     * The status line, as {@code which} says: its words, what screen readers hear, its ink, and whether a tap does
+     * something.
+     */
     private void showSlot(int which, String words, String said, int color) {
         slot = which;
         if (!words.contentEquals(statusLine.getText())) statusLine.setText(words);
