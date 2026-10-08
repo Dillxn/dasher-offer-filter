@@ -133,7 +133,7 @@ public class AccessibilityAdapterTest {
     /** A finger landing anywhere on the screen, as Android reports it to a watching overlay. */
     private void touchScreen() {
         assertEquals("one touch watch while declining", 1, overlays().size());
-        overlays().get(0).dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        overlays().get(0).dispatchTouchEvent(TestTouches.finger(0));
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
     }
 

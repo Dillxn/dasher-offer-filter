@@ -305,7 +305,7 @@ public class ActionSafetyReviewTest {
     private void touch() {
         long at = SystemClock.uptimeMillis();
         for (View watch : touchWatches()) {
-            watch.dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+            watch.dispatchTouchEvent(TestTouches.finger(at));
         }
         idle();
     }

@@ -3225,16 +3225,20 @@ public final class OfferFilterService extends AccessibilityService {
      * ({@link #touchedDuringPeek}), or both.
      *
      * @param touchAt when the touch landed (uptime), as Android stamped it
+     * @param madeUp Android made it up for an accessibility click ({@link TouchWatch#madeUp}): never a finger, and
+     *     stamped when this main thread got to it, so one of the app's own taps' echo even long after its window
      */
-    private void touched(long touchAt) {
-        if (autoAcceptWatched && touchAt >= autoAcceptBeganAt && ownTaps.touchEcho(touchAt) == null) {
+    private void touched(long touchAt, boolean madeUp) {
+        // Judged once for all who look at it: the app's own tap coming back, or null for the user's.
+        OwnTaps.Tap echo = ownTaps.touchEcho(touchAt, madeUp);
+        if (autoAcceptWatched && touchAt >= autoAcceptBeganAt && echo == null) {
             autoAcceptActions.incrementAndGet();
             scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
         }
         boolean peeking = peekWatched;
         // Without a peek, every touch the watch reports is a decline's, as it always was.
-        if (!peeking || decliningOffer != null) touchedDuringDecline(touchAt);
-        if (peeking) touchedDuringPeek(touchAt);
+        if (!peeking || decliningOffer != null) touchedDuringDecline(touchAt, echo, madeUp);
+        if (peeking) touchedDuringPeek(touchAt, echo);
     }
 
     /**
@@ -3242,7 +3246,7 @@ public final class OfferFilterService extends AccessibilityService {
      * the echo of one of the app's own taps. Dasher stays up: the peek never goes back after anything of the user's.
      * Counted first, so a peek about to go back on the scanner thread sees it.
      */
-    private void touchedDuringPeek(long touchAt) {
+    private void touchedDuringPeek(long touchAt, OwnTaps.Tap echo) {
         if (stopped) return;
         Peek.Phase phase = peekPhase;
         if (phase == Peek.Phase.ARMING) {
@@ -3252,7 +3256,7 @@ public final class OfferFilterService extends AccessibilityService {
             scanner.post(() -> peek.touchedWhileArming(at));
             return;
         }
-        if (touchAt < peekBeganAt || ownTaps.touchEcho(touchAt) != null) return;
+        if (touchAt < peekBeganAt || echo != null) return;
         peekActions.incrementAndGet();
         // While Dasher opens, it is judged once Dasher is up (and not at all if Dasher never comes up): before
         // Dasher's window appeared, the touch was meant for the app the user was in.
@@ -3303,11 +3307,10 @@ public final class OfferFilterService extends AccessibilityService {
      *
      * @param touchAt when the touch landed (uptime), as Android stamped it
      */
-    private void touchedDuringDecline(long touchAt) {
-        OwnTaps.Tap echo = ownTaps.touchEcho(touchAt);
+    private void touchedDuringDecline(long touchAt, OwnTaps.Tap echo, boolean madeUp) {
         if (echo != null) {
             DiagnosticLog.log(this, "accessibility", "touch ignored: own-action echo, " + (touchAt - echo.began)
-                    + " ms after " + AppName.NAME + "'s tap");
+                    + " ms after " + AppName.NAME + "'s tap" + (madeUp ? " (Android's report of its click)" : ""));
             return;
         }
         Screen seen = screen;

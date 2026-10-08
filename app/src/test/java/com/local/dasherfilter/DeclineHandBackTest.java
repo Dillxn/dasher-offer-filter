@@ -236,7 +236,7 @@ public class DeclineHandBackTest {
     private void touchNow() {
         long at = SystemClock.uptimeMillis();
         assertEquals("one touch watch while declining", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 

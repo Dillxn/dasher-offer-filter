@@ -26,6 +26,12 @@ final class OwnTaps {
      * comes late (a read can take seconds on a slow phone).
      */
     static final long TARGET_ECHO_MS = 5_000;
+    /**
+     * A touch Android made up for an accessibility click ({@link TouchWatch#madeUp}) this soon after one of the app's
+     * taps began is that tap's echo: it is stamped when Offer Filter's main thread got to it, which a busy phone puts
+     * well past {@link #TOUCH_ECHO_MS} (0.5.1: 209 ms after a peek's first-step Decline). A finger is never one.
+     */
+    static final long MADE_UP_ECHO_MS = TARGET_ECHO_MS;
     /** Taps remembered at most; older ones are long past every window. */
     static final int KEPT = 8;
     /** Not ended yet. */
@@ -83,10 +89,22 @@ final class OwnTaps {
 
     /** The tap whose echo a touch landing at {@code at} (uptime) is, or null: the touch is the user's. */
     Tap touchEcho(long at) {
+        return touchEcho(at, false);
+    }
+
+    /**
+     * The tap whose echo a touch the watch reports at {@code at} (uptime) is, or null: the touch is the user's. A
+     * finger's touch is an echo only in a tap's window; one Android made up for an accessibility click
+     * ({@code madeUp}) is when one of the app's taps began at most {@link #MADE_UP_ECHO_MS} before it (long after the
+     * app's last tap, it is another service's click, the user's).
+     */
+    Tap touchEcho(long at, boolean madeUp) {
         List<Tap> now = taps;
         for (int i = now.size() - 1; i >= 0; i--) {
             Tap tap = now.get(i);
-            if (tap.covers(at, TOUCH_ECHO_MS)) return tap;
+            if (tap.covers(at, TOUCH_ECHO_MS) || madeUp && at >= tap.began && at - tap.began <= MADE_UP_ECHO_MS) {
+                return tap;
+            }
         }
         return null;
     }

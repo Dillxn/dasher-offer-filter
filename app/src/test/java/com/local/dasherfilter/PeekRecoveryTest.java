@@ -414,7 +414,7 @@ public class PeekRecoveryTest {
     private void touchNow() {
         long at = SystemClock.uptimeMillis();
         assertEquals("the touch watch is up", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         idle();
     }
 
@@ -1625,8 +1625,7 @@ public class PeekRecoveryTest {
                     .anyMatch(frame -> frame.getMethodName().equals("returnPeekOnMain"));
             if (finalCheck && touched.compareAndSet(false, true)) {
                 long at = SystemClock.uptimeMillis();
-                touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0,
-                        0));
+                touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
             }
             return windows.get();
         };

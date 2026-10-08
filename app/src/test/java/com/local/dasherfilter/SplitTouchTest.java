@@ -186,7 +186,7 @@ public class SplitTouchTest extends AndroidAdapterTestBase {
     /** The touch watch hears of a finger landing at {@code at}, somewhere outside it. */
     private void watchHears(long at) {
         assertEquals("one touch watch while declining", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         idle();
     }
 

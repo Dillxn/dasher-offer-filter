@@ -437,7 +437,7 @@ public final class AutoAcceptAdapterTest {
         for (View view : new java.util.ArrayList<>(windows.getViews())) {
             if (view instanceof DasherTab || view instanceof DasherGuide || view instanceof BackToMapChip) continue;
             long now = SystemClock.uptimeMillis();
-            MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_OUTSIDE, 0, 0, 0);
+            MotionEvent event = TestTouches.finger(now);
             view.dispatchTouchEvent(event); event.recycle();
         }
         pass(0);

@@ -1107,7 +1107,7 @@ public final class AutopilotCommitAdapterTest {
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) if (view.getClass() == View.class) watches.add(view);
         assertEquals("one touch watch while declining", 1, watches.size());
-        watches.get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        watches.get(0).dispatchTouchEvent(TestTouches.finger(at));
         idle();
     }
 

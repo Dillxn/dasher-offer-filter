@@ -235,7 +235,7 @@ public class ScannerThreadTest {
     /** A finger landing anywhere on the screen, as Android reports it to the watching overlay (main thread). */
     private void touchScreen() {
         assertEquals("one touch watch while declining", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(0));
     }
 
     /** Runs {@code work} on the scanner thread, as Android calls back on the handler it was given, and waits. */
@@ -427,7 +427,7 @@ public class ScannerThreadTest {
         assertTrue(entered.await(2, TimeUnit.SECONDS));
 
         // The user touches the screen while that read is under way.
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(0));
         assertTrue("the offer is the user's from the touch on",
                 OfferFilterService.userHasOffer(new OfferSnapshot(790, null, null, null)));
         gate.countDown();
@@ -1354,7 +1354,13 @@ public class ScannerThreadTest {
     /** A touch Android reports to the watch as landing at {@code at} (uptime). */
     private void touchAt(long at) {
         assertEquals("one touch watch while declining", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
+    }
+
+    /** Android's report of one of the app's own taps to the watch, stamped {@code at} on Offer Filter's main thread. */
+    private void echoAt(long at) {
+        assertEquals("one touch watch while declining", 1, touchWatches().size());
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.clickReport(at));
     }
 
     @Test
@@ -1364,7 +1370,7 @@ public class ScannerThreadTest {
         AtomicLong declineTapAt = tapTime(decline);
         show(service, offerScreen);
         // Android reports Offer Filter's own Decline tap to the watch as a touch, 15 ms after it.
-        touchAt(declineTapAt.get() + 15);
+        echoAt(declineTapAt.get() + 15);
         settle(service);
         assertFalse(OfferFilterService.userHasOffer(new OfferSnapshot(790, null, null, null)));
 
@@ -1374,7 +1380,7 @@ public class ScannerThreadTest {
         assertEquals("the decline goes on", 1, Shadows.shadowOf(confirm).getPerformedActions().size());
         // Its confirmation tap comes back 20 ms later too. Before, this was "screen touched; automatic decline stopped
         // after its confirmation was tapped" and a toast, as both of the user's 0.4.41 declines showed.
-        touchAt(confirmTapAt.get() + 20);
+        echoAt(confirmTapAt.get() + 20);
         settle(service);
 
         String log = DiagnosticLog.read(app);

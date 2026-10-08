@@ -264,7 +264,7 @@ public class ActionSafetyTest {
     private void touchNow() {
         long at = SystemClock.uptimeMillis();
         assertEquals("the touch watch is up", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         idle();
     }
 

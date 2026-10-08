@@ -10,8 +10,9 @@ import android.view.WindowManager;
 /**
  * Notices when the user touches the screen while an automatic decline is in progress, so they can take over. It is
  * a one-pixel, invisible accessibility overlay that asks Android for a note of touches outside it: the touch itself
- * still goes to Dasher untouched. Our own taps are accessibility actions, not touches, but Android can report one to
- * the watch as a touch outside it, so each touch is passed on with its time and the listener tells the two apart.
+ * still goes to Dasher untouched. Our own taps are accessibility actions, not touches, but Android reports each one to
+ * the watch as a touch outside it ({@link #madeUp}), so each touch is passed on with its time and whether Android made
+ * it up, and the listener tells the two apart.
  * It is a view, so it is started, stopped and told of touches on the main thread only.
  */
 final class TouchWatch {
@@ -22,8 +23,10 @@ final class TouchWatch {
          *
          * @param at when the touch landed ({@link android.os.SystemClock#uptimeMillis} time base), as Android stamped
          *     it: the listener tells the app's own tap echoing back from the user's finger by it
+         * @param madeUp Android made the touch up for an accessibility click ({@link #madeUp}), not a finger: its
+         *     time is when this app's main thread got to it, however long after the click
          */
-        void touched(long at);
+        void touched(long at, boolean madeUp);
     }
 
     private final AccessibilityService service;
@@ -53,7 +56,7 @@ final class TouchWatch {
         watcher.setOnTouchListener((touched, event) -> {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_OUTSIDE || action == MotionEvent.ACTION_DOWN) {
-                listener.touched(event.getEventTime());
+                listener.touched(event.getEventTime(), madeUp(event));
             }
             return false;
         });
@@ -65,6 +68,20 @@ final class TouchWatch {
             DiagnosticLog.logOnChange(service, "accessibility", "touch-watch",
                     "touch watch unavailable: " + refused.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Whether Android made this touch up for an accessibility click rather than a finger. Since Android 10, a click an
+     * accessibility service asks for (ACTION_CLICK or ACTION_LONG_CLICK) is told to each window above the clicked one
+     * that watches outside touches, as an ACTION_OUTSIDE that window's own main thread builds when it gets to it
+     * (AccessibilityInteractionController.notifyOutsideTouchUiThread): device 0, no tool type, stamped at that moment,
+     * so a busy main thread stamps it hundreds of milliseconds after the click. A finger's touch comes from the
+     * touchscreen, a device of its own, with a finger or stylus tool and the time it landed (another app's window
+     * only hides where).
+     */
+    static boolean madeUp(MotionEvent event) {
+        return event.getActionMasked() == MotionEvent.ACTION_OUTSIDE && event.getPointerCount() == 1
+                && event.getDeviceId() == 0 && event.getToolType(0) == MotionEvent.TOOL_TYPE_UNKNOWN;
     }
 
     void stop() {

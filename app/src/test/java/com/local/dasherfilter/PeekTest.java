@@ -394,7 +394,7 @@ public class PeekTest {
     private void touchNow() {
         long at = SystemClock.uptimeMillis();
         assertEquals("the touch watch is up", 1, touchWatches().size());
-        touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         idle();
     }
 
@@ -1317,8 +1317,7 @@ public class PeekTest {
             realStart.accept(intent);
             long at = SystemClock.uptimeMillis();
             assertEquals(1, touchWatches().size());
-            touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at,
-                    MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+            touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
         };
         post("Taco Bell");
         dasherOpened();
@@ -1345,8 +1344,7 @@ public class PeekTest {
             if (finalCheck && touched.compareAndSet(false, true)) {
                 assertEquals("watch remains raised through the final check", 1, touchWatches().size());
                 long at = SystemClock.uptimeMillis();
-                touchWatches().get(0).dispatchTouchEvent(MotionEvent.obtain(at, at,
-                        MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
+                touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(at));
             }
             return windows.get();
         };
@@ -1366,6 +1364,66 @@ public class PeekTest {
         pass(800);
         assertNull("the user already saw the offer while Peek waited", started());
         assertTrue(touchWatches().isEmpty());
+    }
+
+
+    // ---- Android's report of the app's own click, stamped late on a busy phone ----
+
+    /**
+     * 0.5.1 (Samsung, Android 16): a peek opened Dasher over Offer Filter's own screen, and the watch, up for the whole
+     * peek, got Android's report of the first-step Decline 209 ms after that tap began (Offer Filter's main thread was
+     * busy). It was taken for the user's touch: Dasher was left up and the question never confirmed.
+     */
+    @Test
+    public void aLateReportOfTheAppsOwnDeclineIsNotTheUsersTouch() {
+        connect(app(OURS));
+        post("Taco Bell");
+        dasherOpened();
+        offerRoot = offer("$7.90");
+        List<Long> declines = taps(decline);
+        dasherShows(offerRoot);
+        assertEquals(1, declines.size());
+        pass(209);
+        assertEquals("the touch watch is up for the whole peek", 1, touchWatches().size());
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.clickReport(declines.get(0) + 209));
+        idle();
+        pass(100);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm);
+        dasherShows(question(confirm));
+        assertEquals("the decline goes on: its question is confirmed", 1, confirms.size());
+        pass(100);
+        dasherShows(finding());
+        assertNotNull("back to Offer Filter once the decline completed", started());
+        String log = log(app);
+        contains(log, "touch ignored: own-action echo, 209 ms after Offer Filter's tap");
+        assertFalse(log, log.contains("touch during decline: the user's"));
+        assertFalse(log, log.contains("left Dasher up because you touched the screen"));
+    }
+
+    /** The user's finger at that same moment still takes the offer over, and Dasher stays up. */
+    @Test
+    public void aFingerAsLateAsThatReportIsTheUsers() {
+        connect(app(OURS));
+        post("Taco Bell");
+        dasherOpened();
+        offerRoot = offer("$7.90");
+        List<Long> declines = taps(decline);
+        dasherShows(offerRoot);
+        pass(209);
+        touchWatches().get(0).dispatchTouchEvent(TestTouches.finger(declines.get(0) + 209));
+        idle();
+        pass(100);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirms = taps(confirm);
+        dasherShows(question(confirm));
+        assertTrue("nothing more is tapped", confirms.isEmpty());
+        dasherShows(finding());
+        pass(25_000);
+        assertNull("never back after the user's touch", started());
+        String log = log(app);
+        contains(log, "touch during decline: the user's, 209 ms after Offer Filter's last tap");
+        contains(log, "[peek] left Dasher up because you touched the screen");
     }
 
 }

@@ -601,7 +601,7 @@ public final class DeclineErrorRecoveryAdapterTest {
         }
         assertEquals("the pending recovery must retain its touch watch", 1, watches.size());
         long now = SystemClock.uptimeMillis();
-        MotionEvent touch = MotionEvent.obtain(now, now, MotionEvent.ACTION_OUTSIDE, 0, 0, 0);
+        MotionEvent touch = TestTouches.finger(now);
         try { watches.get(0).dispatchTouchEvent(touch); } finally { touch.recycle(); }
         pass(0);
     }

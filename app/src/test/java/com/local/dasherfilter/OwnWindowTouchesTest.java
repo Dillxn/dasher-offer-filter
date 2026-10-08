@@ -284,7 +284,7 @@ public class OwnWindowTouchesTest extends AndroidAdapterTestBase {
         List<View> watches = new ArrayList<>();
         for (View view : manager.getViews()) if (view.getClass() == View.class) watches.add(view);
         assertEquals(1, watches.size());
-        MotionEvent event = MotionEvent.obtain(at, at, MotionEvent.ACTION_OUTSIDE, 0, 0, 0);
+        MotionEvent event = TestTouches.finger(at);
         try { watches.get(0).dispatchTouchEvent(event); }
         finally { event.recycle(); }
         idle();
