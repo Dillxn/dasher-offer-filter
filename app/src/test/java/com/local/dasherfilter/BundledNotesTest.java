@@ -182,8 +182,44 @@ public class BundledNotesTest {
                 "verdict", "at the top"}) {
             assertTrue(headline, card.contains(headline));
         }
-        assertEquals("this build is 0.5.5: its card is the one written for it", news,
-                BundledNotes.whatsNew(Updater.version(RuntimeEnvironment.getApplication())));
+    }
+
+    /** 0.5.6: installed navigation apps and the replacement anonymous-feedback service. */
+    @Test public void theWordsFor056AreWritten() {
+        List<String> news = BundledNotes.whatsNew("0.5.6");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"Google Maps", "Waze", "browser fallback",
+                "replacement feedback service", "No account is needed"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+    }
+
+    /** 0.5.7 narrows diagnostic text without adding a data flow or a new notice. */
+    @Test public void theWordsFor057AreWritten() {
+        assertEquals(15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.7");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"combined street and route labels", "unquoted delivery instructions",
+                "Pay, miles, minutes and stop counts", "Review diagnostics before sharing"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+    }
+
+    /** 0.5.8 tightens existing diagnostic masking and explains conservative loss at ambiguous boundaries. */
+    @Test public void theWordsFor058AreWrittenAndSelectedByThisBuild() {
+        assertEquals(15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.8");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"malformed account-screen prefixes",
+                "delivery-instruction continuations", "may hide extra text", "Review diagnostics before sharing"}) {
+            assertTrue(headline, card.contains(headline));
+        }
+        String version = Updater.version(RuntimeEnvironment.getApplication());
+        assertEquals("this build carries the 0.5.8 notes", "0.5.8", version);
+        assertEquals("this build's card is the one written for it", news, BundledNotes.whatsNew(version));
     }
 
     /** The lines notice {@code version} added, as a reader of the one before it sees them. */

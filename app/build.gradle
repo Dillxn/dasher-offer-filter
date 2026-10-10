@@ -8,6 +8,21 @@ if (!(testHeap ==~ /[1-9][0-9]*[mMgG]/)) {
     throw new GradleException('Invalid -PtestHeap: use a positive whole number with m or g, e.g. -PtestHeap=768m.')
 }
 
+// Development checks use the existing API 35/C1 profile, with reports separate from the release gate.
+def devChecks = providers.gradleProperty('devChecks').isPresent()
+if (devChecks && providers.gradleProperty('allSdks').isPresent()) {
+    throw new GradleException('-PdevChecks cannot be combined with -PallSdks; use the normal full release command.')
+}
+// Keep development task-output history separate too: an empty task can clean its previous execution's outputs.
+def devCacheDir = rootProject.file('.gradle/dev-checks').canonicalFile
+def usesDevCache = gradle.startParameter.projectCacheDir?.canonicalFile == devCacheDir
+if (devChecks != usesDevCache) {
+    throw new GradleException('Use tools/test-dev.sh: -PdevChecks and --project-cache-dir .gradle/dev-checks belong together.')
+}
+// Source-contract tests inspect these bytes directly, including comments and the repository's legal documents.
+def inspectedSources = fileTree('src/main') { include '**/*.java', '**/*.xml' }
+def inspectedLegalTexts = rootProject.files('TERMS.md', 'PRIVACY.md', 'LICENSE')
+
 android {
     namespace 'com.local.dasherfilter'
     compileSdk 36
@@ -15,8 +30,8 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 26
         targetSdk 35
-        versionCode 85
-        versionName '0.5.5'
+        versionCode 88
+        versionName '0.5.8'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -25,6 +40,15 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
+            inputs.files(inspectedSources).withPropertyName('inspectedSources')
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
+            inputs.files(inspectedLegalTexts).withPropertyName('inspectedLegalTexts')
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
+            if (devChecks) {
+                reports.junitXml.outputLocation.set(project.layout.buildDirectory.dir("test-results/devChecks/${name}"))
+                binaryResultsDirectory.set(project.layout.buildDirectory.dir("test-results/devChecks/${name}/binary"))
+                reports.html.outputLocation.set(project.layout.buildDirectory.dir("reports/tests/devChecks/${name}"))
+            }
             maxHeapSize = testHeap
             // A test that never ends (a read re-posted forever on the paused looper, say) fails the run instead of
             // stalling the release gate; the whole -PallSdks suite with one JVM takes far less.

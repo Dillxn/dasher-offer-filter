@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
 
@@ -23,14 +24,18 @@ public class PersonalTextTest {
             "\"100 Example St ..... pls leave it at the desk\"", "McDonald's (32059-SOMEWHERE) (#e34ffd29)");
 
     @Test
-    public void aDeliveryScreenKeepsItsStoreButNotItsCustomer() {
+    public void aDeliveryScreenMasksAmbiguousWordsAfterInstructions() {
         assertEquals(Arrays.asList("Deliver to [name]", "by 2:39 AM", "Call", "Message", "[address]", "[address]",
-                "Leave it at the door", "[instructions]", "McDonald's (32059-SOMEWHERE) (#e34ffd29)"),
+                "Leave it at the door", "[instructions]", "[instructions]"),
                 PersonalText.mask(DELIVERY));
         assertEquals("[Deliver to [name], by 2:39 AM, Call, Message, [address], [address], Leave it at the door, "
-                + "[instructions], McDonald's (32059-SOMEWHERE) (#e34ffd29)]", PersonalText.maskLine(DELIVERY_LINE));
-        assertEquals("the line and the labels mask alike", PersonalText.mask(DELIVERY).toString(),
-                PersonalText.maskLine(DELIVERY_LINE));
+                + "[instructions]]", PersonalText.maskLine(DELIVERY_LINE));
+        // A legacy token cannot prove where the customer's words ended. A real control still protects the store.
+        assertEquals(Arrays.asList("Delivery instructions", "[instructions]", "Call", "McDonald's (32059-SOMEWHERE)"),
+                PersonalText.mask(Arrays.asList("Delivery instructions", "Use the side entrance", "Call",
+                        "McDonald's (32059-SOMEWHERE)")));
+        assertEquals("[Delivery instructions, [instructions], Call, McDonald's (32059-SOMEWHERE)]",
+                PersonalText.maskLine("[Delivery instructions, [instructions], Call, McDonald's (32059-SOMEWHERE)]"));
     }
 
     @Test
@@ -270,6 +275,235 @@ public class PersonalTextTest {
                 PersonalText.mask(Arrays.asList("Turn left onto Elm Rd", "Taco Place", "Pickup on Main")));
         assertEquals("labels=[Taco Place, Continue on Main St]",
                 PersonalText.maskLine("labels=[Taco Place, Continue on Main St]"));
+    }
+
+    /** Synthetic combinations: no text from a customer's report is used in these regressions. */
+    @Test
+    public void combinedRoadAndRouteAliasesAreMaskedInNavigationLabels() {
+        List<String> labels = Arrays.asList("300 ft", "25", "mph", "Cedar Rd / State Route 17",
+                "US-52 / Maple Ave", "Birch Rd (OH-17)", "[street] / OH-17",
+                "Continue on Cedar Rd / State Route 17", "Turn left onto Birch Rd (OH-17)",
+                "$8.25", "4.1 mi", "18 min", "2 stops", "9:45 PM");
+        List<String> original = new ArrayList<>(labels);
+        List<String> masked = Arrays.asList("300 ft", "25", "mph", "[street]", "[street]", "[street]",
+                "[street]", "Continue on [street]", "Turn left onto [street]", "$8.25", "4.1 mi", "18 min",
+                "2 stops", "9:45 PM");
+        assertEquals(masked, PersonalText.mask(labels));
+        assertEquals(masked, PersonalText.mask(labels, true));
+        assertEquals(masked, PersonalText.mask(masked, true));
+        assertEquals("masking never changes the raw labels used to classify the screen", original, labels);
+        // A compound-looking store label away from navigation is not authority to mask its words.
+        List<String> away = Arrays.asList("Cedar Rd / State Route 17", "US-52 / Maple Ave", "$8.25", "Accept");
+        assertEquals(away, PersonalText.mask(away));
+    }
+
+    @Test
+    public void legacyNavigationLinesRemaskCombinedRoadAndRouteAliases() {
+        String raw = "2026-10-10 12:30:00.000 +00:00 [navigation] other labels=[Cedar Rd / State Route 17, "
+                + "US-52 / Maple Ave, Birch Rd (OH-17), [street] / OH-17, Continue on Cedar Rd / State Route 17, "
+                + "Turn left onto Birch Rd (OH-17), 300 ft, 25, mph, 9:45 PM] "
+                + "metricParts=[Cedar Rd / State Route 17, $8.25, 4.1 mi, 18 min, 2 stops]";
+        String masked = "2026-10-10 12:30:00.000 +00:00 [navigation] other labels=[[street], "
+                + "[street], [street], [street], Continue on [street], Turn left onto [street], 300 ft, 25, mph, 9:45 PM] "
+                + "metricParts=[[street], $8.25, 4.1 mi, 18 min, 2 stops]";
+        assertEquals(masked, PersonalText.maskLine(raw));
+        assertEquals(masked, PersonalText.maskLine(masked));
+        assertEquals(masked + "\n" + masked + "\n", PersonalText.maskLine(raw + "\n" + masked + "\n"));
+    }
+
+    @Test
+    public void unquotedDeliveryInstructionsAreMaskedAfterTheirHeading() {
+        for (String heading : Arrays.asList("Delivery instructions", "Leave it at the door", "Hand it to me")) {
+            for (String body : Arrays.asList("Please use the side entrance beside the blue planter, ring twice",
+                    "Use the side entrance beside the blue planter", "The blue gate beside the planter")) {
+                List<String> labels = Arrays.asList("Complete delivery steps", heading, body, "$8.25", "4.1 mi",
+                        "18 min", "2 stops", "Deliver by 9:45 PM", "0:35", "Call", "Message", "Complete delivery");
+                List<String> original = new ArrayList<>(labels);
+                List<String> masked = Arrays.asList("Complete delivery steps", heading, "[instructions]", "$8.25",
+                        "4.1 mi", "18 min", "2 stops", "Deliver by 9:45 PM", "0:35", "Call", "Message",
+                        "Complete delivery");
+                assertEquals(heading, masked, PersonalText.mask(labels));
+                assertEquals(heading, masked, PersonalText.mask(masked));
+                assertEquals("the raw delivery labels remain unchanged", original, labels);
+            }
+        }
+    }
+
+    @Test
+    public void unquotedDeliveryInstructionsWithoutAColonAreMasked() {
+        String raw = "Leave at my door Please use the side entrance beside the blue planter";
+        String masked = "Leave at my door [instructions]";
+        assertEquals(masked, PersonalText.mask(raw));
+        assertEquals(masked, PersonalText.mask(masked));
+        assertEquals("labels=[" + masked + ", $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Complete delivery]",
+                PersonalText.maskLine("labels=[" + raw
+                        + ", $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Complete delivery]"));
+    }
+
+    @Test
+    public void legacyDeliveryLinesRemaskUnquotedInstructionsWithoutLosingOfferFigures() {
+        String prefix = "2026-10-10 12:30:00.000 +00:00 [screen] other labels=[Complete delivery steps, "
+                + "Delivery instructions, ";
+        String suffix = ", $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, 0:35, Call, Message, "
+                + "Complete delivery] metricParts=[]";
+        for (String body : Arrays.asList("Please use the side entrance beside the blue planter, ring twice",
+                "Please use gate [address], ring twice", "Call me when you arrive, 4.1 mi from the blue planter")) {
+            String masked = prefix + "[instructions]" + suffix;
+            assertEquals(masked, PersonalText.maskLine(prefix + body + suffix));
+            assertEquals(masked, PersonalText.maskLine(masked));
+            // A previously truncated line still masks the entire remaining instruction, including a masked unit.
+            assertEquals(prefix + "[instructions]", PersonalText.maskLine(prefix + body));
+        }
+    }
+
+    @Test
+    public void instructionHeadingsWithOnlyControlsAndFiguresKeepThoseLabels() {
+        List<String> labels = Arrays.asList("Leave it at the door", "Complete delivery steps", "Hand it to me",
+                "Call", "Message", "Delivery instructions", "$8.25", "4.1 mi", "18 min", "2 stops",
+                "Deliver by 9:45 PM", "0:35", "Taco Place", "Complete delivery");
+        assertEquals(labels, PersonalText.mask(labels));
+        assertEquals(labels.toString(), PersonalText.maskLine(labels.toString()));
+        String explanation = "Screen text includes a customer's own instructions and navigation streets.";
+        assertEquals(explanation, PersonalText.mask(explanation));
+        assertEquals(explanation, PersonalText.maskLine(explanation));
+    }
+
+    @Test
+    public void inlineLegacyInstructionsMaskEmailAndPlaceholderTails() {
+        String suffix = ", $8.25, 2 stops (4.1 mi) • 18 min, Deliver by 9:45 PM, Complete delivery] metricParts=[]";
+        for (String heading : Arrays.asList("Delivery instructions: ", "Leave at my door: ")) {
+            for (String body : Arrays.asList("tell guest@example.invalid, ring twice beside the blue planter",
+                    "tell [email], use gate [address], ring twice beside the blue planter")) {
+                String masked = "labels=[" + heading + "[instructions]" + suffix;
+                assertEquals(masked, PersonalText.maskLine("labels=[" + heading + body + suffix));
+                assertEquals(masked, PersonalText.maskLine(masked));
+            }
+        }
+    }
+
+    @Test
+    public void longNavigationAliasChainsAndUnmatchedWordsStayBounded() {
+        StringBuilder aliases = new StringBuilder("Cedar Rd");
+        for (int i = 0; i < 512; i++) aliases.append(" / OH-17");
+        assertEquals(Arrays.asList("[street]"), PersonalText.mask(Arrays.asList(aliases.toString()), true));
+        assertEquals("labels=[[street]]", PersonalText.maskLine("labels=[" + aliases + "]", true));
+        String unmatched = "word ".repeat(1024).trim();
+        assertEquals(Arrays.asList(unmatched), PersonalText.mask(Arrays.asList(unmatched), true));
+    }
+
+    @Test
+    public void longInstructionFiguresStayBoundedAndRequireACompleteMatch() {
+        String metrics = "1 mi ".repeat(1024).trim();
+        String money = "$1" + ",234".repeat(1024);
+        for (String figure : Arrays.asList(metrics, money)) {
+            String line = "labels=[Delivery instructions, " + figure + "]";
+            assertEquals(line, PersonalText.maskLine(line));
+            assertEquals("labels=[Delivery instructions, [instructions]]",
+                    PersonalText.maskLine("labels=[Delivery instructions, " + figure + " near the blue gate]"));
+        }
+    }
+
+    @Test
+    public void splitInstructionBodiesStayMaskedUntilAControlOrFigure() {
+        List<String> raw = Arrays.asList("Complete delivery steps", "Delivery instructions",
+                "Use the side entrance", "Ring twice beside the blue planter", "The gate faces the alley",
+                "$8.25", "4.1 mi", "18 min", "2 stops", "Deliver by 9:45 PM", "Call", "Taco Place");
+        List<String> original = new ArrayList<>(raw);
+        List<String> masked = Arrays.asList("Complete delivery steps", "Delivery instructions",
+                "[instructions]", "[instructions]", "[instructions]", "$8.25", "4.1 mi", "18 min", "2 stops",
+                "Deliver by 9:45 PM", "Call", "Taco Place");
+        assertEquals(masked, PersonalText.mask(raw));
+        assertEquals(masked, PersonalText.mask(masked));
+        assertEquals("masking does not change the classifier's source labels", original, raw);
+        assertEquals(Arrays.asList("Delivery instructions", "[instructions]", "", null, "[instructions]", "Call"),
+                PersonalText.mask(Arrays.asList("Delivery instructions", "Use the side entrance", "", null,
+                        "Ring twice beside the blue planter", "Call")));
+    }
+
+    @Test
+    public void partiallyMaskedInstructionBodiesDoNotExposeFollowingWords() {
+        String suffix = ", $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Complete delivery] metricParts=[]";
+        for (String heading : Arrays.asList("Delivery instructions, ", "Leave at my door: ")) {
+            String raw = "labels=[" + heading
+                    + "[instructions], ring twice beside the blue planter, use the side entrance" + suffix;
+            String masked = "labels=[" + heading + "[instructions]" + suffix;
+            assertEquals(masked, PersonalText.maskLine(raw));
+            assertEquals(masked, PersonalText.maskLine(masked));
+        }
+    }
+
+    @Test
+    public void emptyLegacyInstructionFragmentsDoNotEndMasking() {
+        for (String body : Arrays.asList(", Ring twice beside the blue planter",
+                "Use the side entrance, , Ring twice beside the blue planter",
+                "[instructions], , Ring twice beside the blue planter")) {
+            String masked = "labels=[Delivery instructions, [instructions], $8.25, Call, Taco Place]";
+            assertEquals(masked, PersonalText.maskLine("labels=[Delivery instructions, " + body
+                    + ", $8.25, Call, Taco Place]"));
+            assertEquals(masked, PersonalText.maskLine(masked));
+        }
+    }
+
+    @Test
+    public void malformedInstructionBracketsDoNotExposeTailsOrEatFollowingFigures() {
+        String suffix = ", $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Complete delivery] metricParts=[]";
+        for (String body : Arrays.asList("Use the side ] entrance, ring twice beside the blue planter",
+                "Use the side [entrance, ring twice beside the blue planter",
+                "[instructions]] ring twice beside the blue planter")) {
+            String masked = "labels=[Delivery instructions, [instructions]" + suffix;
+            assertEquals(body, masked, PersonalText.maskLine("labels=[Delivery instructions, " + body + suffix));
+            assertEquals(masked, PersonalText.maskLine(masked));
+        }
+    }
+
+    @Test
+    public void wholeInstructionLabelsIncludeAllTheirLines() {
+        String raw = "Delivery instructions: Use the side entrance\nRing twice beside the blue planter";
+        assertEquals("Delivery instructions: [instructions]", PersonalText.mask(raw));
+        assertEquals("Delivery instructions: [instructions]", PersonalText.mask(PersonalText.mask(raw)));
+        for (String heading : Arrays.asList("Delivery instructions:", "Delivery instructions")) {
+            String multiline = heading + "\nRing twice beside the blue planter";
+            assertEquals(heading + "\n[instructions]", PersonalText.mask(multiline));
+            assertEquals("labels=[" + heading + "\n[instructions], $8.25, Call]",
+                    PersonalText.maskLine("labels=[" + multiline + ", $8.25, Call]"));
+        }
+        String next = "2026-10-10 12:31:00.000 Z [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        String empty = "2026-10-10 12:30:00.000 Z [screen] Delivery instructions:\n" + next;
+        assertEquals("a heading without a body does not consume the next record", empty, PersonalText.maskLine(empty));
+    }
+
+    @Test
+    public void multilineInstructionBodiesDoNotRestartAsUnrelatedText() {
+        String next = "2026-10-10 12:31:00.000 Z [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        String raw = "2026-10-10 12:30:00.000 Z [screen] labels=[Delivery instructions, Use the side entrance\n"
+                + "Ring twice beside the blue planter, $8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, "
+                + "Complete delivery] metricParts=[]\n" + next;
+        String masked = PersonalText.maskLine(raw);
+        assertFalse(masked, masked.contains("side entrance"));
+        assertFalse(masked, masked.contains("blue planter"));
+        for (String figure : Arrays.asList("$8.25", "4.1 mi", "18 min", "2 stops", "9:45 PM")) {
+            assertTrue(figure, masked.contains(figure));
+        }
+        assertTrue("the next real diagnostic entry is preserved", masked.endsWith(next));
+        assertEquals(masked, PersonalText.maskLine(masked));
+    }
+
+    @Test
+    public void aRealScreensSectionAndFollowingDiagnosticEntrySurviveInstructionRemasking() {
+        String separator = "\n\n== Dasher's other screens (newest)\n";
+        String next = "2026-10-10 12:31:00.000 Z [screen] labels=[$8.25, 4.1 mi, 18 min, 2 stops]\n";
+        String raw = "2026-10-10 12:30:00.000 Z [screen] labels=[Delivery instructions, "
+                + "Use the side entrance]" + separator + next;
+        String expected = "2026-10-10 12:30:00.000 Z [screen] labels=[Delivery instructions, "
+                + "[instructions]]" + separator + next;
+        assertEquals(expected, PersonalText.maskLine(raw));
+        assertEquals(expected, PersonalText.maskLine(expected));
+        String relative = "+0:00:01 [screen] labels=[Delivery instructions, Use the side entrance]\n"
+                + "+0:00:02 [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        String relativeMasked = "+0:00:01 [screen] labels=[Delivery instructions, [instructions]]\n"
+                + "+0:00:02 [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        assertEquals(relativeMasked, PersonalText.maskLine(relative));
+        assertEquals(relativeMasked, PersonalText.maskLine(relativeMasked));
     }
 
     @Test

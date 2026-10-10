@@ -85,6 +85,16 @@ final class BundledNotes {
                         + "resizes gradually as you drag the divider.",
                 "The latest offer's verdict is always at the top, with why and how long ago; tap it for the "
                         + "ticket.");
+        release("0.5.6",
+                "Navigate can find installed Google Maps and Waze on recent Android versions before using the "
+                        + "browser fallback.",
+                "Anonymous feedback now goes to the replacement feedback service. No account is needed.");
+        release("0.5.7",
+                "Diagnostic logs mask more combined street and route labels, and unquoted delivery instructions.",
+                "Pay, miles, minutes and stop counts stay available for troubleshooting. Review diagnostics before sharing.");
+        release("0.5.8",
+                "Diagnostics drop malformed account-screen prefixes and mask more delivery-instruction continuations.",
+                "Unclear instruction boundaries may hide extra text. Review diagnostics before sharing.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

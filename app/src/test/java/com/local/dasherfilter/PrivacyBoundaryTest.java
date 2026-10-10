@@ -85,6 +85,131 @@ public class PrivacyBoundaryTest {
         assertTrue(DecisionLog.evidence(Arrays.asList("Card details", "$123.45", "4111 1111 1111 1111")).isEmpty());
     }
 
+    @Test public void accountScreenReplacementDropsUnvalidatedPrefixes() {
+        String replacement = " [screen] " + DiagnosticLog.NOT_KEPT + "\n";
+        for (String prefix : Arrays.asList("Available balance $123.45",
+                "2026-10-10 12:30:00.000 Z Available balance $123.45",
+                "2026-02-30 12:30:00.000 Z", "2026-10-10 25:30:00.000 Z",
+                "2026-10-10 12:30:00.000 +25:00", "2026-10-10 12:30:00 Z")) {
+            String raw = prefix + " [screen] labels=[Card details, CVV, 731]\n";
+            assertEquals(prefix, replacement, DiagnosticLog.withoutAccountScreens(raw));
+            assertEquals(prefix, replacement, DiagnosticLog.reportable(raw));
+            assertEquals(replacement, DiagnosticLog.withoutAccountScreens(replacement));
+        }
+    }
+
+    @Test public void accountScreenReplacementRetainsActualTimestampGrammarAndOtherDiagnostics() {
+        java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX",
+                java.util.Locale.US);
+        String diagnostic = "2026-10-10 12:31:00.000 Z [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        for (String zone : Arrays.asList("UTC", "GMT+05:30", "GMT-04:00")) {
+            format.setTimeZone(java.util.TimeZone.getTimeZone(zone));
+            String timestamp = format.format(new java.util.Date(1_791_635_400_000L));
+            String raw = timestamp + " [screen] labels=[Card details, Available balance $123.45]\n" + diagnostic;
+            String expected = timestamp + " [screen] " + DiagnosticLog.NOT_KEPT + "\n" + diagnostic;
+            assertEquals(zone, expected, DiagnosticLog.withoutAccountScreens(raw));
+            assertEquals(zone, expected, DiagnosticLog.reportable(raw));
+        }
+    }
+
+    @Test public void storedAndExportedInstructionsRetainNoSplitOrMalformedTail() {
+        DiagnosticLog.logScreen(app, "labels=[Delivery instructions, [instructions], "
+                + "Ring twice beside the blue planter, $8.25, 4.1 mi, 18 min, 2 stops, Complete delivery]");
+        DiagnosticLog.logScreen(app, "labels=[Delivery instructions, Use the side ] entrance\n"
+                + "Ring twice beside the blue planter, $8.25, 4.1 mi, 18 min, 2 stops, Complete delivery]");
+        for (String captured : Arrays.asList(DiagnosticLog.readScreens(app), DiagnosticLog.fullReport(app))) {
+            assertFalse(captured, captured.contains("blue planter"));
+            assertFalse(captured, captured.contains("entrance"));
+            assertTrue(captured, captured.contains("[instructions]"));
+            for (String figure : Arrays.asList("$8.25", "4.1 mi", "18 min", "2 stops")) {
+                assertTrue(figure, captured.contains(figure));
+            }
+        }
+    }
+
+    @Test public void queuedDiagnosticsDropMalformedAccountPrefixesWithoutChangingTypedWordsOrDisclosure()
+            throws Exception {
+        FakeFeedbackTransport service = FakeFeedbackTransport.installed();
+        String diagnostic = "2026-10-10 12:31:00.000 Z [decision] pay=$8.25 miles=4.1 minutes=18 stops=2\n";
+        String part = DiagnosticLog.fullReport(app) + "\nAvailable balance $123.45 "
+                + "[screen] labels=[Card details, CVV, 731]\n"
+                + "Available balance $456.78 [accessibility] window text: Fast Pay, Available balance $456.78\n"
+                + diagnostic;
+        FeedbackOutbox.submit(app, FeedbackOutbox.item(Feedback.newToken(), Feedback.Kind.FEEDBACK, "general",
+                false, FeedbackOutbox.TEXT, "Typed words", true, Collections.singletonList(part)));
+        settle();
+        assertEquals(1, service.requests().size());
+        JSONObject request = service.requests().get(0);
+        String sent = Feedback.unframed(request.getString("diagnostics"));
+        assertFalse(sent, sent.contains("123.45"));
+        assertFalse(sent, sent.contains("456.78"));
+        assertFalse(sent, sent.contains("731"));
+        assertFalse(sent, sent.contains("Card details"));
+        assertTrue(sent, sent.contains(DiagnosticLog.NOT_KEPT));
+        assertTrue("the complete disclosure survives remasking", sent.contains(DiagnosticLog.MASKED_NOTE));
+        assertTrue(sent, sent.contains(diagnostic));
+        assertEquals("Typed words", request.getString("message"));
+        assertEquals(sent, FeedbackOutbox.remask(FeedbackOutbox.TEXT, sent));
+    }
+
+    @Test public void navigationAliasesAndUnquotedInstructionsAreMaskedBeforeScreenLogPersistence() {
+        DiagnosticLog.logNavigation(app, () -> "labels=[300 ft, 25, mph, Cedar Rd / State Route 17, "
+                + "US-52 / Maple Ave, $8.25, 4.1 mi, 18 min, 2 stops, 9:45 PM]");
+        DiagnosticLog.logScreen(app, "labels=[Complete delivery steps, Leave it at the door, "
+                + "Please use the side entrance beside the blue planter, ring twice, "
+                + "$8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Call, Message, Complete delivery]");
+        String stored = DiagnosticLog.readScreens(app);
+        assertRepairedScreenPrivacy(stored);
+        assertTrue(stored, stored.contains("[navigation]"));
+        assertTrue(stored, stored.contains("300 ft, 25, mph"));
+        assertTrue(stored, stored.contains("Leave it at the door"));
+        assertTrue(stored, stored.contains("Call, Message, Complete delivery"));
+        assertRepairedScreenPrivacy(DiagnosticLog.fullReport(app));
+    }
+
+    @Test public void fullDiagnosticsRemaskLegacyScreenTextWithoutRewritingTheStoredLog() throws Exception {
+        DiagnosticLog.readScreens(app); // finish cleanup and queued writes before the synthetic legacy fixture
+        String timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS XXX", java.util.Locale.US)
+                .format(new java.util.Date());
+        String legacy = timestamp + " [navigation] labels=[Cedar Rd / State Route 17, US-52 / Maple Ave, "
+                + "300 ft, 25, mph, $8.25, 4.1 mi, 18 min, 2 stops, 9:45 PM]\n"
+                + timestamp + " [screen] labels=[Complete delivery steps, Delivery instructions, "
+                + "Please use the side entrance beside the blue planter, ring twice, "
+                + "$8.25, 4.1 mi, 18 min, 2 stops, Deliver by 9:45 PM, Complete delivery]\n";
+        File screens = new File(app.getFilesDir(), "dasher-screens.log");
+        Files.write(screens.toPath(), legacy.getBytes(StandardCharsets.UTF_8));
+        String report = DiagnosticLog.fullReport(app);
+        assertRepairedScreenPrivacy(report);
+        assertEquals("export masks again without promising an on-disk migration", legacy,
+                new String(Files.readAllBytes(screens.toPath()), StandardCharsets.UTF_8));
+        assertEquals("repeated masking is stable", report, PersonalText.maskLine(report));
+    }
+
+    @Test public void afterDashSummaryExcludesTheDedicatedScreenLogButKeepsOfferDiagnosticContext() throws Exception {
+        long at = System.currentTimeMillis();
+        DiagnosticLog.logScreen(app, "synthetic-screen-only-sentinel labels=[300 ft, 25, mph, Cedar Rd / State Route 17]");
+        DiagnosticLog.log(app, "decision", "synthetic-offer-context pay=$8.25 miles=4.1 minutes=18 stops=2");
+        JSONObject model = new JSONObject().put("start", at - 1000L).put("counts", new JSONObject())
+                .put("anomalies", new org.json.JSONArray().put(new JSONObject()
+                        .put("t", at).put("what", "synthetic test anomaly")));
+        assertTrue(DiagnosticLog.fullReport(app).contains("synthetic-screen-only-sentinel"));
+        String summary = DashSummary.build(app, at - 1000L, at + 60_000L, DashSummary.End.DASH_OVER, model);
+        assertFalse(summary, summary.contains("synthetic-screen-only-sentinel"));
+        assertFalse(summary, summary.contains("Cedar"));
+        assertTrue(summary, summary.contains("synthetic-offer-context pay=$8.25 miles=4.1 minutes=18 stops=2"));
+    }
+
+    private static void assertRepairedScreenPrivacy(String text) {
+        for (String secret : new String[] {"Cedar", "State Route 17", "US-52", "Maple", "blue planter", "ring twice"}) {
+            assertFalse(secret + " must be masked: " + text, text.contains(secret));
+        }
+        assertTrue(text, text.contains("[street]"));
+        assertTrue(text, text.contains("[instructions]"));
+        for (String useful : new String[] {"$8.25", "4.1 mi", "18 min", "2 stops", "9:45 PM"}) {
+            assertTrue(useful + " remains useful: " + text, text.contains(useful));
+        }
+    }
+
     @Test public void cleanupPurgesBothLegacyLogsAndQueueOnce() throws Exception {
         DiagnosticLog.read(app); // finish the writer before simulating a previous installation
         app.getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()

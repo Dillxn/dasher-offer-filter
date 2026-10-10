@@ -1,3 +1,11 @@
+## 0.5.6 — Maps/Waze visibility and feedback service cutover
+
+Version 0.5.6 (code 86) packages main's changes after the live 0.5.5 source `43a95bf`: the Maps/Waze visibility fix (`080d7a9`) and feedback endpoint cutover (`43c8acd`, `704a9ba`). The notice stays at 15; no new collection, retention or automatic action is introduced.
+
+- **Navigate checks installed Maps and Waze:** Android's package-visibility queries now declare both apps, so the existing navigation choices can resolve them before falling back to the browser.
+- **Anonymous feedback uses the replacement service:** the endpoint is `https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback`. Feedback keeps its existing accountless flow and consent/send guards.
+- **Release evidence:** local dual-SDK tests, lint, original-key signing, publication and production updater verification are required before release completion. These checks do not establish phone installation or real Dasher behavior.
+
 ## 0.5.5 — one homepage at every window size
 
 Version 0.5.5 (code 85). It follows 0.5.4. The notice stays at 15, and the terms and privacy texts are 0.5.2's.

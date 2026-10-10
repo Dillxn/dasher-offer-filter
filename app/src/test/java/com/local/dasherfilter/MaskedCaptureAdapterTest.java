@@ -140,10 +140,25 @@ public class MaskedCaptureAdapterTest {
 
         String screens = DiagnosticLog.readScreens(app);
         assertTrue(screens, screens.contains("[Deliver to [name], by 2:39 AM, Call, Message, [address], [address], "
-                + "Leave it at the door, [instructions], McDonald's (32059-SOMEWHERE) (#e34ffd29), Complete delivery steps]"));
+                + "Leave it at the door, [instructions], Complete delivery steps]"));
+        // Without an intervening control, a merchant and an instruction continuation have the same legacy shape.
+        assertNone(screens, "McDonald's", "#e34ffd29");
         // A menu is not a positively recognized dash screen. None of its labels are retained.
         assertTrue(screens, screens.contains(PersonalText.UNKNOWN_NOT_KEPT));
         assertNone(screens, "Sam P", "Example", "pls leave", "45000", "651 orders completed", "Pro Shopper");
+    }
+
+    @Test
+    public void aStoreAfterARecognizedDeliveryControlRemainsInTheScreenLog() {
+        Dashing.seen(app);
+        show(screen(Arrays.asList("Deliver to Sam P", "by 2:39 AM", "Leave it at the door",
+                "Use the side entrance", "Ring twice beside the blue planter", "Call",
+                "McDonald's (32059-SOMEWHERE) (#e34ffd29)", "Complete delivery steps")));
+
+        String screens = DiagnosticLog.readScreens(app);
+        assertTrue(screens, screens.contains("[Deliver to [name], by 2:39 AM, Leave it at the door, "
+                + "[instructions], Call, McDonald's (32059-SOMEWHERE) (#e34ffd29), Complete delivery steps]"));
+        assertNone(screens, "Sam P", "side entrance", "blue planter", "Ring twice");
     }
 
     @Test

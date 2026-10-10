@@ -51,6 +51,11 @@ final class DiagnosticLog {
     /** How often the writer drops old entries (each report drops them too). */
     private static final long PRUNE_EVERY_MS = 3_600_000L;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS XXX";
+    /** The complete timestamp emitted by line(); parsing alone accepts variable widths and trailing words. */
+    static final String TIMESTAMP_WORDS = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} (?:Z|[+-]\\d{2}:\\d{2})";
+    private static final java.util.regex.Pattern TIMESTAMP = java.util.regex.Pattern.compile(TIMESTAMP_WORDS);
+    private static final java.util.regex.Pattern SOURCE_TAG = java.util.regex.Pattern.compile(
+            "(?:^| )\\[([a-z][a-z0-9_-]*)\\] ");
     private static volatile long prunedAt;
     /** Each log is trimmed to roughly what a report carries of it, with a little to spare. */
     private static final int MAX_BYTES = 20 * 1024;
@@ -330,6 +335,15 @@ final class DiagnosticLog {
      * its time): what a report carries of it, whatever wrote it.
      */
     static String withoutAccountScreens(String log) {
+        return withoutAccountScreens(log, false);
+    }
+
+    /** Queued report text also has prose headers: filter only tagged diagnostic lines, never disclosure prose. */
+    static String withoutTaggedAccountScreens(String text) {
+        return withoutAccountScreens(text, true);
+    }
+
+    private static String withoutAccountScreens(String log, boolean onlyTagged) {
         if (!PersonalText.accountText(log)) return log;
         StringBuilder out = new StringBuilder(log.length());
         int start = 0;
@@ -337,9 +351,10 @@ final class DiagnosticLog {
             int end = log.indexOf('\n', start);
             end = end < 0 ? log.length() : end + 1;
             String line = log.substring(start, end);
-            if (PersonalText.accountText(line)) {
+            if (PersonalText.accountText(line) && (!onlyTagged || hasSourceTag(line))) {
                 int source = line.indexOf(" [");
-                out.append(source < 0 ? "" : line.substring(0, source)).append(" [").append(SCREEN_SOURCE)
+                String prefix = source < 0 ? "" : line.substring(0, source);
+                out.append(isTimestamp(prefix) ? prefix : "").append(" [").append(SCREEN_SOURCE)
                         .append("] ").append(NOT_KEPT).append('\n');
             } else {
                 out.append(line);
@@ -347,6 +362,25 @@ final class DiagnosticLog {
             start = end;
         }
         return out.toString();
+    }
+
+    /** A real date and offset, with no unvalidated text before a source tag. */
+    static boolean isTimestamp(String text) {
+        if (!TIMESTAMP.matcher(text).matches()) return false;
+        SimpleDateFormat time = new SimpleDateFormat(TIME_PATTERN, Locale.US);
+        time.setLenient(false);
+        ParsePosition position = new ParsePosition(0);
+        return time.parse(text, position) != null && position.getIndex() == text.length();
+    }
+
+    private static boolean hasSourceTag(String line) {
+        java.util.regex.Matcher tags = SOURCE_TAG.matcher(line);
+        while (tags.find()) {
+            String tag = tags.group(1);
+            if (!tag.equals("name") && !tag.equals("address") && !tag.equals("phone") && !tag.equals("email")
+                    && !tag.equals("instructions") && !tag.equals("card") && !tag.equals("street")) return true;
+        }
+        return false;
     }
 
     /**

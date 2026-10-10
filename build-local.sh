@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
+unsigned_output=''
+if [[ "${1:-}" == '--unsigned-output' && "$#" == 2 ]]; then
+    unsigned_output="$2"
+    [[ "$unsigned_output" == /* && ! -e "$unsigned_output" && ! -L "$unsigned_output" ]] || exit 1
+elif [[ "$#" != 0 ]]; then
+    echo 'Usage: build-local.sh [--unsigned-output ABSOLUTE_PENDING_PATH]' >&2; exit 1
+fi
 sdk_root="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
 tools="$sdk_root/build-tools/35.0.0"
@@ -17,7 +24,10 @@ code="$(sed -n 's/.*versionCode \([0-9][0-9]*\).*/\1/p' app/build.gradle)"
 for command in "$tools/aapt2" "$tools/d8" "$tools/zipalign" "$tools/apksigner" "$JAVA_HOME/bin/javac"; do
     [[ -x "$command" ]] || { echo "Missing build tool: $command" >&2; exit 1; }
 done
-[[ -f "$platform" && -f "$key" ]] || { echo 'Missing SDK or signing key; no replacement key will be generated.' >&2; exit 1; }
+[[ -f "$platform" && ( -n "$unsigned_output" || -f "$key" ) ]] || { echo 'Missing SDK or signing key; no replacement key will be generated.' >&2; exit 1; }
+if [[ -n "$unsigned_output" ]]; then
+    python3 tools/split_release.py check-pending-path "$unsigned_output"
+fi
 rm -rf "$work"
 mkdir -p "$work/compiled" "$work/generated" "$work/classes" "$work/dex" "$(dirname "$output")"
 "$tools/aapt2" compile --dir app/src/main/res -o "$work/compiled"
@@ -29,6 +39,11 @@ classes=(); while IFS= read -r -d '' file; do classes+=("$file"); done < <(find 
 "$tools/d8" --lib "$platform" --min-api 26 --output "$work/dex" "${classes[@]}"
 (cd "$work/dex" && zip -q -j '../unsigned.apk' classes.dex)
 "$tools/zipalign" -f 4 "$work/unsigned.apk" "$work/aligned.apk"
+if [[ -n "$unsigned_output" ]]; then
+    (set -o noclobber; cat "$work/aligned.apk" > "$unsigned_output")
+    echo "UNSIGNED_NONPUBLISHABLE $unsigned_output version=$version code=$code"
+    exit 0
+fi
 "$tools/apksigner" sign --ks "$key" --ks-pass "$key_store_pass" --key-pass "$key_pass" --ks-key-alias "$key_alias" --out "$output" "$work/aligned.apk"
 "$tools/apksigner" verify --min-sdk-version 26 "$output"
 echo "Built $output version=$version code=$code"

@@ -6,6 +6,53 @@
 # match the one installed phones trust. Nothing in this script publishes the result.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ "${1:-}" == 'prepare-unsigned' ]]; then
+    shift
+    exec python3 tools/split_release.py prepare "$@"
+elif [[ "${1:-}" == 'finalize-original-signature' ]]; then
+    set +x
+    shift
+    if [[ "${1:-}" == '--accept-signed' ]]; then
+        shift
+        exec python3 tools/split_release.py accept "$@"
+    fi
+    [[ "${1:-}" == '--sign' && "$#" == 6 ]] || {
+        echo 'Usage: sign-local.sh finalize-original-signature --sign BUNDLE RECEIPT_SHA SOURCE TREE OUTPUT_DIR' >&2; exit 1;
+    }
+    shift
+    # Preflight validates independently supplied identities before touching any secret.
+    python3 tools/split_release.py check-sign "$@"
+    : "${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is not set}"
+    : "${OFFER_FILTER_KEYSTORE_B64:?OFFER_FILTER_KEYSTORE_B64 is not set}"
+    : "${TMPDIR:?Set TMPDIR to the private signing workspace temporary directory}"
+    python3 tools/split_release.py check-private-dir "$TMPDIR"
+    command -v keytool >/dev/null
+    command -v java >/dev/null
+    secrets="$(mktemp -d)"
+    trap 'rm -rf "$secrets"' EXIT
+    umask 077
+    printf '%s' "$OFFER_FILTER_KEYSTORE_B64" | base64 --decode > "$secrets/signing.p12"
+    keytool -J-Duser.language=en -J-Duser.country=US -list -v -keystore "$secrets/signing.p12" -storepass:env OFFER_FILTER_SIGNING_PASSWORD \
+        -alias offerfilter-cloud > "$secrets/certificate.txt" 2> "$secrets/keytool-error.txt" || {
+        echo 'Original signer certificate precheck failed.' >&2; exit 1;
+    }
+    actual_fp="$(awk -F'SHA256: ' '/SHA256: / {v=$2; gsub(":", "", v); print tolower(v); exit}' "$secrets/certificate.txt")"
+    [[ "$actual_fp" == '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703' ]] || {
+        echo 'Not the original signing certificate; refusing to sign.' >&2; exit 1;
+    }
+    # Stage a verified immutable copy: signing never consumes a mutable transfer path.
+    python3 tools/split_release.py stage-sign "$@" "$secrets"
+    java -Xmx1024M -jar "$secrets/apksigner.jar" sign --ks "$secrets/signing.p12" \
+        --ks-pass env:OFFER_FILTER_SIGNING_PASSWORD --key-pass env:OFFER_FILTER_SIGNING_PASSWORD \
+        --ks-key-alias offerfilter-cloud --out "$secrets/signed.apk" "$secrets/unsigned.apk" \
+        > "$secrets/signing-output.txt" 2> "$secrets/signing-error.txt" || {
+        echo 'Original signing failed; private diagnostics retained only until cleanup.' >&2; exit 1;
+    }
+    python3 tools/split_release.py record-sign "$@" "$secrets"
+    exit 0
+elif [[ "$#" != 0 ]]; then
+    echo 'Unknown signing phase.' >&2; exit 1
+fi
 KEY_FINGERPRINT="553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703"
 : "${OFFER_FILTER_SIGNING_PASSWORD:?OFFER_FILTER_SIGNING_PASSWORD is not set in this environment}"
 : "${OFFER_FILTER_KEYSTORE_B64:?OFFER_FILTER_KEYSTORE_B64 is not set in this environment}"

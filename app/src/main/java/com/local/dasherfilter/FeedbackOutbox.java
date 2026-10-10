@@ -456,7 +456,8 @@ final class FeedbackOutbox {
      */
     static String remask(String format, boolean automatic, String text) {
         if (OFFER.equals(format)) return OfferReport.remask(text);
-        return PersonalText.maskLine(automatic ? DashSummary.remask(text) : text);
+        String safe = DiagnosticLog.withoutTaggedAccountScreens(text);
+        return PersonalText.maskLine(automatic ? DashSummary.remask(safe) : safe);
     }
 
     private static void waitAndRetry(Context app, File file, JSONObject item, Feedback.Kind kind, boolean automatic,

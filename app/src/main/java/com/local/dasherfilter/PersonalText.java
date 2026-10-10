@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * ("[email]"), a customer's own drop-off words ("[instructions]"), card numbers and a card's security code, expiry or
  * PIN ("[card]"), and the streets turn-by-turn navigation names ("Turn left onto [street]"). Store and business
  * names, offer words and figures (pay, miles, minutes, stops), times, buttons and shopping items stay, so a report
- * still shows what Dasher drew.
+ * still shows what Dasher drew. Unframed text after an instruction is ambiguous and remains masked until a complete
+ * control, figure or diagnostic record establishes a boundary, even if that text was actually a store's name.
  *
  * <p>A payment, account or earnings screen is not masked but never kept at all ({@link #accountScreen}): Dasher's
  * wallet page shows a card's number, expiry and security code, and a report once carried one.
@@ -35,6 +36,7 @@ final class PersonalText {
     static final String INSTRUCTIONS = "[instructions]";
     static final String CARD = "[card]";
     static final String STREET = "[street]";
+    private static final String[] MASK_TOKENS = {NAME, ADDRESS, PHONE, EMAIL, INSTRUCTIONS, CARD, STREET};
     /** What a log keeps of a payment, account or earnings screen: this note, and none of its words. */
     static final String NOT_KEPT = "an account or payment screen (not kept)";
     /** The same in place of a list of labels that an event's line would otherwise carry. */
@@ -91,7 +93,7 @@ final class PersonalText {
             "(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}");
 
     /** A label that is a quotation (the customer's own words), or one after a heading's colon: to the label's end. */
-    private static final Pattern QUOTED_LABEL = Pattern.compile("(^ *|: *)[\"“][^\\n]*");
+    private static final Pattern QUOTED_LABEL = Pattern.compile("(^ *|: *)[\"“][\\s\\S]*");
     /** The same in a log line of labels: a balanced quotation that ends a label, then any quotation left open. */
     private static final Pattern QUOTED_ITEM = Pattern.compile(
             "(^|\\[|, |: *)[\"“][^\"“”\\n]*[\"”](?= *(?:,|\\]|$))", Pattern.MULTILINE);
@@ -105,9 +107,29 @@ final class PersonalText {
             + "|(?:drop[- ]?off|delivery|customer|dasher|special) (?:instructions?|notes?)"
             + "|instructions?|note from (?:the )?customer)";
     private static final Pattern INSTRUCTIONS_LABEL = Pattern.compile(
-            "\\b(" + INSTRUCTION_HEADING + ")( *: *)(?!\\[instructions\\])(\\S[^\\n]*)");
+            "\\b(" + INSTRUCTION_HEADING + ")([ \\t]*:[ \\t\\r\\n]*)(\\S[\\s\\S]*)");
+    private static final Pattern INSTRUCTION_HEADING_LABEL = Pattern.compile(INSTRUCTION_HEADING + " *:?");
+    private static final Pattern UNQUOTED_INSTRUCTIONS_LABEL = Pattern.compile(
+            "^( *" + INSTRUCTION_HEADING + ")([ \\t\\r\\n]+)(\\S[\\s\\S]*)");
+    // A colon retains the old heading behavior. Without one, require the beginning of a label/list item.
     private static final Pattern INSTRUCTIONS_ITEM = Pattern.compile(
-            "\\b(" + INSTRUCTION_HEADING + ")( *: *)(?!\\[instructions\\])([^\\]\\s][^\\]\\n]*)");
+            "(?:\\b" + INSTRUCTION_HEADING + "[ \\t]*:[ \\t\\r\\n]*|(?:^|\\[|, )" + INSTRUCTION_HEADING
+                    + "(?:,[ \\t\\r\\n]+|[ \\t\\r\\n]+))(?=\\S)", Pattern.MULTILINE);
+    private static final Pattern LOG_ENTRY = Pattern.compile("(" + DiagnosticLog.TIMESTAMP_WORDS
+            + ") \\[[a-z][a-z0-9_-]*\\] ");
+    /** DashSummary.excerpts replaces each real entry's timestamp with elapsed time from the dash's start. */
+    private static final Pattern RELATIVE_LOG_ENTRY = Pattern.compile(
+            "[+-]\\d++:[0-5]\\d:[0-5]\\d \\[[a-z][a-z0-9_-]*\\] ");
+    /** Only complete controls/figures end a legacy instruction; "Call me when..." is still private text. */
+    private static final Pattern INSTRUCTION_CONTROL = Pattern.compile(
+            "(?i:call|message|directions|navigate|back|help|continue|done|accept|decline|take (?:a )?photo"
+                    + "|confirm (?:pickup|delivery)|complete (?:pickup|delivery)(?: steps)?)");
+    private static final String INSTRUCTION_METRIC = "\\d{1,4}(?:[.,]\\d{1,2})? *"
+            + "(?i:stops?|mi|miles?|ft|min|mins|minutes|hr|hrs|hours)";
+    private static final Pattern INSTRUCTION_FIGURE = Pattern.compile(
+            "(?i:(?:(?:deliver |pick ?up )?by )?\\d{1,2}:\\d{2}(?: ?[ap]m)?)"
+                    + "|\\+?\\$\\d++(?:[,.]\\d++)*+(?: (?i:peak pay))?"
+                    + "|" + INSTRUCTION_METRIC + "(?:[ ()•·]++" + INSTRUCTION_METRIC + ")*+[ )]*+");
 
     /**
      * A card number: 13 to 19 digits, with single spaces or dashes between groups ("4111 1111 1111 1111",
@@ -183,6 +205,14 @@ final class PersonalText {
     private static final Pattern STREET_LABEL = Pattern.compile(STREET_ALONE_WORDS);
     private static final Pattern STREET_ALONE_ITEM = Pattern.compile(
             "(^|\\[|, )" + STREET_ALONE_WORDS + "(?=,|\\]|$)", Pattern.MULTILINE);
+    /** Combined navigation aliases, including a street already masked by an older release. */
+    private static final String ROUTE_WORDS = "(?i:(?:(?:I|US|SR|" + STATES + ")[- ]?\\d{1,4}"
+            + "|(?:state|county) (?:route|road) \\d{1,4})(?: (?:[NSEW]|NE|NW|SE|SW))?)";
+    private static final String STREET_OR_ROUTE = "(?:" + STREET_ALONE_WORDS + "|" + ROUTE_WORDS + "|\\[street\\])";
+    private static final Pattern NAVIGATION_ALIASES = Pattern.compile(
+            "(^|\\[|, |(?<![\\p{L}\\d])(?i:onto|on|towards|toward|via) +)" + STREET_OR_ROUTE
+            + "(?: */ *" + STREET_OR_ROUTE + "| *\\(" + STREET_OR_ROUTE + "\\))++"
+            + "(?=" + STREET_STOP + "| *,| *\\]| *$)");
     /** Navigation, as {@link DasherScene#showsNavigation} knows it in a log line: a speed in mph and a distance. */
     private static final Pattern SPEED_WORD = Pattern.compile("(?<![\\p{L}])mph\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern DISTANCE_WORD = Pattern.compile(
@@ -304,6 +334,7 @@ final class PersonalText {
             String trimmed = label.trim();
             if (SIDE_MENU.matcher(trimmed).matches() || DASHING_NOW.matcher(trimmed).matches()) sideMenu = true;
         }
+        boolean instructions = false;
         for (int i = 0; i < labels.size(); i++) {
             String label = labels.get(i);
             if (label == null) {
@@ -311,6 +342,14 @@ final class PersonalText {
                 continue;
             }
             String trimmed = label.trim();
+            boolean heading = INSTRUCTION_HEADING_LABEL.matcher(trimmed).matches();
+            if (instructionBoundary(trimmed)) instructions = false;
+            if (instructions && !heading && !trimmed.isEmpty()) {
+                out.add(INSTRUCTIONS);
+                continue;
+            }
+            if (heading || INSTRUCTIONS_LABEL.matcher(trimmed).find()
+                    || UNQUOTED_INSTRUCTIONS_LABEL.matcher(trimmed).matches()) instructions = true;
             String next = i + 1 < labels.size() && labels.get(i + 1) != null ? labels.get(i + 1).trim() : null;
             String before = i > 0 && labels.get(i - 1) != null ? labels.get(i - 1).trim() : null;
             boolean named = (next != null && (COMPLETED.matcher(next).find() || BADGE.matcher(next).matches()
@@ -333,33 +372,33 @@ final class PersonalText {
 
     /**
      * A log line, which may hold labels written as a list ("labels=[Deliver to Sam P, 100 Example St, …]"): a
-     * customer's own words run to the end of their label, and a list item's end is its comma or bracket. Text of many
-     * lines (a whole log) is masked line by line, and navigation's streets in a line of navigation (marked
-     * "[navigation]", or showing a speed in mph and a distance).
+     * customer's own words remain private across ambiguous list delimiters and line breaks. Complete controls,
+     * figures and emitted record framing end that context. Other masks run line by line; navigation's streets are
+     * masked in a navigation line (marked "[navigation]", or showing a speed in mph and a distance).
      */
     static String maskLine(String line) {
+        return maskLine(line, false);
+    }
+
+    /**
+     * As {@link #maskLine(String)}, with {@code navigation} saying it is navigation's. A physical line break in an
+     * older instruction is not a new record: mask that body before applying the other per-line masks.
+     */
+    static String maskLine(String line, boolean navigation) {
         if (line == null || line.isEmpty()) return line == null ? "" : line;
-        if (line.indexOf('\n') < 0) return maskLine(line, false);
+        line = instructionItems(line);
+        if (line.indexOf('\n') < 0) return apply(line, false, navigation || isNavigationLine(line));
         StringBuilder out = new StringBuilder(line.length());
         int start = 0;
         while (start <= line.length()) {
             int end = line.indexOf('\n', start);
             String one = line.substring(start, end < 0 ? line.length() : end);
-            out.append(maskLine(one, false));
+            out.append(apply(one, false, navigation || isNavigationLine(one)));
             if (end < 0) break;
             out.append('\n');
             start = end + 1;
         }
         return out.toString();
-    }
-
-    /**
-     * As {@link #maskLine(String)} for one line, with {@code navigation} saying it is navigation's (as it is anyway
-     * when it is marked so, or shows a speed in mph and a distance).
-     */
-    static String maskLine(String line, boolean navigation) {
-        if (line == null || line.isEmpty()) return line == null ? "" : line;
-        return apply(line, false, navigation || isNavigationLine(line));
     }
 
     /** One line of text: marked as navigation's, or showing a speed in mph and a distance. */
@@ -374,10 +413,14 @@ final class PersonalText {
         if (wholeLabel) {
             out = QUOTED_LABEL.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(INSTRUCTIONS));
             out = INSTRUCTIONS_LABEL.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(INSTRUCTIONS));
+            Matcher instruction = UNQUOTED_INSTRUCTIONS_LABEL.matcher(out);
+            if (instruction.matches() && !keptInstructionLabel(instruction.group(3).trim())) {
+                out = instruction.group(1) + instruction.group(2) + INSTRUCTIONS;
+            }
         } else {
             out = QUOTED_ITEM.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(INSTRUCTIONS));
             out = QUOTE_OPEN_ITEM.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(INSTRUCTIONS));
-            out = INSTRUCTIONS_ITEM.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(INSTRUCTIONS));
+            out = instructionItems(out);
         }
         // Card numbers before phone numbers, which could otherwise take a piece of one.
         out = cardNumbers(out);
@@ -391,6 +434,7 @@ final class PersonalText {
         out = CITY_ZIP_STATE.matcher(out).replaceAll(Matcher.quoteReplacement(ADDRESS));
         out = UNIT.matcher(out).replaceAll("$1$2" + Matcher.quoteReplacement(ADDRESS));
         if (navigation) {
+            out = NAVIGATION_ALIASES.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(STREET));
             out = (wholeLabel ? NAVIGATION_STREET_LABEL : NAVIGATION_STREET_ITEM).matcher(out)
                     .replaceAll("$1$2" + Matcher.quoteReplacement(STREET));
             if (!wholeLabel) out = STREET_ALONE_ITEM.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(STREET));
@@ -403,6 +447,100 @@ final class PersonalText {
         out = names(NAME_BEFORE_BADGE, out, 2, "$1", "$3");
         out = names(NAME_BEFORE_DASHING_NOW, out, 2, "$1", "$3");
         return SIDE_MENU_IN_LINE.matcher(out).find() ? names(NAME_BEFORE_MENU_ITEM, out, 2, "$1", "$3") : out;
+    }
+
+    private static boolean keptInstructionLabel(String label) {
+        return INSTRUCTION_HEADING_LABEL.matcher(label).matches() || instructionBoundary(label);
+    }
+
+    private static boolean instructionBoundary(String label) {
+        return INSTRUCTION_CONTROL.matcher(label).matches() || INSTRUCTION_FIGURE.matcher(label).matches();
+    }
+
+    /**
+     * Older logs used List.toString, so a comma within a customer's words is not a reliable label boundary. Keep
+     * masking until a complete control/figure, or the list/line end. Bracketed placeholders belong to the body,
+     * including an [email] just inserted above; they must not expose the instruction's remaining words.
+     */
+    private static String instructionItems(String text) {
+        Matcher headings = INSTRUCTIONS_ITEM.matcher(text);
+        StringBuilder out = new StringBuilder(text.length());
+        int copied = 0;
+        int search = 0;
+        while (headings.find(search)) {
+            int start = headings.end();
+            // A heading with no body must not consume the next real log entry just because its separator is a newline.
+            if (headings.group().indexOf('\n') >= 0 && logEntryAt(text, start)) {
+                search = start;
+                continue;
+            }
+            int end = instructionItemEnd(text, start);
+            String first = text.substring(start, end).trim();
+            if (keptInstructionLabel(first)
+                    || (first.isEmpty() && (end == text.length() || text.charAt(end) != ','))) {
+                search = Math.max(start, end);
+                continue;
+            }
+            while (end < text.length() && text.charAt(end) == ',' && end + 1 < text.length()
+                    && text.charAt(end + 1) == ' ') {
+                int next = end + 2;
+                int nextEnd = instructionItemEnd(text, next);
+                if (keptInstructionLabel(text.substring(next, nextEnd).trim())) break;
+                end = nextEnd;
+            }
+            out.append(text, copied, start).append(INSTRUCTIONS);
+            copied = end;
+            search = end;
+        }
+        return out.append(text, copied, text.length()).toString();
+    }
+
+    /**
+     * Unknown brackets and unframed newlines are still instruction text. Only our complete mask tokens are skipped;
+     * a stray bracket cannot stop masking or hide the next complete numeric/control item inside a fake nesting level.
+     */
+    private static int instructionItemEnd(String text, int start) {
+        for (int at = start; at < text.length(); at++) {
+            char value = text.charAt(at);
+            if (value == '[') {
+                for (String token : MASK_TOKENS) {
+                    if (text.startsWith(token, at)) {
+                        at += token.length() - 1;
+                        break;
+                    }
+                }
+            } else if (value == ']' && instructionListEnd(text, at + 1)) {
+                return at;
+            } else if (value == '\n' && (logEntryAt(text, at + 1) || screensSectionAt(text, at))) {
+                return at;
+            } else if (value == ',' && at + 1 < text.length() && text.charAt(at + 1) == ' ') {
+                return at;
+            }
+        }
+        return text.length();
+    }
+
+    private static boolean logEntryAt(String text, int start) {
+        Matcher entry = LOG_ENTRY.matcher(text).region(start, text.length());
+        return (entry.lookingAt() && DiagnosticLog.isTimestamp(entry.group(1)))
+                || RELATIVE_LOG_ENTRY.matcher(text).region(start, text.length()).lookingAt();
+    }
+
+    /** The one section separator appended after the raw log by DiagnosticLog.fullReport(). */
+    private static boolean screensSectionAt(String text, int start) {
+        return text.startsWith("\n\n== Dasher's other screens (newest)\n", start);
+    }
+
+    private static boolean instructionListEnd(String text, int start) {
+        int at = start;
+        while (at < text.length() && text.charAt(at) == ' ') at++;
+        if (at == text.length() || text.startsWith("metricParts=[", at)) return true;
+        // A closing bracket alone is ambiguous. The following real record or producer section confirms framing.
+        while (at < text.length() && (text.charAt(at) == '\n' || text.charAt(at) == '\r')) {
+            if (screensSectionAt(text, at)) return true;
+            at++;
+        }
+        return at == text.length() || logEntryAt(text, at);
     }
 
     /**

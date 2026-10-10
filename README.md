@@ -223,6 +223,36 @@ To ship that APK, commit the source and run `tools/publish-repo-feed.py`. It ref
 
 Phones use the public Render mirror only. Update package/version/size/SHA-256/signing-certificate verification is unchanged, and the original signing identity is still required. The repository `release/` pair remains the source artifact that the Render mirror serves, but the Android app no longer authenticates users to GitHub or fetches a second feed from the repository.
 
+### Focused local development checks
+
+Use explicit test classes or methods while editing, then run the complete daily suite before handoff:
+
+```sh
+tools/test-dev.sh BundledNotesTest
+tools/test-dev.sh BundledNotesTest.theCurrentNoticeAndVersionHaveTheirEntry
+tools/test-dev.sh OfferRuleTest GrowthTest
+tools/test-dev.sh --all
+```
+
+The helper uses the existing Android 15 (API 35) profile and quick JIT, retaining Gradle's warm daemon and caches.
+It accepts short or fully qualified class names, with an optional method name, and rejects arbitrary Gradle options.
+Missing classes or unmatched methods fail. `--all` runs the complete daily suite; focused checks do not replace it
+or the full release gate.
+
+`-PdevChecks` puts JUnit XML and binary results under `app/build/test-results/devChecks/testDebugUnitTest/`, and HTML
+under `app/build/reports/tests/devChecks/testDebugUnitTest/`. The helper leaves the full run's JUnit, binary, HTML,
+and lint reports in place. It also uses `.gradle/dev-checks` for separate project execution and configuration history,
+while sharing the existing Gradle user-home dependency/build caches and daemon. This adds first-use setup for the
+development history. The development flag and cache directory must be used together; combining `-PdevChecks` with
+`-PallSdks` is rejected. Run one Gradle command at a time per checkout: compilation and other intermediates are shared.
+The original Gradle commands retain their existing output locations; use the helper when development checks must
+preserve the previous full reports.
+
+Both test profiles also track the raw Java/XML sources and repository legal documents inspected by source-contract
+tests, so changes to those bytes invalidate cached test results. Preserved full reports describe the inputs they
+tested: every release still runs `testDebugUnitTest -PallSdks` and `lintDebug -PallSdks` through the existing gate
+against frozen inputs. This helper does not sign or publish.
+
 ### Low-memory local validation
 
 Run Android tests and builds only in the authorized local workspace. For a memory-constrained machine, run one checkout at a time with one Gradle worker and one test JVM:
