@@ -628,14 +628,15 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void whatTheExampleNeedsFollowsTheRulesAsTheyAreSet() {
         FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
-        DecisionLog.record(app, declinedEntry());
+        DecisionLog.Entry latest = declinedEntry();
+        DecisionLog.record(app, latest);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            // The example is the latest fully read offer: 21 min, 7.2 mi, 2 stops; screen readers hear it first.
+            // The fixed comparison is 20 min, 5 mi, 2 stops even though the latest offer is 21 min and 7.2 mi.
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $7.00 at your minimums."));
+                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $7.00 at your minimums."));
             // $1.50 a mile on its knob, as a screen reader sets it.
             android.os.Bundle dollars = new android.os.Bundle();
             dollars.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 1.5f);
@@ -643,12 +644,16 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
                     dollars));
             assertEquals(150, FilterStore.load(app).perMileCents);
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops needs $10.80 at your minimums."));
+                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $7.50 at your minimums."));
+            OfferRule.Decision actual = OfferRule.evaluate(latest.facts, FilterStore.load(app));
+            assertEquals("the actual offer still uses its own 7.2 miles", 1080, actual.requiredCents);
+            assertEquals("$7.90 misses the actual requirement, even though it exceeds the chart comparison",
+                    OfferRule.Result.DECLINE, actual.result);
             // At most 1 stop, saved by an older version (the badge steps from 2).
             FilterStore.save(app, FilterStore.load(app).withMaxStops(1));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 21 min · 7.2 mi · 2 stops is declined: at most 1 stop."));
+                    .startsWith("An offer like 20 min · 5 mi · 2 stops is declined: at most 1 stop."));
         }
     }
 
