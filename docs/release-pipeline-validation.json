@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-11",
+  "pipelineAcceptance": {
+    "artifactAcceptanceIsIntermediate": true,
+    "publishedReleaseEvidence": null,
+    "requiredOutcome": "At least one actual release delivered through the reusable pipeline to the existing public automatic-update channel and freshly verified with production UpdateTransport",
+    "satisfiedByHistoricalRecovery": false,
+    "satisfiedByPullRequestMerge": false,
+    "satisfiedByToolTests": false,
+    "status": "OPEN"
+  },
+  "purpose": "Reusable pipeline recovery validation; not a new application release",
+  "realRecovery": {
+    "acceptedCapsule": {
+      "sha256": "6d6a46c31b453f0af3b4b1c74dc840f04e2e875c56267078c7da16f6095dc352"
+    },
+    "androidTestsRerun": false,
+    "apkRebuilt": false,
+    "candidate": "historical OfferFilter 0.5.8 (88)",
+    "canonicalAcceptance": {
+      "accepted": {
+        "sha256": "459c4ae82b7538f81a9e55103557bdf243f3eaed55414e48707dbf89d1cd5f40",
+        "size": 1345038
+      },
+      "canonicalAapt2Verified": true,
+      "canonicalAcceptanceRequired": false,
+      "coordinatorAapt2Verified": false,
+      "deviceInstallVerified": false,
+      "inputAggregate": "7aad09b6c08ad22802fc936475b330fea1984411864e77cbb22ee82b20a88e13",
+      "package": {
+        "aapt2BadgingSha256": "f8f5ab25a11f491d343731c5a345bf11704311bdfe63d6c6a74f0feb6eb63a06",
+        "minSdk": 26,
+        "packageName": "com.local.dasherfilter",
+        "targetSdk": 35,
+        "versionCode": 88,
+        "versionName": "0.5.8",
+        "zipalign": true
+      },
+      "payloadUnchanged": true,
+      "preparationReceiptSha256": "439946c7d261beb99dd4630ff7fc360a1762eaa2aa176db9e39a85001534b77a",
+      "published": false,
+      "schema": 1,
+      "signed": {
+        "sha256": "459c4ae82b7538f81a9e55103557bdf243f3eaed55414e48707dbf89d1cd5f40",
+        "size": 1345038
+      },
+      "signer": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+      "sourceCommit": "a778c418d17e0babcf94972d0c72071e2315efe6",
+      "sourceTree": "771a767272d3bd11b1c61275883658d4864c01d3",
+      "unsigned": {
+        "sha256": "34fd1e2dd47b7a064ed96a21a3e92aed7e941b7a7b4b2ed075942bbcf5c3b050",
+        "size": 1330608
+      }
+    },
+    "deviceInstallVerified": false,
+    "hostedBuildTriggered": false,
+    "limits": [
+      "Validates recovery and offline acceptance of the actual historical 0.5.8 candidate, not frozen 0.5.9",
+      "Full new-candidate Gradle/build/sign and external mirror delivery were not run",
+      "Source snapshot restores an exact shallow commit/tree, not complete repository history",
+      "Configured filesystem archives require durable storage outside ephemeral workers"
+    ],
+    "publicationAttempted": false,
+    "replayedOriginalGate": {
+      "adapterSdkCases": {
+        "AccessibilityAdapterTest": {
+          "26": 62,
+          "35": 62
+        },
+        "AndroidAdapterAlertsAndSettingsTest": {
+          "26": 34,
+          "35": 34
+        },
+        "AndroidAdapterChartTest": {
+          "26": 24,
+          "35": 24
+        },
+        "AndroidAdapterHomepageTest": {
+          "26": 18,
+          "35": 18
+        },
+        "AndroidAdapterReportsAndUpdatesTest": {
+          "26": 18,
+          "35": 18
+        },
+        "AutoAcceptAdapterTest": {
+          "26": 31,
+          "35": 31
+        },
+        "AutoAcceptSettingsTest": {
+          "26": 2,
+          "35": 2
+        },
+        "AutopilotCommitAdapterTest": {
+          "26": 19,
+          "35": 19
+        },
+        "ConfirmationArReadingAdapterTest": {
+          "26": 9,
+          "35": 9
+        },
+        "ConsentGateTest": {
+          "26": 11,
+          "35": 11
+        },
+        "MinimumsGrowthAdapterTest": {
+          "26": 3,
+          "35": 3
+        },
+        "ModelMigrationTest": {
+          "26": 23,
+          "35": 23
+        }
+      },
+      "androidAdapterRuntime": "Robolectric API 26 and 35; simulation only",
+      "deviceInstallVerified": false,
+      "inputCount": 521,
+      "inputSha256": "7aad09b6c08ad22802fc936475b330fea1984411864e77cbb22ee82b20a88e13",
+      "junit": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 3382
+      },
+      "lint": {
+        "errors": 0,
+        "warnings": 29
+      },
+      "suites": 161
+    },
+    "signedCapsule": {
+      "sha256": "bc34630dc8072ef823bfa4c898b96975ff91311af9d5b045cf75f8bc307f2fcf"
+    },
+    "signerAccessed": false,
+    "steps": [
+      "Initialized from clean a778c418d17e0babcf94972d0c72071e2315efe6 source checkout",
+      "Adopted original preparation plus 161 byte-matching JUnit XML files, lint XML, test/lint logs and original command receipts",
+      "Imported original-key signed return; verified certificate, APK payload and receipt without signing credentials",
+      "Exported complete signed-stage capsule",
+      "Deleted disposable original source checkout and run directory; original owner artifacts left untouched",
+      "Restored signed-stage capsule at a different absolute path",
+      "Ran unchanged canonical acceptance against restored source/reports with existing verification-only SDK",
+      "Sealed accepted phase and exported complete accepted-stage capsule"
+    ]
+  },
+  "schema": 1,
+  "toolTests": {
+    "command": "python3 -m unittest discover -s tools -p 'test_release_*.py'",
+    "failed": 0,
+    "kind": "local synthetic fixtures and Git integration tests; not Android tests",
+    "passed": 84
+  }
+}
