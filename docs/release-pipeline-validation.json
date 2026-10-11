@@ -1,5 +1,14 @@
 {
   "date": "2026-10-11",
+  "pipelineAcceptance": {
+    "artifactAcceptanceIsIntermediate": true,
+    "publishedReleaseEvidence": null,
+    "requiredOutcome": "At least one actual release delivered through the reusable pipeline to the existing public automatic-update channel and freshly verified with production UpdateTransport",
+    "satisfiedByHistoricalRecovery": false,
+    "satisfiedByPullRequestMerge": false,
+    "satisfiedByToolTests": false,
+    "status": "OPEN"
+  },
   "purpose": "Reusable pipeline recovery validation; not a new application release",
   "realRecovery": {
     "acceptedCapsule": {

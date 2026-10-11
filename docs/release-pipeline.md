@@ -6,6 +6,41 @@ behavior, signer identity, mandatory dual-SDK tests, lint and update checks are
 unchanged. Run it in an existing compatible local Bash/Python 3.9+ workspace.
 There is no SDK installer, new key, CI dispatch or Render build in this runner.
 
+## Acceptance requires a published release
+
+The pipeline improvement remains **OPEN until it delivers at least one actual
+release through the existing automatic-update channel**. Tool tests, a merged
+PR, a signed APK, offline acceptance, and historical recovery experiments are
+intermediate evidence; none completes this acceptance criterion.
+
+Acceptance requires a single, traceable release record containing:
+
+1. The exact committed source, original passing dual-SDK/lint evidence, local
+   build/signing results and canonical APK acceptance produced through this
+   reusable workflow, with recovery artifacts preserved.
+2. The repository publication commit containing the exact accepted APK/feed pair,
+   plus actual delivery of those finished bytes to the existing public update
+   origin. Preserve the remote branch, publication commit and APK/feed hashes.
+   A staged pair or prepared Git commit is insufficient.
+3. A fresh successful production `UpdateTransport` download and verification
+   matching that release's source, package, version, size, SHA-256 and original
+   signing certificate. Save the live proof, public feed/APK URLs and verification
+   timestamp with the release. The accepted, repository and public APK hashes
+   must all match. Preserve the publication command's returned receipt explicitly;
+   it is not currently included in the run's recovery capsule.
+
+An existing preparation/signed return may be adopted only with its complete,
+validated original source and evidence. Re-signing just to prove the workflow
+is unnecessary. Adoption cannot replace missing historical reports.
+
+The internal `accepted` phase means **artifact acceptance only**. Overall pipeline
+acceptance includes publication and live verification. An old live release or the
+historical 0.5.8 relocation test cannot satisfy the new delivery requirement.
+If blocked, keep this criterion OPEN and record the concrete blocker and next
+action. Preserve the current canonical release owner, original signer and local
+execution rule; this criterion does not itself authorize hosted builds or weaken
+verification. Physical-phone and pilot gates remain additional project criteria.
+
 ## First release and normal retries
 
 Commit the entire candidate source and select the existing JDK/SDK through
