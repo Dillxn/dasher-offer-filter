@@ -104,9 +104,8 @@ public class BundledNotesTest {
      * of notice 13 sees 14's lines, then 15's.
      */
     @Test public void theWordsFor051AreWritten() {
-        assertEquals(15, Consent.VERSION);
-        List<String> fifteen = BundledNotes.noticeChanges(14);
-        assertEquals(fifteen, BundledNotes.noticeChanges(Consent.VERSION - 1));
+        assertTrue("historical notice 15 is preserved", BundledNotes.hasNotice(15));
+        List<String> fifteen = notice(15);
         assertTrue(fifteen.toString(), fifteen.size() >= 2 && fifteen.size() <= 3);
         String notice = String.join(" ", fifteen);
         for (String headline : new String[] {"raises your minimums", "paid above them for a while",
@@ -116,7 +115,8 @@ public class BundledNotesTest {
         }
         List<String> both = new ArrayList<>(notice(14));
         both.addAll(fifteen);
-        assertEquals("a reader of notice 13: 14's lines, then 15's", both, BundledNotes.noticeChanges(13));
+        both.addAll(notice(16));
+        assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
@@ -135,7 +135,7 @@ public class BundledNotesTest {
 
     /** 0.5.2 (the owner's report of 7 October 2026): what its fixes do, in plain words; the notice stays at 15. */
     @Test public void theWordsFor052AreWritten() {
-        assertEquals("nothing new is read, kept or sent: no new notice", 15, Consent.VERSION);
+        assertTrue("these release notes retain historical notice 15", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.2");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -150,7 +150,7 @@ public class BundledNotesTest {
 
     /** 0.5.3 (the owner, 8 October 2026): Directions during a delivery, and the one-tap split. */
     @Test public void theWordsFor053AreWritten() {
-        assertEquals("nothing new is read, kept or sent: no new notice", 15, Consent.VERSION);
+        assertTrue("these release notes retain historical notice 15", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.3");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -162,7 +162,7 @@ public class BundledNotesTest {
 
     /** 0.5.4 (the owner, 8 October 2026): Dasher's navigation hidden under a new start screen. */
     @Test public void theWordsFor054AreWritten() {
-        assertEquals(15, Consent.VERSION);
+        assertTrue("historical notice 15 is preserved", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.4");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -174,7 +174,7 @@ public class BundledNotesTest {
 
     /** 0.5.5 (the owner, 7 October 2026): one fluid homepage. */
     @Test public void theWordsFor055AreWritten() {
-        assertEquals(15, Consent.VERSION);
+        assertTrue("historical notice 15 is preserved", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.5");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -197,7 +197,7 @@ public class BundledNotesTest {
 
     /** 0.5.7 narrows diagnostic text without adding a data flow or a new notice. */
     @Test public void theWordsFor057AreWritten() {
-        assertEquals(15, Consent.VERSION);
+        assertTrue("historical notice 15 is preserved", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.7");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -209,7 +209,7 @@ public class BundledNotesTest {
 
     /** 0.5.8 tightens existing diagnostic masking and explains conservative loss at ambiguous boundaries. */
     @Test public void theWordsFor058AreWritten() {
-        assertEquals(15, Consent.VERSION);
+        assertTrue("historical notice 15 is preserved", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.8");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
@@ -220,17 +220,36 @@ public class BundledNotesTest {
     }
 
     /** 0.5.10 checks cancellation and the time limit at download completion; the notice stays at 15. */
-    @Test public void theWordsFor0510AreWrittenAndSelectedByThisBuild() {
-        assertEquals("nothing new is read, kept or sent: no new notice", 15, Consent.VERSION);
+    @Test public void theWordsFor0510AreWritten() {
+        assertTrue("these release notes retain historical notice 15", BundledNotes.hasNotice(15));
         List<String> news = BundledNotes.whatsNew("0.5.10");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
         for (String headline : new String[] {"recheck cancellation", "download finishes", "time limit", "rejected"}) {
             assertTrue(headline, card.contains(headline));
         }
+    }
+
+    @Test public void theWordsFor0511AreWrittenAndSelectedByThisBuild() {
+        List<String> news = BundledNotes.whatsNew("0.5.11");
+        assertEquals(3, news.size());
+        String card = String.join(" ", news);
+        for (String fact : new String[] {"pay, miles and trip time", "triangle stays steady",
+                "confirmed full-screen", "Send", "own saved choice", "unsent reports", "preview"}) {
+            assertTrue(fact, card.contains(fact));
+        }
         String version = Updater.version(RuntimeEnvironment.getApplication());
-        assertEquals("this build carries the 0.5.10 notes", "0.5.10", version);
+        assertEquals("this build carries the cumulative notes", "0.5.11", version);
         assertEquals("this build's card is the one written for it", news, BundledNotes.whatsNew(version));
+    }
+
+    @Test public void prospectiveStudyHasItsOwnRenewedNoticeAndPreservesOldReleaseNotes() {
+        assertEquals(16, Consent.VERSION);
+        List<String> changed = BundledNotes.noticeChanges(15);
+        assertEquals(3, changed.size());
+        String words = String.join(" ", changed);
+        for (String fact : new String[] {"before outcomes", "24 hours", "checked draft", "tap Save choice",
+                "opt-outs", "automatic-sharing choices", "unsent reports", "Preview"}) assertTrue(fact, words.contains(fact));
     }
 
     /** The lines notice {@code version} added, as a reader of the one before it sees them. */

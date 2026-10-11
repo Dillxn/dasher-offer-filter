@@ -1357,6 +1357,69 @@ public class PeekTest {
         contains(log(app), "return cancelled");
     }
 
+    private void assertFinalReturnRefused(
+            java.util.function.UnaryOperator<List<AccessibilityWindowInfo>> changedWindows) {
+        OfferFilterService service = connect(app(MAPS));
+        post("Taco Bell");
+        dasherOpened();
+        offerRoot = offer("$7.90");
+        declinedOnScreen();
+        java.util.function.Supplier<List<AccessibilityWindowInfo>> windows = service.windowSource;
+        java.util.concurrent.atomic.AtomicBoolean checked = new java.util.concurrent.atomic.AtomicBoolean();
+        service.windowSource = () -> {
+            List<AccessibilityWindowInfo> listed = windows.get();
+            boolean finalCheck = Arrays.stream(Thread.currentThread().getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals("returnPeekOnMain"));
+            if (!finalCheck) return listed;
+            checked.set(true);
+            return changedWindows.apply(listed);
+        };
+        dasherShows(finding());
+        assertTrue("the layout changes after scanner cleanup, at final dispatch", checked.get());
+        assertNull("uncertain or shared layout must not launch Maps over the current task", started());
+        assertTrue("nor issue global Back or Home", globalActions().isEmpty());
+        contains(log(app), "return cancelled");
+    }
+
+    @Test public void finalMapReturnRequiresPositiveCurrentBounds() {
+        assertFinalReturnRefused(listed -> {
+            ((ShadowAccessibilityWindowInfo) Shadow.extract(listed.get(0))).setBoundsInScreen(new Rect());
+            return listed;
+        });
+    }
+
+    @Test public void finalMapReturnPreservesAnotherMapPaneWithoutADivider() {
+        assertFinalReturnRefused(listed -> {
+            // The old full-screen bounds can survive a resize while the divider metadata is missing.
+            List<AccessibilityWindowInfo> shared = new ArrayList<>(listed);
+            shared.add(window(AccessibilityWindowInfo.TYPE_APPLICATION, app(MAPS), false, BOTTOM_HALF));
+            return shared;
+        });
+    }
+
+    @Test public void finalMapReturnRechecksFullScreenEvenWithAnUnchangedWindowSignature() {
+        android.util.DisplayMetrics display = app.getResources().getDisplayMetrics();
+        int width = display.widthPixels, height = display.heightPixels;
+        try {
+            assertFinalReturnRefused(listed -> {
+                // Current display geometry changed; unchanged stale window bounds no longer prove full screen.
+                display.widthPixels = SCREEN.width() * 2;
+                display.heightPixels = SCREEN.height() * 2;
+                return listed;
+            });
+        } finally {
+            display.widthPixels = width;
+            display.heightPixels = height;
+        }
+    }
+
+    @Test public void finalMapReturnRechecksPictureInPictureEvenWithAnUnchangedWindowSignature() {
+        assertFinalReturnRefused(listed -> {
+            ((ShadowAccessibilityWindowInfo) Shadow.extract(listed.get(0))).setPictureInPicture(true);
+            return listed;
+        });
+    }
+
     @Test
     public void aScreenReadingDuringTheQuietWaitCancelsThePendingPeek() {
         connect(app(MAPS));

@@ -1,0 +1,7 @@
+SYNTHETIC EXAMPLE ONLY: no real phone or user data.
+2026-10-11 12:00:00.000 Z [screen] read load: 61 reads/min (fact-free 59), nodes 700, slowest 12,345 ms, median fetch 202 ms, truncated 2, pruned map subtrees 90, yields 2, at once 2
+2026-10-11 12:00:01.000 Z [screen] yielding to Dasher: median fetch 202 ms
+2026-10-11 12:00:02.000 Z [screen] map subtree skipped (100 children) on Dasher's navigation screen
+2026-10-11 12:00:03.000 Z [screen] not reading Dasher while paused (auto-decline is off)
+2026-10-11 12:00:04.000 Z [screen] reading Dasher again
+2026-10-11 12:00:05.000 Z [peek] cost: 5 reads, 100 nodes, 3 remote fetches ≥2 ms, slowest 800 ms, 7 Dasher events car=? lock=no

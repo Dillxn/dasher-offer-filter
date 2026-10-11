@@ -566,7 +566,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void aKnobDraggedAlongItsSpokeSavesTheSnappedMinimum() {
         FilterStore.save(app, FilterSettings.of(true, 1000, 80, 30, 3));
-        // The example offer: 7.2 mi, 21 min, 2 stops.
+        // The latest offer differs from the fixed five-mile chart comparison.
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -586,10 +586,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 assertEquals("nothing is saved until it is let go", 80, FilterStore.load(app).perMileCents);
             });
             double reach = along(middle, 1, to) / star.skyRadius() * ring * 3;
-            int expected = (int) (Math.round(reach / 7.2 / 5) * 5);
+            int expected = (int) (Math.round(reach / 5.0 / 5) * 5);
             FilterSettings saved = FilterStore.load(app);
             assertTrue("higher than $0.80: " + expected, expected > 80);
-            assertEquals("snapped to $0.05 on the chart's scale for 7.2 mi", expected, saved.perMileCents);
+            assertEquals("snapped to $0.05 on the fixed chart comparison for 5 mi", expected, saved.perMileCents);
             assertTrue("still on", saved.enabled);
             assertEquals("max stops untouched", 3, saved.maxStops);
             assertArrayEquals("the other minimums untouched", new int[] {1000, expected, 30, 0, 0, 0},

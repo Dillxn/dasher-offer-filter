@@ -1,0 +1,50 @@
+{
+  "created_at": "2026-10-11T18:00:17.394623+00:00",
+  "toolkit": "OfferFilter pilot evidence intake",
+  "canonical_owner": "offerfilter-release-maintainer",
+  "evidence_classification": {
+    "freshly_verified": [
+      "historical coordination records reviewed",
+      "original local phone packet and pilot v3",
+      "original blank receipt byte equality before public sanitization",
+      "60 original synthetic validator tests",
+      "original live held validator output"
+    ],
+    "inherited": [
+      "original-key signing DONE",
+      "canonical acceptance/publication pending",
+      "original 167 JUnit files and lint unavailable"
+    ],
+    "unknown": [
+      "actual installed phone build",
+      "actual phone results",
+      "participants and consent",
+      "private triage/retention",
+      "privacy-alias delivery"
+    ]
+  },
+  "validation": {
+    "command": "python3 -m unittest discover -s tests -v",
+    "tests": 60,
+    "failures": 0,
+    "errors": 0,
+    "scope": "validator synthetic fixtures only; no application test/phone result"
+  },
+  "live_state": {
+    "candidate_not_run": 14,
+    "successor_blocked": 2,
+    "phone_passes": 0,
+    "participants": 0,
+    "recruitment": "HELD"
+  },
+  "authority": "No source/signing/publishing/outreach/credentials/coordination-record changes in the historical run",
+  "limitations": [
+    "File identity is not truth or authentication; well-formed fabricated content requires human provenance review",
+    "Frozen/public-only; successor support requires separate owner-reviewed policy",
+    "Single consent interval per participant; current opt-out preserves usable historical already-sent records",
+    "Critical phone-case evidence holds conservatively until explicit owner reconciliation",
+    "No contact scheduling or private-message validation; no automatic full-phone acceptance"
+  ],
+  "report_kind": "sanitized_historical_derivative",
+  "derivative_note": "This records the original private-packet run, not a run of the sanitized public tool. See public-validation.json for the separate current synthetic checks; the role label is not authenticated approval."
+}

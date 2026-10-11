@@ -181,7 +181,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertTrue("one page at every size", page.isShown());
             TextView verdict = verdictLine(content);
             assertEquals(MainActivity.verdict(latest, System.currentTimeMillis()), verdict.getText().toString());
-            assertTrue(verdict.getText().toString(), verdict.getText().toString().startsWith("Declined $7.90 · 7.2 mi: ")
+            assertTrue(verdict.getText().toString(), verdict.getText().toString().startsWith("$7.90 · 7.2 mi · 21 min · Declined")
                     && verdict.getText().toString().endsWith(" · just now"));
             assertWhollyOnScreen("the verdict", verdict);
             assertEquals(MainActivity.ON_LINE, statusLine(content).getText().toString());
@@ -464,9 +464,15 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         servicesUp();
         try (ActivityController<MainActivity> activity = splitScreen()) {
             String said = verdictLine(content(activity)).getText().toString();
-            assertTrue(said, said.startsWith(AutopilotText.PASSED_BELOW_MINIMUMS + " $5.75 · 6.6 mi: "));
-            assertFalse("once", said.substring(AutopilotText.PASSED_BELOW_MINIMUMS.length())
+            assertTrue(said, said.startsWith("$5.75 · 6.6 mi · 27 min · " + AutopilotText.PASSED_BELOW_MINIMUMS));
+            int below = said.indexOf(AutopilotText.PASSED_BELOW_MINIMUMS);
+            assertFalse("once", said.substring(below + AutopilotText.PASSED_BELOW_MINIMUMS.length())
                     .contains("elow your minimums"));
+            String description = stripWords(content(activity)).getContentDescription().toString();
+            assertTrue("the reason is still accessible: " + description, description.contains("82%"));
+            assertFalse("the accessible reason does not repeat the below-minimums outcome", description
+                    .substring(description.indexOf(AutopilotText.PASSED_BELOW_MINIMUMS)
+                            + AutopilotText.PASSED_BELOW_MINIMUMS.length()).contains("elow your minimums"));
             assertTrue(said, said.endsWith(" · just now"));
         }
     }
@@ -632,7 +638,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                     .withAutopilot(true, 70).withMinimumScalePercent(82));
             DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
                     DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75")).withTime(at));
-            outcome = AutopilotText.PASSED_BELOW_MINIMUMS + " $5.75";
+            outcome = "$5.75 · 6.6 mi · 27 min · " + AutopilotText.PASSED_BELOW_MINIMUMS;
         } else {
             DecisionLog.Entry offer = new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false,
                     new OfferSnapshot(1250, 3.0, 15, 2), 1000, OfferRule.Result.KEEP, "meets your minimums",
@@ -644,8 +650,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                         "automatic Accept was requested, and Dasher showed a delivery screen"));
             }
             DecisionLog.record(app, offer);
-            outcome = (kind.equals("automatic") ? "Automatically accepted" : "Accept requested, not confirmed")
-                    + " $12.50";
+            outcome = "$12.50 · 3 mi · 15 min · "
+                    + (kind.equals("automatic") ? "Automatically accepted" : "Accept requested, not confirmed");
         }
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);

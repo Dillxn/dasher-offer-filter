@@ -661,6 +661,10 @@ final class DashSummary {
         String excerpts = excerpts(app, start, model);
         StringBuilder out = new StringBuilder();
         List<String> lines = decisionLines(decisions, start);
+        String study = DispatchStudyStore.section(app, start, end);
+        // Reserve its separator too: even a cut-to-fit marker must not join the first allowlisted study row.
+        if (!study.isEmpty()) study = "\n" + study;
+        int budget = Feedback.MAX_SUMMARY_CHARS - study.length();
         int omitted = 0;
         while (true) {
             out.setLength(0);
@@ -671,9 +675,9 @@ final class DashSummary {
             for (int i = omitted; i < lines.size(); i++) out.append(lines.get(i));
             if (!excerpts.isEmpty()) out.append('\n').append(excerpts);
             String masked = PersonalText.maskLine(out.toString());
-            if (masked.length() <= Feedback.MAX_SUMMARY_CHARS || omitted >= lines.size()) {
-                return masked.length() <= Feedback.MAX_SUMMARY_CHARS ? masked
-                        : masked.substring(0, Feedback.MAX_SUMMARY_CHARS - 16).trim() + "\n[cut to fit]";
+            if (masked.length() <= budget || omitted >= lines.size()) {
+                return (masked.length() <= budget ? masked
+                        : masked.substring(0, budget - 16).trim() + "\n[cut to fit]") + study;
             }
             omitted = Math.min(lines.size(), omitted + Math.max(1, lines.size() / 10));
         }

@@ -2304,6 +2304,131 @@ public class PeekRecoveryTest {
 
     // ---- Dasher on screen, and an offer it never draws (the owner, 7 October 2026, in split screen) ----
 
+    private AccessibilityNodeInfo oversizedScreen(String... labels) {
+        AccessibilityNodeInfo root = dasherScreen(labels);
+        for (int i = 0; i < 1_600; i++) Shadows.shadowOf(root).addChild(node(DASHER, "Row " + i, false));
+        return root;
+    }
+
+    private void observeManualEntry() {
+        FilterStore.setPeek(app, false);
+        connect(app(MAPS));
+        postListed("Test store", true);
+    }
+
+    private void assertObservationHasNoActions() {
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue("observation grants no notification tap", ownTaps.isEmpty());
+        assertNull("observation grants no launch or map return", started());
+        assertTrue("observation grants no Back", Shadows.shadowOf(screen.get()).getGlobalActionsPerformed().isEmpty());
+        assertFalse(peekState().active());
+    }
+
+    @Test public void genericOversizedManualEntryStaysUnknownUntilReadableWaiting() {
+        observeManualEntry();
+        dasherShows(oversizedScreen());
+        contains(log(app), "[alert] later visible: unknown screen; observation only");
+        assertFalse(log(app).contains("[alert] later visible: offer evidence"));
+        dasherShows(finding());
+        contains(log(app), "[alert] later visible: waiting; observation only");
+        assertObservationHasNoActions();
+    }
+
+    @Test public void genericOversizedManualEntryCanStillObserveALaterReadableOffer() {
+        observeManualEntry();
+        dasherShows(oversizedScreen());
+        contains(log(app), "[alert] later visible: unknown screen; observation only");
+        assertFalse(log(app).contains("[alert] later visible: offer evidence"));
+        AccessibilityNodeInfo partial = offer(null);
+        List<Long> declines = taps(decline);
+        dasherShows(partial);
+        contains(log(app), "[alert] later visible: offer evidence; observation only");
+        assertObservationHasNoActions();
+        assertTrue("unread pay grants no Decline", declines.isEmpty());
+    }
+
+    @Test public void oversizedManualEntryNeedsActualBoundedOfferEvidence() {
+        observeManualEntry();
+        AccessibilityNodeInfo partial = oversizedScreen("New Delivery!", "2 stops (7.2 mi) • 21 min");
+        AccessibilityNodeInfo control = button("Decline");
+        List<Long> declines = taps(control);
+        Shadows.shadowOf(partial).addChild(control);
+        dasherShows(partial);
+        contains(log(app), "[alert] later visible: offer evidence; observation only");
+        assertObservationHasNoActions();
+        assertTrue("a truncated offer grants no Decline", declines.isEmpty());
+    }
+
+    @Test public void oversizedWaitingFiguresAreNotPositiveOfferEvidence() {
+        observeManualEntry();
+        dasherShows(oversizedScreen("Finding offers", "This dash $9.30"));
+        contains(log(app), "[alert] later visible: unknown screen; observation only");
+        assertFalse(log(app).contains("[alert] later visible: offer evidence"));
+        assertFalse("an incomplete screen is not proven waiting",
+                log(app).contains("[alert] later visible: waiting"));
+        dasherShows(finding());
+        contains(log(app), "[alert] later visible: waiting; observation only");
+        assertObservationHasNoActions();
+    }
+
+    @Test public void backgroundDingThenManualEntryIsObservedWithoutAutomaticRecovery() {
+        FilterStore.setPeek(app, false);
+        connect(app(MAPS));
+        postListed("Test store", true);
+        pass(2_000);
+        assertNull(started());
+        dasherShows(node(DASHER, null, false)); // a red startup/splash carries no readable offer facts
+        contains(log(app), "[alert] later visible: unknown screen; observation only");
+        dasherShows(finding());
+        contains(log(app), "[alert] later visible: waiting; observation only");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue("manual entry never grants a notification tap", ownTaps.isEmpty());
+        assertNull("nor a launcher or map handoff", started());
+        // An incomplete real offer remains unread/Review; it is not repaired by guessing its payout.
+        AccessibilityNodeInfo partial = offer(null);
+        List<Long> declined = taps(decline);
+        dasherShows(partial);
+        pass(1_000);
+        assertTrue(declined.isEmpty());
+        assertTrue(ownTaps.isEmpty());
+    }
+
+    @Test public void cancelledPeekMayObserveLaterManualEntryButNeverRegainsItsActions() {
+        connect(app(MAPS));
+        postListed("Test store", false);
+        dasherOpened();
+        dasherShows(finding());
+        touchNow();
+        assertFalse(peekState().active());
+        inFront(app(MAPS));
+        pass(1_000);
+        dasherShows(finding());
+        contains(log(app), "[alert] later visible: waiting; observation only");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 500);
+        assertFalse(peekState().active());
+        assertTrue(ownTaps.isEmpty());
+        assertNull("no post-cancel app switch", started());
+        assertTrue("nor any global Back", Shadows.shadowOf(screen.get()).getGlobalActionsPerformed().isEmpty());
+    }
+
+    @Test public void aWithdrawnBackgroundPostCannotExplainALaterVisibleScreen() {
+        FilterStore.setPeek(app, false); connect(app(MAPS));
+        StatusBarNotification post = postListed("Test store", false);
+        withdraw(post);
+        dasherShows(finding());
+        assertFalse(log(app).contains("[alert] later visible:"));
+        assertTrue(ownTaps.isEmpty()); assertNull(started());
+    }
+
+    @Test public void laterVisibleObservationExpiresWithoutPollingOrOpeningDasher() {
+        FilterStore.setPeek(app, false); connect(app(MAPS));
+        postListed("Test store", false);
+        pass(Peek.UNLOCK_POST_MS + 500);
+        assertNull(started()); assertTrue(ownTaps.isEmpty());
+        dasherShows(finding());
+        assertFalse(log(app).contains("[alert] later visible:"));
+    }
+
     /** Offer Filter's own half above (the one the user last touched), Dasher's below showing {@code dasher}. */
     private void splitBesideOfferFilter(AccessibilityNodeInfo dasher) {
         OfferFilterService service = screen.get();

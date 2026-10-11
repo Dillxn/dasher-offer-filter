@@ -1,0 +1,24 @@
+{
+  "kind": "standalone_tooling_validation",
+  "started_at_utc": "2026-10-11T17:57:52.422694+00:00",
+  "finished_at_utc": "2026-10-11T17:57:52.522118+00:00",
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "-v",
+    "test_reduce_diagnostics.py"
+  ],
+  "exit_code": 0,
+  "tests": 19,
+  "python_version": "3.12.14",
+  "app_tests_run": false,
+  "device_session_run": false,
+  "source_commit_created": false,
+  "files": {
+    "reduce_diagnostics.py": "ad220b120efde7a94ff8c75594e47ddb8a6ce3c69fac9586519f8800c7a5f877",
+    "test_reduce_diagnostics.py": "6fb61f0e9179e13f1cc2fb3e46d84fec3c9f4a9d30b9794f6e5ac1260d716ed3"
+  },
+  "report_kind": "sanitized_historical_derivative",
+  "derivative_note": "Interpreter path normalized for publication; original historical timestamps, result and unchanged script/test hashes retained. No rerun is implied."
+}

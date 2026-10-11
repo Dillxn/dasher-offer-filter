@@ -1,3 +1,14 @@
+## 0.5.11 — cumulative app repairs and optional timing study
+
+Version 0.5.11 (code 91) combines the recovered study/core-repair patches with fresh corrections on the durable 0.5.10 source. The 0.5.10 signed/recovered artifact remains separate historical evidence; the old 0.5.9 evidence is not reused. Notice 16 explains the optional study's new data scope. [The cumulative ledger](docs/cumulative-successor-0.5.11.md) records source provenance, targeted results and remaining gates.
+
+- **Protect navigation and passive observations:** pending split completion leaves existing or uncertain pane layouts alone. Automatic Peek returns require fresh positive full-screen bounds, a single application window and no PiP, even when a cached window signature is unchanged. A generic oversized screen stays unknown until later normal evidence; passive correlation grants no extra launch, tap or Back.
+- **Keep offer facts and controls clear:** short-window overview text leads with pay, miles and trip time, including unread values. The outer chart reference uses a fixed five-mile/twenty-minute comparison and rules/bar-based scaling. Actual scoring, minimums and growth are unchanged. Report Offer's disclosure scrolls while its Send action stays outside the body.
+- **Offer timing study is a separate saved choice:** its initial checked draft records nothing until the user saves it. Existing opt-outs and automatic dash-sharing choices remain distinct. Prospective numeric observations stay bounded to 24 hours, carry policy/coverage/censoring context and leave through the existing previewed diagnostics path. Turning the choice off and saving removes study content from unsent reports while preserving ordinary feedback and multipart identity; sent or in-flight content cannot be recalled.
+- **Retain the update and release protections:** cancellation/deadline checks at download completion remain included. Original-signer verification, automatic updates and the local recovery pipeline are unchanged. Offline numeric diagnostic and pilot-intake tools provide advisory evidence handling, not phone or recruitment acceptance.
+
+The final exact source still requires the canonical dual-SDK/lint/build/sign/acceptance gate, repository publication and fresh production updater verification. Native task, touch, audio, installation and Dasher behavior remain phone checks. Historical 0.6 source provenance, private backend operations and pilot recruitment gates remain explicit; this release does not revive retired scoring/learning rules or claim field outcomes.
+
 ## 0.5.10 — update download completion checks
 
 Version 0.5.10 (code 90) follows the publicly released 0.5.8. This is a fresh candidate from durable main; the separate unreleased 0.5.9 candidate and its evidence are not reused. The notice stays at 15; no new collection, retention or automatic action is introduced.

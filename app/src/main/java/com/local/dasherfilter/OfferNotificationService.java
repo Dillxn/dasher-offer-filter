@@ -808,6 +808,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             if (decision.result == OfferRule.Result.REVIEW) {
                 Peek.Request request = new Peek.Request(source.getKey(), source.getPostTime(), offer.store, replay,
                         offer.freshPost, offer.alertTag);
+                if (!foreground) OfferFilterService.observeLaterVisibleOffer(request);
                 long readAgo = replay || foreground ? -1 : DecisionLog.screenReadAgo(this, DecisionLog.Entry.of(
                         DecisionLog.Source.NOTIFICATION, addOn, decision.basis, decision,
                         DecisionLog.Action.CHECK_BELL, settings.enabled, labels));

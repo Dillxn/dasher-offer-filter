@@ -24,13 +24,15 @@ public final class LegalTextsTest {
     private static final String CONTACT = "privacy@offerfilter.org";
     private static final String SOURCE = "<https://github.com/Dillxn/dasher-offer-filter>";
     /**
-     * The beta texts' effective date, the one place the tests name it (ConsentGateTest reads it here). A release that
-     * changes them sets it to the day the texts are published: in TERMS.md's and PRIVACY.md's second line and here,
-     * then runs tools/legal_texts.py. 0.5.1's texts are dated the same day as 0.5.0's; 0.5.2's the day after.
+     * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
+     * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String EFFECTIVE = "8 October 2026";
+    static final String TERMS_EFFECTIVE = "8 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String FOR_VERSION = "0.5.2";
+    static final String TERMS_VERSION = "0.5.2";
+    /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
+    static final String PRIVACY_EFFECTIVE = "11 October 2026";
+    static final String PRIVACY_VERSION = "0.5.11";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -42,10 +44,10 @@ public final class LegalTextsTest {
     @Test public void theTermsAndPrivacyArePublishedBetaTextsAndTheLicenseIsStandardMIT() {
         String terms = LegalTexts.Doc.TERMS.text();
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        assertTrue(terms, terms.startsWith("# " + AppName.NAME + " terms of use\n\nBeta terms, effective " + EFFECTIVE
-                + " · for " + AppName.NAME + " " + FOR_VERSION + "\n\n"));
+        assertTrue(terms, terms.startsWith("# " + AppName.NAME + " terms of use\n\nBeta terms, effective " + TERMS_EFFECTIVE
+                + " · for " + AppName.NAME + " " + TERMS_VERSION + "\n\n"));
         assertTrue(privacy, privacy.startsWith("# " + AppName.NAME + " privacy\n\nBeta privacy policy, effective "
-                + EFFECTIVE + " · for " + AppName.NAME + " " + FOR_VERSION + "\n\n"));
+                + PRIVACY_EFFECTIVE + " · for " + AppName.NAME + " " + PRIVACY_VERSION + "\n\n"));
         assertTrue("honest that this is a beta", terms.contains(AppName.NAME + " is beta software"));
         assertTrue(privacy.contains(AppName.NAME + " is beta software"));
         for (LegalTexts.Doc doc : new LegalTexts.Doc[] {LegalTexts.Doc.TERMS, LegalTexts.Doc.PRIVACY}) {
@@ -165,7 +167,7 @@ public final class LegalTextsTest {
     @Test public void privacyNamesExternalFlowsAndTheLimitsOfMasking() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"historical area's center coordinates", "Maps or Waze", "Gas and gas-price choices",
-                "Render, Cloudflare, Supabase, Google, Anthropic and OpenAI", "no ads or analytics",
+                "Render, Cloudflare, Supabase, Google, Anthropic and OpenAI", "no ads or mandatory analytics",
                 "Masking is pattern-based and can miss unfamiliar wording",
                 "notes you type with Report this offer, are not masked", "A submission does not guarantee review or a fix",
                 "masked again with the current rules immediately before sending",

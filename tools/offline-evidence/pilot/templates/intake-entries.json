@@ -1,0 +1,68 @@
+{
+  "document_type": "BLANK_SHAPES_NOT_EVIDENCE",
+  "instructions": "Copy the relevant shape into pilot-state.json only when actual evidence exists. Nulls are intentionally invalid for completed records. Read README.md. Never copy reference build identity into observed fields without verification.",
+  "evidence": {
+    "id": null, "path": null, "kind": null, "synthetic": false, "sha256": null
+  },
+  "phone_run": {
+    "path": null, "stage": null, "artifact_evidence": null,
+    "case_evidence": {}, "filtering_states_observed": [],
+    "study_build_confirmation": [],
+    "update_observation": {
+      "before": null, "after": null, "same_update_channel": null,
+      "uninstalled": null, "settings_history_preserved": null,
+      "actual_launch_observed": null, "evidence_refs": []
+    }
+  },
+  "recorded_owner_gate": {
+    "status": "PENDING", "owner": null, "recorded_at": null,
+    "evidence_refs": [], "artifact": null, "phone_evidence_refs": []
+  },
+  "participant": {
+    "code": null, "enrolled_at": null, "adult_confirmed": null,
+    "android_major": null, "apk_comfort_confirmed": null,
+    "agreement_evidence": [], "same_app_update_channel": null,
+    "status": null, "replacement_for": null, "seat_ended_at": null,
+    "installation": null, "stationary_check": null, "ordinary_sessions": [],
+    "study_choice": {
+      "value": null, "affirmative_save": false, "saved_at": null,
+      "withdrawn_at": null, "evidence_refs": []
+    },
+    "automatic_reporting_choice": {
+      "value": null, "affirmative_save": false, "saved_at": null,
+      "withdrawn_at": null, "evidence_refs": []
+    },
+    "study_records": []
+  },
+  "installation": {"artifact": null, "evidence_refs": []},
+  "stationary_check": {
+    "completed_at": null, "passed": null, "filtering": null,
+    "autopilot": null, "auto_accept": null, "peek": null, "evidence_refs": []
+  },
+  "ordinary_session": {
+    "id": null, "started_at": null, "ended_at": null, "reviewed_at": null,
+    "voluntary": null, "safety_checkin_complete": null,
+    "private_feedback_reviewed": null, "incident_status_reviewed": null,
+    "autopilot": null, "auto_accept": null, "peek": null, "filtering": null,
+    "filtering_choice_evidence": [], "artifact": null, "evidence_refs": [],
+    "estimate_method_version": null, "policy_epoch": null
+  },
+  "study_record": {
+    "session_id": null, "recorded_at": null, "outcome_or_censor_at": null,
+    "submitted_at": null, "received_at": null, "reviewed_at": null,
+    "in_flight_at_withdrawal": null, "eligible_coverage_seconds": null,
+    "usable": null, "prospective": null, "coverage_checked": null,
+    "end_kind": null, "method_version": null, "policy_epoch": null,
+    "artifact": null, "send_mode": null, "send_evidence": [],
+    "report_reference": null, "evidence_refs": []
+  },
+  "incident": {
+    "severity": null, "observed_at": null, "resolved_at": null,
+    "evidence_refs": [], "resolution_evidence": []
+  },
+  "case_disposition": {
+    "run_id": null, "case_id": null, "owner": null,
+    "resolution": null, "recorded_at": null, "retest_run_id": null,
+    "evidence_refs": []
+  }
+}

@@ -371,9 +371,11 @@ final class Feedback {
      */
     static List<String> diagnosticParts(Context context) {
         Context app = context.getApplicationContext();
+        String study = DispatchStudyStore.section(app);
         for (int decisions = DiagnosticLog.REPORT_DECISIONS; decisions >= 0; decisions -= 10) {
             // Masked as the outbox masks each part before sending (masked text masks to itself): the preview is it.
-            List<String> parts = chunks(PersonalText.maskLine(DiagnosticLog.fullReport(app, decisions)),
+            List<String> parts = chunks(PersonalText.maskLine(DiagnosticLog.fullReport(app, decisions))
+                            + (study.isEmpty() ? "" : "\n" + study),
                     MAX_PART_CHARS, MAX_PART_BYTES);
             if (parts.size() <= MAX_PARTS) return parts;
         }

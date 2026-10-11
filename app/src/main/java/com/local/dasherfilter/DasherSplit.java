@@ -501,6 +501,15 @@ final class DasherSplit {
             log(activity, "split " + after + " ms after the tap: Dasher already visible beside; no launch requested");
             return;
         }
+        // A resize/resume can temporarily omit a paired task's windows. Absence of evidence must not send
+        // another launcher intent into it. A known map or an existing dash's other pane also stays in place;
+        // switching it needs a new explicit tap, not the completion of an older split request.
+        if (!OfferFilterService.mayCompleteSplitNow()) {
+            log(activity, "split completion left to the user: layout unknown or existing dash/map; nothing opened");
+            android.widget.Toast.makeText(activity, "Keeping this split. Open Dasher from its icon if needed.",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
         log(activity, "split " + after + " ms after the tap: Dasher's launch intent into the other half");
         String failed = open(activity, dasher);
         if (failed != null) log(activity, "Dasher could not be opened");

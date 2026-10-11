@@ -35,7 +35,7 @@ import java.util.Locale;
 /**
  * The minimums as a constellation in the page's sky: three spokes, pay (up and to the left), per mile (up and to the
  * right) and per hour of trip time (down and to the right, the clock). Distance from the middle is the pay each asks of
- * one example offer, so the three share a dollar scale, and the set minimums are the solid blue shape through their
+ * one fixed comparison route, so the three share a dollar scale, and the set minimums are the solid blue shape through their
  * stars. Down and to the left the per-stop spoke's pin is kept only to anchor the max stops badge ("≤3"; hollow, "≤∞",
  * while there is none): a tap steps it off, 2, 3 … 10, a drag across it steps it either way. While Autopilot holds its
  * bar anywhere but 100%, a dashed purple shape at that share of each minimum shows what it asks now (purple means
@@ -117,8 +117,6 @@ final class MinimumsStarView extends View {
     /** Each recent offer's own polygon: about a twentieth of its color, in a faint outline. */
     private static final int OFFER_FILL = 0x0D000000;
     private static final int OFFER_LINE = 0x38000000;
-    /** Offers far above every minimum stretch the scale only this far, so the minimums stay readable. */
-    private static final double OFFER_STRETCH = 1.35;
     private static final long GLIDE_MS = 700;
     /** An offer above the outer ring is marked just past it, at most this share of the way out... */
     private static final double MARK_REACH = 1.02;
@@ -270,7 +268,7 @@ final class MinimumsStarView extends View {
     private static final double TAKE_WITHIN_DEGREES = 40;
     /** A knob may be pushed this share of the outer ring's reach; the scale grows to fit it when it is let go. */
     private static final float PUSH = 1.12f;
-    /** The scale knobs move on while nothing at all is on the chart yet: $5 a ring. */
+    /** The comparison scale with no money minimum set: $5 a ring, independent of any offers. */
     private static final long FIRST_RING_CENTS = 500;
     /** The Autopilot button: drawn this wide, taking a touch this far from its middle. */
     private static final int BUTTON_DP = 48;
@@ -458,8 +456,8 @@ final class MinimumsStarView extends View {
 
     /**
      * @param rules the rules as saved, Autopilot's bar among them
-     * @param example the offer whose miles, minutes and stops turn each minimum into pay; all three must be known
-     *     (the screen uses the latest fully read offer, or a typical one)
+     * @param example the fixed comparison whose miles, minutes and stops turn each minimum into pay; all three
+     *     must be known (the homepage always uses five miles, twenty minutes and two stops)
      * @param recent recent decisions, newest first; standalone offers with pay are marked
      */
     void show(FilterSettings rules, OfferSnapshot example, List<DecisionLog.Entry> recent) {
@@ -525,8 +523,9 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The ring scale the values shown ask for: three rings just past the highest minimum (or what the bar asks above
-     * it), stretched a little towards offers above them; held still while a knob is held.
+     * Three rings just past the highest minimum (or what the bar asks above it), held still while a knob is held.
+     * Offers never change the scale: a different or worse newest offer must not shrink the reference. Outlier
+     * marks keep their edge cap without changing their actual values or scores.
      */
     private void rescale() {
         double top = 0;
@@ -534,12 +533,7 @@ final class MinimumsStarView extends View {
             if (!Double.isNaN(setCents[i])) top = Math.max(top, setCents[i]);
             if (!Double.isNaN(barCents[i])) top = Math.max(top, barCents[i]);
         }
-        double offers = 0;
-        for (double[] mark : marks) {
-            for (double cents : mark) if (Double.isFinite(cents)) offers = Math.max(offers, cents);
-        }
-        top = top > 0 ? Math.max(top, Math.min(offers, top * OFFER_STRETCH)) : offers;
-        shownRing = top > 0 ? ringStep(top) : 0;
+        shownRing = top > 0 ? ringStep(top) : FIRST_RING_CENTS;
         shownOuter = shownRing * 3.0;
         // The rings hold still under a moving knob; they settle to fit when it is let go.
         if (!dragging) takeScale();

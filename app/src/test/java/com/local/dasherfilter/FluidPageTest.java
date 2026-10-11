@@ -206,7 +206,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         AreaMapView map = find(page, AreaMapView.class);
         String said = MainActivity.verdict(latest, System.currentTimeMillis());
         assertEquals("the latest offer's verdict, in the app's words", said, verdict.getText().toString());
-        assertTrue(said, said.startsWith("Declined $7.90 · 7.2 mi: "));
+        assertTrue(said, said.startsWith("$7.90 · 7.2 mi · 21 min · Declined"));
 
         Map<String, Part> before = null;
         boolean sawBesides = false;
@@ -365,7 +365,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             TextView verdict = (TextView) ((LinearLayout) page.getChildAt(0)).getChildAt(0);
             MinimumsStarView star = find(page, MinimumsStarView.class);
             String said = verdict.getText().toString();
-            assertTrue(said, said.startsWith("Declined $7.90 · 7.2 mi: ") && said.endsWith(" · " + agos[i]));
+            assertTrue(said, said.startsWith("$7.90 · 7.2 mi · 21 min · Declined") && said.endsWith(" · " + agos[i]));
             assertWhole(said, verdict);
             if (size == null) {
                 size = verdict.getTextSize();

@@ -121,6 +121,28 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
     }
 
+    /** A positively identified current pair; unlike a missing window list, it proves which pane would change. */
+    private void identifiedPair(OfferFilterService service, String otherPackage) {
+        identifiedPair(service, app.getPackageName(), otherPackage);
+    }
+
+    private void identifiedPair(OfferFilterService service, String firstPackage, String otherPackage) {
+        AccessibilityNodeInfo ours = root(firstPackage, null);
+        List<AccessibilityWindowInfo> windows = Arrays.asList(
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, TOP_HALF),
+                window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
+                window(AccessibilityWindowInfo.TYPE_APPLICATION, root(otherPackage, null), false, BOTTOM_HALF));
+        int id = 901;
+        for (AccessibilityWindowInfo window : windows) {
+            ((ShadowAccessibilityWindowInfo) Shadow.extract(window)).setId(id++);
+            if (window.getRoot() != null) Shadows.shadowOf(window.getRoot()).setAccessibilityWindowInfo(window);
+        }
+        Shadows.shadowOf(service).setWindows(windows);
+        Shadows.shadowOf(service).setRootInActiveWindow(ours);
+        OfferFilterService.lookSoon(null); idle();
+        assertEquals(SplitWindows.CardPlacement.OTHER_PAIR, OfferFilterService.cardSplitPlacementNow());
+    }
+
     private static boolean launchesDasherBeside(Intent opened) {
         return opened != null && "com.doordash.driverapp".equals(opened.getComponent() != null
                 ? opened.getComponent().getPackageName() : opened.getPackage())
@@ -160,6 +182,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
 
             // The user splits it there 20 s later: Dasher opens beside, once.
             ShadowSystemClock.advanceBy(Duration.ofSeconds(20));
+            identifiedPair(service.get(), "com.example.launcher");
             enterSplit(activity);
             assertTrue(launchesDasherBeside(Shadows.shadowOf(app).getNextStartedActivity()));
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
@@ -264,6 +287,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             contains(DiagnosticLog.read(app), "[split] no split 1500 ms after Dasher's launch-adjacent start: opening recent apps");
             // A split made there within the minute still opens Dasher beside.
             pass(20_000);
+            identifiedPair(service.get(), "com.example.launcher");
             enterSplit(activity);
             activity.resume();
             idle();
@@ -316,6 +340,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             activity.pause();
             pass(5_000);
             // "Open in split screen view" on Offer Filter's card: the page comes back in its half of the split.
+            identifiedPair(service.get(), "com.example.launcher");
             Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
             activity.resume();
             idle();
@@ -336,6 +361,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
             pass(500);
+            identifiedPair(service.get(), "com.example.launcher");
             enterSplit(activity);
             assertTrue(launchesDasherBeside(Shadows.shadowOf(app).getNextStartedActivity()));
             pass(5_000);
@@ -401,6 +427,91 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     }
 
     // ---- P5: split without Dasher beside ----
+
+    @Test public void pendingPairThenMissingResizeMetadataNeverRelaunchesDasher() {
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> false;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            splitWithDasherBelow(service.get());
+            OfferFilterService.lookSoon(null);
+            idle();
+            assertTrue(OfferFilterService.dasherBeside());
+            // Android already paired the existing task. Divider movement can temporarily omit its metadata.
+            Shadows.shadowOf(service.get()).setWindows(Collections.emptyList());
+            Shadows.shadowOf(service.get()).setRootInActiveWindow(null);
+            enterSplit(activity);
+            assertNull("unknown is not permission to replace the paired task",
+                    Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+            activity.pause().resume();
+            enterSplit(activity);
+            pass(DasherSplit.VERIFY_MS + 100);
+            assertNull("neither resize nor resume retries the launch", Shadows.shadowOf(app).getNextStartedActivity());
+        } finally { service.destroy(); }
+    }
+
+    @Test public void unrequestedResizeNeverLaunchesEvenWithNoWindowMetadata() {
+        dasherInstalled(); DasherSplit.forget();
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            for (int n = 0; n < 3; n++) {
+                enterSplit(activity);
+                activity.pause().resume();
+            }
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+            assertTrue(Shadows.shadowOf(service.get()).getGlobalActionsPerformed().isEmpty());
+        } finally { service.destroy(); }
+    }
+
+    @Test public void pendingSplitKeepsTheMapPaneDuringAnObservedDash() {
+        dasherInstalled(); DasherSplit.forget(); DasherSplit.adjacentFirst = () -> false;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            Dashing.seen(app);
+            identifiedPair(service.get(), "com.google.android.apps.maps");
+            AccessibilityWindowInfo mapPane = service.get().getWindows().get(2);
+            enterSplit(activity);
+            assertNull("a pending setup must not replace the user's map pane", Shadows.shadowOf(app).getNextStartedActivity());
+            assertTrue(service.get().getWindows().contains(mapPane));
+            assertFalse(DasherSplit.pending());
+            // A new explicit handoff remains available. Its ordinary task launch requests no adjacent replacement.
+            DasherSplit.swapIn(activity.get());
+            Intent explicit = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(explicit);
+            assertEquals(0, explicit.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+        } finally { service.destroy(); }
+    }
+
+    @Test public void visibleMapIsPreservedWithoutClaimingItsRouteIsActive() {
+        dasherInstalled(); DasherSplit.forget(); DasherSplit.adjacentFirst = () -> false;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            identifiedPair(service.get(), "com.waze");
+            assertFalse("no observed dash or route is inferred from a visible map", Dashing.now(app));
+            enterSplit(activity);
+            assertNull("keep the known map pane without sending any destination or launch",
+                    Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+        } finally { service.destroy(); }
+    }
+
+    @Test public void aPendingRequestCannotReplaceSomeoneElsesCurrentSplit() {
+        dasherInstalled(); DasherSplit.forget(); DasherSplit.adjacentFirst = () -> false;
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            identifiedPair(service.get(), "com.example.reader", "com.example.notes");
+            enterSplit(activity);
+            assertNull("a resumed Activity is not proof our pane is in the current pair",
+                    Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+        } finally { service.destroy(); }
+    }
 
     @Test
     public void splitWithoutDasherBesideTheButtonPutsDasherInTheOtherHalf() {

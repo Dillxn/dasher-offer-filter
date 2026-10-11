@@ -1,0 +1,24 @@
+test_all_fixed_categories_and_unknown_phone_state (test_reduce_diagnostics.ReducerTests.test_all_fixed_categories_and_unknown_phone_state) ... ok
+test_cached_navigation_and_latest_state_records_not_counted (test_reduce_diagnostics.ReducerTests.test_cached_navigation_and_latest_state_records_not_counted) ... ok
+test_cli_never_overwrites_input_or_existing_output (test_reduce_diagnostics.ReducerTests.test_cli_never_overwrites_input_or_existing_output) ... ok
+test_cli_new_output_is_minimal_private_json (test_reduce_diagnostics.ReducerTests.test_cli_new_output_is_minimal_private_json) ... ok
+test_crlf_only_unicode_separators_do_not_create_records (test_reduce_diagnostics.ReducerTests.test_crlf_only_unicode_separators_do_not_create_records) ... ok
+test_durations_require_exact_java_grouping (test_reduce_diagnostics.ReducerTests.test_durations_require_exact_java_grouping) ... ok
+test_empty_or_unrecognized_input_is_unknown_not_zero_evidence (test_reduce_diagnostics.ReducerTests.test_empty_or_unrecognized_input_is_unknown_not_zero_evidence) ... ok
+test_identical_records_deduplicate_but_equal_counts_later_remain (test_reduce_diagnostics.ReducerTests.test_identical_records_deduplicate_but_equal_counts_later_remain) ... ok
+test_injected_json_or_instructions_remain_ignored (test_reduce_diagnostics.ReducerTests.test_injected_json_or_instructions_remain_ignored) ... ok
+test_input_and_event_bounds_are_explicit_errors (test_reduce_diagnostics.ReducerTests.test_input_and_event_bounds_are_explicit_errors) ... ok
+test_invalid_calendar_times_and_offsets_are_rejected (test_reduce_diagnostics.ReducerTests.test_invalid_calendar_times_and_offsets_are_rejected) ... ok
+test_invalid_cli_arguments_never_echo_paths_or_content (test_reduce_diagnostics.ReducerTests.test_invalid_cli_arguments_never_echo_paths_or_content) ... ok
+test_java_counter_range_and_invariants_fail_closed (test_reduce_diagnostics.ReducerTests.test_java_counter_range_and_invariants_fail_closed) ... ok
+test_load_following_pause_does_not_create_false_violation (test_reduce_diagnostics.ReducerTests.test_load_following_pause_does_not_create_false_violation) ... ok
+test_masked_peek_cost_is_not_guessed_and_suffix_required (test_reduce_diagnostics.ReducerTests.test_masked_peek_cost_is_not_guessed_and_suffix_required) ... ok
+test_only_complete_anchored_records_count (test_reduce_diagnostics.ReducerTests.test_only_complete_anchored_records_count) ... ok
+test_sensitive_free_text_is_not_copied_in_any_field (test_reduce_diagnostics.ReducerTests.test_sensitive_free_text_is_not_copied_in_any_field) ... ok
+test_source_contract_records_keep_numeric_facts (test_reduce_diagnostics.ReducerTests.test_source_contract_records_keep_numeric_facts) ... ok
+test_wall_clock_backstep_is_retained_without_rate_or_pass (test_reduce_diagnostics.ReducerTests.test_wall_clock_backstep_is_retained_without_rate_or_pass) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.041s
+
+OK

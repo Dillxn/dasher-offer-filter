@@ -29,6 +29,8 @@ final class QualifyingWaitStore {
     /** Called after the screen's decision/tap, never before or from notification callbacks. */
     static void screen(Context context, boolean eligible, DasherScene scene, OfferSnapshot offer,
                        boolean addOnOrRoute, boolean newInstance) {
+        try { DispatchStudyStore.screen(context, eligible, scene, offer, addOnOrRoute, newInstance); }
+        catch (RuntimeException unavailable) { /* Optional study never changes observation or driving behavior. */ }
         synchronized (LOCK) {
             if (addOnOrRoute && history != null) history.excludePendingOffer();
             if (!Consent.accepted(context) || !eligible || addOnOrRoute) { stop(context); return; }
@@ -44,6 +46,8 @@ final class QualifyingWaitStore {
 
     /** The existing window observer renews only a still-readable Dasher window, without reading extra screen text. */
     static void heartbeat(Context context, boolean eligible) {
+        try { DispatchStudyStore.heartbeat(context, eligible); }
+        catch (RuntimeException unavailable) { /* Optional. */ }
         synchronized (LOCK) {
             if (history == null) return;
             if (!Consent.accepted(context) || !eligible) { stop(context); return; }
@@ -55,6 +59,8 @@ final class QualifyingWaitStore {
     }
 
     static void stop(Context context) {
+        try { DispatchStudyStore.stop(context); }
+        catch (RuntimeException unavailable) { /* Optional. */ }
         synchronized (LOCK) {
             if (history == null) return;
             history.stop();
@@ -88,6 +94,7 @@ final class QualifyingWaitStore {
     }
 
     static void clear(Context context) {
+        DispatchStudyStore.clear(context);
         synchronized (LOCK) {
             history = new QualifyingWait();
             savedRevision = -1;

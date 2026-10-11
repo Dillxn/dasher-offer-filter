@@ -1,0 +1,48 @@
+{
+  "kind": "sanitized_public_tool_validation",
+  "started_at_utc": "2026-10-11T20:32:36.289429+00:00",
+  "finished_at_utc": "2026-10-11T20:32:36.501314+00:00",
+  "command": "python3 -m unittest discover -s tests -v",
+  "working_directory": "tools/offline-evidence/pilot",
+  "exit_code": 0,
+  "tests": 60,
+  "failures": 0,
+  "errors": 0,
+  "scope": "Synthetic validator fixtures only; role literal sanitized, comparison algorithm and tests unchanged. No application tests, phone observations, recruitment, consent or approval.",
+  "blank_input_evaluation": {
+    "command": "python3 pilot_intake.py live/pilot-state.json --output public-readiness-report.json",
+    "exit_code": 0,
+    "recruitment": "HELD",
+    "target_version": "0.5.9",
+    "candidate_not_run": 14,
+    "successor_blocked": 2,
+    "participants": 0,
+    "phone_passes": 0
+  },
+  "files": {
+    "pilot_intake.py": {
+      "sha256": "222e4285b1ef9c2336fdd482aeef124e516f433dcd177597d3b1f8d843087bb3",
+      "bytes": 36037
+    },
+    "tests/test_intake.py": {
+      "sha256": "45eb39ff9a658f3f3edd0a71b0c443973806b7657d5525c2fbefb25ffaf3b223",
+      "bytes": 21324
+    },
+    "live/phone-receipt.json": {
+      "sha256": "1e63d7fd7a16d168b793a72f917a6c215b55a1337277f885cf8e8feab772b1e1",
+      "bytes": 15331
+    },
+    "live/pilot-state.json": {
+      "sha256": "605253cfd5396f5df4c557034641e1f88f59a9a5793a41611fdcd1c6d7627c3c",
+      "bytes": 1618
+    },
+    "public-test-results.txt": {
+      "sha256": "80333aba019f2a74e9977d7e92a7b9c851ece505ec1505aa8e9b433d90219743",
+      "bytes": 6571
+    },
+    "public-readiness-report.json": {
+      "sha256": "18c225e45b4331e62b241702dabf485115a5188811be274ed18fc2b386ed531b",
+      "bytes": 3098
+    }
+  }
+}

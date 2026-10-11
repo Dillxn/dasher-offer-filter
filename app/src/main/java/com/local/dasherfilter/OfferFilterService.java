@@ -350,6 +350,8 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private final Set<Integer> ownWindows = ConcurrentHashMap.newKeySet();
     private final Set<Integer> otherWindows = ConcurrentHashMap.newKeySet();
+    /** Identified other windows (true for a map), from existing reads. Visibility is not active-route proof. */
+    private final java.util.Map<Integer, Boolean> splitOtherWindows = new ConcurrentHashMap<>();
     private final Set<Integer> overlayWindows = ConcurrentHashMap.newKeySet();
     private volatile AccessibilityWindowInfo lastReadableWindow;
     private int remoteFetches;
@@ -603,6 +605,12 @@ public final class OfferFilterService extends AccessibilityService {
      * draws none of the offer ({@link #offerPostedOnScreen}).
      */
     private OnScreenWait onScreenWait;
+    /** A fresh background post awaiting a normal visible read; observation only, no launch/tap authority. */
+    private Peek.Request laterVisiblePost;
+    private long laterVisibleGeneration;
+    private long laterVisibleUntil;
+    private boolean laterVisibleUnknown;
+    private final Runnable forgetLaterVisiblePost = () -> laterVisiblePost = null;
     /**
      * A card that says Dasher did not show its offer sent Dasher's own notification intent first: its tag, when
      * (Peek's clock) and Dasher's own window changes then. Dasher's launcher follows once if nothing of Dasher's came.
@@ -1437,6 +1445,15 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Fresh card placement only: no app roots, no cached UI grace, and unknown is an ordinary launcher request. */
     static SplitWindows.CardPlacement cardSplitPlacementNow() {
+        return splitPlacementNow(false);
+    }
+
+    /** Completion of an old split request is more conservative than a new, explicit user handoff. */
+    static boolean mayCompleteSplitNow() {
+        return splitPlacementNow(true) == SplitWindows.CardPlacement.OTHER_PAIR;
+    }
+
+    private static SplitWindows.CardPlacement splitPlacementNow(boolean completing) {
         OfferFilterService service = active;
         if (service == null || service.stopped || service.scannerFaulted || !Consent.accepted(service)) {
             return SplitWindows.CardPlacement.UNKNOWN;
@@ -1445,12 +1462,27 @@ public final class OfferFilterService extends AccessibilityService {
             if (!service.phoneReadable()) return SplitWindows.CardPlacement.UNKNOWN;
             PowerManager power = service.getSystemService(PowerManager.class);
             if (power != null && !power.isInteractive()) return SplitWindows.CardPlacement.UNKNOWN;
-            return SplitWindows.cardPlacement(service.windowSource.get(), window -> {
+            List<AccessibilityWindowInfo> windows = service.windowSource.get();
+            if (completing) {
+                if (Dashing.now(service)) return SplitWindows.CardPlacement.UNKNOWN;
+                boolean ours = false;
+                if (windows != null) for (AccessibilityWindowInfo window : windows) {
+                    if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION
+                            && service.isOwnWindow(window.getId())) ours = true;
+                    if (Boolean.TRUE.equals(service.splitOtherWindows.get(window.getId()))) {
+                        return SplitWindows.CardPlacement.UNKNOWN;
+                    }
+                }
+                if (!ours) return SplitWindows.CardPlacement.UNKNOWN;
+            }
+            return SplitWindows.cardPlacement(windows, window -> {
                 int id = window.getId();
                 if (!realWindowId(id)) return null;
                 if (service.dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
                 if (service.ownWindows.contains(id)) return SplitWindows.Owner.OURS;
-                if (service.otherWindows.contains(id)) return SplitWindows.Owner.OTHER;
+                if (service.otherWindows.contains(id) && (!completing || service.splitOtherWindows.containsKey(id))) {
+                    return SplitWindows.Owner.OTHER;
+                }
                 return null;
             });
         } catch (RuntimeException unavailable) {
@@ -2296,6 +2328,7 @@ public final class OfferFilterService extends AccessibilityService {
             lockedPost = null;
             cardOpen = null;
             onScreenWait = null;
+            laterVisiblePost = null;
             ownFirstTag = null;
             unlockRetryUntil = NEVER;
             forgetBackCheck();
@@ -2357,6 +2390,7 @@ public final class OfferFilterService extends AccessibilityService {
         lockedPost = null;
         cardOpen = null;
         onScreenWait = null;
+        laterVisiblePost = null;
         ownFirstTag = null;
         unlockRetryUntil = NEVER;
         backToMap = null;
@@ -2420,6 +2454,8 @@ public final class OfferFilterService extends AccessibilityService {
         peekSuspend();
         cardOpen = null;
         onScreenWait = null;
+        laterVisiblePost = null;
+        scanner.removeCallbacks(forgetLaterVisiblePost);
         scanner.removeCallbacks(onScreenCheck);
         ownFirstTag = null;
         scanner.removeCallbacks(ownFirstCheck);
@@ -3703,6 +3739,59 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     // ---- Peek (scanner thread) ----
+
+    /**
+     * A background ding may be followed by manual icon/recents entry after Peek was refused or cancelled. Keep
+     * one bounded, text-free correlation for the normal scanner's later read. This neither starts a read nor
+     * rearms Peek, CardOpen, an on-screen recovery, or any action after user takeover.
+     */
+    static void observeLaterVisibleOffer(Peek.Request request) {
+        OfferFilterService service = active;
+        if (service == null || service.stopped || request == null || request.replay || !request.fresh) return;
+        long age = System.currentTimeMillis() - request.postTime;
+        if (age < 0 || age >= Peek.UNLOCK_POST_MS) return;
+        long until = Peek.now() + Peek.UNLOCK_POST_MS - age;
+        long generation = OfferNotificationService.generation();
+        service.scanner.post(() -> {
+            if (service.stopped || service.scannerFaulted || !Consent.accepted(service) || service.pausedNow()
+                    || Peek.now() >= until) return;
+            service.laterVisiblePost = new Peek.Request(request.key, request.postTime, "", false, true, request.alertTag);
+            service.laterVisibleGeneration = generation;
+            service.laterVisibleUntil = until;
+            service.laterVisibleUnknown = false;
+            service.scanner.removeCallbacks(service.forgetLaterVisiblePost);
+            service.scanner.postDelayed(service.forgetLaterVisiblePost, until - Peek.now());
+        });
+    }
+
+    private void noteLaterVisibleRead() {
+        Peek.Request post = laterVisiblePost;
+        if (post == null || peek.active() || readSkipped || !screen.dasherReadable) return;
+        // A normal fresh read supplied the evidence. Unknown/withdrawn/replaced posts cannot be attributed.
+        if (!Consent.accepted(this) || pausedNow() || !phoneReadable()
+                || Peek.now() >= laterVisibleUntil
+                || OfferNotificationService.generation() != laterVisibleGeneration
+                || OfferNotificationService.postStillUp(post) != OfferNotificationService.Posted.POSTED) {
+            laterVisiblePost = null;
+            scanner.removeCallbacks(forgetLaterVisiblePost);
+            return;
+        }
+        // readTooBig blocks recovery actions because unseen nodes may contain an offer; it is not evidence that
+        // an offer was seen. tooBigToRead records only the bounded part's actual signs in offerEvidence.
+        boolean observedOffer = readTooBig ? offerEvidence : readShowsOffer();
+        String observed = observedOffer ? "offer evidence" : scene == DasherScene.WAITING ? "waiting"
+                : scene == DasherScene.ROUTE ? "route screen" : "unknown screen";
+        // A splash/loading read is not an empty offer. Keep watching only normal reads within the same deadline,
+        // with at most one unknown line followed by one recognized observation, never extra node fetches.
+        if ("unknown screen".equals(observed)) {
+            if (laterVisibleUnknown) return;
+            laterVisibleUnknown = true;
+        } else {
+            laterVisiblePost = null;
+            scanner.removeCallbacks(forgetLaterVisiblePost);
+        }
+        DiagnosticLog.log(this, "alert", "later visible: " + observed + "; observation only");
+    }
 
     /**
      * Why the notification path's conditions do not allow a peek of this post, or null when they do (main thread, before
@@ -5284,13 +5373,10 @@ public final class OfferFilterService extends AccessibilityService {
             List<AccessibilityWindowInfo> fresh = windowSource.get();
             String phone = phoneRefusal();
             locked = isLockRefusal(phone);
-            // Something moved among the windows a return goes by: one fresh look at Android's list decides whether
-            // Dasher is still the active, uncovered, full-screen window (no app is asked anything).
-            boolean moved = fresh == null || returnSignature(fresh) != windows;
-            if (moved) {
-                List<AccessibilityWindowInfo> again = windowSource.get();
-                moved = again == null || !dasherFrontNow(again);
-            }
+            // Recheck current layout even with an unchanged signature: display geometry and PiP can change without
+            // changing it. A changed signature still gets the existing fresh metadata look; no app is asked anything.
+            if (fresh == null || returnSignature(fresh) != windows) fresh = windowSource.get();
+            boolean moved = fresh == null || !dasherFrontNow(fresh);
             if (stopped || peekActions.get() != actions || OfferNotificationService.generation() != generation
                     || !Consent.accepted(this) || !FilterStore.peek(this) || pausedNow()
                     || phone != null || moved || Peek.now() >= deadline) {
@@ -5409,17 +5495,15 @@ public final class OfferFilterService extends AccessibilityService {
                 >= (long) dasher.width() * dasher.height() * SplitWindows.SYSTEM_COVER_SHARE;
     }
 
-    /** A look's Dasher: the active window, not split, filling the screen (or of bounds unknown) with nothing over it. */
+    /** A look's Dasher: the active window, positively full screen, with no competing application or PiP window. */
     private boolean dasherFront(DasherPlace place) {
         if (!place.dasherActive || place.split || place.activeApp == null) return false;
-        Rect bounds = new Rect();
-        place.activeApp.getBoundsInScreen(bounds);
-        return (bounds.isEmpty() || fills(bounds, display())) && activeWindowUncovered(place.windows, place.activeApp);
+        return fullScreenReturnWindow(place.windows, place.activeApp);
     }
 
     /**
      * Android's list alone (any thread, no app asked): Dasher's window, known by the IDs reads found, is the active
-     * one, not split, filling the screen (or of bounds unknown), with no keyboard or system window over it.
+     * one, positively full screen and alone, with no PiP, keyboard or system window over it.
      */
     private boolean dasherFrontNow(List<AccessibilityWindowInfo> windows) {
         AccessibilityWindowInfo active = null;
@@ -5433,9 +5517,18 @@ public final class OfferFilterService extends AccessibilityService {
         boolean known = realWindowId(active.getId()) ? dasherWindowIds.contains(active.getId())
                 : active == lastReadableWindow;
         if (!known) return false;
+        return fullScreenReturnWindow(windows, active);
+    }
+
+    /** Missing divider metadata or stale bounds must not authorize a launcher over another task's pane. */
+    private boolean fullScreenReturnWindow(List<AccessibilityWindowInfo> windows, AccessibilityWindowInfo active) {
+        for (AccessibilityWindowInfo window : windows) {
+            if (window.isInPictureInPictureMode()) return false;
+            if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION && window != active) return false;
+        }
         Rect bounds = new Rect();
         active.getBoundsInScreen(bounds);
-        return (bounds.isEmpty() || fills(bounds, display())) && activeWindowUncovered(windows, active);
+        return !bounds.isEmpty() && fills(bounds, display()) && activeWindowUncovered(windows, active);
     }
 
     /**
@@ -5875,6 +5968,7 @@ public final class OfferFilterService extends AccessibilityService {
             noteResized();
             noteCardOpenRead();
             noteOnScreenRead();
+            noteLaterVisibleRead();
             syncWaitRead();
             // Shown again only by a read begun after the last window change, and after the user's last tap on Dasher
             // settled (that tap may have taken them to another app).
@@ -8863,8 +8957,14 @@ public final class OfferFilterService extends AccessibilityService {
         if (!realWindowId(windowId)) return;
         if (isDasher(root)) { rememberDasher(windowId); return; }
         Set<Integer> set = getPackageName().contentEquals(nonNull(root.getPackageName())) ? ownWindows : otherWindows;
-        if (set.size() >= MAX_OWN_WINDOWS) set.clear();
+        if (set.size() >= MAX_OWN_WINDOWS) {
+            set.clear();
+            if (set == otherWindows) splitOtherWindows.clear();
+        }
         set.add(windowId);
+        String pkg = nonNull(root.getPackageName()).toString();
+        if (set == otherWindows && !pkg.isEmpty()) splitOtherWindows.put(windowId, Peek.NAVIGATION.contains(pkg));
+        else splitOtherWindows.remove(windowId);
     }
 
     private boolean isOwnWindow(int windowId) {

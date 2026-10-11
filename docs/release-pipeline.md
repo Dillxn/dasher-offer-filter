@@ -47,6 +47,18 @@ verification. Physical-phone and pilot gates remain additional project criteria.
 
 ## First release and normal retries
 
+Establish the durable repository source commit **before** `init` or preparation.
+When an authenticated GitHub connector is available but the shell has no Git
+credentials, use that supported connector to upload the finished source tree and
+create its source commit on the intended branch. Verify every uploaded blob and
+the complete tree identity against the local candidate, then clone/fetch and
+freeze the actual server commit for the local build. The API can preserve the
+tree while rewriting commit metadata such as authored timestamps, producing a
+different commit SHA. Never relabel an APK, preparation or acceptance receipt
+from the earlier local SHA as evidence for the server SHA; prepare the actual
+server revision. Preserve earlier artifacts as separately identified evidence.
+This transport choice does not change release gates or grant publication authority.
+
 Commit the entire candidate source and select the existing JDK/SDK through
 `JAVA_HOME` and `ANDROID_HOME` (or PATH discovery). Start outside the checkout:
 

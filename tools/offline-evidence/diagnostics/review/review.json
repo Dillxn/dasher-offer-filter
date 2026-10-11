@@ -1,0 +1,22 @@
+{
+  "final_probe": {
+    "case": "invalid_cli_arguments",
+    "exit_status": 2,
+    "input_sentinel_absent": true,
+    "stderr_fixed_error": "INVALID_ARGUMENTS",
+    "stdout_empty": true
+  },
+  "final_test_run": "No reviewer full rerun after final test-only addition; inspected evidence/validation.json records 19 tests and exit 0, bound to these exact script and test hashes.",
+  "final_test_source_review": "Reviewed added LOAD.replace(\"yields 2\", \"yields 62\") in test_java_counter_range_and_invariants_fail_closed; asserts rejection when yields exceed 61 reads. No new blocking findings.",
+  "limitations": [
+    "Historical syntax contract only; installed build unverified.",
+    "Review does not establish phone behavior, release or field acceptance.",
+    "No raw user reports were opened."
+  ],
+  "prior_validation": "Reviewer ran original 18 tests successfully and narrow yields>reads, masked Peek duration, and extreme timestamp probes before CLI-only fix.",
+  "resolved_finding": "Default argparse raw-argument echo replaced with fixed program name and fixed InputError inside protected handler.",
+  "review_status": "NO_BLOCKING_FINDINGS",
+  "scope": "Standalone offline reducer only; no app source or release changes reviewed or made.",
+  "script_sha256": "ad220b120efde7a94ff8c75594e47ddb8a6ce3c69fac9586519f8800c7a5f877",
+  "tests_sha256": "6fb61f0e9179e13f1cc2fb3e46d84fec3c9f4a9d30b9794f6e5ac1260d716ed3"
+}

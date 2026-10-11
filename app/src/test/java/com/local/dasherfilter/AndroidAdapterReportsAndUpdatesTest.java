@@ -275,7 +275,8 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             android.app.AlertDialog dialog = (android.app.AlertDialog)
                     org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertTrue(dialog.isShowing());
-            String said = ((TextView) dialog.findViewById(android.R.id.message)).getText().toString();
+            String said = findText(dialog.getWindow().getDecorView(), FeedbackDialogs.OFFER_REPORT_SAYS)
+                    .getText().toString();
             assertEquals("the dialog says what it sends, and Send is the consent", "Sends this offer's figures, "
                     + "decision and masked read lines, your current rules and Autopilot's state (on or off, goal, "
                     + "bar, mode and last change, and the acceptance rate it counts with: Dasher's latest, carried "

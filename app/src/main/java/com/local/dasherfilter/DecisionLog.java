@@ -1008,6 +1008,8 @@ final class DecisionLog {
 
     /** Called under LOCK; immutable entries are serialized off the decision thread. */
     private static void persist(Context context, List<Entry> all) {
+        try { DispatchStudyStore.decisions(context, all); }
+        catch (RuntimeException unavailable) { /* Optional study never delays or changes a decision. */ }
         version++;
         List<Entry> snapshot = new ArrayList<>(all);
         Context app = context.getApplicationContext();

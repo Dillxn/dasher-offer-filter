@@ -1,0 +1,65 @@
+{
+  "read_at_utc": "2026-10-11T17:55:32.353864+00:00",
+  "git": {
+    "head": "a778c418d17e0babcf94972d0c72071e2315efe6",
+    "tree": "771a767272d3bd11b1c61275883658d4864c01d3",
+    "shallow": "true",
+    "status": "M release/OfferFilter.apk\n M release/latest.json",
+    "contract_paths_clean": true
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "size": 159619,
+      "sha256": "d0502c9ee29a633193a0cfeb61778a9977306c931c4e97f6bdc07190c7bbf8cc",
+      "frozen_input_sha256": "d0502c9ee29a633193a0cfeb61778a9977306c931c4e97f6bdc07190c7bbf8cc",
+      "matches_frozen_input": true
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DiagnosticLog.java",
+      "size": 43179,
+      "sha256": "f03eecccf94cdd90628e9f816faa90362be4611d5411576847172a9440764195",
+      "frozen_input_sha256": "f03eecccf94cdd90628e9f816faa90362be4611d5411576847172a9440764195",
+      "matches_frozen_input": true
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ReadLoad.java",
+      "size": 2598,
+      "sha256": "4d1df4925d06bb2743e91e65b6209d1d33630ce391b5d932eb0647714010fe03",
+      "frozen_input_sha256": "4d1df4925d06bb2743e91e65b6209d1d33630ce391b5d932eb0647714010fe03",
+      "matches_frozen_input": true
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/ReadBudget.java",
+      "size": 9000,
+      "sha256": "7a74b01309ee6a968d5e34d1c2a40fe25e560a1176ad31165d22229d8add3500",
+      "frozen_input_sha256": "7a74b01309ee6a968d5e34d1c2a40fe25e560a1176ad31165d22229d8add3500",
+      "matches_frozen_input": true
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/Peek.java",
+      "size": 50397,
+      "sha256": "d9b0e923a58e0545415d4a57b425894d6c6dcac188a98a4b69e05c786de002be",
+      "frozen_input_sha256": "d9b0e923a58e0545415d4a57b425894d6c6dcac188a98a4b69e05c786de002be",
+      "matches_frozen_input": true
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/OfferFilterService.java",
+      "size": 512294,
+      "sha256": "3dcfafe548e01a3ec5f9c36bd81e2a9da05da174b890f59d8081891bcce00453",
+      "frozen_input_sha256": "4660067aa0037e3ff8ab185af97da0f3e35437e993f5e349a6b4ad1dad2c44b8",
+      "matches_frozen_input": false
+    },
+    {
+      "path": "app/src/main/java/com/local/dasherfilter/DashSummary.java",
+      "size": 55587,
+      "sha256": "287f058050e27aadf6ebdc86e710f2c59ed65546513af6c4fec6c92f26ea8325",
+      "frozen_input_sha256": "76b959945c5165f1d94b716c132592f9aec88a40a47d2ade8a358d1f8259bb5b",
+      "matches_frozen_input": false
+    }
+  ],
+  "compatibility": "Historical a778 logging syntax only. DiagnosticLog, ReadLoad, ReadBudget and Peek match frozen input hashes, but OfferFilterService and DashSummary do not. This does not recover the frozen checkout or any successor source; no installed build identity verified.",
+  "instructions_read": "Applicable a778 AGENTS.md read in full in bounded chunks; not used to infer missing successor instructions.",
+  "reference_source": "Retained historical checkout identified by git.head and git.tree; private local path omitted.",
+  "report_kind": "sanitized_historical_derivative"
+}

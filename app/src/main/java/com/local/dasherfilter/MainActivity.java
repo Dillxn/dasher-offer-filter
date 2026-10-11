@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
 /**
  * The app's two pages, kept quiet. The main page is one picture in one fluid layout ({@link ScenePage},
  * {@link FluidLayout}), the same at every window size: along the top the strip, the mascot in its ring (the one button
- * that pauses or resumes) beside the latest offer's verdict (what happened and why, how long ago) and, under it,
+ * that pauses or resumes) beside the latest offer's facts, outcome and age and, under it,
  * Autopilot's chip and the status line; the header's buttons; the dash's three counts; a line only when something needs
  * the user; then the minimums as a constellation with recent offers marked (tap an offer for its ticket), the skyline
  * of recent offers under it (tap for a ticket), and beside or below them a map of where offers pay best; the road along
@@ -1374,6 +1374,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         LinearLayout reports = group(body);
         feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
+        ui.listRow(reports, FeedbackDialogs.STUDY_TITLE, () -> feedbackDialogs.study());
         // Off unless the user turns it on (no update does), and only after its own confirmation.
         afterDashToggle = ui.toggle(reports, "Share anonymous diagnostics after each dash", Feedback.afterDashOn(this));
         afterDashToggle.setOnCheckedChangeListener((view, on) -> {
@@ -1631,18 +1632,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /**
      * The latest offer's verdict at the top of the page, at every window size (the owner: an offer dinged in split
-     * screen and Dasher showed only "Finding offers"): what became of it and why, with how long ago; a tap opens its
-     * ticket. With no offer yet, whether everything is ready for one.
+     * screen and Dasher showed only "Finding offers"): pay, miles and trip time first, then its outcome and age.
+     * The reason stays in its accessible description and ticket. With no offer yet, whether everything is ready.
      */
     private void refreshVerdict() {
         DecisionLog.Entry latest = recentEntries.isEmpty() ? null : recentEntries.get(0);
+        long now = System.currentTimeMillis();
         String words = latest == null ? (readyForOffers ? "Waiting for offers" : "No offers yet")
-                : verdict(latest, System.currentTimeMillis());
+                : verdict(latest, now);
         if (!words.contentEquals(verdictLine.getText())) verdictLine.setText(words);
         // Sized, and its height kept, for the longest "how long ago" of the hour after the offer: the minutes passing
         // never move the page.
         verdictLine.fitTo(latest == null ? null : verdict(latest, LONGEST_AGO));
-        String said = latest == null ? null : words + ". Open offer details";
+        String said = latest == null ? null : words + ". " + verdictReason(latest) + ". Open offer details";
         if (!java.util.Objects.equals(said, stripWords.getContentDescription() == null ? null
                 : stripWords.getContentDescription().toString())) {
             stripWords.setContentDescription(said);
@@ -1829,27 +1831,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         hero.set(state, counts, totals, label);
     }
 
-    /** Redraws current rule references and minimums, with the latest fully read offer as the example. */
+    /** Fixed display comparison only: actual offers are still scored using their own miles and trip time. */
+    private static final OfferSnapshot CHART_COMPARISON = new OfferSnapshot(null, 5.0, 20, 2);
+
+    /** Redraws current rule references and minimums on the same comparison route at every refresh. */
     private void updateMeter() {
         if (minimums == null) return;
         FilterSettings rules = FilterStore.load(this);
         if (chart != null) chart.setRules(rules);
-        minimums.show(rules, exampleOffer(), recentEntries);
-    }
-
-    /**
-     * The newest standalone offer whose miles, minutes and stops were all read and none looks misread ("1 stop"),
-     * else a typical one.
-     */
-    private OfferSnapshot exampleOffer() {
-        for (DecisionLog.Entry entry : recentEntries) {
-            OfferSnapshot facts = entry.facts;
-            if (!entry.addOn && facts.miles != null && facts.minutes != null && facts.stops != null
-                    && !OfferSanity.looksMisread(facts)) {
-                return facts;
-            }
-        }
-        return new OfferSnapshot(null, 5.0, 20, 2);
+        minimums.show(rules, CHART_COMPARISON, recentEntries);
     }
 
     private void refreshOfferCaption(DecisionLog.Entry entry) {
@@ -1904,9 +1894,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The latest offer's verdict, in one line where it fits: what became of it ({@link #captionOutcome}'s words), its pay
-     * and miles, why ({@link #reasonLine}'s words, without the outcome's own words again), and how long ago: "Declined
-     * $4.10 · 9 mi: below your per-mile minimum · 2 min ago", "Passed $7.00 · 6.6 mi: meets your minimums · just now".
+     * The latest offer's overview, in one line where it fits: its pay, miles and trip time before the outcome and
+     * age. These facts stay visible when a short window has no room for its chart or ticket. An unread fact is named,
+     * never omitted or inferred. The reason is available in the accessible description and the ticket.
      */
     static String verdict(DecisionLog.Entry entry, long now) {
         return verdict(entry, ago(now - entry.at));
@@ -1917,21 +1907,25 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** The verdict for {@code entry}, saying how long ago in {@code ago}'s words. */
     private static String verdict(DecisionLog.Entry entry, String ago) {
-        String outcome = captionOutcome(entry);
-        StringBuilder line = new StringBuilder(outcome).append(' ')
-                .append(entry.facts.payCents == null ? "pay unread" : DecisionLog.money(entry.facts.payCents));
+        StringBuilder line = new StringBuilder(entry.facts.payCents == null ? "Pay unread"
+                : DecisionLog.money(entry.facts.payCents));
         if (entry.facts.miles != null) {
             double miles = entry.facts.miles;
             line.append(" · ").append(miles == Math.rint(miles) ? String.valueOf((long) miles) : String.valueOf(miles))
                     .append(" mi");
-        }
+        } else line.append(" · Miles unread");
+        line.append(" · ").append(entry.facts.minutes == null ? "Time unread" : entry.facts.minutes + " min");
+        return line.append(" · ").append(captionOutcome(entry)).append(" · ").append(ago).toString();
+    }
+
+    /** The full reason, without repeating the below-minimums outcome, kept in the overview's spoken description. */
+    private static String verdictReason(DecisionLog.Entry entry) {
         String why = reasonLine(entry);
         String below = "Below your minimums · ";
-        if (outcome.equals(AutopilotText.PASSED_BELOW_MINIMUMS) && why.startsWith(below)) {
+        if (captionOutcome(entry).equals(AutopilotText.PASSED_BELOW_MINIMUMS) && why.startsWith(below)) {
             why = why.substring(below.length());
         }
-        if (!why.isEmpty()) line.append(": ").append(lowerFirst(why));
-        return line.append(" · ").append(ago).toString();
+        return why;
     }
 
     /** How long ago, in a few words: "just now", "12 min ago", "3 h ago" (under two days), "4 days ago". */

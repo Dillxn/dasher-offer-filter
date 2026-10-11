@@ -50,6 +50,12 @@ final class BundledNotes {
         // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
         // the versionName that ships (BundledNotesTest requires the current versionName's entry). What the code does,
         // never an outcome no phone has shown yet.
+        notice(16,
+                "An optional offer timing study records estimates before outcomes and keeps numeric observations "
+                        + "for up to 24 hours. It changes no driving controls.",
+                "Its checked draft in Settings enables nothing until you tap Save choice. Existing opt-outs "
+                        + "and automatic-sharing choices stay unchanged.",
+                "Uncheck and save to discard study data and remove it from unsent reports. Preview before sharing.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -98,6 +104,13 @@ final class BundledNotes {
         release("0.5.10",
                 "Update checks now recheck cancellation when a download finishes.",
                 "A download that finishes after its time limit is rejected.");
+        release("0.5.11",
+                "Short windows show pay, miles and trip time first. The outer comparison triangle stays steady "
+                        + "while your minimums and Autopilot bar stay the same.",
+                "Peek needs a confirmed full-screen view before returning to a map. Report Offer keeps Send in "
+                        + "reach as its disclosure scrolls.",
+                "The optional offer timing study needs its own saved choice. Turning it off and saving removes "
+                        + "study data from unsent reports; preview before sharing.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "document_type": "offerfilter_pilot_intake",
+  "evidence_mode": "live",
+  "target_artifact": {
+    "version_name": "0.5.9",
+    "version_code": 89,
+    "source_commit": "fc7c55bbb0e38603584f96df603e30eb4149abb2",
+    "source_tree": "61a2cf564ee15899501f82ab30983ed4ac7e6468",
+    "apk_sha256": "3211477cd2f8096577b73aa24b5807c750897a5aa201d0507801064cec344b08",
+    "certificate_sha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703"
+  },
+  "evidence": [],
+  "phone_runs": [
+    {
+      "path": "phone-receipt.json",
+      "stage": null,
+      "artifact_evidence": null,
+      "case_evidence": {}
+    }
+  ],
+  "gates": {
+    "canonical_acceptance": {
+      "status": "PENDING"
+    },
+    "publication": {
+      "status": "PENDING"
+    },
+    "production_transport": {
+      "status": "PENDING"
+    },
+    "full_phone_acceptance": {
+      "status": "PENDING"
+    },
+    "regression_resolution": {
+      "status": "PENDING"
+    },
+    "site_acceptance": {
+      "status": "PENDING"
+    },
+    "film_acceptance": {
+      "status": "PENDING"
+    },
+    "private_triage": {
+      "status": "PENDING"
+    },
+    "privacy_contact": {
+      "status": "PENDING"
+    },
+    "owner_support": {
+      "status": "PENDING"
+    },
+    "recruitment_clearance": {
+      "status": "PENDING"
+    }
+  },
+  "participants": [],
+  "incidents": [],
+  "schedule": {
+    "starts_at": null,
+    "ends_at": null
+  },
+  "first_three_review": {
+    "status": "PENDING",
+    "participant_codes": [],
+    "owner": null,
+    "reviewed_at": null,
+    "evidence_refs": []
+  },
+  "case_dispositions": []
+}

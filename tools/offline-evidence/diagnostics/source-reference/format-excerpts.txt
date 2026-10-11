@@ -1,0 +1,92 @@
+Exact excerpts from the historical a778c418 checkout. Whole-source identities: evidence/source-contract.json.
+
+
+--- DiagnosticLog.java:51-58 ---
+    /** How often the writer drops old entries (each report drops them too). */
+    private static final long PRUNE_EVERY_MS = 3_600_000L;
+    private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss.SSS XXX";
+    /** The complete timestamp emitted by line(); parsing alone accepts variable widths and trailing words. */
+    static final String TIMESTAMP_WORDS = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} (?:Z|[+-]\\d{2}:\\d{2})";
+    private static final java.util.regex.Pattern TIMESTAMP = java.util.regex.Pattern.compile(TIMESTAMP_WORDS);
+    private static final java.util.regex.Pattern SOURCE_TAG = java.util.regex.Pattern.compile(
+            "(?:^| )\\[([a-z][a-z0-9_-]*)\\] ");
+
+--- DiagnosticLog.java:169-178 ---
+        return (timestamp + " [" + source + "] " + safe + "\n").getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * A state, not an event: logged (with {@code prefix} before it) only when it differs from the copy kept for this
+     * source and topic, or that copy is older than a day. The copy is kept for the shared report's "Latest states".
+     *
+     * @return whether it was logged
+     */
+    static boolean logOnChange(Context context, String source, String topic, String message, String prefix) {
+
+--- OfferFilterService.java:5558-5562 ---
+        boolean opened = peek.active() && peek.phase() != Peek.Phase.ARMING;
+        if (opened) {
+            Peek.log(this, "cost: " + peekReads + " reads, " + peekNodes + " nodes, " + peekFetches
+                    + " remote fetches ≥2 ms, slowest " + peekSlowest + " ms, " + (dasherEvents.get() - peekEventsAtOpen)
+                    + " Dasher events");
+
+--- OfferFilterService.java:6018-6038 ---
+    private void yielded(long median, long now) {
+        load.yielded();
+        if (yieldLoggedAt != NEVER && now - yieldLoggedAt < ReadLoad.EVERY_MS) return;
+        yieldLoggedAt = now;
+        DiagnosticLog.log(this, "screen", "yielding to Dasher: median fetch " + ReadLoad.ms(median));
+    }
+
+    /** Once per kind of screen: a map's subtree was counted and left unread (fixed words and a count only). */
+    private void noteMapSkip() {
+        Scan primary = readPrimary;
+        if (readMaps == 0 || primary == null) return;
+        List<String> labels = withParts(primary);
+        String kind = readEvidence ? "offer" : DasherScene.showsNavigation(labels) ? "navigation"
+                : ActiveRouteStore.load(this) != null || DasherScene.showsRoute(labels)
+                        || AcceptedOfferTracker.isDeliveryScreen(labels) ? "delivery"
+                : DasherScene.showsWaiting(labels) ? "waiting" : "unrecognised";
+        if (!mapsLogged.add(kind)) return;
+        DiagnosticLog.log(this, "screen", "map subtree skipped (" + readMapChildren + " children) on Dasher's " + kind
+                + " screen");
+    }
+
+
+--- OfferFilterService.java:6077-6078 ---
+            DiagnosticLog.log(this, "screen", "not reading Dasher while paused ("
+                    + (settings.enabled ? "no rule is set" : "auto-decline is off") + ")");
+
+--- OfferFilterService.java:6143-6146 ---
+        pausedSceneStands = false;
+        readEvidence = false;
+        budget.fresh();
+        DiagnosticLog.log(this, "screen", "reading Dasher again");
+
+--- Peek.java:1093-1100 ---
+    static void log(Context context, String line) {
+        synchronized (Peek.class) {
+            forgetIfNewApp(context);
+            flushSkips(context);
+            lastSkip = "";
+            DiagnosticLog.log(context, "peek", line + state(context));
+            DashSummary.peek(context, line);
+        }
+
+--- Peek.java:1115-1130 ---
+    /** " car=no lock=no": whether the phone was in car mode, and locked, as each line was written. */
+    private static String state(Context context) {
+        String car = "?";
+        String lock = "?";
+        try {
+            UiModeManager modes = context.getSystemService(UiModeManager.class);
+            if (modes != null) car = carMode(modes) ? "yes" : "no";
+            KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+            if (keyguard != null) lock = keyguard.isKeyguardLocked() ? "yes" : "no";
+        } catch (RuntimeException unknown) {
+            // Said as unknown.
+        }
+        return " car=" + car + " lock=" + lock;
+    }
+
+    static boolean carMode(UiModeManager modes) {

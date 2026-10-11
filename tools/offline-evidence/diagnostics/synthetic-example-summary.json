@@ -1,0 +1,92 @@
+{
+  "coverage": "ALLOWLIST_RECORDS_ONLY",
+  "events": [
+    {
+      "at_once": 2,
+      "fact_free": 59,
+      "kind": "read_load",
+      "median_fetch_ms": 202,
+      "nodes": 700,
+      "pruned_maps": 90,
+      "reads": 61,
+      "slowest_ms": 12345,
+      "truncated": 2,
+      "wall_offset_ms": 0,
+      "yields": 2
+    },
+    {
+      "kind": "yield",
+      "median_fetch_ms": 202,
+      "wall_offset_ms": 1000
+    },
+    {
+      "children": 100,
+      "kind": "map_skip",
+      "screen_kind": "navigation",
+      "wall_offset_ms": 2000
+    },
+    {
+      "kind": "pause",
+      "reason": "auto-decline_is_off",
+      "wall_offset_ms": 3000
+    },
+    {
+      "kind": "resume",
+      "wall_offset_ms": 4000
+    },
+    {
+      "car": "?",
+      "dasher_events": 7,
+      "kind": "peek_cost",
+      "lock": "no",
+      "nodes": 100,
+      "reads": 5,
+      "remote_fetches": 3,
+      "slowest_ms": 800,
+      "wall_offset_ms": 5000
+    }
+  ],
+  "field_acceptance": "NOT_ASSESSED",
+  "format_reference_commit": "a778c418d17e0babcf94972d0c72071e2315efe6",
+  "input_summary": {
+    "bytes": 686,
+    "duplicate_records_removed": 0,
+    "ignored_lines": 1,
+    "overlong_lines": 0,
+    "physical_lines": 7
+  },
+  "limitations": [
+    "Log syntax matches a retained historical source contract; the installed build is unverified.",
+    "Only allowlisted diagnostic records are retained; unrelated and malformed input is discarded.",
+    "Read-load records are source-labelled reads/min counters, not an independently measured continuous rate.",
+    "Median fetch is the rolling median of at most ten slowest-fetch samples, not a per-minute average.",
+    "A load record can cover time before a pause; it does not prove reading occurred while paused.",
+    "Yield and map-skip log lines are throttled; line counts are not complete occurrence counts.",
+    "Missing records, truncation and masking cannot establish absence of behavior or a passed phone case.",
+    "Relative timestamps are wall-clock offsets, not uptime, causal order or action authority.",
+    "No request, route continuity, sound source, battery result, release or phone acceptance is inferred."
+  ],
+  "read_load_record_peaks": {
+    "at_once": 2,
+    "fact_free": 59,
+    "median_fetch_ms": 202,
+    "nodes": 700,
+    "pruned_maps": 90,
+    "reads": 61,
+    "slowest_ms": 12345,
+    "truncated": 2,
+    "yields": 2
+  },
+  "record_counts": {
+    "map_skip": 1,
+    "pause": 1,
+    "peek_cost": 1,
+    "read_load": 1,
+    "resume": 1,
+    "yield": 1
+  },
+  "runtime_build_verified": false,
+  "schema_version": 1,
+  "tool": "offerfilter-offline-diagnostic-reducer",
+  "wall_clock_backsteps_in_input_order": 0
+}

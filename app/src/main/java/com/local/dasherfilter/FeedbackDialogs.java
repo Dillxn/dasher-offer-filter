@@ -74,6 +74,7 @@ final class FeedbackDialogs implements Feedback.Listener {
     private Feedback.Prepared[] preparedNow;
     /** The preview over the open dialog, so it goes with the screen. */
     private AlertDialog previewDialog;
+    private boolean started;
 
     /** @param changed run on the main thread after any submission changed (Settings' line refreshes) */
     FeedbackDialogs(Activity activity, Ui ui, Runnable changed) {
@@ -85,12 +86,14 @@ final class FeedbackDialogs implements Feedback.Listener {
     // ---- The screen's life ----
 
     void start() {
+        started = true;
         Feedback.listen(this);
         Feedback.Event unseen = Feedback.takeUnseen();
         if (unseen != null) changed(unseen);
     }
 
     void stop() {
+        started = false;
         Feedback.unlisten(this);
     }
 
@@ -115,6 +118,47 @@ final class FeedbackDialogs implements Feedback.Listener {
 
     boolean showing() {
         return dialog != null && dialog.isShowing();
+    }
+
+    static final String STUDY_TITLE = "Offer timing study";
+    static final String STUDY_CHOICE = "Include future offer timing study in diagnostics I choose to share";
+    static final String STUDY_COPY = "Help compare estimates made before an offer with observed waiting and offer "
+            + "quality. Keeps new numeric observations for up to 24 hours (32 result rows), including gaps, filter "
+            + "score/bar and requested versus observed actions. No customer or merchant text, location, account or "
+            + "device ID, acceptance rate, Autopilot plan or minimum amounts. This cannot reveal DoorDash's hidden "
+            + "dispatch algorithm.\n\nThe checked choice is a draft: nothing starts until you tap Save choice. "
+            + "It then joins diagnostics you attach and, only if separately enabled, after-dash summaries. That "
+            + "automatic-sharing choice stays unchanged. The developer may review reports with AI tools; the "
+            + "feedback policy specifies 90-day retention. Preview before sharing.\n\nUncheck and save to stop "
+            + "collection and remove study data from this phone and unsent reports. A request already in flight "
+            + "or sent cannot be recalled here. Driving controls stay unchanged.";
+
+    /** Existing reporting area; one optional choice, never consent inferred from a checked box. */
+    void study() {
+        if (showing() || !Consent.accepted(activity)) return;
+        LinearLayout frame = frame();
+        Switch choice = ui.toggle(frame, STUDY_CHOICE, DispatchStudyStore.checkedDraft(activity));
+        frame.addView(small(STUDY_COPY), Ui.matchWidth());
+        Button show = ui.link("Preview study data", () -> {
+            AlertDialog origin = dialog;
+            DispatchStudyStore.preview(activity, text -> {
+                if (!started || !showing() || dialog != origin || activity.isFinishing() || activity.isDestroyed()) return;
+                preview(text.isEmpty() ? "No study data to share. Collection starts only after confirmation and new "
+                        + "eligible observations. Predictions can be unavailable while learning; gaps remain unknown."
+                        : text);
+            });
+        });
+        frame.addView(show, Ui.matchWidth());
+        feedbackOpen = false;
+        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle(STUDY_TITLE)
+                .setView(scroll(frame)).setNegativeButton("Cancel", null)
+                .setPositiveButton("Save choice", (d, which) -> {
+                    DispatchStudyStore.confirm(activity, choice.isChecked());
+                    changed.run();
+                }).setOnDismissListener(d -> {
+                    DispatchStudyStore.dismissed(activity);
+                    closed();
+                }));
     }
 
     // ---- Send anonymous feedback ----
@@ -202,6 +246,10 @@ final class FeedbackDialogs implements Feedback.Listener {
     void reportOffer(DecisionLog.Entry entry) {
         if (showing()) return;
         LinearLayout frame = frame();
+        // One scrollable body: a separate native message panel can consume a short split pane and push Send
+        // below its visible bounds. Keep the disclosure intact, with the native action row outside this body.
+        TextView disclosure = small(OFFER_REPORT_SAYS);
+        frame.addView(disclosure, Ui.matchWidth());
         RadioGroup chips = chips(frame);
         OfferReport.Problem[] chosen = {OfferReport.Problem.MISREAD};
         for (OfferReport.Problem problem : OfferReport.Problem.values()) {
@@ -243,11 +291,11 @@ final class FeedbackDialogs implements Feedback.Listener {
         feedbackOpen = false;
         dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
                 .setTitle("Report this offer")
-                .setMessage(OFFER_REPORT_SAYS)
                 .setView(scroll(frame))
                 .setPositiveButton("Send", null)
                 .setNegativeButton("Cancel", null)
                 .setOnDismissListener(closedDialog -> closed()));
+        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
             OfferReport.Problem problem = chosen[0];
             Feedback.Prepared reuse = prepared[0] != null && preparedFor[0] == problem ? prepared[0] : null;

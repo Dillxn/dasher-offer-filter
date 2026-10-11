@@ -18,7 +18,8 @@ final class Consent {
      * policy. 15 (0.5.1) covers Autopilot raising the minimums after offers have paid above them for a while (at most
      * 10% at a time, with Undo, and the switch that stops it) and the note of the last growth it keeps.
      */
-    static final int VERSION = 15;
+    // 16: separate prospective study scope; accepting this notice never enables that optional choice.
+    static final int VERSION = 16;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -62,6 +63,12 @@ final class Consent {
                 + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex); clearing this phone "
                 + "does not erase sent copies. Network providers still receive normal connection metadata, and text masking can miss "
                 + "details. Privacy explains updates, feedback, place lookups and map links."},
+        {"Optional offer timing study.", "Settings offers a checked draft choice to include new numeric offer-timing "
+                + "observations in diagnostics you choose to share. Nothing starts until you separately confirm it with Save choice. "
+                + "It compares estimates recorded before outcomes with observed waits, offer quality and actions; "
+                + "gaps stay unknown. No customer text, location, account/device ID, acceptance rate, Autopilot plan "
+                + "or minimum amounts. Unchecking and saving discards local study data and study sections in "
+                + "unsent reports. Automatic after-dash sharing stays your separate choice."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "

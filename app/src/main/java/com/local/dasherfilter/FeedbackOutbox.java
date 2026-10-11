@@ -203,6 +203,7 @@ final class FeedbackOutbox {
             return "The offer's report is too long to send.";
         }
         synchronized (QUEUE_LOCK) {
+            stripStaleStudy(app, item);
             // Checked under the lock the discarding takes: a summary begun before the opt-in changed never lands.
             if (automatic && !Feedback.automaticAllowed(app, item.optLong("epoch", -1))) {
                 return "Diagnostics after each dash changed meanwhile.";
@@ -389,7 +390,8 @@ final class FeedbackOutbox {
             if (!file.isFile()) return;
             String text = null;
             if (parts.length() > 0) {
-                text = remask(item.optString("format"), automatic, parts.optString(index, ""));
+                text = currentStudyPart(app,
+                        remask(item.optString("format"), automatic, parts.optString(index, "")));
                 if (text == null || text.isEmpty()) {
                     finish(app, file, item, kind, automatic, Feedback.State.REJECTED, "", pass);
                     return;
@@ -456,8 +458,49 @@ final class FeedbackOutbox {
      */
     static String remask(String format, boolean automatic, String text) {
         if (OFFER.equals(format)) return OfferReport.remask(text);
-        String safe = DiagnosticLog.withoutTaggedAccountScreens(text);
-        return PersonalText.maskLine(automatic ? DashSummary.remask(safe) : safe);
+        return DispatchStudyPayload.remask(text, plain -> {
+            String safe = DiagnosticLog.withoutTaggedAccountScreens(plain);
+            return PersonalText.maskLine(automatic ? DashSummary.remask(safe) : safe);
+        });
+    }
+
+    /** Withdrawal strips only study rows; the user's message and other chosen diagnostics keep their queue. */
+    static void discardStudy(Context context) {
+        Context app = context.getApplicationContext();
+        SENDER.execute(() -> {
+            synchronized (QUEUE_LOCK) {
+                for (File file : files(app)) {
+                    try {
+                        JSONObject item = new JSONObject(read(file));
+                        if (stripStaleStudy(app, item)) replace(file, item);
+                    } catch (IOException | JSONException | RuntimeException unavailable) {
+                        // The per-part guard still strips them if storage cannot be updated now.
+                    }
+                }
+            }
+        });
+    }
+
+    private static boolean stripStaleStudy(Context app, JSONObject item) {
+        if (OFFER.equals(item.optString("format"))) return false;
+        JSONArray parts = item.optJSONArray("parts"); boolean changed = false;
+        if (parts != null) for (int i = 0; i < parts.length(); i++) {
+            String before = parts.optString(i, ""), after = currentStudyPart(app, before);
+            if (!before.equals(after)) {
+                try { parts.put(i, after); changed = true; } catch (JSONException impossible) { return changed; }
+            }
+        }
+        return changed;
+    }
+
+    /** Never renumber a partially accepted submission or discard its ordinary feedback on study withdrawal. */
+    private static String currentStudyPart(Context app, String before) {
+        String after = DispatchStudyPayload.current(app, before);
+        if (before != null && before.contains(DispatchStudyPayload.PREFIX)
+                && after != null && after.trim().isEmpty()) {
+            return "Offer timing study data omitted before sending.";
+        }
+        return after;
     }
 
     private static void waitAndRetry(Context app, File file, JSONObject item, Feedback.Kind kind, boolean automatic,
@@ -644,6 +687,7 @@ final class FeedbackOutbox {
         synchronized (QUEUE_LOCK) {
             if (!file.isFile()) return false;
             try {
+                stripStaleStudy(app, item);
                 replace(file, item);
                 diskFailures.remove(item.optString("token"));
                 return true;

@@ -1,0 +1,101 @@
+{
+  "active_testing": "SUBJECT_TO_OWNER_GATES",
+  "blockers": [
+    "canonical_acceptance",
+    "publication",
+    "production_transport",
+    "full_phone_acceptance",
+    "regression_resolution",
+    "site_acceptance",
+    "film_acceptance",
+    "private_triage",
+    "privacy_contact",
+    "owner_support",
+    "recruitment_clearance"
+  ],
+  "cohort": {
+    "active_phone_testers": 0,
+    "completed_reviewed_sessions": 0,
+    "enrolled": 0,
+    "first_three_review_recorded": false,
+    "occupied_seats": 0,
+    "pilot_window_closed": false,
+    "prediction_coverage": "INSUFFICIENT",
+    "remaining_seat_capacity": 3,
+    "self_reported_or_verified_installed": 0,
+    "usable_study_participants": 0
+  },
+  "evaluation_at": "2026-10-11T20:32:36.496571+00:00",
+  "evaluation_clock": "current_utc_evaluation",
+  "evidence_mode": "live",
+  "gate_status": {
+    "canonical_acceptance": "PENDING",
+    "film_acceptance": "PENDING",
+    "full_phone_acceptance": "PENDING",
+    "owner_support": "PENDING",
+    "privacy_contact": "PENDING",
+    "private_triage": "PENDING",
+    "production_transport": "PENDING",
+    "publication": "PENDING",
+    "recruitment_clearance": "PENDING",
+    "regression_resolution": "PENDING",
+    "site_acceptance": "PENDING"
+  },
+  "input_sha256": {
+    "phone-receipt.json": "1e63d7fd7a16d168b793a72f917a6c215b55a1337277f885cf8e8feab772b1e1",
+    "pilot-state.json": "605253cfd5396f5df4c557034641e1f88f59a9a5793a41611fdcd1c6d7627c3c"
+  },
+  "limits": [
+    "Hash checks establish file identity, not truth or observer identity.",
+    "Submitted phone PASS remains owner-reviewed evidence; this does not replace the full phone gate.",
+    "No contact, release acceptance, publication, enrollment or automated phone actions are performed.",
+    "Successor artifacts require a separately reviewed policy; public baseline never credits frozen acceptance.",
+    "No prediction performance, causal, dispatch or earnings conclusions are computed."
+  ],
+  "observed_candidate_failures": [],
+  "owner_accepted_phone_passes": "NOT_INFERRED",
+  "phone_runs": [
+    {
+      "artifact": "unobserved",
+      "counts": {
+        "BLOCKED": 2,
+        "NOT_RUN": 14
+      },
+      "run_id": null,
+      "submitted_candidate_passes": []
+    }
+  ],
+  "recruitment": "HELD",
+  "report_generated_at": "2026-10-11T20:32:36.497060+00:00",
+  "schema_valid": true,
+  "submitted_candidate_pass_cases": [],
+  "successor_cases": {
+    "S01": "BLOCKED",
+    "S02": "BLOCKED"
+  },
+  "target_artifact": {
+    "apk_sha256": "3211477cd2f8096577b73aa24b5807c750897a5aa201d0507801064cec344b08",
+    "certificate_sha256": "553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703",
+    "source_commit": "fc7c55bbb0e38603584f96df603e30eb4149abb2",
+    "source_tree": "61a2cf564ee15899501f82ab30983ed4ac7e6468",
+    "version_code": 89,
+    "version_name": "0.5.9"
+  },
+  "unresolved_candidate_cases": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "C11",
+    "C12",
+    "C13",
+    "C14"
+  ],
+  "unresolved_candidate_failures": []
+}
