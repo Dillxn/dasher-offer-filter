@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -189,13 +190,119 @@ class EnvironmentTest(unittest.TestCase):
         result = self.resolve(env=dict(self.env, ORG_GRADLE_PROJECT_forks="2"))
         self.assertNotIn("ORG_GRADLE_PROJECT_forks", result["overrides"])
 
-    def test_inherited_jvm_options_are_never_copied_or_reported(self):
+    def test_inherited_network_options_are_retained_with_resource_defaults(self):
         env = dict(self.env, GRADLE_OPTS="-Dproxy.password=DO_NOT_DISCLOSE", JAVA_TOOL_OPTIONS="-Dprivate=DO_NOT_DISCLOSE")
         result = self.resolve(env=env)
         self.assertTrue(result["summary"]["ok"])
+        self.assertEqual(result["overrides"]["GRADLE_OPTS"], env["GRADLE_OPTS"]
+                         + " -Dorg.gradle.jvmargs=-Xmx1024m -Dorg.gradle.workers.max=2")
+        self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_forks"], "1")
+        self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_testHeap"], "768m")
+        self.assertNotIn("JAVA_TOOL_OPTIONS", result["overrides"])
+        self.assertNotIn("DO_NOT_DISCLOSE", json.dumps(result["summary"]))
+        self.assertTrue(any("preserved without disclosure" in x for x in result["summary"]["warnings"]))
+
+    def test_each_option_variable_allows_defaults_for_unrelated_settings(self):
+        for name in subject.OPTION_ENV:
+            with self.subTest(name=name):
+                original = '-Dhttps.proxyHost=proxy.invalid -Djavax.net.ssl.trustStore="/synthetic path/trust"'
+                env = dict(self.env, **{name: original})
+                result = self.resolve(env=env)
+                effective = env | result["overrides"]
+                self.assertTrue(result["summary"]["ok"])
+                self.assertEqual(effective[name], original + (
+                    " -Dorg.gradle.jvmargs=-Xmx1024m -Dorg.gradle.workers.max=2" if name == "GRADLE_OPTS" else ""))
+                self.assertEqual(effective["ORG_GRADLE_PROJECT_forks"], "1")
+                self.assertEqual(effective["ORG_GRADLE_PROJECT_testHeap"], "768m")
+                for key in ("org.gradle.jvmargs", "org.gradle.workers.max", "forks", "testHeap"):
+                    self.assertEqual(result["summary"]["choices"][key]["source"], "resource-aware local release default")
+
+    def test_each_explicit_option_preserves_only_its_resource_setting(self):
+        properties = {"org.gradle.jvmargs": '"-Dorg.gradle.jvmargs=-Xmx768m -Dprivate=DO_NOT_DISCLOSE"',
+                      "org.gradle.workers.max": "-Dorg.gradle.workers.max=3",
+                      "forks": "-Dorg.gradle.project.forks=3",
+                      "testHeap": "-Dorg.gradle.project.testHeap=640m"}
+        for name in subject.OPTION_ENV:
+            for key, option in properties.items():
+                with self.subTest(name=name, key=key):
+                    env = dict(self.env, **{name: option})
+                    result = self.resolve(env=env)
+                    self.assertTrue(result["summary"]["ok"])
+                    self.assertEqual(result["summary"]["choices"][key]["source"], name)
+                    for other in properties.keys() - {key}:
+                        self.assertEqual(result["summary"]["choices"][other]["source"],
+                                         "resource-aware local release default")
+                    if key in ("forks", "testHeap"):
+                        self.assertNotIn("ORG_GRADLE_PROJECT_" + key, result["overrides"])
+                    else:
+                        self.assertFalse(any(x.startswith("-D" + key + "=") for x in
+                                             shlex.split(result["overrides"].get("GRADLE_OPTS", ""))
+                                             if x not in shlex.split(option)))
+                    self.assertNotIn("DO_NOT_DISCLOSE", json.dumps(result["summary"]))
+
+    def test_real_wrapper_retains_quoted_options_and_adds_only_missing_defaults(self):
+        inherited = ' -Dhttps.proxyHost=proxy.invalid "-Dorg.gradle.jvmargs=-Xmx768m -Dprivate=DO_NOT_DISCLOSE" '
+        env = dict(self.env, GRADLE_OPTS=inherited, JAVA_OPTS='-Djavax.net.ssl.trustStore="/synthetic path/trust"')
+        result = self.resolve(env=env)
+        self.assertEqual(result["overrides"]["GRADLE_OPTS"], inherited + " -Dorg.gradle.workers.max=2")
+        (self.jdk / "bin/java").write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        command = subprocess.run(["bash", str(subject.ROOT / "gradlew"), "--version"],
+                                 cwd=self.repo, env=env | result["overrides"],
+                                 capture_output=True, text=True, timeout=5, check=True)
+        args = command.stdout.splitlines()
+        main = args.index("org.gradle.wrapper.GradleWrapperMain")
+        self.assertIn("-Dorg.gradle.jvmargs=-Xmx768m -Dprivate=DO_NOT_DISCLOSE", args[:main])
+        self.assertIn("-Djavax.net.ssl.trustStore=/synthetic path/trust", args[:main])
+        self.assertIn("-Dorg.gradle.workers.max=2", args[:main])
+        self.assertEqual(sum(x.startswith("-Dorg.gradle.jvmargs=") for x in args), 1)
+        self.assertNotIn("DO_NOT_DISCLOSE", json.dumps(result["summary"]))
+
+    def test_property_names_in_other_values_do_not_disable_defaults(self):
+        env = dict(self.env, GRADLE_OPTS='-Ddescription="-Dorg.gradle.jvmargs=-Xmx8g -Dorg.gradle.project.forks=8"')
+        result = self.resolve(env=env)
+        self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_forks"], "1")
+        self.assertIn("-Dorg.gradle.jvmargs=-Xmx1024m", shlex.split(result["overrides"]["GRADLE_OPTS"]))
+
+    def test_global_late_heap_override_preserves_heaps_but_not_parallelism(self):
+        for option in ("-Xmx512m", "-XX:MaxHeapSize=536870912"):
+            with self.subTest(option=option):
+                env = dict(self.env, _JAVA_OPTIONS=option)
+                result = self.resolve(env=env)
+                self.assertTrue(result["summary"]["ok"])
+                self.assertEqual(result["overrides"]["GRADLE_OPTS"], "-Dorg.gradle.workers.max=2")
+                self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_forks"], "1")
+                self.assertNotIn("ORG_GRADLE_PROJECT_testHeap", result["overrides"])
+                self.assertNotIn("_JAVA_OPTIONS", result["overrides"])
+
+    def test_client_and_early_jvm_heaps_do_not_suppress_gradle_resource_settings(self):
+        for name in set(subject.OPTION_ENV) - {"_JAVA_OPTIONS"}:
+            with self.subTest(name=name):
+                result = self.resolve(env=dict(self.env, **{name: "-Xmx512m"}))
+                self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_testHeap"], "768m")
+                self.assertIn("-Dorg.gradle.jvmargs=-Xmx1024m", shlex.split(result["overrides"]["GRADLE_OPTS"]))
+
+    def test_empty_explicit_property_is_preserved_without_hiding_other_defaults(self):
+        result = self.resolve(env=dict(self.env, GRADLE_OPTS="-Dorg.gradle.jvmargs"))
+        self.assertEqual(result["overrides"]["GRADLE_OPTS"], "-Dorg.gradle.jvmargs -Dorg.gradle.workers.max=2")
+        self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_testHeap"], "768m")
+
+    def test_mixed_explicit_options_credit_the_actual_highest_priority_source(self):
+        env = dict(self.env, JAVA_TOOL_OPTIONS="-Dorg.gradle.workers.max=1",
+                   JDK_JAVA_OPTIONS="-Dorg.gradle.workers.max=2", JAVA_OPTS="-Dorg.gradle.workers.max=3",
+                   GRADLE_OPTS="-Dorg.gradle.workers.max=4", _JAVA_OPTIONS="-Dorg.gradle.workers.max=5")
+        for highest in ("_JAVA_OPTIONS", "GRADLE_OPTS", "JAVA_OPTS", "JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS"):
+            with self.subTest(highest=highest):
+                result = self.resolve(env=env)
+                self.assertEqual(result["summary"]["choices"]["org.gradle.workers.max"]["source"], highest)
+                self.assertEqual(result["overrides"]["ORG_GRADLE_PROJECT_forks"], "1")
+                del env[highest]
+
+    def test_malformed_options_fail_without_exposing_values_or_guessing_defaults(self):
+        result = self.resolve(env=dict(self.env, GRADLE_OPTS='"-Dprivate=DO_NOT_DISCLOSE'))
+        self.assertFalse(result["summary"]["ok"])
+        self.assertTrue(any("Cannot parse quoted options in GRADLE_OPTS" in x for x in result["summary"]["errors"]))
         self.assertNotIn("GRADLE_OPTS", result["overrides"])
         self.assertNotIn("DO_NOT_DISCLOSE", json.dumps(result))
-        self.assertTrue(any("preserved without disclosure" in x for x in result["summary"]["warnings"]))
 
     def test_failed_and_old_tool_versions_fail_closed(self):
         self.executable(self.jdk / "bin/java", 'openjdk version "11.0.25"')

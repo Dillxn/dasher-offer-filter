@@ -1,3 +1,11 @@
+## 0.5.10 — update download completion checks
+
+Version 0.5.10 (code 90) follows the publicly released 0.5.8. This is a fresh candidate from durable main; the separate unreleased 0.5.9 candidate and its evidence are not reused. The notice stays at 15; no new collection, retention or automatic action is introduced.
+
+- **Update downloads check cancellation and timeout at completion:** the updater rechecks its existing interruption flag and deadline after the input stream ends and closes, before returning a successful download. A cancellation or expired deadline arriving during that final read or close is rejected. This check does not interrupt blocked network I/O by itself.
+- **Reusable local release workflow:** preparation, original-key signing and artifact acceptance now preserve complete recovery checkpoints and resume completed phases. Repository publication and fresh public-channel verification remain required for release completion.
+- **Release evidence:** local dual-SDK tests, lint, original-key signing, canonical artifact acceptance, publication and production updater verification are required for this candidate. These checks do not establish phone installation or real Dasher behavior, and this release makes no new claim about navigation, diagnostic privacy or the homepage layout.
+
 ## 0.5.6 — Maps/Waze visibility and feedback service cutover
 
 Version 0.5.6 (code 86) packages main's changes after the live 0.5.5 source `43a95bf`: the Maps/Waze visibility fix (`080d7a9`) and feedback endpoint cutover (`43c8acd`, `704a9ba`). The notice stays at 15; no new collection, retention or automatic action is introduced.

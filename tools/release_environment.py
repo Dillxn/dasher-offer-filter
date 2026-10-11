@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Resolve existing local release tools without installing anything or reading secrets.
 
-resolve_environment() returns safe overrides and a separately printable summary.
-Inherited option values are never copied into either result. A missing/ambiguous
-toolchain is a preflight error, never a request to bootstrap an SDK or new signer.
+resolve_environment() returns private execution overrides and a printable summary.
+Inherited option values are preserved only in execution overrides, never in the
+summary. A missing/ambiguous toolchain is a preflight error, never a request to
+bootstrap an SDK or new signer.
 """
 import argparse
 import hashlib
@@ -11,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 
@@ -18,6 +20,42 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_TOOLS = "35.0.0"
 PLATFORM = "android-36"
 MIB = 1024 * 1024
+# Low to high JVM precedence; gradlew places JAVA_OPTS before GRADLE_OPTS.
+OPTION_ENV = ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "JAVA_OPTS", "GRADLE_OPTS", "_JAVA_OPTIONS")
+
+
+def _option_properties(env, errors):
+    """Find explicit resource properties without evaluating or reporting values.
+
+    The wrapper parses quoted JAVA_OPTS/GRADLE_OPTS arguments; JVM launchers
+    likewise allow quoted properties in their inherited option variables. A
+    property mentioned inside another property's value is not an override.
+    """
+    settings = {"org.gradle.jvmargs": "org.gradle.jvmargs",
+                "org.gradle.workers.max": "org.gradle.workers.max",
+                "org.gradle.project.forks": "forks", "org.gradle.project.testHeap": "testHeap"}
+    found = {}
+    for name in OPTION_ENV:
+        try:
+            arguments = shlex.split(env.get(name, ""))
+        except ValueError:
+            errors.append("Cannot parse quoted options in " + name + "; repair that variable before building. "
+                          "Its value was not disclosed.")
+            return None
+        for argument in arguments:
+            # Unlike JAVA_TOOL_OPTIONS/JDK_JAVA_OPTIONS (and the wrapper-only
+            # JAVA_OPTS/GRADLE_OPTS), _JAVA_OPTIONS is applied after command-line
+            # heaps to every JVM. Its explicit maximum controls daemon and test
+            # JVMs even when Gradle supplies its own -Xmx arguments.
+            if name == "_JAVA_OPTIONS" and (argument.startswith("-Xmx") or
+                                            argument.startswith("-XX:MaxHeapSize=")):
+                found["org.gradle.jvmargs"] = name
+                found["testHeap"] = name
+            if argument.startswith("-D"):
+                key = settings.get(argument[2:].partition("=")[0])
+                if key:
+                    found[key] = name
+    return found
 
 
 def _properties(path):
@@ -128,8 +166,10 @@ def _profile(env, repo, summary, overrides):
     user_home = _path(env.get("GRADLE_USER_HOME", str(_path(env.get("HOME", str(Path.home()))) / ".gradle")))
     user = _properties(user_home / "gradle.properties")
     choices = summary["choices"]
-    inherited_options = any(env.get(key) for key in ("GRADLE_OPTS", "JAVA_OPTS", "JAVA_TOOL_OPTIONS",
-                                                     "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS"))
+    inherited_options = any(env.get(key) for key in OPTION_ENV)
+    inherited_properties = _option_properties(env, summary["errors"])
+    if inherited_properties is None:
+        return
     system_options = []
     for key, adopted in defaults.items():
         env_key = "ORG_GRADLE_PROJECT_" + key
@@ -138,12 +178,12 @@ def _profile(env, repo, summary, overrides):
         # project-level knobs are deliberate user choices and must be retained.
         if key in ("forks", "testHeap") and key in project:
             explicit = True
-        if explicit:
+        if key in inherited_properties:
+            choices[key] = {"source": inherited_properties[key], "action": "preserved; value not disclosed"}
+        elif explicit:
             choices[key] = {"source": "existing environment" if env_key in env else
                             "existing user Gradle properties" if key in user else "existing project properties",
                             "action": "preserved; value not disclosed"}
-        elif inherited_options:
-            choices[key] = {"source": "inherited JVM/Gradle options", "action": "preserved; resource sizing not overridden"}
         else:
             choices[key] = {"source": "resource-aware local release default", "value": adopted,
                             "action": "adopted explicitly over repository default" if key in project else "adopted"}
@@ -157,10 +197,13 @@ def _profile(env, repo, summary, overrides):
         # main class; Gradle documents org.gradle.jvmargs here as the environment
         # route to daemon settings, above root gradle.properties defaults:
         # https://docs.gradle.org/current/userguide/build_environment.html
-        overrides["GRADLE_OPTS"] = " ".join(system_options)
+        # Preserve inherited proxy, trust-store and other settings exactly. This
+        # execution-only value can contain secrets: only summary is printable.
+        inherited = env.get("GRADLE_OPTS", "")
+        overrides["GRADLE_OPTS"] = inherited + (" " if inherited else "") + " ".join(system_options)
     if inherited_options:
         summary["warnings"].append("Existing JVM/Gradle options were preserved without disclosure. "
-                                   "Confirm their daemon, worker and test-memory limits before building.")
+                                   "Only missing resource settings receive defaults.")
     if limit is None:
         summary["warnings"].append("Memory limit could not be detected; the conservative one-fork profile is selected where no override exists.")
     elif limit < 3072:

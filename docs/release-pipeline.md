@@ -17,7 +17,11 @@ Acceptance requires a single, traceable release record containing:
 
 1. The exact committed source, original passing dual-SDK/lint evidence, local
    build/signing results and canonical APK acceptance produced through this
-   reusable workflow, with recovery artifacts preserved.
+   reusable workflow, with a complete recovery capsule durably preserved. Delete
+   the disposable originating checkout/run, restore the capsule elsewhere and
+   pass unchanged canonical acceptance before closing this criterion. A fresh
+   candidate uses its own new evidence; missing reports from an older candidate
+   do not block it.
 2. The repository publication commit containing the exact accepted APK/feed pair,
    plus actual delivery of those finished bytes to the existing public update
    origin. Preserve the remote branch, publication commit and APK/feed hashes.
@@ -158,13 +162,17 @@ two feed files; it does not claim publication.
 On a worker below 8 GiB, preparation defaults to one 768 MiB test fork, a 1 GiB
 Gradle daemon and two Gradle workers. At 8 GiB or more, it uses two 1 GiB test forks
 and a 1.5 GiB daemon. Explicit user Gradle/JVM settings are preserved and reported
-as overrides without printing their values. Existing Gradle user caches remain
+as overrides without printing their values. Each resource setting is detected
+independently: unrelated proxy or trust-store options do not suppress memory and
+worker defaults. Existing Gradle user caches remain
 reusable; cached output never replaces the canonical gate. These are bounded
 defaults, not a measured build-time or memory guarantee.
 
 `doctor --phase build|sign|import|accept|verify` diagnoses missing or conflicting
 tools before that phase. Failed non-signing operations keep available logs under
-`RUN/failures`; failed evidence is excluded from successful capsules. Signing
+`RUN/failures`; failed preparation also retains original JUnit and lint XML there,
+explicitly labeled failed diagnostics. Retries preserve earlier failures. Failed
+evidence is excluded from successful capsules. Signing
 diagnostics remain private and are cleaned up. Run directories are locked against
 concurrent writers. Changed evidence or an existing conflicting destination is
 refused without overwrite; recover a valid archive or start a new candidate.

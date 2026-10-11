@@ -183,20 +183,29 @@ def attempt(run, name):
             # Failed builds remain diagnosable without exporting private signer
             # files, arbitrary workspace contents or failed evidence as success.
             if name in ('prepare', 'accept', 'stage', 'verify'):
-                failures = run / 'failures'
+                failures = normalized(run / 'failures')
                 failures.mkdir(exist_ok=True, mode=0o700)
-                saved = failures / temporary.name.lstrip('.')
-                saved.mkdir(mode=0o700)
-                candidates = [temporary / 'operation.log']
+                saved = pathlib.Path(tempfile.mkdtemp(prefix=name + '-', dir=failures))
+                write_json(saved / 'failure.json', {'phase': name, 'completed': False,
+                           'result': 'FAILED', 'purpose': 'LOCAL_FAILURE_DIAGNOSTICS',
+                           'createdAt': timestamp(),
+                           'note': 'Local diagnostics only; excluded from successful evidence capsules'})
+                candidates = [(temporary / 'operation.log', pathlib.Path('operation.log'))]
                 if name == 'prepare':
                     for directory in (temporary / 'pending-unsigned').glob('*-local-receipts'):
-                        candidates.extend(directory / item for item in
+                        candidates.extend((directory / item, pathlib.Path(item)) for item in
                                           ('test.log', 'lint.log', 'test-command.json', 'lint-command.json'))
-                for path in candidates:
-                    if path.exists():
-                        copy_checked(path, saved / path.name)
-                write_json(saved / 'failure.json', {'phase': name, 'completed': False,
-                           'createdAt': timestamp(), 'note': 'Local diagnostics only; excluded from successful evidence capsules'})
+                    source = temporary / 'checkout'
+                    reports = source / 'app/build/test-results/testDebugUnitTest'
+                    candidates.extend((path, pathlib.Path('reports/junit') / path.name)
+                                      for path in sorted(reports.glob('TEST-*.xml')))
+                    candidates.append((source / 'app/build/reports/lint-results-debug.xml',
+                                       pathlib.Path('reports/lint.xml')))
+                for path, relative in candidates:
+                    # Never follow a linked report/directory into private or
+                    # unrelated files. Preserve original report bytes only.
+                    if path.is_file() and path == path.resolve():
+                        copy_checked(path, saved / relative)
             raise
 
 

@@ -93,6 +93,8 @@ final class UpdateTransport {
                 output.write(buffer, 0, count);
             }
         }
+        // EOF and stream close can arrive after cancellation or the download's deadline.
+        checkDeadline(deadline);
         return received;
     }
 

@@ -29,7 +29,8 @@ import static org.junit.Assert.assertTrue;
  * which would only come again, at the next dash or the user's Resume.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+// Dashing's wall-clock starts and Peek's elapsed clock must both follow the simulated time below.
+@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekPauseHomepageTest {
     private static final String ROW = "Peek paused: it hit an error. Resume.";
@@ -96,6 +97,8 @@ public class PeekPauseHomepageTest {
 
         // Paused during one dash: the next dash ends it.
         Dashing.seen(app);
+        long firstStart = Dashing.currentStart(app);
+        assertTrue("the first dash is on", firstStart > 0);
         Peek.pause(app, why);
         assertEquals(why, Peek.pausedWhy(app));
         Dashing.ended(app);
@@ -103,6 +106,8 @@ public class PeekPauseHomepageTest {
         // The next dash starts a second later (a dash's start is its first sighting's time).
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         Dashing.seen(app);
+        assertEquals("the next dash starts one simulated second later", firstStart + 1_000,
+                Dashing.currentStart(app));
         assertNull(Peek.pausedWhy(app));
         assertTrue(DiagnosticLog.read(app).contains("[peek] pause over: a new dash started; Peek works again"));
     }
@@ -110,6 +115,8 @@ public class PeekPauseHomepageTest {
     @Test
     public void aPauseAfterARuntimeFailureLastsUntilTheNextDashNotFifteenMinutes() {
         Dashing.seen(app);
+        long firstStart = Dashing.currentStart(app);
+        assertTrue("the first dash is on", firstStart > 0);
         Peek.pauseUntilNextDash(app, "it hit an error");
         ShadowSystemClock.advanceBy(Duration.ofMillis(Peek.PAUSE_MS + 60_000));
         assertEquals("a failure would only come again: it does not wear off by itself", "it hit an error",
@@ -118,6 +125,8 @@ public class PeekPauseHomepageTest {
         assertEquals("it hit an error", Peek.pausedWhy(app));
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
         Dashing.seen(app);
+        assertEquals("the next dash starts after the simulated wait", firstStart + Peek.PAUSE_MS + 61_000,
+                Dashing.currentStart(app));
         assertNull("the next dash ends it", Peek.pausedWhy(app));
         assertTrue(DiagnosticLog.read(app).contains("[peek] pause over: a new dash started; Peek works again"));
     }

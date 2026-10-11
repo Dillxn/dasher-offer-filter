@@ -208,7 +208,7 @@ public class BundledNotesTest {
     }
 
     /** 0.5.8 tightens existing diagnostic masking and explains conservative loss at ambiguous boundaries. */
-    @Test public void theWordsFor058AreWrittenAndSelectedByThisBuild() {
+    @Test public void theWordsFor058AreWritten() {
         assertEquals(15, Consent.VERSION);
         List<String> news = BundledNotes.whatsNew("0.5.8");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
@@ -217,8 +217,19 @@ public class BundledNotesTest {
                 "delivery-instruction continuations", "may hide extra text", "Review diagnostics before sharing"}) {
             assertTrue(headline, card.contains(headline));
         }
+    }
+
+    /** 0.5.10 checks cancellation and the time limit at download completion; the notice stays at 15. */
+    @Test public void theWordsFor0510AreWrittenAndSelectedByThisBuild() {
+        assertEquals("nothing new is read, kept or sent: no new notice", 15, Consent.VERSION);
+        List<String> news = BundledNotes.whatsNew("0.5.10");
+        assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
+        String card = String.join(" ", news);
+        for (String headline : new String[] {"recheck cancellation", "download finishes", "time limit", "rejected"}) {
+            assertTrue(headline, card.contains(headline));
+        }
         String version = Updater.version(RuntimeEnvironment.getApplication());
-        assertEquals("this build carries the 0.5.8 notes", "0.5.8", version);
+        assertEquals("this build carries the 0.5.10 notes", "0.5.10", version);
         assertEquals("this build's card is the one written for it", news, BundledNotes.whatsNew(version));
     }
 

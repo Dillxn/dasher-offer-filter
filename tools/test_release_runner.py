@@ -122,6 +122,71 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertFalse(calls[1].exists())
         self.assertEqual(anchor, r.capsule.file_info(self.run / 'prepared/manifest.json'))
+        self.assertFalse((self.run / 'failures').exists())
+
+    def test_failed_preparation_preserves_original_xml_without_private_files(self):
+        junit = b'<testsuite name="OriginalFailure" tests="1" failures="1"><testcase name="case"><failure message="original failure">original detail</failure></testcase></testsuite>\n'
+        lint = b'<issues format="6"><issue id="OriginalLint" severity="Error" message="original lint"/></issues>\n'
+        checkouts = []
+
+        def failed_prepare(argv, cwd, env=None, log=None):
+            checkouts.append(cwd)
+            files = {
+                'app/build/test-results/testDebugUnitTest/TEST-OriginalFailure.xml': junit,
+                'app/build/reports/lint-results-debug.xml': lint,
+                'app/build/test-results/testDebugUnitTest/notes.txt': b'unrelated result file',
+                'app/build/test-results/otherTask/TEST-Other.xml': b'unrelated task',
+                'private/keystore': b'private signing material',
+            }
+            for relative, content in files.items():
+                target = cwd / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+            # Even an allowlisted name must not traverse into a secret.
+            (cwd / 'app/build/test-results/testDebugUnitTest/TEST-Linked.xml').symlink_to(cwd / 'private/keystore')
+            Path(log).write_bytes(b'original failing command output\n')
+            raise ValueError('original preparation failed')
+
+        with patch.object(r, 'environment', return_value=({}, {'ok': True})), \
+             patch.object(r, 'command', side_effect=failed_prepare):
+            with self.assertRaisesRegex(ValueError, 'original preparation failed'):
+                r.prepare(self.run, self.base)
+        self.assertFalse(checkouts[0].exists())
+        self.assertFalse((self.run / 'prepared').exists())
+        saved, = (self.run / 'failures').iterdir()
+        self.assertEqual((saved / 'reports/junit/TEST-OriginalFailure.xml').read_bytes(), junit)
+        self.assertEqual((saved / 'reports/lint.xml').read_bytes(), lint)
+        self.assertEqual({str(path.relative_to(saved)) for path in saved.rglob('*') if path.is_file()},
+                         {'failure.json', 'operation.log', 'reports/junit/TEST-OriginalFailure.xml',
+                          'reports/lint.xml'})
+        marker = r.read_json(saved / 'failure.json')
+        self.assertEqual(marker['result'], 'FAILED')
+        self.assertEqual(marker['purpose'], 'LOCAL_FAILURE_DIAGNOSTICS')
+        self.assertFalse(marker['completed'])
+        import zipfile
+        archive = self.base / 'diagnostic-exclusion.zip'
+        r.capsule.create_capsule(self.run, archive)
+        with zipfile.ZipFile(archive) as capsule:
+            self.assertFalse(any(name.startswith('failures/') for name in capsule.namelist()))
+            self.assertNotIn(junit, [capsule.read(name) for name in capsule.namelist()])
+
+    def test_repeated_failed_preparations_keep_each_original_report(self):
+        previous = self.run / 'failures/previous'
+        previous.mkdir(parents=True)
+        (previous / 'preserved.xml').write_bytes(b'previous evidence')
+        for content in (b'<testsuite name="first"/>', b'<testsuite name="second"/>'):
+            with self.assertRaisesRegex(ValueError, 'failed again'):
+                with r.attempt(self.run, 'prepare') as temp:
+                    report = temp / 'checkout/app/build/test-results/testDebugUnitTest/TEST-Failed.xml'
+                    report.parent.mkdir(parents=True)
+                    report.write_bytes(content)
+                    raise ValueError('failed again')
+            self.assertFalse(temp.exists())
+        self.assertEqual((previous / 'preserved.xml').read_bytes(), b'previous evidence')
+        saved = sorted((self.run / 'failures').glob('prepare-*'))
+        self.assertEqual(len(saved), 2)
+        self.assertEqual({(path / 'reports/junit/TEST-Failed.xml').read_bytes() for path in saved},
+                         {b'<testsuite name="first"/>', b'<testsuite name="second"/>'})
 
     def test_original_report_change_rejected_before_accept(self):
         report = self.base / 'report.xml'; report.write_text('original XML')

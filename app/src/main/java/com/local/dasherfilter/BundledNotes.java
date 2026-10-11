@@ -95,6 +95,9 @@ final class BundledNotes {
         release("0.5.8",
                 "Diagnostics drop malformed account-screen prefixes and mask more delivery-instruction continuations.",
                 "Unclear instruction boundaries may hide extra text. Review diagnostics before sharing.");
+        release("0.5.10",
+                "Update checks now recheck cancellation when a download finishes.",
+                "A download that finishes after its time limit is rejected.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 
