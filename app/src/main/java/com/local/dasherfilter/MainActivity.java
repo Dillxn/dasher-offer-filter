@@ -89,7 +89,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String ON_LINE = "Auto-decline is on";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
-    static final String NOTICE_TITLE = "Your rules are simpler now";
+    static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
     static final String NOTICE_TYPICAL = "Use typical minimums";
     static final String NOTICE_KEEP = "Keep mine";
     static final String NOTICE_OK = "OK";
@@ -1331,22 +1331,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
         modelNotice = null;
     }
 
-    /** The notice's lines that apply, in order, from the migration's facts (money in cents). */
+    /** Historical migration facts, not current settings: the notice may have waited through later rule changes. */
     static List<String> modelNoticeLines(org.json.JSONObject facts) {
         List<String> lines = new java.util.ArrayList<>();
         if (facts.optBoolean("area")) {
-            lines.add("Score by area is gone: an offer now has to meet each of your minimums.");
+            lines.add("0.5.0 replaced area scoring with strict checks.");
         }
         int perStop = facts.optInt("perStop");
         if (perStop > 0) {
             int folded = facts.optInt("foldedFlat");
             int before = facts.optInt("flatBefore");
             lines.add(folded > before
-                    ? "Per stop is gone. Your " + DecisionLog.money(perStop) + " per stop now counts as a "
-                            + DecisionLog.money(folded) + " minimum pay, so single orders are judged the same. Use Max "
+                    ? "Per stop was removed. Your " + DecisionLog.money(perStop) + " per stop became a "
+                            + DecisionLog.money(folded) + " minimum pay, so single orders were judged the same. Use Max "
                             + "stops to limit stacked orders."
-                    : "Per stop is gone. Your " + DecisionLog.money(perStop) + " per stop was below your "
-                            + DecisionLog.money(before) + " minimum pay, so single orders are judged the same. Use Max "
+                    : "Per stop was removed. Your " + DecisionLog.money(perStop) + " per stop was below your "
+                            + DecisionLog.money(before) + " minimum pay, so single orders were judged the same. Use Max "
                             + "stops to limit stacked orders.");
         }
         int buffer = facts.optInt("buffer", FilterSettings.BAR_AT_MINIMUMS);
@@ -1355,20 +1355,23 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (facts.optInt("newFlat") > 0) now.add(DecisionLog.money(facts.optInt("newFlat")));
             if (facts.optInt("newMile") > 0) now.add(DecisionLog.money(facts.optInt("newMile")) + "/mi");
             if (facts.optInt("newMinute") > 0) now.add(DecisionLog.money(facts.optInt("newMinute") * 60L) + "/hr");
-            lines.add("Your " + buffer + "% buffer is now built into your minimums"
+            lines.add("Your " + buffer + "% buffer was built into these minimums"
                     + (now.isEmpty() ? "." : ": " + String.join(" · ", now) + "."));
         }
         if (facts.optInt("perItem") > 0) {
             lines.add("Pay per item is gone: shopping time is already in each offer's minutes.");
         }
         if (facts.optBoolean("adaptive")) {
-            lines.add("Learned minimums are gone; they only ever rose. Autopilot can adjust to your offers instead.");
+            lines.add("The old learned minimums were deleted; they only ever rose.");
         }
         if (facts.optInt("hotspot") > 0) lines.add("The hotspot rule is gone: its distance could never be read.");
         if (facts.optBoolean("autoAcceptOff")) {
-            lines.add("Auto-accept is off until you turn it on again in Settings, because your rules changed.");
+            lines.add("Auto-accept was turned off because your rules changed. You can change it in Settings.");
         }
-        if (facts.optBoolean("paused")) lines.add("No rule was left, so auto-decline is paused.");
+        if (facts.optBoolean("paused")) lines.add("No rule was left, so auto-decline was paused.");
+        lines.add("Area scoring and acceptance learning are available again as separate choices in Settings → Mode "
+                + "and Settings → Learned. Their initial settings were Strict and Off, with no old learned values "
+                + "carried over. Autopilot remains separate.");
         return lines;
     }
 

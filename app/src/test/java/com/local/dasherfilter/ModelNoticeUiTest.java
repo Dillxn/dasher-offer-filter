@@ -44,14 +44,19 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ModelNoticeUiTest extends AndroidAdapterTestBase {
+    private static final String RESTORED_CHOICES = "Area scoring and acceptance learning are available again as "
+            + "separate choices in Settings → Mode and Settings → Learned. Their initial settings were Strict and "
+            + "Off, with no old learned values carried over. Autopilot remains separate.";
+
     /** The owner's notice (their Oct 5–6 rules): every line that applies to them, in the spec's order. */
-    private static final String OWNER_LINES = "• Score by area is gone: an offer now has to meet each of your minimums."
-            + "\n\n• Per stop is gone. Your $12.75 per stop now counts as a $25.50 minimum pay, so single orders are "
+    private static final String OWNER_LINES = "• 0.5.0 replaced area scoring with strict checks."
+            + "\n\n• Per stop was removed. Your $12.75 per stop became a $25.50 minimum pay, so single orders were "
             + "judged the same. Use Max stops to limit stacked orders."
-            + "\n\n• Your 80% buffer is now built into your minimums: $20.40 · $4.00/mi · $28.80/hr."
+            + "\n\n• Your 80% buffer was built into these minimums: $20.40 · $4.00/mi · $28.80/hr."
             + "\n\n• Pay per item is gone: shopping time is already in each offer's minutes."
-            + "\n\n• Learned minimums are gone; they only ever rose. Autopilot can adjust to your offers instead."
-            + "\n\n• Auto-accept is off until you turn it on again in Settings, because your rules changed.";
+            + "\n\n• The old learned minimums were deleted; they only ever rose."
+            + "\n\n• Auto-accept was turned off because your rules changed. You can change it in Settings."
+            + "\n\n• " + RESTORED_CHOICES;
 
     @Before public void plansOnThisThread() {
         AutopilotRuntime.forgetCache();
@@ -175,7 +180,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             assertNotNull("after the first-run notice is accepted", notice);
             assertTrue("through OwnWindowTouches.show", notice.getWindow().getCallback().getClass().getName()
                     .endsWith("OwnWindowTouches$TrackedCallback"));
-            assertEquals("Your rules are simpler now", title(notice));
+            assertEquals("Your 0.5.0 rule changes", title(notice));
             assertEquals(OWNER_LINES, message(notice));
             assertFalse("no pass check without 20 offers to judge", message(notice).contains("would have passed"));
             assertEquals("OK", notice.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString());
@@ -240,11 +245,25 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             refreshed();
             assertNull("nor at a later refresh", ShadowAlertDialog.getLatestAlertDialog());
             assertNotNull("kept for the page", FilterStore.peekModelNotice(app));
+            FilterSettings migrated = FilterStore.load(app);
+            assertFalse("restored Mode initially uses Strict", migrated.scoreByArea);
+            assertFalse("restored Learned initially uses Off", migrated.acceptanceLearning);
+            assertTrue("old lessons were not carried over", migrated.accepted.isEmpty());
+            assertFalse("the old payout proof was deleted", prefs().contains("last_accepted"));
+            assertFalse("the old rate proof was deleted", prefs().contains("best_mile_pay"));
             // The strip's own controls work as ever, nothing in their way.
             find(content, FilterHeroView.class).mascotControl().performClick();
             idle();
             assertFalse("the mascot pauses", FilterStore.load(app).enabled);
             assertNull(ShadowAlertDialog.getLatestAlertDialog());
+
+            // Settings can change while the historical notice waits for a tall enough window.
+            FilterSettings current = FilterSettings.of(false, 900, 200, 40, 3)
+                    .withScoreByArea(true).withAcceptanceLearning(true);
+            FilterStore.save(app, FilterStore.load(app), current);
+            FilterStore.setAutoAcceptEnabled(app, true);
+            refreshed();
+            assertNull("changed settings do not force the notice over the strip", notice());
 
             // The divider dragged back: the same screen laid out again, the constellation there, the notice on it.
             resizeWindow(activity, "w411dp-h914dp-420dpi");
@@ -254,9 +273,20 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             AlertDialog notice = notice();
             assertNotNull("the notice, once the constellation shows", notice);
             assertEquals(OWNER_LINES, message(notice));
+            assertFalse("does not deny restored area scoring", message(notice).contains("Score by area is gone"));
+            assertFalse("does not deny restored learning", message(notice).contains("Learned minimums are gone"));
+            assertFalse("does not misstate the current auto-accept choice", message(notice).contains("Auto-accept is off"));
             notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             assertNull("answered", FilterStore.peekModelNotice(app));
+            FilterSettings kept = FilterStore.load(app);
+            assertArrayEquals("acknowledgement keeps later minimums", current.minimums(), kept.minimums());
+            assertEquals(3, kept.maxStops);
+            assertTrue("later Area choice stays", kept.scoreByArea);
+            assertTrue("later Learned choice stays", kept.acceptanceLearning);
+            assertFalse("the mascot's later pause stays", kept.enabled);
+            assertFalse("learning does not turn on Autopilot", kept.autopilot);
+            assertTrue("later auto-accept choice stays", FilterStore.autoAcceptEnabled(app));
         }
     }
 
@@ -267,8 +297,9 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             refreshed();
             AlertDialog notice = notice();
             assertNotNull(notice);
-            assertEquals("• Per stop is gone. Your $4.75 per stop was below your $13.00 minimum pay, so single orders "
-                    + "are judged the same. Use Max stops to limit stacked orders.", message(notice));
+            assertEquals("• Per stop was removed. Your $4.75 per stop was below your $13.00 minimum pay, so single orders "
+                    + "were judged the same. Use Max stops to limit stacked orders.\n\n• " + RESTORED_CHOICES,
+                    message(notice));
             notice.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
             idle();
             assertNull("answered", FilterStore.peekModelNotice(app));
@@ -381,7 +412,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             refreshed();
             AlertDialog notice = notice();
             assertNotNull(notice);
-            assertEquals("• Score by area is gone: an offer now has to meet each of your minimums."
+            assertEquals("• 0.5.0 replaced area scoring with strict checks.\n\n• " + RESTORED_CHOICES
                     + "\n\n• Your minimums would have passed 0 of your last 20 offers.", message(notice));
             assertEquals("OK", notice.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString());
             assertEquals("Set up Autopilot", notice.getButton(AlertDialog.BUTTON_NEUTRAL).getText().toString());
