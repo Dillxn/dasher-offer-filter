@@ -400,7 +400,7 @@ final class AutopilotRuntime {
         return new Autopilot.OfferRecord(entry.facts, entry.at, entry.addOn,
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
                 DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
-                entry.model);
+                entry.model, entry.scoringRules);
     }
 
     // ---- Commits ----

@@ -327,6 +327,8 @@ final class DispatchStudy {
     private static boolean samePolicy(FilterSettings a, FilterSettings b) {
         return a.enabled == b.enabled && a.flatCents == b.flatCents && a.perMileCents == b.perMileCents
                 && a.perMinuteCents == b.perMinuteCents && a.maxStops == b.maxStops
-                && a.minimumScalePercent == b.minimumScalePercent && a.autopilot == b.autopilot;
+                && a.minimumScalePercent == b.minimumScalePercent && a.autopilot == b.autopilot
+                && a.scoreByArea == b.scoreByArea && a.acceptanceLearning == b.acceptanceLearning
+                && (!a.acceptanceLearning || a.accepted.equals(b.accepted));
     }
 }

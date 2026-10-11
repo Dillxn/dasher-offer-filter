@@ -36,7 +36,7 @@ public final class GrowthTest {
 
     /** A line Autopilot decided at {@code bar} at {@code at}, each a distinct offer (no two are deduplicated). */
     private static Autopilot.OfferRecord line(long at, int bar) {
-        return line(at, bar, true, DecisionLog.MODEL);
+        return line(at, bar, true, DecisionLog.STRICT_MODEL);
     }
 
     private static Autopilot.OfferRecord line(long at, int bar, boolean auto, int model) {
@@ -143,8 +143,8 @@ public final class GrowthTest {
         List<Autopilot.OfferRecord> history = new ArrayList<>(lines(30, 120, false));
         // Lines decided with Autopilot off (its bar was not Autopilot's), and a line an older version wrote, sit
         // among them: they are not evidence, either way.
-        history.add(3, line(history.get(3).at + MIN, 100, false, DecisionLog.MODEL));
-        history.add(9, line(history.get(9).at + MIN, 140, false, DecisionLog.MODEL));
+        history.add(3, line(history.get(3).at + MIN, 100, false, DecisionLog.STRICT_MODEL));
+        history.add(9, line(history.get(9).at + MIN, 140, false, DecisionLog.STRICT_MODEL));
         history.add(12, line(history.get(12).at + MIN, 100, true, DecisionLog.LEGACY_MODEL));
         Growth.Evidence due = evidence(TYPICAL, history, TUESDAY_NOON - HOUR);
         assertNotNull("skipped, they hold nothing back", due);
@@ -156,11 +156,11 @@ public final class GrowthTest {
         List<Autopilot.OfferRecord> counted = new ArrayList<>(lines(29, 120, false));
         Autopilot.OfferRecord newest = counted.get(0);
         counted.add(0, new Autopilot.OfferRecord(newest.facts, newest.at + MIN, false, false, false, false, false, 130,
-                true, DecisionLog.MODEL));
+                true, DecisionLog.STRICT_MODEL));
         counted.add(0, new Autopilot.OfferRecord(new OfferSnapshot(1999, 4.0, 20, 2), newest.at + 3 * MIN, true,
-                false, false, false, false, 130, true, DecisionLog.MODEL));
+                false, false, false, false, 130, true, DecisionLog.STRICT_MODEL));
         counted.add(0, new Autopilot.OfferRecord(new OfferSnapshot(1998, 4.0, 20, 2), newest.at + 4 * MIN, false,
-                true, false, false, false, 130, true, DecisionLog.MODEL));
+                true, false, false, false, 130, true, DecisionLog.STRICT_MODEL));
         assertNull(evidence(TYPICAL, counted, TUESDAY_NOON - HOUR));
     }
 
@@ -326,4 +326,45 @@ public final class GrowthTest {
             assertEquals(base.grown.barAfter, same.grown.barAfter);
         }
     }
+    @Test public void newGrowthProofMustNameTheSameSelectedModelAndLearnedSnapshot() {
+        FilterSettings area = TYPICAL.withScoreByArea(true).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(300,1000,10,500,20));
+        List<Autopilot.OfferRecord> old = lines(30,112,false);
+        assertNull(evidence(area,old,0));
+        assertNotNull("model 2 remains valid for the unchanged strict regime",evidence(TYPICAL,old,0));
+        List<Autopilot.OfferRecord> fresh = new ArrayList<>();
+        for (Autopilot.OfferRecord line : old) fresh.add(new Autopilot.OfferRecord(line.facts,line.at,false,false,
+                false,false,false,line.bar,true,DecisionLog.MODEL,area));
+        assertNotNull(evidence(area,fresh,0));
+        assertNull(evidence(area.withScoreByArea(false),fresh,0));
+        assertNull(evidence(area.withAcceptanceLearning(false),fresh,0));
+        assertNull(evidence(area.withAccepted(new AcceptedFloors(301,1000,10,500,20)),fresh,0));
+        assertNull(evidence(area.withMinimums(401,100,25),fresh,0));
+        assertNull(evidence(area,fresh,fresh.get(0).at+1));
+        Autopilot.OfferRecord one=fresh.get(0);
+        fresh.set(0,new Autopilot.OfferRecord(one.facts,one.at,false,false,false,false,false,112,true,DecisionLog.MODEL));
+        assertNull("new model without proof cannot stand in for policy history",evidence(area,fresh,0));
+    }
+
+    @Test public void growthPausesWhileLearnedFloorsDominateAndResumesWhenCovered() {
+        FilterSettings learnedOnly=rules(0,0,0,110).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(1000,1000,10,1000,40));
+        assertTrue(Growth.learningDominates(learnedOnly)); assertNull(Growth.grown(learnedOnly,10));
+        FilterSettings pay=rules(400,0,0,110).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(1000,0,0,0,0));
+        assertEquals(1102,AreaScore.requiredPay(pay,new OfferSnapshot(2000,10.0,40,2),110));
+        assertNull(Growth.grown(pay,10));
+        assertNotNull(Growth.grown(pay.withAcceptanceLearning(false),10));
+        FilterSettings adopted=learnedOnly.withMinimums(1001,100,25);
+        assertTrue("exact equality covers learned rates",!Growth.learningDominates(adopted));
+        assertNotNull(Growth.grown(adopted,10));
+        assertNull(Growth.grown(adopted.withMinimums(1000,100,25),10));
+        assertNull(Growth.grown(adopted.withMinimums(1001,99,25),10));
+        assertNull(Growth.grown(adopted.withMinimums(1001,100,24),10));
+        assertTrue(Growth.learningDominates(rules(0,333,0,110).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(0,1000,3,0,0))));
+        assertTrue(!Growth.learningDominates(rules(0,334,0,110).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(0,1000,3,0,0))));
+    }
+
 }

@@ -107,11 +107,13 @@ public final class MinimumsGrowthAdapterTest {
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 108));
         // Thirty offers it judged at 108% since: fifteen yesterday, fifteen in the last two hours.
+        FilterSettings scoringRules = FilterStore.load(app);
         for (int i = 29; i >= 0; i--) {
             long at = wall - 10 * 60_000L - 7 * 60_000L * (i % 15) - (i >= 15 ? 24 * HOUR : 0);
             DecisionLog.record(app, new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false,
                     new OfferSnapshot(1500 + i, 6.6, 27, 2), 729, OfferRule.Result.KEEP, "passes your rules",
-                    DecisionLog.Action.PASSES, true, Collections.<String>emptyList()).withBar(108, true));
+                    DecisionLog.Action.PASSES, true, Collections.<String>emptyList()).withBar(108, true)
+                    .withScoringRules(scoringRules));
         }
         AutopilotRuntime.beforeWriteForTests = () -> {
             long at = now();

@@ -36,7 +36,7 @@ final class AutoAccept {
      * bar to protect the acceptance rate, but never what an automatic Accept asks.
      */
     static FilterSettings acceptRules(FilterSettings settings) {
-        return settings.withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
+        return settings.withScoreByArea(false).withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
     }
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,
@@ -113,7 +113,6 @@ final class AutoAccept {
 
     /** Exact rule provenance, the bar included ("enabled:flat:mile:minute:maxStops:bar"); no rounded label decides. */
     static String rulesKey(FilterSettings s) {
-        return s.enabled + ":" + s.flatCents + ":" + s.perMileCents + ":" + s.perMinuteCents + ":" + s.maxStops
-                + ":" + s.minimumScalePercent;
+        return s.rulesKey() + ":" + s.minimumScalePercent;
     }
 }

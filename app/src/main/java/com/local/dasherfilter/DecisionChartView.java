@@ -63,6 +63,7 @@ final class DecisionChartView extends View {
     private OnSelect listener;
     private long payoutMinimumCents;
     private int flatCents;
+    private boolean areaMode;
     private int minimumScalePercent = 100;
     /** When each shown offer (by its time) began to rise. */
     private final Map<Long, Long> risingSince = new HashMap<>();
@@ -89,12 +90,15 @@ final class DecisionChartView extends View {
      */
     void setRules(FilterSettings rules) {
         int flat = Math.max(0, rules.flatCents);
-        long payout = flat > 0 ? OfferRule.scaledCost(flat, rules.minimumScalePercent) : 0;
-        if (payoutMinimumCents == payout && flatCents == flat && minimumScalePercent == rules.minimumScalePercent) {
+        java.math.BigDecimal resolvedPay = AreaScore.floors(rules, OfferSnapshot.UNKNOWN).effectiveCents[AreaScore.PAY];
+        long payout = resolvedPay == null ? 0 : AreaScore.roundedCents(resolvedPay, rules.minimumScalePercent);
+        if (payoutMinimumCents == payout && flatCents == flat && minimumScalePercent == rules.minimumScalePercent
+                && areaMode == rules.scoreByArea) {
             return;
         }
         payoutMinimumCents = payout;
         flatCents = flat;
+        areaMode = rules.scoreByArea;
         minimumScalePercent = rules.minimumScalePercent;
         setContentDescription(describe(entries));
         invalidate();
@@ -102,7 +106,7 @@ final class DecisionChartView extends View {
 
     /** A tree stands only for a score this version's rules worked out: never a retired one. */
     private static boolean tree(DecisionLog.Entry entry) {
-        return entry.scorePercent >= 0 && entry.model >= DecisionLog.MODEL;
+        return entry.scorePercent >= 0 && entry.model >= 2;
     }
 
     /** @param newestFirst recent entries, newest first; only the latest {@link #SLOTS} are drawn */
@@ -268,7 +272,8 @@ final class DecisionChartView extends View {
     }
 
     private void drawThresholdLabels(Canvas canvas, float left, float right) {
-        String pay = AutopilotText.skylinePayRail(flatCents, minimumScalePercent);
+        String pay = payoutMinimumCents <= 0 ? null : "Pay " + DecisionLog.money(payoutMinimumCents)
+                + (areaMode ? " ref" : " min");
         if (payoutMinimumCents > 0 && pay != null) drawRailLabel(canvas, pay, left, false, payoutColor());
         drawRailLabel(canvas, AutopilotText.skylineBarRail(minimumScalePercent), right, true, treeColor());
     }
@@ -583,11 +588,12 @@ final class DecisionChartView extends View {
         }
         return summary + selectedDescription() + " Building height is pay in dollars. "
                 + AutopilotText.SKYLINE_DESCRIPTION + " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
-                + "." + (payoutMinimumCents > 0 ? " Solid line: your minimum pay at the bar, "
+                + "." + (payoutMinimumCents > 0 ? " Solid line: your "
+                + (areaMode ? "pay reference at the bar (area can compensate), " : "minimum pay at the bar, ")
                 + DecisionLog.money(payoutMinimumCents) + "." : " No minimum pay is set.")
                 + " Short building ticks are each offer's required pay when decided."
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: open markers, no trees." : "")
-                + (retired > 0 ? " " + retired + " scores from retired rules: open markers, no trees." : "")
+                + (retired > 0 ? " " + retired + " scores from earlier rules: open markers, no trees." : "")
                 + (clipped > 0 ? " " + clipped + " trees exceed " + SCORE_DISPLAY_CAP
                 + "% and end in an overflow chevron; tap for the recorded score." : "");
     }
@@ -604,7 +610,9 @@ final class DecisionChartView extends View {
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
                 + ", " + DecisionLog.facts(entry.facts) + ", " + state
-                + (tree(entry) ? ", score " + entry.scorePercent + "% of your minimums."
-                : entry.scorePercent >= 0 ? ", score from retired rules." : ", score unknown.");
+                + (tree(entry) ? entry.model >= 3 && "area".equals(entry.scoreKind)
+                        ? ", recorded area score " + entry.scorePercent + "%."
+                        : ", score " + entry.scorePercent + "% of your minimums."
+                : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.");
     }
 }

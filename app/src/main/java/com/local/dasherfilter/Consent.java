@@ -19,7 +19,8 @@ final class Consent {
      * 10% at a time, with Undo, and the switch that stops it) and the note of the last growth it keeps.
      */
     // 16: separate prospective study scope; accepting this notice never enables that optional choice.
-    static final int VERSION = 16;
+    // 17: separate area mode and local acceptance learning; study confirmation remains independent.
+    static final int VERSION = 17;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -32,7 +33,10 @@ final class Consent {
                 + "Only continue if you understand and accept that risk."},
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
-                + "on offers below your minimums. Optional Autopilot moves that cutoff up or down by itself (50% to 150% of "
+                + "on offers that fail your chosen rules. Strict mode checks every active minimum; optional area mode "
+                + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
+                + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
+                + "mean accepted. Optional Autopilot moves that cutoff up or down by itself (50% to 150% of "
                 + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
                 + "you decline: raised, it declines offers that meet your minimums; to protect your acceptance goal it can "
                 + "let offers below your minimums through for you to decide. Autopilot also raises your minimums after "
@@ -45,6 +49,15 @@ final class Consent {
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer (also just after you unlock, for one that came while it was locked), then return to "
                 + "your previous app. Turn Peek off in Settings."},
+        {"Learning is optional.", "Area mode and acceptance learning start off separately. Learning keeps new "
+                + "confirmed manual standalone acceptance bests on this phone: pay plus one cent, pay per mile and "
+                + "pay per minute. It can supply an unset minimum and make future offers harder to pass. Automatic "
+                + "accepts, declines, add-ons and unclear acceptances do not teach it. Unknown facts do not teach their axes; "
+                + "any known implausible figure rejects the lesson. Off or paused keeps "
+                + "the bests without learning. Reset clears active bests and adoption Undo; earlier decision snapshots "
+                + "remain until Clear history. Clear history also clears active learning. Adopt "
+                + "raises lower saved minimums; Undo cannot overwrite later changes. Adopted saved minimums remain "
+                + "after Reset or Clear history. Autopilot growth is separate."},
         {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "
                 + "account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
@@ -85,6 +98,7 @@ final class Consent {
      * that the app is paused ({@link ConsentReminder}) goes.
      */
     static void accept(Context context) {
+        FilterStore.invalidateLearningEvidence(context);
         prefs(context).edit().putInt(ACCEPTED_VERSION, VERSION).putLong(ACCEPTED_AT, System.currentTimeMillis())
                 .commit();
         ConsentReminder.cancel(context);

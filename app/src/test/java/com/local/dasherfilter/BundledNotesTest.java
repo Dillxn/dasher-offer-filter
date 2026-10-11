@@ -116,6 +116,7 @@ public class BundledNotesTest {
         List<String> both = new ArrayList<>(notice(14));
         both.addAll(fifteen);
         both.addAll(notice(16));
+        both.addAll(notice(17));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -230,7 +231,7 @@ public class BundledNotesTest {
         }
     }
 
-    @Test public void theWordsFor0511AreWrittenAndSelectedByThisBuild() {
+    @Test public void theWordsFor0511RemainWritten() {
         List<String> news = BundledNotes.whatsNew("0.5.11");
         assertEquals(3, news.size());
         String card = String.join(" ", news);
@@ -238,18 +239,27 @@ public class BundledNotesTest {
                 "confirmed full-screen", "Send", "own saved choice", "unsent reports", "preview"}) {
             assertTrue(fact, card.contains(fact));
         }
-        String version = Updater.version(RuntimeEnvironment.getApplication());
-        assertEquals("this build carries the cumulative notes", "0.5.11", version);
-        assertEquals("this build's card is the one written for it", news, BundledNotes.whatsNew(version));
+
     }
 
     @Test public void prospectiveStudyHasItsOwnRenewedNoticeAndPreservesOldReleaseNotes() {
-        assertEquals(16, Consent.VERSION);
-        List<String> changed = BundledNotes.noticeChanges(15);
+        assertEquals(17, Consent.VERSION);
+        List<String> changed = notice(16);
         assertEquals(3, changed.size());
         String words = String.join(" ", changed);
         for (String fact : new String[] {"before outcomes", "24 hours", "checked draft", "tap Save choice",
                 "opt-outs", "automatic-sharing choices", "unsent reports", "Preview"}) assertTrue(fact, words.contains(fact));
+    }
+
+    @Test public void restorationHasItsOwnNoticeAndCurrentReleaseWithoutImplyingStudyOptIn() {
+        assertEquals("0.6.0", Updater.version(RuntimeEnvironment.getApplication()));
+        String release = String.join(" ", BundledNotes.whatsNew("0.6.0"));
+        for (String fact : new String[] {"Settings → Mode", "Strict or Area", "separate Learned", "confirmed manual acceptances",
+                "Teal shows learned bests", "purple shows Autopilot" ,
+                "undo adoption", "0.5.11 repairs", "not accepted"}) assertTrue(fact, release.contains(fact));
+        String notice = String.join(" ", notice(17));
+        for (String fact : new String[] {"initially off", "Strict remains", "Clear history", "saved minimums stay",
+                "timing study", "neither learning nor sharing"}) assertTrue(fact, notice.contains(fact));
     }
 
     /** The lines notice {@code version} added, as a reader of the one before it sees them. */

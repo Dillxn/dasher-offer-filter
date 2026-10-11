@@ -71,14 +71,17 @@ public final class AutoAcceptTest {
     }
 
     @Test public void theRulesKeyIsTheMinimumsMaxStopsSwitchAndBar() {
-        assertEquals("true:1000:100:20:4:100", AutoAccept.rulesKey(rules));
+        assertEquals("true:1000:100:20:4:false:false:off:false:70:proof:0:0:0x0.0p0:0:0:100", AutoAccept.rulesKey(rules));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimumScalePercent(99)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1001, 100, 20)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1000, 101, 20)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1000, 100, 21)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMaxStops(3)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withEnabled(false)));
-        assertEquals("true:400:100:25:0:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
+        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withScoreByArea(true)));
+        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withAcceptanceLearning(true)));
+        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withAccepted(new AcceptedFloors(1,0,0,0,0))));
+        assertEquals("true:400:100:25:0:false:false:off:true:70:proof:0:0:0x0.0p0:0:0:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
                 82)));
     }
 

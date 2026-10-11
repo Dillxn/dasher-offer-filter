@@ -105,9 +105,10 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // What the example offer needs is heard first; the page shows no words for it. No offers yet, so the
             // example is a typical one: $7.00, $1.50 × 5 mi = $7.50 and 20 min at $18 an hour = $6.00.
             assertEquals("An offer like 20 min · 5 mi · 2 stops needs $7.50 at your minimums. Your minimums: pay "
-                    + "$7.00, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Farther out "
-                    + "means higher pay or pay rates. Solid blue is your minimums; while Autopilot's bar is not 100%, a "
-                    + "dashed purple shape shows what it asks now; colored shapes are offers.",
+                    + "$7.00, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Strict mode checks every active "
+                    + "minimum. Farther out means higher pay or pay rates. Solid blue is saved minimums; gray is learned "
+                    + "bests stored but off; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
+                    + "Learned bests do not move saved knobs. Colored shapes are offers.",
                     star.getContentDescription().toString());
             assertEquals(700, star.setAsks(AreaScore.PAY), 0);
             assertEquals(750, star.setAsks(AreaScore.MILE), 0);

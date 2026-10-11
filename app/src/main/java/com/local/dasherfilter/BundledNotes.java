@@ -56,6 +56,15 @@ final class BundledNotes {
                 "Its checked draft in Settings enables nothing until you tap Save choice. Existing opt-outs "
                         + "and automatic-sharing choices stay unchanged.",
                 "Uncheck and save to discard study data and remove it from unsent reports. Preview before sharing.");
+        notice(17,
+                "Area mode and acceptance learning are separate, initially off choices. Strict remains the default; "
+                        + "Autopilot keeps its own bar and controls.",
+                "Learning uses new confirmed manual standalone acceptances. Reset clears active bests and adoption "
+                        + "Undo; adopted saved minimums stay.",
+                "Clear history removes active learning and earlier decision snapshots. Reset alone keeps those "
+                        + "snapshots.",
+                "Automatic acceptance stays strict. The optional timing study still needs its own saved choice; "
+                        + "this notice enables neither learning nor sharing.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -111,6 +120,13 @@ final class BundledNotes {
                         + "reach as its disclosure scrolls.",
                 "The optional offer timing study needs its own saved choice. Turning it off and saving removes "
                         + "study data from unsent reports; preview before sharing.");
+        release("0.6.0",
+                "Settings → Mode: Strict or Area; separate Learned control. Area permits compensation; max stops "
+                        + "stays hard and add-ons stay strict.",
+                "Learning uses confirmed manual acceptances. Inspect bests, adopt, undo adoption or reset. "
+                        + "Teal shows learned bests; purple shows Autopilot's adjustment.",
+                "Learning starts empty. Autopilot, its growth Undo and 0.5.11 repairs remain. Permitted by the "
+                        + "filter means left for you to decide, not accepted.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

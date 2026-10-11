@@ -160,12 +160,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         String[] leads = new String[Consent.POINTS.length];
         for (int i = 0; i < leads.length; i++) leads[i] = Consent.POINTS[i][0];
         assertEquals("existing safety points plus the separate optional study disclosure", java.util.Arrays.asList("Acceptance rate.",
-                "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Your Dasher account.",
+                "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is optional.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("new collection scope requires a renewed general notice", 16, Consent.VERSION);
+        assertEquals("new collection scope requires a renewed general notice", 17, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
-                "It taps Decline and its confirmation on offers below your minimums.",
+                "It taps Decline and its confirmation on offers that fail your chosen rules.",
                 // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
                 // meet the minimums, which the acceptance-rate warning covers too.
                 "Optional Autopilot moves that cutoff up or down by itself (" + FilterStore.BAR_MIN + "% to "
@@ -188,12 +188,15 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 + "background offer (also just after you unlock, for one that came while it was locked), then return "
                 + "to your previous app."));
         assertTrue(peek.contains("Turn Peek off in Settings."));
-        assertTrue(Consent.POINTS[4][1].contains("may break DoorDash's terms"));
-        assertTrue(Consent.POINTS[5][1].contains("no warranty"));
-        assertTrue(Consent.POINTS[6][1].contains("Don't handle your phone while driving."));
-        for (String[] point : Consent.POINTS) {
-            assertFalse(point[0], point[1].contains("learned") || point[1].contains("adaptive"));
+        assertTrue(Consent.POINTS[5][1].contains("may break DoorDash's terms"));
+        assertTrue(Consent.POINTS[6][1].contains("no warranty"));
+        assertTrue(Consent.POINTS[7][1].contains("Don't handle your phone while driving."));
+        String learning = Consent.POINTS[4][1];
+        for (String fact : new String[] {"confirmed manual standalone", "Automatic accepts, declines, add-ons",
+                "Off or paused", "Reset clears active bests", "Clear history also clears", "Adopted saved minimums remain"}) {
+            assertTrue(fact, learning.contains(fact));
         }
+        assertTrue(does.contains("Permitted by the filter does not mean accepted"));
     }
 
     @Test
@@ -315,7 +318,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(16, Consent.VERSION);
+        assertEquals(17, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

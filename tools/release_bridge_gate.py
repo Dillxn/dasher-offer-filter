@@ -28,6 +28,8 @@ ADAPTERS = (
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
     "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "ModelMigrationTest", "AutopilotCommitAdapterTest",
     "ConfirmationArReadingAdapterTest", "ConsentGateTest", "MinimumsGrowthAdapterTest",
+    "ScoringPolicyHistoryTest", "AcceptanceLearningStoreTest", "AcceptanceLearningAdapterTest",
+    "AreaLearningUiTest",
 )
 ADAPTER_SOURCES = "app/src/test/java/com/local/dasherfilter/"
 
@@ -38,7 +40,13 @@ def adapter_sources(root):
         path = root / (ADAPTER_SOURCES + name + ".java")
         if not path.is_file():
             raise ValueError("Required Android adapter suite source missing")
-        configs = re.findall(r"@Config\([^)]*sdk\s*=\s*([^)]*)\)", path.read_text())
+        annotations = re.findall(r"@Config\(([^)]*)\)", path.read_text())
+        if any(re.search(r"\b(?:minSdk|maxSdk)\s*=", annotation) for annotation in annotations):
+            raise ValueError("Release adapter SDK configuration changed")
+        # Layout qualifiers and instrumented packages do not change the SDK pair. A second sdk declaration,
+        # including a method override, still fails; only one explicit {26,35} declaration is allowed.
+        configs = [sdk for annotation in annotations
+                   for sdk in re.findall(r"\bsdk\s*=\s*(\{[^}]*\}|[^,\s)]+)", annotation)]
         if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35}":
             raise ValueError("Release adapter SDK configuration changed")
 

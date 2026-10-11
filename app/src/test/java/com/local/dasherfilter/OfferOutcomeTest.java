@@ -125,7 +125,7 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             // The score it was decided with, named as the retired rules' area score, never as today's rules' score;
             // today's rules are worked out apart from it, on demand ("How this offer was judged").
             assertNotNull("the original score is distinguished from today's rule preview",
-                    shownTextContaining(content, "Area score (retired rules) 124%"));
+                    shownTextContaining(content, "Area score (earlier rules) 124%"));
             assertNull("0.5.0 has no score reference", shownTextContaining(content, "Score reference"));
             assertNull(shownTextContaining(content, MinimumsDetails.LEGACY));
             shownButton(content, AutopilotText.TICKET_KEY).performClick();

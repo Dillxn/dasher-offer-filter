@@ -14,6 +14,19 @@ import static org.junit.Assert.assertTrue;
 
 /** The texts the app shows are the repository's TERMS.md, PRIVACY.md and LICENSE, word for word. */
 public final class LegalTextsTest {
+    @Test public void restoredLearningAndModelsHaveBoundedChoicesAndRetention() {
+        String terms = LegalTexts.Doc.TERMS.text();
+        for (String fact : new String[] {"Strict mode is the default", "Area mode is a separate, initially off choice",
+                "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
+                "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
+                "Add-on filtering stays strict against saved minimums", "Undo is conditional",
+                "growth waits while an enabled learned floor exceeds"}) assertTrue(fact, terms.contains(fact));
+        String privacy = LegalTexts.Doc.PRIVACY.text();
+        for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and adoption receipts are not sent",
+                "Earlier decision snapshots keep their original numeric saved/learned requirements", "Clear history and uninstall remove both",
+                "no new recipient or automatic-sharing choice", "scoring mode, learning on/off and the recorded score kind",
+                "study continues to exclude minimum amounts and learner evidence"}) assertTrue(fact, privacy.contains(fact));
+    }
     /**
      * Notes written for the author while a text is drafted, as the website's legal build refuses them
      * (offer-filter-site tools/build-legal.py, DRAFT_MARKERS): the published texts carry an effective date instead.
@@ -27,12 +40,12 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "8 October 2026";
+    static final String TERMS_EFFECTIVE = "11 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.5.2";
+    static final String TERMS_VERSION = "0.6.0";
     /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
     static final String PRIVACY_EFFECTIVE = "11 October 2026";
-    static final String PRIVACY_VERSION = "0.5.11";
+    static final String PRIVACY_VERSION = "0.6.0";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -85,14 +98,14 @@ public final class LegalTextsTest {
         assertTrue(terms.contains("unsent submissions wait on the phone for at most 7 days"));
         assertTrue(terms.contains("the feedback service keeps them for 90 days"));
         // 0.5.0's minimums, Autopilot and auto-accept (finalSpec.privacyConsent, TERMS).
-        for (String fact : new String[] {"It compares each offer with the minimums you set: pay, pay per mile and pay "
+        for (String fact : new String[] {"It compares each offer with your active minimums: pay, pay per mile and pay "
                 + "per hour of Dasher's time estimate, plus an optional maximum number of stops.",
                 "Autopilot is off until you turn it on.", "between 50% and 150%",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
                 // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
                 "Above 100% it declines offers that meet your minimums.",
                 "Offers it lets through below your minimums are left to you.",
-                "a complete standalone offer that meets 100% of your minimums and any higher Autopilot bar",
+                "a complete standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar",
                 "Autopilot's acceptance-rate goal is a best effort, not a promise: Autopilot cannot accept offers for "
                         + "you, and your acceptance rate rises only when you accept offers.",
                 "the app makes no promise to preserve your acceptance rate",
@@ -114,7 +127,7 @@ public final class LegalTextsTest {
                         + "way.",
                 "Raised minimums can mean more declines.",
                 "Turn this off with " + AutopilotText.GROW_SWITCH + " in Autopilot's details; while Autopilot is "
-                        + "off, your minimums never grow."}) {
+                        + "off, it does not grow your saved minimums."}) {
             assertTrue(fact, terms.contains(fact));
         }
         for (String retired : new String[] {"strict or compensating area mode", "minimums percentage",
@@ -228,7 +241,7 @@ public final class LegalTextsTest {
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
-                "0.5.0 deletes the learned minimums and the held hand-decline record from the phone the first time it "
+                "0.5.0 migration deleted the old learned minimums and the held hand-decline record from the phone the first time it "
                         + "runs",
                 // Where the reading travels.
                 "your current rules and Autopilot's state, including the latest acceptance-rate reading",
@@ -254,7 +267,7 @@ public final class LegalTextsTest {
                         + "homepage (with Undo) is still waiting",
                 "each growth of your minimums and its Undo (your minimums and the bar before and after)",
                 "the note of its last growth (and with it the Undo)",
-                "Turn off Let my minimums grow in Autopilot's details to keep your minimums where you set them."}) {
+                "Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising saved minimums."}) {
             assertTrue(fact, privacy.contains(fact));
         }
         assertTrue("and Clear history's own words name the note",

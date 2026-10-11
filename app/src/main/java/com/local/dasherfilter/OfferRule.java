@@ -2,20 +2,10 @@ package com.local.dasherfilter;
 
 import java.math.BigDecimal;
 
-/**
- * Applies the rules to offer facts (0.5.0): one strict rule. A standalone offer needs at most {@code maxStops} stops
- * (never scaled) and pay of at least {@code ⌈bar × R100 ÷ 100⌉} whole cents, where R100 is the highest of the set money
- * minimums' asks ({@link AreaScore#asks}): minimum pay, per mile × miles and per minute × minutes, worked exactly.
- *
- * <p>A known failure declines even when other values are missing; otherwise a missing value that a set rule needs is
- * REVIEW, never KEEP or DECLINE. A known ceiling on unknown pay (a "+$" amount beside a total) declines an offer only
- * when even that ceiling misses the user's own minimums ({@code min(bar, 100)}), the user's own rule for that shape,
- * and never passes one. With the bar below 100 a passing offer that misses 100% of the minimums is marked
- * {@link Decision#belowMinimums}: it is left to the user and never auto-accepted.
- *
- * <p>Add-ons are judged in two parts at the same bar: the combined route as a standalone offer, and the explicit added
- * pay against {@code ⌈bar × max(per mile × added miles, per minute × added minutes) ÷ 100⌉}.
- */
+/** Applies the selected standalone model at the bar with hard max stops and conservative unread facts.
+ * Strict can decline from a known monetary failure; area needs every active quantity because compensation can
+ * change its requirement. Add-ons use only saved strict minima. Automatic acceptance separately forces strict
+ * resolved floors at a bar of at least 100. */
 final class OfferRule {
     enum Result { DECLINE, KEEP, REVIEW }
 
@@ -45,6 +35,9 @@ final class OfferRule {
         final boolean belowMinimums;
         /** Autopilot was on (it set the bar). */
         final boolean autopilot;
+        /** Immutable local decision provenance; null only for hand-built/legacy decisions. */
+        final FilterSettings scoringRules;
+        final String scoreKind;
 
         Decision(Result result, long requiredCents, String reason) {
             this(result, requiredCents, reason, OfferSnapshot.UNKNOWN);
@@ -65,6 +58,13 @@ final class OfferRule {
 
         Decision(Result result, long requiredCents, String reason, OfferSnapshot basis, int scorePercent,
                  int minimumScalePercent, boolean belowMinimums, boolean autopilot) {
+            this(result, requiredCents, reason, basis, scorePercent, minimumScalePercent, belowMinimums, autopilot, null);
+        }
+
+        private Decision(Result result, long requiredCents, String reason, OfferSnapshot basis, int scorePercent,
+                         int minimumScalePercent, boolean belowMinimums, boolean autopilot, FilterSettings rules) {
+            this.scoringRules = rules;
+            this.scoreKind = rules != null && rules.scoreByArea ? "area" : "strict";
             this.result = result;
             this.requiredCents = requiredCents;
             this.reason = reason;
@@ -73,6 +73,11 @@ final class OfferRule {
             this.minimumScalePercent = minimumScalePercent;
             this.belowMinimums = belowMinimums;
             this.autopilot = autopilot;
+        }
+
+        Decision withRules(FilterSettings rules) {
+            return new Decision(result, requiredCents, reason, basis, scorePercent, minimumScalePercent,
+                    belowMinimums, autopilot, rules);
         }
 
         /** "DECLINE: required at least $6.25 (dollars per hour)"; "KEEP: meets your minimums" when nothing is asked. */
@@ -85,10 +90,14 @@ final class OfferRule {
 
     /** The rules applied to a standalone offer. */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
+        return evaluateAt(offer, settings).withRules(settings);
+    }
+
+    private static Decision evaluateAt(OfferSnapshot offer, FilterSettings settings) {
         int bar = settings.minimumScalePercent;
         boolean autopilot = settings.autopilot;
         AreaScore.Asks asks = AreaScore.asks(settings, offer);
-        int score = asks.score(offer.payCents);
+        int score = AreaScore.scorePercent(settings, offer);
         if (settings.maxStops > 0 && offer.stops != null && offer.stops > settings.maxStops) {
             return new Decision(Result.DECLINE, 0, offer.stops + " stops exceeds maximum " + settings.maxStops,
                     offer, score, bar, false, autopilot);
@@ -102,21 +111,27 @@ final class OfferRule {
         if (offer.payCents == null && offer.payAtMostCents == null) {
             return new Decision(Result.REVIEW, 0, PAY_NOT_FOUND, offer, score, bar, false, autopilot);
         }
-        long required = asks.known == null ? 0 : AreaScore.roundedCents(asks.known, bar);
+        AreaScore.Floors floors = AreaScore.floors(settings, offer);
+        if (settings.scoreByArea && (floors.missing || floors.degenerateArea())) {
+            return new Decision(Result.REVIEW, 0, floors.degenerateArea()
+                    ? "area fitness undefined for a zero route" : VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
+        }
+        long required = settings.scoreByArea ? AreaScore.requiredPay(settings, offer, bar) : asks.required(bar);
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
         if (offer.payCents != null && offer.payCents < required) {
-            return new Decision(Result.DECLINE, required, atBar(bar, asks.axis), offer, score, bar, false, autopilot);
+            return new Decision(Result.DECLINE, required, atBar(bar, asks.axis, settings.scoreByArea), offer, score, bar, false, autopilot);
         }
         if (offer.payCents == null) {
             // Only the most it can pay is known. The user's own rule for this one shape: decline when the offer as a
             // whole, Y + X, misses the user's own minimums, never anything stricter than them.
             int ceilingBar = Math.min(bar, FilterSettings.BAR_AT_MINIMUMS);
             if (asks.known != null) {
-                long ceilingRequired = AreaScore.roundedCents(asks.known, ceilingBar);
+                long ceilingRequired = settings.scoreByArea ? AreaScore.requiredPay(settings, offer, ceilingBar)
+                        : asks.required(ceilingBar);
                 if (offer.payAtMostCents < ceilingRequired) {
                     return new Decision(Result.DECLINE, ceilingRequired, "pay at most "
                             + DecisionLog.money(offer.payAtMostCents) + " with its +$ amount; "
-                            + atBar(ceilingBar, asks.axis), offer, score, bar, false, autopilot);
+                            + atBar(ceilingBar, asks.axis, settings.scoreByArea), offer, score, bar, false, autopilot);
                 }
             }
             return new Decision(Result.REVIEW, required, PAY_UNCLEAR, offer, score, bar, false, autopilot);
@@ -126,7 +141,8 @@ final class OfferRule {
         }
         boolean below = bar < FilterSettings.BAR_AT_MINIMUMS && score >= 0 && score < FilterSettings.BAR_AT_MINIMUMS;
         String reason = bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
-                : below ? "below your minimums; passes the " + bar + "% bar" : MEETS_MINIMUMS;
+                : below ? "below your minimums; passes the " + bar + "% bar"
+                : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
     }
 
@@ -137,6 +153,11 @@ final class OfferRule {
      * minimum is set. With the bar below 100, a KEEP that would not pass at 100 is marked below the minimums.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
+        FilterSettings strict = settings.withScoreByArea(false).withAcceptanceLearning(false);
+        return evaluateAddOnStrict(addOn, strict).withRules(strict);
+    }
+
+    private static Decision evaluateAddOnStrict(AddOnOffer addOn, FilterSettings settings) {
         Decision decision = addOnAt(addOn, settings);
         int bar = settings.minimumScalePercent;
         if (decision.result != Result.KEEP || bar >= FilterSettings.BAR_AT_MINIMUMS) return decision;
@@ -180,8 +201,8 @@ final class OfferRule {
     }
 
     /** "dollars per mile", prefixed "82% bar: " when the bar is not 100. */
-    private static String atBar(int bar, int axis) {
-        return barPrefix(bar) + axisReason(axis);
+    private static String atBar(int bar, int axis, boolean area) {
+        return barPrefix(bar) + (area ? "area requirement" : axisReason(axis));
     }
 
     private static String barPrefix(int bar) {

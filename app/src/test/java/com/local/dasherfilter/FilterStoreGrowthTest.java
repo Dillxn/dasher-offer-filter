@@ -63,7 +63,7 @@ public class FilterStoreGrowthTest {
         for (int i = 0; i < 30; i++) {
             long at = since + 2 * DAY - 7 * 60_000L * i - (i >= 15 ? DAY : 0);
             lines.add(new Autopilot.OfferRecord(new OfferSnapshot(1000 + i, 6.6, 27, 2), at, false, false, false,
-                    false, false, bar, true, DecisionLog.MODEL));
+                    false, false, bar, true, DecisionLog.STRICT_MODEL));
         }
         return lines;
     }

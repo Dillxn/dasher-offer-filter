@@ -90,12 +90,13 @@ public class MinimumsGrowthRuntimeTest {
      * hours, each passed and left to the user.
      */
     private void history(int bar) {
+        FilterSettings scoringRules = rules().withMinimumScalePercent(bar);
         for (int i = 29; i >= 0; i--) {
             long at = wall - 5 * MIN - 7 * MIN * (i % 15) - (i >= 15 ? 24 * HOUR : 0);
             OfferSnapshot facts = new OfferSnapshot(1500 + i, 6.6, 27, 2);
             DecisionLog.record(app, new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false, facts, 756,
                     OfferRule.Result.KEEP, "passes your rules", DecisionLog.Action.PASSES, true,
-                    Collections.<String>emptyList()).withBar(bar, true));
+                    Collections.<String>emptyList()).withBar(bar, true).withScoringRules(scoringRules));
         }
     }
 

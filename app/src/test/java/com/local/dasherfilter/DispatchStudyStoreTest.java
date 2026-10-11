@@ -117,6 +117,24 @@ public class DispatchStudyStoreTest {
         assertEquals("POLICY_CHANGED", first(DispatchStudyStore.section(app)).getString("reason"));
         assertTrue(FilterStore.autoAcceptEnabled(app));
     }
+    @Test public void restoredAreaModeCensorsTheFrozenForecastThroughItsRealSetter() throws Exception {
+        enable(); waitScreen(); DispatchStudyStore.flush();
+        FilterStore.setScoreByArea(app, true);
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); DispatchStudyStore.flush();
+        assertEquals("POLICY_CHANGED", first(DispatchStudyStore.section(app)).getString("reason"));
+    }
+    @Test public void anAcceptedBestCensorsTheStudyButNeverExportsItsExactValues() throws Exception {
+        FilterStore.setAcceptanceLearning(app, true);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        enable(); waitScreen(); DispatchStudyStore.flush();
+        OfferSnapshot accepted = new OfferSnapshot(54321, 7.123, 37, 2);
+        FilterStore.recordConfirmedManualAcceptance(app, FilterStore.captureLearning(app, accepted), accepted);
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); DispatchStudyStore.flush();
+        String section = DispatchStudyStore.section(app);
+        assertEquals("POLICY_CHANGED", first(section).getString("reason"));
+        assertFalse(section.contains("54321")); assertFalse(section.contains("7.123"));
+        assertFalse(section.contains("accepted_v3"));
+    }
     @Test public void queuedObservationKeepsItsAutoAcceptPolicyEvenIfItChangesBackBeforeProcessing() throws Exception {
         enable(); waitScreen(); DispatchStudyStore.flush();
         java.lang.reflect.Field field = DispatchStudyStore.class.getDeclaredField("WORK");

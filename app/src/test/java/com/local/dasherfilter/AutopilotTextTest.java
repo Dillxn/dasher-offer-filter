@@ -646,7 +646,7 @@ public final class AutopilotTextTest {
     public void theTicketAndTheBelowMinimumsCard() {
         assertEquals("Score 85% of your minimums · bar 82%", AutopilotText.ticketScoreLine(85, 82, 2));
         assertEquals("Score 85% of your minimums", AutopilotText.ticketScoreLine(85, 100, 2));
-        assertEquals("Area score (retired rules) 121%", AutopilotText.ticketScoreLine(121, 100, 1));
+        assertEquals("Area score (earlier rules) 121%", AutopilotText.ticketScoreLine(121, 100, 1));
         assertNull("no score", AutopilotText.ticketScoreLine(-1, 82, 2));
         assertEquals("Below your minimums: passed by Autopilot's 82% bar. Never auto-accepted.",
                 AutopilotText.ticketBelowMinimums(82));
@@ -689,7 +689,7 @@ public final class AutopilotTextTest {
         assertEquals("⌈0.82 × $4.00⌉", "Pay $3.28 min", AutopilotText.skylinePayRail(400, 82));
         assertEquals("⌈0.82 × $4.01⌉: rounded up to the cent", "Pay $3.29 min", AutopilotText.skylinePayRail(401, 82));
         assertNull("no rail without a minimum pay", AutopilotText.skylinePayRail(0, 82));
-        assertEquals("Tree height is the recorded score: pay as a percent of your minimums; the dashed line is the "
+        assertEquals("Tree height is the recorded score: strict pay fitness or area fitness; the dashed line is the "
                 + "current bar.", AutopilotText.SKYLINE_DESCRIPTION);
     }
 

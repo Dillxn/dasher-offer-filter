@@ -36,7 +36,9 @@ BUNDLE_FILES = {'OfferFilter-unsigned.apk', 'inputs.json', 'gate.json', 'evidenc
 ADAPTERS = ('AndroidAdapterAlertsAndSettingsTest', 'AndroidAdapterChartTest',
             'AndroidAdapterHomepageTest', 'AndroidAdapterReportsAndUpdatesTest', 'AccessibilityAdapterTest',
             'AutoAcceptAdapterTest', 'AutoAcceptSettingsTest', 'ModelMigrationTest', 'AutopilotCommitAdapterTest',
-            'ConfirmationArReadingAdapterTest', 'ConsentGateTest', 'MinimumsGrowthAdapterTest')
+            'ConfirmationArReadingAdapterTest', 'ConsentGateTest', 'MinimumsGrowthAdapterTest',
+            'ScoringPolicyHistoryTest', 'AcceptanceLearningStoreTest', 'AcceptanceLearningAdapterTest',
+            'AreaLearningUiTest')
 SHA = re.compile(r'[a-f0-9]{64}\Z')
 GIT_SHA = re.compile(r'[a-f0-9]{40}\Z')
 SIGNATURE_ENTRY = re.compile(r'META-INF/(?:MANIFEST\.MF|[A-Z0-9_-]+\.(?:SF|RSA|DSA|EC))\Z', re.I)

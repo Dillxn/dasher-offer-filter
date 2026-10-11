@@ -143,16 +143,21 @@ final class MinimumsStarView extends View {
     private final DashPathEffect dash;
     /** Cents each set minimum asks of the example offer; NaN where there is no such minimum. */
     private final double[] setCents = new double[NAMES.length];
+    private final double[] learnedCents = new double[NAMES.length];
+    private final double[] effectiveCents = new double[NAMES.length];
     /** Cents Autopilot's bar asks on each spoke ({@code bar × setCents ÷ 100}); NaN where none, or at a bar of 100. */
     private final double[] barCents = new double[NAMES.length];
     /** The same as drawn: the set shape and Autopilot's dashed one, in cents of the example offer; NaN for none. */
     private final double[] set = new double[NAMES.length];
     private final double[] auto = new double[NAMES.length];
+    private final double[] learned = new double[NAMES.length];
     /** Where each point is heading and where it set out from, as fractions of the outer ring. */
     private final float[] setTo = new float[NAMES.length];
     private final float[] setFrom = new float[NAMES.length];
     private final float[] autoTo = new float[NAMES.length];
     private final float[] autoFrom = new float[NAMES.length];
+    private final float[] learnedTo = new float[NAMES.length];
+    private final float[] learnedFrom = new float[NAMES.length];
     private long glideStart;
     /**
      * Recent offers, newest first: result, then their value on each spoke in cents for the example offer (NaN where the
@@ -463,11 +468,20 @@ final class MinimumsStarView extends View {
     void show(FilterSettings rules, OfferSnapshot example, List<DecisionLog.Entry> recent) {
         int[] rates = rules.minimums();
         Arrays.fill(setCents, Double.NaN);
+        Arrays.fill(learnedCents, Double.NaN);
+        Arrays.fill(effectiveCents, Double.NaN);
         Arrays.fill(setRates, 0);
+        AreaScore.Floors floors = AreaScore.floors(rules, example);
         for (int axis : SPOKES) {
             setRates[axis] = Math.max(0, rates[axis]);
             java.math.BigDecimal ask = AreaScore.fixedFloor(axis, setRates[axis], example);
             if (ask != null && ask.signum() > 0) setCents[axis] = ask.doubleValue();
+            if (floors.acceptedCents[axis] != null && floors.acceptedCents[axis].signum() > 0) {
+                learnedCents[axis] = floors.acceptedCents[axis].doubleValue();
+            }
+            if (floors.effectiveCents[axis] != null && floors.effectiveCents[axis].signum() > 0) {
+                effectiveCents[axis] = floors.effectiveCents[axis].doubleValue();
+            }
         }
         maxStops = Math.max(0, rules.maxStops);
         shownRules = rules;
@@ -517,8 +531,8 @@ final class MinimumsStarView extends View {
     /** Autopilot's dashed shape: the bar's share of each set minimum; none at exactly 100%. */
     private void barShape() {
         for (int i = 0; i < NAMES.length; i++) {
-            barCents[i] = autopilotBar == FilterSettings.BAR_AT_MINIMUMS || Double.isNaN(setCents[i]) ? Double.NaN
-                    : setCents[i] * autopilotBar / 100.0;
+            barCents[i] = autopilotBar == FilterSettings.BAR_AT_MINIMUMS || Double.isNaN(effectiveCents[i]) ? Double.NaN
+                    : effectiveCents[i] * autopilotBar / 100.0;
         }
     }
 
@@ -531,6 +545,7 @@ final class MinimumsStarView extends View {
         double top = 0;
         for (int i = 0; i < NAMES.length; i++) {
             if (!Double.isNaN(setCents[i])) top = Math.max(top, setCents[i]);
+            if (!Double.isNaN(learnedCents[i])) top = Math.max(top, learnedCents[i]);
             if (!Double.isNaN(barCents[i])) top = Math.max(top, barCents[i]);
         }
         shownRing = top > 0 ? ringStep(top) : FIRST_RING_CENTS;
@@ -606,6 +621,7 @@ final class MinimumsStarView extends View {
     private void inUnits() {
         System.arraycopy(setCents, 0, set, 0, set.length);
         System.arraycopy(barCents, 0, auto, 0, auto.length);
+        System.arraycopy(learnedCents, 0, learned, 0, learned.length);
     }
 
     /** Starts the points gliding from where they are now to the new values, if any moved. */
@@ -613,7 +629,8 @@ final class MinimumsStarView extends View {
         float progress = Motion.settle(glideStart, GLIDE_MS);
         boolean moved = glideStart == 0;
         for (int i = 0; i < NAMES.length; i++) {
-            moved |= fraction(set[i]) != setTo[i] || fraction(auto[i]) != autoTo[i];
+            moved |= fraction(set[i]) != setTo[i] || fraction(auto[i]) != autoTo[i]
+                    || fraction(learned[i]) != learnedTo[i];
         }
         float[][] nextMarks = new float[marks.size()][];
         for (int m = 0; m < marks.size(); m++) {
@@ -633,8 +650,10 @@ final class MinimumsStarView extends View {
         for (int i = 0; i < NAMES.length; i++) {
             setFrom[i] = setFrom[i] + (setTo[i] - setFrom[i]) * progress;
             autoFrom[i] = autoFrom[i] + (autoTo[i] - autoFrom[i]) * progress;
+            learnedFrom[i] = learnedFrom[i] + (learnedTo[i] - learnedFrom[i]) * progress;
             setTo[i] = fraction(set[i]);
             autoTo[i] = fraction(auto[i]);
+            learnedTo[i] = fraction(learned[i]);
         }
         glideStart = SystemClock.uptimeMillis();
     }
@@ -677,7 +696,7 @@ final class MinimumsStarView extends View {
     /** The line under the star: what the example offer needs. */
     String caption() {
         boolean anyMinimum = false;
-        for (int axis : SPOKES) anyMinimum |= !Double.isNaN(setCents[axis]);
+        for (int axis : SPOKES) anyMinimum |= !Double.isNaN(effectiveCents[axis]);
         return anyMinimum ? needs : needs + " No minimums yet.";
     }
 
@@ -690,6 +709,8 @@ final class MinimumsStarView extends View {
     double barAsks(int axis) {
         return barCents[axis];
     }
+
+    double learnedAsks(int axis) { return learnedCents[axis]; }
 
     /** "pay $4.00", "per mile $1.00", "per hour of trip time 15 dollars per hour", or "... off". */
     private String spokeSaid(int axis) {
@@ -705,15 +726,20 @@ final class MinimumsStarView extends View {
         int chosen = strongShape();
         if (chosen >= 0 && markScores.get(chosen) >= 0) {
             described += " " + (markTimes.get(chosen) == newestEntryAt ? "The newest offer" : "The chosen offer")
-                    + " scores " + markScores.get(chosen) + "% of your minimums.";
+                    + " scores " + markScores.get(chosen) + "% "
+                    + (shownRules.scoreByArea ? "area fitness." : "of your resolved minimums.");
             DecisionLog.Entry entry = markEntries.get(chosen);
-            if (entry.model >= DecisionLog.MODEL && entry.scorePercent >= 0
+            if (entry.model >= 2 && entry.scorePercent >= 0
                     && entry.scorePercent != markScores.get(chosen)) {
                 described += " At decision it scored " + entry.scorePercent + "%.";
             }
         }
-        described += " Farther out means higher pay or pay rates. Solid blue is your minimums; while Autopilot's bar is"
-                + " not 100%, a dashed purple shape shows what it asks now; colored shapes are offers.";
+        described += " " + (shownRules.scoreByArea ? "Area mode permits compensation between active measures."
+                : "Strict mode checks every active minimum.")
+                + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
+                + (shownRules.acceptanceLearning ? "teal is learned bests in use" : "gray is learned bests stored but off")
+                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
+                + "Learned bests do not move saved knobs. Colored shapes are offers.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
@@ -1279,6 +1305,8 @@ final class MinimumsStarView extends View {
      */
     private void drawMinimums(Canvas canvas, float cx, float cy, float radius, float glide) {
         drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false);
+        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide,
+                shownRules.acceptanceLearning ? (ui.dark ? 0xFF83E3D1 : 0xFF00796B) : 0xFF858F8D, true);
         drawShape(canvas, cx, cy, radius, auto, autoFrom, autoTo, glide, autopilotColor(), true);
     }
 
@@ -2346,6 +2374,11 @@ final class MinimumsStarView extends View {
         return shape == null ? new ArrayList<>() : shape;
     }
 
+    List<float[]> learnedShape() {
+        List<float[]> shape = shapePolygon(learned, learnedFrom, learnedTo, 1, skyX, skyY, skyRadius);
+        return shape == null ? new ArrayList<>() : shape;
+    }
+
     /**
      * How much of the Autopilot button is there (1: wholly, and used; 0: gone), and where it stands, into its box. It has
      * one place at every size, about where the old row of three buttons had its middle: below the circle's middle, a
@@ -2560,9 +2593,10 @@ final class MinimumsStarView extends View {
                     : result == OfferRule.Result.DECLINE ? "decline" : "review"));
         }
         if (markScores.get(m) >= 0) {
-            parts.add("scores " + markScores.get(m) + "% of your minimums now");
+            parts.add("scores " + markScores.get(m) + "% "
+                    + (shownRules.scoreByArea ? "area fitness now" : "of your minimums now"));
             DecisionLog.Entry entry = markEntries.get(m);
-            if (entry.model >= DecisionLog.MODEL && entry.scorePercent >= 0
+            if (entry.model >= 2 && entry.scorePercent >= 0
                     && entry.scorePercent != markScores.get(m)) {
                 parts.add("scored " + entry.scorePercent + "% when decided");
             }

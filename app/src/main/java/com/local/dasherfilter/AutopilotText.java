@@ -81,7 +81,7 @@ final class AutopilotText {
 
     // ---- The skyline ----
 
-    static final String SKYLINE_DESCRIPTION = "Tree height is the recorded score: pay as a percent of your minimums; "
+    static final String SKYLINE_DESCRIPTION = "Tree height is the recorded score: strict pay fitness or area fitness; "
             + "the dashed line is the current bar.";
 
     // ---- The diagnostic log (category "autopilot") ----
@@ -718,9 +718,17 @@ final class AutopilotText {
      */
     static String ticketScoreLine(int scorePercent, int barPercent, int model) {
         if (scorePercent < 0) return null;
-        if (model < DecisionLog.MODEL) return "Area score (retired rules) " + scorePercent + "%";
+        if (model < 2) return "Area score (earlier rules) " + scorePercent + "%";
         return "Score " + scorePercent + "% of your minimums"
                 + (barPercent != Autopilot.BAR_OFF ? " · bar " + barPercent + "%" : "");
+    }
+
+    static String ticketScoreLine(DecisionLog.Entry entry) {
+        if (entry.scorePercent < 0) return null;
+        if (entry.model >= 3 && "area".equals(entry.scoreKind)) {
+            return "Area score " + entry.scorePercent + "% · bar " + entry.barPercent + "%";
+        }
+        return ticketScoreLine(entry.scorePercent, entry.barPercent, entry.model);
     }
 
     /** A passing offer below 100% of the minimums: why it passed, and that it is never auto-accepted. */
@@ -740,7 +748,7 @@ final class AutopilotText {
      * as an add-on's does): left to the user, never auto-accepted. Only a line this version decided.
      */
     static boolean passedBelowMinimums(DecisionLog.Entry entry) {
-        if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < DecisionLog.MODEL
+        if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < 2
                 || entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
         return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
                 || entry.reason.contains("below your minimums");

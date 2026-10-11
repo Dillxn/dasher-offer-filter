@@ -102,6 +102,23 @@ class ReleaseBridgeGateTest(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, refusal):
                 gate.sdk_evidence(self.root, reports)
 
+    def test_layout_and_instrumentation_attributes_preserve_the_explicit_sdk_pair(self):
+        source = self.root / (gate.ADAPTER_SOURCES + gate.ADAPTERS[-1] + ".java")
+        for declaration in ('@Config(sdk={26,35}, qualifiers="w360dp-h240dp")',
+                            '@Config(instrumentedPackages={"com.local.dasherfilter"}, sdk={26,35})',
+                            '@Config(sdk={26,35}) class Example { @Config(qualifiers="land") void case1() {} }'):
+            with self.subTest(declaration=declaration):
+                source.write_text(declaration)
+                gate.adapter_sources(self.root)
+        for declaration in ('@Config(sdk={26,35}, minSdk=35)',
+                            '@Config(sdk={26,35}, maxSdk=26)',
+                            '@Config(sdk={26,35}) class Example { @Config(sdk=35) void case1() {} }',
+                            '@Config(sdk={26,35,36}, qualifiers="land")',
+                            '@Config(qualifiers="land")'):
+            with self.subTest(declaration=declaration), self.assertRaisesRegex(ValueError, "SDK configuration"):
+                source.write_text(declaration)
+                gate.adapter_sources(self.root)
+
 
 class RepositoryAdaptersTest(unittest.TestCase):
     """The suites the gate requires exist here as it requires them (0.5.0 deleted one it still named)."""

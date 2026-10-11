@@ -631,6 +631,9 @@ public final class OfferFilterService extends AccessibilityService {
     /** What the last look found of the windows a return goes by ({@link #returnSignature}). */
     private long lastReturnSignature;
     private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
+    private OfferSnapshot learningObservedOffer;
+    private boolean learningObservedAddOn;
+    private FilterStore.LearningPermit learningPermit;
     private final AutoAccept autoAccept = new AutoAccept();
     /** Any user touch during the quiet interval cancels automatic acceptance of that offer, including in split. */
     private final AtomicLong autoAcceptActions = new AtomicLong();
@@ -7332,6 +7335,10 @@ public final class OfferFilterService extends AccessibilityService {
         }
         applyNotes();
         if (OfferEvidence.isIdle(scan.text) || OfferEvidence.isDashOver(scan.text)) {
+            if (noRoute) {
+                learningObservedOffer = null;
+                learningPermit = null;
+            }
             captureOtherScreen(scan, now, OfferEvidence.isPaused(scan.text) ? "dash paused" : "idle");
         }
         // A stale wait/home label drawn with pickup/delivery evidence is contradictory, not route completion.
@@ -7680,8 +7687,8 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * An accepted offer: its history line says so and how it was seen (ACCEPTED; ACCEPTED_AUTOMATIC after the app's own
      * Accept request for it, ACCEPTED_ADD_ON for an add-on), its route is kept for the deliveries to come, and peeks
-     * and the notification path leave it alone for a minute. Nothing is learned from any acceptance (0.5.0): no rule
-     * changes; the line counts toward the acceptance rate and the outcome tallies.
+     * and the notification path leave it alone for a minute. Only confirmed manual standalone evidence carrying its
+     * original live learner permit can teach; automatic requests and add-ons still count outcomes only.
      *
      * @param how how the acceptance was seen, in fixed words and numbers
      */
@@ -7718,6 +7725,17 @@ public final class OfferFilterService extends AccessibilityService {
             }
         }
         step(accepted.line, kind, detail);
+        if (!automatic && !accepted.addOn) {
+            FilterStore.AcceptedLesson lesson = FilterStore.recordConfirmedManualAcceptance(this, learningPermit,
+                    accepted.acceptedOffer);
+            DecisionLog.StepKind learned = lesson == FilterStore.AcceptedLesson.RAISED
+                    ? DecisionLog.StepKind.LEARNER_MINIMUM_RAISED
+                    : lesson == FilterStore.AcceptedLesson.SAVED ? DecisionLog.StepKind.LEARNER_BEST_SAVED
+                    : lesson == FilterStore.AcceptedLesson.UNCHANGED ? DecisionLog.StepKind.LEARNER_UNCHANGED : null;
+            if (learned != null) step(accepted.line, learned, "Confirmed manual standalone acceptance");
+        }
+        learningPermit = null;
+        learningObservedOffer = null;
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed.");
     }
@@ -7838,6 +7856,13 @@ public final class OfferFilterService extends AccessibilityService {
         waitReadOffer = offer;
         waitReadExcluded = isAddOn || routeStored;
         waitReadNewInstance = newScreenInstancePending;
+        // Keep an ineligible marker too: switching learning on while this offer remains cannot recapture old evidence.
+        if (learningObservedOffer == null || learningObservedAddOn != isAddOn || newScreenInstancePending
+                || learn.contradicts(learningObservedOffer)) {
+            learningObservedOffer = learn;
+            learningObservedAddOn = isAddOn;
+            learningPermit = isAddOn ? null : FilterStore.captureLearning(this, learn);
+        }
         acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
         offerAcceptTarget = scan.accept;
         offerDeclineTarget = scan.decline;

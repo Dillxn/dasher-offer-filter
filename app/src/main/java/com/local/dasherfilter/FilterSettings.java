@@ -3,20 +3,9 @@ package com.local.dasherfilter;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Saved rules (0.5.0): three money minimums, an optional max stops, and Autopilot's switch, goal and bar. Zero turns a
- * minimum off. An offer passes when its pay reaches {@code ⌈bar × max(flat, per mile × miles, per minute × minutes)
- * ÷ 100⌉} and it has at most {@code maxStops} stops ({@link OfferRule}). Per minute is stored in cents per minute and
- * shown as per hour (× 60); its stored number never changes for the display.
- *
- * <p>The bar ({@link #minimumScalePercent}) is how much of the minimums an offer must pay. The stored rules keep it at
- * exactly 100 while Autopilot is off and within 50–150 while Autopilot moves it; this value class itself accepts 1–200
- * so any bar can be evaluated. Max stops is never scaled.
- *
- * <p>Score by area, the hotspot, per-stop and per-item minimums, and every learned minimum are retired: nothing here
- * holds, sets or reads them (the 0.5.0 migration, {@link FilterStore#migrateToModel2}, folded per stop into minimum pay
- * and built the old scale into the minimums). Their stable axis slots stay reserved ({@link #minimums}).
- */
+/** Immutable saved minima, selected standalone model, prospective accepted proof and Autopilot bar.
+ * Only pay, mile and minute participate. Saved knobs remain separate from accepted proof; the bar is applied once
+ * after their exact resolved requirement. The retired axis slots stay reserved and max stops remains hard. */
 final class FilterSettings {
     /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */
     static final int MOST_CENTS = 100_000;
@@ -27,6 +16,9 @@ final class FilterSettings {
     /** The bar that means "exactly your minimums". */
     static final int BAR_AT_MINIMUMS = 100;
 
+    final boolean scoreByArea;
+    final boolean acceptanceLearning;
+    final AcceptedFloors accepted;
     final boolean enabled;
     /** Minimum pay, in cents. */
     final int flatCents;
@@ -49,6 +41,16 @@ final class FilterSettings {
      */
     FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
                    boolean autopilot, int autopilotGoalPercent, int minimumScalePercent) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot, autopilotGoalPercent,
+                minimumScalePercent, false, false, AcceptedFloors.NONE);
+    }
+
+    FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
+                   boolean autopilot, int autopilotGoalPercent, int minimumScalePercent,
+                   boolean scoreByArea, boolean acceptanceLearning, AcceptedFloors accepted) {
+        this.scoreByArea = scoreByArea;
+        this.acceptanceLearning = acceptanceLearning;
+        this.accepted = accepted == null ? AcceptedFloors.NONE : accepted;
         this.enabled = enabled;
         this.flatCents = money(flatCents);
         this.perMileCents = money(perMileCents);
@@ -81,7 +83,8 @@ final class FilterSettings {
 
     /** A pay, per-mile or per-hour minimum is set. Autopilot and auto-accept need one. */
     boolean hasMonetaryRule() {
-        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0;
+        return flatCents > 0 || perMileCents > 0 || perMinuteCents > 0
+                || (acceptanceLearning && !accepted.isEmpty());
     }
 
     /** A rate minimum is set, which prices what an add-on adds (its miles and minutes). */
@@ -104,7 +107,9 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perHourCents()) + " per hour");
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
+        if (acceptanceLearning && !accepted.isEmpty()) rules.add("learned minimums");
         if (rules.isEmpty()) return "No rules set";
+        if (scoreByArea) rules.add("area mode");
         if (autopilot) {
             rules.add("Autopilot bar " + minimumScalePercent + "% ("
                     + (autopilotGoalPercent == GOAL_PAY_FIRST ? "pay first" : "goal " + autopilotGoalPercent + "%")
@@ -122,7 +127,9 @@ final class FilterSettings {
         if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
         if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perHourCents()) + "/hr");
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
+        if (acceptanceLearning && !accepted.isEmpty()) rules.add("learned minimums");
         if (rules.isEmpty()) return "No rules set";
+        if (scoreByArea) rules.add("area mode");
         if (autopilot) rules.add("Auto " + minimumScalePercent + "%");
         else if (minimumScalePercent != BAR_AT_MINIMUMS) rules.add("bar " + minimumScalePercent + "%");
         return String.join(" · ", rules);
@@ -133,25 +140,46 @@ final class FilterSettings {
      * ("enabled:flat:mile:minute:maxStops:autopilot:goal").
      */
     String rulesKey() {
-        return enabled + ":" + flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
-                + autopilot + ":" + autopilotGoalPercent;
+        return enabled + ":" + scoringKey() + ":" + autopilot + ":" + autopilotGoalPercent
+                + ":proof:" + accepted.stableKey();
+    }
+
+    /** Exact scoring policy identity; the changing bar and action switches are deliberately separate. */
+    String scoringKey() {
+        return flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
+                + scoreByArea + ":" + acceptanceLearning + ":" + (acceptanceLearning ? accepted.stableKey() : "off");
+    }
+
+    FilterSettings withScoreByArea(boolean on) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent, on, acceptanceLearning, accepted);
+    }
+
+    FilterSettings withAcceptanceLearning(boolean on) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, on, accepted);
+    }
+
+    FilterSettings withAccepted(AcceptedFloors proof) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, proof);
     }
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted);
     }
 
     /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
     FilterSettings withMaxStops(int stops) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, stops, autopilot,
-                autopilotGoalPercent, minimumScalePercent);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted);
     }
 
     /** These rules at another bar (clamped 1–200); the minimums themselves never change. */
     FilterSettings withMinimumScalePercent(int percent) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, percent);
+                autopilotGoalPercent, percent, scoreByArea, acceptanceLearning, accepted);
     }
 
     /**
@@ -160,13 +188,13 @@ final class FilterSettings {
      */
     FilterSettings withAutopilot(boolean on, int goal) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, on, goal,
-                on ? minimumScalePercent : BAR_AT_MINIMUMS);
+                on ? minimumScalePercent : BAR_AT_MINIMUMS, scoreByArea, acceptanceLearning, accepted);
     }
 
     /** The three money minimums replaced; max stops, the switch, Autopilot and the bar stay. */
     FilterSettings withMinimums(int flat, int mile, int minute) {
         return new FilterSettings(enabled, flat, mile, minute, maxStops, autopilot, autopilotGoalPercent,
-                minimumScalePercent);
+                minimumScalePercent, scoreByArea, acceptanceLearning, accepted);
     }
 
     /** The set minimums by stable axis index: pay, per mile, per minute, then 0 for the retired stop, hotspot, item. */

@@ -453,6 +453,7 @@ public final class AutopilotEngineTest {
         FilterSettings stopsOnly = new FilterSettings(true, 0, 0, 0, 3, true, 70, 100);
         Autopilot.Plan noRules = plan(stopsOnly, window(), busy(), dasher(9), false, 82);
         assertEquals(Autopilot.Mode.NO_RULES, noRules.mode);
+        assertEquals("no monetary requirement supplies no readable value mix", 0, noRules.mixSize);
         assertEquals(100, noRules.target);
         assertEquals(Autopilot.Reason.AT_MINIMUMS, Autopilot.commitReason(noRules, 82, 100, null));
     }
@@ -883,7 +884,7 @@ public final class AutopilotEngineTest {
         assertEquals(79, twenty.need);
         assertEquals(3, plan.generation);
         assertEquals(NOW, plan.computedAt);
-        assertEquals("true:400:100:25:0:true:70", plan.rulesKey);
+        assertEquals("true:400:100:25:0:false:false:off:true:70:proof:0:0:0x0.0p0:0:0", plan.rulesKey);
     }
 
     // ---- Commit reasons and the plan's other figures ----

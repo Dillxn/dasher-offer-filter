@@ -51,8 +51,10 @@ final class DispatchStudyStore {
         if (watchedRules == p) return;
         if (watchedRules != null) watchedRules.unregisterOnSharedPreferenceChangeListener(rulesListener);
         rulesListener = (prefs, key) -> {
-            if (key != null && !java.util.Arrays.asList("enabled", "flat", "mile", "minute", "max_stops",
-                    "autopilot_on", "autopilot_bar_percent", "auto_accept_matching_offers").contains(key)) return;
+            if (key != null && !key.startsWith("accepted_v3_")
+                    && !java.util.Arrays.asList("enabled", "flat", "mile", "minute", "max_stops",
+                    "autopilot_on", "autopilot_bar_percent", "auto_accept_matching_offers",
+                    FilterStore.AREA_MODE, FilterStore.ACCEPTANCE_LEARNING).contains(key)) return;
             if (!enabled(app)) return;
             long e = epoch(app);
             execute(() -> {

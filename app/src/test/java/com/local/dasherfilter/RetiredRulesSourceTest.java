@@ -21,25 +21,19 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/**
- * 0.5.0 retired score by area, the adaptive minimum with everything it learned (accepted bests, decline lessons, the
- * held hand-decline record) and the hotspot, per-stop and per-item minimums. Their inert compatibility surface (constant
- * fields, no-op or throwing methods, the old positional constructors, the learning stubs and the old area score) is
- * gone too, and this suite keeps it gone: no main source names any of it, FilterSettings has only its 0.5.0
- * constructor, and the retired preference keys are named only where the migration removes them. The retired axes keep
- * their reserved slots, which refuse any value rather than change its meaning.
- */
+/** The three-axis area/accepted restoration has an explicit API; retired spokes, decline learning,
+ * old positional settings and historical preference keys remain unavailable. */
 public final class RetiredRulesSourceTest {
     /** The retired rules' members the release gate names. */
-    private static final List<String> RETIRED = Arrays.asList("scoreByArea", "risingOffers", "adoptAdaptive",
+    private static final List<String> RETIRED = Arrays.asList("risingOffers", "adoptAdaptive",
             "ManualDeclines", "hotspotProximityHundredths", "perStopCents", "perItemCents");
 
     /** The rest of the inert surface removed with them. */
-    private static final List<String> REMOVED = Arrays.asList("withScoreByArea", "withAdaptive",
+    private static final List<String> REMOVED = Arrays.asList("withAdaptive",
             "withoutRisingBaseline", "withHotspotProximity", "withPerItem", "proximityLabel", "lastAcceptedCents",
             "AcceptedBest", "DeclinedFloor", "learnFromDecline", "recordAccepted", "recordAcceptedLesson",
-            "resetAccepted", "learningTimes", "DeclineLesson", "AcceptedLesson", "onlyHotspotMissing", "scoreReason",
-            "SCORE_REASON", "scoreToggleBox", "incrementalFloors", "requiredPay");
+            "learningTimes", "DeclineLesson", "onlyHotspotMissing", "scoreReason",
+            "SCORE_REASON", "scoreToggleBox", "incrementalFloors");
 
     private static final String PACKAGE = "app/src/main/java/com/local/dasherfilter/";
 
@@ -51,22 +45,37 @@ public final class RetiredRulesSourceTest {
     @Test
     public void noMainSourceNamesTheRemovedCompatibilitySurface() throws IOException {
         assertEquals(Arrays.asList(), mentions(REMOVED));
-        // The old area score's Floors went with it ("floors" is too plain a word to look for in the app's prose).
+        // Decline teaching remains retired; the fresh three-axis Floors resolver is permitted.
         List<String> nested = new ArrayList<>();
         for (Class<?> type : Arrays.asList(AreaScore.class, FilterStore.class, FilterSettings.class)) {
             for (Class<?> member : type.getDeclaredClasses()) nested.add(member.getSimpleName());
         }
-        for (String removed : Arrays.asList("Floors", "DeclineLesson", "AcceptedLesson")) {
+        for (String removed : Arrays.asList("DeclineLesson")) {
             assertFalse(removed + " in " + nested, nested.contains(removed));
         }
     }
 
     @Test
-    public void filterSettingsHasOnlyItsZeroFiveConstructorAndMainCallsNoOther() throws IOException {
+    public void filterSettingsHasOnlyCurrentStrictAndExplicitThreeAxisRestorationConstructors() throws IOException {
         Constructor<?>[] constructors = FilterSettings.class.getDeclaredConstructors();
-        assertEquals("no legacy positional constructor", 1, constructors.length);
-        assertArrayEquals(new Class<?>[] {boolean.class, int.class, int.class, int.class, int.class, boolean.class,
-                int.class, int.class}, constructors[0].getParameterTypes());
+        assertEquals("only current constructors; no legacy positional constructor", 2, constructors.length);
+        List<List<Class<?>>> signatures = new ArrayList<>();
+        for (Constructor<?> constructor : constructors) signatures.add(Arrays.asList(constructor.getParameterTypes()));
+        assertTrue(signatures.contains(Arrays.asList(boolean.class, int.class, int.class, int.class, int.class,
+                boolean.class, int.class, int.class)));
+        assertTrue(signatures.contains(Arrays.asList(boolean.class, int.class, int.class, int.class, int.class,
+                boolean.class, int.class, int.class, boolean.class, boolean.class, AcceptedFloors.class)));
+        FilterSettings fresh = FilterSettings.of(true, 0, 0, 0, 0);
+        assertFalse(fresh.scoreByArea);
+        assertFalse(fresh.acceptanceLearning);
+        assertTrue(fresh.accepted.isEmpty());
+        FilterSettings restored = fresh.withScoreByArea(true).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(100, 200, 2, 300, 10));
+        AreaScore.Floors floors = AreaScore.floors(restored, new OfferSnapshot(500, 2.0, 10, 2));
+        assertArrayEquals(new boolean[] {true, true, true, false, false, false}, floors.active);
+        assertArrayEquals(new int[] {0,0,0,0,0,0}, restored.minimums());
+        assertArrayEquals(new String[] {"RAISED","SAVED","UNCHANGED","OFF","STALE","UNKNOWN"},
+                Arrays.stream(FilterStore.AcceptedLesson.values()).map(Enum::name).toArray(String[]::new));
         // Every call in the app passes those eight values: enabled, three minimums, max stops, Autopilot, goal, bar.
         List<String> calls = new ArrayList<>();
         for (Path source : mainSources()) {
@@ -74,7 +83,7 @@ public final class RetiredRulesSourceTest {
             Matcher call = Pattern.compile("new FilterSettings\\(").matcher(text);
             while (call.find()) {
                 List<String> args = arguments(text, call.end());
-                if (args.size() != 8) calls.add(source.getFileName() + ": " + args);
+                if (args.size() != 8 && args.size() != 11) calls.add(source.getFileName() + ": " + args);
             }
         }
         assertEquals(Arrays.asList(), calls);

@@ -1,3 +1,14 @@
+## 0.6.0 — area scoring and separate acceptance learning
+
+Version 0.6.0 (code 92) freshly restores documented area/learner behavior on the shipped 0.5.11 source. The unavailable historical 0.6 branch and its test evidence were not recovered. Consent 17 explains the new local model and learning; the separately confirmed offer timing study and its withdrawal boundaries remain independent.
+
+- **Choose Strict or Area:** strict remains the default. Optional area scoring permits compensation across the three current money measures. Max stops stays hard, required unread facts stay for review and add-ons stay strict. Permitted by the filter does not mean accepted; optional auto-accept still requires strict minimums at 100% or any higher bar.
+- **Learning has its own control:** initially off, it uses only new positively confirmed manual standalone acceptances. Pay plus one cent and exact best mileage/time rates stay separate from saved knobs; automatic accepts, declines, add-ons and ambiguous outcomes do not teach it. Unknown facts do not teach their axes; any known implausible figure rejects the lesson. Learned evidence may activate an unset money axis.
+- **Explicit Reset, Adopt and Undo:** switching off retains bests. Reset or Clear history clears learning and adoption Undo while preserving saved minima. Adopt only raises lower saved minima; Undo cannot overwrite later changes. Autopilot keeps its own goal, bar, growth and separate Undo.
+- **Keep the cumulative repairs:** fixed five-mile/twenty-minute chart comparison, facts-first short windows, guarded map return, passive uncertain reads, report viewport, optional study and update/release protections remain. Saved, learned and Autopilot-adjusted requirements have distinct labels and chart treatments.
+
+Focused checks and the final canonical gate are separate evidence. Device-controlled split sizing and actual handset behavior remain open acceptance work; stop spacing remains held without observed ordered-stop geometry. This entry makes no signing, publication or physical-phone PASS claim.
+
 ## 0.5.11 — cumulative app repairs and optional timing study
 
 Version 0.5.11 (code 91) combines the recovered study/core-repair patches with fresh corrections on the durable 0.5.10 source. The 0.5.10 signed/recovered artifact remains separate historical evidence; the old 0.5.9 evidence is not reused. Notice 16 explains the optional study's new data scope. [The cumulative ledger](docs/cumulative-successor-0.5.11.md) records source provenance, targeted results and remaining gates.

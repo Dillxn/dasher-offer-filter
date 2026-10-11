@@ -114,6 +114,41 @@ public class OfferReportTest {
     }
 
     @Test
+    public void localLearnedSnapshotsNeverLeaveInTheEntryOrFoldedNotification() throws JSONException {
+        FilterSettings historical = RULES.withScoreByArea(true).withAcceptanceLearning(true)
+                .withAccepted(new AcceptedFloors(17321, 24683, 17.4, 31579, 83));
+        OfferSnapshot facts = new OfferSnapshot(790, 7.2, 21, 2);
+        OfferRule.Decision decided = OfferRule.evaluate(facts, historical);
+        DecisionLog.Entry notice = DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION, false, facts, decided,
+                DecisionLog.Action.CHECK_BELL, true, Collections.emptyList());
+        DecisionLog.Entry screen = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decided,
+                DecisionLog.Action.PAUSED, true, Collections.emptyList()).withNotification(notice);
+        JSONObject local = screen.toJson();
+        assertEquals(17321, local.getJSONObject("rules").getJSONObject("accepted").getInt("pay"));
+        assertTrue(local.getJSONObject("notification").has("rules"));
+
+        JSONObject outgoing = report(screen);
+        JSONObject entry = outgoing.getJSONObject("entry");
+        assertFalse(entry.has("rules"));
+        assertFalse(entry.getJSONObject("notification").has("rules"));
+        assertEquals("area", entry.getString("scoreKind"));
+        assertTrue(outgoing.getString("read").contains("area score "));
+        assertEquals("existing user-selected current rules remain", 1200,
+                outgoing.getJSONObject("rules").getInt("flatCents"));
+
+        // An already queued report must cross the same boundary when it is remasked before sending.
+        outgoing.put("entry", local);
+        String remasked = OfferReport.remask(outgoing.toString());
+        JSONObject repaired = new JSONObject(remasked).getJSONObject("entry");
+        assertFalse(repaired.has("rules"));
+        assertFalse(repaired.getJSONObject("notification").has("rules"));
+        for (String proof : new String[] {"17321", "24683", "31579", "milePay", "minutePay"}) {
+            assertFalse(remasked, remasked.contains(proof));
+        }
+        assertTrue("reporting does not erase local decision provenance", screen.toJson().has("rules"));
+    }
+
+    @Test
     public void namesAndAddressesAreMaskedButFiguresAndOfferWordsStay() throws JSONException {
         DecisionLog.Entry entry = new DecisionLog.Entry(AT, DecisionLog.Source.SCREEN, false,
                 new OfferSnapshot(790, 7.2, 21, 2), 1080, OfferRule.Result.DECLINE, "dollars per mile",

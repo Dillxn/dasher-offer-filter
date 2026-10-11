@@ -116,6 +116,9 @@ final class DecisionLog {
         /** Written before 0.5.0; reads as an acceptance. */
         ACCEPTED_MINIMUMS_UNCHANGED("Accepted"),
         ACCEPTED_ADD_ON("Accepted add-on"),
+        LEARNER_BEST_SAVED("New accepted best saved"),
+        LEARNER_MINIMUM_RAISED("Learned minimum raised"),
+        LEARNER_UNCHANGED("Learned minimum unchanged"),
         NOT_ACCEPTED("Not accepted"),
         /**
          * What followed the offer did not count it as accepted, and why (the evidence was not enough). Not a verdict on
@@ -164,8 +167,9 @@ final class DecisionLog {
     /** Steps kept on one line at most; the oldest go first. */
     static final int MAX_STEPS = 8;
 
-    /** The rules model a line decided now is under (0.5.0: three minimums and the bar). */
-    static final int MODEL = 2;
+    /** Fresh three-axis area/accepted model; old strict model 2 remains distinguishable. */
+    static final int MODEL = 3;
+    static final int STRICT_MODEL = 2;
     /** What a line from an older version (no "model" in its JSON) was decided under; its score is a retired one. */
     static final int LEGACY_MODEL = 1;
 
@@ -206,17 +210,21 @@ final class DecisionLog {
          * one an older version wrote (score by area, learned minimums, the minimums scale).
          */
         final int model;
+        /** Recorded score kind, independent of current settings; model 2 is always strict. */
+        final String scoreKind;
+        /** Local numeric policy snapshot for model 3; absent on old or incomplete records. */
+        final FilterSettings scoringRules;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL);
+                    false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL, "strict", null);
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
                       Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent,
-                      boolean peeked, int barPercent, boolean autopilot, int model) {
+                      boolean peeked, int barPercent, boolean autopilot, int model, String scoreKind, FilterSettings scoringRules) {
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -236,6 +244,9 @@ final class DecisionLog {
             this.barPercent = Math.max(1, Math.min(200, barPercent));
             this.autopilot = autopilot;
             this.model = Math.max(LEGACY_MODEL, model);
+            this.scoreKind = model == LEGACY_MODEL ? "area" : model == STRICT_MODEL ? "strict"
+                    : "area".equals(scoreKind) ? "area" : "strict";
+            this.scoringRules = model >= MODEL ? scoringRules : null;
         }
 
         /** A line for a decision made now: its score, and the bar it used and whether Autopilot set it. */
@@ -243,31 +254,41 @@ final class DecisionLog {
                         Action action, boolean autoDecline, List<String> labels) {
             return new Entry(System.currentTimeMillis(), source, addOn, facts, decision.requiredCents,
                     decision.result, decision.reason, action, autoDecline, evidence(labels)).withScore(
-                    addOn ? -1 : decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot);
+                    addOn ? -1 : decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
+                    .withScoringRules(decision.scoringRules);
         }
 
         /** This line, read because Peek brought Dasher up for it, or not. */
         Entry peeked(boolean on) {
             if (on == peeked) return this;
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model);
+                    notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /** This line with the offer's score as a whole percent (-1 for none). */
         Entry withScore(int percent) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model);
+                    notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /** This line decided at {@code bar} percent of the minimums, with Autopilot {@code auto} (on: it set the bar). */
         Entry withBar(int bar, boolean auto) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model);
+                    notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model, scoreKind, scoringRules);
+        }
+
+        Entry withScoringRules(FilterSettings rules) {
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model,
+                    rules != null && rules.scoreByArea ? "area" : "strict", rules);
         }
 
         private boolean sameOffer(Entry other) {
             return source == other.source && addOn == other.addOn && result == other.result
                     && requiredCents == other.requiredCents && facts.fingerprint().equals(other.facts.fingerprint())
+                    && scoreKind.equals(other.scoreKind)
+                    && (scoringRules == null ? other.scoringRules == null : other.scoringRules != null
+                            && scoringRules.scoringKey().equals(other.scoringRules.scoringKey()))
                     && Math.abs(at - other.at) <= MERGE_WINDOW_MS && sameIncarnation(other);
         }
 
@@ -278,19 +299,19 @@ final class DecisionLog {
 
         private Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model);
+                    notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
+                    notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /**
@@ -300,9 +321,9 @@ final class DecisionLog {
         Entry withNotification(Entry n) {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
                     n.autoDecline, Collections.<String>emptyList(), null, null, false, Collections.<Step>emptyList(),
-                    n.scorePercent, false, n.barPercent, n.autopilot, n.model);
+                    n.scorePercent, false, n.barPercent, n.autopilot, n.model, n.scoreKind, n.scoringRules);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model);
+                    nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /** This line with one more step; an exact repeat of the last step is not added again. */
@@ -315,7 +336,7 @@ final class DecisionLog {
             next.add(step);
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model);
+                    notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }
 
         /**
@@ -335,7 +356,11 @@ final class DecisionLog {
             if (facts.items != null) json.put("items", facts.items);
             if (facts.itemCountApplicable) json.put("itemCountApplicable", true);
             if (scorePercent >= 0) json.put("score", scorePercent);
-            if (model >= MODEL) json.put("bar", barPercent).put("auto", autopilot).put("model", model);
+            if (model >= STRICT_MODEL) json.put("bar", barPercent).put("auto", autopilot).put("model", model);
+            if (model >= MODEL) {
+                json.put("scoreKind", scoreKind);
+                if (scoringRules != null) json.put("rules", rulesJson(scoringRules));
+            }
             if (peeked) json.put("peeked", true);
             if (notification != null) json.put("notification", notification.toJson());
             if (!steps.isEmpty()) {
@@ -393,7 +418,31 @@ final class DecisionLog {
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
                     json.optBoolean("autoDecline"), evidence, null, null, false, Collections.<Step>emptyList(),
-                    json.optInt("score", -1), false, bar, json.optBoolean("auto", false), model);
+                    json.optInt("score", -1), false, bar, json.optBoolean("auto", false), model,
+                    json.optString("scoreKind", "strict"), readRules(json.optJSONObject("rules"), bar,
+                            json.optBoolean("auto", false)));
+        }
+
+        private static JSONObject rulesJson(FilterSettings rules) throws JSONException {
+            AcceptedFloors proof = rules.accepted;
+            return new JSONObject().put("flat", rules.flatCents).put("mile", rules.perMileCents)
+                    .put("minute", rules.perMinuteCents).put("maxStops", rules.maxStops)
+                    .put("area", rules.scoreByArea).put("learning", rules.acceptanceLearning)
+                    .put("accepted", new JSONObject().put("pay", proof.highestPayCents)
+                            .put("milePay", proof.milePay).put("miles", proof.miles)
+                            .put("minutePay", proof.minutePay).put("minutes", proof.minutes));
+        }
+
+        private static FilterSettings readRules(JSONObject json, int bar, boolean autopilot) {
+            if (json == null || !json.has("flat") || !json.has("mile") || !json.has("minute")
+                    || !json.has("maxStops") || !json.has("area") || !json.has("learning")) return null;
+            JSONObject proof = json.optJSONObject("accepted");
+            if (proof == null) return null;
+            return new FilterSettings(true, json.optInt("flat"), json.optInt("mile"), json.optInt("minute"),
+                    json.optInt("maxStops"), autopilot, FilterSettings.GOAL_TOP_TIER, bar,
+                    json.optBoolean("area"), json.optBoolean("learning"),
+                    new AcceptedFloors(proof.optInt("pay"), proof.optInt("milePay"), proof.optDouble("miles", 0),
+                            proof.optInt("minutePay"), proof.optInt("minutes")));
         }
 
         /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
@@ -799,6 +848,7 @@ final class DecisionLog {
     }
 
     static void clear(Context context) {
+        FilterStore.clearLearningHistory(context);
         synchronized (LOCK) {
             entries = new ArrayList<>();
             writeTotals(context, new int[Tally.values().length]);
@@ -865,9 +915,9 @@ final class DecisionLog {
      * " | score 85%" for a line's score as a percent of the minimums, " | area score 121%" for an older line's retired
      * area score; "" when it has none.
      */
-    private static String score(Entry entry) {
+    static String score(Entry entry) {
         if (entry.scorePercent < 0) return "";
-        return (entry.model >= MODEL ? " | score " : " | area score ") + entry.scorePercent + "%";
+        return ("area".equals(entry.scoreKind) ? " | area score " : " | score ") + entry.scorePercent + "%";
     }
 
     /**
@@ -875,7 +925,7 @@ final class DecisionLog {
      * ("auto": Autopilot set it); "" otherwise and for an older line, whose bar is not known.
      */
     private static String bar(Entry entry) {
-        if (entry.model < MODEL || (entry.barPercent == FilterSettings.BAR_AT_MINIMUMS && !entry.autopilot)) return "";
+        if (entry.model < STRICT_MODEL || (entry.barPercent == FilterSettings.BAR_AT_MINIMUMS && !entry.autopilot)) return "";
         return " | bar " + entry.barPercent + "%" + (entry.autopilot ? " auto" : "");
     }
 

@@ -27,11 +27,19 @@ public final class MinimumsDetailsTest {
         return new OfferSnapshot(575, 6.6, 27, 2);
     }
 
-    /** A line this version decided for {@code facts} at {@code bar} (Autopilot on below or above 100). */
+    /** Historical model2 strict line: current-rule explanation is necessary because these had no rule snapshot. */
     private static DecisionLog.Entry decided(OfferSnapshot facts, FilterSettings rules) {
         OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
-        return DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision, DecisionLog.Action.PASSES, true,
-                Collections.<String>emptyList());
+        return model2(DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision, DecisionLog.Action.PASSES, true,
+                Collections.<String>emptyList()));
+    }
+
+    private static DecisionLog.Entry model2(DecisionLog.Entry entry) {
+        try {
+            JSONObject json = entry.toJson().put("model", 2);
+            json.remove("rules"); json.remove("scoreKind");
+            return DecisionLog.Entry.fromJson(json);
+        } catch (org.json.JSONException failure) { throw new AssertionError(failure); }
     }
 
     private static FilterSettings atBar(FilterSettings rules, int bar) {
@@ -75,6 +83,7 @@ public final class MinimumsDetailsTest {
         assertTrue(decision.reason, decision.reason.startsWith("pay at most $3.90 with its +$ amount; "));
         DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, ceiling, decision,
                 DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.<String>emptyList());
+        entry = model2(entry);
         assertEquals(400, entry.requiredCents);
         String text = MinimumsDetails.describe(at119, entry);
         assertTrue(text, text.startsWith("Your minimums · bar 119% (Autopilot)\n" + MinimumsDetails.CEILING + "\n"));
@@ -89,7 +98,7 @@ public final class MinimumsDetailsTest {
         DecisionLog.Entry at82 = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, ceiling,
                 OfferRule.evaluate(ceiling, atBar(starters(), 82)), DecisionLog.Action.PASSES, true,
                 Collections.<String>emptyList());
-        assertFalse(MinimumsDetails.describe(atBar(starters(), 82), at82).contains(MinimumsDetails.CEILING));
+        assertFalse(MinimumsDetails.describe(atBar(starters(), 82), model2(at82)).contains(MinimumsDetails.CEILING));
     }
 
     @Test public void theSelectedOffersOwnAmountsChangeWhatEachMinimumAsksWithoutInventingPay() {
@@ -140,14 +149,14 @@ public final class MinimumsDetailsTest {
         DecisionLog.Entry legacy = DecisionLog.Entry.fromJson(json);
         assertEquals(DecisionLog.LEGACY_MODEL, legacy.model);
         String text = MinimumsDetails.describe(atBar(starters(), 82), legacy);
-        assertTrue(text, text.startsWith("Decided under retired rules (score by area or learned minimums). Now: needs "
+        assertTrue(text, text.startsWith("Decided under earlier area or learned rules. Now: needs "
                 + "$5.54 at 82%.\nYour minimums · bar 82% (Autopilot)\n"));
         assertTrue("worked out again at today's bar: " + text,
                 text.contains("Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%"));
         assertFalse("an old requirement is not compared with today's: " + text, text.contains("When decided"));
 
         String plain = MinimumsDetails.describe(starters(), legacy);
-        assertTrue(plain, plain.startsWith("Decided under retired rules (score by area or learned minimums). Now: needs "
+        assertTrue(plain, plain.startsWith("Decided under earlier area or learned rules. Now: needs "
                 + "$6.75 at 100%.\nYour minimums · bar 100%\n"));
     }
 

@@ -225,6 +225,7 @@ final class Autopilot {
         final boolean autopilot;
         /** The rules model it was decided under (DecisionLog's "model"; 1 for a line an older version wrote). */
         final int model;
+        final FilterSettings scoringRules;
 
         /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
@@ -235,6 +236,12 @@ final class Autopilot {
 
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt, int bar, boolean autopilot, int model) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, bar, autopilot, model, null);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules) {
+            this.scoringRules = scoringRules;
             this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
             this.at = at;
             this.addOn = addOn;
@@ -1089,7 +1096,8 @@ final class Autopilot {
         for (int i = 0; i < window.size(); i++) {
             OfferSnapshot facts = window.get(i).facts;
             if (facts.payCents == null || facts.minutes == null || facts.minutes <= 0) continue;
-            if (AreaScore.required100(rules, facts) == null) continue;
+            if (!rules.hasMonetaryRule()
+                    || AreaScore.requiredPay(rules, facts, FilterSettings.BAR_AT_MINIMUMS) < 0) continue;
             if (60L * facts.payCents > MAX_RATE_CENTS_PER_HOUR * facts.minutes) continue;
             mix.add(new MixLine(thetas[i], facts.payCents, facts.minutes));
         }

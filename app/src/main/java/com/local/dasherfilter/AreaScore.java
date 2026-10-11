@@ -1,176 +1,237 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.MathContext;
 import java.math.RoundingMode;
 
-/**
- * What an offer's minimums ask of it, exactly (0.5.0), plus the constellation's stable axis geometry.
- *
- * <p>The requirement at 100% is {@code R100 = max(flat, per mile × miles, per minute × minutes)} over the money
- * minimums that are set, worked in exact decimals ({@code miles} is taken at its decimal value). At bar σ an offer
- * needs {@code ⌈σ·R100 ÷ 100⌉} whole cents ({@link #roundedCents}: one rounding, after scaling). Its score is
- * {@code ⌊100·pay ÷ R100⌋}, "pay as a percent of what your minimums ask"; for an integer bar σ,
- * {@code pay ≥ ⌈σ·R100 ÷ 100⌉ ⟺ 100·pay ≥ σ·R100 ⟺ score ≥ σ}, so a shown score never claims a cutoff the offer
- * missed. A known zero distance or time asks nothing (the established strict zero-route rule); unknown is not zero.
- *
- * <p>The axis indexes, angles and drawn order stay as drawing geometry only. Stop, hotspot and item are retired as
- * rules (and score by area with them): their indexes stay reserved, and they ask nothing.
- */
+/** Shared exact three-axis floors, strict/area requirements and stable drawing geometry.
+ * Decimal route facts and learned rate pairs remain rational through aggregation and the bar. Only the final
+ * required pay rounds up to a cent. Display projections never decide a result. */
 final class AreaScore {
-    static final int PAY = 0;
-    static final int MILE = 1;
-    static final int MINUTE = 2;
-    static final int STOP = 3;
-    static final int HOTSPOT = 4;
-    static final int ITEM = 5;
-    static final int AXES = 6;
-    /** The spokes stand this many degrees above and below level. */
+    static final int PAY = 0, MILE = 1, MINUTE = 2, STOP = 3, HOTSPOT = 4, ITEM = 5, AXES = 6;
     static final float SPREAD = 30;
-    /** Angles by stable axis index, clockwise from the right; the original five never move. */
     static final float[] ANGLES = {SPREAD - 180, -SPREAD, SPREAD, 180 - SPREAD, -90, 90};
-    /** Stable axis indexes in clockwise drawn order. */
     static final int[] DRAW_ORDER = {PAY, HOTSPOT, MILE, MINUTE, ITEM, STOP};
-    /** The money axes, in the order a tie between their asks is named. */
     private static final int[] MONEY_AXES = {PAY, MILE, MINUTE};
 
-    // ---- The exact requirement ----
+    /** Nonnegative exact fraction; no floating-point tolerance participates in a cutoff. */
+    private static final class Fraction implements Comparable<Fraction> {
+        final BigInteger n, d;
+        Fraction(BigInteger n, BigInteger d) {
+            BigInteger gcd = n.gcd(d);
+            this.n = n.divide(gcd); this.d = d.divide(gcd);
+        }
+        static Fraction of(long value) { return new Fraction(BigInteger.valueOf(value), BigInteger.ONE); }
+        static Fraction of(BigDecimal value) {
+            int scale = value.scale();
+            return scale < 0 ? new Fraction(value.unscaledValue().multiply(BigInteger.TEN.pow(-scale)), BigInteger.ONE)
+                    : new Fraction(value.unscaledValue(), BigInteger.TEN.pow(scale));
+        }
+        Fraction times(Fraction b) { return new Fraction(n.multiply(b.n), d.multiply(b.d)); }
+        Fraction dividedBy(Fraction b) { return new Fraction(n.multiply(b.d), d.multiply(b.n)); }
+        Fraction plus(Fraction b) { return new Fraction(n.multiply(b.d).add(b.n.multiply(d)), d.multiply(b.d)); }
+        Fraction square() { return times(this); }
+        boolean zero() { return n.signum() == 0; }
+        BigDecimal display() { return new BigDecimal(n).divide(new BigDecimal(d), MathContext.DECIMAL128); }
+        @Override public int compareTo(Fraction b) { return n.multiply(b.d).compareTo(b.n.multiply(d)); }
+    }
 
-    /** What the money minimums ask of one offer at 100%, exactly. */
-    static final class Asks {
-        /** The highest ask among the set minimums whose quantity was read; null when none is set or none was read. */
-        final BigDecimal known;
-        /** The first axis (pay, per mile, per minute) whose ask equals {@link #known}; -1 when it is null. */
-        final int axis;
-        /** A set rate minimum's quantity (miles or minutes) was not read. */
+    /** Saved, observed accepted and currently effective asks of one route. Null means inactive or unread.
+     * Public decimal arrays are display projections; private fractions retain exact decision arithmetic. */
+    static final class Floors {
+        final BigDecimal[] fixedCents = new BigDecimal[AXES];
+        final BigDecimal[] acceptedCents = new BigDecimal[AXES];
+        final BigDecimal[] effectiveCents = new BigDecimal[AXES];
+        final boolean[] active = new boolean[AXES];
         final boolean missing;
-
-        private Asks(BigDecimal known, int axis, boolean missing) {
-            this.known = known;
-            this.axis = axis;
-            this.missing = missing;
-        }
-
-        /** R100: the highest ask once every set minimum was read; null otherwise, or with no money minimum. */
-        BigDecimal complete() {
-            return missing ? null : known;
-        }
-
-        /** The score of {@code payCents} against these asks ({@link #scorePercent}); -1 when there is none. */
-        int score(Integer payCents) {
-            BigDecimal required = complete();
-            if (payCents == null || required == null || required.signum() == 0) return -1;
-            return floorPercent(payCents, required);
-        }
-    }
-
-    /** The money minimums' asks of {@code offer} at 100%. */
-    static Asks asks(FilterSettings rules, OfferSnapshot offer) {
-        int[] minimums = rules.minimums();
-        BigDecimal known = null;
-        int axis = -1;
-        boolean missing = false;
-        for (int money : MONEY_AXES) {
-            if (minimums[money] <= 0) continue;
-            BigDecimal ask = fixedFloor(money, minimums[money], offer);
-            if (ask == null) {
-                missing = true;
-            } else if (known == null || ask.compareTo(known) > 0) {
-                known = ask;
-                axis = money;
+        private final Fraction[] effective = new Fraction[AXES];
+        private final int count;
+        private Floors(FilterSettings rules, OfferSnapshot offer) {
+            int[] saved = rules.minimums();
+            boolean unread = false;
+            int axes = 0;
+            for (int axis : MONEY_AXES) {
+                Fraction fixed = fraction(fixedFloor(axis, saved[axis], offer));
+                Fraction learned = acceptedFloor(axis, rules.accepted, offer);
+                boolean learnedSet = axis == PAY ? rules.accepted.highestPayCents > 0
+                        : axis == MILE ? rules.accepted.hasPerMile() : rules.accepted.hasPerMinute();
+                active[axis] = saved[axis] > 0 || (rules.acceptanceLearning && learnedSet);
+                fixedCents[axis] = display(fixed);
+                acceptedCents[axis] = display(learned);
+                if (!active[axis]) continue;
+                axes++;
+                Fraction used = maximum(fixed, rules.acceptanceLearning ? learned : null);
+                effective[axis] = used;
+                effectiveCents[axis] = display(used);
+                if (used == null) unread = true;
             }
+            missing = unread;
+            count = axes;
         }
-        return new Asks(known, axis, missing);
+        boolean complete() { return !missing; }
+        /** A multi-axis area cannot use a reciprocal of zero as an observed fitness. */
+        boolean degenerateArea() {
+            if (count < 2) return false;
+            for (int axis : MONEY_AXES) if (active[axis] && effective[axis] != null && effective[axis].zero()) return true;
+            return false;
+        }
+        private Fraction knownMaximum() {
+            Fraction result = null;
+            for (int axis : MONEY_AXES) result = maximum(result, effective[axis]);
+            return result;
+        }
+        private Fraction requiredSquare(boolean area, boolean partial) {
+            if (!area) {
+                Fraction highest = knownMaximum();
+                return (!partial && missing) || highest == null ? null : highest.square();
+            }
+            if (missing || degenerateArea() || count == 0) return null;
+            Fraction[] asks = new Fraction[count];
+            int index = 0;
+            for (int axis : MONEY_AXES) if (active[axis]) asks[index++] = effective[axis];
+            if (count == 1) return asks[0].square();
+            if (count == 2) return asks[0].times(asks[1]);
+            // Current angles: PAY→MILE=120°, MILE→MINUTE=60°, MINUTE→PAY=180° (zero area).
+            // Equal sine weights normalize to R² = 2*a*b*c/(a+c).
+            return asks[0].times(asks[1]).times(asks[2]).times(Fraction.of(2))
+                    .dividedBy(asks[0].plus(asks[2]));
+        }
     }
 
-    /**
-     * R100, the exact cents the money minimums ask at 100%: null when a set minimum's quantity (miles or minutes) was
-     * not read, or no money minimum is set.
-     */
+    static Floors floors(FilterSettings rules, OfferSnapshot offer) { return new Floors(rules, offer); }
+
+    /** Exact, unscaled per-axis raise at the supplied observed route (not rounded display values). */
+    static boolean effectiveFloorsRaised(FilterSettings before, FilterSettings after, OfferSnapshot offer) {
+        Floors old = floors(before, offer), next = floors(after, offer);
+        for (int axis : MONEY_AXES) {
+            Fraction a = old.effective[axis], b = next.effective[axis];
+            if (b != null && (a == null ? b.n.signum() > 0 : b.compareTo(a) > 0)) return true;
+        }
+        return false;
+    }
+
+    /** Strict highest ask, retained for callers that need its binding axis or a partial known failure. */
+    static final class Asks {
+        final BigDecimal known;
+        final int axis;
+        final boolean missing;
+        private final Fraction exact;
+        private Asks(Floors floors) {
+            exact = floors.knownMaximum();
+            known = display(exact);
+            missing = floors.missing;
+            int found = -1;
+            for (int money : MONEY_AXES) if (exact != null && floors.effective[money] != null
+                    && exact.compareTo(floors.effective[money]) == 0) { found = money; break; }
+            axis = found;
+        }
+        BigDecimal complete() { return missing ? null : known; }
+        long required(int bar) { return exact == null ? 0 : cents(exact.square(), bar); }
+        int score(Integer pay) { return missing || pay == null || exact == null ? -1 : percent(pay, exact.square()); }
+    }
+    static Asks asks(FilterSettings rules, OfferSnapshot offer) { return new Asks(floors(rules, offer)); }
+
+    /** Display-only unscaled requirement; null when no requirement or a selected-model fact is unread/degenerate. */
     static BigDecimal required100(FilterSettings rules, OfferSnapshot offer) {
-        return asks(rules, offer).complete();
+        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
+        if (square == null) return null;
+        if (!rules.scoreByArea) return asks(rules, offer).complete();
+        // This approximate projection is never used by a decision, threshold, score, or cent ceiling.
+        BigDecimal value = square.display();
+        if (value.signum() == 0) return BigDecimal.ZERO;
+        int exponent = value.precision() - value.scale();
+        BigDecimal root = BigDecimal.ONE.scaleByPowerOfTen(Math.floorDiv(exponent + 1, 2));
+        for (int i = 0; i < 128; i++) {
+            BigDecimal next = root.add(value.divide(root, MathContext.DECIMAL128))
+                    .divide(BigDecimal.valueOf(2), MathContext.DECIMAL128);
+            if (next.compareTo(root) == 0) break;
+            root = next;
+        }
+        return root;
+    }
+    static BigDecimal knownRequired100(FilterSettings rules, OfferSnapshot offer) { return asks(rules, offer).known; }
+
+    /** Final whole-cent requirement at a bar, or -1 when an active fact/area fitness cannot be determined. */
+    static long requiredPay(FilterSettings rules, OfferSnapshot offer, int bar) {
+        if (!rules.hasMonetaryRule()) return 0;
+        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
+        return square == null ? -1 : cents(square, bar);
     }
 
-    /** The highest ask among the set money minimums whose quantity was read: a partial R100; null when none. */
-    static BigDecimal knownRequired100(FilterSettings rules, OfferSnapshot offer) {
-        return asks(rules, offer).known;
-    }
-
-    /**
-     * θ, the largest bar at which {@code offer} is not declined: {@code θ ≥ σ ⟺ OfferRule.evaluate(offer,
-     * rules.withMinimumScalePercent(σ)).result ≠ DECLINE} for every integer bar σ. 0 above max stops;
-     * {@code Integer.MAX_VALUE} when pay is unread (and no "+$" ceiling proves less), when no read minimum asks
-     * anything, or when the asks are 0; otherwise {@code ⌊100·pay ÷ R_known⌋}. A "+$" ceiling C on unread pay declines
-     * only below {@code min(σ, 100)}, so it gives {@code ⌊100·C ÷ R_known⌋} when that is under 100 and
-     * {@code Integer.MAX_VALUE} otherwise. For a complete offer within max stops, θ is the score.
-     */
+    /** Largest integer bar that is not a known decline, including REVIEW and the conservative +$ ceiling policy. */
     static int passThreshold(FilterSettings rules, OfferSnapshot offer) {
         if (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops) return 0;
-        if (!rules.hasMonetaryRule()) return Integer.MAX_VALUE;
-        BigDecimal known = knownRequired100(rules, offer);
-        if (known == null || known.signum() == 0) return Integer.MAX_VALUE;
-        if (offer.payCents != null) return floorPercent(offer.payCents, known);
+        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, true);
+        if (square == null || square.zero()) return Integer.MAX_VALUE;
+        if (offer.payCents != null) return percent(offer.payCents, square);
         if (offer.payAtMostCents == null) return Integer.MAX_VALUE;
-        int ceiling = floorPercent(offer.payAtMostCents, known);
+        int ceiling = percent(offer.payAtMostCents, square);
         return ceiling >= 100 ? Integer.MAX_VALUE : ceiling;
     }
 
-    /**
-     * The score: {@code ⌊100·pay ÷ R100⌋} as a whole percent of what the minimums ask; -1 when pay is unread, a set
-     * minimum's quantity was not read, no money minimum is set, or R100 is 0. Max stops never changes it.
-     */
     static int scorePercent(FilterSettings rules, OfferSnapshot offer) {
-        return asks(rules, offer).score(offer.payCents);
+        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
+        return offer.payCents == null || square == null ? -1 : percent(offer.payCents, square);
+    }
+    private static int percent(long pay, Fraction square) {
+        if (square.zero()) return -1;
+        BigInteger numerator = BigInteger.valueOf(pay).pow(2).multiply(BigInteger.valueOf(10_000)).multiply(square.d);
+        BigInteger score = sqrtFloor(numerator.divide(square.n));
+        return score.min(BigInteger.valueOf(Integer.MAX_VALUE)).intValue();
+    }
+    private static long cents(Fraction square, int bar) {
+        BigInteger n = square.n.multiply(BigInteger.valueOf(bar).pow(2));
+        BigInteger d = square.d.multiply(BigInteger.valueOf(10_000));
+        BigInteger whole = sqrtFloor(n.divide(d));
+        if (whole.pow(2).multiply(d).compareTo(n) < 0) whole = whole.add(BigInteger.ONE);
+        return whole.min(BigInteger.valueOf(Long.MAX_VALUE)).longValue();
+    }
+    private static BigInteger sqrtFloor(BigInteger n) {
+        if (n.signum() == 0) return BigInteger.ZERO;
+        BigInteger x = BigInteger.ONE.shiftLeft((n.bitLength() + 1) / 2);
+        while (true) {
+            BigInteger next = x.add(n.divide(x)).shiftRight(1);
+            if (next.compareTo(x) >= 0) return x;
+            x = next;
+        }
     }
 
-    /** {@code ⌊100·cents ÷ required⌋}, exactly, held to {@code Integer.MAX_VALUE}; {@code required} must be positive. */
-    private static int floorPercent(long cents, BigDecimal required) {
-        BigDecimal percent = BigDecimal.valueOf(cents).movePointRight(2).divide(required, 0, RoundingMode.FLOOR);
-        return percent.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) >= 0 ? Integer.MAX_VALUE : percent.intValue();
+    private static Fraction acceptedFloor(int axis, AcceptedFloors proof, OfferSnapshot offer) {
+        if (axis == PAY) return proof.highestPayCents > 0 ? Fraction.of((long) proof.highestPayCents + 1) : null;
+        if (axis == MILE && proof.hasPerMile() && offer.miles != null) {
+            return Fraction.of(proof.milePay).times(Fraction.of(BigDecimal.valueOf(offer.miles)))
+                    .dividedBy(Fraction.of(BigDecimal.valueOf(proof.miles)));
+        }
+        if (axis == MINUTE && proof.hasPerMinute() && offer.minutes != null) {
+            return Fraction.of(proof.minutePay).times(Fraction.of(offer.minutes)).dividedBy(Fraction.of(proof.minutes));
+        }
+        return null;
     }
+    private static Fraction fraction(BigDecimal value) { return value == null ? null : Fraction.of(value); }
+    private static BigDecimal display(Fraction value) { return value == null ? null : value.display(); }
+    private static Fraction maximum(Fraction a, Fraction b) { return a == null ? b : b == null || a.compareTo(b) >= 0 ? a : b; }
 
-    /**
-     * An exact fixed monetary component, shared with knob previews: minimum pay itself, or a rate times the miles or
-     * minutes read. Null when off or unread, and on every retired axis (stop, hotspot, item), which asks nothing.
-     */
+    /** Exact fixed component; a known zero route asks zero, while an unread route remains null. */
     static BigDecimal fixedFloor(int axis, int rate, OfferSnapshot offer) {
         if (rate <= 0) return null;
         switch (axis) {
             case PAY: return BigDecimal.valueOf(rate);
-            case MILE: return offer.miles == null ? null
-                    : BigDecimal.valueOf(rate).multiply(BigDecimal.valueOf(offer.miles));
+            case MILE: return offer.miles == null ? null : BigDecimal.valueOf(rate).multiply(BigDecimal.valueOf(offer.miles));
             case MINUTE: return offer.minutes == null ? null : BigDecimal.valueOf((long) rate * offer.minutes);
             default: return null;
         }
     }
-
-    /** {@code ⌈cents × scale ÷ 100⌉}: exact scaling, then one rounding up to whole cents; saturates at Long.MAX_VALUE. */
     static long roundedCents(BigDecimal cents, int scale) {
         try {
-            return cents.multiply(BigDecimal.valueOf(scale)).movePointLeft(2)
-                    .setScale(0, RoundingMode.CEILING).longValueExact();
-        } catch (ArithmeticException overflow) {
-            return Long.MAX_VALUE;
-        }
+            return cents.multiply(BigDecimal.valueOf(scale)).movePointLeft(2).setScale(0, RoundingMode.CEILING).longValueExact();
+        } catch (ArithmeticException overflow) { return Long.MAX_VALUE; }
     }
-
-    /**
-     * Whether a clockwise edge closes via the middle instead of across an empty semicircle. Renderers use this
-     * same predicate when constructing polygons with three or more active points. A 180-degree edge has no area.
-     */
     static boolean closesThroughCenter(int from, int to) {
         float gap = ((ANGLES[to] - ANGLES[from]) % 360 + 360) % 360;
         return gap >= 180;
     }
-
-    /** The score of {@code offer} under {@code rules}: {@link #scorePercent}. */
-    static int percent(FilterSettings rules, OfferSnapshot offer) {
-        return scorePercent(rules, offer);
-    }
-
-    /** "Score 121%". */
-    static String label(int percent) {
-        return "Score " + percent + "%";
-    }
-
+    static int percent(FilterSettings rules, OfferSnapshot offer) { return scorePercent(rules, offer); }
+    static String label(int percent) { return "Score " + percent + "%"; }
     private AreaScore() {}
 }

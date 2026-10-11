@@ -1,5 +1,6 @@
 package com.local.dasherfilter;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -102,11 +103,11 @@ final class Growth {
      * {@code 100 + g}, or a minimum that cannot grow ({@link #grown}).
      */
     static Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> counted, long since, TimeZone zone) {
-        if (rules == null || !rules.hasMonetaryRule() || counted == null || zone == null) return null;
+        if (rules == null || !rules.hasMonetaryRule() || learningDominates(rules) || counted == null || zone == null) return null;
         List<Autopilot.OfferRecord> lines = new ArrayList<>(OFFERS);
         for (Autopilot.OfferRecord record : counted) {
             if (lines.size() == OFFERS) break;
-            if (record == null || record.model < DecisionLog.MODEL || !record.autopilot || record.at < since) continue;
+            if (record == null || !record.autopilot || record.at < since || !samePolicy(record, rules)) continue;
             lines.add(record);
         }
         if (lines.size() < OFFERS) return null;
@@ -124,6 +125,23 @@ final class Growth {
         return grown == null ? null : new Evidence(lines.size(), days.size(), lowest, since, grown);
     }
 
+    /** Growing saved knobs cannot compensate a lower bar on stronger learned floors; wait for Adopt or learner off. */
+    static boolean learningDominates(FilterSettings rules) {
+        if (rules == null || !rules.acceptanceLearning) return false;
+        AcceptedFloors proof = rules.accepted;
+        return proof.highestPayCents > 0 && (long) proof.highestPayCents + 1 > rules.flatCents
+                || proof.hasPerMile() && BigDecimal.valueOf(rules.perMileCents)
+                        .multiply(BigDecimal.valueOf(proof.miles)).compareTo(BigDecimal.valueOf(proof.milePay)) < 0
+                || proof.hasPerMinute() && (long) rules.perMinuteCents * proof.minutes < proof.minutePay;
+    }
+
+    /** Model 2 proof applies only to the unchanged strict, learner-off regime. New proof names its exact policy. */
+    private static boolean samePolicy(Autopilot.OfferRecord record, FilterSettings rules) {
+        if (record.model == DecisionLog.STRICT_MODEL) return !rules.scoreByArea && !rules.acceptanceLearning;
+        return record.model == DecisionLog.MODEL && record.scoringRules != null
+                && record.scoringRules.scoringKey().equals(rules.scoringKey());
+    }
+
     /** The calendar day of {@code at} (wall clock) in {@code zone}, as a day number. */
     static long day(long at, TimeZone zone) {
         return Math.floorDiv(at + zone.getOffset(at), DAY_MS);
@@ -134,6 +152,7 @@ final class Growth {
      * knob's top, {@link FilterSettings#MOST_CENTS}, or the percent is outside 3–10.
      */
     static Grown grown(FilterSettings rules, int percent) {
+        if (learningDominates(rules)) return null;
         if (percent < LEAST_BAR - FilterSettings.BAR_AT_MINIMUMS || percent > MOST_PERCENT) return null;
         int flat = grownCents(rules.flatCents, percent);
         int mile = grownCents(rules.perMileCents, percent);

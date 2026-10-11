@@ -8,8 +8,24 @@ There is no SDK installer, new key, CI dispatch or Render build in this runner.
 
 ## Acceptance requires a published release
 
-The pipeline improvement remains **OPEN until it delivers at least one actual
-release through the existing automatic-update channel**. Tool tests, a merged
+**Completed on 11 October 2026 with OfferFilter 0.5.11 (code 91).** Its source was
+`0fca4b8fc69523b1742a21caae02096300ca76af`, with 3,540 passing tests, original
+dual-SDK reports and no lint errors. After durable preservation of its signed
+capsule, the disposable originating source/run were deleted; the restored run
+passed unchanged canonical acceptance without rebuilding or signing again.
+Publication commit `ff71af1c2fa81aa6b5865c3e4c9969659cce7764` supplied the existing
+Render mirror. Production `UpdateTransport` verification passed at
+`2026-10-11T21:02:08.839Z` for the original-signer APK with SHA-256
+`4c9dd8cbb4f4f4690173f8ebfde1a9418b3f84e206c448bc9bbc707a8ac71720`.
+The verified recovery capsule SHA-256 is
+`7d087c7ec33366c1c6c2012f18508bd3e2aa00c5324e0f57ddf2a69e0d27c728`.
+This closes the reusable pipeline's first-delivery criterion; it does not claim
+completion of the separate area/learner feature queue, a later release gate, or
+physical-phone acceptance. The first live probe failed and its diagnostic log
+was retained; the successful unchanged retry is the cited delivery proof.
+
+The acceptance rule requires **at least one actual release through the existing
+automatic-update channel**. Tool tests, a merged
 PR, a signed APK, offline acceptance, and historical recovery experiments are
 intermediate evidence; none completes this acceptance criterion.
 
@@ -121,6 +137,14 @@ executes the pinned candidate tools. The restored source is deliberately shallow
 the exact candidate commit/tree is complete, while parent history and unrelated
 historical APKs are omitted. It supports canonical acceptance, not arbitrary
 history-dependent tests or pushing a reconstructed branch as full history.
+
+For a cold start without a checkout, preserve the runner's matching modules
+beside the capsule: `release.py`, `release_capsule.py`,
+`release_environment.py`, `release_publish.py` and `release_readiness.py`.
+Use the files from the exact candidate revision and record their hashes with
+the recovery handoff. The readiness module is required by runners from the
+readiness-wait follow-up onward; a previous release's bootstrap is not a
+substitute for the candidate's own runner.
 
 Build, sign, signed-return import, offline acceptance and live verification have
 different preflights. Import needs Java/Python only. Acceptance needs the pinned

@@ -390,7 +390,7 @@ public class DecisionLogTest {
         org.json.JSONObject json = line.toJson();
         assertEquals(82, json.getInt("bar"));
         assertTrue(json.getBoolean("auto"));
-        assertEquals(2, json.getInt("model"));
+        assertEquals(3, json.getInt("model"));
         assertEquals(85, json.getInt("score"));
 
         DecisionLog.clear(app);
@@ -400,7 +400,7 @@ public class DecisionLogTest {
         DecisionLog.Entry loaded = DecisionLog.recent(app, 1).get(0);
         assertEquals(82, loaded.barPercent);
         assertTrue(loaded.autopilot);
-        assertEquals(2, loaded.model);
+        assertEquals(3, loaded.model);
         assertEquals(85, loaded.scorePercent);
         String report = DecisionLog.report(app, 1);
         assertTrue(report, report.contains(" | score 85% | bar 82% auto | 6.6 mi · 27 min · 2 stops | "));
@@ -422,7 +422,7 @@ public class DecisionLogTest {
         org.json.JSONObject json = plain.toJson();
         assertEquals(100, json.getInt("bar"));
         assertFalse(json.getBoolean("auto"));
-        assertEquals(2, json.getInt("model"));
+        assertEquals(3, json.getInt("model"));
         DecisionLog.clear(app);
         DecisionLog.record(app, plain);
         DecisionLog.record(app, entry(500_000, 900, OfferRule.Result.KEEP, DecisionLog.Action.PASSES)
@@ -481,7 +481,7 @@ public class DecisionLogTest {
         assertEquals(121, kept.getInt("score"));
         assertFalse(kept.getJSONObject("notification").has("model"));
         org.json.JSONObject fresh = stored.getJSONObject(1);
-        assertEquals(2, fresh.getInt("model"));
+        assertEquals(3, fresh.getInt("model"));
         DecisionLog.forgetCache();
         assertEquals(DecisionLog.LEGACY_MODEL, DecisionLog.recent(app, 2).get(1).model);
         assertEquals(DecisionLog.MODEL, DecisionLog.recent(app, 2).get(0).model);

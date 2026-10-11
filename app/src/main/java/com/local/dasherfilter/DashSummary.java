@@ -706,6 +706,8 @@ final class DashSummary {
                 + " · quiet while declining " + onOff(FilterStore.silenceWhileDeclining(app))
                 + " · auto-accept " + onOff(FilterStore.autoAcceptEnabled(app))
                 + " · offer map " + onOff(AreaMap.enabled(app))
+                + " · mode " + (rules.scoreByArea ? "area" : "strict")
+                + " · acceptance learning " + onOff(rules.acceptanceLearning)
                 + " · bar " + rules.minimumScalePercent + "% (Autopilot " + onOff(rules.autopilot) + ")"
                 + " · rules set: " + (set.isEmpty() ? "none" : String.join(", ", set));
     }
@@ -779,7 +781,8 @@ final class DashSummary {
 
     /**
      * Each decision as a line (and its read lines, masked twice, and what became of it after, one step a line), timed
-     * from the dash's start. A line an older version decided shows its retired score as an area score.
+     * from the dash's start. The recorded score kind is retained across model versions; current settings do not
+     * reinterpret an older decision. Learned bests and stored rule amounts are not appended to this summary.
      */
     private static List<String> decisionLines(List<DecisionLog.Entry> decisions, long start) {
         List<String> out = new ArrayList<>();
@@ -791,8 +794,8 @@ final class DashSummary {
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : DecisionLog.money(entry.facts.payCents))
                     .append(" | needed ").append(entry.requiredCents == 0 ? "-" : DecisionLog.money(entry.requiredCents))
-                    .append(entry.scorePercent < 0 ? "" : (entry.model >= DecisionLog.MODEL ? " | score "
-                            : " | area score ") + entry.scorePercent + "%")
+                    .append(entry.scorePercent < 0 ? "" : ("area".equals(entry.scoreKind) ? " | area score "
+                            : " | score ") + entry.scorePercent + "%")
                     .append(" | ").append(DecisionLog.facts(entry.facts))
                     .append(" | ").append(entry.reason)
                     .append(" | ").append(entry.action.label)

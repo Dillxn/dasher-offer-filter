@@ -401,15 +401,15 @@ public final class OfferRuleTest {
         assertFalse(FilterSettings.of(true, 400, 0, 0, 0).hasMarginalRule());
         assertTrue(FilterSettings.of(true, 0, 0, 0, 3).hasAnyRule());
         assertFalse(FilterSettings.of(true, 0, 0, 0, 3).hasMonetaryRule());
-        assertEquals("true:400:100:25:3:true:50", rules.rulesKey());
+        assertEquals("true:400:100:25:3:false:false:off:true:50:proof:0:0:0x0.0p0:0:0", rules.rulesKey());
         assertEquals("the bar is not part of a plan's rules", rules.rulesKey(),
                 rules.withMinimumScalePercent(120).rulesKey());
-        assertEquals("false:400:100:25:3:true:50", rules.withEnabled(false).rulesKey());
+        assertEquals("false:400:100:25:3:false:false:off:true:50:proof:0:0:0x0.0p0:0:0", rules.withEnabled(false).rulesKey());
         assertEquals(82, rules.withEnabled(false).minimumScalePercent);
         assertEquals(5, rules.withMaxStops(5).maxStops);
         assertEquals(0, rules.withMaxStops(-2).maxStops);
         FilterSettings changed = rules.withMinimums(500, 125, 35);
-        assertEquals("true:500:125:35:3:true:50", changed.rulesKey());
+        assertEquals("true:500:125:35:3:false:false:off:true:50:proof:0:0:0x0.0p0:0:0", changed.rulesKey());
         assertEquals(82, changed.minimumScalePercent);
         // Turning Autopilot off puts the bar back at exactly the minimums; on keeps it.
         assertEquals(100, rules.withAutopilot(false, 50).minimumScalePercent);

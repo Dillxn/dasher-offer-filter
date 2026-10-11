@@ -131,11 +131,13 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue(said, said.contains("Dashed line: Bar 100%."));
         assertTrue(said, said.contains("Solid line: your minimum pay at the bar, $10.00."));
         assertTrue(said, said.contains("1 recorded scores unavailable: open markers, no trees."));
-        for (String retired : new String[] {"advisory", "area", "compensat", "fitness", "spoke"}) {
+        for (String retired : new String[] {"advisory", "spoke"}) {
             assertFalse(retired + ": " + said, said.toLowerCase(java.util.Locale.US).contains(retired));
         }
         assertTrue(chart.choose(known));
         assertTrue(chart.getContentDescription().toString().contains("score 123% of your minimums."));
+        assertFalse("a recorded strict result is not relabeled as area",
+                chart.getContentDescription().toString().contains("area score 123%"));
 
         chart.setRules(atBar(FilterSettings.of(true, 6000, 2000, 500, 0), 82));
         assertEquals("a recorded score is not worked out again under today's minimums", treeY, chart.treeAt(0)[1],
@@ -157,9 +159,9 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertFalse(chart.treeClippedAt(0));
         assertNotNull("this version's score has its tree", chart.treeAt(1));
         String said = chart.getContentDescription().toString();
-        assertTrue(said, said.contains("1 scores from retired rules: open markers, no trees."));
+        assertTrue(said, said.contains("1 scores from earlier rules: open markers, no trees."));
         assertTrue(chart.choose(retired));
-        assertTrue(chart.getContentDescription().toString().contains("score from retired rules."));
+        assertTrue(chart.getContentDescription().toString().contains("score from earlier area rules."));
         // A huge retired score cannot stretch the percent scale either.
         DecisionChartView alone = chart(RULES, now, legacy(offer(1, 1200, 1000, 900)));
         assertEquals(chart.treeAt(1)[1], alone.treeAt(1)[1], 0.01f);

@@ -152,7 +152,8 @@ final class OfferReport {
         return "pay " + (entry.facts.payCents == null ? "unknown" : DecisionLog.money(entry.facts.payCents)) + ", "
                 + DecisionLog.facts(entry.facts)
                 + (entry.requiredCents > 0 ? ", needed " + DecisionLog.money(entry.requiredCents) : "")
-                + (entry.scorePercent >= 0 ? ", score " + entry.scorePercent + "%" : "");
+                + (entry.scorePercent >= 0 ? ("area".equals(entry.scoreKind) ? ", area score " : ", score ")
+                        + entry.scorePercent + "%" : "");
     }
 
     /**
@@ -162,6 +163,7 @@ final class OfferReport {
      */
     static JSONObject redacted(DecisionLog.Entry entry) throws JSONException {
         JSONObject json = entry.toJson();
+        withoutLocalPolicy(json);
         json.remove("at");
         json.remove("steps");
         json.put("evidence", new JSONArray(clipped(redact(entry.evidence))));
@@ -232,11 +234,19 @@ final class OfferReport {
             List<String> read = new ArrayList<>();
             for (int i = 0; lines != null && i < lines.length(); i++) read.add(lines.optString(i, ""));
             entry.put("evidence", new JSONArray(clipped(redact(read))));
+            withoutLocalPolicy(entry);
             entry.remove("steps");
             entry.remove("at");
             return pretty(json);
         } catch (JSONException malformed) {
             return null;
+        }
+    }
+
+    /** Decision-time saved/learned snapshots are local history, including a folded notification's snapshot. */
+    private static void withoutLocalPolicy(JSONObject entry) {
+        for (JSONObject current = entry; current != null; current = current.optJSONObject("notification")) {
+            current.remove("rules");
         }
     }
 

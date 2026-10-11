@@ -23,7 +23,7 @@ import java.util.List;
  * scale) says that first, with what it needs now, and is then worked out at the current bar.
  */
 final class MinimumsDetails {
-    static final String LEGACY = "Decided under retired rules (score by area or learned minimums).";
+    static final String LEGACY = "Decided under earlier area or learned rules.";
     static final String ADD_ON = "An add-on is judged twice: the whole route against your minimums at the bar, and "
             + "its added pay against what its added miles and minutes ask at the bar (minimum pay does not apply to "
             + "what it adds).";
@@ -42,7 +42,12 @@ final class MinimumsDetails {
     /** How {@code entry} was judged against {@code rules} (the minimums as they are now). */
     static String describe(FilterSettings rules, DecisionLog.Entry entry) {
         OfferSnapshot facts = entry == null ? OfferSnapshot.UNKNOWN : entry.facts;
-        boolean legacy = entry != null && entry.model < DecisionLog.MODEL;
+        FilterSettings recorded = entry == null ? null : entry.scoringRules;
+        if (rules.scoreByArea || rules.acceptanceLearning || !rules.accepted.isEmpty()
+                || recorded != null) {
+            return resolvedDescription(recorded == null ? rules : recorded, entry, facts, recorded != null);
+        }
+        boolean legacy = entry != null && entry.model < 2;
         int bar = entry == null || legacy ? rules.minimumScalePercent : entry.barPercent;
         boolean autopilot = entry == null || legacy ? rules.autopilot : entry.autopilot;
         List<String> lines = new ArrayList<>();
@@ -80,6 +85,74 @@ final class MinimumsDetails {
         if (approximate[0]) notes.add(ROUNDED);
         if (!notes.isEmpty()) lines.add(String.join(" ", notes));
         return String.join("\n", lines);
+    }
+
+    /** On-demand local bests; exact numeric pairs avoid pretending a rounded rate is the learned rule. */
+    static String learningSummary(FilterSettings rules) {
+        AcceptedFloors best = rules.accepted;
+        if (best.isEmpty()) return "No learned bests yet. Saved minimums are unchanged.";
+        List<String> values = new ArrayList<>();
+        if (best.highestPayCents > 0) values.add("Highest accepted pay " + DecisionLog.money(best.highestPayCents)
+                + " (learned pay asks one cent more)");
+        if (best.hasPerMile()) values.add("Best mileage rate: " + DecisionLog.money(best.milePay)
+                + " for " + miles(best.miles) + " mi");
+        if (best.hasPerMinute()) values.add("Best time rate: " + DecisionLog.money(best.minutePay)
+                + " for " + best.minutes + " min");
+        return String.join("\n", values) + (rules.acceptanceLearning ? "\nLearning is on."
+                : "\nStored bests are off and do not affect offers.");
+    }
+
+    private static String resolvedDescription(FilterSettings rules, DecisionLog.Entry entry, OfferSnapshot facts,
+                                               boolean recorded) {
+        List<String> lines = new ArrayList<>();
+        if (entry != null) {
+            String kind = entry.model < 2 ? "earlier area rules" : entry.model == 2 ? "strict rules"
+                    : "area".equals(entry.scoreKind) ? "area rules" : "strict rules";
+            lines.add("Recorded decision: " + kind + (entry.scorePercent >= 0
+                    ? ", score " + entry.scorePercent + "%" : ", score unread") + ", bar " + entry.barPercent + "%.");
+        }
+        lines.add((recorded ? "Recorded" : "Current") + " requirements · " + (rules.scoreByArea ? "Area" : "Strict")
+                + " · bar " + rules.minimumScalePercent + "%" + (rules.autopilot ? " (Autopilot)" : ""));
+        if (entry != null && entry.addOn) {
+            lines.add(rates(rules));
+            lines.add(ADD_ON + " Learned standalone bests do not apply to add-ons.");
+            return String.join("\n", lines);
+        }
+        AreaScore.Floors floors = AreaScore.floors(rules, facts);
+        boolean ceiling = entry != null && entry.reason != null && entry.reason.startsWith("pay at most ");
+        int judgedBar = ceiling ? Math.min(rules.minimumScalePercent, FilterSettings.BAR_AT_MINIMUMS)
+                : rules.minimumScalePercent;
+        if (ceiling) lines.add("Its +$ amount is only a pay ceiling, not readable pay. Judged at " + judgedBar
+                + "%, never above 100%.");
+        boolean[] approximate = {false};
+        for (int axis : new int[] {AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE}) {
+            if (!floors.active[axis] && floors.acceptedCents[axis] == null) continue;
+            String name = axis == AreaScore.PAY ? "Pay" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
+            lines.add(name + " — saved " + projection(floors.fixedCents[axis], approximate)
+                    + " · learned " + projection(floors.acceptedCents[axis], approximate)
+                    + (rules.acceptanceLearning ? "" : " (off)")
+                    + " · resolved " + projection(floors.effectiveCents[axis], approximate));
+        }
+        long required = AreaScore.requiredPay(rules, facts, judgedBar);
+        lines.add(required < 0 ? rules.scoreByArea && floors.degenerateArea()
+                ? "Area fitness cannot be formed from a zero route amount across multiple active measures; review it."
+                : "Required pay is unknown until every active measure is read."
+                : "Required " + money(required) + " under the " + (recorded ? "recorded " : "current ")
+                        + (rules.scoreByArea ? "area" : "strict")
+                        + " model at " + judgedBar + "% (one final cent rounding).");
+        if (rules.scoreByArea) lines.add("Stronger measures can compensate for weaker ones; no individual money "
+                + "minimum is a hard floor in area mode. Max stops stays hard.");
+        else lines.add("Every active resolved minimum must be met at the bar.");
+        lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires strict "
+                + "saved and enabled learned minimums at 100% or any higher bar. Add-ons use strict saved minimums "
+                + "at the current bar; learned standalone bests do not apply until adopted as saved minimums.");
+        if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
+        if (approximate[0]) lines.add(ROUNDED);
+        return String.join("\n", lines);
+    }
+
+    private static String projection(BigDecimal cents, boolean[] approximate) {
+        return cents == null ? "off or unread" : amount(cents, approximate);
     }
 
     /** "Pay — set $4.00 · used ≈$3.28", "Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42", or unread. */

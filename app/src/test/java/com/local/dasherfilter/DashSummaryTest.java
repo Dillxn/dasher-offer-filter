@@ -428,7 +428,7 @@ public class DashSummaryTest {
     // ---- Settings and Dasher's acceptance rate ----
 
     @Test
-    public void theSettingsNameTheBarAndAutopilotAndNoRetiredRule() throws Exception {
+    public void theSettingsNameTheSelectedModelAndBarWithoutPrivateRuleAmounts() throws Exception {
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
         Feedback.setAfterDash(app, true);
         Dashing.seen(app);
@@ -436,6 +436,7 @@ public class DashSummaryTest {
         DashSummary.stuck(app, "waiting for the question");
         DashSummary.flush();
         String off = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER, modelForTest(start));
+        assertTrue(off, off.contains(" · mode strict · acceptance learning off · bar 100%"));
         assertTrue(off, off.contains(" · bar 100% (Autopilot off) · rules set: pay, per mile, per hour, max stops\n"));
 
         // Autopilot on, its bar moved: the settings say the bar and the switch, never what the bar came from.
@@ -449,9 +450,43 @@ public class DashSummaryTest {
                 + "max stops"));
         assertFalse(settings, settings.contains("37"));
         assertFalse(settings, settings.contains("goal"));
+        assertTrue(settings, settings.contains(" · mode strict · acceptance learning off · "));
         for (String retired : new String[] {"score by area", "adaptive", "minimums scale", "per stop", "per item",
-                "hotspot", "per minute", "learned", "learning"}) {
+                "hotspot", "per minute", "learned"}) {
             assertFalse(retired, on.toLowerCase(java.util.Locale.US).contains(retired));
+        }
+    }
+
+    @Test
+    public void summaryKeepsRecordedAreaAndStrictScoresWhileReportingOnlyLearningSwitch() throws Exception {
+        FilterSettings strict = FilterSettings.of(true, 500, 100, 25, 0);
+        FilterSettings area = strict.withScoreByArea(true);
+        FilterStore.save(app, area.withAcceptanceLearning(true));
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        OfferSnapshot offer = new OfferSnapshot(800, 10.0, 20, 2);
+        DecisionLog.Entry currentArea = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, offer,
+                OfferRule.evaluate(offer, area), DecisionLog.Action.PASSES, true, Collections.emptyList());
+        DecisionLog.record(app, currentArea);
+        // A recorded 0.5.x strict score must not be relabeled as area when the current model number advances.
+        JSONObject old = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false,
+                new OfferSnapshot(801, 10.0, 20, 2), OfferRule.evaluate(offer, strict),
+                DecisionLog.Action.PAUSED, true, Collections.emptyList()).toJson();
+        old.put("model", 2).remove("scoreKind");
+        old.remove("rules");
+        DecisionLog.record(app, DecisionLog.Entry.fromJson(old));
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        String summary = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        assertTrue(summary, summary.contains(" · mode area · acceptance learning on · "));
+        assertTrue(summary, summary.contains("| KEEP | pay $8.00 | needed $7.08 | area score 113% |"));
+        assertTrue(summary, summary.contains("| DECLINE | pay $8.01 | needed $10.00 | score 80% |"));
+        String settings = summary.substring(summary.indexOf("Settings: "),
+                summary.indexOf('\n', summary.indexOf("Settings: ")));
+        for (String privateDetail : new String[] {"$5.00", "$1.00", "$15", "milePay", "minutePay", "accepted{"}) {
+            assertFalse(settings, settings.contains(privateDetail));
         }
     }
 
@@ -744,7 +779,9 @@ public class DashSummaryTest {
         assertTrue(summary, summary.contains("| DECLINE | pay $5.75 | needed $6.25"));
         assertTrue(summary, summary.contains("\n    then " + DashSummary.relative(now + 1_000L - start)
                 + " Dasher said declining it does not lower your acceptance rate\n"));
-        assertFalse(summary, summary.contains("learning"));
+        // The restored learner's switch is diagnostic context, never its bests or old teaching log lines.
+        assertTrue(summary, summary.contains(" · acceptance learning off · "));
+        assertFalse(summary, summary.replace(" · acceptance learning off · ", " · ").contains("learning"));
         assertTrue(summary, summary.contains("decline still showing after 5012 ms"));
         assertTrue(summary, summary.contains("lower your acceptance rate, #%, Decline offer"));
         assertTrue(summary, summary.contains("[autopilot] commit 100% -> 82% (acceptance rate below your goal)"));

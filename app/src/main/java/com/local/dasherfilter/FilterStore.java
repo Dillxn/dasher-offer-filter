@@ -2,6 +2,9 @@ package com.local.dasherfilter;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,6 +67,18 @@ final class FilterStore {
     private static final String MINIMUMS_SINCE = "minimums_since";
     /** "Let my minimums grow", one of Autopilot's settings: on unless turned off (0.5.0 installs too). */
     private static final String AUTOPILOT_GROW = "autopilot_grow";
+    // Fresh restoration state. The model-2 migration's deleted evidence is never read into these keys.
+    private static final String LEARNER_SCHEMA = "learner_v3_schema";
+    static final String AREA_MODE = "area_mode_v3";
+    static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
+    static final String ACCEPTED_PAY = "accepted_v3_pay";
+    static final String ACCEPTED_MILE_PAY = "accepted_v3_mile_pay";
+    static final String ACCEPTED_MILES = "accepted_v3_miles";
+    static final String ACCEPTED_MINUTE_PAY = "accepted_v3_minute_pay";
+    static final String ACCEPTED_MINUTES = "accepted_v3_minutes";
+    private static final String LEARNING_EPOCH = "learner_v3_epoch";
+    private static final String MINIMA_REVISION = "learner_v3_minima_revision";
+    private static final String ADOPTION = "learner_v3_adoption";
 
     // ---- Retired by the 0.5.0 migration: removed, never read as rules again, never reused. ----
     private static final String PER_STOP = "per_stop";
@@ -135,6 +150,7 @@ final class FilterStore {
         SharedPreferences prefs = prefs(context);
         retireExtraStopFee(context, prefs);
         migrateToModel2(context, prefs);
+        initializeLearning(prefs);
         stampMinimumsSince(prefs);
         return read(prefs);
     }
@@ -167,7 +183,49 @@ final class FilterStore {
         int bar = autopilot ? bar(prefs) : FilterSettings.BAR_AT_MINIMUMS;
         return new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
-                FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)), bar);
+                FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)), bar,
+                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, false), accepted(prefs));
+    }
+
+    private static void initializeLearning(SharedPreferences prefs) {
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(LEARNER_SCHEMA, 0) == 1) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(LEARNER_SCHEMA, 1)
+                    .putBoolean(AREA_MODE, false).putBoolean(ACCEPTANCE_LEARNING, false)
+                    .putLong(LEARNING_EPOCH, 1).putLong(MINIMA_REVISION, 0).remove(ADOPTION);
+            writeAccepted(edit, AcceptedFloors.NONE);
+            edit.apply();
+        }
+    }
+
+    private static AcceptedFloors accepted(SharedPreferences prefs) {
+        if (prefs.getInt(LEARNER_SCHEMA, 0) != 1) return AcceptedFloors.NONE;
+        return new AcceptedFloors(prefs.getInt(ACCEPTED_PAY, 0), prefs.getInt(ACCEPTED_MILE_PAY, 0),
+                Double.longBitsToDouble(prefs.getLong(ACCEPTED_MILES, 0)),
+                prefs.getInt(ACCEPTED_MINUTE_PAY, 0), prefs.getInt(ACCEPTED_MINUTES, 0));
+    }
+
+    private static void writeAccepted(SharedPreferences.Editor edit, AcceptedFloors accepted) {
+        edit.putInt(ACCEPTED_PAY, accepted.highestPayCents).putInt(ACCEPTED_MILE_PAY, accepted.milePay)
+                .putLong(ACCEPTED_MILES, Double.doubleToLongBits(accepted.miles))
+                .putInt(ACCEPTED_MINUTE_PAY, accepted.minutePay).putInt(ACCEPTED_MINUTES, accepted.minutes);
+    }
+
+    private static long advanceEpoch(SharedPreferences prefs, SharedPreferences.Editor edit) {
+        long next = prefs.getLong(LEARNING_EPOCH, 0) + 1;
+        edit.putLong(LEARNING_EPOCH, next);
+        return next;
+    }
+
+    private static long minimaChanged(SharedPreferences prefs, SharedPreferences.Editor edit) {
+        long next = prefs.getLong(MINIMA_REVISION, 0) + 1;
+        edit.putLong(MINIMA_REVISION, next).remove(ADOPTION);
+        advanceEpoch(prefs, edit);
+        return next;
+    }
+
+    private static void policyChangedSince(SharedPreferences prefs, SharedPreferences.Editor edit) {
+        edit.putLong(MINIMUMS_SINCE, Math.max(wallClock.getAsLong(), prefs.getLong(MINIMUMS_SINCE, 0) + 1));
     }
 
     /** The stored bar held to {@link #BAR_MIN}–{@link #BAR_MAX}; 100 when none is stored. */
@@ -474,10 +532,22 @@ final class FilterStore {
     static void save(Context context, FilterSettings base, FilterSettings next) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializeLearning(prefs);
         synchronized (FilterStore.class) {
             FilterSettings stored = read(prefs);
             SharedPreferences.Editor edit = prefs.edit();
             if (base == null || next.enabled != base.enabled) edit.putBoolean(ENABLED, next.enabled);
+            boolean learning = base == null || next.acceptanceLearning != base.acceptanceLearning
+                    ? next.acceptanceLearning : stored.acceptanceLearning;
+            boolean area = base == null || next.scoreByArea != base.scoreByArea ? next.scoreByArea : stored.scoreByArea;
+            edit.putBoolean(ACCEPTANCE_LEARNING, learning).putBoolean(AREA_MODE, area);
+            boolean enabled = base == null || next.enabled != base.enabled ? next.enabled : stored.enabled;
+            if (enabled != stored.enabled || learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+                advanceEpoch(prefs, edit);
+            }
+            if (learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+                policyChangedSince(prefs, edit);
+            }
             int flat = base == null || next.flatCents != base.flatCents ? next.flatCents : stored.flatCents;
             int mile = base == null || next.perMileCents != base.perMileCents ? next.perMileCents : stored.perMileCents;
             int minute = base == null || next.perMinuteCents != base.perMinuteCents ? next.perMinuteCents
@@ -487,6 +557,7 @@ final class FilterStore {
             if (flat != stored.flatCents || mile != stored.perMileCents || minute != stored.perMinuteCents
                     || !prefs.contains(MINIMUMS_SINCE)) {
                 edit.putLong(MINIMUMS_SINCE, wallClock.getAsLong());
+                minimaChanged(prefs, edit);
             }
             edit.apply();
         }
@@ -572,9 +643,11 @@ final class FilterStore {
                     || !prefs.contains(MINIMUMS_SINCE) || prefs.getLong(MINIMUMS_SINCE, 0) != evidence.since) {
                 return false;
             }
-            prefs.edit().putInt(FLAT, grown.flatAfter).putInt(PER_MILE, grown.mileAfter)
+            SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, grown.flatAfter).putInt(PER_MILE, grown.mileAfter)
                     .putInt(PER_MINUTE, grown.minuteAfter).putInt(AUTOPILOT_BAR, grown.barAfter)
-                    .putLong(MINIMUMS_SINCE, wall).apply();
+                    .putLong(MINIMUMS_SINCE, wall);
+            minimaChanged(prefs, edit);
+            edit.apply();
             return true;
         }
     }
@@ -594,10 +667,210 @@ final class FilterStore {
                     || stored.perMinuteCents != grown.minuteAfter || prefs.getLong(MINIMUMS_SINCE, 0) != grewAt) {
                 return false;
             }
-            prefs.edit().putInt(FLAT, grown.flatBefore).putInt(PER_MILE, grown.mileBefore)
-                    .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall).apply();
+            SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, grown.flatBefore).putInt(PER_MILE, grown.mileBefore)
+                    .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall);
+            minimaChanged(prefs, edit);
+            edit.apply();
             return true;
         }
+    }
+
+    // ---- Confirmed manual acceptance learning (fresh 0.6.0 state) ----
+
+    static void setScoreByArea(Context context, boolean on) {
+        FilterSettings before = load(context);
+        save(context, before, before.withScoreByArea(on));
+        if (before.scoreByArea != on) AutopilotRuntime.rulesChanged(context);
+    }
+
+    static void setAcceptanceLearning(Context context, boolean on) {
+        FilterSettings before = load(context);
+        save(context, before, before.withAcceptanceLearning(on));
+        if (before.acceptanceLearning != on) AutopilotRuntime.rulesChanged(context);
+    }
+
+    /** Ephemeral, single-use authority to learn from one observed offer; never persisted or reconstructed. */
+    static final class LearningPermit {
+        final long epoch, consentAt, observedAt;
+        final int consentVersion;
+        final OfferSnapshot observed;
+        private LearningPermit(long epoch, int consentVersion, long consentAt, OfferSnapshot observed) {
+            this.epoch = epoch; this.consentVersion = consentVersion; this.consentAt = consentAt;
+            this.observed = observed; this.observedAt = SystemClock.elapsedRealtime();
+        }
+    }
+
+    /** Called at an offer's first observation, not when its eventual acceptance arrives. */
+    static LearningPermit captureLearning(Context context, OfferSnapshot observed) {
+        if (observed == null) return null;
+        load(context);
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            FilterSettings rules = read(prefs);
+            if (!Consent.accepted(context) || !rules.enabled || !rules.acceptanceLearning) return null;
+            SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
+            return new LearningPermit(prefs.getLong(LEARNING_EPOCH, 0),
+                    consent.getInt(Consent.ACCEPTED_VERSION, 0), consent.getLong(Consent.ACCEPTED_AT, 0), observed);
+        }
+    }
+
+    enum AcceptedLesson { RAISED, SAVED, UNCHANGED, OFF, STALE, UNKNOWN }
+
+    /** Only the existing outcome detector's confirmed manual standalone branch may consume this permit. */
+    static AcceptedLesson recordConfirmedManualAcceptance(Context context, LearningPermit permit, OfferSnapshot offer) {
+        AcceptedLesson result;
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            FilterSettings before = read(prefs);
+            if (!Consent.accepted(context) || !before.enabled || !before.acceptanceLearning) return AcceptedLesson.OFF;
+            SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
+            long elapsed = SystemClock.elapsedRealtime();
+            if (permit == null || permit.epoch != prefs.getLong(LEARNING_EPOCH, 0)
+                    || permit.consentVersion != consent.getInt(Consent.ACCEPTED_VERSION, 0)
+                    || permit.consentAt != consent.getLong(Consent.ACCEPTED_AT, 0)
+                    || elapsed < permit.observedAt || elapsed - permit.observedAt > 5 * 60_000L
+                    || offer == null || offer.contradicts(permit.observed)) return AcceptedLesson.STALE;
+            SharedPreferences.Editor edit = prefs.edit();
+            advanceEpoch(prefs, edit); // Consumed even if no best changes: duplicate outcomes cannot replay it.
+            if (offer.payCents == null || offer.payCents <= 0) {
+                edit.apply();
+                return AcceptedLesson.UNKNOWN;
+            }
+            AcceptedFloors next = before.accepted.raisedBy(offer);
+            result = next.equals(before.accepted) ? AcceptedLesson.UNCHANGED
+                    : AreaScore.effectiveFloorsRaised(before, before.withAccepted(next), offer)
+                    ? AcceptedLesson.RAISED : AcceptedLesson.SAVED;
+            if (result != AcceptedLesson.UNCHANGED) {
+                writeAccepted(edit, next);
+                policyChangedSince(prefs, edit);
+            }
+            edit.apply();
+        }
+        if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.rulesChanged(context);
+        return result;
+    }
+
+    /** A consent transition invalidates pending evidence while preserving already stored bests. */
+    static void invalidateLearningEvidence(Context context) {
+        SharedPreferences prefs = prefs(context);
+        initializeLearning(prefs);
+        synchronized (FilterStore.class) {
+            SharedPreferences.Editor edit = prefs.edit();
+            advanceEpoch(prefs, edit);
+            edit.apply();
+        }
+    }
+
+    /** Caller confirms Reset. Clear history uses the same derived-data boundary; adopted settings stay. */
+    static void resetAccepted(Context context) {
+        clearAccepted(context);
+        AutopilotRuntime.rulesChanged(context);
+    }
+
+    private static void clearAccepted(Context context) {
+        SharedPreferences prefs = prefs(context);
+        initializeLearning(prefs);
+        synchronized (FilterStore.class) {
+            SharedPreferences.Editor edit = prefs.edit().remove(ADOPTION);
+            policyChangedSince(prefs, edit);
+            writeAccepted(edit, AcceptedFloors.NONE);
+            advanceEpoch(prefs, edit);
+            edit.apply();
+        }
+    }
+
+    // DecisionLog.clear owns the accompanying Autopilot history invalidation; avoid calling back under its lock.
+    static void clearLearningHistory(Context context) { clearAccepted(context); }
+
+    static final class Adoption {
+        final long id, at, revision;
+        final int flatBefore, mileBefore, minuteBefore, flatAfter, mileAfter, minuteAfter;
+        Adoption(long id, long at, long revision, FilterSettings before, int flat, int mile, int minute) {
+            this.id = id; this.at = at; this.revision = revision;
+            flatBefore = before.flatCents; mileBefore = before.perMileCents; minuteBefore = before.perMinuteCents;
+            flatAfter = flat; mileAfter = mile; minuteAfter = minute;
+        }
+        private Adoption(JSONObject json) throws JSONException {
+            id = json.getLong("id"); at = json.getLong("at"); revision = json.getLong("revision");
+            flatBefore = json.getInt("flatBefore"); mileBefore = json.getInt("mileBefore");
+            minuteBefore = json.getInt("minuteBefore"); flatAfter = json.getInt("flatAfter");
+            mileAfter = json.getInt("mileAfter"); minuteAfter = json.getInt("minuteAfter");
+        }
+        String encode() {
+            try {
+                return new JSONObject().put("id", id).put("at", at).put("revision", revision)
+                        .put("flatBefore", flatBefore).put("mileBefore", mileBefore).put("minuteBefore", minuteBefore)
+                        .put("flatAfter", flatAfter).put("mileAfter", mileAfter).put("minuteAfter", minuteAfter).toString();
+            } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
+        }
+        boolean matches(SharedPreferences prefs, FilterSettings current) {
+            return id > 0 && revision > 0 && validRange(flatBefore, flatAfter) && validRange(mileBefore, mileAfter)
+                    && validRange(minuteBefore, minuteAfter) && revision == prefs.getLong(MINIMA_REVISION, 0)
+                    && current.flatCents == flatAfter && current.perMileCents == mileAfter
+                    && current.perMinuteCents == minuteAfter;
+        }
+        private static boolean validRange(int before, int after) {
+            return before >= 0 && after >= before && after <= FilterSettings.MOST_CENTS;
+        }
+    }
+
+    static boolean adoptAccepted(Context context) {
+        load(context);
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            FilterSettings before = read(prefs);
+            AcceptedFloors a = before.accepted;
+            int flat = (int) Math.max(before.flatCents, Math.min(FilterSettings.MOST_CENTS,
+                    a.highestPayCents > 0 ? a.highestPayCents + 1L : 0));
+            int mile = Math.max(before.perMileCents, a.hasPerMile() ? adoptedRate(a.milePay, a.miles) : 0);
+            int minute = Math.max(before.perMinuteCents, a.hasPerMinute() ? adoptedRate(a.minutePay, a.minutes) : 0);
+            if (flat == before.flatCents && mile == before.perMileCents && minute == before.perMinuteCents) return false;
+            long wall = wallClock.getAsLong();
+            SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, flat).putInt(PER_MILE, mile)
+                    .putInt(PER_MINUTE, minute).putLong(MINIMUMS_SINCE, wall);
+            long revision = minimaChanged(prefs, edit);
+            Adoption adoption = new Adoption(prefs.getLong(LEARNING_EPOCH, 0) + 1, wall, revision,
+                    before, flat, mile, minute);
+            edit.putString(ADOPTION, adoption.encode()).apply();
+        }
+        AutopilotRuntime.rulesChanged(context);
+        return true;
+    }
+
+    private static int adoptedRate(int pay, double amount) {
+        return BigDecimal.valueOf(pay).divide(BigDecimal.valueOf(amount), 0, RoundingMode.CEILING)
+                .min(BigDecimal.valueOf(FilterSettings.MOST_CENTS)).intValue();
+    }
+
+    static Adoption pendingAdoption(Context context) {
+        load(context);
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            String raw = prefs.getString(ADOPTION, null);
+            if (raw == null) return null;
+            try {
+                Adoption adoption = new Adoption(new JSONObject(raw));
+                if (adoption.matches(prefs, read(prefs))) return adoption;
+            } catch (JSONException malformed) { /* Corrupt data is never restore authority. */ }
+            prefs.edit().remove(ADOPTION).apply();
+            return null;
+        }
+    }
+
+    static boolean undoAdoption(Context context, long id) {
+        synchronized (FilterStore.class) {
+            Adoption a = pendingAdoption(context);
+            if (a == null || a.id != id) return false;
+            SharedPreferences prefs = prefs(context);
+            SharedPreferences.Editor edit = prefs.edit().putLong(MINIMUMS_SINCE, wallClock.getAsLong());
+            if (a.flatBefore != a.flatAfter) edit.putInt(FLAT, a.flatBefore);
+            if (a.mileBefore != a.mileAfter) edit.putInt(PER_MILE, a.mileBefore);
+            if (a.minuteBefore != a.minuteAfter) edit.putInt(PER_MINUTE, a.minuteBefore);
+            minimaChanged(prefs, edit);
+            edit.apply();
+        }
+        AutopilotRuntime.rulesChanged(context);
+        return true;
     }
 
     // ---- Dasher's offer channel, status and switches ----

@@ -111,7 +111,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String CLEAR_HISTORY = "Removes the offer decisions, waiting estimates, captured screen text, offer "
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
-            + "last change from this phone, with its note that your minimums grew. Your rules and Autopilot settings "
+            + "last change from this phone, with its note that your minimums grew, learned bests and adoption Undo. "
+            + "Your saved rules (including adopted minimums) and Autopilot settings "
             + "stay.";
     /** The view of Autopilot's details' words, over "Let my minimums grow" ({@link #showAutopilotDetails}). */
     static final int DETAILS_WORDS_ID = 0x4F460104;
@@ -241,6 +242,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
+    private Button modeButton;
+    private Button learningButton;
     /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
@@ -994,6 +997,111 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Autopilot ----
 
+    private void refreshRuleChoices(FilterSettings rules) {
+        if (modeButton == null) return;
+        modeButton.setText("Mode · " + (rules.scoreByArea ? "Area" : "Strict"));
+        modeButton.setContentDescription("Scoring mode: " + (rules.scoreByArea ? "area" : "strict")
+                + ". Choose how offers are judged. Autopilot is separate.");
+        learningButton.setText("Learned · " + (rules.acceptanceLearning ? "On" : "Off"));
+        learningButton.setContentDescription("Acceptance learning " + (rules.acceptanceLearning ? "on" : "off")
+                + ". Show learned minimums, adoption, Undo and Reset. Autopilot growth is separate.");
+    }
+
+    private void chooseScoreMode() {
+        FilterSettings rules = FilterStore.load(this);
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("How offers are judged")
+                .setSingleChoiceItems(new String[] {
+                        "Strict · every active minimum must be met",
+                        "Area · stronger pay or rates can compensate for weaker ones"
+                }, rules.scoreByArea ? 1 : 0, (dialog, which) -> {
+                    FilterStore.setScoreByArea(this, which == 1);
+                    rulesChanged();
+                    refresh();
+                    dialog.dismiss();
+                })
+                .setNeutralButton("About", (dialog, which) -> OwnWindowTouches.show(new AlertDialog.Builder(this)
+                        .setTitle("Strict and area scoring")
+                        .setMessage("Strict checks every active minimum. Area compares the offer's combined pay and rate "
+                                + "shape with the resolved minimums, so one measure can compensate for another. "
+                                + "Autopilot applies its bar once to the chosen mode. Max stops remains a hard limit; "
+                                + "missing required facts stay for review and add-ons stay strict.\n\n"
+                                + "Permitted by the filter means left for you to decide, not accepted. Automatic "
+                                + "acceptance is a separate opt-in and still requires every minimum at 100% or any higher bar.")
+                        .setPositiveButton("OK", null)))
+                .setNegativeButton("Cancel", null));
+    }
+
+    private void showLearningDetails() {
+        FilterSettings rules = FilterStore.load(this);
+        FilterStore.Adoption adoption = FilterStore.pendingAdoption(this);
+        LinearLayout body = ui.column();
+        body.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(12));
+        Switch learning = ui.toggle(body, "Learn from my acceptances", rules.acceptanceLearning);
+        TextView words = ui.text(learningDetailWords(rules), 15, ui.inkSecondary, false);
+        learning.setOnCheckedChangeListener((view, on) -> {
+            FilterStore.setAcceptanceLearning(this, on);
+            words.setText(learningDetailWords(FilterStore.load(this)));
+            rulesChanged();
+            refresh();
+        });
+        body.addView(words, Ui.matchWidth());
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+        AlertDialog dialog = OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Learned minimums")
+                .setView(scroll)
+                .setPositiveButton("Close", null));
+        // A single fixed dialog button keeps its full target at large fonts in a short window. The two learning
+        // actions remain separate native buttons, scrolling with their explanation instead of stacking off screen.
+        LinearLayout actions = ui.row();
+        Button adopt = ui.button(adoption == null ? "Adopt" : "Undo adoption", false, () -> {
+            boolean changed = adoption == null ? FilterStore.adoptAccepted(this)
+                    : FilterStore.undoAdoption(this, adoption.id);
+            dialog.dismiss();
+            if (changed) rulesChanged();
+            refresh();
+            toast(changed ? adoption == null ? "Learned minimums adopted. Undo is in Learned minimums."
+                    : "Adopted minimums put back." : "No minimums changed.");
+        });
+        adopt.setPadding(ui.dp(8), 0, ui.dp(8), 0);
+        adopt.setEnabled(adoption != null || !rules.accepted.isEmpty());
+        actions.addView(adopt, Ui.weighted());
+        actions.addView(ui.button("Reset", false, () -> {
+            dialog.dismiss();
+            confirmResetLearning();
+        }), Ui.weighted());
+        body.addView(actions, 1, Ui.matchWidth());
+    }
+
+    private static String learningDetailWords(FilterSettings rules) {
+        return "Learns only from new, positively confirmed manual standalone acceptances while "
+                + "filtering and learning are on. Automatic accepts, add-ons, declines and unclear acceptances "
+                + "do not teach it. Unknown facts do not teach their axes; any known implausible figure rejects the lesson. Switching off or pausing keeps the bests without gathering new lessons.\n\n"
+                + MinimumsDetails.learningSummary(rules) + "\n\n"
+                + "Saved knobs stay separate. Active learned bests can supply an unset minimum. The chart uses blue "
+                + "for saved minimums, teal for learned bests and purple for Autopilot's adjusted requirements. "
+                + "Autopilot's minimum growth and its Undo are separate.\n\n"
+                + "Adopt raises only lower saved minimums; these then apply to add-ons too. Undo is available until "
+                + "a later minimum change, Reset or Clear history makes it stale. Reset clears learned bests, "
+                + "not saved minimums or Autopilot settings. Earlier decision snapshots remain in history until Clear history.";
+    }
+
+    private void confirmResetLearning() {
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle("Reset learned minimums?")
+                .setMessage("Forgets learned bests and adoption Undo. Your saved minimums, scoring mode, learning "
+                        + "switch and Autopilot settings stay. Earlier decision snapshots remain until Clear history.")
+                .setPositiveButton("Reset", (dialog, which) -> {
+                    FilterStore.resetAccepted(this);
+                    rulesChanged();
+                    refresh();
+                    toast("Learned minimums reset.");
+                })
+                .setNegativeButton("Cancel", null));
+
+    }
+
     /** What Autopilot is doing now (finalSpec explainability), as the button, the chip and the status line say it. */
     private AutopilotText.Status autopilotStatus() {
         return AutopilotRuntime.status(this, System.currentTimeMillis(), OfferFilterService.isConnected());
@@ -1072,7 +1180,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         AutopilotText.Status status = autopilotStatus();
         LinearLayout body = ui.column();
         body.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(4));
-        TextView words = ui.text(String.join("\n\n", AutopilotText.detailsLines(status)), 16, ui.inkSecondary,
+        TextView words = ui.text(autopilotDetailWords(status), 16, ui.inkSecondary,
                 false);
         words.setId(DETAILS_WORDS_ID);
         // In line with the switch's words, which keep a little room of their own.
@@ -1080,7 +1188,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         body.addView(words, Ui.matchWidth());
         Switch growSwitch = ui.toggle(body, AutopilotText.GROW_SWITCH, FilterStore.minimumsGrow(this));
         growSwitch.setText(ui.twoLines(AutopilotText.GROW_SWITCH, AutopilotText.GROW_ABOUT));
-        growSwitch.setOnCheckedChangeListener((view, on) -> AutopilotRuntime.setMinimumsGrow(this, on));
+        growSwitch.setOnCheckedChangeListener((view, on) -> {
+            AutopilotRuntime.setMinimumsGrow(this, on);
+            words.setText(autopilotDetailWords(autopilotStatus()));
+        });
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
@@ -1106,6 +1217,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         OwnWindowTouches.show(builder);
+    }
+
+    private String autopilotDetailWords(AutopilotText.Status status) {
+        String words = String.join("\n\n", AutopilotText.detailsLines(status));
+        if (status.on && FilterStore.minimumsGrow(this) && Growth.learningDominates(status.rules)) {
+            words += "\n\nMinimum growth waits while enabled learned minimums exceed your saved minimums. "
+                    + "Adopt those bests or switch learning off to remove this hold; the other growth checks still apply.";
+        }
+        return words;
     }
 
     /**
@@ -1304,11 +1424,21 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
      * the homepage), behavior switches, updates, anonymous feedback, reports and a tip, then the version and the
      * bundled texts.
-     * The rules are all on the homepage's constellation.
+     * Saved minimums are on the homepage's constellation; model and learning choices are here.
      */
     private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
         LinearLayout body = body(page);
+        // Separate visible controls in Settings preserve the main scene at every split height.
+        LinearLayout ruleChoices = ui.row();
+        modeButton = ui.button("Mode · Strict", false, this::chooseScoreMode);
+        learningButton = ui.button("Learned · Off", false, this::showLearningDetails);
+        modeButton.setMinHeight(ui.dp(48));
+        learningButton.setMinHeight(ui.dp(48));
+        ruleChoices.addView(modeButton, Ui.weighted());
+        ruleChoices.addView(learningButton, Ui.weighted());
+        body.addView(ruleChoices, Ui.matchWidth());
+
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
         // DoorDash's offer channel sounded for an offer (so for declined ones too): its own page lets the user silence
@@ -1555,6 +1685,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         refreshHistory();
         refreshVerdict();
+        refreshRuleChoices(saved);
         refreshOfferCaption(chart.selectedEntry());
         refreshLive();
         // Rules saved elsewhere, and Autopilot moving its bar or another goal chosen without a new offer in the
@@ -1970,8 +2101,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ticket.addView(card, cardParams);
         // The score as decided (a line decided under the retired rules says so); a reason by area score already says
         // it.
-        String scoreLine = entry.model < DecisionLog.MODEL && entry.reason.startsWith("score ") ? null
-                : AutopilotText.ticketScoreLine(entry.scorePercent, entry.barPercent, entry.model);
+        String scoreLine = entry.model < 2 && entry.reason.startsWith("score ") ? null
+                : AutopilotText.ticketScoreLine(entry);
         if (scoreLine != null) {
             TextView score = ui.text(scoreLine, 14, ui.inkSecondary, true);
             score.setPadding(0, ui.dp(8), 0, 0);
