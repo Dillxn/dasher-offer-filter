@@ -1,5 +1,7 @@
 """Orchestration/fault-injection tests, NOT Android release evidence."""
 import json
+import hashlib
+import sys
 import contextlib
 import io
 import os
@@ -244,16 +246,19 @@ class RunnerTest(unittest.TestCase):
     def test_verified_phase_always_probes_live_again(self):
         self.signed(); self.seal('accepted')
         expected = dict(sourceCommit=r.load_run(self.run)['sourceCommit'], versionCode=100,
-                        versionName='fixture', sha256='a' * 64)
+                        versionName='fixture', sha256='a' * 64, size=42,
+                        packageName='com.local.dasherfilter')
         self.seal('staged', {'release/latest.json': json.dumps(expected)})
         probes = []
         def verify(argv, cwd, env=None, log=None):
-            actual = expected.copy()
+            actual = dict(expected, result='PASS', bytes=42, signerSha256=r.SIGNER,
+                          transport='production UpdateTransport.java')
             probes.append(cwd)
             if len(probes) == 2:
                 actual['sha256'] = 'b' * 64
             target = cwd / '.channel-check/transport-proof.json'
             target.parent.mkdir()
+            (target.parent / 'latest.json').write_text(json.dumps(expected))
             target.write_text(json.dumps(actual))
         with patch.object(r, 'environment', return_value=({}, {'ok': True})), \
              patch.object(r, 'command', side_effect=verify):
@@ -269,6 +274,131 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Live channel is not'):
                 r.verify_live(self.run)
         self.assertEqual(len(probes), 2)
+
+    def staged_candidate(self):
+        old = b'prior synthetic APK'
+        previous = dict(sourceCommit='a' * 40, versionCode=90, versionName='0.5.10',
+                        packageName='com.local.dasherfilter', size=len(old),
+                        sha256=hashlib.sha256(old).hexdigest())
+        (self.source / 'release').mkdir()
+        (self.source / 'release/latest.json').write_text(json.dumps(previous))
+        (self.source / 'release/OfferFilter.apk').write_bytes(old)
+        self.git('add', 'release')
+        self.git('commit', '-qm', 'Prior published synthetic release fixture')
+        self.run = self.base / 'candidate-run'
+        r.initialize(self.source, self.run)
+        self.signed(); self.seal('accepted')
+        expected = dict(previous, sourceCommit=r.load_run(self.run)['sourceCommit'],
+                        versionCode=91, versionName='0.5.11', size=123, sha256='b' * 64)
+        self.seal('staged', {'release/latest.json': json.dumps(expected)})
+        return old, expected
+
+    def test_readiness_retry_retains_every_failed_download_and_does_not_resign(self):
+        old, expected = self.staged_candidate()
+        before = {name: r.capsule.file_info(self.run / name / 'manifest.json')
+                  for name in ('prepared', 'signed', 'accepted', 'staged')}
+        calls = []
+        def canonical(argv, cwd, env=None, log=None, timeout=None):
+            self.assertEqual(Path(argv[1]).name, 'verify_channel.py')
+            self.assertGreater(timeout, 0)
+            calls.append(cwd)
+            output = cwd / '.channel-check'
+            output.mkdir()
+            (output / 'latest.json').write_text(json.dumps(expected))
+            if len(calls) <= 2:
+                (output / 'OfferFilter.apk').write_bytes(old)
+                Path(log).write_text('original failure ' + str(len(calls)) +
+                    '\nValueError: Downloaded APK does not match feed\n')
+                raise r.CommandFailed('canonical failure')
+            (output / 'transport-proof.json').write_text(json.dumps(dict(expected,
+                result='PASS', transport='production UpdateTransport.java', bytes=123,
+                signerSha256=r.SIGNER)))
+        now = [0]
+        def sleep(seconds):
+            now[0] += seconds
+        with patch.object(r, 'environment', return_value=({}, {'ok': True})), \
+             patch.object(r, 'command', side_effect=canonical):
+            result = r.wait_for_live(lambda deadline: r.verify_live(self.run, deadline=deadline, clock=lambda: now[0]),
+                wait_seconds=60, interval_seconds=15, clock=lambda: now[0], sleep=sleep,
+                progress=lambda message: None)
+        self.assertEqual(result['readinessAttempts'], 3)
+        self.assertEqual(result['freshLiveCheck'], 'PASS')
+        self.assertEqual(len(set(calls)), 3)
+        self.assertTrue(all(not path.exists() for path in calls))
+        failures = list((self.run / 'failures').glob('verify-*'))
+        self.assertEqual(len(failures), 2)
+        self.assertEqual({(path / 'operation.log').read_text().splitlines()[0] for path in failures},
+                         {'original failure 1', 'original failure 2'})
+        for path in failures:
+            self.assertEqual((path / 'channel-check/OfferFilter.apk').read_bytes(), old)
+            self.assertEqual(r.read_json(path / 'channel-check/latest.json'), expected)
+            self.assertEqual(r.read_json(path / 'readiness.json')['category'], 'KNOWN_PREVIOUS_APK')
+            self.assertFalse(r.read_json(path / 'failure.json')['completed'])
+        self.assertEqual(before, {name: r.capsule.file_info(self.run / name / 'manifest.json')
+                                 for name in before})
+        self.assertEqual(r.status(self.run)['completed'][-1], 'verified')
+
+    def test_success_receipt_with_changed_signer_or_size_cannot_complete(self):
+        _, expected = self.staged_candidate()
+        for changed in ({'signerSha256': '0' * 64}, {'bytes': 1}):
+            def canonical(argv, cwd, env=None, log=None):
+                output = cwd / '.channel-check'
+                output.mkdir()
+                (output / 'latest.json').write_text(json.dumps(expected))
+                proof = dict(expected, result='PASS', transport='production UpdateTransport.java',
+                             bytes=123, signerSha256=r.SIGNER)
+                proof.update(changed)
+                (output / 'transport-proof.json').write_text(json.dumps(proof))
+            with self.subTest(changed=changed), \
+                 patch.object(r, 'environment', return_value=({}, {'ok': True})), \
+                 patch.object(r, 'command', side_effect=canonical):
+                with self.assertRaisesRegex(ValueError, 'expected bytes and original signer'):
+                    r.verify_live(self.run)
+                self.assertFalse((self.run / 'verified').exists())
+
+    def test_readiness_deadline_includes_preflight_and_cannot_seal_expired_probe(self):
+        _, expected = self.staged_candidate()
+        now = [0]
+        def preflight(*args):
+            now[0] = 20
+            return {}, {'ok': True}
+        def canonical(argv, cwd, env=None, log=None, timeout=None):
+            self.assertEqual(timeout, 40)  # The local preflight already used 20.
+            output = cwd / '.channel-check'
+            output.mkdir()
+            (output / 'latest.json').write_text(json.dumps(expected))
+            (output / 'transport-proof.json').write_text(json.dumps(dict(expected,
+                result='PASS', transport='production UpdateTransport.java', bytes=123,
+                signerSha256=r.SIGNER)))
+            now[0] = 60
+        with patch.object(r, 'environment', side_effect=preflight), \
+             patch.object(r, 'command', side_effect=canonical):
+            with self.assertRaises(r.ReadinessTimeout):
+                r.verify_live(self.run, deadline=60, clock=lambda: now[0])
+        self.assertFalse((self.run / 'verified').exists())
+        saved, = (self.run / 'failures').glob('verify-*')
+        self.assertTrue((saved / 'channel-check/transport-proof.json').exists())
+        self.assertFalse(r.read_json(saved / 'failure.json')['completed'])
+
+    def test_probe_deadline_kills_its_java_equivalent_child_and_retains_log(self):
+        import time
+        pid_file = self.base / 'child.pid'
+        script = ("import subprocess,sys,time; "
+                  "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+                  "open('child.pid','w').write(str(child.pid)); "
+                  "print('original probe output',flush=True); time.sleep(30)")
+        log = self.base / 'timeout.log'
+        start = time.monotonic()
+        with self.assertRaisesRegex(r.CommandFailed, 'timed out'):
+            r.command([sys.executable, '-c', script], self.base, log=log, timeout=0.3)
+        self.assertLess(time.monotonic() - start, 3)
+        self.assertIn('original probe output', log.read_text())
+        self.assertIn('readiness deadline', log.read_text())
+        pid = int(pid_file.read_text())
+        # A killed descendant may await init's reap, but must no longer run.
+        status = Path('/proc') / str(pid) / 'status'
+        if status.exists():
+            self.assertIn('Z (zombie)', status.read_text())
 
     def test_signing_secrets_removed_from_non_signing_environment(self):
         with patch.dict(os.environ, {name: 'private sentinel' for name in r.SECRET_NAMES}):

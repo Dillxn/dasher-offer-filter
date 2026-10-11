@@ -161,8 +161,29 @@ provider builds. Do not use the archived cloud build/sign path or dispatch hoste
 CI to bypass the local-execution rule. Once the authorized mirror serves the bytes:
 
 ```bash
-python3 tools/release.py verify-live --run /absolute/release-run
+python3 tools/release.py verify-live --run /absolute/release-run --wait-seconds 180
 ```
+
+The explicit readiness wait allows up to 180 seconds (maximum 600), including
+probe execution, with 15 seconds between retries (`--retry-interval`, 1–60).
+Render reporting a deployment live can precede consistent feed/APK delivery.
+Only one failure is retryable: the unchanged canonical probe rejects the APK/feed
+hash pair, the downloaded feed exactly identifies the staged candidate, and the
+APK bytes exactly match the older repository release frozen in the candidate's
+source pack. Unknown/corrupt APK bytes, a wrong feed/source/version, a signer
+failure, unavailable prior evidence, and every other error stop immediately.
+Each retry uses the normal production updater URL and verifier. It never rebuilds,
+re-signs, re-publishes, re-deploys, bypasses a cache, or accepts the previous release.
+The first failure during 0.5.11 delivery retained its log but not the downloaded
+bytes; it therefore cannot be retroactively classified as a known previous APK.
+
+The wait reports progress on stderr and fails closed at its deadline. Every
+failed probe retains its original log and any downloaded feed/APK/proof under
+`RUN/failures/verify-*`, with a classification receipt when an exact older APK is
+recognized. Keep these failure diagnostics separately with the release record;
+successful recovery capsules continue to exclude failed evidence. Omitting the
+flag (or `--wait-seconds 0`) keeps a single attempt, as does the Python
+`verify_live(run)` API. `run --until verified` accepts the same optional flags.
 
 Only a fresh production updater probe matching source/version/hash establishes
 live-channel success. The existing website release-sync step follows that success.

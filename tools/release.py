@@ -15,13 +15,16 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 import release_capsule as capsule
 from release_environment import resolve_environment
 from release_publish import publish as publish_feed
+from release_readiness import PropagationPending, ReadinessTimeout, previous_apk_diagnostic, same_candidate, wait_for_live
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 STAGES = ('prepared', 'signed', 'accepted', 'staged', 'verified')
@@ -52,9 +55,30 @@ def timestamp():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def command(argv, cwd, env=None, log=None):
+class CommandFailed(ValueError):
+    pass
+
+
+def command(argv, cwd, env=None, log=None, timeout=None):
     # Never echo argv/environment or raw subprocess output into exceptions.
     # Signing helper intentionally handles its private diagnostics itself.
+    if timeout is not None:
+        # Kill the whole probe group on deadline, including its Java children.
+        need(timeout > 0 and log is not None, 'A positive probe timeout and log are required')
+        with pathlib.Path(log).open('xb') as stream:
+            with subprocess.Popen([str(x) for x in argv], cwd=cwd, env=env,
+                                  stdout=stream, stderr=subprocess.STDOUT,
+                                  start_new_session=True) as child:
+                try:
+                    result_code = child.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+                    stream.write(b'\nRelease probe reached its readiness deadline.\n')
+                    raise CommandFailed('Live probe timed out; stage not completed') from None
+        if result_code:
+            raise CommandFailed(f'{pathlib.Path(argv[0]).name} failed (exit {result_code}); stage not completed')
+        return ''
     if log is None:
         result = subprocess.run([str(x) for x in argv], cwd=cwd, env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -62,7 +86,8 @@ def command(argv, cwd, env=None, log=None):
         with pathlib.Path(log).open('xb') as stream:
             result = subprocess.run([str(x) for x in argv], cwd=cwd, env=env,
                                     stdout=stream, stderr=subprocess.STDOUT)
-    need(result.returncode == 0, f'{pathlib.Path(argv[0]).name} failed (exit {result.returncode}); stage not completed')
+    if result.returncode:
+        raise CommandFailed(f'{pathlib.Path(argv[0]).name} failed (exit {result.returncode}); stage not completed')
     return result.stdout.decode() if result.stdout is not None else ''
 
 
@@ -191,6 +216,11 @@ def attempt(run, name):
                            'createdAt': timestamp(),
                            'note': 'Local diagnostics only; excluded from successful evidence capsules'})
                 candidates = [(temporary / 'operation.log', pathlib.Path('operation.log'))]
+                if name == 'verify':
+                    candidates.append((temporary / 'readiness.json', pathlib.Path('readiness.json')))
+                    candidates.extend((temporary / 'checkout/.channel-check' / item,
+                                       pathlib.Path('channel-check') / item) for item in
+                                      ('latest.json', 'OfferFilter.apk', 'transport-proof.json'))
                 if name == 'prepare':
                     for directory in (temporary / 'pending-unsigned').glob('*-local-receipts'):
                         candidates.extend((directory / item, pathlib.Path(item)) for item in
@@ -425,26 +455,56 @@ def stage_feed(run):
                      published=False, mirrorRequired=True)
 
 
-def verify_live(run):
+def verify_live(run, *, deadline=None, clock=time.monotonic):
+    def remaining_budget():
+        if deadline is None:
+            return None
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise ReadinessTimeout('Deployment readiness deadline expired; stage not completed')
+        return remaining
+
     stage(run, 'staged')
     # Always perform a fresh live read. A saved success never means still live.
     with attempt(run, 'verify') as temp:
         source = checkout(run, temp / 'checkout')
         env, _ = environment('verify', source)
-        command([sys.executable, source / 'tools/verify_channel.py'], source, env, log=temp / 'operation.log')
-        actual = read_json(source / '.channel-check/transport-proof.json')
         expected = read_json(run / 'staged/release/latest.json')
+        try:
+            timeout = remaining_budget()
+            options = dict(timeout=timeout) if timeout is not None else {}
+            command([sys.executable, source / 'tools/verify_channel.py'], source, env,
+                    log=temp / 'operation.log', **options)
+        except CommandFailed:
+            diagnostic = previous_apk_diagnostic(source, expected, temp / 'operation.log')
+            if diagnostic is not None:
+                write_json(temp / 'readiness.json', diagnostic)
+                raise PropagationPending('Expected feed still serves the exact previous APK; not verified') from None
+            raise
+        actual = read_json(source / '.channel-check/transport-proof.json')
+        live_feed = read_json(source / '.channel-check/latest.json')
+        need(same_candidate(live_feed, expected), 'Live channel is not this staged release: feed identity')
+        need(actual.get('result') == 'PASS' and actual.get('transport') == 'production UpdateTransport.java'
+             and actual.get('bytes') == expected['size'] and actual.get('signerSha256') == SIGNER,
+             'Live probe did not verify the expected bytes and original signer')
         for field in ('sourceCommit', 'versionCode', 'versionName', 'sha256'):
             need(actual[field] == expected[field], 'Live channel is not this staged release: ' + field)
         if (run / 'verified').exists():
             stage(run, 'verified')
+            remaining_budget()
             return dict(freshLiveCheck='PASS', **actual)
         output = temp / 'output'
         output.mkdir(mode=0o700)
         copy_checked(source / '.channel-check/transport-proof.json', output / 'transport-proof.json')
+        remaining_budget()  # Expired probes must never create a success stage.
         commit_stage(run, 'verified', output, origin='fresh production UpdateTransport probe',
                      published=True, deviceInstallVerified=False)
         return dict(freshLiveCheck='PASS', **actual)
+
+
+def verify_live_ready(run, wait_seconds=180, interval_seconds=15):
+    return wait_for_live(lambda deadline: verify_live(run, deadline=deadline),
+                         wait_seconds=wait_seconds, interval_seconds=interval_seconds)
 
 
 def install_feed(run, destination):
@@ -518,6 +578,11 @@ def main():
         p.add_argument('--run', type=pathlib.Path, required=True)
         if name in ('run', 'adopt-prepared', 'import-signed'):
             p.add_argument('--archive-dir', type=pathlib.Path)
+        if name in ('run', 'verify-live'):
+            p.add_argument('--wait-seconds', type=int, default=0,
+                           help='Live readiness budget (0 for one attempt; maximum 600 seconds)')
+            p.add_argument('--retry-interval', type=int, default=15,
+                           help='Seconds between known previous-APK propagation retries (1 to 60)')
         if name == 'run':
             p.add_argument('--until', choices=STAGES, default='accepted')
             p.add_argument('--notices', type=pathlib.Path)
@@ -559,7 +624,8 @@ def main():
                 import_signed(run, normalized(args.directory))
             elif args.mode == 'run':
                 actions = (lambda: prepare(run, args.notices), lambda: sign(run), lambda: accept(run),
-                           lambda: stage_feed(run), lambda: verify_live(run))
+                           lambda: stage_feed(run),
+                           lambda: verify_live_ready(run, args.wait_seconds, args.retry_interval))
                 for index, action in enumerate(actions):
                     if index <= STAGES.index(args.until):
                         if index == 0 and not (run / 'prepared').exists():
@@ -569,7 +635,7 @@ def main():
                             fresh_check = value
                         recovery = checkpoint(run, args.archive_dir)
             elif args.mode == 'verify-live':
-                fresh_check = verify_live(run)
+                fresh_check = verify_live_ready(run, args.wait_seconds, args.retry_interval)
                 recovery = checkpoint(run)
             if args.mode == 'export':
                 status(run)
