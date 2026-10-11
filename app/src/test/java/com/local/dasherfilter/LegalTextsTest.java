@@ -242,7 +242,7 @@ public final class LegalTextsTest {
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
                 "0.5.0 migration deleted the old learned minimums and the held hand-decline record from the phone the first time it "
-                        + "runs",
+                        + "ran",
                 // Where the reading travels.
                 "your current rules and Autopilot's state, including the latest acceptance-rate reading",
                 "with the latest acceptance-rate reading", "plus Autopilot's acceptance-rate reading",

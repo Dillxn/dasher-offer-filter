@@ -130,7 +130,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     @Test
     public void settingsHoldsNoMinimumAndNothingTheHomepageAlreadyHas() {
         // The README's rules as the 0.5.0 update leaves them (its $4.75 per stop below the $13.00 minimum pay), with
-        // Autopilot on: every rule, and Autopilot with its goal, live on the homepage alone.
+        // Autopilot on: saved minimums, and Autopilot with its goal, live on the homepage alone.
         FilterStore.save(app, FilterSettings.of(true, 1300, 385, 41, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
@@ -142,7 +142,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             // Nowhere on the screen, homepage and sheet included.
             for (String gone : new String[] {"Minimum pay ($)", "Per mile ($)", "Per minute ($)", "Per hour ($)",
                     "Per stop ($)", "Per item", "Hotspot", "Learned minimums",
-                    "Max stops (1 order = 2)", "0 turns a rule off.", "Save rules", "Adaptive minimum", "Reset",
+                    "Max stops (1 order = 2)", "0 turns a rule off.", "Save rules", "Adaptive minimum",
                     "Score by area", "Automatic updates", "Check for update", "Allow installs", "Forget areas",
                     "Remember where offers come in", "Notification access", "Alert settings",
                     "DoorDash channel", "Automatic reports (GitHub token)", "Save token", "Send test",
@@ -151,6 +151,12 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             }
             // The homepage's setup steps may name these; Settings' own page never does.
             View page = settingsPage(content);
+            assertNotNull("model choice has its own Settings entry", shownButton(page, "Mode · Strict"));
+            assertNotNull("learning has its own initially-off entry", shownButton(page, "Learned · Off"));
+            assertNull("Reset is on demand inside learning details, not an always-present Settings action",
+                    shownButton(page, "Reset"));
+            assertFalse(FilterStore.load(app).scoreByArea);
+            assertFalse(FilterStore.load(app).acceptanceLearning);
             for (String homepageOnly : new String[] {"Accessibility", SetupChecklist.UPDATES, "Autopilot",
                     "acceptance rate", AutopilotText.CHOOSER_TITLE, "Bar "}) {
                 assertNull(homepageOnly, findTextView(page, homepageOnly));

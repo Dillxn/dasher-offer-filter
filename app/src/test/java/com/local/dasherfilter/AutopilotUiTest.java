@@ -1578,8 +1578,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertOwnsItsTouches(confirm);
             assertEquals(MainActivity.CLEAR_HISTORY, message(confirm));
             assertTrue("it names what of Autopilot's goes", message(confirm).contains("Autopilot's "
-                    + "acceptance-rate reading and last change from this phone, with its note that your minimums grew. "
-                    + "Your rules and Autopilot settings stay."));
+                    + "acceptance-rate reading and last change from this phone, with its note that your minimums grew"));
+            assertTrue("it also names restored learning that goes",
+                    message(confirm).contains("learned bests and adoption Undo."));
+            assertTrue("adopted saved rules are retained alongside Autopilot's settings", message(confirm)
+                    .contains("Your saved rules (including adopted minimums) and Autopilot settings stay."));
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             assertNull("no acceptance-rate reading is left", AutopilotStore.reading(app, System.currentTimeMillis()));

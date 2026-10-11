@@ -297,7 +297,8 @@ final class DecisionLog {
             return alertTag == null || other.alertTag == null || other.replay || alertTag.equals(other.alertTag);
         }
 
-        private Entry withAction(Action next, boolean autoDecline) {
+        /** An action follow-up keeps the original facts, scoring policy, notification and outcome steps. */
+        Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
                     notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
         }

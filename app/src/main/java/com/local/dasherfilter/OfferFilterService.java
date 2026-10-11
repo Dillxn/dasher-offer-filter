@@ -3680,10 +3680,7 @@ public final class OfferFilterService extends AccessibilityService {
      * decided at (and whether Autopilot set it), and whether a peek read it, kept.
      */
     private DecisionLog.Entry declinedLine(DecisionLog.Action action) {
-        DecisionLog.Entry line = declinedEntry;
-        return new DecisionLog.Entry(line.at, line.source, line.addOn, line.facts, line.requiredCents, line.result,
-                line.reason, action, true, line.evidence).withScore(line.scorePercent)
-                .withBar(line.barPercent, line.autopilot).peeked(line.peeked);
+        return declinedEntry.withAction(action, true);
     }
 
     /**

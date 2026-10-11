@@ -111,8 +111,9 @@ final class AutoAccept {
     }
     void clear() { clearCandidate(); blocked = null; }
 
-    /** Exact rule provenance, the bar included ("enabled:flat:mile:minute:maxStops:bar"); no rounded label decides. */
+    /** Current action rules and bar. Planner goals and inactive stored proof cannot change this offer's cutoff.
+     * Also used by the first-Decline recheck, so the selected area/learner policy stays in this identity. */
     static String rulesKey(FilterSettings s) {
-        return s.rulesKey() + ":" + s.minimumScalePercent;
+        return s.enabled + ":" + s.scoringKey() + ":" + s.minimumScalePercent;
     }
 }

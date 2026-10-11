@@ -23,12 +23,16 @@ import static org.junit.Assert.assertTrue;
 /**
  * Outcome steps kept on an offer's history line: they never change its action, an acceptance moves its tally and the
  * totals and a mark changes neither, they last as the line does, and they never leave the phone in an automatic
- * report. Nothing is learned from any of them; every kind an older version wrote still parses.
+ * report. Steps do not themselves train the learner; current learner statuses describe an independently confirmed
+ * lesson, while every kind an older version wrote still parses with its historical meaning.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class DecisionLogStepsTest {
     private static final OfferSnapshot PASSING = new OfferSnapshot(1675, 3.9, 30, 3);
+    private static final List<DecisionLog.StepKind> CURRENT_LEARNER_KINDS = Arrays.asList(
+            DecisionLog.StepKind.LEARNER_BEST_SAVED, DecisionLog.StepKind.LEARNER_MINIMUM_RAISED,
+            DecisionLog.StepKind.LEARNER_UNCHANGED);
     private Application app;
 
     @Before
@@ -290,8 +294,42 @@ public class DecisionLogStepsTest {
         }
         assertTrue("an older acceptance still counts", DecisionLog.accepted(DecisionLog.recent(app, 1).get(0)));
         for (DecisionLog.StepKind kind : DecisionLog.StepKind.values()) {
+            // Only the fresh 0.6 learner status kinds use current learning words; the retired kinds above retain
+            // their neutral labels and every other kind still satisfies this guard.
+            if (CURRENT_LEARNER_KINDS.contains(kind)) continue;
             String words = kind.label.toLowerCase(java.util.Locale.US);
             assertFalse(kind.name(), words.contains("learn") || words.contains("adaptive") || words.contains("taught"));
+        }
+    }
+
+    @Test public void currentLearnerStatusesKeepTheirWordsWithoutInventingAnOutcomeOrLeavingInAnOfferReport() {
+        long now = System.currentTimeMillis();
+        DecisionLog.record(app, passing(now));
+        int[] totals = DecisionLog.totals(app);
+        String[] labels = {"New accepted best saved", "Learned minimum raised", "Learned minimum unchanged"};
+        for (DecisionLog.StepKind kind : CURRENT_LEARNER_KINDS) {
+            assertTrue(DecisionLog.markStep(app, PASSING, kind, "local learner status", 60_000));
+        }
+        DecisionLog.flush();
+        DecisionLog.forgetCache();
+        DecisionLog.Entry loaded = DecisionLog.recent(app, 1).get(0);
+        assertEquals(CURRENT_LEARNER_KINDS.size(), loaded.steps.size());
+        assertEquals(DecisionLog.Action.PASSES, loaded.action);
+        assertEquals(DecisionLog.Outcome.PASSED, DecisionLog.outcome(loaded));
+        assertFalse("a learner status alone is no acceptance evidence", DecisionLog.accepted(loaded));
+        assertArrayEquals(totals, DecisionLog.totals(app));
+        assertTrue("the separate observed acceptance still counts", DecisionLog.accepted(loaded.withStep(
+                new DecisionLog.Step(DecisionLog.StepKind.ACCEPTED, now + 1, "confirmed delivery"))));
+        String report = OfferReport.text(OfferReport.Problem.MISREAD, "test", 1, "Android test",
+                FilterSettings.of(true, 1300, 385, 41, 3), loaded);
+        assertFalse(report, report.contains("\"steps\""));
+        assertFalse(report, report.contains("local learner status"));
+        for (int i = 0; i < CURRENT_LEARNER_KINDS.size(); i++) {
+            DecisionLog.Step step = loaded.steps.get(i);
+            assertEquals(CURRENT_LEARNER_KINDS.get(i), step.kind);
+            assertEquals(labels[i] + ": local learner status", step.text());
+            assertFalse(report, report.contains(step.kind.name()));
+            assertFalse(report, report.contains(labels[i]));
         }
     }
 }

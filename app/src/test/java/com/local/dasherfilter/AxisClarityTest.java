@@ -40,7 +40,13 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             assertTrue("the chart tells the set minimums from Autopilot's shape and the offers: " + said,
                     said.contains("solid") && said.contains("dashed") && said.contains("autopilot")
                             && said.contains("offers"));
-            assertFalse("no learned shape any more: " + said, said.contains("learned"));
+            assertTrue("the restored learner is explicitly off: " + said,
+                    said.contains("gray is learned bests stored but off"));
+            assertFalse(FilterStore.load(app).acceptanceLearning);
+            assertTrue("empty restored learning draws no learned shape", star.learnedShape().isEmpty());
+            for (int axis : MinimumsStarView.SPOKES) {
+                assertTrue("empty learning supplies no ask on axis " + axis, Double.isNaN(star.learnedAsks(axis)));
+            }
         }
     }
 
@@ -65,7 +71,9 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             String said = star.getContentDescription().toString();
             assertTrue(said, said.contains("Your minimums: pay $7.00, per mile $1.50, per hour of trip time 18 dollars "
                     + "per hour; at most 3 stops."));
-            for (String retired : new String[] {"adaptive", "learned", "per stop", "hotspot", "per item", "per minute"}) {
+            assertTrue("saved units remain distinct from the off learner",
+                    said.contains("Learned bests do not move saved knobs."));
+            for (String retired : new String[] {"adaptive", "per stop", "hotspot", "per item", "per minute"}) {
                 assertFalse(retired + ": " + said, said.toLowerCase(java.util.Locale.US).contains(retired));
             }
         }

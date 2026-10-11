@@ -163,7 +163,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(description, description.contains("Your minimums: pay $7.00, per mile off, per hour of trip "
                     + "time off; no max stops."));
             assertTrue("$25.00 against $7.00: " + description,
-                    description.contains("The newest offer scores 357% of your minimums."));
+                    description.contains("The newest offer scores 357% of your resolved minimums."));
+            assertFalse("strict scores are not relabeled as area fitness", description.contains("area fitness"));
             assertTrue(description, description.endsWith("The constellation shows the latest or selected offer. "
                     + "Choose an older offer on the skyline."));
             DecisionChartView chart = findChart(content);
@@ -174,7 +175,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals("history stays selectable", Integer.valueOf(790), chart.selectedEntry().facts.payCents);
             assertTrue("the chosen offer is worked out against the minimums as they are now: $7.90 against $7.00",
-                    star.getContentDescription().toString().contains("The chosen offer scores 112% of your minimums."));
+                    star.getContentDescription().toString().contains("The chosen offer scores 112% of your resolved minimums."));
         }
     }
 

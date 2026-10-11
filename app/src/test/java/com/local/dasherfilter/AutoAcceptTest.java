@@ -71,7 +71,7 @@ public final class AutoAcceptTest {
     }
 
     @Test public void theRulesKeyIsTheMinimumsMaxStopsSwitchAndBar() {
-        assertEquals("true:1000:100:20:4:false:false:off:false:70:proof:0:0:0x0.0p0:0:0:100", AutoAccept.rulesKey(rules));
+        assertEquals("true:1000:100:20:4:false:false:off:100", AutoAccept.rulesKey(rules));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimumScalePercent(99)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1001, 100, 20)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1000, 101, 20)));
@@ -80,8 +80,11 @@ public final class AutoAcceptTest {
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withEnabled(false)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withScoreByArea(true)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withAcceptanceLearning(true)));
-        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withAccepted(new AcceptedFloors(1,0,0,0,0))));
-        assertEquals("true:400:100:25:0:false:false:off:true:70:proof:0:0:0x0.0p0:0:0:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
+        assertEquals("inactive stored bests do not judge this offer", AutoAccept.rulesKey(rules),
+                AutoAccept.rulesKey(rules.withAccepted(new AcceptedFloors(1,0,0,0,0))));
+        assertNotEquals(AutoAccept.rulesKey(rules.withAcceptanceLearning(true)),
+                AutoAccept.rulesKey(rules.withAcceptanceLearning(true).withAccepted(new AcceptedFloors(1,0,0,0,0))));
+        assertEquals("true:400:100:25:0:false:false:off:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
                 82)));
     }
 
@@ -166,4 +169,28 @@ public final class AutoAcceptTest {
         assertFalse(a.rereadAfterContent(4900));
         assertEquals(AutoAccept.State.BLOCKED, a.observe(offer, "same", rules, 29, 1, 5000, false));
     }
+    @Test public void futurePlannerChoicesKeepTheCandidateButCurrentScoringChangesCancelIt() {
+        FilterSettings planned = rules.withAutopilot(true, 70);
+        AutoAccept candidate = new AutoAccept();
+        assertEquals(AutoAccept.State.WAIT, candidate.observe(offer, "same", planned, 30, 1, 1000, false));
+        FilterSettings newGoal = planned.withAutopilot(true, 50);
+        assertEquals(AutoAccept.rulesKey(planned), AutoAccept.rulesKey(newGoal));
+        assertEquals(AutoAccept.State.READY, candidate.observe(offer, "same", newGoal, 29, 1, 1800, false));
+        assertTrue(candidate.current(offer, "same", newGoal, 1, 1800));
+        assertTrue("switch alone at the same 100% bar changes no cutoff",
+                candidate.current(offer, "same", newGoal.withAutopilot(false, 50), 1, 1800));
+        for (FilterSettings changed : new FilterSettings[] {planned.withEnabled(false), planned.withMaxStops(3),
+                planned.withMinimums(1001,100,20), planned.withScoreByArea(true),
+                planned.withAcceptanceLearning(true), planned.withMinimumScalePercent(99)}) {
+            AutoAccept armed = new AutoAccept();
+            armed.observe(offer, "same", planned, 30, 1, 1000, false);
+            assertEquals(AutoAccept.State.BLOCKED, armed.observe(offer, "same", changed, 29, 1, 1800, false));
+        }
+        FilterSettings learning = planned.withAcceptanceLearning(true);
+        AutoAccept armed = new AutoAccept();
+        armed.observe(offer, "same", learning, 30, 1, 1000, false);
+        assertEquals(AutoAccept.State.BLOCKED, armed.observe(offer, "same",
+                learning.withAccepted(new AcceptedFloors(1000,1000,2,1000,10)), 29, 1, 1800, false));
+    }
+
 }

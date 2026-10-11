@@ -60,11 +60,17 @@ public final class ItemHistoryTest {
         assertTrue(json.getBoolean("itemCountApplicable"));
         HashSet<String> keys = new HashSet<>();
         for (java.util.Iterator<String> it = json.keys(); it.hasNext();) keys.add(it.next());
-        // A line decided now (rules model 2) also keeps the bar it used, whether Autopilot set it, and its model.
+        // Model 3 keeps its score kind as well as the bar, Autopilot flag and model. This minimal fixture has no
+        // captured policy, so serialization must not invent a rules snapshot for it.
         assertEquals(new HashSet<>(Arrays.asList("at", "source", "addOn", "required", "result", "reason",
                 "action", "autoDecline", "evidence", "pay", "miles", "minutes", "stops", "items",
-                "itemCountApplicable", "score", "bar", "auto", "model")), keys);
+                "itemCountApplicable", "score", "bar", "auto", "model", "scoreKind")), keys);
+        assertEquals(3, json.getInt("model"));
+        assertEquals("strict", json.getString("scoreKind"));
         DecisionLog.Entry loaded = DecisionLog.Entry.fromJson(json);
+        assertEquals(3, loaded.model);
+        assertEquals("strict", loaded.scoreKind);
+        assertNull(loaded.scoringRules);
         assertEquals(Integer.valueOf(12), loaded.facts.items);
         assertTrue(loaded.facts.itemCountApplicable);
         assertEquals(137, loaded.scorePercent);

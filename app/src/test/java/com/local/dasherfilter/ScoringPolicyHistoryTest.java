@@ -48,7 +48,12 @@ public final class ScoringPolicyHistoryTest {
         DecisionLog.Entry notice=entry(rules().withScoreByArea(false));
         DecisionLog.Entry copy=before.peeked(true).withTime(1234).withAlertTag("synthetic",true)
                 .withStep(new DecisionLog.Step(DecisionLog.StepKind.LEARNER_BEST_SAVED,1235,""))
-                .withNotification(notice);
+                .withNotification(notice).withAction(DecisionLog.Action.CONFIRMATION_TAPPED,true);
+        assertEquals(DecisionLog.Action.CONFIRMATION_TAPPED,copy.action);
+        assertTrue(copy.autoDecline);
+        assertTrue(copy.peeked);
+        assertEquals("synthetic",copy.alertTag);
+        assertEquals(DecisionLog.StepKind.LEARNER_BEST_SAVED,copy.steps.get(0).kind);
         samePolicy(before,copy); samePolicy(notice,copy.notification);
         samePolicy(before,DecisionLog.Entry.fromJson(copy.toJson()));
         assertEquals("strict",DecisionLog.Entry.fromJson(copy.toJson()).notification.scoreKind);

@@ -273,7 +273,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             AlertDialog confirm = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(findTextContaining(confirm.getWindow().getDecorView(), "waiting estimates"));
             assertNotNull(findTextContaining(confirm.getWindow().getDecorView(),
-                    "Your rules and Autopilot settings stay."));
+                    "Your saved rules (including adopted minimums) and Autopilot settings stay."));
             assertEquals("opening the confirmation does not clear data", 1,
                     QualifyingWaitStore.estimate(app, original).readable);
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
