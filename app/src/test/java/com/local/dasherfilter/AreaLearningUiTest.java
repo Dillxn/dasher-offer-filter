@@ -333,8 +333,11 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         FilterStore.save(app, RULES);
         if (font > 1f) {
             learn();
+            // Adopt on the homepage's note makes the new high's learned minimums the user's own, with Undo in Learned
+            // minimums (the knobs never move by themselves; the owner, 12 October 2026).
+            assertTrue(FilterStore.adoptAccepted(app));
             FilterStore.setAcceptanceLearning(app, false);
-            assertNotNull("the new high raised the minimums, with Undo", FilterStore.pendingAdoption(app));
+            assertNotNull("adopted, with Undo", FilterStore.pendingAdoption(app));
         }
         DecisionLog.record(app, decided(RULES, new OfferSnapshot(790, 7.2, null, 2)));
         String shortQualifiers = RuntimeEnvironment.getQualifiers();
@@ -384,10 +387,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             listener.get().onListenerConnected();
             Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
             if (font > 1f) {
-                // The note of the raise read and closed (Adopt stays in Learned minimums).
-                TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
-                assertNotNull(note);
-                shownButton((View) note.getParent(), LearnedRaiseCard.OK).performClick();
+                assertNull("adopted: no note of the raise is left", shownTextContaining(content, LearnedRaiseCard.TITLE));
             }
             resizeWindow(activity, "+h914dp");
             settleSky(content);

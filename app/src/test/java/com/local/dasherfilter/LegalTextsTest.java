@@ -19,7 +19,7 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"Strict mode is the default", "Area mode is a separate, initially off choice",
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
                 "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
-                "Add-on filtering stays strict against saved minimums", "Undo is conditional",
+                "Add-on filtering stays strict against saved minimums", "it is conditional and cannot overwrite later changes",
                 "growth waits while an enabled learned floor exceeds"}) assertTrue(fact, terms.contains(fact));
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and adoption receipts are not sent",
