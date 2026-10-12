@@ -290,9 +290,8 @@ public class BundledNotesTest {
      * 0.6.2 (the owner, 12 October 2026): Autopilot on by default, turned on once for installs updating, and the offer
      * clock. Its notice carries the clock too, since a reader of notice 18 gets no What's-new card with it.
      */
-    @Test public void autopilotOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
+    @Test public void autopilotOnByDefaultHasItsOwnNoticeAndRelease() {
         assertTrue("historical notice 19 is preserved", BundledNotes.hasNotice(19));
-        assertEquals("0.6.2", Updater.version(RuntimeEnvironment.getApplication()));
         String notice = String.join(" ", notice(19));
         for (String fact : new String[] {"Autopilot is on by default", "turns it on once", "the goal you chose before",
                 "70% acceptance rate", "turns it off", FilterStore.BAR_MIN + "% and " + FilterStore.BAR_MAX + "%",
@@ -335,6 +334,29 @@ public class BundledNotesTest {
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
+     * 0.6.3 (the owner, 12 October 2026): the latest offer as a label and every picture kept in a small split window
+     * ("that sentence needs to be removed at all sizes"), Split opening Dasher first, the scoring mode on the homepage
+     * ("the mode button being on the homepage"), a peek's take-back teaching, the coloured tab beside this app and the
+     * daily count's switch, each said once, with no promise of better offers.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.3", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.3");
+        assertEquals(lines.toString(), 3, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"The latest offer is a label", "radar, skyline, offer map and counts",
+                "Split opens Dasher full screen first", "Strict or Area is a chip", "no Mode row",
+                "take-back from a peek's decline teaches", "tab shows beside this app",
+                "daily anonymous count has a Settings switch"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
+                "track", "identifier", "location"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
         }
     }
 

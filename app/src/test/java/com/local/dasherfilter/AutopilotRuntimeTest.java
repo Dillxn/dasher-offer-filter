@@ -268,7 +268,9 @@ public class AutopilotRuntimeTest {
         assertTrue("told of the commit", told[0] > before);
 
         AutopilotText.Status status = AutopilotRuntime.status(app, wall + 4 * MIN, true);
-        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(status));
+        // At the lowest bar (0.6.3) the line says so first: the chip shows only "Auto 50%".
+        assertEquals("Lowest bar · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(status));
+        assertEquals("Auto 50%", AutopilotText.chip(status));
         assertEquals("Last change 4 min ago: 100% → 50% (Autopilot turned on).",
                 AutopilotText.detailsLastChange(status));
 

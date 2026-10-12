@@ -355,12 +355,21 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            TextView facts = verdictLine(content);
-            assertTrue(facts.getText().toString(), facts.getText().toString().startsWith("$7.90 · 7.2 mi · Time unread"));
+            // The latest offer's facts at the top, as its tile's labels (0.6.3): the pay and the miles, and the trip
+            // time drawn as unread, never left out; whole, nothing cut. Screen readers hear them in words.
+            VerdictTile facts = verdictTile(content);
+            String shown = facts.shownText();
+            assertTrue(shown, shown.startsWith("$7.90 · "));
+            assertTrue(shown, shown.endsWith(" · 7.2 mi · ? min"));
+            assertFalse(shown, shown.contains("…"));
+            assertEquals("the pay at its own size: " + shown,
+                    VerdictTile.drawn(facts.getResources().getDisplayMetrics(), 16), facts.payTextSize(), 0.5f);
+            String said = String.valueOf(facts.getContentDescription());
+            assertTrue(said, said.startsWith("$7.90 · 7.2 mi · Time unread · "));
             Rect visible = new Rect();
             assertTrue(facts.getGlobalVisibleRect(visible));
             assertEquals(facts.getHeight(), visible.height());
-            for (int line = 0; line < facts.getLineCount(); line++) assertEquals(0, facts.getLayout().getEllipsisCount(line));
+            assertEquals(facts.getWidth(), visible.width());
             assertNotNull(find(content, AutopilotChip.class));
             View settings = shownIcon(content, "Settings");
             assertNotNull(settings);

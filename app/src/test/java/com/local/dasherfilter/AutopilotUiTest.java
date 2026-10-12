@@ -464,8 +464,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // From here plans wait to be worked out, the one screen reading asks for as it connects included.
             AutopilotRuntime.executorForTests = queued::add;
             connectReader();
+            // Max stops alone: nothing for Autopilot to scale. The chip says only "Auto"; the line says what it needs.
             FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 3));
-            assertEquals("", autopilotLine(content));
+            assertEquals("Needs a minimum", autopilotLine(content));
+            assertEquals("Auto", find(content, AutopilotChip.class).getText().toString());
 
             FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
             assertEquals("Auto-decline paused", autopilotLine(content));
@@ -514,10 +516,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             int sent = Shadows.shadowOf(accessibility).getSentAccessibilityEvents().size();
             assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
             assertEquals(50, FilterStore.load(app).minimumScalePercent);
-            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            // At the lowest bar the line says so first (0.6.3), and the chip shows only its bar.
+            assertEquals("Lowest bar · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertEquals("Auto 50% lowest", find(content, AutopilotChip.class).getText().toString());
+            assertEquals("Auto 50%", find(content, AutopilotChip.class).getText().toString());
             assertFalse("the radar's button is the learner's", drawnWords(star).contains("50%"));
             assertFalse("a dashed shape at the bar", star.autopilotShape().isEmpty());
             List<AccessibilityEvent> events = Shadows.shadowOf(accessibility).getSentAccessibilityEvents();
@@ -528,7 +531,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, chip.getAccessibilityLiveRegion());
             assertTrue("the chip at the line's start at every size, on a whole screen too", chip.isShown());
-            assertEquals("its words follow the bar", "Auto 50% lowest", chip.getText().toString());
+            assertEquals("its words follow the bar", "Auto 50%", chip.getText().toString());
         } finally {
             listener.destroy();
         }
@@ -940,7 +943,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            assertEquals("Lowest bar · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
             statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
@@ -1000,7 +1003,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            assertEquals("Lowest bar · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
             statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();

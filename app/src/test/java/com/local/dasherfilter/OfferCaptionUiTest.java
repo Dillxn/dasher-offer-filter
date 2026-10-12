@@ -69,12 +69,11 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
                 chart.select(i);
                 View target;
                 if (i == steps.length - 1) {
-                    // The latest is said once, by the verdict at the top (the owner, 11 October 2026).
+                    // The latest is said once, by the tile at the top (the owner, 11 October 2026), as a label and a
+                    // badge, not a sentence (12 October): its outcome in the caption's words, never a guessed one.
                     assertNull(shownTextContaining(content, "Latest ·"));
                     assertNull(shownTextContaining(content, "Selected ·"));
-                    String verdict = verdictLine(content).getText().toString();
-                    assertTrue(verdict, verdict.contains(DecisionLog.money(1200 + i * 100)) && verdict.contains(words[i]));
-                    target = stripWords(content);
+                    target = latestTile(content, DecisionLog.money(1200 + i * 100), words[i]);
                 } else {
                     String expected = "Selected · " + DecisionLog.money(1200 + i * 100) + " · " + words[i];
                     TextView caption = shownTextContaining(content, expected);
@@ -111,9 +110,9 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             assertNull("the latest is not repeated under the skyline", shownTextContaining(content, "Latest ·"));
-            String verdict = verdictLine(content).getText().toString();
-            assertTrue(verdict, verdict.contains("$15.00") && verdict.contains("Left to you"));
-            stripWords(content).performClick();
+            VerdictTile tile = latestTile(content, "$15.00", "Left to you");
+            assertNull("an Accept never sent is no request and no acceptance", tile.tag());
+            tile.performClick();
             layOut(content);
             TextView status = shownTextContaining(content, "Automatic Accept not sent; left to you:");
             assertNotNull(status);
@@ -147,15 +146,24 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             assertNull(shownTextContaining(content, "Latest ·"));
-            assertTrue(verdictLine(content).getText().toString().contains("Review"));
+            VerdictTile tile = verdictTile(content);
+            assertEquals("Review", tile.outcome());
+            String shown = tile.shownText();
+            assertTrue("unread pay is drawn as unread, never guessed: " + shown, shown.startsWith("$?"));
+            assertTrue("and so are the miles and the minutes: " + shown, shown.endsWith("? mi · ? min"));
+            String said = String.valueOf(tile.getContentDescription());
+            assertTrue("and heard as unread: " + said,
+                    said.startsWith("Pay unread · Miles unread · Time unread · Review · "));
             find(content, DecisionChartView.class).select(0);
             assertNotNull(shownTextContaining(content, "Selected · $5.00 · Declined"));
             DecisionLog.clear(app);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertNull(shownTextContaining(content, "Selected ·"));
             assertNull("the skyline's caption says nothing without an offer", shownTextContaining(content, "Latest ·"));
-            assertEquals("the verdict at the top says so", "No offers yet",
-                    verdictLine(content).getText().toString());
+            assertNull("the tile at the top says so", tile.outcome());
+            assertEquals(VerdictTile.NO_OFFERS, String.valueOf(tile.getContentDescription()));
+            assertEquals(VerdictTile.NO_OFFERS, tile.shownText());
+            assertFalse("no offer to open", tile.isClickable());
         }
     }
 
@@ -198,7 +206,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             chart.select(2);
             assertNull("the latest has no caption of its own", shownTextContaining(content, "Selected ·"));
             assertNull(shownTextContaining(content, "Latest ·"));
-            assertTrue(verdictLine(content).getText().toString().contains("$25.00"));
+            latestTile(content, "$25.00", "Passed");
         }
     }
 
@@ -275,23 +283,33 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            // The latest offer is said once, by the verdict at the top of the page, which opens it at every size (the
-            // owner, 11 October 2026: the skyline's caption repeated it).
+            // The latest offer is said once, by the tile at the top of the page, which opens it at every size (the
+            // owner, 11 October 2026: the skyline's caption repeated it; 12 October: a label and a badge, not a
+            // sentence).
             assertNull(shownTextContaining(content, "Latest ·"));
+            assertNull("the skyline's caption is an older offer's alone", shownTextContaining(content, "Selected ·"));
             ScenePage scene = find(content, ScenePage.class);
-            View target = stripWords(content);
-            assertTrue("the verdict names the offer: " + verdictLine(content).getText(),
-                    verdictLine(content).getText().toString().contains("$18.35"));
-            assertTrue(target.getHeight() >= new Ui(app).dp(48));
-            assertTrue(target.getWidth() >= new Ui(app).dp(48));
+            VerdictTile tile = latestTile(content, "$18.35", outcome);
+            assertEquals("a request is tagged as one, never drawn as an acceptance",
+                    status == DecisionLog.StepKind.AUTO_ACCEPT_REQUESTED ? VerdictTile.TAG_REQUESTED : null, tile.tag());
+            Ui ui = new Ui(app);
+            assertTrue("a 48 dp target (" + ui.dp(48) + " px): " + tile.getWidth() + " x " + tile.getHeight() + " px",
+                    tile.getWidth() >= ui.dp(48) && tile.getHeight() >= ui.dp(48));
             assertTrue("main scene fits its window: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
                     scene.getHeight() <= ((View) scene.getParent()).getHeight());
             Rect visible = new Rect();
-            assertTrue(target.getGlobalVisibleRect(visible));
-            assertEquals("whole target remains on screen", target.getHeight(), visible.height());
-            TextView verdict = verdictLine(content);
-            assertTrue("all wrapped lines fit", verdict.getLayout().getHeight()
-                    <= verdict.getHeight() - verdict.getPaddingTop() - verdict.getPaddingBottom());
+            assertTrue(tile.getGlobalVisibleRect(visible));
+            assertEquals("whole target remains on screen", tile.getHeight(), visible.height());
+            assertEquals("whole target remains on screen", tile.getWidth(), visible.width());
+            // Nothing it draws is clipped: its two lines fit its height, the pay is at its own size (condensed at most
+            // to four fifths of its width, never drawn smaller) and the trip is whole.
+            assertTrue("its two lines fit: " + tile.getHeight(),
+                    tile.getHeight() >= VerdictTile.heightFor(tile.getContext()) - 1);
+            String shown = tile.shownText();
+            assertEquals("the pay at its own size: " + shown + " in " + tile.getWidth() + " px",
+                    VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16), tile.payTextSize(), 0.5f);
+            assertTrue("condensed at most to four fifths: " + tile.payCondensed(), tile.payCondensed() >= 0.8f - 1e-4f);
+            assertTrue("the trip whole: " + shown, shown.contains("3 mi · 15 min") && !shown.contains("…"));
             Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
             content.draw(new Canvas(bitmap));
             File dir = new File("build/reports/offer-caption");
@@ -309,14 +327,13 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
                 assertNotNull("the map wholly there is a usable target",
                         Shadows.shadowOf(activity.get()).getLastRequestedPermission());
             }
-            // On the caption, or on the verdict's own words (the chip and the status line under them in the strip keep
-            // their own taps).
-            View words = verdictLine(content);
+            // A finger on the tile itself (the mascot beside it, the counts after it and the chips under it keep their
+            // own taps).
             int[] targetAt = new int[2], contentAt = new int[2];
-            words.getLocationOnScreen(targetAt);
+            tile.getLocationOnScreen(targetAt);
             content.getLocationOnScreen(contentAt);
-            tap((ViewGroup) content, targetAt[0] - contentAt[0] + words.getWidth() / 2f,
-                    targetAt[1] - contentAt[1] + words.getHeight() / 2f);
+            tap((ViewGroup) content, targetAt[0] - contentAt[0] + tile.getWidth() / 2f,
+                    targetAt[1] - contentAt[1] + tile.getHeight() / 2f);
             assertNotNull("real coordinate tap opens the displayed offer", shownTextContaining(content, "Read: $18.35"));
             assertTrue(FilterStore.load(app).enabled);
         } finally {
@@ -324,6 +341,27 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             service.destroy();
             OfferFilterService.sawDasherBeside(0);
         }
+    }
+
+    /**
+     * The latest offer's tile at the top of the page (0.6.3): it draws {@code pay} first, shows {@code outcome} (the
+     * skyline caption's words for it, by its badge), and screen readers hear the facts and that outcome in full, then
+     * what a tap does. Returned for its tap.
+     */
+    private static VerdictTile latestTile(View content, String pay, String outcome) {
+        VerdictTile tile = verdictTile(content);
+        assertNotNull("the latest offer's tile", tile);
+        assertTrue("it is on the page", tile.isShown());
+        String shown = tile.shownText();
+        assertTrue("the pay comes first: " + shown, shown.startsWith(pay));
+        assertEquals("its outcome, in the caption's words", outcome, tile.outcome());
+        assertNotNull("drawn as a badge", tile.symbol());
+        String said = String.valueOf(tile.getContentDescription());
+        assertTrue("heard with its pay first: " + said, said.startsWith(pay + " · "));
+        assertTrue("and its outcome in words: " + said, said.contains(" · " + outcome + " · "));
+        assertTrue("then what a tap does: " + said, said.endsWith(". " + VerdictTile.ACTION));
+        assertTrue("a tap opens it", tile.isClickable());
+        return tile;
     }
 
     private static int countText(View view, String text) {

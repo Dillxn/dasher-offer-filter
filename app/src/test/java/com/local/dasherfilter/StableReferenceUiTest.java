@@ -6,7 +6,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.view.View;
-import android.widget.TextView;
 import java.util.Collections;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -117,20 +116,29 @@ public class StableReferenceUiTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w360dp-h240dp-xhdpi")
     public void shortWindowShowsPayMilesAndTripTimeBeforeTheOutcome() {
-        assertOverview(new OfferSnapshot(790, 7.2, 21, 2), "$7.90 · 7.2 mi · 21 min", 1f);
+        assertOverview(new OfferSnapshot(790, 7.2, 21, 2), "$7.90 · 7.2 mi · 21 min",
+                new String[] {"$7.90", "7.2 mi", "21 min"}, 1f);
     }
 
     @Test @Config(qualifiers = "w360dp-h300dp-xhdpi")
     public void largeFontShortWindowSaysWhenTripTimeWasUnread() {
-        assertOverview(new OfferSnapshot(790, 7.2, null, 2), "$7.90 · 7.2 mi · Time unread", 2f);
+        assertOverview(new OfferSnapshot(790, 7.2, null, 2), "$7.90 · 7.2 mi · Time unread",
+                new String[] {"$7.90", "7.2 mi", "? min"}, 2f);
     }
 
     @Test @Config(qualifiers = "w360dp-h300dp-xhdpi")
     public void missingFactsStayUnreadInTheOverviewAndItsAccessibleDescription() {
-        assertOverview(OfferSnapshot.UNKNOWN, "Pay unread · Miles unread · Time unread", 1f);
+        assertOverview(OfferSnapshot.UNKNOWN, "Pay unread · Miles unread · Time unread",
+                new String[] {"$?", "? mi", "? min"}, 1f);
     }
 
-    private void assertOverview(OfferSnapshot facts, String prefix, float fontScale) {
+    /**
+     * The latest offer at the top of a short window, as its tile (0.6.3: labels and a badge, not a sentence): it draws
+     * {@code drawn}, the pay first and the trip whole, an unread figure as unread ("$?", "? mi", "? min"), never left
+     * out or guessed; screen readers hear those facts in words ({@code said}) before the outcome, then the reason and
+     * what a tap does.
+     */
+    private void assertOverview(OfferSnapshot facts, String said, String[] drawn, float fontScale) {
         RuntimeEnvironment.setFontScale(fontScale);
         FilterStore.save(app, RULES);
         DecisionLog.Entry offer = entry(facts);
@@ -140,27 +148,36 @@ public class StableReferenceUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            TextView words = verdictLine(content);
-            String visible = words.getText().toString();
-            assertTrue("facts come first: " + visible, visible.startsWith(prefix + " · "));
-            String said = stripWords(content).getContentDescription().toString();
-            for (String fact : prefix.split(" · ")) assertTrue("accessible fact: " + fact + " in " + said, said.contains(fact));
-            assertTrue("outcome stays visible", visible.contains(MainActivity.captionOutcome(offer)));
-            assertTrue("reason stays accessible", said.toLowerCase(java.util.Locale.US)
+            VerdictTile tile = verdictTile(content);
+            assertTrue("the tile is on the page", tile.isShown());
+            String visible = tile.shownText();
+            assertTrue("the pay comes first: " + visible, visible.startsWith(drawn[0] + " · "));
+            assertTrue("then the miles and the trip time, whole: " + visible,
+                    visible.endsWith(" · " + drawn[1] + " · " + drawn[2]));
+            assertFalse("facts are never cut: " + visible, visible.contains("…"));
+            assertEquals("the pay at its own size, never drawn smaller: " + visible,
+                    VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16), tile.payTextSize(), 0.5f);
+            String outcome = MainActivity.captionOutcome(offer);
+            assertEquals("outcome stays visible, as the tile's badge", outcome, tile.outcome());
+            assertNotNull(tile.symbol());
+            String heard = String.valueOf(tile.getContentDescription());
+            assertTrue("facts come first, in words: " + heard, heard.startsWith(said + " · " + outcome + " · "));
+            assertTrue("reason stays accessible", heard.toLowerCase(java.util.Locale.US)
                     .contains(MainActivity.plainReason(offer.reason).toLowerCase(java.util.Locale.US)));
-            assertTrue(said.endsWith("Open offer details"));
+            assertTrue(heard.endsWith(VerdictTile.ACTION));
             Rect visibleBounds = new Rect();
-            assertTrue(words.getGlobalVisibleRect(visibleBounds));
-            assertEquals("all overview text remains in the window", words.getHeight(), visibleBounds.height());
-            for (int line = 0; line < words.getLineCount(); line++) {
-                assertEquals("facts are never ellipsized", 0, words.getLayout().getEllipsisCount(line));
-            }
-            assertTrue(stripWords(content).getHeight() >= new Ui(app).dp(48));
-            assertTrue(stripWords(content).getWidth() >= new Ui(app).dp(48));
+            assertTrue(tile.getGlobalVisibleRect(visibleBounds));
+            assertEquals("the whole tile remains in the window", tile.getHeight(), visibleBounds.height());
+            assertEquals("the whole tile remains in the window", tile.getWidth(), visibleBounds.width());
+            assertTrue("its two lines fit its height", tile.getHeight() >= VerdictTile.heightFor(tile.getContext()) - 1);
+            assertTrue(tile.getHeight() >= new Ui(app).dp(48));
+            assertTrue(tile.getWidth() >= new Ui(app).dp(48));
             render(content, facts.payCents == null ? "unread-facts" : facts.minutes == null ? "unread-time-font2"
                     : "complete-facts-short");
-            stripWords(content).performClick();
+            tile.performClick();
             assertNotNull("the overview opens the offer's ticket", find(content, OfferCardView.class));
+            assertEquals("this offer's", DecisionLog.outcome(offer).said,
+                    find(content, Decor.Stamp.class).getContentDescription().toString());
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
         }
     }

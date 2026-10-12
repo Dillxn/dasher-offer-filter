@@ -60,17 +60,26 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            TextView waiting = shownTextContaining(content, "Waiting for offers");
-            assertNotNull(waiting);
+            // One short waiting state, the latest offer's tile with none yet (0.6.3): its words, and nothing to open.
+            VerdictTile waiting = verdictTile(content);
+            assertTrue(waiting.isShown());
+            assertEquals(VerdictTile.WAITING, waiting.shownText());
+            assertEquals(VerdictTile.WAITING, String.valueOf(waiting.getContentDescription()));
+            assertNull("no offer yet", waiting.outcome());
             assertFalse("there is no offer ticket to open yet", waiting.isClickable());
+            assertNull("said once, by the tile", shownTextContaining(content, VerdictTile.WAITING));
             assertNull(shownTextContaining(content, "Learning your wait"));
             assertNull(shownTextContaining(content, "Wait estimate needs"));
             assertNull(shownTextContaining(content, "No offers yet"));
             find(content, FilterHeroView.class).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertFalse(FilterStore.load(app).enabled);
-            assertNull(shownTextContaining(content, "Waiting for offers"));
+            assertEquals("paused: no longer waiting for offers", VerdictTile.NO_OFFERS,
+                    String.valueOf(waiting.getContentDescription()));
+            assertEquals(VerdictTile.NO_OFFERS, waiting.shownText());
+            assertNull(shownTextContaining(content, VerdictTile.WAITING));
             assertNotNull(shownTextContaining(content, MainActivity.PAUSED_LINE));
+            assertEquals("in the status line", MainActivity.PAUSED_LINE, statusLine(content).getText().toString());
         } finally {
             listener.destroy();
             service.destroy();
@@ -137,10 +146,21 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         listener.get().onListenerConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            // The status line stands where the wait would; a tap explains and changes nothing.
-            TextView status = shownTextContaining(content, "Autopilot 97%");
-            assertNotNull(status);
+            // The status line stands where the wait would; a tap explains and changes nothing. The bar is the chip's
+            // to show (0.6.3: each fact said once); screen readers hear it with the status.
+            assertEquals("Auto 97%", find(content, AutopilotChip.class).getText().toString());
+            TextView status = statusLine(content);
+            assertTrue(status.isShown());
+            String words = status.getText().toString();
+            assertEquals("Autopilot's own status", AutopilotText.statusLine(AutopilotRuntime.status(app,
+                    System.currentTimeMillis(), OfferFilterService.isConnected())), words);
+            assertFalse("in words", words.isEmpty());
+            assertFalse("never the wait while Autopilot is on", words.startsWith("Next match"));
+            assertFalse("the bar is the chip's to show: " + words, words.contains("97%"));
+            assertTrue("heard in full: " + status.getContentDescription(),
+                    String.valueOf(status.getContentDescription()).startsWith("Autopilot bar 97 percent."));
             assertTrue(status.getHeight() >= new Ui(app).dp(48));
+            assertTrue("a touch target of its own", status.isClickable());
             assertTrue(status.performClick());
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.DETAILS_TITLE, Shadows.shadowOf(details).getTitle().toString());
@@ -165,7 +185,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             unchanged(original, 97);
 
             // Only the details' own Turn off turns Autopilot off: back to exactly the minimums, filtering still on.
-            assertTrue(shownTextContaining(content, "Autopilot 97%").performClick());
+            assertTrue(statusLine(content).performClick());
             details = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.DETAILS_TURN_OFF,
                     details.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
@@ -216,7 +236,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             layOut(content);
             assertNull("Autopilot on: no Next match under the chip", shownTextContaining(content, "Next match:"));
-            assertTrue("its status instead", statusLine(content).getText().toString().startsWith("Autopilot "));
+            assertAutopilotsStatusLine(content);
             assertTrue("the chip says it", find(content, AutopilotChip.class).isShown());
 
             // Beside Dasher: the same page, the same line.
@@ -225,7 +245,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
             layOut(content);
             assertNull(shownTextContaining(content, "Next match:"));
-            assertTrue(statusLine(content).getText().toString().startsWith("Autopilot "));
+            assertAutopilotsStatusLine(content);
             assertTrue("the chip as well", find(content, AutopilotChip.class).isShown());
 
             AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
@@ -237,6 +257,21 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             listener.destroy();
             service.destroy();
         }
+    }
+
+    /**
+     * The status line beside the chips is Autopilot's own status while it is on (0.6.3: its words without the bar,
+     * which its chip shows), and screen readers hear it in full, the bar first.
+     */
+    private void assertAutopilotsStatusLine(View content) {
+        AutopilotText.Status now = AutopilotRuntime.status(app, System.currentTimeMillis(),
+                OfferFilterService.isConnected());
+        assertTrue("Autopilot is on", now.on);
+        TextView line = statusLine(content);
+        String words = line.getText().toString();
+        assertFalse("its status in words", words.isEmpty());
+        assertEquals("its status instead", AutopilotText.statusLine(now), words);
+        assertEquals("heard in full", AutopilotText.chipDescription(now), String.valueOf(line.getContentDescription()));
     }
 
     /** The rules as {@code original}, with Autopilot on at {@code bar} and the top-tier goal. */

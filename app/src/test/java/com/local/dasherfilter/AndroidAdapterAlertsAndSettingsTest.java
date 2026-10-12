@@ -599,7 +599,13 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             assertFalse("the captured screen text goes too", DiagnosticLog.read(app).contains("Customer's order"));
             assertTrue("and the offer areas (Forget areas folded in)", AreaMap.cells(app).isEmpty());
             assertEquals(0, AreaMap.unlocated(app));
-            assertNotNull(shownTextContaining(content, "No offers yet"));
+            // The latest offer's tile at the top has none left to show (0.6.3: its words, not a sentence's line).
+            VerdictTile tile = verdictTile(content);
+            assertTrue(tile.isShown());
+            assertNull("no offer left", tile.outcome());
+            assertEquals(VerdictTile.NO_OFFERS, String.valueOf(tile.getContentDescription()));
+            assertEquals(VerdictTile.NO_OFFERS, tile.shownText());
+            assertFalse("nothing to open", tile.isClickable());
         }
     }
 
