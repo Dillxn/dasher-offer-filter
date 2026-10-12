@@ -247,7 +247,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             assertNotNull("kept for the page", FilterStore.peekModelNotice(app));
             FilterSettings migrated = FilterStore.load(app);
             assertFalse("restored Mode initially uses Strict", migrated.scoreByArea);
-            assertFalse("restored Learned initially uses Off", migrated.acceptanceLearning);
+            assertTrue("learning is on by default (0.6.1)", migrated.acceptanceLearning);
             assertTrue("old lessons were not carried over", migrated.accepted.isEmpty());
             assertFalse("the old payout proof was deleted", prefs().contains("last_accepted"));
             assertFalse("the old rate proof was deleted", prefs().contains("best_mile_pay"));

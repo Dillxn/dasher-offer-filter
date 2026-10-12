@@ -338,20 +338,12 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         return shownTextContaining(content, "Your minimums grew");
     }
 
-    /**
-     * Opens Autopilot's details and returns the switch in them: by the constellation's button's action, or where the
-     * window has no room for the constellation (a short window at the largest font), by a tap on the strip's chip,
-     * which opens the same details at every size.
-     */
+    /** Opens Autopilot's details by a tap on the strip's chip, at every size, and returns the switch in them. */
     private Switch detailsSwitch(View content) {
-        MinimumsStarView star = find(content, MinimumsStarView.class);
-        if (find(content, ScenePage.class).shown(star) >= 1 && star.autopilotShown()) {
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
-        } else {
-            AutopilotChip chip = find(content, AutopilotChip.class);
-            assertTrue("the strip's chip", chip.isShown());
-            chip.performClick();
-        }
+        // The strip's chip opens Autopilot's details at every size (the radar's round button is the learner's).
+        AutopilotChip chip = find(content, AutopilotChip.class);
+        assertTrue("the strip's chip", chip.isShown());
+        chip.performClick();
         idle();
         AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
         assertEquals(AutopilotText.DETAILS_TITLE, String.valueOf(Shadows.shadowOf(details).getTitle()));

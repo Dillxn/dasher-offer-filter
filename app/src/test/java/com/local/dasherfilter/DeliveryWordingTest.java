@@ -271,4 +271,31 @@ public class DeliveryWordingTest {
         assertTrue(tapped.accepted.tapSeen);
         assertEquals("you tapped Accept, and Dasher showed a delivery screen 0 s after it left", tapped.detail);
     }
+
+    /**
+     * The owner's pickup screen of 11 October 2026 (store and addresses made up), right after a new dash's first
+     * accept: the header's running earnings "$0.00" over "this dash". That figure is the dash's, so the screen is the
+     * pickup it shows, not an offer still being drawn; before, the accept went uncounted and taught nothing.
+     */
+    @Test
+    public void thePickupWithTheDashsRunningEarningsIsARouteNotAnOffer() {
+        List<String> pickup = Arrays.asList("Current dash", "Pick up by 7:43 PM", "Safety", "Help", "$0.00",
+                "this dash", "Pickup from", "Corner Chili", "12 Elm St", "Springfield", "Directions",
+                "Make this delivery count", "This customer tends to leave higher tips and ratings for great service. "
+                        + "Take a moment to check the order.");
+        assertTrue(DasherScene.amountsAreDashEarnings(pickup));
+        assertFalse(AcceptedOfferTracker.offerFacts(OfferParser.parse(pickup), pickup));
+        assertEquals(AcceptedOfferTracker.After.ROUTE, AcceptedOfferTracker.classify(pickup));
+        // One label, as a later frame drew it.
+        List<String> joined = Arrays.asList("Current dash", "Pick up by 7:43 PM", "$14.40 this dash", "Pickup from",
+                "Directions");
+        assertEquals(AcceptedOfferTracker.After.ROUTE, AcceptedOfferTracker.classify(joined));
+        // Any other amount on the screen keeps it an offer being drawn.
+        List<String> offerOver = Arrays.asList("$0.00", "this dash", "$11.35", "Pick up by 7:43 PM", "Directions");
+        assertFalse(DasherScene.amountsAreDashEarnings(offerOver));
+        assertTrue(AcceptedOfferTracker.offerFacts(new OfferSnapshot(1135, null, null, null), offerOver));
+        // "This dash" must follow the amount: a bare amount alone is still an offer's.
+        List<String> bare = Arrays.asList("this dash", "$0.00", "Pick up by 7:43 PM", "Directions");
+        assertEquals(AcceptedOfferTracker.After.OFFER_FACTS, AcceptedOfferTracker.classify(bare));
+    }
 }

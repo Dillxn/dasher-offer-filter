@@ -26,7 +26,7 @@ import android.widget.TextView;
  * the long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar
  * change never interrupts TalkBack while driving. The homepage shows it at every window size at the start of the
  * status line, under the latest offer's verdict in the strip along the top ({@link Row}), so Autopilot stays one tap
- * away however short the window (the constellation's button with it while the constellation is on screen).
+ * away however short the window. It is Autopilot's one control (0.6.1: the radar's round button is the learner's).
  */
 @SuppressLint("ViewConstructor")
 final class AutopilotChip extends TextView {

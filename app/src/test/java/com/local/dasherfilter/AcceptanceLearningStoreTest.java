@@ -43,7 +43,38 @@ public class AcceptanceLearningStoreTest {
         FilterSettings stored = FilterStore.load(fresh);
         assertEquals(1420, stored.accepted.highestPayCents);
         assertEquals(1420, stored.accepted.milePay); assertEquals(6, stored.accepted.miles, 0);
-        assertArrayEquals(old.minimums(), stored.minimums()); assertFalse(stored.enabled);
+        // The new high raised the saved minimums too (0.6.1), and a stale copy's save never puts the old ones back.
+        assertArrayEquals(new int[] {1421, 237, 60, 0, 0, 0}, stored.minimums()); assertFalse(stored.enabled);
+    }
+    /** The owner, 11 October 2026: "new highs ... raise mins". Undo puts them back and forgets that lesson. */
+    @Test public void aNewHighRaisesTheSavedMinimumsWithANoteAndAnUndoThatForgetsTheLesson() {
+        assertEquals(FilterStore.AcceptedLesson.RAISED, learn(OFFER));
+        assertArrayEquals(new int[] {1421, 237, 60, 0, 0, 0}, FilterStore.load(app).minimums());
+        FilterStore.Adoption raise = FilterStore.learnedRaiseNote(app);
+        assertNotNull(raise); assertTrue(raise.automatic);
+        assertEquals("A new high you accepted raised them: $7.00 → $14.21 · $1.50/mi → $2.37/mi · $18/hr → $36/hr.",
+                LearnedRaiseCard.line(raise));
+        // OK closes the note; Undo stays.
+        FilterStore.noteAdoption(app, raise.id);
+        assertNull(FilterStore.learnedRaiseNote(app));
+        assertNotNull(FilterStore.pendingAdoption(app));
+        assertTrue(FilterStore.undoAdoption(app, raise.id));
+        FilterSettings undone = FilterStore.load(app);
+        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, undone.minimums());
+        assertTrue("the lesson is forgotten too, or it would go on asking for the same", undone.accepted.isEmpty());
+        assertTrue(undone.acceptanceLearning);
+    }
+    @Test public void aBestBelowTheSavedMinimumsRaisesNothing() {
+        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {5000, 5000, 5000, 0, 0, 0}));
+        assertEquals(FilterStore.AcceptedLesson.SAVED, learn(OFFER));
+        assertArrayEquals(new int[] {5000, 5000, 5000, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertNull(FilterStore.learnedRaiseNote(app));
+    }
+    @Test public void learningOffOrPausedRaisesNoMinimum() {
+        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        assertEquals(FilterStore.AcceptedLesson.OFF, learn(OFFER));
+        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertNull(FilterStore.pendingAdoption(app));
     }
     @Test public void bestStoredBelowFixedMinimumIsDistinctFromRaisedAndUnchanged() {
         FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {5000, 5000, 5000, 0, 0, 0}));
@@ -103,6 +134,10 @@ public class AcceptanceLearningStoreTest {
         FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {3000, 150, 30, 0, 0, 0}));
         learn(OFFER); FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 112));
+        // The lesson raised the knobs already (0.6.1); dragged back down, Adopt raises them to the bests again.
+        FilterSettings raised = FilterStore.load(app);
+        assertArrayEquals(new int[] {3000, 237, 60, 0, 0, 0}, raised.minimums());
+        FilterStore.save(app, raised, raised.withMinimums(new int[] {3000, 150, 30, 0, 0, 0}));
         assertTrue(FilterStore.adoptAccepted(app));
         FilterStore.Adoption a = FilterStore.pendingAdoption(app);
         assertNotNull(a); assertEquals(3000, a.flatBefore); assertEquals(3000, a.flatAfter);
@@ -136,7 +171,8 @@ public class AcceptanceLearningStoreTest {
                 .putInt("last_accepted", 9000).putInt("best_mile_pay", 9000)
                 .putLong("best_miles_bits", Double.doubleToLongBits(2)).commit();
         FilterSettings next = FilterStore.load(app);
-        assertTrue(next.accepted.isEmpty()); assertFalse(next.acceptanceLearning); assertFalse(next.scoreByArea);
+        // Learning is on by default from 0.6.1; remnants still restore no evidence and no area mode.
+        assertTrue(next.accepted.isEmpty()); assertTrue(next.acceptanceLearning); assertFalse(next.scoreByArea);
         assertEquals(800, next.flatCents); assertTrue(next.autopilot); assertEquals(115, next.minimumScalePercent);
         assertFalse(prefs().contains("last_accepted"));
         FilterStore.setAcceptanceLearning(app, true); learn(OFFER);

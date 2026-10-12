@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -20,10 +21,12 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
+import org.robolectric.android.controller.ServiceController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowToast;
 
 /** Native controls, honest scoring explanations, and preserved short-window facts in the fresh restoration. */
 @RunWith(RobolectricTestRunner.class)
@@ -54,28 +57,54 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
+            // Learning is the radar's round button on the homepage (0.6.1); its long press shows what it learned.
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertTrue("the learner's button is on the homepage", star.learnShown());
+            AccessibilityNodeInfo learner = node(star, MinimumsStarView.SCORE_ID);
+            assertEquals(MinimumsStarView.learnSaid(false), learner.getContentDescription().toString());
+            boolean named = false;
+            for (AccessibilityNodeInfo.AccessibilityAction action : learner.getActionList()) {
+                named |= action.getId() == AccessibilityNodeInfo.ACTION_LONG_CLICK
+                        && MinimumsStarView.LEARN_DETAILS.contentEquals(action.getLabel());
+            }
+            assertTrue("its long press says what it shows", named);
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            Switch toggle = find(details.getWindow().getDecorView(), Switch.class);
+            assertNotNull(toggle);
+            assertFalse("the switch matches the button", toggle.isChecked());
+            toggle.performClick();
+            FilterSettings after = FilterStore.load(app);
+            assertTrue(after.acceptanceLearning);
+            assertFalse("changing rules never starts filtering", after.enabled);
+            assertFalse("Auto is still its own off switch", after.autopilot);
+            assertEquals(100, after.minimumScalePercent);
+            assertArrayEquals(RULES.minimums(), after.minimums());
+            details.dismiss();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            // A tap on the button itself turns learning off again at once, said in a toast.
+            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
+            assertFalse(FilterStore.load(app).acceptanceLearning);
+            assertEquals(MainActivity.LEARN_OFF_TOAST, ShadowToast.getTextOfLatestToast());
+
+            // Settings keeps the scoring mode, its own choice; learning is not there.
             openSettings(content);
             Button mode = shownButton(content, "Mode · Strict");
-            Button learned = shownButton(content, "Learned · Off");
-            assertNotNull(mode); assertNotNull(learned);
+            assertNotNull(mode);
+            for (String learned : new String[] {"Learned · Off", "Learned · On"}) {
+                assertNull("no learning entry in Settings", shownButton(content, learned));
+            }
             assertTrue(mode.getContentDescription().toString().contains("Autopilot is separate"));
-            assertTrue(learned.getContentDescription().toString().contains("adoption, Undo and Reset"));
             mode.performClick();
             ShadowAlertDialog.getLatestAlertDialog().cancel();
             assertFalse(FilterStore.load(app).scoreByArea);
             mode.performClick();
             Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1);
-            assertTrue(FilterStore.load(app).scoreByArea);
-            assertFalse(FilterStore.load(app).acceptanceLearning);
-            learned.performClick();
-            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
-            Switch toggle = find(details.getWindow().getDecorView(), Switch.class);
-            assertNotNull(toggle); toggle.performClick();
-            FilterSettings after = FilterStore.load(app);
-            assertTrue(after.acceptanceLearning); assertTrue(after.scoreByArea);
-            assertFalse("changing rules never starts filtering", after.enabled);
-            assertFalse("Auto is still its own off switch", after.autopilot);
-            assertEquals(100, after.minimumScalePercent);
+            after = FilterStore.load(app);
+            assertTrue(after.scoreByArea);
+            assertFalse("the mode leaves learning as it was", after.acceptanceLearning);
+            assertFalse(after.enabled);
+            assertFalse(after.autopilot);
             assertArrayEquals(RULES.minimums(), after.minimums());
             assertNotNull(find(content, AutopilotChip.class));
         }
@@ -83,12 +112,18 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
 
     @Test public void nativeAdoptUndoAndConfirmedResetPreserveSavedRulesAndRetainedOffBests() {
         learn();
+        // The new high raised the minimums at once (0.6.1); the knobs dragged back down end that raise's Undo, and the
+        // learned bests now ask more than the saved minimums: Adopt raises them again.
+        FilterSettings raised = FilterStore.load(app);
+        assertEquals(801, raised.flatCents);
+        FilterStore.save(app, raised, raised.withMinimums(RULES.flatCents, RULES.perMileCents, RULES.perMinuteCents));
+        assertNull(FilterStore.pendingAdoption(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            openSettings(content);
-            shownButton(content, "Learned · On").performClick();
-            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertNull("no note: no raise to undo", shownTextContaining(content, LearnedRaiseCard.TITLE));
+            AlertDialog details = learnedMinimums(star);
             find(details.getWindow().getDecorView(), Switch.class).performClick();
             assertNotNull("open dialog follows its switch", shownTextContaining(details.getWindow().getDecorView(),
                     "Stored bests are off and do not affect offers"));
@@ -97,28 +132,89 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             shownButton(details.getWindow().getDecorView(), "Adopt").performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(801, FilterStore.load(app).flatCents);
-            assertNotNull(FilterStore.pendingAdoption(app));
-            shownButton(content, "Learned · Off").performClick();
-            details = ShadowAlertDialog.getLatestAlertDialog();
+            FilterStore.Adoption adopted = FilterStore.pendingAdoption(app);
+            assertNotNull(adopted);
+            assertFalse("the Adopt button's raise, not learning's", adopted.automatic);
+            assertNull("which the homepage does not note", FilterStore.learnedRaiseNote(app));
+            details = learnedMinimums(star);
             Button undo = shownButton(details.getWindow().getDecorView(), "Undo adoption");
             assertNotNull(undo);
             undo.performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
-            shownButton(content, "Learned · Off").performClick();
-            shownButton(ShadowAlertDialog.getLatestAlertDialog().getWindow().getDecorView(), "Reset").performClick();
+            assertFalse("the Adopt button's Undo keeps the bests", FilterStore.load(app).accepted.isEmpty());
+            shownButton(learnedMinimums(star).getWindow().getDecorView(), "Reset").performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertFalse("Cancel retains bests", FilterStore.load(app).accepted.isEmpty());
-            shownButton(content, "Learned · Off").performClick();
-            shownButton(ShadowAlertDialog.getLatestAlertDialog().getWindow().getDecorView(), "Reset").performClick();
+            shownButton(learnedMinimums(star).getWindow().getDecorView(), "Reset").performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertTrue(FilterStore.load(app).accepted.isEmpty());
             assertFalse(FilterStore.load(app).acceptanceLearning);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
+        }
+    }
+
+    /**
+     * A new high the user accepts raises the minimums at once, and the homepage says so in one line of changes with
+     * Undo and OK (0.6.1). Undo puts back the minimums and forgets that lesson; learning stays on.
+     */
+    @Test public void aNewHighsRaiseIsNotedOnTheHomepageAndItsUndoPutsBackTheMinimumsAndTheLesson() {
+        learn();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
+            assertNotNull("the note is on the homepage", note);
+            String words = note.getText().toString();
+            for (String change : new String[] {"$5.00 → $8.01", "$1.00/mi → $2.00/mi", "$15/hr → $24/hr"}) {
+                assertTrue(words, words.contains(change));
+            }
+            assertEquals("Your minimums rose. A new high you accepted raised them: minimum pay $5.00 to $8.01, per mile "
+                    + "$1.00 to $2.00, per hour $15 to $24.", String.valueOf(note.getContentDescription()));
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertEquals("the knobs moved with it", 801, star.setAsks(AreaScore.PAY), 0);
+            shownButton((View) note.getParent(), LearnedRaiseCard.UNDO).performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            layOut(content);
+            FilterSettings after = FilterStore.load(app);
+            assertArrayEquals(RULES.minimums(), after.minimums());
+            assertTrue("and the lesson is forgotten", after.accepted.isEmpty());
+            assertTrue("learning stays on", after.acceptanceLearning);
+            assertNull("the note goes", shownTextContaining(content, LearnedRaiseCard.TITLE));
+            assertEquals(500, star.setAsks(AreaScore.PAY), 0);
+        }
+    }
+
+    /** OK closes the note for good; the raise stays, and its Undo stays in Learned minimums. */
+    @Test public void okClosesTheRaisesNoteAndItsUndoStaysInLearnedMinimums() {
+        learn();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
+            assertNotNull(note);
+            shownButton((View) note.getParent(), LearnedRaiseCard.OK).performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            layOut(content);
+            assertNull("OK closes it", shownTextContaining(content, LearnedRaiseCard.TITLE));
+            assertEquals("the raise stays", 801, FilterStore.load(app).flatCents);
+            assertNull(FilterStore.learnedRaiseNote(app));
+            Button undo = shownButton(learnedMinimums(find(content, MinimumsStarView.class)).getWindow().getDecorView(),
+                    "Undo adoption");
+            assertNotNull("its Undo stays in Learned minimums", undo);
+            undo.performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
+            assertTrue(FilterStore.load(app).accepted.isEmpty());
+        }
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            settleSky(content);
+            assertNull("never again", shownTextContaining(content, LearnedRaiseCard.TITLE));
         }
     }
 
@@ -139,7 +235,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         star.show(rules, comparison, Collections.singletonList(decided(rules, new OfferSnapshot(300, 40.0, 90, 2))));
         assertEquals(ring, star.ringCents());
         String said = star.getContentDescription().toString();
-        for (String fact : new String[] {"blue is saved", "teal is learned", "purple", "do not move saved knobs"}) {
+        for (String fact : new String[] {"blue is saved", "teal is learned", "purple", "raises the saved knobs to match"}) {
             assertTrue(fact + ": " + said, said.contains(fact));
         }
         star.show(rules.withAcceptanceLearning(false), comparison, Collections.emptyList());
@@ -202,6 +298,9 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
 
     @Test public void growthDetailsNameTheLearnedFloorHoldOnlyWhileGrowthIsEnabled() {
         learn();
+        // The knobs dragged back below the learned bests the new high raised them to: those bests hold growth.
+        FilterSettings raised = FilterStore.load(app);
+        FilterStore.save(app, raised, raised.withMinimums(RULES.flatCents, RULES.perMileCents, RULES.perMinuteCents));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -210,6 +309,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             View details = ShadowAlertDialog.getLatestAlertDialog().getWindow().getDecorView();
             TextView words = details.findViewById(MainActivity.DETAILS_WORDS_ID);
             assertTrue(words.getText().toString(), words.getText().toString().contains("Minimum growth waits"));
+            assertTrue(words.getText().toString(), words.getText().toString().contains("hold Learn on the radar"));
             find(details, Switch.class).performClick();
             assertFalse(words.getText().toString().contains("Minimum growth waits"));
             assertFalse(FilterStore.minimumsGrow(app));
@@ -230,9 +330,12 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         if (font > 1f) {
             learn();
             FilterStore.setAcceptanceLearning(app, false);
-            assertTrue(FilterStore.adoptAccepted(app));
+            assertNotNull("the new high raised the minimums, with Undo", FilterStore.pendingAdoption(app));
         }
         DecisionLog.record(app, decided(RULES, new OfferSnapshot(790, 7.2, null, 2)));
+        String shortQualifiers = RuntimeEnvironment.getQualifiers();
+        ServiceController<OfferFilterService> service = null;
+        ServiceController<OfferNotificationService> listener = null;
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {
@@ -253,19 +356,40 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertEquals(settings.getHeight(), visible.height());
             render(content, "main-font" + (int) font);
             openSettings(content);
-            for (String label : new String[] {"Mode · Strict", "Learned · Off"}) {
-                Button button = shownButton(content, label);
-                assertNotNull(label, button);
-                assertTrue(button.getHeight() >= new Ui(app).dp(48));
-                assertTrue(button.getWidth() >= new Ui(app).dp(48));
-                button.requestRectangleOnScreen(new Rect(0, 0, button.getWidth(), button.getHeight()), true);
-                Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-                assertTrue(label + " reachable by scrolling", button.getGlobalVisibleRect(visible));
-                assertEquals(label + " whole touch target", button.getHeight(), visible.height());
-            }
+            Button mode = shownButton(content, "Mode · Strict");
+            assertNotNull(mode);
+            assertTrue(mode.getHeight() >= new Ui(app).dp(48));
+            assertTrue(mode.getWidth() >= new Ui(app).dp(48));
+            mode.requestRectangleOnScreen(new Rect(0, 0, mode.getWidth(), mode.getHeight()), true);
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue("Mode reachable by scrolling", mode.getGlobalVisibleRect(visible));
+            assertEquals("Mode whole touch target", mode.getHeight(), visible.height());
+            assertNull("learning is the radar's button, not a Settings entry", shownButton(content, "Learned · Off"));
             render(content, "controls-font" + (int) font);
-            shownButton(content, "Learned · Off").performClick();
-            AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+            activity.get().onBackPressed();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+
+            // The radar, its Learn button with it, waits for room as its knobs do. Set up (Offer Filter's service
+            // and background offers on) and with the divider dragged for room, a long press on Learn opens Learned
+            // minimums; the window made short again keeps every control of theirs in reach.
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertFalse("no room for the radar here", star.learnShown());
+            service = Robolectric.buildService(OfferFilterService.class).create();
+            service.get().onServiceConnected();
+            listener = Robolectric.buildService(OfferNotificationService.class).create();
+            listener.get().onListenerConnected();
+            Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+            if (font > 1f) {
+                // The note of the raise read and closed (its Undo stays in Learned minimums).
+                TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
+                assertNotNull(note);
+                shownButton((View) note.getParent(), LearnedRaiseCard.OK).performClick();
+            }
+            resizeWindow(activity, "+h914dp");
+            settleSky(content);
+            assertTrue("with room, the Learn button", star.learnShown());
+            AlertDialog dialog = learnedMinimums(star);
+            resizeWindow(activity, shortQualifiers);
             View decor = dialog.getWindow().getDecorView();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             layOut(decor);
@@ -296,7 +420,20 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
                 }
             }
             render(decor, "learning-dialog-font" + (int) font);
+        } finally {
+            if (listener != null) listener.destroy();
+            if (service != null) service.destroy();
         }
+    }
+
+    /** Learned minimums, as the radar's Learn button's long press opens them. */
+    private static AlertDialog learnedMinimums(MinimumsStarView star) {
+        assertTrue("the Learn button is there", act(star, MinimumsStarView.SCORE_ID,
+                AccessibilityNodeInfo.ACTION_LONG_CLICK));
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+        assertEquals("Learned minimums", Shadows.shadowOf(dialog).getTitle().toString());
+        return dialog;
     }
 
     private static void openSettings(View content) {

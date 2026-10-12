@@ -480,8 +480,6 @@ public final class AutopilotTextTest {
         assertEquals("Last change 6 min ago: 115% → 119% (offers are coming often).",
                 AutopilotText.detailsLastChange(s));
         assertTrue(AutopilotText.reportLine(s).startsWith("Autopilot: on; pay first; bar 119%; mode VALUE; "));
-        assertEquals("Autopilot, on. Bar 119 percent of your minimums. Goal: pay first.",
-                AutopilotText.buttonDescription(true, 119, 0));
 
         // The owner's minimums with pay first: only the one-in-five floor holds the bar down.
         Autopilot.Plan floor = plan(owner(0, 100), window(20), null, 100);
@@ -566,26 +564,12 @@ public final class AutopilotTextTest {
                 AutopilotText.reportLine(status(off, null, null, null)));
     }
 
-    // ---- The button, the chooser and the toasts ----
+    // ---- The chip's actions, the chooser and the toasts ----
 
     @Test
-    public void theButton() {
-        assertEquals("Auto", AutopilotText.BUTTON_TITLE);
-        assertEquals("82%", AutopilotText.buttonLabel(true, 82));
-        assertEquals("Off", AutopilotText.buttonLabel(false, 100));
-        assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
-                + "percent or more.", AutopilotText.buttonDescription(true, 82, 70));
-        assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a tier, acceptance rate 50 percent "
-                + "or more.", AutopilotText.buttonDescription(true, 82, 50));
-        assertEquals("Autopilot, off. Offers are judged at exactly your minimums.",
-                AutopilotText.buttonDescription(false, 100, 70));
-        assertEquals("Turn Autopilot on", AutopilotText.buttonAction(false));
-        assertEquals("Turn Autopilot off", AutopilotText.buttonAction(true));
-        assertEquals("Turn Autopilot on", AutopilotText.ACTION_TURN_ON);
-        assertEquals("Turn Autopilot off", AutopilotText.ACTION_TURN_OFF);
+    public void theChipsActionsAndTheToasts() {
         assertEquals("Change acceptance goal", AutopilotText.ACTION_CHANGE_GOAL);
         assertEquals("Autopilot details", AutopilotText.ACTION_DETAILS);
-        assertEquals(0x4F460003, AutopilotText.DETAILS_ACTION_ID);
         assertEquals("Set a pay, per-mile or hourly minimum first.", AutopilotText.TOAST_NEEDS_MINIMUM);
         assertEquals("Autopilot off · back to exactly your minimums", AutopilotText.TOAST_OFF);
     }

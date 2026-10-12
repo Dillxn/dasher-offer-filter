@@ -81,7 +81,10 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue(Float.isFinite(chart.payoutThresholdY()));
         List<String> drawn = drawnWords(chart);
         assertTrue(drawn.toString(), drawn.contains("Pay $10.00 min"));
-        assertTrue(drawn.toString(), drawn.contains("Bar 100%"));
+        // Autopilot off, the bar is always exactly the minimums: the dashed rail stands unnamed (0.6.1, the owner:
+        // say each thing once).
+        assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Bar ")));
+        assertTrue("the dashed rail stays", Float.isFinite(chart.scoreThresholdY()));
 
         // Autopilot's bar: ⌈82 × $10.00 ÷ 100⌉ = $8.20, and the dashed rail names the bar.
         chart.setRules(atBar(RULES, 82));
@@ -102,7 +105,8 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue("off draws no misleading zero-dollar minimum line", Float.isNaN(chart.payoutThresholdY()));
         drawn = drawnWords(chart);
         assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Pay $")));
-        assertTrue("the bar's rail stays", drawn.contains("Bar 100%"));
+        assertTrue("the bar's rail stays", Float.isFinite(chart.scoreThresholdY()));
+        assertFalse("unnamed while Autopilot is off", drawn.contains("Bar 100%"));
         assertTrue(chart.getContentDescription().toString().contains("No minimum pay is set."));
     }
 

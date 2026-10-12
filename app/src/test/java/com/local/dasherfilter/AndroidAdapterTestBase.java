@@ -215,6 +215,18 @@ abstract class AndroidAdapterTestBase {
     }
 
     /** Lays the page out and lets the constellation's points glide to where they are heading. */
+    /**
+     * Autopilot on or off as a person reaches it from 0.6.1: the strip's chip, then its details' Turn Autopilot on or
+     * off (while off with a money minimum, the goal chooser follows). The radar's round button is the learner's.
+     */
+    static void toggleAutopilotByChip(View content) {
+        find(content, AutopilotChip.class).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        android.app.AlertDialog details = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+        details.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
     static void settleSky(View content) {
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
         layOut(content);

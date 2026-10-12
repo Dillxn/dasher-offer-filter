@@ -235,7 +235,10 @@ final class AcceptedOfferTracker {
      */
     static boolean offerFacts(OfferSnapshot read, List<String> labels) {
         if (read == null || DasherScene.showsDashSummary(labels)) return false;
-        if (read.payCents != null || read.payAtMostCents != null || read.stops != null) return true;
+        // The dash's running earnings in Dasher's header ("$0.00", "this dash") are no offer's pay.
+        boolean pay = (read.payCents != null || read.payAtMostCents != null)
+                && !DasherScene.amountsAreDashEarnings(labels);
+        if (pay || read.stops != null) return true;
         if (itemOfferEvidence(read, labels)) return true;
         return (read.miles != null || read.minutes != null) && !DasherScene.showsNavigation(labels);
     }
@@ -305,8 +308,10 @@ final class AcceptedOfferTracker {
         if (!OfferEvidence.bounded(labels)) return "ambiguous";
         boolean money = false;
         boolean qualified = false;
-        for (String raw : labels) {
-            String label = OfferEvidence.normalize(raw);
+        for (int i = 0; i < labels.size(); i++) {
+            // The dash's running earnings ("$0.00", "this dash") are neither the offer's pay nor competing money.
+            if (DasherScene.isDashEarnings(labels, i)) continue;
+            String label = OfferEvidence.normalize(labels.get(i));
             qualified |= RETAINED_PAY_QUALIFIER.matcher(label).find();
             if (!label.contains("$")) continue;
             money = true;

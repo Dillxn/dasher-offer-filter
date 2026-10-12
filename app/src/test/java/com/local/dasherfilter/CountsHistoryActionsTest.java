@@ -174,8 +174,10 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
         assertNotNull("a nonempty skyline keeps a selected offer", selected);
         assertEquals(Integer.valueOf(pay), selected.facts.payCents);
         android.widget.TextView caption = org.robolectric.util.ReflectionHelpers.getField(activity, "offerCaption");
-        assertEquals("Latest · " + DecisionLog.money(pay) + " · Passed", caption.getText().toString());
-        assertEquals("the star and caption describe the same latest offer",
+        // The latest is said once, by the verdict at the top; the skyline's caption is for an older offer only.
+        assertEquals("", caption.getText().toString());
+        assertTrue(verdictLine(content).getText().toString().contains(DecisionLog.money(pay)));
+        assertEquals("the star and the verdict describe the same latest offer",
                 AreaScore.percent(FilterStore.load(app), selected.facts),
                 find(content, MinimumsStarView.class).emphasizedScore());
     }

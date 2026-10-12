@@ -1435,6 +1435,26 @@ public final class OfferFilterService extends AccessibilityService {
         return active != null && at != 0 && screenOnTime(SystemClock.uptimeMillis()) - at < BESIDE_MS;
     }
 
+    /** When Dasher last showed a pickup, delivery or its own turn-by-turn screen (uptime); 0 after the wait shows. */
+    private static volatile long deliveryScreenAt;
+    /** How long such a screen counts as Dasher still being on a delivery. */
+    static final long DELIVERY_SCREEN_MS = 10 * 60_000L;
+
+    /**
+     * Whether Dasher is on a delivery: a route is stored, or Dasher's pickup, delivery or turn-by-turn screen was read
+     * within {@link #DELIVERY_SCREEN_MS} with no wait for offers since. Then Dasher's launcher must not be started
+     * beside this app: on 11 October 2026 the owner's Split tap during Dasher's own navigation left Dasher's half on
+     * its launch screen.
+     */
+    static boolean dasherOnDelivery(Context context) {
+        if (ActiveRouteStore.load(context) != null) return true;
+        long at = deliveryScreenAt;
+        return at != 0 && SystemClock.uptimeMillis() - at < DELIVERY_SCREEN_MS;
+    }
+
+    /** For tests. */
+    static void deliveryScreenSeen(long uptime) { deliveryScreenAt = uptime; }
+
     /** Fresh metadata only, never the twenty-second UI grace: avoid relaunching an already paired Dasher task. */
     static boolean dasherBesideNow() {
         OfferFilterService service = active;
@@ -1719,6 +1739,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     @Override public void onCreate() {
         super.onCreate();
+        // A screen reader just started has seen none of Dasher's screens yet (a stored route still counts).
+        deliveryScreenAt = 0;
         Looper looper = scanLooperForTests;
         if (looper == null) {
             // Above background work, as Android's own UI threads are: a read and a decline are what the user waits on.
@@ -2247,6 +2269,7 @@ public final class OfferFilterService extends AccessibilityService {
         screenOffSince = 0;
         screenOffTotal = 0;
         ownScreenTouchAt = NEVER;
+        deliveryScreenAt = 0;
     }
 
     /** For tests: the filter tab over Dasher. */
@@ -7293,6 +7316,12 @@ public final class OfferFilterService extends AccessibilityService {
         // The wait for offers, the dash's end or its home, with no sign of a delivery: a stored route is over (it
         // would otherwise hold the guide, the tab, update installs and what an acceptance needs, for hours).
         boolean noRoute = AcceptedOfferTracker.showsNoRoute(scan.text);
+        // Dasher on a delivery, as the Split button needs to know (DasherSplit: no launcher start beside it then).
+        if (DasherScene.showsRoute(scan.text) || DasherScene.showsNavigation(withParts(scan))) {
+            deliveryScreenAt = SystemClock.uptimeMillis();
+        } else if (noRoute) {
+            deliveryScreenAt = 0;
+        }
         if (noRoute) {
             if (ActiveRouteStore.load(this) != null) {
                 String end = OfferEvidence.isDashOver(scan.text) ? "dash_over"
@@ -7723,6 +7752,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         step(accepted.line, kind, detail);
         if (!automatic && !accepted.addOn) {
+            boolean permitted = learningPermit != null;
             FilterStore.AcceptedLesson lesson = FilterStore.recordConfirmedManualAcceptance(this, learningPermit,
                     accepted.acceptedOffer);
             DecisionLog.StepKind learned = lesson == FilterStore.AcceptedLesson.RAISED
@@ -7730,11 +7760,30 @@ public final class OfferFilterService extends AccessibilityService {
                     : lesson == FilterStore.AcceptedLesson.SAVED ? DecisionLog.StepKind.LEARNER_BEST_SAVED
                     : lesson == FilterStore.AcceptedLesson.UNCHANGED ? DecisionLog.StepKind.LEARNER_UNCHANGED : null;
             if (learned != null) step(accepted.line, learned, "Confirmed manual standalone acceptance");
+            // Every lesson's fate, in fixed words and no amounts, so a report says why an accept taught nothing.
+            DiagnosticLog.log(this, "learner", "manual acceptance: " + lessonWords(lesson, permitted));
+        } else {
+            DiagnosticLog.log(this, "learner", "acceptance not taught: " + (automatic ? "automatic" : "an add-on"));
         }
         learningPermit = null;
         learningObservedOffer = null;
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed.");
+    }
+
+    /** A lesson's fate in fixed words ("[learner]" lines): never an amount, a best or a minimum. */
+    static String lessonWords(FilterStore.AcceptedLesson lesson, boolean permitted) {
+        switch (lesson) {
+            case RAISED: return "learned; your minimums rose to match (Undo on the homepage)";
+            case SAVED: return "learned a new best; your saved minimums are still higher";
+            case UNCHANGED: return "nothing new: no best beaten (rates need at least 2 mi and 10 min)";
+            case OFF: return "not taught: learning or filtering is off, or the notice is not accepted";
+            case UNKNOWN: return "not taught: its pay was not read";
+            case STALE:
+            default:
+                return permitted ? "not taught: the offer's evidence went stale (rules changed, over 5 min, "
+                        + "or its figures differ)" : "not taught: learning was off when the offer came";
+        }
     }
 
     private static Set<String> payBoundLabels(List<String> lines) {

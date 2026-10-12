@@ -102,7 +102,7 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             List<RectF> obstacles = new ArrayList<>();
             star.iconsAt(obstacles);
             for (int i = 0; i < AreaScore.AXES; i++) obstacles.add(star.axisLabelBox(i));
-            obstacles.add(star.autopilotBox());
+            obstacles.add(star.learnBox());
             obstacles.add(star.stopsBox());
             obstacles.add(star.stopsPinBox());
             assertEquals("the radar wholly there", 1f, page.shown(star), 0f);

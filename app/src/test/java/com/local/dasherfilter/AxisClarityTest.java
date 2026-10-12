@@ -72,7 +72,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             assertTrue(said, said.contains("Your minimums: pay $7.00, per mile $1.50, per hour of trip time 18 dollars "
                     + "per hour; at most 3 stops."));
             assertTrue("saved units remain distinct from the off learner",
-                    said.contains("Learned bests do not move saved knobs."));
+                    said.contains("A new high you accept raises the saved knobs to match while learning is on."));
             for (String retired : new String[] {"adaptive", "per stop", "hotspot", "per item", "per minute"}) {
                 assertFalse(retired + ": " + said, said.toLowerCase(java.util.Locale.US).contains(retired));
             }

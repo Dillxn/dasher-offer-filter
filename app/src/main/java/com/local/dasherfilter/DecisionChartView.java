@@ -65,6 +65,8 @@ final class DecisionChartView extends View {
     private int flatCents;
     private boolean areaMode;
     private int minimumScalePercent = 100;
+    /** Autopilot on: only then does the dashed rail name its bar (off, the bar is always exactly 100%). */
+    private boolean autopilot;
     /** When each shown offer (by its time) began to rise. */
     private final Map<Long, Long> risingSince = new HashMap<>();
 
@@ -93,9 +95,10 @@ final class DecisionChartView extends View {
         java.math.BigDecimal resolvedPay = AreaScore.floors(rules, OfferSnapshot.UNKNOWN).effectiveCents[AreaScore.PAY];
         long payout = resolvedPay == null ? 0 : AreaScore.roundedCents(resolvedPay, rules.minimumScalePercent);
         if (payoutMinimumCents == payout && flatCents == flat && minimumScalePercent == rules.minimumScalePercent
-                && areaMode == rules.scoreByArea) {
+                && areaMode == rules.scoreByArea && autopilot == rules.autopilot) {
             return;
         }
+        autopilot = rules.autopilot;
         payoutMinimumCents = payout;
         flatCents = flat;
         areaMode = rules.scoreByArea;
@@ -275,7 +278,10 @@ final class DecisionChartView extends View {
         String pay = payoutMinimumCents <= 0 ? null : "Pay " + DecisionLog.money(payoutMinimumCents)
                 + (areaMode ? " ref" : " min");
         if (payoutMinimumCents > 0 && pay != null) drawRailLabel(canvas, pay, left, false, payoutColor());
-        drawRailLabel(canvas, AutopilotText.skylineBarRail(minimumScalePercent), right, true, treeColor());
+        // Off, the bar is always exactly your minimums: "Bar 100%" would say nothing (the owner, 11 October 2026).
+        if (autopilot) {
+            drawRailLabel(canvas, AutopilotText.skylineBarRail(minimumScalePercent), right, true, treeColor());
+        }
     }
 
     /** A reserved caption strip keeps every roof flag and tree visible, even in the 52dp skyline. */

@@ -65,6 +65,11 @@ final class DasherSplit {
      * tests.
      */
     static java.util.function.BooleanSupplier adjacentFirst = DasherSplit::adjacentByDefault;
+    /** Whether Dasher is on a delivery ({@link OfferFilterService#dasherOnDelivery}). Replaced only by tests. */
+    static java.util.function.Predicate<Context> onDelivery = OfferFilterService::dasherOnDelivery;
+    /** What a tap does during a delivery instead of starting Dasher's launcher beside this app, for the log. */
+    static final String DELIVERY_RECENTS = "recent apps instead of Dasher's launcher, which can leave Dasher on its "
+            + "launch screen";
     /** The tap's own launch-adjacent start is what may split the screen: that split opens nothing more. */
     private static volatile boolean launchedBeside;
 
@@ -276,6 +281,10 @@ final class DasherSplit {
                 log(activity, "tap in split screen: Dasher already visible beside; no launch requested");
                 return null;
             }
+            if (onDelivery.test(activity)) {
+                log(activity, "tap in split screen during a delivery: " + DELIVERY_RECENTS);
+                return byHand(activity);
+            }
             if (swaps(activity)) return swapIn(activity);
             log(activity, "tap in split screen: Dasher's launch intent into the other half");
             return open(activity, dasher);
@@ -288,6 +297,13 @@ final class DasherSplit {
         waitMs = PENDING_MS;
         away = false;
         launchedBeside = false;
+        if (onDelivery.test(activity)) {
+            // Dasher's own launcher started beside this app during a delivery can leave Dasher's half on its launch
+            // screen (the owner, 11 October 2026: Split tapped during Dasher's turn-by-turn navigation). Recent apps
+            // move Dasher's existing screen, navigation and all, into the split without starting anything in it.
+            log(activity, "tap during a delivery: " + DELIVERY_RECENTS);
+            return byHand(activity);
+        }
         if (adjacentFirst.getAsBoolean()) {
             // Dasher's own launcher, NEW_TASK | LAUNCH_ADJACENT ({@link #dasher}), never MULTIPLE_TASK: Dasher's task,
             // its offer and all, moves beside this screen; no second Dasher task. Looked at again as a request
@@ -329,6 +345,10 @@ final class DasherSplit {
         if (OfferFilterService.dasherBesideNow()) {
             log(activity, "swap: Dasher already visible beside; no launch requested");
             return null;
+        }
+        if (onDelivery.test(activity)) {
+            log(activity, "swap during a delivery: " + DELIVERY_RECENTS);
+            return byHand(activity);
         }
         log(activity, "tap in split screen during a dash: Dasher's launch intent into this half (the other half stays)");
         return open(activity, dasher);
@@ -548,6 +568,7 @@ final class DasherSplit {
         launchedBeside = false;
         loggedSplit = null;
         adjacentFirst = DasherSplit::adjacentByDefault;
+        onDelivery = OfferFilterService::dasherOnDelivery;
         split = OfferFilterService::splitScreen;
         recents = OfferFilterService::openRecents;
     }

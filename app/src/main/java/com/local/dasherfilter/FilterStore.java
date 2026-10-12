@@ -69,6 +69,8 @@ final class FilterStore {
     private static final String AUTOPILOT_GROW = "autopilot_grow";
     // Fresh restoration state. The model-2 migration's deleted evidence is never read into these keys.
     private static final String LEARNER_SCHEMA = "learner_v3_schema";
+    /** 1: 0.6.0's fresh state, learning off; 2: learning on by default (0.6.1). */
+    private static final int LEARNER_SCHEMA_NOW = 2;
     static final String AREA_MODE = "area_mode_v3";
     static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
     static final String ACCEPTED_PAY = "accepted_v3_pay";
@@ -184,22 +186,34 @@ final class FilterStore {
         return new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
                 FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)), bar,
-                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, false), accepted(prefs));
+                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs));
     }
 
+    /**
+     * The learner's state: schema 1 (0.6.0) starts it empty and off; schema 2 (0.6.1, the owner, 11 October 2026:
+     * learning "should be on by default") turns learning on, once, for 0.6.0 installs too, keeping their bests. From
+     * then on the user's own switch decides.
+     */
     private static void initializeLearning(SharedPreferences prefs) {
         synchronized (FilterStore.class) {
-            if (prefs.getInt(LEARNER_SCHEMA, 0) == 1) return;
-            SharedPreferences.Editor edit = prefs.edit().putInt(LEARNER_SCHEMA, 1)
-                    .putBoolean(AREA_MODE, false).putBoolean(ACCEPTANCE_LEARNING, false)
-                    .putLong(LEARNING_EPOCH, 1).putLong(MINIMA_REVISION, 0).remove(ADOPTION);
-            writeAccepted(edit, AcceptedFloors.NONE);
+            int schema = prefs.getInt(LEARNER_SCHEMA, 0);
+            if (schema >= LEARNER_SCHEMA_NOW) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(LEARNER_SCHEMA, LEARNER_SCHEMA_NOW)
+                    .putBoolean(ACCEPTANCE_LEARNING, true);
+            if (schema < 1) {
+                edit.putBoolean(AREA_MODE, false).putLong(LEARNING_EPOCH, 1).putLong(MINIMA_REVISION, 0)
+                        .remove(ADOPTION);
+                writeAccepted(edit, AcceptedFloors.NONE);
+            } else {
+                // Learning starts now: nothing seen while it was off may teach it.
+                advanceEpoch(prefs, edit);
+            }
             edit.apply();
         }
     }
 
     private static AcceptedFloors accepted(SharedPreferences prefs) {
-        if (prefs.getInt(LEARNER_SCHEMA, 0) != 1) return AcceptedFloors.NONE;
+        if (prefs.getInt(LEARNER_SCHEMA, 0) < 1) return AcceptedFloors.NONE;
         return new AcceptedFloors(prefs.getInt(ACCEPTED_PAY, 0), prefs.getInt(ACCEPTED_MILE_PAY, 0),
                 Double.longBitsToDouble(prefs.getLong(ACCEPTED_MILES, 0)),
                 prefs.getInt(ACCEPTED_MINUTE_PAY, 0), prefs.getInt(ACCEPTED_MINUTES, 0));
@@ -719,6 +733,7 @@ final class FilterStore {
     /** Only the existing outcome detector's confirmed manual standalone branch may consume this permit. */
     static AcceptedLesson recordConfirmedManualAcceptance(Context context, LearningPermit permit, OfferSnapshot offer) {
         AcceptedLesson result;
+        AcceptedFloors bestsBefore;
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
@@ -737,6 +752,7 @@ final class FilterStore {
                 return AcceptedLesson.UNKNOWN;
             }
             AcceptedFloors next = before.accepted.raisedBy(offer);
+            bestsBefore = before.accepted;
             result = next.equals(before.accepted) ? AcceptedLesson.UNCHANGED
                     : AreaScore.effectiveFloorsRaised(before, before.withAccepted(next), offer)
                     ? AcceptedLesson.RAISED : AcceptedLesson.SAVED;
@@ -746,6 +762,8 @@ final class FilterStore {
             }
             edit.apply();
         }
+        // A new high that raised a minimum in use raises the saved minimums too, so the knobs show it (with Undo).
+        if (result == AcceptedLesson.RAISED) adoptLearned(context, bestsBefore);
         if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.rulesChanged(context);
         return result;
     }
@@ -785,22 +803,60 @@ final class FilterStore {
     static final class Adoption {
         final long id, at, revision;
         final int flatBefore, mileBefore, minuteBefore, flatAfter, mileAfter, minuteAfter;
+        /**
+         * Made by learning itself, right after a new high the user accepted (0.6.1), not by the Adopt button. Its Undo
+         * also forgets that lesson's bests, while they are still exactly the ones it stored.
+         */
+        final boolean automatic;
+        /** The homepage's note of an automatic raise was closed with OK (its Undo stays in Learned minimums). */
+        final boolean noted;
+        /** The learned bests before and after the lesson that made an automatic raise; null for the Adopt button's. */
+        final AcceptedFloors bestsBefore, bestsAfter;
         Adoption(long id, long at, long revision, FilterSettings before, int flat, int mile, int minute) {
+            this(id, at, revision, before, flat, mile, minute, false, null, null);
+        }
+        Adoption(long id, long at, long revision, FilterSettings before, int flat, int mile, int minute,
+                 boolean automatic, AcceptedFloors bestsBefore, AcceptedFloors bestsAfter) {
             this.id = id; this.at = at; this.revision = revision;
             flatBefore = before.flatCents; mileBefore = before.perMileCents; minuteBefore = before.perMinuteCents;
             flatAfter = flat; mileAfter = mile; minuteAfter = minute;
+            this.automatic = automatic;
+            this.noted = false;
+            this.bestsBefore = automatic ? bestsBefore : null;
+            this.bestsAfter = automatic ? bestsAfter : null;
         }
         private Adoption(JSONObject json) throws JSONException {
             id = json.getLong("id"); at = json.getLong("at"); revision = json.getLong("revision");
             flatBefore = json.getInt("flatBefore"); mileBefore = json.getInt("mileBefore");
             minuteBefore = json.getInt("minuteBefore"); flatAfter = json.getInt("flatAfter");
             mileAfter = json.getInt("mileAfter"); minuteAfter = json.getInt("minuteAfter");
+            automatic = json.optBoolean("automatic", false);
+            noted = json.optBoolean("noted", false);
+            bestsBefore = automatic ? floors(json.optJSONObject("bestsBefore")) : null;
+            bestsAfter = automatic ? floors(json.optJSONObject("bestsAfter")) : null;
+        }
+        private static AcceptedFloors floors(JSONObject json) throws JSONException {
+            if (json == null) throw new JSONException("missing bests");
+            return new AcceptedFloors(json.getInt("pay"), json.getInt("milePay"), json.getDouble("miles"),
+                    json.getInt("minutePay"), json.getInt("minutes"));
+        }
+        private static JSONObject encode(AcceptedFloors floors) throws JSONException {
+            return new JSONObject().put("pay", floors.highestPayCents).put("milePay", floors.milePay)
+                    .put("miles", floors.miles).put("minutePay", floors.minutePay).put("minutes", floors.minutes);
         }
         String encode() {
+            return encode(noted);
+        }
+        String encode(boolean noted) {
             try {
-                return new JSONObject().put("id", id).put("at", at).put("revision", revision)
+                JSONObject json = new JSONObject().put("id", id).put("at", at).put("revision", revision)
                         .put("flatBefore", flatBefore).put("mileBefore", mileBefore).put("minuteBefore", minuteBefore)
-                        .put("flatAfter", flatAfter).put("mileAfter", mileAfter).put("minuteAfter", minuteAfter).toString();
+                        .put("flatAfter", flatAfter).put("mileAfter", mileAfter).put("minuteAfter", minuteAfter);
+                if (automatic) {
+                    json.put("automatic", true).put("noted", noted).put("bestsBefore", encode(bestsBefore))
+                            .put("bestsAfter", encode(bestsAfter));
+                }
+                return json.toString();
             } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
         }
         boolean matches(SharedPreferences prefs, FilterSettings current) {
@@ -815,10 +871,28 @@ final class FilterStore {
     }
 
     static boolean adoptAccepted(Context context) {
+        return adopt(context, false, null);
+    }
+
+    /**
+     * Learning raises the minimums themselves (the owner, 11 October 2026: "new highs ... raise mins"): right after a
+     * lesson raised a minimum in use, every lower saved minimum is raised to what the learned bests ask, as Adopt does,
+     * and the homepage notes it with Undo. Only while learning and filtering are on.
+     *
+     * @param bestsBefore the learned bests before that lesson, which Undo puts back with the minimums
+     */
+    static boolean adoptLearned(Context context, AcceptedFloors bestsBefore) {
+        return adopt(context, true, bestsBefore);
+    }
+
+    private static boolean adopt(Context context, boolean automatic, AcceptedFloors bestsBefore) {
         load(context);
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
+            if (automatic && (!before.enabled || !before.acceptanceLearning || !Consent.accepted(context))) {
+                return false;
+            }
             AcceptedFloors a = before.accepted;
             int flat = (int) Math.max(before.flatCents, Math.min(FilterSettings.MOST_CENTS,
                     a.highestPayCents > 0 ? a.highestPayCents + 1L : 0));
@@ -830,7 +904,7 @@ final class FilterStore {
                     .putInt(PER_MINUTE, minute).putLong(MINIMUMS_SINCE, wall);
             long revision = minimaChanged(prefs, edit);
             Adoption adoption = new Adoption(prefs.getLong(LEARNING_EPOCH, 0) + 1, wall, revision,
-                    before, flat, mile, minute);
+                    before, flat, mile, minute, automatic, bestsBefore, a);
             edit.putString(ADOPTION, adoption.encode()).apply();
         }
         AutopilotRuntime.rulesChanged(context);
@@ -857,6 +931,21 @@ final class FilterStore {
         }
     }
 
+    /** The homepage's note of an automatic raise closed with OK: the note goes; Undo stays in Learned minimums. */
+    static void noteAdoption(Context context, long id) {
+        synchronized (FilterStore.class) {
+            Adoption a = pendingAdoption(context);
+            if (a == null || a.id != id || !a.automatic || a.noted) return;
+            prefs(context).edit().putString(ADOPTION, a.encode(true)).apply();
+        }
+    }
+
+    /** An automatic raise whose homepage note waits (not yet closed with OK, still undoable); else null. */
+    static Adoption learnedRaiseNote(Context context) {
+        Adoption a = pendingAdoption(context);
+        return a != null && a.automatic && !a.noted ? a : null;
+    }
+
     static boolean undoAdoption(Context context, long id) {
         synchronized (FilterStore.class) {
             Adoption a = pendingAdoption(context);
@@ -866,6 +955,12 @@ final class FilterStore {
             if (a.flatBefore != a.flatAfter) edit.putInt(FLAT, a.flatBefore);
             if (a.mileBefore != a.mileAfter) edit.putInt(PER_MILE, a.mileBefore);
             if (a.minuteBefore != a.minuteAfter) edit.putInt(PER_MINUTE, a.minuteBefore);
+            // A raise learning made forgets its lesson too, or the bests would go on asking for what was undone;
+            // only while they are still the ones it stored (a later lesson's are never overwritten).
+            if (a.automatic && a.bestsBefore != null && a.bestsAfter != null
+                    && a.bestsAfter.equals(read(prefs).accepted)) {
+                writeAccepted(edit, a.bestsBefore);
+            }
             minimaChanged(prefs, edit);
             edit.apply();
         }

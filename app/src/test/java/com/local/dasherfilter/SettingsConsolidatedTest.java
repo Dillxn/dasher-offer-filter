@@ -152,7 +152,10 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             // The homepage's setup steps may name these; Settings' own page never does.
             View page = settingsPage(content);
             assertNotNull("model choice has its own Settings entry", shownButton(page, "Mode · Strict"));
-            assertNotNull("learning has its own initially-off entry", shownButton(page, "Learned · Off"));
+            for (String learned : new String[] {"Learned · Off", "Learned · On"}) {
+                assertNull("learning is the homepage radar's button (0.6.1), not a Settings entry",
+                        shownButton(page, learned));
+            }
             assertNull("Reset is on demand inside learning details, not an always-present Settings action",
                     shownButton(page, "Reset"));
             assertFalse(FilterStore.load(app).scoreByArea);

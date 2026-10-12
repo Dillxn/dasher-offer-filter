@@ -67,12 +67,22 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             DecisionChartView chart = find(content, DecisionChartView.class);
             for (int i = 0; i < steps.length; i++) {
                 chart.select(i);
-                String expected = (i == steps.length - 1 ? "Latest" : "Selected") + " · "
-                        + DecisionLog.money(1200 + i * 100) + " · " + words[i];
-                TextView caption = shownTextContaining(content, expected);
-                assertNotNull(expected, caption);
-                assertTrue(caption.getContentDescription().toString().endsWith("Open offer details"));
-                caption.performClick();
+                View target;
+                if (i == steps.length - 1) {
+                    // The latest is said once, by the verdict at the top (the owner, 11 October 2026).
+                    assertNull(shownTextContaining(content, "Latest ·"));
+                    assertNull(shownTextContaining(content, "Selected ·"));
+                    String verdict = verdictLine(content).getText().toString();
+                    assertTrue(verdict, verdict.contains(DecisionLog.money(1200 + i * 100)) && verdict.contains(words[i]));
+                    target = stripWords(content);
+                } else {
+                    String expected = "Selected · " + DecisionLog.money(1200 + i * 100) + " · " + words[i];
+                    TextView caption = shownTextContaining(content, expected);
+                    assertNotNull(expected, caption);
+                    assertTrue(caption.getContentDescription().toString().endsWith("Open offer details"));
+                    target = caption;
+                }
+                target.performClick();
                 assertTrue(find(content, MinimumsStarView.class).openedOffer() >= 0);
                 assertNotNull(shownTextContaining(content, "Read: " + DecisionLog.money(1200 + i * 100)));
                 activity.get().onBackPressed();
@@ -100,8 +110,10 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            TextView canceled = shownTextContaining(content, "Latest · $15.00 · Left to you");
-            canceled.performClick();
+            assertNull("the latest is not repeated under the skyline", shownTextContaining(content, "Latest ·"));
+            String verdict = verdictLine(content).getText().toString();
+            assertTrue(verdict, verdict.contains("$15.00") && verdict.contains("Left to you"));
+            stripWords(content).performClick();
             layOut(content);
             TextView status = shownTextContaining(content, "Automatic Accept not sent; left to you:");
             assertNotNull(status);
@@ -134,7 +146,8 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            assertNotNull(shownTextContaining(content, "Latest · Pay unread · Review"));
+            assertNull(shownTextContaining(content, "Latest ·"));
+            assertTrue(verdictLine(content).getText().toString().contains("Review"));
             find(content, DecisionChartView.class).select(0);
             assertNotNull(shownTextContaining(content, "Selected · $5.00 · Declined"));
             DecisionLog.clear(app);
@@ -183,11 +196,14 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             assertEquals(older.at, chart.selectedEntry().at);
             assertNotNull(shownTextContaining(content, "Selected · $12.34 · Accepted by you"));
             chart.select(2);
-            assertNotNull(shownTextContaining(content, "Latest · $25.00 · Passed"));
+            assertNull("the latest has no caption of its own", shownTextContaining(content, "Selected ·"));
+            assertNull(shownTextContaining(content, "Latest ·"));
+            assertTrue(verdictLine(content).getText().toString().contains("$25.00"));
         }
     }
 
-    @Test public void theAutopilotButtonsWordsAreDrawnAndATapPreservesTheMinimums() {
+    /** The radar's round button is the learner's (0.6.1): "Learn" over Off or On; a tap changes no minimum. */
+    @Test public void theLearnButtonsWordsAreDrawnAndATapPreservesTheMinimumsAndAutopilot() {
         FilterStore.save(app, RULES);
         withAutopilotAt(97);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -195,13 +211,15 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             List<String> drawn = drawnWords(star);
-            assertTrue(drawn.toString(), drawn.contains("Auto") && drawn.contains("97%"));
+            assertTrue(drawn.toString(), drawn.contains(MinimumsStarView.LEARN_TITLE) && drawn.contains("Off"));
+            assertFalse("Autopilot's words are the chip's alone", drawn.contains("Auto") || drawn.contains("97%"));
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             drawn = drawnWords(star);
-            assertTrue(drawn.toString(), drawn.contains("Auto") && drawn.contains("Off"));
-            assertFalse(FilterStore.load(app).autopilot);
-            assertEquals("off is exactly the minimums", 100, FilterStore.load(app).minimumScalePercent);
+            assertTrue(drawn.toString(), drawn.contains(MinimumsStarView.LEARN_TITLE) && drawn.contains("On"));
+            assertTrue(FilterStore.load(app).acceptanceLearning);
+            assertTrue("Autopilot is untouched", FilterStore.load(app).autopilot);
+            assertEquals(97, FilterStore.load(app).minimumScalePercent);
             assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
         }
     }
@@ -257,16 +275,13 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = built.setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            TextView caption = shownTextContaining(content, "Latest · $18.35 · " + outcome);
-            assertNotNull(caption);
+            // The latest offer is said once, by the verdict at the top of the page, which opens it at every size (the
+            // owner, 11 October 2026: the skyline's caption repeated it).
+            assertNull(shownTextContaining(content, "Latest ·"));
             ScenePage scene = find(content, ScenePage.class);
-            // The skyline's caption while the skyline is wholly there; in a window too short for it (it goes before the
-            // constellation and the map), the verdict at the top of the page, which says the same offer and opens it.
-            View target = scene.shown(caption) >= 1 ? caption : stripWords(content);
-            if (target != caption) {
-                assertTrue("the verdict names the offer: " + verdictLine(content).getText(),
-                        verdictLine(content).getText().toString().contains("$18.35"));
-            }
+            View target = stripWords(content);
+            assertTrue("the verdict names the offer: " + verdictLine(content).getText(),
+                    verdictLine(content).getText().toString().contains("$18.35"));
             assertTrue(target.getHeight() >= new Ui(app).dp(48));
             assertTrue(target.getWidth() >= new Ui(app).dp(48));
             assertTrue("main scene fits its window: " + scene.getHeight() + " in " + ((View) scene.getParent()).getHeight(),
@@ -274,9 +289,9 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             Rect visible = new Rect();
             assertTrue(target.getGlobalVisibleRect(visible));
             assertEquals("whole target remains on screen", target.getHeight(), visible.height());
-            assertTrue("all wrapped lines fit", caption.getLayout().getHeight()
-                    <= caption.getHeight() - caption.getPaddingTop() - caption.getPaddingBottom()
-                    || target != caption);
+            TextView verdict = verdictLine(content);
+            assertTrue("all wrapped lines fit", verdict.getLayout().getHeight()
+                    <= verdict.getHeight() - verdict.getPaddingTop() - verdict.getPaddingBottom());
             Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
             content.draw(new Canvas(bitmap));
             File dir = new File("build/reports/offer-caption");
@@ -296,7 +311,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             }
             // On the caption, or on the verdict's own words (the chip and the status line under them in the strip keep
             // their own taps).
-            View words = target == caption ? caption : verdictLine(content);
+            View words = verdictLine(content);
             int[] targetAt = new int[2], contentAt = new int[2];
             words.getLocationOnScreen(targetAt);
             content.getLocationOnScreen(contentAt);

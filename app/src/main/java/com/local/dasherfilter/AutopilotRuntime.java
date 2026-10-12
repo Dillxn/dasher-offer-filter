@@ -637,7 +637,7 @@ final class AutopilotRuntime {
     /**
      * The user turned Autopilot on or off, or chose another goal (70, 50 or 0, pay first): it is saved
      * ({@link FilterStore#setAutopilot}: off puts the bar back at exactly 100 at once), logged, and followed
-     * ({@link #userChanged}). The way the Autopilot button and the goal chooser change Autopilot.
+     * ({@link #userChanged}). The way the chip's details and the goal chooser change Autopilot.
      */
     static void setAutopilot(Context context, boolean on, int goal) {
         if (context == null) return;

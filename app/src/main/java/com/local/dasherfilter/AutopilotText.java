@@ -20,16 +20,10 @@ import java.util.List;
  * symbols. Log lines ({@code log*}) are fixed words and numbers only, never screen text.
  */
 final class AutopilotText {
-    // ---- The Autopilot button (the constellation's SCORE_ID slot) ----
+    // ---- The chip's actions (the radar's round button was Autopilot's until 0.6.1; it is the learner's now) ----
 
-    /** The button's top line; its second line is {@link #buttonLabel}. */
-    static final String BUTTON_TITLE = "Auto";
-    static final String ACTION_TURN_ON = "Turn Autopilot on";
-    static final String ACTION_TURN_OFF = "Turn Autopilot off";
     static final String ACTION_CHANGE_GOAL = "Change acceptance goal";
     static final String ACTION_DETAILS = "Autopilot details";
-    /** The button's custom accessibility action that opens the details. */
-    static final int DETAILS_ACTION_ID = 0x4F460003;
     static final String TOAST_NEEDS_MINIMUM = "Set a pay, per-mile or hourly minimum first.";
     static final String TOAST_OFF = "Autopilot off · back to exactly your minimums";
 
@@ -308,35 +302,6 @@ final class AutopilotText {
         int sane = FilterSettings.sanitizedGoal(goal);
         return sane == FilterSettings.GOAL_PAY_FIRST ? "Autopilot goal: pay first"
                 : "Autopilot goal: acceptance rate " + sane + "% or more";
-    }
-
-    // ---- The button ----
-
-    /** The button's second line: "82%" while on, "Off" while off. */
-    static String buttonLabel(boolean on, int bar) {
-        return on ? bar + "%" : "Off";
-    }
-
-    /** What a screen reader hears for the button (a Switch). */
-    static String buttonDescription(boolean on, int bar, int goal) {
-        if (!on) return "Autopilot, off. Offers are judged at exactly your minimums.";
-        return "Autopilot, on. Bar " + bar + " percent of your minimums. Goal: " + spokenGoal(goal) + ".";
-    }
-
-    /** The button's click action label: what a tap does now. */
-    static String buttonAction(boolean on) {
-        return on ? ACTION_TURN_OFF : ACTION_TURN_ON;
-    }
-
-    private static String spokenGoal(int goal) {
-        switch (FilterSettings.sanitizedGoal(goal)) {
-            case FilterSettings.GOAL_TIER:
-                return "keep a tier, acceptance rate 50 percent or more";
-            case FilterSettings.GOAL_PAY_FIRST:
-                return "pay first";
-            default:
-                return "keep a top tier, acceptance rate 70 percent or more";
-        }
     }
 
     // ---- The homepage status line ----

@@ -48,10 +48,10 @@ import java.util.regex.Pattern;
  * the user; then the minimums as a constellation with recent offers marked (tap an offer for its ticket), the skyline
  * of recent offers under it (tap for a ticket), and beside or below them a map of where offers pay best; the road along
  * the bottom. Every rule lives on the constellation and saves at once: the knobs (pay, per mile and per hour, hollow
- * until set), the max stops badge by the pin, and the Autopilot button (a tap turns it off, or on with the goal
- * chooser; a long press changes the goal). As the window shrinks, the road, the counts, the skyline and at last the
- * constellation with the map shrink and fade away, in that order, never all at once; the strip, the header and the
- * lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only what
+ * until set), the max stops badge by the pin, and the Learn button (a tap turns learning from the user's accepts on or
+ * off; a long press shows Learned minimums). Autopilot is the strip's chip. As the window shrinks, the road, the
+ * counts, the skyline and at last the constellation with the map shrink and fade away, in that order, never all at
+ * once; the strip, the header and the lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only what
  * exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip, each
  * one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt while the
  * app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt sensor
@@ -83,10 +83,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
     /**
      * The status line while auto-decline is paused with Autopilot off (with it on, the line is Autopilot's,
-     * "auto-decline paused" among its states), and while it is on with nothing else to say.
+     * "auto-decline paused" among its states). While auto-decline is on with nothing else to say, the line is empty:
+     * the awake mascot shows it, and says "Auto-decline on" to screen readers.
      */
     static final String PAUSED_LINE = "Paused · nothing is declined";
-    static final String ON_LINE = "Auto-decline is on";
+    /** The learner button's toasts. */
+    static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise your minimums.";
+    static final String LEARN_OFF_TOAST = "Learning off: your minimums stay as they are.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
@@ -243,7 +246,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
     private Button modeButton;
-    private Button learningButton;
     /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
@@ -279,6 +281,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private PeekIntroCard peekIntro;
     /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
     private GrowthCard growthCard;
+    /** The note that a new high the user accepted raised the minimums (0.6.1), with Undo and OK. */
+    private LearnedRaiseCard learnedRaiseCard;
     private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by day and night): its first resume checks at once. */
     private boolean freshScreen;
@@ -793,6 +797,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
         whatsNew = new WhatsNewCard(this, ui, problems);
         growthCard = new GrowthCard(this, ui, problems, this::undoGrowth);
+        learnedRaiseCard = new LearnedRaiseCard(this, ui, problems, () -> {
+            rulesChanged();
+            refresh();
+        });
         addFeeNotice(problems);
         // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
         // beside another app.
@@ -903,7 +911,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * The minimums' constellation, where every rule is set, in the page's sky at every window size where it fits. Its
      * knobs set the minimums and its badge the max stops, each saved at once through {@link FilterStore},
-     * and its Autopilot button turns Autopilot off (or on, through the goal chooser) and, held, changes the goal; a tap
+     * and its Learn button turns learning on or off and, held, shows Learned minimums; a tap
      * on a marked offer opens its ticket, as its building in the skyline does, and a tap off every offer while an older
      * one is chosen chooses the newest again.
      */
@@ -927,16 +935,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 setStops(stops);
             }
 
-            @Override public void toggleAutopilot() {
-                MainActivity.this.toggleAutopilot();
+            @Override public void toggleLearning() {
+                MainActivity.this.toggleLearning();
             }
 
-            @Override public void chooseAutopilotGoal() {
-                MainActivity.this.chooseAutopilotGoal();
-            }
-
-            @Override public void showAutopilotDetails() {
-                MainActivity.this.showAutopilotDetails();
+            @Override public void showLearning() {
+                showLearningDetails();
             }
         });
     }
@@ -998,13 +1002,22 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // ---- Autopilot ----
 
     private void refreshRuleChoices(FilterSettings rules) {
+        // The constellation's round button is the learner's switch (the owner, 11 October 2026: "option on
+        // homepage not settings page").
+        if (minimums != null) minimums.setLearning(rules.acceptanceLearning);
         if (modeButton == null) return;
         modeButton.setText("Mode · " + (rules.scoreByArea ? "Area" : "Strict"));
         modeButton.setContentDescription("Scoring mode: " + (rules.scoreByArea ? "area" : "strict")
                 + ". Choose how offers are judged. Autopilot is separate.");
-        learningButton.setText("Learned · " + (rules.acceptanceLearning ? "On" : "Off"));
-        learningButton.setContentDescription("Acceptance learning " + (rules.acceptanceLearning ? "on" : "off")
-                + ". Show learned minimums, adoption, Undo and Reset. Autopilot growth is separate.");
+    }
+
+    /** The constellation's learner button: learning on or off, said once in a toast. */
+    private void toggleLearning() {
+        boolean on = !FilterStore.load(this).acceptanceLearning;
+        FilterStore.setAcceptanceLearning(this, on);
+        rulesChanged();
+        refresh();
+        toast(on ? LEARN_ON_TOAST : LEARN_OFF_TOAST);
     }
 
     private void chooseScoreMode() {
@@ -1075,16 +1088,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     private static String learningDetailWords(FilterSettings rules) {
-        return "Learns only from new, positively confirmed manual standalone acceptances while "
-                + "filtering and learning are on. Automatic accepts, add-ons, declines and unclear acceptances "
-                + "do not teach it. Unknown facts do not teach their axes; any known implausible figure rejects the lesson. Switching off or pausing keeps the bests without gathering new lessons.\n\n"
+        return "On by default. When you accept an offer yourself and it beats your best pay, pay per mile or pay per "
+                + "hour, your minimums rise to match it at once, and the homepage says so with Undo. Automatic "
+                + "accepts, add-ons, declines and unclear acceptances do not teach it; pay per mile needs a trip of at "
+                + "least 2 miles and pay per hour at least 10 minutes. Off keeps the bests without learning.\n\n"
                 + MinimumsDetails.learningSummary(rules) + "\n\n"
-                + "Saved knobs stay separate. Active learned bests can supply an unset minimum. The chart uses blue "
-                + "for saved minimums, teal for learned bests and purple for Autopilot's adjusted requirements. "
-                + "Autopilot's minimum growth and its Undo are separate.\n\n"
-                + "Adopt raises only lower saved minimums; these then apply to add-ons too. Undo is available until "
-                + "a later minimum change, Reset or Clear history makes it stale. Reset clears learned bests, "
-                + "not saved minimums or Autopilot settings. Earlier decision snapshots remain in history until Clear history.";
+                + "Teal on the chart is your learned bests. Adopt raises any lower minimum to them again (after you "
+                + "dragged a knob down, say). Undo puts back the last raise until a later minimum change, Reset or "
+                + "Clear history. Reset clears learned bests, not your minimums or Autopilot settings. Autopilot's "
+                + "minimum growth and its Undo are separate.";
     }
 
     private void confirmResetLearning() {
@@ -1107,7 +1119,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return AutopilotRuntime.status(this, System.currentTimeMillis(), OfferFilterService.isConnected());
     }
 
-    /** The Autopilot button's tap: off while on (exactly the minimums again); while off, the goal chooser. */
+    /** From the chip's details: Autopilot off while on (exactly the minimums again); while off, the goal chooser. */
     private void toggleAutopilot() {
         FilterSettings saved = FilterStore.load(this);
         if (saved.autopilot) {
@@ -1223,7 +1235,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String words = String.join("\n\n", AutopilotText.detailsLines(status));
         if (status.on && FilterStore.minimumsGrow(this) && Growth.learningDominates(status.rules)) {
             words += "\n\nMinimum growth waits while enabled learned minimums exceed your saved minimums. "
-                    + "Adopt those bests or switch learning off to remove this hold; the other growth checks still apply.";
+                    + "Adopt those bests (hold Learn on the radar) or turn learning off to remove this hold; the other "
+                    + "growth checks still apply.";
         }
         return words;
     }
@@ -1435,11 +1448,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Separate visible controls in Settings preserve the main scene at every split height.
         LinearLayout ruleChoices = ui.row();
         modeButton = ui.button("Mode · Strict", false, this::chooseScoreMode);
-        learningButton = ui.button("Learned · Off", false, this::showLearningDetails);
         modeButton.setMinHeight(ui.dp(48));
-        learningButton.setMinHeight(ui.dp(48));
         ruleChoices.addView(modeButton, Ui.weighted());
-        ruleChoices.addView(learningButton, Ui.weighted());
         body.addView(ruleChoices, Ui.matchWidth());
 
         LinearLayout setup = ui.column();
@@ -1666,6 +1676,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
         growthCard.refresh();
+        learnedRaiseCard.refresh();
         refreshFeeNotice();
         OfferSnapshot route = ActiveRouteStore.load(this);
         routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
@@ -1683,7 +1694,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
-            showSlot(SLOT_ON, ON_LINE, null, ui.inkSecondary);
+            // Nothing to add: the awake mascot already says auto-decline is on (the owner, 11 October 2026: no
+            // sentence for what a picture shows). Screen readers hear it from the mascot.
+            showSlot(SLOT_ON, "", null, ui.inkSecondary);
         }
 
         refreshHistory();
@@ -1714,7 +1727,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot as everything on the page shows it: the constellation's button (and its dashed shape), and the chip,
+     * Autopilot as everything on the page shows it: the constellation's dashed shape, and the chip,
      * amber by one rule (below the goal). Quiet: nothing is announced when Autopilot moves the bar by itself.
      */
     private void refreshAutopilot(AutopilotText.Status status) {
@@ -1977,15 +1990,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     private void refreshOfferCaption(DecisionLog.Entry entry) {
-        if (entry == null) {
-            // No offer yet: the verdict at the top says so, and the skyline under it.
+        boolean latest = entry != null && !recentEntries.isEmpty() && recentEntries.get(0).at == entry.at;
+        if (entry == null || latest) {
+            // No offer yet, or the latest: the verdict at the top of the page says it already (the owner, 11 October
+            // 2026: the latest offer showed twice). Only another offer tapped on the skyline gets this caption.
             if (offerCaption.length() > 0) offerCaption.setText("");
             offerCaption.setContentDescription(null);
             offerCaption.setClickable(false);
             return;
         }
-        boolean latest = !recentEntries.isEmpty() && recentEntries.get(0).at == entry.at;
-        String label = (latest ? "Latest" : "Selected") + " · "
+        String label = "Selected · "
                 + (entry.facts.payCents == null ? "Pay unread" : DecisionLog.money(entry.facts.payCents))
                 + " · " + captionOutcome(entry);
         if (!label.contentEquals(offerCaption.getText())) offerCaption.setText(label);

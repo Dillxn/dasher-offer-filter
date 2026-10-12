@@ -264,6 +264,45 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * During a delivery the tap never starts Dasher's launcher beside this screen: on 11 October 2026 the owner's tap
+     * during Dasher's own turn-by-turn navigation left Dasher's half on its launch screen. Recent apps open with the
+     * phone's words instead, so Dasher's existing screen moves into the split as it is.
+     */
+    @Test
+    public void aTapDuringADeliveryOpensRecentAppsInsteadOfStartingDasher() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> true;
+        DasherSplit.onDelivery = context -> true;
+        List<String> asked = new ArrayList<>();
+        DasherSplit.split = () -> asked.add("split");
+        DasherSplit.recents = () -> asked.add("recents");
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            assertNull("nothing of Dasher's started", Shadows.shadowOf(app).getNextStartedActivity());
+            assertEquals(Arrays.asList("recents"), asked);
+            assertEquals("Tap Offer Filter's icon above its card → Open in split screen view",
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            contains(DiagnosticLog.read(app), "[split] tap during a delivery: " + DasherSplit.DELIVERY_RECENTS);
+        } finally {
+            service.destroy();
+        }
+    }
+
+    /** Dasher's pickup or turn-by-turn screen counts as a delivery for ten minutes, and the wait for offers ends it. */
+    @Test
+    public void aDeliveryScreenCountsUntilTheWaitOrTenMinutes() {
+        OfferFilterService.forgetScreenState();
+        assertFalse(OfferFilterService.dasherOnDelivery(app));
+        OfferFilterService.deliveryScreenSeen(android.os.SystemClock.uptimeMillis());
+        assertTrue(OfferFilterService.dasherOnDelivery(app));
+        pass(OfferFilterService.DELIVERY_SCREEN_MS + 1000);
+        assertFalse(OfferFilterService.dasherOnDelivery(app));
+    }
+
     /** A phone that opens Dasher full screen instead: recent apps then, with the phone's words, as before. */
     @Test
     public void anAdjacentStartThatDoesNotSplitOpensRecentAppsWithThePhonesWords() {

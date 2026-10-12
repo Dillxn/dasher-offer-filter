@@ -75,7 +75,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             float[] mark = clearestMark(star, OLDER);
             assertTrue("a mark well clear of every knob and other mark: " + clearance(star, mark, OLDER) + " px at "
                     + java.util.Arrays.toString(mark) + ", radius " + star.skyRadius() + ", radar " + star.getWidth()
-                    + "x" + star.getHeight() + ", button " + star.autopilotBox() + ", badge " + star.stopsBox()
+                    + "x" + star.getHeight() + ", button " + star.learnBox() + ", badge " + star.stopsBox()
                     + ", knobs " + java.util.Arrays.toString(star.knobAt(0)) + java.util.Arrays.toString(star.knobAt(1))
                     + java.util.Arrays.toString(star.knobAt(2)), clearance(star, mark, OLDER) > new Ui(app).dp(30));
             touch(content, star, MotionEvent.ACTION_DOWN, mark);
@@ -490,7 +490,7 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
                 if (mark != null) clear = Math.min(clear, Math.hypot(mark[0] - at[0], mark[1] - at[1]));
             }
         }
-        for (android.graphics.RectF control : new android.graphics.RectF[] {star.autopilotBox(), star.stopsBox()}) {
+        for (android.graphics.RectF control : new android.graphics.RectF[] {star.learnBox(), star.stopsBox()}) {
             if (control != null) clear = Math.min(clear,
                     Math.hypot(control.centerX() - at[0], control.centerY() - at[1]) - control.width() / 2);
         }

@@ -40,6 +40,7 @@ import org.robolectric.shadows.ShadowToast;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
@@ -262,8 +263,12 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     // ---- The button ----
 
+    /**
+     * Autopilot's state is said once, by the strip's chip ("Auto 82%", "Auto off"); the radar's round button is the
+     * learner's ("Learn" over Off or On) and says nothing of Autopilot (the owner, 11 October 2026).
+     */
     @Test
-    public void theButtonSaysAutoOverItsBarOrOffAndItsSwitchNamesTheGoal() {
+    public void theChipAloneSaysAutopilotsBarOrOffAndTheRadarsButtonIsTheLearners() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
@@ -271,43 +276,26 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
+            AutopilotChip chip = find(content, AutopilotChip.class);
+            assertTrue(chip.getText().toString(), chip.isShown() && chip.getText().toString().startsWith("Auto "));
             List<String> drawn = drawnWords(star);
-            assertTrue(drawn.toString(), drawn.contains(AutopilotText.BUTTON_TITLE) && drawn.contains("82%"));
-            assertFalse(drawn.toString(), drawn.contains("Off"));
+            assertTrue(drawn.toString(), drawn.contains(MinimumsStarView.LEARN_TITLE) && drawn.contains("Off"));
+            assertFalse(drawn.toString(), drawn.contains("Auto") || drawn.contains("82%"));
             AccessibilityNodeInfo button = node(star, MinimumsStarView.SCORE_ID);
             assertTrue(button.isCheckable());
-            assertTrue(button.isChecked());
-            assertNull("nothing to drag", button.getRangeInfo());
-            assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a tier, acceptance rate 50 "
-                    + "percent or more.", button.getContentDescription().toString());
+            assertFalse("learning is off in these rules", button.isChecked());
+            assertEquals(MinimumsStarView.learnSaid(false), button.getContentDescription().toString());
 
-            // Another goal, chosen while it is on: the bar stays until Autopilot moves it, and the Switch says so.
-            AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
+            // Autopilot turned off from its chip: the chip says so; the radar's button is unchanged.
+            toggleAutopilotByChip(content);
             settleSky(content);
-            assertEquals(82, FilterStore.load(app).minimumScalePercent);
-            assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: pay first.",
-                    node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
-            AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-            settleSky(content);
-            assertEquals("Autopilot, on. Bar 82 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
-                    + "percent or more.", node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
-
-            // A tap turns it off: "Auto" over "Off", offers judged at exactly the minimums again.
-            RectF box = star.autopilotBox();
-            tapStar(star, box.centerX(), box.centerY());
-            settleSky(content);
-            drawn = drawnWords(star);
-            assertTrue(drawn.toString(), drawn.contains(AutopilotText.BUTTON_TITLE) && drawn.contains("Off"));
-            assertFalse(drawn.toString(), drawn.contains("82%"));
-            AccessibilityNodeInfo off = node(star, MinimumsStarView.SCORE_ID);
-            assertFalse(off.isChecked());
-            assertEquals("Autopilot, off. Offers are judged at exactly your minimums.",
-                    off.getContentDescription().toString());
+            assertEquals("Auto off", chip.getText().toString());
             assertEquals(AutopilotText.TOAST_OFF, ShadowToast.getTextOfLatestToast());
             FilterSettings saved = FilterStore.load(app);
             assertFalse(saved.autopilot);
             assertEquals(100, saved.minimumScalePercent);
             assertArrayEquals("the minimums stay", new int[] {700, 150, 30, 0, 0, 0}, saved.minimums());
+            assertTrue(drawnWords(star).contains(MinimumsStarView.LEARN_TITLE));
             assertNull("off: no status line", shownLineStarting(content, "Autopilot "));
         }
     }
@@ -321,8 +309,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            RectF box = star.autopilotBox();
-            tapStar(star, box.centerX(), box.centerY());
+            toggleAutopilotByChip(content);
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull("the goal chooser", chooser);
             assertOwnsItsTouches(chooser);
@@ -365,12 +352,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(find(content, AutopilotChip.class).isShown());
 
             // Off, then on again with pay first.
-            box = star.autopilotBox();
-            tapStar(star, box.centerX(), box.centerY());
+            toggleAutopilotByChip(content);
             assertFalse(FilterStore.load(app).autopilot);
             settleSky(content);
-            box = star.autopilotBox();
-            tapStar(star, box.centerX(), box.centerY());
+            toggleAutopilotByChip(content);
             chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("the stored goal is checked now", 1, chooser.getListView().getCheckedItemPosition());
             Shadows.shadowOf(chooser).clickOnItem(2);
@@ -386,10 +371,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
+            toggleAutopilotByChip(content);
             idle();
-            assertNull("no chooser", ShadowAlertDialog.getLatestAlertDialog());
+            assertNotEquals("no chooser", AutopilotText.CHOOSER_TITLE, title(ShadowAlertDialog.getLatestAlertDialog()));
             assertEquals("Set a pay, per-mile or hourly minimum first.", ShadowToast.getTextOfLatestToast());
             assertFalse(FilterStore.load(app).autopilot);
         }
@@ -403,8 +387,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            // A long press (here a screen reader's) changes the goal at any time.
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            // The chip's long press changes the goal at any time.
+            assertTrue(find(content, AutopilotChip.class).performLongClick());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
             assertEquals("the stored goal is checked", 1, chooser.getListView().getCheckedItemPosition());
@@ -426,7 +410,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // Not now (and Back) leave it as it was.
             chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             idle();
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            assertTrue(find(content, AutopilotChip.class).performLongClick());
             ShadowAlertDialog.getLatestAlertDialog().cancel();
             idle();
             FilterSettings kept = FilterStore.load(app);
@@ -434,7 +418,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals(FilterSettings.GOAL_TIER, kept.autopilotGoalPercent);
 
             // A goal chosen while on says it changed.
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            assertTrue(find(content, AutopilotChip.class).performLongClick());
             Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0);
             idle();
             assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
@@ -527,7 +511,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(drawnWords(star).contains("50%"));
+            assertEquals("Auto 50% lowest", find(content, AutopilotChip.class).getText().toString());
+            assertFalse("the radar's button is the learner's", drawnWords(star).contains("50%"));
             assertFalse("a dashed shape at the bar", star.autopilotShape().isEmpty());
             List<AccessibilityEvent> events = Shadows.shadowOf(accessibility).getSentAccessibilityEvents();
             for (AccessibilityEvent event : events.subList(sent, events.size())) {
@@ -912,8 +897,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, off.minimums());
             assertEquals(AutopilotText.TOAST_OFF, ShadowToast.getTextOfLatestToast());
             assertNull("off: the line goes", shownLineStarting(content, "Autopilot "));
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
+            find(content, AutopilotChip.class).performClick();
+            idle();
             AlertDialog offDetails = ShadowAlertDialog.getLatestAlertDialog();
             assertTrue(message(offDetails), message(offDetails).startsWith(
                     "Autopilot is off: offers are judged at exactly your minimums."));
@@ -1129,19 +1114,21 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             Ui ui = new Ui(activity.get());
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
-            assertTrue("with its Autopilot button", star.autopilotShown());
+            assertTrue("with its round button, now the learner's", star.learnShown());
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertTrue(chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             assertEquals("amber below the goal, the chip", AutopilotChip.amber(ui), chip.getCurrentTextColor());
-            assertEquals("and the button", AutopilotChip.amber(ui), star.buttonRing());
+            assertFalse("the round button is the learner's, never Autopilot's amber",
+                    star.buttonRing() == AutopilotChip.amber(ui));
+            assertTrue(drawnWords(star).contains(MinimumsStarView.LEARN_TITLE));
 
             AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
             OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
             refreshed();
             settleSky(content);
             assertEquals("Auto off", chip.getText().toString());
-            assertTrue("the button says Off", drawnWords(star).contains("Off"));
+            assertFalse("Autopilot's state is said once, by the chip", drawnWords(star).contains("Auto"));
         } finally {
             OfferFilterService.sawDasherBeside(0);
         }
@@ -1270,9 +1257,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             AreaMapView map = find(content, AreaMapView.class);
             assertTrue("the map keeps its readable least wherever it is wholly there",
                     scene.shown(map) < 1 || map.getHeight() >= ui.dp(84) - 1);
-            boolean radar = scene.shown(star) >= 1 && star.autopilotShown();
+            boolean radar = scene.shown(star) >= 1 && star.learnShown();
             if (radar) {
-                assertEquals("amber below the goal, as the chip is", AutopilotChip.amber(ui), star.buttonRing());
+                assertFalse("the radar's round button is the learner's, never Autopilot's amber",
+                        star.buttonRing() == AutopilotChip.amber(ui));
             }
 
             // A tap opens the details; a long press asks for the goal.
@@ -1308,7 +1296,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("a line of its own only at twice the font", !row.stacked() || fontScale >= 2f);
             assertTrue("one screen, or only what never goes", scene.getHeight() <= window.getHeight()
                     || scene.shown(star) == 0);
-            if (radar && star.autopilotShown()) assertTrue("the button says Off", drawnWords(star).contains("Off"));
+            if (radar && star.learnShown()) assertTrue("the button says Off", drawnWords(star).contains("Off"));
 
             // On again: its words take their earlier width, and the row decides as it did then.
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -1345,8 +1333,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertFalse("pay first has no goal to fall below", status.belowGoal());
             Ui ui = new Ui(activity.get());
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertEquals(AutopilotChip.purple(ui), star.buttonRing());
             assertEquals(AutopilotChip.purple(ui), hosted.getCurrentTextColor());
+            assertFalse("the radar's button is the learner's, not Autopilot's purple",
+                    star.buttonRing() == AutopilotChip.purple(ui));
         }
     }
 
@@ -1627,11 +1616,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             View content = page(activity);
             settleSky(content);
             // On the homepage it never reads as a full pass: its line, its building and its marks say so.
-            TextView caption = shownTextContaining(content, "Latest · ");
-            assertEquals("Latest · $5.75 · Passed below your minimums", caption.getText().toString());
-            assertTrue(String.valueOf(caption.getContentDescription()),
-                    String.valueOf(caption.getContentDescription()).startsWith(
-                            "Latest · $5.75 · Passed below your minimums."));
+            // The latest offer is said by the verdict at the top, never again under the skyline (0.6.1).
+            assertNull(shownTextContaining(content, "Latest · "));
+            String verdict = verdictLine(content).getText().toString();
+            assertTrue(verdict, verdict.contains("$5.75") && verdict.contains("Passed below your minimums"));
             String skyline = String.valueOf(find(content, DecisionChartView.class).getContentDescription());
             assertTrue(skyline, skyline.contains("1 passed (1 below your minimums)")
                     && skyline.contains(": $5.75, 6.6 mi"));

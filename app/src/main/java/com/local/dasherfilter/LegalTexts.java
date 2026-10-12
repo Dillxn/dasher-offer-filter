@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 11 October 2026 · for {app} 0.6.0
+            Beta terms, effective 12 October 2026 · for {app} 0.6.1
 
             ## What {app} is
 
@@ -88,17 +88,22 @@ final class LegalTexts {
             committing you to that delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on \
             filtering stays strict against saved minimums at the current bar; standalone learned floors do not \
             apply to add-ons unless adopted as saved minimums.
-            - Acceptance learning is separate from area mode and Autopilot, and starts off. While filtering and \
-            learning are on, new positively confirmed manual standalone acceptances can raise a learned pay \
-            requirement (the highest accepted pay plus one cent) and independent exact best pay-per-mile and \
-            pay-per-minute rates. Automatic accepts, declines, add-ons and ambiguous outcomes do not teach it. \
-            Unknown facts do not teach their axes; any known implausible figure rejects the lesson. Learned bests \
-            can activate an unset money minimum, changing active requirements without moving saved knobs. Off or \
-            paused retains learned bests without new learning. Confirmed Reset clears active bests and adoption \
-            Undo; prior decision snapshots remain until Clear history. Clear history clears both active learning \
-            and that history. Adopt raises only lower saved minimums, which then apply to add-ons too; Undo is \
-            conditional and cannot overwrite later changes. Reset and Clear history preserve those adopted saved \
-            minimums. Learning is local and makes no promise about earnings or future offers.
+            - Acceptance learning is separate from area mode and Autopilot, and is on by default; the Learn button \
+            on the homepage turns it off and on. While filtering and learning are on, each positively confirmed \
+            manual standalone acceptance (an offer you accepted yourself) can keep your best accepted pay (as a \
+            requirement of that pay plus one cent) and independent exact best pay-per-mile and pay-per-minute \
+            rates. When a new best asks more than a saved minimum, that saved minimum rises to match at once, which \
+            can mean more declines. A note on the homepage says what rose, with Undo, which puts those minimums \
+            back and forgets that lesson; OK closes the note and Undo stays in Learned minimums. Undo is \
+            conditional and cannot overwrite later changes. Pay per mile learns only from trips of at least 2 miles \
+            and pay per minute from at least 10 minutes. Automatic accepts, declines, add-ons and ambiguous \
+            outcomes do not teach it. Unknown facts do not teach their axes; any known implausible figure rejects \
+            the lesson. Learned bests can activate an unset money minimum. Off or paused retains learned bests \
+            without new learning. Confirmed Reset clears active bests and Undo; prior decision snapshots remain \
+            until Clear history. Clear history clears both active learning and that history. Adopt raises any lower \
+            saved minimum to the learned bests again, and raised minimums then apply to add-ons too. Reset and \
+            Clear history keep your minimums as they are. Learning is local and makes no promise about earnings or \
+            future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -199,7 +204,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 11 October 2026 · for {app} 0.6.0
+            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.1
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -324,20 +329,23 @@ final class LegalTexts {
             your acceptance goal (70%, 50% or pay first), its current bar, whether you have answered its goal \
             question and whether Let my minimums grow is on (it is unless you turn it off). What else Autopilot \
             keeps is under Autopilot and your acceptance rate below.
-            - Your separate scoring-mode and acceptance-learning choices, both initially off for area mode and \
-            learning. Learned evidence starts empty in this restoration: deleted old lessons and historical \
-            decisions are not reconstructed. While filtering and learning are on, positively confirmed manual \
-            standalone acceptances can store the highest accepted pay and independent exact best pay-per-mile and \
-            pay-per-minute numeric pairs. Automatic accepts, declines, add-ons and ambiguous outcomes do not train \
-            it. Unknown facts do not teach their axes; any known implausible figure rejects the lesson. The app \
-            also keeps a bounded local identity record to prevent the same acceptance teaching twice and a \
-            generation marker to reject stale observations. Learned bests have no age expiry; pausing or switching \
-            learning off retains them. Confirmed Reset clears active bests and adoption Undo. Earlier decision \
-            snapshots keep their original numeric saved/learned requirements and model for provenance until Clear \
-            history, eviction by newer decisions or uninstall. Clear history and uninstall remove both active \
-            learning and decision history. Adopt keeps the saved minima before and after that adoption and its \
-            identity/time for conditional Undo until a later change, Reset or Clear history invalidates it. Adopted \
-            saved minima remain settings after those clears.
+            - Your separate scoring-mode and acceptance-learning choices: area mode starts off; learning is on by \
+            default (from 0.6.1, and turned on once then for earlier installs). Learned evidence starts empty: \
+            deleted old lessons and historical decisions are not reconstructed. While filtering and learning are \
+            on, positively confirmed manual standalone acceptances can store the highest accepted pay and \
+            independent exact best pay-per-mile and pay-per-minute numeric pairs, and a new best that asks more \
+            than a saved minimum raises that saved minimum on this phone. Automatic accepts, declines, add-ons and \
+            ambiguous outcomes do not train it. Unknown facts do not teach their axes; any known implausible figure \
+            rejects the lesson. The app also keeps a bounded local identity record to prevent the same acceptance \
+            teaching twice and a generation marker to reject stale observations. Learned bests have no age expiry; \
+            pausing or switching learning off retains them. Confirmed Reset clears active bests and Undo. Earlier \
+            decision snapshots keep their original numeric saved/learned requirements and model for provenance \
+            until Clear history, eviction by newer decisions or uninstall. Clear history and uninstall remove both \
+            active learning and decision history. Adopt and each raise learning makes keep the saved minima before \
+            and after it, and for a raise learning made also the learned bests before and after that lesson and \
+            whether its homepage note was closed, with its identity/time, for conditional Undo until a later \
+            change, Reset or Clear history invalidates it. Raised and adopted saved minima remain settings after \
+            those clears.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, a numeric local \
             snapshot of the saved and learned requirements used, whether the offer declared items or shopping, the \
             result, what the app did, the recorded scoring model and score (strict pay fitness or area fitness), \
@@ -548,8 +556,9 @@ final class LegalTexts {
 
             The restored acceptance learner adds no new recipient or automatic-sharing choice. Existing diagnostics \
             can include scoring mode, learning on/off and the recorded score kind, alongside observed offer figures \
-            and per-decision required pay. Raw learned-best snapshots and adoption receipts are not sent. The \
-            separate offer timing study continues to exclude minimum amounts and learner evidence.
+            and per-decision required pay, and fixed-word lines saying whether each of your accepts taught the \
+            learner and, if not, why (no amounts). Raw learned-best snapshots and adoption receipts are not sent. \
+            The separate offer timing study continues to exclude minimum amounts and learner evidence.
 
             ## What leaves the phone, and when
 
@@ -655,9 +664,9 @@ final class LegalTexts {
             Dasher shows it, and never with battery saver on or the battery at 20% or less and not charging. It \
             never wakes or unlocks the phone, and the power button still turns the screen off; pausing auto-decline \
             ends the hold. Peek pauses while your phone is locked.
-            - Area mode and acceptance learning are separate choices in Settings. Turning learning off retains \
-            bests; confirmed Reset or Clear history clears them. Neither enables the optional timing study or \
-            sharing.
+            - Area mode is a choice in Settings; acceptance learning is the Learn button on the homepage (a long \
+            press shows what it learned). Turning learning off retains bests; confirmed Reset or Clear history \
+            clears them. Neither enables the optional timing study or sharing.
             - Autopilot is off unless you turn it on, and turning it off puts the bar back to exactly your \
             minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear history removes it. \
             Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising saved minimums. Enabled \

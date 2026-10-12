@@ -48,7 +48,7 @@ public class AcceptanceLearningAdapterTest {
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
     }
     @After public void cleanup() {
-        controller.destroy(); OfferFilterService.nodeFetchForTests = null;
+        controller.destroy(); OfferFilterService.nodeFetchForTests = null; OfferFilterService.forgetScreenState();
         OfferFilterService.scanLooperForTests = null; OfferFilterService.sawDasherBeside(0);
         OfferNotificationService.forgetDeclineAction();
     }
@@ -88,6 +88,11 @@ public class AcceptanceLearningAdapterTest {
         controller.get().onAccessibilityEvent(tap);
     }
     private void delivery() { show(screen("Arrived at store")); }
+    /** A new dash's first pickup, as the owner's phone drew it on 11 October 2026 (store and address made up). */
+    private void pickupWithDashEarnings() {
+        show(screen("Current dash", "Pick up by 7:43 PM", "Safety", "Help", "$0.00", "this dash", "Pickup from",
+                "Corner Chili", "12 Elm St", "Directions"));
+    }
     private DecisionLog.Entry latest() {
         DecisionLog.flush(); return DecisionLog.recent(app, 10).get(0);
     }
@@ -99,7 +104,18 @@ public class AcceptanceLearningAdapterTest {
         assertEquals(1675, FilterStore.load(app).accepted.milePay);
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.LEARNER_MINIMUM_RAISED));
-        assertArrayEquals(new int[] {500, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+        // The new high raised the saved minimums to match (0.6.1), with the homepage's note and Undo.
+        assertArrayEquals(new int[] {1676, 430, 56, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertNotNull(FilterStore.learnedRaiseNote(app));
+        assertTrue(DiagnosticLog.read(app).contains("[learner] manual acceptance: learned; your minimums rose"));
+    }
+    @Test public void aPickupShowingTheDashsZeroEarningsStillCountsAndTeaches() {
+        waiting(); assertFalse(OfferFilterService.dasherOnDelivery(app));
+        offer(); ShadowSystemClock.advanceBy(Duration.ofSeconds(1)); pickupWithDashEarnings();
+        assertTrue("the Split button now knows Dasher is on a delivery", OfferFilterService.dasherOnDelivery(app));
+        assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
+        assertEquals(1675, FilterStore.load(app).accepted.highestPayCents);
+        assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.LEARNER_MINIMUM_RAISED));
     }
     @Test public void currentConservativeNoTapConfirmationCanTeach() {
         waiting(); offer(); ShadowSystemClock.advanceBy(Duration.ofSeconds(1)); delivery();

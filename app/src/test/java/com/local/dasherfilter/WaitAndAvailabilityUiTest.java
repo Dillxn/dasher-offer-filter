@@ -152,8 +152,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             unchanged(original, 97);
 
             // About acceptance rate explains without closing the choice; Not now leaves the goal as it was.
-            MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
+            assertTrue(find(content, AutopilotChip.class).performLongClick());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             chooser.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();

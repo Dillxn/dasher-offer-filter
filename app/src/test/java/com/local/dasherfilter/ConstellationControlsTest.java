@@ -196,8 +196,12 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * The radar's round button is the learner's switch (0.6.1; the owner, 11 October 2026: "option on homepage not
+     * settings page"): where Autopilot's stood, a tap turns learning on, another off, the rules and Autopilot kept.
+     */
     @Test
-    public void theAutopilotButtonTurnsAutopilotOnThroughTheGoalChooserAndOffAgainKeepingTheRules() {
+    public void theLearnButtonTurnsLearningOnAndOffAgainKeepingTheRules() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         // Set up (screen reading and notification access on): no setup line stands under the header.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -209,8 +213,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            ViewGroup sky = (ViewGroup) star.getParent();
-            RectF button = star.autopilotBox();
+            RectF button = star.learnBox();
             assertNotNull("one round button by the chart", button);
             Ui ui = new Ui(app);
             assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
@@ -225,42 +228,33 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             }
             assertNull("the retired buttons are gone", node(star, MinimumsStarView.ADOPT_ID));
             assertNull(node(star, MinimumsStarView.ADAPTIVE_ID));
+            assertFalse(star.learningShown());
 
-            // Off: a tap asks for the goal first, and asking changes nothing.
+            // Off: a tap turns learning on, at once, with nothing asked.
+            ShadowAlertDialog.reset();
             tapStar(star, button.centerX(), button.centerY());
-            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
-            assertNotNull("the goal chooser", chooser);
-            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
-            assertFalse(FilterStore.load(app).autopilot);
-            // One tap on a goal applies it and closes.
-            Shadows.shadowOf(chooser).clickOnItem(1);
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertFalse(chooser.isShowing());
+            assertNull("nothing asked", ShadowAlertDialog.getLatestAlertDialog());
             FilterSettings on = FilterStore.load(app);
-            assertTrue("on, saved at once", on.autopilot);
-            assertEquals(FilterSettings.GOAL_TIER, on.autopilotGoalPercent);
-            assertEquals("Autopilot on · goal: acceptance rate 50% or more", ShadowToast.getTextOfLatestToast());
+            assertTrue("on, saved at once", on.acceptanceLearning);
+            assertEquals(MainActivity.LEARN_ON_TOAST, ShadowToast.getTextOfLatestToast());
             assertTrue(on.enabled);
+            assertFalse("Autopilot is the chip's", on.autopilot);
             assertArrayEquals("the minimums stay", new int[] {700, 150, 30, 0, 0, 0}, on.minimums());
             assertEquals(3, on.maxStops);
-            assertEquals("the bar starts at exactly the minimums", 100, on.minimumScalePercent);
-            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] on; goal 50%"));
             assertFalse("no page opens", settingsShown(content));
-
-            // On: its words follow ("Auto" over "100%"), and a tap turns it off, back to exactly the minimums.
             settleSky(content);
-            assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a tier, acceptance rate 50 percent "
-                    + "or more.", node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
-            button = star.autopilotBox();
+            assertTrue(star.learningShown());
+            assertEquals(MinimumsStarView.learnSaid(true),
+                    node(star, MinimumsStarView.SCORE_ID).getContentDescription().toString());
+
+            // On: a tap turns it off again; the rules stay.
+            button = star.learnBox();
             tapStar(star, button.centerX(), button.centerY());
             FilterSettings off = FilterStore.load(app);
-            assertFalse(off.autopilot);
-            assertEquals(100, off.minimumScalePercent);
-            assertEquals("the goal is kept for next time", FilterSettings.GOAL_TIER, off.autopilotGoalPercent);
-            assertEquals("Autopilot off · back to exactly your minimums", ShadowToast.getTextOfLatestToast());
+            assertFalse(off.acceptanceLearning);
+            assertEquals(MainActivity.LEARN_OFF_TOAST, ShadowToast.getTextOfLatestToast());
             assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, off.minimums());
             assertTrue(off.enabled);
-            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] off; bar back to 100%"));
         } finally {
             listener.destroy();
             service.destroy();
@@ -282,7 +276,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             TextView setup = shownTextContaining(content, "Turn on Offer Filter in Accessibility");
             assertNotNull("a setup line to do", setup);
-            RectF button = star.autopilotBox();
+            RectF button = star.learnBox();
             assertNotNull(button);
             assertTrue("by the circle's upright line, at most 10 dp left of it", button.centerX() <= star.skyX() + 1
                     && button.centerX() >= star.skyX() - new Ui(app).dp(10) - 1);
@@ -300,52 +294,33 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
                 assertTrue("the line above the radar: " + box, box.bottom <= 1);
                 assertFalse("clear of the setup line " + box + " / " + button, RectF.intersects(box, button));
             }
-            ShadowAlertDialog.reset();
             tapStar(star, button.centerX(), button.centerY());
-            assertEquals("the button takes its own taps there", AutopilotText.CHOOSER_TITLE,
-                    Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).getTitle().toString());
+            assertTrue("the button takes its own taps there", FilterStore.load(app).acceptanceLearning);
         }
     }
 
+    /** Held, the learner button shows what it learned; the hold toggles nothing, and a finger moved off it is no tap. */
     @Test
-    public void holdingTheAutopilotButtonChangesTheGoalAndTogglesNothing() {
+    public void holdingTheLearnButtonShowsLearnedMinimumsAndTogglesNothing() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
-        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
 
-            // Held: the chooser, with the stored goal checked; Not now leaves everything, and the lift is no tap.
             ShadowAlertDialog.reset();
-            hold(star, star.autopilotBox());
-            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
-            assertNotNull(chooser);
-            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
-            assertEquals("the stored goal is checked", 0, chooser.getListView().getCheckedItemPosition());
-            assertTrue("the hold does not turn it off", FilterStore.load(app).autopilot);
-            chooser.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            hold(star, star.learnBox());
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(details);
+            assertEquals("Learned minimums", Shadows.shadowOf(details).getTitle().toString());
+            assertFalse("the hold does not turn learning on", FilterStore.load(app).acceptanceLearning);
+            details.dismiss();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertTrue(FilterStore.load(app).autopilot);
-            assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
-
-            // Held again: pay first, while it stays on.
-            settleSky(content);
-            hold(star, star.autopilotBox());
-            chooser = ShadowAlertDialog.getLatestAlertDialog();
-            Shadows.shadowOf(chooser).clickOnItem(2);
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-            FilterSettings saved = FilterStore.load(app);
-            assertTrue(saved.autopilot);
-            assertEquals(FilterSettings.GOAL_PAY_FIRST, saved.autopilotGoalPercent);
-            assertEquals("Autopilot goal: pay first", ShadowToast.getTextOfLatestToast());
-            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] pay first (was 70%)"));
-            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 0, 0, 0}, saved.minimums());
 
             // A finger that moves off the button is neither a tap nor a hold: the button has no drag.
             settleSky(content);
-            RectF button = star.autopilotBox();
+            RectF button = star.learnBox();
             ShadowAlertDialog.reset();
             long now = android.os.SystemClock.uptimeMillis();
             button.offset(star.getLeft(), star.getTop());
@@ -360,16 +335,15 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             sky.dispatchTouchEvent(MotionEvent.obtain(now, android.os.SystemClock.uptimeMillis(),
                     MotionEvent.ACTION_UP, button.centerX() + new Ui(app).dp(72), button.centerY(), 0));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertNull("no chooser", ShadowAlertDialog.getLatestAlertDialog());
+            assertNull("no details", ShadowAlertDialog.getLatestAlertDialog());
             FilterSettings after = FilterStore.load(app);
-            assertTrue("still on", after.autopilot);
-            assertEquals("and the bar not dragged", 100, after.minimumScalePercent);
-            assertEquals(FilterSettings.GOAL_PAY_FIRST, after.autopilotGoalPercent);
+            assertFalse("still off", after.acceptanceLearning);
+            assertArrayEquals("the set minimums stay", new int[] {700, 150, 30, 0, 0, 0}, after.minimums());
         }
     }
 
     @Test
-    public void screenReadersHearTheAutopilotButtonAsASwitchWithItsActionsAndNoRange() {
+    public void screenReadersHearTheLearnButtonAsASwitchWithItsActionsAndNoRange() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -377,8 +351,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             AccessibilityNodeInfo button = node(star, MinimumsStarView.SCORE_ID);
             assertNotNull(button);
-            assertEquals("Autopilot, off. Offers are judged at exactly your minimums.",
-                    button.getContentDescription().toString());
+            assertEquals("Learning from your accepts, off", button.getContentDescription().toString());
             assertEquals(Switch.class.getName(), button.getClassName().toString());
             assertTrue(button.isCheckable());
             assertFalse(button.isChecked());
@@ -389,47 +362,32 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
                 assertTrue("no adjusting it: " + action, action.getId() != AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
                         && action.getId() != AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
                         && action.getId() != android.R.id.accessibilityActionSetProgress);
+                assertFalse("Autopilot's actions are the chip's: " + action,
+                        String.valueOf(action.getLabel()).contains("Autopilot"));
             }
-            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_CLICK + "=Turn Autopilot on"));
-            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_LONG_CLICK
-                    + "=Change acceptance goal"));
-            assertTrue(actions.toString(), actions.contains(0x4F460003 + "=Autopilot details"));
-            assertEquals(0x4F460003, AutopilotText.DETAILS_ACTION_ID);
+            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_CLICK + "=turn learning on"));
+            assertTrue(actions.toString(), actions.contains(AccessibilityNodeInfo.ACTION_LONG_CLICK + "="
+                    + MinimumsStarView.LEARN_DETAILS));
             assertEquals("no other node shows for the retired spokes", null, node(star, AreaScore.STOP));
             assertNull(node(star, AreaScore.HOTSPOT));
             assertNull(node(star, AreaScore.ITEM));
 
-            // Its details action opens the details; a double-tap asks for the goal; choosing turns it on.
-            ShadowAlertDialog.reset();
-            assertTrue(act(star, MinimumsStarView.SCORE_ID, AutopilotText.DETAILS_ACTION_ID));
-            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
-            assertNotNull(details);
-            assertEquals(AutopilotText.DETAILS_TITLE, Shadows.shadowOf(details).getTitle().toString());
-            details.dismiss();
+            // A double-tap turns learning on; a long click shows what it learned; a double-tap turns it off.
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
-            AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
-            Shadows.shadowOf(chooser).clickOnItem(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertTrue(FilterStore.load(app).autopilot);
+            assertTrue(FilterStore.load(app).acceptanceLearning);
             AccessibilityNodeInfo on = node(star, MinimumsStarView.SCORE_ID);
             assertTrue(on.isChecked());
-            assertEquals("Autopilot, on. Bar 100 percent of your minimums. Goal: keep a top tier, acceptance rate 70 "
-                    + "percent or more.", on.getContentDescription().toString());
-            List<String> now = new ArrayList<>();
-            for (AccessibilityNodeInfo.AccessibilityAction action : on.getActionList()) {
-                if (action.getLabel() != null) now.add(action.getId() + "=" + action.getLabel());
-            }
-            assertTrue(now.toString(), now.contains(AccessibilityNodeInfo.ACTION_CLICK + "=Turn Autopilot off"));
-
-            // A long click asks for the goal, the stored one checked.
+            assertEquals(MinimumsStarView.learnSaid(true), on.getContentDescription().toString());
+            ShadowAlertDialog.reset();
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_LONG_CLICK));
-            chooser = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals(AutopilotText.CHOOSER_TITLE, Shadows.shadowOf(chooser).getTitle().toString());
-            assertEquals(0, chooser.getListView().getCheckedItemPosition());
-            chooser.dismiss();
+            AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("Learned minimums", Shadows.shadowOf(details).getTitle().toString());
+            details.dismiss();
             assertTrue(act(star, MinimumsStarView.SCORE_ID, AccessibilityNodeInfo.ACTION_CLICK));
-            assertFalse("and a double-tap turns it off", FilterStore.load(app).autopilot);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertFalse("and a double-tap turns it off", FilterStore.load(app).acceptanceLearning);
+            assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
         }
     }
 
@@ -454,7 +412,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             RectF counts = new RectF();
             mascot.countsAt(counts);
             counts.offset(mascot.getLeft(), mascot.getTop());
-            RectF[] controls = {star.stopsBox(), star.autopilotBox()};
+            RectF[] controls = {star.stopsBox(), star.learnBox()};
             for (int i = 0; i < controls.length; i++) {
                 assertNotNull("shown " + i, controls[i]);
                 assertTrue("inside the page " + controls[i], controls[i].left >= 0

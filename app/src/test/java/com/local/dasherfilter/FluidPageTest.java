@@ -494,11 +494,11 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         radar.y = top + star.skyY();
         radar.radius = star.skyRadius();
         radar.box = new RectF(left, top, star.getRight(), star.getBottom());
-        RectF button = star.autopilotDrawn();
+        RectF button = star.learnDrawn();
         if (button != null) {
             button.offset(left, top);
             radar.parts.put("button", button);
-            radar.shown.put("button", star.autopilotAmount());
+            radar.shown.put("button", star.learnAmount());
         }
         RectF badge = star.stopsBox();
         if (badge != null) {
@@ -547,7 +547,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         }
         boolean used = radar.shown.containsKey("button") && radar.shown.get("button") >= 1;
         android.view.accessibility.AccessibilityNodeInfo node = node(star, MinimumsStarView.SCORE_ID);
-        assertEquals(where + ": the button used (and heard) only while wholly there", used, star.autopilotBox() != null);
+        assertEquals(where + ": the button used (and heard) only while wholly there", used, star.learnBox() != null);
         assertEquals(where + ": the button heard only while wholly there", used, node != null);
         if (used) {
             RectF button = radar.parts.get("button");

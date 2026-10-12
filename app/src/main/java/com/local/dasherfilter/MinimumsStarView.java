@@ -218,9 +218,9 @@ final class MinimumsStarView extends View {
     private int autopilotBar = FilterSettings.BAR_AT_MINIMUMS;
     private boolean belowGoal;
 
-    // ---- Knobs, the badge and the Autopilot button (as the sky only). ----
+    // ---- Knobs, the badge and the Learn button (as the sky only). ----
 
-    /** What the page does when a knob is let go, the badge steps, or the Autopilot button is used. */
+    /** What the page does when a knob is let go, the badge steps, or the Learn button is used. */
     interface Changes {
         /**
          * Sets spoke {@code axis}'s minimum to {@code cents} of its own unit (pay, a mile, a minute of trip time;
@@ -231,14 +231,11 @@ final class MinimumsStarView extends View {
         /** Sets the max stops (0: no limit), saving it at once. */
         default void setMaxStops(int stops) {}
 
-        /** The Autopilot button's tap: Autopilot off while on; while off, the goal chooser (or why it cannot be on). */
-        default void toggleAutopilot() {}
+        /** The round button's tap (0.6.1: the learner's switch): learning from the user's accepts on or off. */
+        default void toggleLearning() {}
 
-        /** The Autopilot button's long press (a screen reader's long click too): the goal chooser. */
-        default void chooseAutopilotGoal() {}
-
-        /** The Autopilot button's details action, for screen readers: Autopilot's details. */
-        default void showAutopilotDetails() {}
+        /** The round button's long press: what the learner has learned, with Adopt, Undo and Reset. */
+        default void showLearning() {}
     }
 
     /** What the page does when a marked offer is tapped (or a screen reader opens it). */
@@ -275,28 +272,38 @@ final class MinimumsStarView extends View {
     private static final float PUSH = 1.12f;
     /** The comparison scale with no money minimum set: $5 a ring, independent of any offers. */
     private static final long FIRST_RING_CENTS = 500;
-    /** The Autopilot button: drawn this wide, taking a touch this far from its middle. */
+    /** The Learn button: drawn this wide, taking a touch this far from its middle. */
     private static final int BUTTON_DP = 48;
     private static final int BUTTON_REACH_DP = 24;
     /**
      * The screen reader's ids: the knobs keep their spokes' (0 to 2; 3, 4 and 5 are never shown), then the
-     * Autopilot button ({@link #SCORE_ID}, the old score toggle's) and the max stops badge. {@link #ADOPT_ID} and
+     * Learn button ({@link #SCORE_ID}, the old score toggle's) and the max stops badge. {@link #ADOPT_ID} and
      * {@link #ADAPTIVE_ID} are reserved for the retired adopt button and adaptive toggle and never shown.
      */
     static final int ADOPT_ID = NAMES.length;
     static final int SCORE_ID = NAMES.length + 1;
+    /**
+     * The round button below the middle is the learner's switch from 0.6.1 (the owner, 11 October 2026: the homepage
+     * showed "Auto off" twice, as the strip's chip and as this button, and learning belongs on the homepage). The
+     * strip's chip is Autopilot's one control at every size.
+     */
+    static final String LEARN_TITLE = "Learn";
+    /** What a long press on the learner button does, for screen readers. */
+    static final String LEARN_DETAILS = "show learned minimums";
+    /** Learning from the user's accepts, as the round button shows it. */
+    private boolean learningOn;
     static final int ADAPTIVE_ID = NAMES.length + 2;
     static final int STOPS_ID = NAMES.length + 3;
     /** Each marked offer's id: this plus its place among them, newest first. */
     static final int OFFER_ID = NAMES.length + 4;
     static final String STOPS_SAID = "Max stops";
     /**
-     * The Autopilot button's middle stands up to this far left of the circle's (dp), where the max stops badge leaves
+     * The Learn button's middle stands up to this far left of the circle's (dp), where the max stops badge leaves
      * room, so the per-hour name beside its clock keeps clear of it on a smaller circle.
      */
     private static final int BUTTON_LEFT_DP = 10;
     /**
-     * The Autopilot button is wholly there on a circle of at least this radius, in dp, and gone on one of at most the
+     * The Learn button is wholly there on a circle of at least this radius, in dp, and gone on one of at most the
      * second, growing from its middle in between ({@link #placeButton}).
      */
     private static final int BUTTON_WHOLE_DP = 82;
@@ -358,19 +365,19 @@ final class MinimumsStarView extends View {
     /** Where each hollow knob rests, in pixels out along its spoke ({@link #placeRests}); stale after a change. */
     private final float[] restAt = new float[NAMES.length];
     private boolean restStale = true;
-    /** The Autopilot button: its middle, the box it is drawn in (smaller while it fades), and a finger on it. */
+    /** The Learn button: its middle, the box it is drawn in (smaller while it fades), and a finger on it. */
     private float buttonX;
     private float buttonY;
     private final RectF scoreBox = new RectF();
-    private boolean autoPressed;
-    private boolean autoHeld;
-    private final Runnable holdAuto = () -> {
-        if (!autoPressed) return;
-        autoPressed = false;
-        autoHeld = true;
+    private boolean learnPressed;
+    private boolean learnHeld;
+    private final Runnable holdLearn = () -> {
+        if (!learnPressed) return;
+        learnPressed = false;
+        learnHeld = true;
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         invalidate();
-        if (changes != null) changes.chooseAutopilotGoal();
+        if (changes != null) changes.showLearning();
     };
     private final TextPaint buttonText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     /** The max stops badge: the saved limit (0 for none), where it stands, a finger on it, dragging it, and to what. */
@@ -429,7 +436,7 @@ final class MinimumsStarView extends View {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
-    /** Knobs, the badge and the Autopilot button save through {@code changes}; without them the chart only takes a tap. */
+    /** Knobs, the badge and the Learn button save through {@code changes}; without them the chart only takes a tap. */
     void setChanges(Changes changes) {
         this.changes = changes;
     }
@@ -738,8 +745,8 @@ final class MinimumsStarView extends View {
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
                 + (shownRules.acceptanceLearning ? "teal is learned bests in use" : "gray is learned bests stored but off")
-                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
-                + "Learned bests do not move saved knobs. Colored shapes are offers.";
+                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. A new high you "
+                + "accept raises the saved knobs to match while learning is on. Colored shapes are offers.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
@@ -806,7 +813,7 @@ final class MinimumsStarView extends View {
         return false;
     }
 
-    /** As the sky, the icons' boxes as shown now (the Autopilot button's and the badge's too), in this view's pixels. */
+    /** As the sky, the icons' boxes as shown now (the Learn button's and the badge's too), in this view's pixels. */
     void iconsAt(List<RectF> out) {
         if (!backdrop()) return;
         for (int i = 0; i < ICONS.length; i++) {
@@ -858,7 +865,7 @@ final class MinimumsStarView extends View {
      * on the side towards the middle (pay's on its right, per mile's and per hour's on their left), and the max stops
      * name over the badge and its pin. No knob, shape or offer's mark ever stands there (they stand on the spokes, which
      * run from the icons' other sides), so as the window's size changes a name moves only with its icon. Where the
-     * circle grows too small for the names, or an icon, the view's edge, the Autopilot button or the badge comes onto a
+     * circle grows too small for the names, or an icon, the view's edge, the Learn button or the badge comes onto a
      * name, it fades out (going under the button and the badge) rather than move; as the rings' dollars or a name before
      * it come near, it fades out before they touch, so no words are ever seen one over another (the icons and screen
      * readers still say what each spoke is).
@@ -1082,7 +1089,7 @@ final class MinimumsStarView extends View {
         drawAxisLabels(canvas);
         if (stopsShown()) drawStops(canvas);
         float button = placeButton();
-        if (button > 0) drawAutopilot(canvas, button);
+        if (button > 0) drawLearn(canvas, button);
         if (dragging) {
             drawHeld(canvas, point(cx, cy, radius, held, heldFraction()), dragValue, true);
         } else if (pressing()) {
@@ -1696,7 +1703,7 @@ final class MinimumsStarView extends View {
             found = knob;
             nearest = knobDistance(knob, x, y);
         }
-        if (autopilotShown()) {
+        if (learnShown()) {
             float button = ui.dp(BUTTON_REACH_DP);
             float dx = x - scoreBox.centerX();
             float dy = y - scoreBox.centerY();
@@ -1835,8 +1842,8 @@ final class MinimumsStarView extends View {
     /**
      * As the sky, a finger on a knob grows it; moving along the knob's spoke drags it (the page around does not scroll
      * meanwhile), while moving any other way leaves the touch to the page (a scroll) and sets nothing; a tap on the
-     * Autopilot button is the page's (Autopilot off, or the goal chooser) and holding it asks for the goal, a finger
-     * moving off it doing neither; a tap on a marked offer (on no knob or button) opens its ticket; a tap on the max
+     * Learn button turns learning on or off and holding it shows Learned minimums, a finger moving off it doing
+     * neither; a tap on a marked offer (on no knob or button) opens its ticket; a tap on the max
      * stops badge steps it and a drag across it steps it either way; any other tap on the circle, a knob's included,
      * goes back to the newest offer while an older one is chosen, else is the chart's own click.
      */
@@ -1853,12 +1860,12 @@ final class MinimumsStarView extends View {
                 downX = x;
                 downY = y;
                 int on = target(x, y);
-                autoPressed = on == SCORE_ID;
-                autoHeld = false;
+                learnPressed = on == SCORE_ID;
+                learnHeld = false;
                 stopsPressed = on == STOPS_ID;
                 stopsDragging = false;
-                // Held, the Autopilot button asks for the goal.
-                if (autoPressed) postDelayed(holdAuto, ViewConfiguration.getLongPressTimeout());
+                // Held, the Learn button shows Learned minimums.
+                if (learnPressed) postDelayed(holdLearn, ViewConfiguration.getLongPressTimeout());
                 if (on >= 0 && on < NAMES.length) {
                     held = on;
                     grabDistance = knobFraction(on, Motion.settle(glideStart, GLIDE_MS)) * skyRadius;
@@ -1875,10 +1882,10 @@ final class MinimumsStarView extends View {
             case MotionEvent.ACTION_MOVE:
                 if (tapping && Math.hypot(x - downX, y - downY) > slop) {
                     tapping = false;
-                    if (autoPressed) {
+                    if (learnPressed) {
                         // The button has no drag: a finger moving off it is neither a tap nor a hold.
-                        autoPressed = false;
-                        removeCallbacks(holdAuto);
+                        learnPressed = false;
+                        removeCallbacks(holdLearn);
                         invalidate();
                     }
                     if (stopsPressed && Math.abs(x - downX) >= Math.abs(y - downY)) {
@@ -1907,16 +1914,16 @@ final class MinimumsStarView extends View {
                 if (stopsDragging) moveStops(x - downX);
                 return true;
             case MotionEvent.ACTION_UP: {
-                boolean button = autoPressed && tapping;
-                // A hold that asked for the goal is done: the finger lifting is no tap.
-                boolean asked = autoHeld;
+                boolean button = learnPressed && tapping;
+                // A hold that showed Learned minimums is done: the finger lifting is no tap.
+                boolean asked = learnHeld;
                 boolean stops = stopsPressed && tapping;
                 boolean tap = tapping;
                 long tappedAt = tap ? pressedAt : -1;
                 endTouch(true);
                 if (button) {
                     playSoundEffect(SoundEffectConstants.CLICK);
-                    pressAutopilot();
+                    pressLearn();
                 } else if (stops) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     setStops(nextStops(maxStops));
@@ -1949,9 +1956,9 @@ final class MinimumsStarView extends View {
         boolean pressed = pressing();
         touching = false;
         tapping = false;
-        removeCallbacks(holdAuto);
-        if (autoPressed || stopsPressed || pressed || pressedAt >= 0) {
-            autoPressed = false;
+        removeCallbacks(holdLearn);
+        if (learnPressed || stopsPressed || pressed || pressedAt >= 0) {
+            learnPressed = false;
             stopsPressed = false;
             pressedAt = -1;
             invalidate();
@@ -2335,25 +2342,25 @@ final class MinimumsStarView extends View {
         return STOPS_SAID + ", " + (stops > 0 ? Integer.toString(stops) : "off");
     }
 
-    // ---- The Autopilot button. ----
+    // ---- The learner button (Autopilot's until 0.6.1; the strip's chip is Autopilot's control). ----
 
-    /** The Autopilot button: shown as the sky, and used, while it is wholly there ({@link #placeButton}). */
-    boolean autopilotShown() {
+    /** The learner button: shown as the sky, and used, while it is wholly there ({@link #placeButton}). */
+    boolean learnShown() {
         return knobsOn() && placeButton() >= 1;
     }
 
-    /** Where the Autopilot button stands, in this view's pixels (for tests); null when it is not wholly there. */
-    RectF autopilotBox() {
-        return autopilotShown() ? new RectF(scoreBox) : null;
+    /** Where the learner button stands, in this view's pixels (for tests); null when it is not wholly there. */
+    RectF learnBox() {
+        return learnShown() ? new RectF(scoreBox) : null;
     }
 
-    /** How much of the Autopilot button is there: 1 wholly (and used), 0 gone, between while it fades (for tests). */
-    float autopilotAmount() {
+    /** How much of the learner button is there: 1 wholly (and used), 0 gone, between while it fades (for tests). */
+    float learnAmount() {
         return placeButton();
     }
 
-    /** Where the Autopilot button is drawn, in this view's pixels, smaller while it fades (for tests); null when gone. */
-    RectF autopilotDrawn() {
+    /** Where the learner button is drawn, in this view's pixels, smaller while it fades (for tests); null when gone. */
+    RectF learnDrawn() {
         return placeButton() > 0 ? new RectF(scoreBox) : null;
     }
 
@@ -2380,14 +2387,15 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * How much of the Autopilot button is there (1: wholly, and used; 0: gone), and where it stands, into its box. It has
+     * How much of the Learn button is there (1: wholly, and used; 0: gone), and where it stands, into its box. It has
      * one place at every size, about where the old row of three buttons had its middle: below the circle's middle, a
      * little to the left (or further right, as far as the max stops badge needs), on the side of the line the pay and
      * per-hour spokes make through the middle that has no knob, with its reach and a knob's clear of that line, and so
      * of every knob, set or resting, and of every shape and offer's mark (they all stand on the spokes, on the line or
      * beyond it). As the window's size changes it moves only with the circle: on a circle too small for it, it shrinks and
      * fades away over a range of sizes ({@link #BUTTON_WHOLE_DP} down to {@link #BUTTON_FROM_DP} dp of radius), and
-     * as the view's edge would cut it, rather than move, Autopilot's chip at the top of the page standing in for it.
+     * as the view's edge would cut it, rather than move. Gone, learning waits for a window with room for the radar, as
+     * the knobs' full size does (it stays as set meanwhile; on by default).
      */
     private float placeButton() {
         if (!knobsOn()) return 0;
@@ -2407,11 +2415,11 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The Autopilot button, a round 48 dp button like the header's: "Auto" (9 sp) over its bar ("82%") or "Off";
-     * ringed 2 dp in Autopilot's purple while on, amber while below the goal (as the chip), 1 dp grey while off. While it
-     * comes in or goes it is drawn smaller and fainter, from its middle.
+     * The learner button, a round 48 dp button like the header's: "Learn" (9 sp) over "On" or "Off"; ringed 2 dp in the
+     * learned bests' teal while on, 1 dp grey while off. While it comes in or goes it is drawn smaller and fainter,
+     * from its middle.
      */
-    private void drawAutopilot(Canvas canvas, float amount) {
+    private void drawLearn(Canvas canvas, float amount) {
         float x = buttonX;
         float y = buttonY;
         float radius = ui.dp(BUTTON_DP) / 2f;
@@ -2420,19 +2428,19 @@ final class MinimumsStarView extends View {
             canvas.saveLayerAlpha(x - radius, y - radius, x + radius, y + radius, Math.round(255 * amount));
             canvas.scale(amount, amount, x, y);
         }
-        fill.setColor(autoPressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
+        fill.setColor(learnPressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
         canvas.drawCircle(x, y, radius, fill);
         int ring = buttonRing();
         line.setPathEffect(null);
         line.setColor(ring);
-        line.setStrokeWidth(autopilotOn ? ui.dp(2) : Math.max(1, ui.dp(1)));
+        line.setStrokeWidth(learningOn ? ui.dp(2) : Math.max(1, ui.dp(1)));
         canvas.drawCircle(x, y, radius - line.getStrokeWidth() / 2, line);
-        buttonText.setColor(autopilotOn ? ring : ui.inkSecondary);
+        buttonText.setColor(learningOn ? ring : ui.inkSecondary);
         float room = radius * 1.6f;
         buttonText.setTextSize(Math.min(ui.sp(9), ui.dp(11)));
-        fitButtonText(AutopilotText.BUTTON_TITLE, room);
-        canvas.drawText(AutopilotText.BUTTON_TITLE, x, y - ui.dp(5), buttonText);
-        String label = AutopilotText.buttonLabel(autopilotOn, autopilotBar);
+        fitButtonText(LEARN_TITLE, room);
+        canvas.drawText(LEARN_TITLE, x, y - ui.dp(5), buttonText);
+        String label = learningOn ? "On" : "Off";
         buttonText.setTextSize(Math.min(ui.sp(12), ui.dp(14)));
         fitButtonText(label, room);
         canvas.drawText(label, x, y + ui.dp(12), buttonText);
@@ -2444,8 +2452,30 @@ final class MinimumsStarView extends View {
      * purple; the chip's colors, by the chip's rule (also for tests).
      */
     int buttonRing() {
-        return !autopilotOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B)
-                : belowGoal ? AutopilotChip.amber(ui) : AutopilotChip.purple(ui);
+        return !learningOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B) : learnedColor();
+    }
+
+    /** Teal, the learned bests' color on this chart, for the learner's button while it is on. */
+    int learnedColor() {
+        return ui.dark ? 0xFF83E3D1 : 0xFF00796B;
+    }
+
+    /** Learning from the user's accepts on or off, as the round button shows it; quiet, nothing announced. */
+    void setLearning(boolean on) {
+        if (on == learningOn) return;
+        learningOn = on;
+        invalidate();
+    }
+
+    /** Whether the round button shows learning on (for tests). */
+    boolean learningShown() {
+        return learningOn;
+    }
+
+    /** What screen readers hear of the learner button. */
+    static String learnSaid(boolean on) {
+        return on ? "Learning from your accepts, on: new highs you accept raise your minimums"
+                : "Learning from your accepts, off";
     }
 
     /** Shrinks the button's text, if it must, to fit {@code room} across (a large font, "150%"). */
@@ -2454,10 +2484,10 @@ final class MinimumsStarView extends View {
         if (width > room && width > 0) buttonText.setTextSize(buttonText.getTextSize() * room / width);
     }
 
-    /** The button's tap: the page turns Autopilot off, or (while off) asks for the goal; its words follow. */
-    private void pressAutopilot() {
+    /** The button's tap: the page turns learning on or off; its words follow. */
+    private void pressLearn() {
         if (changes == null) return;
-        changes.toggleAutopilot();
+        changes.toggleLearning();
         invalidate();
     }
 
@@ -2481,11 +2511,11 @@ final class MinimumsStarView extends View {
     }
 
     @Override protected void onDetachedFromWindow() {
-        removeCallbacks(holdAuto);
+        removeCallbacks(holdLearn);
         super.onDetachedFromWindow();
     }
 
-    // ---- Screen readers: each knob and the badge an adjustable control, the Autopilot button a switch. ----
+    // ---- Screen readers: each knob and the badge an adjustable control, the Learn button a switch. ----
 
     @SuppressWarnings("deprecation")
     private void say(String words) {
@@ -2551,7 +2581,7 @@ final class MinimumsStarView extends View {
         event.setPackageName(getContext().getPackageName());
         event.setClassName(node >= OFFER_ID ? Button.class.getName()
                 : node == SCORE_ID ? Switch.class.getName() : SeekBar.class.getName());
-        if (node == SCORE_ID) event.setChecked(autopilotOn);
+        if (node == SCORE_ID) event.setChecked(learningOn);
         // An offer that went meanwhile (a focus being let go) has nothing left to say.
         if (node < OFFER_ID || node - OFFER_ID < marks.size()) event.setContentDescription(nodeSaid(node));
         event.setSource(this, node);
@@ -2561,9 +2591,7 @@ final class MinimumsStarView extends View {
 
     private String nodeSaid(int node) {
         if (node >= OFFER_ID) return offerSaid(node - OFFER_ID);
-        if (node == SCORE_ID) {
-            return AutopilotText.buttonDescription(autopilotOn, autopilotBar, shownRules.autopilotGoalPercent);
-        }
+        if (node == SCORE_ID) return learnSaid(learningOn);
         if (node == STOPS_ID) return stopsSaid(maxStops);
         return knobSaid(node);
     }
@@ -2649,7 +2677,7 @@ final class MinimumsStarView extends View {
     private boolean shownNode(int id) {
         if (id >= OFFER_ID) return offersOn() && outer > 0 && displayedOffer(id - OFFER_ID);
         if (!knobsOn()) return false;
-        if (id == SCORE_ID) return autopilotShown();
+        if (id == SCORE_ID) return learnShown();
         if (id == STOPS_ID) return stopsShown();
         return knobShown(id);
     }
@@ -2660,7 +2688,7 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The knobs (ids 0 to 2, by spoke), the max stops badge, the Autopilot button and then the marked offers, newest
+     * The knobs (ids 0 to 2, by spoke), the max stops badge, the Learn button and then the marked offers, newest
      * first ({@link #OFFER_ID} on), for screen readers.
      */
     private final class Nodes extends AccessibilityNodeProvider {
@@ -2673,7 +2701,7 @@ final class MinimumsStarView extends View {
                 onInitializeAccessibilityNodeInfo(info);
                 for (int axis : SPOKES) if (shownNode(axis)) info.addChild(host, axis);
                 if (stopsShown()) info.addChild(host, STOPS_ID);
-                if (autopilotShown()) info.addChild(host, SCORE_ID);
+                if (learnShown()) info.addChild(host, SCORE_ID);
                 for (int m = 0; m < marks.size(); m++) if (shownNode(OFFER_ID + m)) info.addChild(host, OFFER_ID + m);
                 return info;
             }
@@ -2710,20 +2738,18 @@ final class MinimumsStarView extends View {
                 return info;
             }
             if (id == SCORE_ID) {
-                // "Autopilot, on. Bar 82 percent of your minimums. Goal: …, switch": a tap turns it on or off, a long
-                // press changes the goal, and the details are among its actions. No range: nothing here drags.
+                // "Learning from your accepts, on, switch": a tap turns it on or off, a long press shows what it
+                // learned. No range: nothing here drags.
                 info.setClassName(Switch.class.getName());
                 info.setCheckable(true);
-                info.setChecked(autopilotOn);
-                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(autopilotOn ? "On" : "Off");
+                info.setChecked(learningOn);
+                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(learningOn ? "On" : "Off");
                 info.setClickable(true);
                 info.setLongClickable(true);
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
-                        AutopilotText.buttonAction(autopilotOn)));
+                        learningOn ? "turn learning off" : "turn learning on"));
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK,
-                        AutopilotText.ACTION_CHANGE_GOAL));
-                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AutopilotText.DETAILS_ACTION_ID,
-                        AutopilotText.ACTION_DETAILS));
+                        LEARN_DETAILS));
                 return info;
             }
             if (id == STOPS_ID) {
@@ -2786,14 +2812,14 @@ final class MinimumsStarView extends View {
                 case AccessibilityNodeInfo.ACTION_CLICK:
                     if (id >= OFFER_ID) return openOffer(id - OFFER_ID);
                     if (id == SCORE_ID) {
-                        pressAutopilot();
+                        pressLearn();
                         return true;
                     }
                     if (id == STOPS_ID) return setStops(nextStops(maxStops));
                     return false;
                 case AccessibilityNodeInfo.ACTION_LONG_CLICK:
                     if (id != SCORE_ID || changes == null) return false;
-                    changes.chooseAutopilotGoal();
+                    changes.showLearning();
                     return true;
                 case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
                 case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
@@ -2801,10 +2827,6 @@ final class MinimumsStarView extends View {
                     if (id == STOPS_ID) return setStops(stepStops(maxStops, up));
                     return spoke(id) && step(id, up);
                 }
-                case AutopilotText.DETAILS_ACTION_ID:
-                    if (id != SCORE_ID || changes == null) return false;
-                    changes.showAutopilotDetails();
-                    return true;
                 default:
                     if (action == android.R.id.accessibilityActionSetProgress && spoke(id) && arguments != null) {
                         float dollars = arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, -1);

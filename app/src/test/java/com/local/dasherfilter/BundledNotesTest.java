@@ -117,6 +117,7 @@ public class BundledNotesTest {
         both.addAll(fifteen);
         both.addAll(notice(16));
         both.addAll(notice(17));
+        both.addAll(notice(18));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -243,7 +244,7 @@ public class BundledNotesTest {
     }
 
     @Test public void prospectiveStudyHasItsOwnRenewedNoticeAndPreservesOldReleaseNotes() {
-        assertEquals(17, Consent.VERSION);
+        assertTrue(BundledNotes.hasNotice(16));
         List<String> changed = notice(16);
         assertEquals(3, changed.size());
         String words = String.join(" ", changed);
@@ -252,7 +253,6 @@ public class BundledNotesTest {
     }
 
     @Test public void restorationHasItsOwnNoticeAndCurrentReleaseWithoutImplyingStudyOptIn() {
-        assertEquals("0.6.0", Updater.version(RuntimeEnvironment.getApplication()));
         String release = String.join(" ", BundledNotes.whatsNew("0.6.0"));
         for (String fact : new String[] {"Settings → Mode", "Strict or Area", "separate Learned", "confirmed manual acceptances",
                 "Teal shows learned bests", "purple shows Autopilot" ,
@@ -260,6 +260,23 @@ public class BundledNotesTest {
         String notice = String.join(" ", notice(17));
         for (String fact : new String[] {"initially off", "Strict remains", "Clear history", "saved minimums stay",
                 "timing study", "neither learning nor sharing"}) assertTrue(fact, notice.contains(fact));
+    }
+
+    /** 0.6.1 (the owner, 11 October 2026): learning on by default, and new highs raise the minimums with Undo. */
+    @Test public void learningOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
+        assertEquals(18, Consent.VERSION);
+        assertEquals("0.6.1", Updater.version(RuntimeEnvironment.getApplication()));
+        String notice = String.join(" ", notice(18));
+        for (String fact : new String[] {"on by default", "beats your best pay", "rise to match", "more declines",
+                "Undo", "Learn button"}) assertTrue(fact, notice.contains(fact));
+        String release = String.join(" ", BundledNotes.whatsNew("0.6.1"));
+        for (String fact : new String[] {"raises your minimums", "Undo", "new dash's first pickup", "on by default",
+                "Learn button", "long press", "Autopilot is the chip", "recent apps"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {
+            assertFalse(outcome, (release + notice).toLowerCase(java.util.Locale.US).contains(outcome));
+        }
     }
 
     /** The lines notice {@code version} added, as a reader of the one before it sees them. */

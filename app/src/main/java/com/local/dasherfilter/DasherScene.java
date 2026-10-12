@@ -51,6 +51,11 @@ enum DasherScene {
     private static final List<String> NEW_OFFER_PREFIXES = Arrays.asList("new delivery", "new order");
     /** Dasher's question before it ends a dash (its buttons: "End dash", "Go back"). */
     private static final List<String> END_DASH_QUESTION = Collections.singletonList("end your current dash");
+    /** The dash's running earnings in Dasher's header: an amount alone, then the label "this dash". */
+    private static final Pattern DASH_EARNINGS_AMOUNT = Pattern.compile("\\$\\s*\\d{1,4}(?:[.,]\\d{2})?");
+    private static final Pattern DASH_EARNINGS_IN_ONE =
+            Pattern.compile("(?i)\\$\\s*\\d{1,4}(?:[.,]\\d{2})?\\s+this dash");
+    private static final String THIS_DASH = "this dash";
     /** Turn-by-turn navigation's speed: a label "mph", or "25 mph". */
     private static final Pattern SPEED = Pattern.compile("(?:\\d{1,3} ?)?mph");
     /** Turn-by-turn navigation's distance to the next turn, within a label: "300 ft", "0.3 mi". */
@@ -91,6 +96,37 @@ enum DasherScene {
     /** Whether a screen is the dash's summary between deliveries ("This dash so far"), whose figures are the dash's. */
     static boolean showsDashSummary(List<String> labels) {
         return labels != null && shows(labels, DASH_SUMMARY_LABELS, null);
+    }
+
+    /**
+     * Whether label {@code index} is the dash's running earnings in Dasher's header: a bare amount followed by the
+     * label "this dash" ("$0.00", "this dash", on the owner's pickup screen of 11 October 2026), or both in one label
+     * ("$14.40 this dash"). The figure is the dash's, never an offer's.
+     */
+    static boolean isDashEarnings(List<String> labels, int index) {
+        if (labels == null || index < 0 || index >= labels.size()) return false;
+        String label = OfferEvidence.normalize(labels.get(index));
+        if (DASH_EARNINGS_IN_ONE.matcher(label).matches()) return true;
+        return DASH_EARNINGS_AMOUNT.matcher(label).matches() && index + 1 < labels.size()
+                && THIS_DASH.equals(OfferEvidence.normalize(labels.get(index + 1)).toLowerCase(Locale.US)
+                        .replaceAll("[.!?…:]+$", ""));
+    }
+
+    /**
+     * Whether the screen shows an amount and every amount on it is the dash's running earnings
+     * ({@link #isDashEarnings}). Such a screen (a pickup with "$0.00 this dash" in its header) shows no offer's pay:
+     * the owner's accepted $11.35 offer went uncounted when that $0.00 was taken for an offer still being drawn.
+     */
+    static boolean amountsAreDashEarnings(List<String> labels) {
+        if (labels == null) return false;
+        boolean any = false;
+        for (int i = 0; i < labels.size(); i++) {
+            String label = labels.get(i);
+            if (label == null || !label.contains("$")) continue;
+            if (!isDashEarnings(labels, i)) return false;
+            any = true;
+        }
+        return any;
     }
 
     /**

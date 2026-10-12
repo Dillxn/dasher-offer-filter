@@ -20,7 +20,8 @@ final class Consent {
      */
     // 16: separate prospective study scope; accepting this notice never enables that optional choice.
     // 17: separate area mode and local acceptance learning; study confirmation remains independent.
-    static final int VERSION = 17;
+    // 18 (0.6.1): learning on by default, and a new high you accept raises your saved minimums itself, with Undo.
+    static final int VERSION = 18;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -49,15 +50,13 @@ final class Consent {
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer (also just after you unlock, for one that came while it was locked), then return to "
                 + "your previous app. Turn Peek off in Settings."},
-        {"Learning is optional.", "Area mode and acceptance learning start off separately. Learning keeps new "
-                + "confirmed manual standalone acceptance bests on this phone: pay plus one cent, pay per mile and "
-                + "pay per minute. It can supply an unset minimum and make future offers harder to pass. Automatic "
-                + "accepts, declines, add-ons and unclear acceptances do not teach it. Unknown facts do not teach their axes; "
-                + "any known implausible figure rejects the lesson. Off or paused keeps "
-                + "the bests without learning. Reset clears active bests and adoption Undo; earlier decision snapshots "
-                + "remain until Clear history. Clear history also clears active learning. Adopt "
-                + "raises lower saved minimums; Undo cannot overwrite later changes. Adopted saved minimums remain "
-                + "after Reset or Clear history. Autopilot growth is separate."},
+        {"Learning is on by default.", "When you accept an offer yourself and it beats your best pay, pay per mile "
+                + "(trips of 2 miles or more) or pay per hour (10 minutes or more), your minimums rise to match it at "
+                + "once, which can mean more declines. The homepage says what rose, with Undo, which also forgets that "
+                + "offer. The bests stay on this phone. Automatic accepts, declines, add-ons and unclear acceptances "
+                + "do not teach it; any known implausible figure rejects the lesson. The Learn button on the homepage "
+                + "turns it off; off keeps the bests without learning. Reset clears the bests and Clear history clears them "
+                + "too; your minimums stay. Area mode starts off. Autopilot growth is separate."},
         {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "
                 + "account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},

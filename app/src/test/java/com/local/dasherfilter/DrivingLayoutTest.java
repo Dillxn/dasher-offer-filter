@@ -184,8 +184,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertTrue(verdict.getText().toString(), verdict.getText().toString().startsWith("$7.90 · 7.2 mi · 21 min · Declined")
                     && verdict.getText().toString().endsWith(" · just now"));
             assertWhollyOnScreen("the verdict", verdict);
-            assertEquals(MainActivity.ON_LINE, statusLine(content).getText().toString());
-            assertWhollyOnScreen("the status line", statusLine(content));
+            assertEquals("the awake mascot says auto-decline is on; the line adds nothing", "",
+                    statusLine(content).getText().toString());
             View mascot = find(content, FilterHeroView.class).mascotControl();
             assertTrue(String.valueOf(mascot.getContentDescription()),
                     String.valueOf(mascot.getContentDescription()).endsWith("Pause auto-decline."));
@@ -207,11 +207,12 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             settle();
             assertFalse("the mascot pauses", FilterStore.load(app).enabled);
             assertEquals(MainActivity.PAUSED_LINE, statusLine(content).getText().toString());
+            assertWhollyOnScreen("the status line", statusLine(content));
             assertTrue(String.valueOf(mascot.getContentDescription()).endsWith("Resume auto-decline."));
             mascot.performClick();
             settle();
             assertTrue("and resumes", FilterStore.load(app).enabled);
-            assertEquals(MainActivity.ON_LINE, statusLine(content).getText().toString());
+            assertEquals("", statusLine(content).getText().toString());
         }
     }
 
