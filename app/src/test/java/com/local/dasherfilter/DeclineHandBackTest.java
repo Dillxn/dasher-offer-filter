@@ -5,7 +5,6 @@ import android.app.Application;
 import android.graphics.Rect;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.os.Build;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.view.MotionEvent;
@@ -53,7 +52,7 @@ import static org.junit.Assert.assertTrue;
  * taps. Most tests read on the main looper with simulated time; the last ones run the service's own scanner thread.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DeclineHandBackTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -253,7 +252,7 @@ public class DeclineHandBackTest {
     }
 
     private int alarmFloor() {
-        return Build.VERSION.SDK_INT >= 28 ? audio().getStreamMinVolume(AudioManager.STREAM_ALARM) : 0;
+        return audio().getStreamMinVolume(AudioManager.STREAM_ALARM);
     }
 
     private DecisionLog.Action lastAction() {

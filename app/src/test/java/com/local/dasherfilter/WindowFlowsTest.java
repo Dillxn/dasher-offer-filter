@@ -60,7 +60,7 @@ import static org.junit.Assert.assertTrue;
  * was are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class WindowFlowsTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

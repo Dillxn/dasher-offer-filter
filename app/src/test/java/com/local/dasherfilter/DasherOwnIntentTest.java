@@ -26,16 +26,14 @@ import static org.junit.Assert.assertTrue;
  * a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public class DasherOwnIntentTest {
     private static final String DASHER = "com.doordash.driverapp";
 
     @Test
     @SuppressWarnings("deprecation")
     public void eachAndroidGetsTheStartModeItAsksFor() {
-        assertEquals(DasherOwnIntent.NO_MODE, DasherOwnIntent.startMode(33, false));
-        assertEquals(DasherOwnIntent.NO_MODE, DasherOwnIntent.startMode(26, true));
-        assertEquals(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED, DasherOwnIntent.startMode(34, false));
+        assertEquals(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED, DasherOwnIntent.startMode(35, false));
         assertEquals(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED, DasherOwnIntent.startMode(35, true));
         assertEquals("the screen reader's own send on 16",
                 ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS, DasherOwnIntent.startMode(36, false));
@@ -48,14 +46,11 @@ public class DasherOwnIntentTest {
     @SuppressWarnings("deprecation")
     public void theOptionsCarryTheModeOnThisPhone() throws Exception {
         Bundle options = DasherOwnIntent.options(false);
-        if (Build.VERSION.SDK_INT < 34) {
-            assertNull("Android before 14 asks for none", options);
-            return;
-        }
         java.lang.reflect.Method from = ActivityOptions.class.getDeclaredMethod("fromBundle", Bundle.class);
         from.setAccessible(true);
         ActivityOptions parsed = (ActivityOptions) from.invoke(null, options);
-        assertEquals(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
+        assertEquals(Build.VERSION.SDK_INT >= 36 ? ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+                : ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
                 parsed.getPendingIntentBackgroundActivityStartMode());
     }
 
@@ -73,7 +68,7 @@ public class DasherOwnIntentTest {
         PendingIntent broadcast = PendingIntent.getBroadcast(app, 3, new Intent("com.doordash.DISMISS"),
                 PendingIntent.FLAG_IMMUTABLE);
         Shadows.shadowOf(broadcast).setCreatorPackage(DASHER);
-        // From Android 12 a pending intent says whether it starts a screen: one that does not is never sent.
-        assertEquals(Build.VERSION.SDK_INT < 31, DasherOwnIntent.fromDasher(broadcast));
+        // A pending intent says whether it starts a screen: one that does not is never sent.
+        assertFalse(DasherOwnIntent.fromDasher(broadcast));
     }
 }

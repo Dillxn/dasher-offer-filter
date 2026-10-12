@@ -8,7 +8,6 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,7 +18,6 @@ import android.text.format.DateUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.Button;
@@ -364,7 +362,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             settingsPage.setVisibility(View.GONE);
             sheet.setVisibility(View.GONE);
             root.setBackgroundColor(ui.page);
-            if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(ui.page);
         } else {
             showSettings(showingSettings);
         }
@@ -598,7 +595,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         else if (!noticeShown()) refreshSettings();
         // Behind the status bar: the top of the main page's sky, or the Settings page.
         root.setBackgroundColor(settings ? ui.page : ScenePage.skyTop(ui));
-        if (Build.VERSION.SDK_INT < 35) getWindow().setStatusBarColor(settings ? ui.page : ScenePage.skyTop(ui));
         View focused = getCurrentFocus();
         if (focused != null && !focused.isShown()) focused.clearFocus();
         if (changed) {
@@ -619,7 +615,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         TextView name = ui.text(back ? title : "", 22, ui.ink, true);
         if (!back) name.setContentDescription(title);
         if (back) name.setPadding(ui.dp(8), 0, 0, 0);
-        if (Build.VERSION.SDK_INT >= 28) name.setAccessibilityHeading(true);
+        name.setAccessibilityHeading(true);
         header.addView(name, Ui.weighted());
         if (!back) {
             mainTitle = name;
@@ -2640,33 +2636,21 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // ---- Window ----
 
-    /** Page-colored system bars with icons that contrast with the page in light and dark themes. */
-    @SuppressWarnings("deprecation")
+    /** System bar icons that contrast with the page in light and dark themes (the page shows behind the bars). */
     static void styleSystemBars(Activity activity, Ui ui) {
-        Window window = activity.getWindow();
-        if (Build.VERSION.SDK_INT < 35) {
-            window.setStatusBarColor(ui.page);
-            window.setNavigationBarColor(ui.page);
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            WindowInsetsController controller = window.getInsetsController();
-            if (controller != null) {
-                int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                controller.setSystemBarsAppearance(ui.dark ? 0 : light, light);
-            }
-        } else if (!ui.dark) {
-            window.getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        WindowInsetsController controller = activity.getWindow().getInsetsController();
+        if (controller != null) {
+            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            controller.setSystemBarsAppearance(ui.dark ? 0 : light, light);
         }
     }
 
     /**
      * Android 15 draws apps targeting API 35 edge to edge, so the pages must keep themselves clear of the status bar,
-     * navigation bar, cutouts, and keyboard. Earlier versions already lay the window out inside the system bars.
+     * navigation bar, cutouts, and keyboard.
      */
     static void fitToSystemBars(View content) {
-        if (Build.VERSION.SDK_INT < 35) return;
         content.setOnApplyWindowInsetsListener((view, insets) -> {
             Insets bars = insets.getInsets(WindowInsets.Type.systemBars()
                     | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());

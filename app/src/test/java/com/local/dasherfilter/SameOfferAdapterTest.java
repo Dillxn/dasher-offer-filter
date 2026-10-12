@@ -45,7 +45,7 @@ import static org.junit.Assert.assertTrue;
  * its own card tag.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SameOfferAdapterTest {
     private static final String STORE_A = "New Order: Go to Store A";
@@ -590,37 +590,15 @@ public class SameOfferAdapterTest {
     static NotificationListenerService.RankingMap ranking(StatusBarNotification source,
             NotificationChannel channel, int importance, boolean matchesFilter, long alertedAt) throws Exception {
         String key = source.getKey();
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            NotificationListenerService.Ranking ranking = new NotificationListenerService.Ranking();
-            ReflectionHelpers.setField(ranking, "mKey", key);
-            ReflectionHelpers.setField(ranking, "mChannel", channel);
-            ReflectionHelpers.setField(ranking, "mImportance", importance);
-            ReflectionHelpers.setField(ranking, "mMatchesInterruptionFilter", matchesFilter);
-            ReflectionHelpers.setField(ranking, "mLastAudiblyAlertedMs", alertedAt);
-            return ReflectionHelpers.callConstructor(NotificationListenerService.RankingMap.class,
-                    ReflectionHelpers.ClassParameter.from(NotificationListenerService.Ranking[].class,
-                            new NotificationListenerService.Ranking[] {ranking}));
-        }
-        // Android 8: the ranking comes from a ranking update; a key that does not match the filter is intercepted.
-        android.os.Bundle channels = new android.os.Bundle();
-        channels.putParcelable(key, channel);
-        Class<?> updateClass = Class.forName("android.service.notification.NotificationRankingUpdate");
-        Object update = ReflectionHelpers.callConstructor(updateClass,
-                ReflectionHelpers.ClassParameter.from(String[].class, new String[] {key}),
-                ReflectionHelpers.ClassParameter.from(String[].class,
-                        matchesFilter ? new String[0] : new String[] {key}),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(int[].class, new int[] {importance}),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, channels),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()),
-                ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, new android.os.Bundle()));
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        ReflectionHelpers.ClassParameter<?> fromUpdate = new ReflectionHelpers.ClassParameter(updateClass, update);
-        return ReflectionHelpers.callConstructor(NotificationListenerService.RankingMap.class, fromUpdate);
+        NotificationListenerService.Ranking ranking = new NotificationListenerService.Ranking();
+        ReflectionHelpers.setField(ranking, "mKey", key);
+        ReflectionHelpers.setField(ranking, "mChannel", channel);
+        ReflectionHelpers.setField(ranking, "mImportance", importance);
+        ReflectionHelpers.setField(ranking, "mMatchesInterruptionFilter", matchesFilter);
+        ReflectionHelpers.setField(ranking, "mLastAudiblyAlertedMs", alertedAt);
+        return ReflectionHelpers.callConstructor(NotificationListenerService.RankingMap.class,
+                ReflectionHelpers.ClassParameter.from(NotificationListenerService.Ranking[].class,
+                        new NotificationListenerService.Ranking[] {ranking}));
     }
 
     /** Dasher's offer, ranked as Android ranks a post that sounded: loud channel, filter matched, alerted now. */
@@ -768,27 +746,6 @@ public class SameOfferAdapterTest {
         assertEquals(1, notifications().size());
         assertTrue("Dasher's update made no sound, so ours rings", rings(notifications().getAllNotifications().get(0)));
         assertEquals("CHECK_BELL", DecisionLog.recent(app, 1).get(0).action.name());
-    }
-
-    @Test
-    @Config(sdk = 26)
-    public void beforeAndroid10AGroupChildThatAlertsThroughItsSummaryStillRingsOnce() throws Exception {
-        Notification payload = new Notification.Builder(app, "source")
-                .setSmallIcon(android.R.drawable.stat_notify_more)
-                .setContentTitle("New Delivery!")
-                .setContentText(STORE_A)
-                .setGroup("offers")
-                .setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY)
-                .build();
-        StatusBarNotification source = new StatusBarNotification("com.doordash.driverapp", "com.doordash.driverapp",
-                3, "NEW_ORDER", 10001, 0, 0, payload, android.os.Process.myUserHandle(), System.currentTimeMillis());
-        listener.get().onNotificationPosted(source, ranking(source, loudChannel(),
-                NotificationManager.IMPORTANCE_HIGH, true, 0));
-        Shadows.shadowOf(Looper.getMainLooper()).idle();
-
-        assertEquals(1, notifications().size());
-        assertTrue("a child alerting through its summary makes no sound",
-                rings(notifications().getAllNotifications().get(0)));
     }
 
     @Test

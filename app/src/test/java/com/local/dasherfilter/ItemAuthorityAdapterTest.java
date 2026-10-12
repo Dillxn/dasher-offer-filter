@@ -37,7 +37,7 @@ import static org.junit.Assert.*;
  * declines the $7.90 offers here. Synthetic Dasher screens; not a claim about a real shopping offer.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class ItemAuthorityAdapterTest {
     private static final String DASHER = "com.doordash.driverapp";

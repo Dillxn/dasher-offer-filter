@@ -50,13 +50,13 @@ class SplitFlowTest(unittest.TestCase):
         aggregate = flow.digest(json.dumps(files, sort_keys=True, separators=(',', ':')).encode())
         frozen = dict(count=len(files), aggregate=aggregate, files=files)
         self.gate = dict(inputCount=len(files), inputSha256=aggregate,
-                         junit=dict(tests=3382, errors=0, failures=0, skipped=0), lint=dict(errors=0, warnings=29),
-                         adapterSdkCases={name: {'26': 1, '35': 1} for name in flow.ADAPTERS})
+                         junit=dict(tests=3646, errors=0, failures=0, skipped=0), lint=dict(errors=0, warnings=29),
+                         adapterSdkCases={name: {'35': 1, '36': 1} for name in flow.ADAPTERS})
         (self.bundle / 'inputs.json').write_bytes(flow.encoded(frozen))
         (self.bundle / 'gate.json').write_bytes(flow.encoded(self.gate))
         self.receipt = dict(schema=1, purpose='UNSIGNED_NONPUBLISHABLE', sourceCommit=SOURCE, sourceTree=TREE,
                             inputCount=len(files), inputAggregate=aggregate, originalSigner=flow.SIGNER,
-                            package=dict(packageName=flow.PACKAGE, versionName='0.5.8', versionCode=88, minSdk=26, targetSdk=35),
+                            package=dict(packageName=flow.PACKAGE, versionName='0.5.8', versionCode=88, minSdk=35, targetSdk=35),
                             payload=flow.apk_entries(self.bundle / 'OfferFilter-unsigned.apk', unsigned=True))
         self.refresh()
         self.patch_root = patch.object(flow, 'ROOT', self.bundle)
@@ -164,10 +164,10 @@ class SplitFlowTest(unittest.TestCase):
 
     def test_aapt2_build_tools_35_badging_and_sdk_rejection(self):
         # Captured field spelling from the real 35.0.0 package integration.
-        good = "package: name='com.local.dasherfilter' versionCode='88' versionName='0.5.8' platformBuildVersionName='16'\nminSdkVersion:'26'\ntargetSdkVersion:'35'\n"
+        good = "package: name='com.local.dasherfilter' versionCode='88' versionName='0.5.8' platformBuildVersionName='16'\nminSdkVersion:'35'\ntargetSdkVersion:'35'\n"
         with patch.object(flow, 'sdk', return_value=pathlib.Path('/verified-sdk')), patch.object(flow, 'run', return_value=good):
-            self.assertEqual(flow.package_info('unsigned.apk', '0.5.8', 88)['minSdk'], 26)
-        for bad in (good.replace("minSdkVersion:'26'", "minSdkVersion:'25'"),
+            self.assertEqual(flow.package_info('unsigned.apk', '0.5.8', 88)['minSdk'], 35)
+        for bad in (good.replace("minSdkVersion:'35'", "minSdkVersion:'26'"),
                     good.replace("targetSdkVersion:'35'", "targetSdkVersion:'34'"),
                     good.replace("versionCode='88'", "versionCode='89'")):
             with self.subTest(bad=bad), patch.object(flow, 'sdk', return_value=pathlib.Path('/verified-sdk')), patch.object(flow, 'run', return_value=bad):
@@ -213,7 +213,7 @@ class SplitFlowTest(unittest.TestCase):
         for output in ['', good.replace(flow.SIGNER, '0' * 64), good + good.replace('#1', '#2')]:
             with self.subTest(output=output), self.assertRaises(ValueError): flow.certs_ok(output)
 
-    def test_api26_skipped_v1_metadata_requires_independent_verification(self):
+    def test_api35_skipped_v1_metadata_requires_independent_verification(self):
         signed = self.root / 'signed.apk'
         apk(signed, extra=[('META-INF/CERT.RSA', b'signature')])
         cert = 'Signer #1 certificate SHA-256 digest: ' + flow.SIGNER + '\n'
@@ -222,7 +222,7 @@ class SplitFlowTest(unittest.TestCase):
         with patch.object(flow, 'sdk', return_value=pathlib.Path('/verified-sdk')), \
                 patch.object(flow, 'run', side_effect=[current, legacy]) as verify:
             self.assertTrue(flow.verify_signed(signed))
-            self.assertIn('26', verify.call_args_list[0].args)
+            self.assertIn('35', verify.call_args_list[0].args)
             self.assertEqual(verify.call_args_list[1].args[-5:],
                              ('23', '--max-sdk-version', '23', '--print-certs', signed))
 

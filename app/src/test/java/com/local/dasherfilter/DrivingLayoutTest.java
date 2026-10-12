@@ -47,7 +47,7 @@ import static org.junit.Assert.assertTrue;
  * handset; how the page changes as the divider moves is FluidPageTest's.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DrivingLayoutTest extends AndroidAdapterTestBase {
     private static final ComponentName DASHER_HOME =

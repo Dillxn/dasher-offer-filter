@@ -12,7 +12,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.Signature;
 import android.content.pm.SigningInfo;
-import android.os.Build;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -125,7 +124,7 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
         Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(true);
         Updater.setEnabled(app, true);
         PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
-        long code = Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
+        long code = installed.getLongVersionCode();
         JSONObject current = feed(code, installed.versionName);
         Updater.feedReader = (address, out, limit) -> {
             reads.incrementAndGet();
@@ -335,7 +334,7 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
     @Test public void aTapOnInstallNowWhileTheOpeningCheckRunsWaitsForItAndThenChecksAfresh() throws Exception {
         Updater.setEnabled(app, true);
         PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
-        long code = Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
+        long code = installed.getLongVersionCode();
         JSONObject current = feed(code, installed.versionName);
         CountDownLatch slow = new CountDownLatch(1);
         Updater.feedReader = (address, out, limit) -> {
@@ -561,7 +560,7 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
                 .getInternalMutablePackageInfo(app.getPackageName());
         installed.signingInfo = signing;
         installed.signatures = new Signature[] {signer};
-        long code = Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
+        long code = installed.getLongVersionCode();
         byte[] bytes = ("Offer Filter " + versionName).getBytes(StandardCharsets.UTF_8);
         File dir = new File(app.getFilesDir(), "updates");
         assertTrue(dir.isDirectory() || dir.mkdirs());
@@ -571,7 +570,7 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
         archive.packageName = app.getPackageName();
         archive.versionName = versionName;
         archive.versionCode = (int) (code + 1);
-        if (Build.VERSION.SDK_INT >= 28) archive.setLongVersionCode(code + 1);
+        archive.setLongVersionCode(code + 1);
         archive.signingInfo = signing;
         archive.signatures = new Signature[] {signer};
         Shadows.shadowOf(app.getPackageManager()).setPackageArchiveInfo(apk.getAbsolutePath(), archive);

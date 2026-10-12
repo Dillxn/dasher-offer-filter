@@ -4,7 +4,6 @@ import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Build;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -152,46 +151,36 @@ final class StopReports {
         JSONObject note = note(app);
         long newest = seenUntil;
         boolean noteUsed = false;
-        if (Build.VERSION.SDK_INT >= 30) {
-            ActivityManager activities = app.getSystemService(ActivityManager.class);
-            List<ApplicationExitInfo> exits = activities == null ? new ArrayList<>()
-                    : activities.getHistoricalProcessExitReasons(app.getPackageName(), 0, 16);
-            for (ApplicationExitInfo exit : exits) {
-                long at = exit.getTimestamp();
-                if (at <= seenUntil || now - at > KEEP_MS || at > now + MATCH_MS) continue;
-                newest = Math.max(newest, at);
-                String kind;
-                String where = "";
-                switch (exit.getReason()) {
-                    case ApplicationExitInfo.REASON_CRASH:
-                        kind = "crash";
-                        if (note != null && Math.abs(note.optLong("at") - at) <= MATCH_MS) {
-                            where = note.optString("where", "");
-                            noteUsed = true;
-                        }
-                        break;
-                    case ApplicationExitInfo.REASON_CRASH_NATIVE:
-                        kind = "native crash";
-                        break;
-                    case ApplicationExitInfo.REASON_ANR:
-                        kind = "not responding (ANR)";
-                        where = mainThread(exit);
-                        break;
-                    default:
-                        continue;
-                }
-                kind += exit.getImportance() <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
-                        ? ", app in front" : ", app in the background";
-                found.add(new Stop(at, kind, where, false));
+        ActivityManager activities = app.getSystemService(ActivityManager.class);
+        List<ApplicationExitInfo> exits = activities == null ? new ArrayList<>()
+                : activities.getHistoricalProcessExitReasons(app.getPackageName(), 0, 16);
+        for (ApplicationExitInfo exit : exits) {
+            long at = exit.getTimestamp();
+            if (at <= seenUntil || now - at > KEEP_MS || at > now + MATCH_MS) continue;
+            newest = Math.max(newest, at);
+            String kind;
+            String where = "";
+            switch (exit.getReason()) {
+                case ApplicationExitInfo.REASON_CRASH:
+                    kind = "crash";
+                    if (note != null && Math.abs(note.optLong("at") - at) <= MATCH_MS) {
+                        where = note.optString("where", "");
+                        noteUsed = true;
+                    }
+                    break;
+                case ApplicationExitInfo.REASON_CRASH_NATIVE:
+                    kind = "native crash";
+                    break;
+                case ApplicationExitInfo.REASON_ANR:
+                    kind = "not responding (ANR)";
+                    where = mainThread(exit);
+                    break;
+                default:
+                    continue;
             }
-        } else if (note != null) {
-            // Before Android 11 there is no record of exits: the app's own crash note alone.
-            long at = note.optLong("at");
-            if (at > seenUntil && now - at <= KEEP_MS) {
-                found.add(new Stop(at, "crash", note.optString("where", ""), false));
-                newest = Math.max(newest, at);
-                noteUsed = true;
-            }
+            kind += exit.getImportance() <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                    ? ", app in front" : ", app in the background";
+            found.add(new Stop(at, kind, where, false));
         }
         // Android lists the newest first; kept oldest first.
         found.sort((a, b) -> Long.compare(a.at, b.at));
@@ -208,7 +197,6 @@ final class StopReports {
 
     /** The top frames of the main thread in an ANR's trace; nothing else of it. */
     static String mainThread(ApplicationExitInfo exit) {
-        if (Build.VERSION.SDK_INT < 30) return "";
         StringBuilder out = new StringBuilder();
         try (InputStream trace = exit.getTraceInputStream()) {
             if (trace == null) return "";

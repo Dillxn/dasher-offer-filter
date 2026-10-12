@@ -22,7 +22,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 @RunWith(RobolectricTestRunner.class)
 // The store's wall and elapsed clocks must follow the same simulated five-second observation.
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DispatchStudyStoreTest {
     Application app;

@@ -48,7 +48,7 @@ import static org.junit.Assert.assertTrue;
  * Each scenario prints a "MEASURE" line: the numbers the change reports.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class NeverStarveStressTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -359,10 +359,8 @@ public class NeverStarveStressTest {
         assertTrue("about 100 nodes a read, not 1500: " + fetches.get(), fetches.get() <= 100L * read);
         assertTrue("Dasher serves the reader under 15% of the time: " + busyMs.get() + " ms",
                 busyShare(MINUTE) < 0.15);
-        if (Build.VERSION.SDK_INT >= 33) {
-            assertEquals("routine reads never ask for an uninterruptible prefetch", uninterruptible + 1,
-                    service.uninterruptibleRootFetches);
-        }
+        assertEquals("routine reads never ask for an uninterruptible prefetch", uninterruptible + 1,
+                service.uninterruptibleRootFetches);
         String log = DiagnosticLog.read(app);
         assertEquals(log, 1, count(log, "[screen] map subtree skipped (3900 children) on Dasher's waiting screen"));
         Matcher load = Pattern.compile("\\[screen\\] read load: (\\d+) reads/min \\(fact-free (\\d+)\\), nodes \\d+, "
@@ -591,7 +589,6 @@ public class NeverStarveStressTest {
 
     @Test
     public void anOfferInAWindowOnlyAndroidsListAnnouncesComesWithItsNodesAllAtOnce() {
-        if (Build.VERSION.SDK_INT < 33) return; // Prefetch strategies are Android 13's.
         OfferFilterService service = service();
         show(service, smallIdle());
         // A window of Dasher's no event of Dasher's named yet: Android's list changes, and its root is asked whose it
@@ -784,10 +781,8 @@ public class NeverStarveStressTest {
             // 215122e: 1628 reads, every change at once, all with uninterruptible prefetch, 55% of Dasher's time.
             assertTrue("one a second at most: " + read, read <= 61);
             assertTrue(busyMs.get() + " ms", busyShare(MINUTE) < 0.05);
-            if (Build.VERSION.SDK_INT >= 33) {
-                assertEquals("only the window change's read asks for an uninterruptible prefetch", uninterruptible + 1,
-                        service.uninterruptibleRootFetches);
-            }
+            assertEquals("only the window change's read asks for an uninterruptible prefetch", uninterruptible + 1,
+                    service.uninterruptibleRootFetches);
             controller.destroy();
             controller = null;
         }
@@ -919,7 +914,6 @@ public class NeverStarveStressTest {
 
     @Test
     public void onlyAnOffersReadAsksForItsRootWithUninterruptiblePrefetchAndAnotherAppsRootComesAlone() {
-        if (Build.VERSION.SDK_INT < 33) return; // Prefetch strategies are Android 13's.
         OfferFilterService service = service();
         show(service, smallIdle());
         int uninterruptible = service.uninterruptibleRootFetches;

@@ -41,7 +41,7 @@ import org.robolectric.shadows.ShadowSystemClock;
  * day one back.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, shadows = LauncherAppearanceTest.Packages.class)
+@Config(sdk = {35, 36}, shadows = LauncherAppearanceTest.Packages.class)
 public class LauncherAppearanceTest {
     private Application app;
     private PackageManager packages;

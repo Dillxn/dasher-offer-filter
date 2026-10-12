@@ -5,7 +5,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.os.Build;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -49,7 +48,7 @@ final class NoticePage {
         header.setPadding(ui.dp(20), ui.dp(22), ui.dp(16), ui.dp(14));
         header.setMinimumHeight(ui.dp(96));
         TextView title = ui.text(Consent.TITLE, 24, ui.ink, true);
-        if (Build.VERSION.SDK_INT >= 28) title.setAccessibilityHeading(true);
+        title.setAccessibilityHeading(true);
         header.addView(title, Ui.weighted());
         header.addView(new Face(context, ui), new LinearLayout.LayoutParams(ui.dp(64), ui.dp(64)));
         page.addView(header, Ui.matchWidth());

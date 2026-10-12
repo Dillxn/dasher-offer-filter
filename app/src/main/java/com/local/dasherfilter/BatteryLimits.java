@@ -5,7 +5,6 @@ import android.app.usage.UsageStatsManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
 import android.provider.Settings;
 import android.widget.Toast;
 import java.util.function.Consumer;
@@ -33,7 +32,6 @@ final class BatteryLimits {
 
     /** The app's battery setting is "Restricted". */
     private static boolean backgroundRestricted(Context context) {
-        if (Build.VERSION.SDK_INT < 28) return false;
         try {
             ActivityManager activities = context.getSystemService(ActivityManager.class);
             return activities != null && activities.isBackgroundRestricted();
@@ -42,9 +40,8 @@ final class BatteryLimits {
         }
     }
 
-    /** Android put the app in its restricted standby bucket (Android 11 and later; its jobs run about once a day). */
+    /** Android put the app in its restricted standby bucket (its jobs run about once a day). */
     private static boolean sleeping(Context context) {
-        if (Build.VERSION.SDK_INT < 30) return false;
         try {
             UsageStatsManager usage = context.getSystemService(UsageStatsManager.class);
             return usage != null && usage.getAppStandbyBucket() == UsageStatsManager.STANDBY_BUCKET_RESTRICTED;
@@ -61,14 +58,12 @@ final class BatteryLimits {
                 + "; opening the app's battery settings");
         // Optimized lifts the Restricted setting; only Unrestricted takes the app out of a sleeping list.
         String choose = setting ? "Unrestricted or Optimized" : "Unrestricted";
-        if (Build.VERSION.SDK_INT >= 31) {
-            try {
-                context.startActivity(new Intent(APP_BATTERY, app));
-                Toast.makeText(context, "Choose " + choose + ".", Toast.LENGTH_LONG).show();
-                return;
-            } catch (RuntimeException unsupported) {
-                // App info has the Battery entry on every phone.
-            }
+        try {
+            context.startActivity(new Intent(APP_BATTERY, app));
+            Toast.makeText(context, "Choose " + choose + ".", Toast.LENGTH_LONG).show();
+            return;
+        } catch (RuntimeException unsupported) {
+            // App info has the Battery entry on every phone.
         }
         Toast.makeText(context, "Open Battery, then choose " + choose + ".", Toast.LENGTH_LONG).show();
         open.accept(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app));

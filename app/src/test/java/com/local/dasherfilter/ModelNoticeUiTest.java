@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
  * for plain strict rules or a new install.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ModelNoticeUiTest extends AndroidAdapterTestBase {
     private static final String RESTORED_CHOICES = "Area scoring and acceptance learning are available again as "

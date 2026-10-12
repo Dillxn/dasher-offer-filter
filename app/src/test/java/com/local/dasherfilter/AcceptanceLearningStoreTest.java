@@ -14,7 +14,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceLearningStoreTest {
     private Application app;

@@ -26,7 +26,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.StrictMode;
 import android.os.SystemClock;
-import android.telephony.TelephonyManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
@@ -943,11 +942,10 @@ public final class OfferFilterService extends AccessibilityService {
     // ---- Read budget (scanner thread): Dasher is never read faster than it can draw ({@link ReadBudget}) ----
 
     /** A root fetched for an offer's read: Dasher's nodes come with it, all at once (as always). */
-    private static final int ROOT_FOR_OFFER = Build.VERSION.SDK_INT >= 33
-            ? AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID | AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE : 0;
+    private static final int ROOT_FOR_OFFER = AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
+            | AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE;
     /** A root fetched for a routine read (after one that showed nothing of an offer): its prefetch yields to Dasher. */
-    private static final int ROOT_ROUTINE = Build.VERSION.SDK_INT >= 33
-            ? AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID : 0;
+    private static final int ROOT_ROUTINE = AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID;
     /** A root fetched only to learn whose window it is: the root alone, nothing below it. */
     private static final int ROOT_IDENTITY = 0;
     private final ReadBudget budget = new ReadBudget();
@@ -1020,7 +1018,7 @@ public final class OfferFilterService extends AccessibilityService {
     };
     /** From the main thread with each hand-off: an event's own words showed a sign of an offer, or a new Dasher window. */
     private final AtomicBoolean eventHint = new AtomicBoolean();
-    /** For tests: root fetches (from Android 13) with uninterruptible prefetch, and of the root alone. */
+    /** For tests: root fetches with uninterruptible prefetch, and of the root alone. */
     int uninterruptibleRootFetches;
     int identityRootFetches;
     /** For tests: reads of Dasher's content (each a walk of its nodes). */
@@ -1636,7 +1634,7 @@ public final class OfferFilterService extends AccessibilityService {
      */
     static Boolean splitActionListed() {
         OfferFilterService service = active;
-        if (service == null || Build.VERSION.SDK_INT < 30) return null;
+        if (service == null) return null;
         try {
             List<AccessibilityNodeInfo.AccessibilityAction> actions = service.getSystemActions();
             if (actions == null || actions.isEmpty()) return null;
@@ -2299,8 +2297,7 @@ public final class OfferFilterService extends AccessibilityService {
         turns.addAction(Intent.ACTION_SCREEN_ON);
         turns.addAction(Intent.ACTION_USER_PRESENT);
         try {
-            if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenState, turns, Context.RECEIVER_NOT_EXPORTED);
-            else registerReceiver(screenState, turns);
+            registerReceiver(screenState, turns, Context.RECEIVER_NOT_EXPORTED);
             screenStateWatched = true;
         } catch (RuntimeException refused) {
             DiagnosticLog.log(this, "split", "screen on/off not watched: " + refused.getClass().getSimpleName());
@@ -2729,7 +2726,7 @@ public final class OfferFilterService extends AccessibilityService {
             stop = () -> dasherEvents.get() != events;
         }
         // Android's list of windows and the windows known by their IDs: Dasher's root is not asked for (a call into
-        // Dasher's UI thread, busy drawing its map; before Android 13 one that also fetches the nodes below it).
+        // Dasher's UI thread, busy drawing its map).
         if (knownLook(SystemClock.uptimeMillis(), false, stop)) {
             syncWaitHeartbeat();
             syncOverlay();
@@ -4318,25 +4315,15 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Whether a call rings or is under way: the audio mode is not normal, as the sound guard reads it
-     * ({@link OfferSilencer}), or, before Android 12, where it needs no permission, the phone's call state says so.
+     * ({@link OfferSilencer}).
      */
-    @SuppressWarnings("deprecation")
     private boolean inCall() {
         try {
             AudioManager audio = getSystemService(AudioManager.class);
-            if (audio != null && audio.getMode() != AudioManager.MODE_NORMAL) return true;
+            return audio != null && audio.getMode() != AudioManager.MODE_NORMAL;
         } catch (RuntimeException unknown) {
             return true;
         }
-        if (Build.VERSION.SDK_INT < 31) {
-            try {
-                TelephonyManager phone = getSystemService(TelephonyManager.class);
-                if (phone != null && phone.getCallState() != TelephonyManager.CALL_STATE_IDLE) return true;
-            } catch (RuntimeException unreadable) {
-                // Not readable here: the audio mode said there is no call.
-            }
-        }
-        return false;
     }
 
     /**
@@ -8988,30 +8975,30 @@ public final class OfferFilterService extends AccessibilityService {
         // A window not known yet that turns out to be Dasher's, for a read taken at once (an offer's, perhaps, in a new
         // window announced only by Android's list): asked for again with Dasher's nodes, all at once, so its first read
         // is not one call into Dasher per node. Once only: it is known by its ID from now on (a window Android gave no
-        // ID could not be, so it is not asked twice). Before Android 13 every root comes with the nodes below it.
-        if (!dasher && onScanner && rootPrefetch == ROOT_FOR_OFFER && android.os.Build.VERSION.SDK_INT >= 33
-                && realWindowId(id) && isDasher(root)) {
+        // ID could not be, so it is not asked twice).
+        if (!dasher && onScanner && rootPrefetch == ROOT_FOR_OFFER && realWindowId(id) && isDasher(root)) {
             AccessibilityNodeInfo again = fetchRoot(window, rootPrefetch, true);
             if (again != null) root = again;
         }
         return root;
     }
 
-    /** A root from Android ({@code window} null: the active window's), with that prefetch from Android 13. */
+    /** A root from Android ({@code window} null: the active window's), with that prefetch. */
     private AccessibilityNodeInfo fetchRoot(AccessibilityWindowInfo window, int prefetch, boolean onScanner) {
         long started = System.nanoTime();
         long startedMs = SystemClock.uptimeMillis();
         java.util.function.IntConsumer hook = rootFetchForTests;
         if (hook != null && onScanner) hook.accept(prefetch);
         AccessibilityNodeInfo root = null;
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            if (onScanner) {
-                if (prefetch == ROOT_IDENTITY) identityRootFetches++;
-                else if ((prefetch & AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE) != 0) uninterruptibleRootFetches++;
+        if (onScanner) {
+            if (prefetch == ROOT_IDENTITY) {
+                identityRootFetches++;
+            } else if ((prefetch & AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE) != 0) {
+                uninterruptibleRootFetches++;
             }
-            try { root = window == null ? getRootInActiveWindow(prefetch) : window.getRoot(prefetch); }
-            catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
         }
+        try { root = window == null ? getRootInActiveWindow(prefetch) : window.getRoot(prefetch); }
+        catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
         if (root == null) root = window == null ? getRootInActiveWindow() : window.getRoot();
         if (onScanner) {
             long elapsed = System.nanoTime() - started;
@@ -9476,10 +9463,8 @@ public final class OfferFilterService extends AccessibilityService {
             long began = System.nanoTime();
             try {
                 AccessibilityNodeInfo child = null;
-                if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    try { child = node.getChild(index, AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID); }
-                    catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
-                }
+                try { child = node.getChild(index, AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID); }
+                catch (IllegalStateException | IllegalArgumentException unsupportedPrefetch) { /* Fall back below. */ }
                 return child == null ? node.getChild(index) : child;
             } finally { if (System.nanoTime() - began >= 2_000_000) remoteFetches++; }
         }

@@ -32,7 +32,7 @@ import static org.junit.Assert.fail;
  * never writes the bar, Autopilot's compare-and-set, and turning Autopilot off.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public class ModelMigrationTest {
     /** Every key 0.5.0 retires, written out here independently of the code under test. */
     private static final List<String> RETIRED = Arrays.asList(

@@ -171,19 +171,6 @@ public class StopReportsTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    @Config(sdk = 26)
-    public void beforeAndroid11TheAppsOwnCrashNoteIsTheRecord() {
-        crashNow(crash());
-        StopReports.check(app);
-        String section = StopReports.section(app);
-        assertTrue(section, section.contains("crash\njava.lang.RuntimeException\n"
-                + "  at com.local.dasherfilter.OfferFilterService.read(OfferFilterService.java:1200)"));
-        assertFalse(section.contains("Jane"));
-        assertFalse(note().exists());
-    }
-
-    @Test
-    @Config(sdk = 26)
     public void aCrashNoteOlderThanADayIsDiscarded() throws Exception {
         crashNow(crash());
         JSONObject old = new JSONObject(new String(Files.readAllBytes(note().toPath()), StandardCharsets.UTF_8));

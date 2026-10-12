@@ -29,7 +29,7 @@ import static org.junit.Assert.*;
 
 /** Real dialog measurement and coordinate dispatch in a resized viewport; not a physical IME/phone receipt. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w360dp-h640dp-mdpi")
+@Config(sdk = {35, 36}, qualifiers = "w360dp-h640dp-mdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ReportOfferViewportTest extends AndroidAdapterTestBase {
     private ActivityController<Activity> activity;
@@ -55,10 +55,8 @@ public class ReportOfferViewportTest extends AndroidAdapterTestBase {
         View decor = dialog.getWindow().getDecorView();
         // Android ADJUST_RESIZE supplies a shorter viewport above IME/system insets. Exercise the actual layout
         // at that constraint, including nonzero system-bar insets, rather than calling Send.performClick().
-        WindowInsets insets = android.os.Build.VERSION.SDK_INT >= 29
-                ? new WindowInsets.Builder().setSystemWindowInsets(android.graphics.Insets.of(0, 8, 0, 12)).build()
-                : org.robolectric.util.ReflectionHelpers.callConstructor(WindowInsets.class,
-                        org.robolectric.util.ReflectionHelpers.ClassParameter.from(Rect.class, new Rect(0, 8, 0, 12)));
+        WindowInsets insets =
+                new WindowInsets.Builder().setSystemWindowInsets(android.graphics.Insets.of(0, 8, 0, 12)).build();
         decor.dispatchApplyWindowInsets(insets);
         decor.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(availableHeight, View.MeasureSpec.AT_MOST));

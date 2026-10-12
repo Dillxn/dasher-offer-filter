@@ -61,7 +61,7 @@ import static org.junit.Assert.assertTrue;
  * end-of-dash wording, are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ActionSafetyReviewTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

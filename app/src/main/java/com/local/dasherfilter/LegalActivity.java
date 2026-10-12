@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
@@ -58,7 +57,7 @@ public final class LegalActivity extends Activity {
         header.addView(back, new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52)));
         TextView title = ui.text(doc.title, 22, ui.ink, true);
         title.setPadding(ui.dp(8), 0, 0, 0);
-        if (Build.VERSION.SDK_INT >= 28) title.setAccessibilityHeading(true);
+        title.setAccessibilityHeading(true);
         header.addView(title, Ui.weighted());
         page.addView(header, Ui.matchWidth());
 
@@ -99,7 +98,7 @@ public final class LegalActivity extends Activity {
                     boolean top = block.kind == LegalMarkdown.Kind.HEADING;
                     TextView heading = ui.text("", top ? 17 : 15, ui.ink, true);
                     heading.setText(LegalMarkdown.inline(block.text));
-                    if (Build.VERSION.SDK_INT >= 28) heading.setAccessibilityHeading(true);
+                    heading.setAccessibilityHeading(true);
                     body.addView(heading, spaced(ui, top ? 26 : 18));
                     break;
                 }

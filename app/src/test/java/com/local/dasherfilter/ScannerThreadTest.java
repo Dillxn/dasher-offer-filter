@@ -7,7 +7,6 @@ import android.app.NotificationManager;
 import android.graphics.Rect;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -66,7 +65,7 @@ import static org.junit.Assert.assertTrue;
  * and wait for it with {@code shadowOf(looper).idle()}; a "slow phone" is a window list that takes its time.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ScannerThreadTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -261,7 +260,7 @@ public class ScannerThreadTest {
     }
 
     private int alarmFloor() {
-        return Build.VERSION.SDK_INT >= 28 ? audio().getStreamMinVolume(AudioManager.STREAM_ALARM) : 0;
+        return audio().getStreamMinVolume(AudioManager.STREAM_ALARM);
     }
 
     /** Neither a quiet group child nor a card on the silent pop-up channel ("Offer details"): it makes a sound. */
@@ -973,9 +972,8 @@ public class ScannerThreadTest {
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());
         // Ours, the first time; then Dasher's half, which no event of Dasher's named yet: its root alone, to learn whose
-        // it is, and (from Android 13, for this read taken at once) again with Dasher's nodes.
-        assertEquals("ours, the first time, then Dasher's", Build.VERSION.SDK_INT >= 33 ? 3 : 2,
-                service.rootFetches - before);
+        // it is, and (for this read taken at once) again with Dasher's nodes.
+        assertEquals("ours, the first time, then Dasher's", 3, service.rootFetches - before);
         before = service.rootFetches;
         service.onAccessibilityEvent(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED));
         assertTrue(OfferFilterService.isDasherForeground());

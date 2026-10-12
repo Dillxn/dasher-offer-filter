@@ -25,7 +25,7 @@ import org.robolectric.annotation.LooperMode;
  * the website's install help, and a Fix row appears only while Android restricts the app's background work.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SettingsBetaTest extends AndroidAdapterTestBase {
 
@@ -73,7 +73,6 @@ public class SettingsBetaTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = settings(activity);
             assertNull("not restricted: no row", shownIcon(content, BatteryLimits.PROBLEM + ". Fix."));
-            if (android.os.Build.VERSION.SDK_INT < 28) return; // Android 8 has no such restriction to read.
             Shadows.shadowOf(app.getSystemService(ActivityManager.class)).setBackgroundRestricted(true);
             activity.pause().resume();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));

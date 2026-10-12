@@ -36,7 +36,7 @@ import org.robolectric.shadows.ShadowSystemClock;
  * line.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class RefusedDeclineTest {
     private static final String ROUTE = "2 stops (10.6 mi) • 21 min";

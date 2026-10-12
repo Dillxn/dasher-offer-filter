@@ -62,7 +62,7 @@ import static org.junit.Assert.assertTrue;
  * every window size a pixel apart.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class FluidPageTest extends AndroidAdapterTestBase {
@@ -317,7 +317,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             Bitmap drawn = drawn(content);
             assertTrue(where + ": the hills under the sun, " + page.hillsTop() + " / " + page.sunBottom(),
                     page.sunBottom() > 0 && page.hillsTop() >= page.sunBottom() - 1);
-            if (android.os.Build.VERSION.SDK_INT >= 35 && contains(PICTURED, heightDp)) {
+            if (android.os.Build.VERSION.SDK_INT == 35 && contains(PICTURED, heightDp)) {
                 picture(drawn, name + "-" + heightDp + "dp");
             }
             drawn.recycle();

@@ -9,16 +9,18 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 
-# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks: Android 8 and 15) at its last recount, the
-# fluid homepage after its review's fixes (3,272 in 156 suites on 8 October 2026: 1,271 cases on Android 8, the rest on
+# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks) at its last recount: 3,646 in 175 suites on
+# 12 October 2026 for 0.6.1, its first on Android 15 and 16 (1,427 cases on Android 15 paired with Android 16, the rest
+# on Android 15 alone or the plain JVM). Before it, on Android 8 and 15: the fluid homepage after its review's fixes (3,272 in 156 suites on 8 October 2026: 1,271 cases on Android 8, the rest on
 # Android 15 or the plain JVM, FluidLayoutTest and FluidPageTest among them; 3,266 before them); the 0.5.1 candidate
 # with the minimums' growth had 3,242 in 154 suites, 1,261 on Android 8, after its review's fixes (3,240 before them);
 # 0.5.0's release candidate had 3,172 in 149 suites, 1,234 on Android 8, after its final review's fixes; 3,122 in 146
 # suites at the release integration before them, 2,358 after the accountless-feedback review fixes the day before.
 # Raise it as tests are added; a run below it is missing tests.
-MIN_TESTS = 3272
+MIN_TESTS = 3646
 
-# The Android adapter suites a release must have run on both Android 8 and 15, paired case by case. 0.5.0 retired the
+# The Android adapter suites a release must have run on both Android 15 and 16 (Android 8 and 15 until 0.6.1, when
+# Android 15 became the oldest supported: the owner, 11 October 2026), paired case by case. 0.5.0 retired the
 # adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that
 # retires the learned minimums and Autopilot moving the bar only at a safe point with the acceptance rate read from
 # Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest. 0.5.1's minimums grow only at
@@ -35,7 +37,7 @@ ADAPTER_SOURCES = "app/src/test/java/com/local/dasherfilter/"
 
 
 def adapter_sources(root):
-    """Each release adapter suite is in the repository with one explicit {26,35} configuration and no SDK override."""
+    """Each release adapter suite is in the repository with one explicit {35,36} configuration and no SDK override."""
     for name in ADAPTERS:
         path = root / (ADAPTER_SOURCES + name + ".java")
         if not path.is_file():
@@ -44,10 +46,10 @@ def adapter_sources(root):
         if any(re.search(r"\b(?:minSdk|maxSdk)\s*=", annotation) for annotation in annotations):
             raise ValueError("Release adapter SDK configuration changed")
         # Layout qualifiers and instrumented packages do not change the SDK pair. A second sdk declaration,
-        # including a method override, still fails; only one explicit {26,35} declaration is allowed.
+        # including a method override, still fails; only one explicit {35,36} declaration is allowed.
         configs = [sdk for annotation in annotations
                    for sdk in re.findall(r"\bsdk\s*=\s*(\{[^}]*\}|[^,\s)]+)", annotation)]
-        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{26,35}":
+        if len(configs) != 1 or re.sub(r"\s", "", configs[0]) != "{35,36}":
             raise ValueError("Release adapter SDK configuration changed")
 
 
@@ -91,17 +93,17 @@ def sdk_evidence(root, reports):
         if len(cases) != len(set(cases)):
             raise ValueError("Duplicate Android adapter result")
         names = set(cases)
-        api26 = {item[:-4] for item in names if item.endswith("[26]")}
+        api35 = {item[:-4] for item in names if item.endswith("[35]")}
         # Robolectric's final configured variant may retain the unsuffixed method
-        # name. Accept that paired variant or explicit [35], never a count alone.
-        if not api26:
-            raise ValueError("Android 8 variant results missing")
-        for base in api26:
-            if sum(candidate in names for candidate in (base, base + "[35]")) != 1:
-                raise ValueError("Android 15 paired variant result missing or ambiguous")
-        if len(names) != 2 * len(api26):
+        # name. Accept that paired variant or explicit [36], never a count alone.
+        if not api35:
+            raise ValueError("Android 15 variant results missing")
+        for base in api35:
+            if sum(candidate in names for candidate in (base, base + "[36]")) != 1:
+                raise ValueError("Android 16 paired variant result missing or ambiguous")
+        if len(names) != 2 * len(api35):
             raise ValueError("Unpaired Android adapter variant result")
-        evidence[name] = {"26": len(api26), "35": len(api26)}
+        evidence[name] = {"35": len(api35), "36": len(api35)}
     return evidence
 
 
@@ -163,7 +165,7 @@ def gate(root, frozen):
         raise ValueError("Android lint gate failed")
     return dict(inputCount=current["count"], inputSha256=current["aggregate"], junit=totals,
                 suites=len(suites), lint=lint_counts, adapterSdkCases=sdks,
-                androidAdapterRuntime="Robolectric API 26 and 35; simulation only",
+                androidAdapterRuntime="Robolectric API 35 and 36; simulation only",
                 deviceInstallVerified=False)
 
 

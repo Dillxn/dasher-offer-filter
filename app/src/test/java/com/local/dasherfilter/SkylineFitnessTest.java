@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
  * ({@code ⌈bar × flat ÷ 100⌉}).
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class SkylineFitnessTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = FilterSettings.of(true, 1000, 200, 30, 0);

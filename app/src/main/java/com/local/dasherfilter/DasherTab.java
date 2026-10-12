@@ -7,7 +7,6 @@ import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
@@ -191,7 +190,7 @@ final class DasherTab extends View {
         super.onLayout(changed, left, top, rightEdge, bottom);
         // Gesture navigation's back swipe starts at the screen's edge, where the tab is: a drag starting on the tab
         // is the tab's (Android allows a little of each edge to be kept like this).
-        if (changed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (changed) {
             exclusion.set(0, 0, rightEdge - left, bottom - top);
             setSystemGestureExclusionRects(exclusions);
         }

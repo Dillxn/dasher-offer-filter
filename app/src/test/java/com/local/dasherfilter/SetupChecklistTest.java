@@ -718,28 +718,12 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = 26)
-    public void olderAndroidHasNoRestrictedStepOrHint() {
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = activity.get().findViewById(android.R.id.content);
-            tick();
-            assertNull(line(content, SetupChecklist.RESTRICTED));
-            line(content, SetupChecklist.ACCESSIBILITY).performClick();
-            assertEquals("Android 8 has no page for one service: the list, and where to look in it",
-                    Settings.ACTION_ACCESSIBILITY_SETTINGS, opened().getAction());
-            assertEquals(SetupChecklist.FIND_IN_LIST, ShadowToast.getTextOfLatestToast());
-            activity.pause().resume();
-            tick();
-            assertNotNull("no greyed-out hint before Android 13", line(content, SetupChecklist.ACCESSIBILITY));
-        }
-    }
-
     /**
      * The largest font on a narrow phone: a step's words keep to two lines (they would take three), a little smaller,
      * never below three quarters of the user's size; longer words take as few lines as that allows (three, not four);
      * words that fit keep the user's size.
      */
-    @Test @Config(sdk = {26, 35}, qualifiers = "w320dp-h640dp-xhdpi")
+    @Test @Config(sdk = {35, 36}, qualifiers = "w320dp-h640dp-xhdpi")
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void aStepsWordsKeepToTwoLinesAtTheLargestFontAndOtherwiseTheUsersSize() {
         RuntimeEnvironment.setFontScale(2f);

@@ -54,7 +54,7 @@ import static org.junit.Assert.assertTrue;
  * delivered is never peeked at now, until the wait for offers says the delivery is over; another store's offer is.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DirectionsDuringDeliveryTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

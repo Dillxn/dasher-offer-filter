@@ -65,7 +65,7 @@ import static org.junit.Assert.assertTrue;
  * looper with simulated time; synthetic Android, no handset claimed.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class AutopilotCommitAdapterTest {
     /** The starter minimums: $4 an offer, $1 a mile, $0.25 a minute ($15 an hour). */

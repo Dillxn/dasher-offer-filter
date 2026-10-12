@@ -6,7 +6,6 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Intent;
-import android.os.Build;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
@@ -30,7 +29,7 @@ import org.robolectric.shadows.ShadowAlertDialog;
 
 /** Lifecycle and setup recovery through the actual Activity, without a real share target or network. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
     @After public void resetBuilder() { ReportShare.builder = ReportShare.DIAGNOSTICS; }
@@ -156,11 +155,11 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test @Config(sdk = {26, 28})
-    public void visiblePausedOlderAndroidKeepsHistoryCurrentUntilStopped() throws Exception {
+    @Test
+    public void aVisiblePausedPageKeepsHistoryCurrentUntilStopped() throws Exception {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
-            activity.pause(); // The visible, unfocused half of split screen on Android 8 and 9.
+            activity.pause(); // Visible but paused: another app's dialog in front of it, say.
             DecisionLog.record(app, declinedEntry());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertEquals(DecisionLog.version(), (long) field(activity.get(), "shownHistoryVersion"));
@@ -184,12 +183,8 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
             assertNotNull("being enabled does not imply a running connection", fix);
             fix.performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
-            if (Build.VERSION.SDK_INT >= 31) {
-                assertEquals("android.settings.ACCESSIBILITY_DETAILS_SETTINGS", opened.getAction());
-                assertEquals(component.flattenToString(), opened.getStringExtra(Intent.EXTRA_COMPONENT_NAME));
-            } else {
-                assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, opened.getAction());
-            }
+            assertEquals("android.settings.ACCESSIBILITY_DETAILS_SETTINGS", opened.getAction());
+            assertEquals(component.flattenToString(), opened.getStringExtra(Intent.EXTRA_COMPONENT_NAME));
         }
     }
 

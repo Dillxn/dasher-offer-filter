@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.net.Uri;
-import android.os.Build;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 
@@ -100,8 +99,7 @@ final class OfferAlerts {
     private static boolean canNotify(Context context, String channelId) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager == null || !manager.areNotificationsEnabled()) return false;
-        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return false;
         }
         NotificationChannel channel = manager.getNotificationChannel(channelId);

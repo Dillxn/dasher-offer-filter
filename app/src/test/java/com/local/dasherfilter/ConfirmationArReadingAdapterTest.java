@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
  * question may not be about. Through the real screen reader, on the main looper with simulated time.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class ConfirmationArReadingAdapterTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

@@ -18,7 +18,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 /** Actual summary construction must retain complete allowlisted study lines at its text-size boundary. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DispatchStudySummaryTest {
     private Application app;

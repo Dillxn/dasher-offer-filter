@@ -111,7 +111,7 @@ def decode_records(lines, source, version, code):
 
 
 def verify_apk(apk, build_tools, version, code):
-    certs = subprocess.run([str(build_tools / "apksigner"), "verify", "--min-sdk-version", "26",
+    certs = subprocess.run([str(build_tools / "apksigner"), "verify", "--min-sdk-version", "35",
                             "--print-certs", str(apk)], check=True, text=True, capture_output=True).stdout
     cert = re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-f0-9]+)", certs)
     if cert != [SIGNER]:

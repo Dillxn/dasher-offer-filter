@@ -69,7 +69,7 @@ import static org.junit.Assert.assertTrue;
  * reaction to its own notification tap, Android's background-start rules and the unlock's timing are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekRecoveryTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -508,12 +508,9 @@ public class PeekRecoveryTest {
         passTo(up + Peek.PRESENT_MS + 100);
         assertEquals("Dasher's own notification tap, once", 1, ownTaps.size());
         assertTrue("Dasher's own intent, as its notification holds it", DasherOwnIntent.fromDasher(ownTaps.get(0)));
-        if (Build.VERSION.SDK_INT >= 34) {
-            assertEquals("the screen reader's right to start a screen goes with it",
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED, startMode(ownTapOptions.get(0)));
-        } else {
-            assertTrue("no options before Android 14", ownTapOptions.get(0).isEmpty());
-        }
+        assertEquals("the screen reader's right to start a screen goes with it",
+                Build.VERSION.SDK_INT >= 36 ? ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+                        : ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED, startMode(ownTapOptions.get(0)));
         String log = log(app);
         contains(log, "[peek] Dasher up 0.0 s after it was opened (win=full/-/dasher/100; Dasher windows 1; "
                 + "top window active yes)");

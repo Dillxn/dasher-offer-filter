@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
  * real one would refuse). Android 8 and 15.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class FeedbackDialogTest extends AndroidAdapterTestBase {
     private ActivityController<MainActivity> activity;

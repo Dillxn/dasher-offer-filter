@@ -29,7 +29,7 @@ import static org.junit.Assert.assertTrue;
  * calling thread; the clocks are the test's.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumsGrowthRuntimeTest {
     private static final long MIN = 60_000L;

@@ -43,7 +43,7 @@ import static org.junit.Assert.assertTrue;
  * Diagnostics and offer reports, updates, tips and split screen with Dasher, through real Android adapters.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={35,36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase {
     @Test
@@ -126,7 +126,6 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
 
     /** Android 11 and later also keep their own record of the stop; earlier ones have only the app's note. */
     private void androidRecordsTheCrash() {
-        if (android.os.Build.VERSION.SDK_INT < 30) return;
         Shadows.shadowOf(app.getSystemService(android.app.ActivityManager.class)).addApplicationExitInfo(
                 org.robolectric.shadows.ShadowActivityManager.ApplicationExitInfoBuilder.newBuilder()
                         .setReason(android.app.ApplicationExitInfo.REASON_CRASH)

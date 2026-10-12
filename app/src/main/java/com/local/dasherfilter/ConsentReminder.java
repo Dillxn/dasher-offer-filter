@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.os.Build;
 
 /**
  * The one thing posted before the first-run notice ({@link Consent}) is accepted. An existing install gets a new
@@ -109,8 +108,7 @@ final class ConsentReminder {
 
     private static boolean canPost(Context context, NotificationManager manager) {
         if (!manager.areNotificationsEnabled()) return false;
-        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return false;
         }
         NotificationChannel channel = manager.getNotificationChannel(CHANNEL_ID);

@@ -24,7 +24,7 @@ import org.robolectric.annotation.LooperMode;
 
 /** Reconstructed UI requirements: a stable reference and readable facts even after the chart has faded away. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class StableReferenceUiTest extends AndroidAdapterTestBase {

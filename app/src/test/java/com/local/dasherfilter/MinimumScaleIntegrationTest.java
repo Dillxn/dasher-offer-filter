@@ -30,7 +30,7 @@ import static org.junit.Assert.*;
  * writes it, no gesture on the homepage moves it, and turning Autopilot off puts it back at exactly 100%.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
     /** $10, $2 a mile, $0.30 a minute, at most 3 stops (their $1 a stop folds into minimum pay: 2 × $1 < $10). */

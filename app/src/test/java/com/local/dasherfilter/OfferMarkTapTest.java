@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
  * above it and share the page with it, where 0.5.1's crossed it).
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferMarkTapTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = FilterSettings.of(true, 500, 300, 20, 3);

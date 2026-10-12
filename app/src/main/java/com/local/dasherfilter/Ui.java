@@ -9,7 +9,6 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
-import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -329,7 +328,7 @@ final class Ui {
     TextView heading(LinearLayout parent, String title) {
         TextView view = text(title.toUpperCase(java.util.Locale.US), 12, inkMuted, true);
         view.setLetterSpacing(0.16f);
-        if (Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(true);
+        view.setAccessibilityHeading(true);
         view.setContentDescription(title);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);

@@ -9,7 +9,6 @@ import android.content.SharedPreferences;
 import android.content.pm.InstallSourceInfo;
 import android.content.pm.PackageInstaller;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Process;
 import android.provider.Settings;
 import java.util.Arrays;
@@ -102,9 +101,8 @@ final class RestrictedSettingsGuide {
         return context.getSharedPreferences(SetupChecklist.PREFS, Context.MODE_PRIVATE);
     }
 
-    /** Where this install came from, as getInstallSourceInfo says (Android 13 and later). */
+    /** Where this install came from, as getInstallSourceInfo says. */
     static Source source(Context context) {
-        if (Build.VERSION.SDK_INT < 33) return Source.UNKNOWN;
         try {
             return Sources.source(context);
         } catch (Exception unknown) {
@@ -121,7 +119,6 @@ final class RestrictedSettingsGuide {
 
     /** Android's mode for the restriction, or -1 when Android does not let the app read it. */
     static int opMode(Context context) {
-        if (Build.VERSION.SDK_INT < 33) return -1;
         try {
             AppOpsManager ops = context.getSystemService(AppOpsManager.class);
             return ops == null ? -1 : ops.unsafeCheckOpNoThrow(OP, Process.myUid(), context.getPackageName());
@@ -158,7 +155,7 @@ final class RestrictedSettingsGuide {
      * app-op and the install source), so callers keep the answer a while.
      */
     static Reading read(Context context) {
-        if (Build.VERSION.SDK_INT < 33 || prefs(context).getBoolean(CLEARED_KEY, false)) {
+        if (prefs(context).getBoolean(CLEARED_KEY, false)) {
             return new Reading(State.CLEAR, false, true);
         }
         SharedPreferences prefs = prefs(context);
@@ -314,10 +311,9 @@ final class RestrictedSettingsGuide {
         }
     }
 
-    /** API 33 calls, kept apart so older Android never loads them. */
+    /** The install source's own calls. */
     private static final class Sources {
         static Source source(Context context) throws Exception {
-            if (Build.VERSION.SDK_INT < 33) return Source.UNKNOWN;
             InstallSourceInfo info = context.getPackageManager().getInstallSourceInfo(context.getPackageName());
             int source = info.getPackageSource();
             if (source == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE

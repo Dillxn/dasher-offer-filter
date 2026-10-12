@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
  * minimums back; and "Let my minimums grow", on unless turned off.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public class FilterStoreGrowthTest {
     private static final long DAY = 24 * 60 * 60_000L;
     private Application app;

@@ -6,7 +6,6 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
-import android.os.Build;
 import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,10 +121,10 @@ final class AreaMap {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** Android 10+ may withhold location while another app is in front unless it is allowed all the time. */
+    /** Android may withhold location while another app is in front unless it is allowed all the time. */
     static boolean hasBackgroundPermission(Context context) {
-        return Build.VERSION.SDK_INT < 29 || context.checkSelfPermission(
-                Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        return context.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     /** Offers noted while on but without a fresh location, so the screen can say so rather than guess. */

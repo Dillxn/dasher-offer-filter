@@ -67,7 +67,7 @@ import static org.junit.Assert.assertTrue;
  * through the runtime's own commit, as the screen reader will at a safe point.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AutopilotUiTest extends AndroidAdapterTestBase {

@@ -30,7 +30,7 @@ import static org.junit.Assert.assertTrue;
  */
 @RunWith(RobolectricTestRunner.class)
 // Dashing's wall-clock starts and Peek's elapsed clock must both follow the simulated time below.
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekPauseHomepageTest {
     private static final String ROW = "Peek paused: it hit an error. Resume.";

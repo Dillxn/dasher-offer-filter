@@ -3,7 +3,6 @@ package com.local.dasherfilter;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.os.Build;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
@@ -46,7 +45,7 @@ import static org.junit.Assert.assertTrue;
  * with its knobs, the max stops badge and the Autopilot button, and the decisions chart.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={35,36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Before public void plansOnThisThread() {
@@ -670,7 +669,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals(android.widget.SeekBar.class.getName(), mile.getClassName().toString());
             assertTrue("a screen reader stops on it, not taking it for part of the clickable chart",
                     mile.isFocusable());
-            if (Build.VERSION.SDK_INT >= 28) assertTrue(mile.isScreenReaderFocusable());
+            assertTrue(mile.isScreenReaderFocusable());
             assertEquals(1.5f, mile.getRangeInfo().getCurrent(), 0.001f);
             assertEquals(1000f, mile.getRangeInfo().getMax(), 0.001f);
             assertTrue(mile.getActionList().contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD));

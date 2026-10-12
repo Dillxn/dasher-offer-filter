@@ -15,7 +15,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import java.io.ByteArrayOutputStream;
@@ -599,15 +598,13 @@ final class Updater {
         return hex.toString();
     }
 
-    @SuppressWarnings("deprecation")
     private static int signingFlags() {
-        return Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
+        return PackageManager.GET_SIGNING_CERTIFICATES;
     }
 
     @SuppressWarnings("deprecation")
     private static Set<Signature> signers(PackageInfo info) {
-        Signature[] all = Build.VERSION.SDK_INT >= 28 && info.signingInfo != null
-                ? info.signingInfo.getApkContentsSigners() : info.signatures;
+        Signature[] all = info.signingInfo != null ? info.signingInfo.getApkContentsSigners() : info.signatures;
         Set<Signature> signers = new HashSet<>();
         if (all != null) Collections.addAll(signers, all);
         return signers;
@@ -617,7 +614,6 @@ final class Updater {
     private static boolean signingCompatible(PackageInfo installed, PackageInfo archive) {
         Set<Signature> current = signers(installed);
         if (current.isEmpty()) return false;
-        if (Build.VERSION.SDK_INT < 28) return current.equals(signers(archive));
         if (archive.signingInfo == null || installed.signingInfo == null) return false;
         if (archive.signingInfo.hasMultipleSigners() || installed.signingInfo.hasMultipleSigners()) {
             return current.equals(signers(archive));
@@ -626,9 +622,8 @@ final class Updater {
         return history != null && new HashSet<>(Arrays.asList(history)).containsAll(current);
     }
 
-    @SuppressWarnings("deprecation")
     private static long versionCode(PackageInfo info) {
-        return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+        return info.getLongVersionCode();
     }
 
     /** What an automatic install says while a dash is on: it waits for the dash to end. */
@@ -765,11 +760,9 @@ final class Updater {
         params.setAppPackageName(context.getPackageName());
         params.setAppLabel(AppName.NAME);
         params.setSize(file.length());
-        if (Build.VERSION.SDK_INT >= 31) {
-            params.setRequireUserAction(manual
-                    ? PackageInstaller.SessionParams.USER_ACTION_REQUIRED
-                    : PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
-        }
+        params.setRequireUserAction(manual
+                ? PackageInstaller.SessionParams.USER_ACTION_REQUIRED
+                : PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
         int id = installer.createSession(params);
         prefs.edit().putInt(SESSION, id).putLong(SESSION_AT, System.currentTimeMillis()).commit();
         try (PackageInstaller.Session session = installer.openSession(id)) {
@@ -784,8 +777,7 @@ final class Updater {
                 session.fsync(out);
             }
             // Mutable so the installer can attach the result extras; explicit, so no other app can receive it.
-            int flags = PendingIntent.FLAG_UPDATE_CURRENT
-                    | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE;
             Intent resultIntent = new Intent(context, UpdateReceiver.class).setAction(UpdateReceiver.INSTALL_RESULT);
             PendingIntent result = PendingIntent.getBroadcast(context, id, resultIntent, flags);
             status(context, "Installing " + release.getString("versionName") + "… Android may request confirmation.");
@@ -848,8 +840,7 @@ final class Updater {
         if (!Consent.accepted(context)) return false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager == null || !manager.areNotificationsEnabled()) return false;
-        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return false;
         }
         UpdateNotices.ensureChannel(manager);

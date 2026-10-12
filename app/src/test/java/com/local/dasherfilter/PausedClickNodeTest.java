@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
  * click's node is asked for.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class PausedClickNodeTest {
     private static final String DASHER = "com.doordash.driverapp";

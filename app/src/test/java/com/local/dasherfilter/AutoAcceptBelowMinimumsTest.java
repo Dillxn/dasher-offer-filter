@@ -38,7 +38,7 @@ import static org.junit.Assert.assertTrue;
  * service, with auto-accept turned on; synthetic Android windows, no handset claimed.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class AutoAcceptBelowMinimumsTest {
     /** The starter minimums: $4 an offer, $1 a mile, $0.25 a minute ($15 an hour). */

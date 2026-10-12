@@ -10,7 +10,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.TextPaint;
@@ -2632,9 +2631,8 @@ final class MinimumsStarView extends View {
         return String.join(", ", parts);
     }
 
-    @SuppressWarnings("deprecation")
     private static AccessibilityEvent newEvent(int type) {
-        return Build.VERSION.SDK_INT >= 30 ? new AccessibilityEvent(type) : AccessibilityEvent.obtain(type);
+        return new AccessibilityEvent(type);
     }
 
     /** A node's box, in this view's pixels. */
@@ -2696,8 +2694,7 @@ final class MinimumsStarView extends View {
         @Override public AccessibilityNodeInfo createAccessibilityNodeInfo(int id) {
             View host = MinimumsStarView.this;
             if (id == HOST_VIEW_ID) {
-                AccessibilityNodeInfo info = Build.VERSION.SDK_INT >= 30 ? new AccessibilityNodeInfo(host)
-                        : AccessibilityNodeInfo.obtain(host);
+                AccessibilityNodeInfo info = new AccessibilityNodeInfo(host);
                 onInitializeAccessibilityNodeInfo(info);
                 for (int axis : SPOKES) if (shownNode(axis)) info.addChild(host, axis);
                 if (stopsShown()) info.addChild(host, STOPS_ID);
@@ -2706,8 +2703,7 @@ final class MinimumsStarView extends View {
                 return info;
             }
             if (!shownNode(id)) return null;
-            AccessibilityNodeInfo info = Build.VERSION.SDK_INT >= 30 ? new AccessibilityNodeInfo(host, id)
-                    : AccessibilityNodeInfo.obtain(host, id);
+            AccessibilityNodeInfo info = new AccessibilityNodeInfo(host, id);
             info.setPackageName(getContext().getPackageName());
             info.setParent(host);
             info.setEnabled(true);
@@ -2715,7 +2711,7 @@ final class MinimumsStarView extends View {
             // Focusable, so a screen reader stops on each knob and the button rather than taking them for parts of
             // the clickable chart around them.
             info.setFocusable(true);
-            if (Build.VERSION.SDK_INT >= 28) info.setScreenReaderFocusable(true);
+            info.setScreenReaderFocusable(true);
             nodeBox(id, nodeRect);
             info.setBoundsInParent(nodeRect);
             getLocationOnScreen(onScreen);
@@ -2743,7 +2739,7 @@ final class MinimumsStarView extends View {
                 info.setClassName(Switch.class.getName());
                 info.setCheckable(true);
                 info.setChecked(learningOn);
-                if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(learningOn ? "On" : "Off");
+                info.setStateDescription(learningOn ? "On" : "Off");
                 info.setClickable(true);
                 info.setLongClickable(true);
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
@@ -2755,14 +2751,9 @@ final class MinimumsStarView extends View {
             if (id == STOPS_ID) {
                 // "Max stops, 3, at most 3 stops": adjustable, one step per swipe; a double-tap steps on as a tap does.
                 info.setClassName(SeekBar.class.getName());
-                info.setRangeInfo(Build.VERSION.SDK_INT >= 30
-                        ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
-                                MOST_STOPS, Math.min(maxStops, MOST_STOPS))
-                        : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
-                                MOST_STOPS, Math.min(maxStops, MOST_STOPS)));
-                if (Build.VERSION.SDK_INT >= 30) {
-                    info.setStateDescription(maxStops > 0 ? "at most " + maxStops + " stops" : "no limit");
-                }
+                info.setRangeInfo(new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0,
+                        MOST_STOPS, Math.min(maxStops, MOST_STOPS)));
+                info.setStateDescription(maxStops > 0 ? "at most " + maxStops + " stops" : "no limit");
                 if (maxStops < MOST_STOPS) {
                     info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
                 }
@@ -2777,12 +2768,9 @@ final class MinimumsStarView extends View {
             float most = FilterSettings.MOST_CENTS * (hourly ? 60f : 1f) / 100f;
             float current = rate * (hourly ? 60f : 1f) / 100f;
             info.setClassName(SeekBar.class.getName());
-            info.setRangeInfo(Build.VERSION.SDK_INT >= 30
-                    ? new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, 0, most,
-                            current)
-                    : AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, 0, most,
-                            current));
-            if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(readout(id, rate));
+            info.setRangeInfo(new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, 0,
+                    most, current));
+            info.setStateDescription(readout(id, rate));
             if (rate < FilterSettings.MOST_CENTS) {
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
             }

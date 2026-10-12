@@ -143,7 +143,7 @@ def main(out=ROOT / 'public', live=None, check_live=True, serves=None):
     (out / 'latest.json').write_text(json.dumps(published, indent=2) + '\n', encoding='utf-8')
     (out / 'verification.json').write_text(json.dumps({
         'sourceCommit': feed.get('sourceCommit'), 'versionName': version, 'versionCode': code,
-        'mirroredFrom': 'release/ on main (signed by tools/sign-local.sh, which runs the tests on Android 8 and 15 '
+        'mirroredFrom': 'release/ on main (signed by tools/sign-local.sh, which runs the tests on Android 15 and 16 '
                         'simulated; checked by tools/publish-repo-feed.py)',
         'signerSha256': SIGNER, 'deviceInstallVerified': False}, indent=2) + '\n', encoding='utf-8')
     (out / 'signing-receipt.txt').write_text(

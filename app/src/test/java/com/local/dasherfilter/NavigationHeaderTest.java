@@ -24,7 +24,7 @@ import org.robolectric.shadows.ShadowAlertDialog;
 
 /** The shortcuts remain reachable with the map on its way out of a small window, and with a large font. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class NavigationHeaderTest extends AndroidAdapterTestBase {

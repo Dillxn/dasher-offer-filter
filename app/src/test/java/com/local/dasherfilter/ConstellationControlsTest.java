@@ -42,7 +42,7 @@ import static org.junit.Assert.assertTrue;
  * readers.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ConstellationControlsTest extends AndroidAdapterTestBase {
     @Before public void plansOnThisThread() {

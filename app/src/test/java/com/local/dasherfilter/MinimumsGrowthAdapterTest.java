@@ -51,7 +51,7 @@ import static org.junit.Assert.assertTrue;
  * handset claimed.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class MinimumsGrowthAdapterTest {
     private static final FilterSettings STARTER = FilterSettings.of(true, 400, 100, 25, 0);

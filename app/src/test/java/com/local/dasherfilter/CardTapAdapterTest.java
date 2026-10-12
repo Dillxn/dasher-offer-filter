@@ -55,7 +55,7 @@ import static org.junit.Assert.assertTrue;
  * intent opened a screen that could not find the offer on a real phone. Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class CardTapAdapterTest {
     /** Named as text, so these tests compile (and fail) on code from before the tap screen existed. */

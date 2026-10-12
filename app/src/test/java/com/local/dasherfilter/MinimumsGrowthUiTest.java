@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
  * last grew and hold "Let my minimums grow", on by default.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     private static final long HOUR = 3_600_000L;

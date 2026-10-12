@@ -102,16 +102,16 @@ public class OfferAlertStateTest {
         StatusBarNotification post = new StatusBarNotification("com.doordash.driverapp", "com.doordash.driverapp", 3,
                 "NEW_ORDER", 10001, 0, 0, new Notification(), android.os.Process.myUserHandle(), 100_000);
         assertFalse("unknown when Android does not say: ours rings",
-                OfferNotificationService.dasherAlertSounded(null, post, false));
+                OfferNotificationService.dasherAlertSounded(null, post));
         NotificationListenerService.Ranking ranking = new NotificationListenerService.Ranking();
         ReflectionHelpers.setField(ranking, "mChannel",
                 new NotificationChannel("a", "Offers", NotificationManager.IMPORTANCE_HIGH));
         ReflectionHelpers.setField(ranking, "mImportance", NotificationManager.IMPORTANCE_HIGH);
         ReflectionHelpers.setField(ranking, "mMatchesInterruptionFilter", true);
         assertFalse("a loud channel alone is not a sound: Android alerted for an older post",
-                OfferNotificationService.dasherAlertSounded(ranking, post, false));
+                OfferNotificationService.dasherAlertSounded(ranking, post));
         ReflectionHelpers.setField(ranking, "mLastAudiblyAlertedMs", 99_500L);
-        assertTrue(OfferNotificationService.dasherAlertSounded(ranking, post, false));
+        assertTrue(OfferNotificationService.dasherAlertSounded(ranking, post));
     }
 
     @Test

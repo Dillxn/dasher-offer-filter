@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public class DispatchStudyTest {
     static final long WALL = 1_800_000_000_000L;
     static FilterSettings rules(int pay) { return FilterSettings.of(true, pay, 0, 0, 0); }

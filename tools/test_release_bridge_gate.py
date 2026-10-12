@@ -18,7 +18,7 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         test_source = self.root / "app/src/test/java/com/local/dasherfilter"
         test_source.mkdir(parents=True)
         for name in gate.ADAPTERS:
-            (test_source / (name + ".java")).write_text("@Config(sdk={26,35}) class " + name + " {}")
+            (test_source / (name + ".java")).write_text("@Config(sdk={35,36}) class " + name + " {}")
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
         self.frozen = gate.snapshot(self.root)
         self.junit = self.root / "app/build/test-results/testDebugUnitTest/TEST-example.xml"
@@ -30,7 +30,7 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         for name in gate.ADAPTERS:
             path = self.junit.parent / ("TEST-" + name + ".xml")
             path.write_text('<testsuite name="com.local.dasherfilter.' + name + '" tests="2">'
-                            '<testcase name="example[26]"/><testcase name="example"/></testsuite>')
+                            '<testcase name="example[35]"/><testcase name="example"/></testsuite>')
         self.lint.write_text('<issues><issue severity="Warning"/></issues>')
 
     def tearDown(self):
@@ -73,16 +73,16 @@ class ReleaseBridgeGateTest(unittest.TestCase):
     def test_missing_sdk_variant_rejected_even_with_enough_tests(self):
         path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
         original = path.read_text()
-        for missing in ('<testcase name="example[26]"/>', '<testcase name="example"/>'):
+        for missing in ('<testcase name="example[35]"/>', '<testcase name="example"/>'):
             path.write_text(original.replace(missing, ""))
             with self.subTest(missing=missing), self.assertRaises(ValueError):
                 gate.gate(self.root, self.frozen)
 
-    def test_explicit_api35_marker_is_supported(self):
+    def test_explicit_api36_marker_is_supported(self):
         path = self.junit.parent / ("TEST-" + gate.ADAPTERS[0] + ".xml")
-        path.write_text(path.read_text().replace('name="example"', 'name="example[35]"'))
+        path.write_text(path.read_text().replace('name="example"', 'name="example[36]"'))
         result = gate.gate(self.root, self.frozen)
-        self.assertEqual({"26": 1, "35": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
+        self.assertEqual({"35": 1, "36": 1}, result["adapterSdkCases"][gate.ADAPTERS[0]])
 
     def test_missing_or_reconfigured_adapter_source_rejected_as_a_gate_failure(self):
         reports = {}
@@ -93,7 +93,8 @@ class ReleaseBridgeGateTest(unittest.TestCase):
         self.assertEqual(len(gate.ADAPTERS), len(gate.sdk_evidence(self.root, reports)))
         source = self.root / (gate.ADAPTER_SOURCES + gate.ADAPTERS[-1] + ".java")
         for change, refusal in (("@Config(sdk=35) class Changed {}", "SDK configuration changed"),
-                                ("@Config(sdk={26,35}) @Config(sdk = 26) class Two {}", "SDK configuration changed"),
+                                ("@Config(sdk={35,36}) @Config(sdk = 35) class Two {}", "SDK configuration changed"),
+                                ("@Config(sdk={26,35}) class Old {}", "SDK configuration changed"),
                                 (None, "suite source missing")):
             if change is None:
                 source.unlink()
@@ -104,16 +105,17 @@ class ReleaseBridgeGateTest(unittest.TestCase):
 
     def test_layout_and_instrumentation_attributes_preserve_the_explicit_sdk_pair(self):
         source = self.root / (gate.ADAPTER_SOURCES + gate.ADAPTERS[-1] + ".java")
-        for declaration in ('@Config(sdk={26,35}, qualifiers="w360dp-h240dp")',
-                            '@Config(instrumentedPackages={"com.local.dasherfilter"}, sdk={26,35})',
-                            '@Config(sdk={26,35}) class Example { @Config(qualifiers="land") void case1() {} }'):
+        for declaration in ('@Config(sdk={35,36}, qualifiers="w360dp-h240dp")',
+                            '@Config(instrumentedPackages={"com.local.dasherfilter"}, sdk={35,36})',
+                            '@Config(sdk={35,36}) class Example { @Config(qualifiers="land") void case1() {} }'):
             with self.subTest(declaration=declaration):
                 source.write_text(declaration)
                 gate.adapter_sources(self.root)
-        for declaration in ('@Config(sdk={26,35}, minSdk=35)',
-                            '@Config(sdk={26,35}, maxSdk=26)',
-                            '@Config(sdk={26,35}) class Example { @Config(sdk=35) void case1() {} }',
+        for declaration in ('@Config(sdk={35,36}, minSdk=36)',
+                            '@Config(sdk={35,36}, maxSdk=35)',
+                            '@Config(sdk={35,36}) class Example { @Config(sdk=35) void case1() {} }',
                             '@Config(sdk={26,35,36}, qualifiers="land")',
+                            '@Config(sdk={26,35})',
                             '@Config(qualifiers="land")'):
             with self.subTest(declaration=declaration), self.assertRaisesRegex(ValueError, "SDK configuration"):
                 source.write_text(declaration)

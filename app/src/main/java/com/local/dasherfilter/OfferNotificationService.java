@@ -6,7 +6,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -494,16 +493,8 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     static boolean hasAccess(Context context) {
         ComponentName component = new ComponentName(context, OfferNotificationService.class);
-        if (Build.VERSION.SDK_INT >= 27) {
-            NotificationManager manager = context.getSystemService(NotificationManager.class);
-            return manager != null && manager.isNotificationListenerAccessGranted(component);
-        }
-        String enabled = Settings.Secure.getString(context.getContentResolver(), "enabled_notification_listeners");
-        if (enabled == null) return false;
-        for (String value : enabled.split(":")) {
-            if (component.equals(ComponentName.unflattenFromString(value))) return true;
-        }
-        return false;
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        return manager != null && manager.isNotificationListenerAccessGranted(component);
     }
 
     /** Re-evaluates current offer notifications against newly saved rules, without ringing or acting. */
@@ -723,7 +714,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             OfferRule.Decision decision = decide(facts, labels, settings);
             String signature = labels + "|" + decision.summary();
             Ranking rank = ranking(ranking, source.getKey());
-            boolean dasherSounded = dasherAlertSounded(rank, source, update);
+            boolean dasherSounded = dasherAlertSounded(rank, source);
             offer.dasherSounded |= dasherSounded;
             // As Android ranks Dasher's latest post of it; a post it does not rank is not known to alert.
             offer.dasherAlerts = alertsByItself(rank);
@@ -1521,11 +1512,11 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     /**
-     * DoorDash's Decline action, only when it is provably a DoorDash-created broadcast or service intent. Action
-     * type inspection is public only from API 31; older devices must not guess and launch an activity.
+     * DoorDash's Decline action, only when it is provably a DoorDash-created broadcast or service intent (never an
+     * activity it would launch).
      */
     private static PendingIntent declineAction(Notification notification) {
-        if (Build.VERSION.SDK_INT < 31 || notification.actions == null) return null;
+        if (notification.actions == null) return null;
         for (Notification.Action action : notification.actions) {
             if (action == null || action.title == null || action.actionIntent == null) continue;
             PendingIntent intent = action.actionIntent;
@@ -1619,28 +1610,13 @@ public final class OfferNotificationService extends NotificationListenerService 
 
     /**
      * Whether Android shows that Dasher's own post of this offer made a sound, so our card need not ring too (the
-     * user's decision). From Android 10 Android says when it last alerted audibly for the notification: at this post,
-     * give or take a second. Before that, every condition Android sounds on must hold: the post matches the
-     * interruption filter (Do Not Disturb does not hold it back), Android ranks it at default importance or above,
-     * its channel has a sound, and it is neither an only-alert-once update of a notification Android still shows nor
-     * a group child that alerts through its summary. False when Android does not say, so ours rings once as before.
-     *
-     * @param update whether Android still showed a notification with this key when this one came
+     * user's decision): Android says when it last alerted audibly for the notification, at this post give or take a
+     * second. False when Android does not say, so ours rings once as before.
      */
-    static boolean dasherAlertSounded(Ranking rank, StatusBarNotification source, boolean update) {
+    static boolean dasherAlertSounded(Ranking rank, StatusBarNotification source) {
         if (rank == null || source == null) return false;
-        if (Build.VERSION.SDK_INT >= 29) {
-            long alerted = rank.getLastAudiblyAlertedMillis();
-            return alerted > 0 && alerted >= source.getPostTime() - 1_000;
-        }
-        Notification notification = source.getNotification();
-        NotificationChannel channel = rank.getChannel();
-        if (notification == null || channel == null || channel.getSound() == null) return false;
-        boolean onlyOnce = update && (notification.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0;
-        boolean quietChild = notification.getGroup() != null
-                && notification.getGroupAlertBehavior() == Notification.GROUP_ALERT_SUMMARY;
-        return rank.matchesInterruptionFilter() && rank.getImportance() >= NotificationManager.IMPORTANCE_DEFAULT
-                && !onlyOnce && !quietChild;
+        long alerted = rank.getLastAudiblyAlertedMillis();
+        return alerted > 0 && alerted >= source.getPostTime() - 1_000;
     }
 
     /**

@@ -68,7 +68,7 @@ def main():
     signer = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
     if 'certificate SHA-256 digest: ' + signer not in signature: raise ValueError('Built APK signer mismatch')
     feed = json.loads((public / 'latest.json').read_text())
-    verification = {'sourceCommit': head, 'versionName': version, 'versionCode': code, 'junit': totals, 'adapterSuites': adapter_suites, 'androidAdapterRuntime': 'Robolectric Android API 26 and 35 (simulation; not a physical phone)', 'liveTransportProbe': json.loads((ROOT / '.channel-check/transport-proof.json').read_text()), 'deviceInstallVerified': False, 'physicalSoundAndVibrationVerified': False}
+    verification = {'sourceCommit': head, 'versionName': version, 'versionCode': code, 'junit': totals, 'adapterSuites': adapter_suites, 'androidAdapterRuntime': 'Robolectric Android API 35 and 36 (simulation; not a physical phone)', 'liveTransportProbe': json.loads((ROOT / '.channel-check/transport-proof.json').read_text()), 'deviceInstallVerified': False, 'physicalSoundAndVibrationVerified': False}
     (public / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
     (public / 'signing-receipt.txt').write_text('versionName=' + version + '\nversionCode=' + str(code) + '\nsourceCommit=' + head + '\nsha256=' + feed['sha256'] + '\nsize=' + str(feed['size']) + '\n' + signature)
     name = html.escape(NAME)

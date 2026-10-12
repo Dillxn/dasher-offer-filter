@@ -4,11 +4,9 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.media.AudioManager;
 import android.os.BatteryManager;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.telephony.TelephonyManager;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -177,9 +175,8 @@ final class ScreenAwake {
             if (power == null || !power.isInteractive()) return "screen off";
             if (keyguard == null || keyguard.isKeyguardLocked()) return "locked";
             AudioManager audio = context.getSystemService(AudioManager.class);
+            // As Peek does: the audio mode says a call is on, with no phone permission needed.
             if (audio == null || audio.getMode() != AudioManager.MODE_NORMAL) return "a call";
-            // As Peek does: phone state needs no permission before Android 12; audio mode guards newer phones.
-            if (Build.VERSION.SDK_INT < 31 && legacyCall(context)) return "a call";
             if (power.isPowerSaveMode()) return "battery saver is on";
             if (lowBattery(context)) return "battery low";
         } catch (RuntimeException unknown) {
@@ -198,19 +195,8 @@ final class ScreenAwake {
         BatteryManager battery = context.getSystemService(BatteryManager.class);
         if (battery == null || battery.isCharging()) return false;
         int level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-        // Android says MIN_VALUE (or, before Android 9, 0) when it cannot tell: not taken for a low battery.
+        // Android says MIN_VALUE (or 0) when it cannot tell: not taken for a low battery.
         return level > 0 && level <= LOW_BATTERY_PERCENT;
-    }
-
-    @SuppressWarnings("deprecation")
-    private static boolean legacyCall(Context context) {
-        try {
-            TelephonyManager phone = context.getSystemService(TelephonyManager.class);
-            return phone != null && phone.getCallState() != TelephonyManager.CALL_STATE_IDLE;
-        } catch (RuntimeException unavailable) {
-            // No additional phone permission: the audio-mode check above still applies.
-            return false;
-        }
     }
 
     private void release() {

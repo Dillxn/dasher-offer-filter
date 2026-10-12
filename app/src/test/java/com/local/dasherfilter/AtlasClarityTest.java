@@ -29,7 +29,7 @@ import org.robolectric.shadows.ShadowAlertDialog;
 
 /** The atlas names its evidence and its key without making receiving areas look like Dasher hotspots. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 public class AtlasClarityTest extends AndroidAdapterTestBase {
     @Test public void atlasDescribesPooledRatesSampleGateAndGeographicMeaning() {
         AreaMapView map = new AreaMapView(app, new Ui(app));

@@ -13,7 +13,6 @@ import android.content.IntentFilter;
 import android.graphics.Rect;
 import android.media.AudioManager;
 import android.media.AudioAttributes;
-import android.os.Build;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -65,7 +64,7 @@ import static org.junit.Assert.assertTrue;
  * and Dasher brought up mid-offer, are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PeekTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -1119,7 +1118,7 @@ public class PeekTest {
         dasherOpened();
         offerRoot = offer("$7.90");
         dasherShows(offerRoot);
-        int floor = Build.VERSION.SDK_INT >= 28 ? audio.getStreamMinVolume(AudioManager.STREAM_ALARM) : 0;
+        int floor = audio.getStreamMinVolume(AudioManager.STREAM_ALARM);
         assertEquals("silent pre-peek card must not suppress the decline silencer", floor,
                 audio.getStreamVolume(AudioManager.STREAM_ALARM));
         assertEquals(8, audio.getStreamVolume(AudioManager.STREAM_MUSIC));

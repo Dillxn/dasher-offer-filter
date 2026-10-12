@@ -8,7 +8,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
@@ -161,8 +160,8 @@ final class SetupChecklist {
         SharedPreferences prefs = prefs();
         boolean a11y = accessibilityOn.get();
         boolean listener = listenerOn.get();
-        accessibilityTried = Build.VERSION.SDK_INT >= 33 && prefs.getBoolean(ACCESSIBILITY_OPENED, false) && !a11y;
-        listenerTried = Build.VERSION.SDK_INT >= 33 && prefs.getBoolean(LISTENER_OPENED, false) && !listener;
+        accessibilityTried = prefs.getBoolean(ACCESSIBILITY_OPENED, false) && !a11y;
+        listenerTried = prefs.getBoolean(LISTENER_OPENED, false) && !listener;
         boolean mayOpen = !activity.isInMultiWindowMode() && !UpdateReadyRow.dashOn(activity);
         RestrictedSettingsGuide.Access next = RestrictedSettingsGuide.resumed(activity, a11y, listener, mayOpen);
         restriction.forget();
@@ -341,52 +340,47 @@ final class SetupChecklist {
      */
     private void openAccessibility(String onPage, String inList) {
         prefs().edit().putBoolean(ACCESSIBILITY_OPENED, true).apply();
-        if (Build.VERSION.SDK_INT >= 31) {
-            // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
-            Intent details = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                    .putExtra(Intent.EXTRA_COMPONENT_NAME,
-                            new ComponentName(activity, OfferFilterService.class).flattenToString());
-            try {
-                activity.startActivity(details);
-                if (onPage != null) toast(onPage);
-                return;
-            } catch (RuntimeException refused) {
-                // The public accessibility list remains available on phones without a direct service screen.
-                DiagnosticLog.log(activity, "setup", "the service's own Accessibility page is not open to apps here ("
-                        + refused.getClass().getSimpleName() + "); the list instead");
-            }
+        // AOSP's service-specific settings action is not part of the public SDK constants. OEMs may omit it.
+        Intent details = new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                .putExtra(Intent.EXTRA_COMPONENT_NAME,
+                        new ComponentName(activity, OfferFilterService.class).flattenToString());
+        try {
+            activity.startActivity(details);
+            if (onPage != null) toast(onPage);
+            return;
+        } catch (RuntimeException refused) {
+            // The public accessibility list remains available on phones without a direct service screen.
+            DiagnosticLog.log(activity, "setup", "the service's own Accessibility page is not open to apps here ("
+                    + refused.getClass().getSimpleName() + "); the list instead");
         }
         if (open(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))) toast(inList);
     }
 
     /**
-     * The listener's own page (Android 11 and later), else the list of apps with notification access, where it is
-     * {@link #LISTENER_NAME}; one toast, as {@link #openAccessibility}.
+     * The listener's own page, else the list of apps with notification access, where it is {@link #LISTENER_NAME}; one
+     * toast, as {@link #openAccessibility}.
      */
     private void openListener(String onPage, String inList) {
         prefs().edit().putBoolean(LISTENER_OPENED, true).apply();
-        if (Build.VERSION.SDK_INT >= 30) {
-            Intent detail = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                    Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                    new ComponentName(activity, OfferNotificationService.class).flattenToString());
-            try {
-                activity.startActivity(detail);
-                if (onPage != null) toast(onPage);
-                return;
-            } catch (RuntimeException missing) {
-                // A phone without the listener's own page: the list, where the listener has its own name.
-                DiagnosticLog.log(activity, "setup", "no page of its own for notification access here ("
-                        + missing.getClass().getSimpleName() + "); the list instead");
-            }
+        Intent detail = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                new ComponentName(activity, OfferNotificationService.class).flattenToString());
+        try {
+            activity.startActivity(detail);
+            if (onPage != null) toast(onPage);
+            return;
+        } catch (RuntimeException missing) {
+            // A phone without the listener's own page: the list, where the listener has its own name.
+            DiagnosticLog.log(activity, "setup", "no page of its own for notification access here ("
+                    + missing.getClass().getSimpleName() + "); the list instead");
         }
         if (open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) toast(inList);
     }
 
-    /** Android's own question first (13 and later), and the app's notification settings once it was answered. */
+    /** Android's own question first, and the app's notification settings once it was answered. */
     private void allowAlerts() {
         OfferAlerts.ensureChannel(activity);
-        if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             SharedPreferences prefs = prefs();
             boolean asked = prefs.getBoolean(NOTIFICATIONS_ASKED, false);
             if (!asked || activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {

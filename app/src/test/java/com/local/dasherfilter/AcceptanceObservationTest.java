@@ -34,7 +34,7 @@ import static org.junit.Assert.assertTrue;
  * ACCEPTED_AUTOMATIC for one after the app's own Accept request, and no step at all when the evidence is not enough.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceObservationTest {
     /**

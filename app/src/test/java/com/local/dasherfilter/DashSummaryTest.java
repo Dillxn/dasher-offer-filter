@@ -42,7 +42,7 @@ import static org.junit.Assert.assertTrue;
  * never a name, an address, a place or Dasher's acceptance rate. The feedback service is a fake (ConsentedTestApp).
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DashSummaryTest {
     private Application app;

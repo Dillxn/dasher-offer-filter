@@ -206,10 +206,10 @@ def verify_signed(path, jar=None):
     else:
         need(file_info(jar)['sha256'] == JAR_SHA, 'Unexpected signing JAR')
         command = ['java', '-Xmx1024M', '-jar', str(jar)]
-    verified_v1 = certs_ok(run(*command, 'verify', '--verbose', '--min-sdk-version', '26', '--print-certs', path))
-    # API 26+ can verify v2/v3 while reporting v1 as false because it was not
+    verified_v1 = certs_ok(run(*command, 'verify', '--verbose', '--min-sdk-version', '35', '--print-certs', path))
+    # API 35+ can verify v2/v3 while reporting v1 as false because it was not
     # checked. Authenticate any JAR signature metadata independently on API 23;
-    # this supplements, and never replaces, the required API 26+ verification.
+    # this supplements, and never replaces, the required API 35+ verification.
     if not verified_v1 and any(SIGNATURE_ENTRY.fullmatch(name) for name in apk_entries(path)):
         verified_v1 = certs_ok(run(*command, 'verify', '--verbose', '--min-sdk-version', '23',
                                  '--max-sdk-version', '23', '--print-certs', path))
@@ -225,10 +225,10 @@ def package_info(path, version, code):
     badging = run(sdk() / 'aapt2', 'dump', 'badging', path)
     expected = f"package: name='{PACKAGE}' versionCode='{code}' versionName='{version}'"
     need(expected in badging, 'Packaged identity differs from candidate')
-    need(re.search(r"^minSdkVersion:'26'$", badging, re.M)
+    need(re.search(r"^minSdkVersion:'35'$", badging, re.M)
          and re.search(r"^targetSdkVersion:'35'$", badging, re.M), 'Packaged SDK identity differs')
     run(sdk() / 'zipalign', '-c', '4', path)
-    return dict(packageName=PACKAGE, versionName=version, versionCode=code, minSdk=26, targetSdk=35,
+    return dict(packageName=PACKAGE, versionName=version, versionCode=code, minSdk=35, targetSdk=35,
                 aapt2BadgingSha256=digest(badging.encode()), zipalign=True)
 
 
@@ -243,13 +243,13 @@ def validate_gate(gate, frozen):
     aggregate = digest(json.dumps(files, sort_keys=True, separators=(',', ':')).encode())
     need(frozen['aggregate'] == aggregate, 'Frozen aggregate mismatch')
     need(gate['inputSha256'] == aggregate and gate['inputCount'] == len(files), 'Gate/frozen input mismatch')
-    need(gate['junit']['tests'] >= 3272 and all(gate['junit'][x] == 0 for x in ('errors', 'failures', 'skipped')),
+    need(gate['junit']['tests'] >= 3646 and all(gate['junit'][x] == 0 for x in ('errors', 'failures', 'skipped')),
          'Full release tests not passed')
     need(gate['lint']['errors'] == 0, 'Lint did not pass')
     need(set(gate['adapterSdkCases']) == set(ADAPTERS), 'Required adapters missing')
     for counts in gate['adapterSdkCases'].values():
-        need(set(counts) == {'26', '35'} and type(counts['26']) is int and counts['26'] > 0
-             and counts['26'] == counts['35'], 'Required dual-SDK pairs missing')
+        need(set(counts) == {'35', '36'} and type(counts['35']) is int and counts['35'] > 0
+             and counts['35'] == counts['36'], 'Required dual-SDK pairs missing')
 
 
 def bundle_check(bundle, receipt_sha, source, tree):
@@ -279,7 +279,7 @@ def bundle_check(bundle, receipt_sha, source, tree):
         need(receipt['files'][name]['sha256'] == frozen['files'][name], 'Transferred code differs from candidate')
         need(file_info(ROOT / name) == receipt['files'][name], 'Executing code differs from pinned bundle')
     need(receipt['files']['tools/apksigner.jar']['sha256'] == JAR_SHA, 'Unexpected signing JAR')
-    need(receipt['package']['packageName'] == PACKAGE and receipt['package']['minSdk'] == 26
+    need(receipt['package']['packageName'] == PACKAGE and receipt['package']['minSdk'] == 35
          and receipt['package']['targetSdk'] == 35, 'Wrong package identity')
     apk = bundle / 'OfferFilter-unsigned.apk'
     need(apk_entries(apk, unsigned=True) == receipt['payload'], 'Prepared payload inventory mismatch')

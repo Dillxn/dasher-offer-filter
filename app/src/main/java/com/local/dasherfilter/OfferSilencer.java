@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
-import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
 import java.util.ArrayList;
@@ -291,7 +290,7 @@ final class OfferSilencer {
     }
 
     private static int floor(AudioManager audio, int stream) {
-        return Build.VERSION.SDK_INT >= 28 ? audio.getStreamMinVolume(stream) : 0;
+        return audio.getStreamMinVolume(stream);
     }
 
     private static String streamName(int stream) {

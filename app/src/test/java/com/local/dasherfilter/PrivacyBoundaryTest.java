@@ -29,7 +29,7 @@ import static org.junit.Assert.*;
  * a dash or in feedback without diagnostics; Clear history removes it; and no text of Dasher's question goes with it.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class PrivacyBoundaryTest {
     private static final String QUESTION = "Are you sure you want to decline this offer?";

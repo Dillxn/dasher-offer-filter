@@ -10,7 +10,7 @@ import static org.junit.Assert.*;
 
 /** Recorded models retain their own meaning and local exact rule proof through history transformations. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public final class ScoringPolicyHistoryTest {
     private static FilterSettings rules() {
         return FilterSettings.of(true, 500, 100, 25, 3).withScoreByArea(true)

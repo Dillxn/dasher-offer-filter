@@ -22,7 +22,7 @@ import static org.junit.Assert.*;
  * knob or node.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AxisClarityTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = FilterSettings.of(true, 1000, 200, 50, 3);
@@ -62,9 +62,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             assertEquals("30 cents a minute is said as 18 dollars an hour",
                     "Minimum per hour of trip time, 18 dollars per hour", hour.getContentDescription().toString());
             assertEquals("its range is in dollars an hour", 18f, hour.getRangeInfo().getCurrent(), 0.001f);
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                assertEquals("$18/hr", String.valueOf(hour.getStateDescription()));
-            }
+            assertEquals("$18/hr", String.valueOf(hour.getStateDescription()));
             for (int retired : new int[] {AreaScore.STOP, AreaScore.HOTSPOT, AreaScore.ITEM}) {
                 assertNull("no knob for a retired minimum: " + retired, node(star, retired));
             }

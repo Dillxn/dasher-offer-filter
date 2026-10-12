@@ -52,7 +52,7 @@ def main():
     data = apk.read_bytes()
     if not 0 < len(data) <= MAX_APK_BYTES: raise ValueError('APK size out of bounds')
     sdk = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
-    certs = run(str(sdk / 'apksigner'), 'verify', '--min-sdk-version', '26', '--print-certs', str(apk))
+    certs = run(str(sdk / 'apksigner'), 'verify', '--min-sdk-version', '35', '--print-certs', str(apk))
     signer = re.search(r'Signer #1 certificate SHA-256 digest: ([a-f0-9]+)', certs)
     if signer is None or signer.group(1) != SIGNER: raise ValueError('APK is not signed with the cloud key')
     badging = run(str(sdk / 'aapt2'), 'dump', 'badging', str(apk))

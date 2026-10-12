@@ -5,7 +5,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 import android.os.Looper;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
@@ -37,7 +36,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Offer alerts and the notification listener, and the settings screen and rules, through real Android adapters. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={35,36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase {
     @Test
@@ -45,10 +44,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         int icon = app.getApplicationInfo().icon;
         assertTrue("the launcher needs an icon", icon != 0);
         assertTrue(app.getDrawable(icon) instanceof android.graphics.drawable.AdaptiveIconDrawable);
-        if (Build.VERSION.SDK_INT >= 33) {
-            assertNotNull("themed icons need a monochrome layer",
-                    ((android.graphics.drawable.AdaptiveIconDrawable) app.getDrawable(icon)).getMonochrome());
-        }
+        assertNotNull("themed icons need a monochrome layer",
+                ((android.graphics.drawable.AdaptiveIconDrawable) app.getDrawable(icon)).getMonochrome());
 
         assertTrue(OfferAlerts.notifyOffer(app, "keep", null, OfferRule.Result.KEEP, "$25.00", true));
         Notification alert = notifications().getNotification("keep", ALERT_NOTIFICATION_ID);
@@ -343,18 +340,12 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     public void settingsScreenStaysClearOfSystemBarsAndKeyboard() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).create()) {
             View page = ((ViewGroup) activity.get().findViewById(android.R.id.content)).getChildAt(0);
-            if (Build.VERSION.SDK_INT >= 35) {
-                dispatchEdgeToEdgeInsets(page, 300);
-                assertEquals(50, page.getPaddingTop());
-                assertEquals("the keyboard, taller than the navigation bar, sets the bottom", 300,
-                        page.getPaddingBottom());
-                dispatchEdgeToEdgeInsets(page, 0);
-                assertEquals(80, page.getPaddingBottom());
-            } else {
-                // Before Android 15 the platform itself lays the window out inside the system bars.
-                assertEquals(0, page.getPaddingTop());
-                assertEquals(0, page.getPaddingBottom());
-            }
+            dispatchEdgeToEdgeInsets(page, 300);
+            assertEquals(50, page.getPaddingTop());
+            assertEquals("the keyboard, taller than the navigation bar, sets the bottom", 300,
+                    page.getPaddingBottom());
+            dispatchEdgeToEdgeInsets(page, 0);
+            assertEquals(80, page.getPaddingBottom());
         }
     }
 
@@ -730,15 +721,11 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             shownIcon(activity.get().findViewById(android.R.id.content), SetupChecklist.NOTIFICATIONS + ". Fix.")
                     .performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
-            if (Build.VERSION.SDK_INT >= 30) {
-                assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
-                        opened.getAction());
-                // The settings page reads this extra with getStringExtra.
-                assertEquals(new android.content.ComponentName(app, OfferNotificationService.class).flattenToString(),
-                        opened.getStringExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME));
-            } else {
-                assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS, opened.getAction());
-            }
+            assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                    opened.getAction());
+            // The settings page reads this extra with getStringExtra.
+            assertEquals(new android.content.ComponentName(app, OfferNotificationService.class).flattenToString(),
+                    opened.getStringExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME));
         }
     }
 

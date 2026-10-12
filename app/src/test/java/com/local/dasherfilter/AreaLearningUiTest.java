@@ -30,7 +30,7 @@ import org.robolectric.shadows.ShadowToast;
 
 /** Native controls, honest scoring explanations, and preserved short-window facts in the fresh restoration. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, qualifiers = "w411dp-h914dp-xxhdpi")
+@Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AreaLearningUiTest extends AndroidAdapterTestBase {

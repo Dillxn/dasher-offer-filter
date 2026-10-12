@@ -665,11 +665,10 @@ final class Feedback {
 
     // ---- The app ----
 
-    @SuppressWarnings("deprecation")
     static long versionCode(Context context) {
         try {
             android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+            return info.getLongVersionCode();
         } catch (android.content.pm.PackageManager.NameNotFoundException impossible) {
             return 1;
         }

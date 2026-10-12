@@ -43,7 +43,7 @@ import static org.junit.Assert.assertTrue;
  * bounded to five submissions and seven days. The service is a fake (ConsentedTestApp).
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class FeedbackOutboxTest {
     private Application app;

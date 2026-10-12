@@ -2,7 +2,6 @@ package com.local.dasherfilter;
 
 import android.app.Application;
 import android.content.pm.PackageInfo;
-import android.os.Build;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +24,7 @@ import static org.junit.Assert.*;
 
 /** Waiting is cheap; leaving the wait always returns to the normal feed and verification path. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class UpdaterHeldReadyTest {
     private Application app;
@@ -43,7 +42,7 @@ public class UpdaterHeldReadyTest {
         Dashing.forgetCache();
         Dashing.seen(app);
         PackageInfo installed = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
-        long code = Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
+        long code = installed.getLongVersionCode();
         JSONObject current = feed(code, installed.versionName);
         Updater.feedReader = (address, out, limit) -> {
             reads.incrementAndGet();

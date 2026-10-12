@@ -221,7 +221,7 @@ final class DasherSplit {
 
     private static boolean floating(Activity activity) {
         if (activity.isInPictureInPictureMode()) return true;
-        if (!activity.isInMultiWindowMode() || Build.VERSION.SDK_INT < 30) return false;
+        if (!activity.isInMultiWindowMode()) return false;
         try {
             WindowMetrics current = activity.getWindowManager().getCurrentWindowMetrics();
             WindowMetrics maximum = activity.getWindowManager().getMaximumWindowMetrics();
@@ -387,9 +387,12 @@ final class DasherSplit {
         log(context, "left recent apps for " + front + " without a split: the tap is over");
     }
 
-    /** From Android 12L (API 32) a full-screen app's launch-adjacent start may split the screen. */
+    /**
+     * From Android 12L (API 32), so on every supported phone, a full-screen app's launch-adjacent start may split the
+     * screen.
+     */
     static boolean adjacentByDefault() {
-        return Build.VERSION.SDK_INT >= 32;
+        return true;
     }
 
     /** "pixel", "samsung" or "other": the phone's maker, for words that match what its recent apps show. */

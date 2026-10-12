@@ -17,17 +17,13 @@ import android.os.Bundle;
  */
 final class DasherOwnIntent {
     private static final String DASHER_PACKAGE = "com.doordash.driverapp";
-    /** No mode: Android before 14 asks for none. */
-    static final int NO_MODE = -1;
-
     /**
-     * The background-start mode a send needs on Android {@code sdk}: none before 14; "allowed" on 14 and 15; from 16,
-     * "always" for the screen reader's own send and "if visible" for the visible tap screen.
+     * The background-start mode a send needs on Android {@code sdk}: "allowed" on 15; from 16, "always" for the screen
+     * reader's own send and "if visible" for the visible tap screen.
      */
     @SuppressLint("InlinedApi")
     @SuppressWarnings("deprecation")
     static int startMode(int sdk, boolean visibleSender) {
-        if (sdk < 34) return NO_MODE;
         if (sdk >= 36) {
             return visibleSender ? ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
                     : ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS;
@@ -35,22 +31,20 @@ final class DasherOwnIntent {
         return ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED;
     }
 
-    /** The options for one send on this phone, or null where Android asks for none. */
+    /** The options for one send on this phone. */
     static Bundle options(boolean visibleSender) {
-        if (Build.VERSION.SDK_INT < 34) return null;
         int mode = startMode(Build.VERSION.SDK_INT, visibleSender);
         return ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(mode).toBundle();
     }
 
     /**
-     * Whether a pending intent is Dasher's own, to start one of its screens: Dasher made it, and (from Android 12,
-     * where it can be told) it starts an activity.
+     * Whether a pending intent is Dasher's own, to start one of its screens: Dasher made it, and it starts an activity.
      */
     static boolean fromDasher(PendingIntent intent) {
         if (intent == null) return false;
         try {
             if (!DASHER_PACKAGE.equals(intent.getCreatorPackage())) return false;
-            return Build.VERSION.SDK_INT < 31 || intent.isActivity();
+            return intent.isActivity();
         } catch (RuntimeException unknown) {
             return false;
         }

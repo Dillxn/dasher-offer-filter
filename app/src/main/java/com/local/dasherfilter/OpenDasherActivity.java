@@ -6,9 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Parcelable;
 
 /**
  * Where a tap on one of Offer Filter's offer cards lands: a screen that never shows. It opens Dasher the way Dasher's
@@ -115,14 +113,9 @@ public final class OpenDasherActivity extends Activity {
     }
 
     /**
-     * The card's copy of Dasher's own intent, or null. The typed lookup is used only from Android 14: on Android 13
-     * it is known to fail where the untyped one works.
+     * The card's copy of Dasher's own intent, or null.
      */
-    @SuppressWarnings("deprecation")
     private static PendingIntent dashersOwn(Intent tap) {
-        if (tap == null) return null;
-        if (Build.VERSION.SDK_INT >= 34) return tap.getParcelableExtra(EXTRA_DASHER_INTENT, PendingIntent.class);
-        Parcelable own = tap.getParcelableExtra(EXTRA_DASHER_INTENT);
-        return own instanceof PendingIntent ? (PendingIntent) own : null;
+        return tap == null ? null : tap.getParcelableExtra(EXTRA_DASHER_INTENT, PendingIntent.class);
     }
 }

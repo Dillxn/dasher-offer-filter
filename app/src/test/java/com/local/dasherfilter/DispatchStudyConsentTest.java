@@ -21,7 +21,7 @@ import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowDialog;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class DispatchStudyConsentTest extends AndroidAdapterTestBase {
     private ActivityController<Activity> screen;

@@ -25,7 +25,7 @@ import org.robolectric.shadows.ShadowSystemClock;
 
 /** Synthetic Android event paths through the unchanged confirmation detector and the new learner write boundary. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35}, instrumentedPackages = {"com.local.dasherfilter"})
+@Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceLearningAdapterTest {
     Application app;

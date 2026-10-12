@@ -3,7 +3,6 @@ package com.local.dasherfilter;
 import android.app.Application;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.os.Build;
 import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.view.View;
@@ -40,7 +39,7 @@ import static org.junit.Assert.assertTrue;
 
 /** Drives OfferFilterService with synthetic DoorDash accessibility trees and inspects requested clicks. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk={26,35})
+@Config(sdk={35,36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AccessibilityAdapterTest {
     private Application app;
@@ -161,7 +160,7 @@ public class AccessibilityAdapterTest {
     }
 
     private int alarmFloor() {
-        return Build.VERSION.SDK_INT >= 28 ? audio().getStreamMinVolume(AudioManager.STREAM_ALARM) : 0;
+        return audio().getStreamMinVolume(AudioManager.STREAM_ALARM);
     }
 
     /** Taps the declined offer's confirmation, then lets Dasher return to its idle screen. */

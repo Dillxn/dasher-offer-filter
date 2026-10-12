@@ -7,7 +7,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Rect;
-import android.os.Build;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
@@ -55,7 +54,7 @@ import static org.junit.Assert.assertTrue;
  * long a real gesture lasts are for a handset.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ActionSafetyTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -606,7 +605,6 @@ public class ActionSafetyTest {
      */
     @Test
     public void theReadAfterTheUsersTapLetsDasherBreakOffItsPrefetch() {
-        if (Build.VERSION.SDK_INT < 33) return; // Prefetch strategies are Android 13's.
         OfferFilterService service = connect(finding());
         dasherShows(finding());
         userTapsDasher("Dash preferences");

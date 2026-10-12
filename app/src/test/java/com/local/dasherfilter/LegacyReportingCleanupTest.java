@@ -32,7 +32,7 @@ import static org.junit.Assert.assertTrue;
  * from, and a fresh install never gets one of their settings files. Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 public class LegacyReportingCleanupTest {
     private static final String TOKEN = "ghu_retiredConnectionSecret123";
     private static final String PASTED = "github_pat_retiredPastedSecret456";

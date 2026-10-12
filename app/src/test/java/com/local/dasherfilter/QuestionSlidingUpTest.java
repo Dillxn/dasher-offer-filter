@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  * on screen with no event the poll waits for, and no change in Android's list of windows.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class QuestionSlidingUpTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);

@@ -1,6 +1,6 @@
 # Offer Filter
 
-A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. Offer Filter is beta software for Cincinnati Dashers. The source is public (MIT License) at https://github.com/Dillxn/dasher-offer-filter. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 8+; release build targets Android 15.
+A local Android assistant for filtering DoorDash delivery offers, with optional auto-accept. Not made by or affiliated with DoorDash. Read [Risks](#risks) before using it. Offer Filter is beta software for Cincinnati Dashers. The source is public (MIT License) at https://github.com/Dillxn/dasher-offer-filter. From 0.4.29 to 0.4.37 it showed as "Dash Buddy"; that name is retired. The package (com.local.dasherfilter) and signer never changed, so every version updates over the last. Android 15 or newer (from 0.6.1; 0.6.0 was the last for Android 8–14); release build targets Android 15.
 
 The home page identifies the latest or selected offer and its recorded outcome. Tap that caption for its ticket (what the rules decided, what happened and why); tap a count to inspect its newest matching offer. Only the mascot pauses or resumes filtering. Your rules are three minimums (pay, per mile, per hour) and an optional max stops, set on the constellation, and its round **Auto** button turns [Autopilot](#autopilot) on or off. While Autopilot is on, its status line stands where Next match would; otherwise a numerical wait estimate appears only during positively observed waiting with enough qualifying evidence.
 
@@ -271,7 +271,7 @@ Run Android tests and builds only in the authorized local workspace. For a memor
 
 `org.gradle.jvmargs` caps the Gradle build JVM's heap; `testHeap` separately caps each test JVM's heap. `testHeap` defaults to the existing `1536m` and accepts a positive whole number followed by `m` or `g` (case-insensitive). Empty or malformed values fail configuration instead of silently falling back. `forks` still defaults to 3 when omitted. These opt-in limits do not change the shared defaults in `gradle.properties`.
 
-The command keeps the existing full test selection: `-PallSdks` removes the day-to-day API 35 restriction so tests use their declared SDKs, including API 26 and 35. It does not add API 36 coverage. Neither the SDK declarations nor test assertions are changed. Lint remains part of this local check; signing, publishing and real-phone verification still require their separate existing gates.
+The command keeps the existing full test selection: `-PallSdks` removes the day-to-day API 35 restriction so tests use their declared SDKs, API 35 and 36 (Android 15 and 16). Neither the SDK declarations nor test assertions are changed. Lint remains part of this local check; signing, publishing and real-phone verification still require their separate existing gates.
 
 To check that the tests actually execute within the smaller heap, add `--rerun-tasks --no-build-cache` to the command. An `UP-TO-DATE` or `FROM-CACHE` result alone does not demonstrate that the lower-memory test run succeeds.
 

@@ -42,7 +42,7 @@ import static org.junit.Assert.assertTrue;
  * nothing is learned from any of them (0.5.0: no rule changes). Simulated Android only.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {26, 35})
+@Config(sdk = {35, 36})
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AcceptanceEvidenceTest {
     /**
