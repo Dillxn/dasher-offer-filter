@@ -411,11 +411,13 @@ final class FluidLayout {
         float second = top + first;
         mascot.set(left, top + (first - ring) / 2, left + ring, top + (first + ring) / 2);
         float countsTall = dp(FilterHeroView.COUNTS_HEIGHT_DP);
-        float countsLeft = Math.max(width - dp(BAND_SIDE_DP) - countsWidth, mascot.right + dp(BAND_GAP_DP));
+        // The tile is never squeezed under a touch target's width: wide counts (a large font) give way to it.
+        float tileGap = dp(TILE_GAP_DP - (TILE_GAP_DP - TILE_GAP_FOLDED_DP) * narrow);
+        float countsLeft = Math.max(width - dp(BAND_SIDE_DP) - countsWidth,
+                mascot.right + tileGap + dp(ROW1_LEAST_DP) + dp(BAND_GAP_DP));
         counts.set(countsLeft, top + (first - countsTall) / 2, Math.max(countsLeft, width - dp(BAND_SIDE_DP)),
                 top + (first + countsTall) / 2);
-        float tileLeft = Math.min(mascot.right + dp(TILE_GAP_DP - (TILE_GAP_DP - TILE_GAP_FOLDED_DP) * narrow),
-                counts.left);
+        float tileLeft = Math.min(mascot.right + tileGap, counts.left);
         tile.set(tileLeft, top + (first - tileHeight) / 2, Math.max(tileLeft, counts.left - dp(BAND_GAP_DP)),
                 top + (first + tileHeight) / 2);
         float wordsEnd = width - dp(BAND_SIDE_DP) - (buttonsWidth + dp(BAND_GAP_DP)) * narrow;
@@ -485,7 +487,9 @@ final class FluidLayout {
         // three columns, and in between in step with the turn.
         int last = a.length - 1;
         float least = a[last] + b[last] + turn * (dp(TUCKED_DP) - a[last] - b[last]);
-        stageShown = least > 0 ? Math.min(1, stageHeight / least) : 1;
+        // A pixel's rounding short of its least the stage is still wholly there (its knobs keep their touches); it
+        // fades from there at the same rate, never in a step.
+        stageShown = least > 1 ? Math.min(1, stageHeight / (least - 1)) : 1;
         total = Math.max(height, Math.round(road.bottom));
     }
 

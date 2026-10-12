@@ -363,9 +363,17 @@ final class AutopilotChip extends TextView {
             measuring.setTextSize(wordsFull * scale);
             int line = Math.max(1, Math.round(measuring.getFontMetricsInt(null) * wordsSpacing
                     + words.getLineSpacingExtra()));
-            limitLines(Math.max(1, (tall - padTop - padBottom) / line), TextUtils.TruncateAt.END);
+            int room = tall - padTop - padBottom;
+            int lines = Math.max(1, room / line);
+            limitLines(lines, TextUtils.TruncateAt.END);
             words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(tall, MeasureSpec.AT_MOST));
+            // The font's own padding can make the last line run a pixel past the height: one line fewer then.
+            while (lines > 1 && words.getLayout() != null && words.getLayout().getHeight() > room) {
+                limitLines(--lines, TextUtils.TruncateAt.END);
+                words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(tall, MeasureSpec.AT_MOST));
+            }
             setMeasuredDimension(width, height);
         }
 

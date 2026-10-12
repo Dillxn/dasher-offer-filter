@@ -114,51 +114,52 @@ public class FluidPageTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowSplitScreenAtTheNormalFont() throws Exception {
-        sweeps("narrow-split-font1", 360, true, 1f, 320, 280);
+        sweeps("narrow-split-font1", 360, true, 1f, 380, 280);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowFullScreenAtTheNormalFont() throws Exception {
-        sweeps("narrow-full-font1", 360, false, 1f, 340, 300);
+        sweeps("narrow-full-font1", 360, false, 1f, 400, 300);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowSplitScreenAtTwiceTheFont() throws Exception {
-        sweeps("narrow-split-font2", 360, true, 2f, 360, 300);
+        sweeps("narrow-split-font2", 360, true, 2f, 480, 300);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowFullScreenAtTwiceTheFont() throws Exception {
-        sweeps("narrow-full-font2", 360, false, 2f, 360, 300);
+        sweeps("narrow-full-font2", 360, false, 2f, 480, 300);
     }
 
     // ---- A wide window: 840 dp, an unfolded phone or a tablet ----
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-split-font1", 840, true, 1f, 280, 240);
+        sweeps("wide-split-font1", 840, true, 1f, 320, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-full-font1", 840, false, 1f, 280, 240);
+        sweeps("wide-full-font1", 840, false, 1f, 320, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-split-font2", 840, true, 2f, 300, 240);
+        sweeps("wide-split-font2", 840, true, 2f, 320, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-full-font2", 840, false, 2f, 300, 240);
+        sweeps("wide-full-font2", 840, false, 2f, 320, 240);
     }
 
     /**
      * The page {@code widthDp} wide, in split screen or not, at {@code fontScale}, swept twice: before setup is done
      * (a step still to do under the band), the radar, the skyline and the map all wholly there from
      * {@code setupFromDp}; then during a dash (everything set up, Autopilot on), all wholly there from
-     * {@code dashFromDp}.
+     * {@code dashFromDp}. The steps to do are lines of their own under the band (48 dp each, more where their words
+     * wrap at twice the font in a narrow window), so the stage needs that much more of the window before setup is done.
      */
     private void sweeps(String name, int widthDp, boolean split, float fontScale, int setupFromDp, int dashFromDp)
             throws Exception {
@@ -483,7 +484,10 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         assertNotNull(where + ": the max stops badge", star.stopsBox());
         radarTargets.add(starTarget(where, star, MinimumsStarView.STOPS_ID, ui));
         radarNames.add("the max stops badge");
-        assertDisjoint(where, radarNames, radarTargets);
+        List<Integer> radarIds = new ArrayList<>();
+        for (int axis : MinimumsStarView.SPOKES) radarIds.add(axis);
+        radarIds.add(MinimumsStarView.STOPS_ID);
+        assertApartOrNearestWins(where, star, ui, radarNames, radarIds, radarTargets);
         if (star.skyRadius() < ui.dp(74)) {
             assertNull(where + ": no Learn button on a circle under 74 dp", star.learnBox());
             assertNull(where + ": nor its node", node(star, MinimumsStarView.SCORE_ID));
@@ -540,6 +544,32 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                 + star.getWidth() + "x" + star.getHeight(), bounds.left >= -1 && bounds.top >= -1
                 && bounds.right <= star.getWidth() + 1 && bounds.bottom <= star.getHeight() + 1);
         return bounds;
+    }
+
+    /**
+     * The radar's targets apart from one another; where the minimums set put two knobs nearer than a target's width
+     * (where a knob stands goes by its minimum, so no layout keeps every pair apart), the radar gives a touch to the
+     * nearest: a touch at each one's middle is its own, and they share at most a quarter of a target.
+     */
+    private static void assertApartOrNearestWins(String where, MinimumsStarView star, Ui ui, List<String> names,
+                                                 List<Integer> ids, List<Rect> targets) throws Exception {
+        java.lang.reflect.Method target = MinimumsStarView.class.getDeclaredMethod("target", float.class, float.class);
+        target.setAccessible(true);
+        for (int i = 0; i < targets.size(); i++) {
+            for (int j = i + 1; j < targets.size(); j++) {
+                Rect a = targets.get(i);
+                Rect b = targets.get(j);
+                int across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                int down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                if (across <= 1 || down <= 1) continue;
+                String pair = where + ": " + names.get(i) + " " + a + " and " + names.get(j) + " " + b;
+                assertTrue(pair + " share at most a quarter of a target", Math.min(across, down) <= ui.dp(12));
+                assertEquals(pair + ": a touch at the first's middle is its own", ids.get(i),
+                        target.invoke(star, a.exactCenterX(), a.exactCenterY()));
+                assertEquals(pair + ": a touch at the second's middle is its own", ids.get(j),
+                        target.invoke(star, b.exactCenterX(), b.exactCenterY()));
+            }
+        }
     }
 
     /** No two of {@code targets} overlap by more than a pixel's rounding. */

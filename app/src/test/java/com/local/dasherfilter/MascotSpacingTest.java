@@ -24,11 +24,11 @@ import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.LooperMode;
 
 /**
- * The mascot, a small ring at the start of the strip along the top (0.5.1 floated it over the constellation, under the
+ * The mascot, a small ring at the start of the band along the top (0.5.1 floated it over the constellation, under the
  * counts), keeps a whole touch target and leaves the radar, its knobs, icons, labels and buttons wholly clear, in a
- * phone's whole screen, a narrow phone, half a split screen beside Dasher and at twice the font. The counts stand in
- * their own row under the header, each a whole target that opens its offer without pausing, wherever the window has
- * room for them (a short split gives their row to the radar and the map).
+ * phone's whole screen, a narrow phone, half a split screen beside Dasher and at twice the font. From 0.6.3 the latest
+ * offer's tile stands beside it and the counts at the band's right, in the same first row above the header, each count
+ * a whole target that opens its offer without pausing; neither ever goes under the mascot or the other.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, qualifiers = "w411dp-h914dp-xxhdpi")
@@ -90,14 +90,24 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             assertTrue("a whole 48 dp target", control.getWidth() >= ui.dp(48) && control.getHeight() >= ui.dp(48));
             assertTrue("near the left edge, inside the page", x - r >= 0 && x - r <= ui.dp(16));
             assertTrue("at the top of the page", y - r >= 0 && y - r <= ui.dp(12));
-            View header = page.getChildAt(2);
+            View header = page.getChildAt(3);  // 0.6.3: tile, chip row, hero, then the header
             assertTrue("above the header", y + r <= header.getTop() + 1);
             assertTrue("and above the radar", y + r <= star.getTop());
             RectF counts = new RectF();
             hero.countsAt(counts);
             counts.offset(hero.getLeft(), hero.getTop());
             if (hero.countsShown() > 0) {
-                assertTrue("the counts in their own row under the header", counts.top >= header.getBottom() - 1);
+                assertTrue("the counts in the band's first row, above the header", counts.bottom <= header.getTop() + 1);
+                assertTrue("the counts right of the mascot", counts.left >= x + r - 1);
+            }
+            VerdictTile tile = verdictTile(content);
+            RectF tileBox = inWindow(tile);
+            RectF pageBox = inWindow(page);
+            tileBox.offset(-pageBox.left, -pageBox.top);
+            assertTrue("the tile right of the mascot, never under it", tileBox.left >= x + r - 1);
+            assertTrue("the tile above the header", tileBox.bottom <= header.getTop() + 1);
+            if (hero.countsShown() > 0) {
+                assertTrue("the tile never under the counts", tileBox.right <= counts.left + 1);
             }
             List<RectF> obstacles = new ArrayList<>();
             star.iconsAt(obstacles);

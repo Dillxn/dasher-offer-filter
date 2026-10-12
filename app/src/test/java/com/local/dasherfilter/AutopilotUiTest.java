@@ -202,7 +202,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         assertEquals("14 sp", TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14,
                 app.getResources().getDisplayMetrics()), line.getTextSize(), 0.01f);
         assertTrue("a 48 dp target", line.getMinHeight() >= ui.dp(48));
-        assertTrue("a tap opens the details", line.isClickable());
+        // The words take a tap once laid out, and only where they are a touch target wide (0.6.3); else the chip's.
+        layOut(content);
+        assertEquals("a tap opens the details where the words are 48 dp wide: " + line.getWidth(),
+                line.getWidth() >= ui.dp(48), line.isClickable());
         assertHeardInWords(String.valueOf(line.getContentDescription()));
         assertEquals("heard whole, in words, with what a tap does", AutopilotText.chipDescription(status),
                 String.valueOf(line.getContentDescription()));
@@ -595,8 +598,16 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     + "accepts. Opens Autopilot details.", String.valueOf(chip.getContentDescription()));
             assertSame("at the line's start", line.getParent(), chip.getParent());
             Rect visible = new Rect();
-            for (View part : new View[] {verdictLine(content), chip, line}) {
-                assertTrue(part.getGlobalVisibleRect(visible));
+            // The words wherever the band leaves them a touch target's width; else the chip says them (0.6.3).
+            boolean wordsRoom = line.getWidth() >= new Ui(app).dp(48);
+            if (!wordsRoom) {
+                assertTrue("too narrow to read, the chip says it", String.valueOf(chip.getContentDescription())
+                        .startsWith("Autopilot bar 100 percent. Acceptance rate 53 percent"));
+            }
+            for (View part : wordsRoom ? new View[] {verdictTile(content), chip, line}
+                    : new View[] {verdictTile(content), chip}) {
+                assertTrue("on screen: " + part + " " + part.getWidth() + "x" + part.getHeight(),
+                        part.getGlobalVisibleRect(visible));
                 assertEquals("whole on screen: " + part, part.getHeight(), visible.height());
             }
             assertEquals("every word of the line", words.length(), line.getLayout().getLineEnd(line.getLineCount() - 1));
@@ -788,26 +799,28 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("the chip", chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             TextView line = statusLine(content);
-            assertTrue("beside Autopilot's status line", line.getText().toString().startsWith("Autopilot "));
+            assertEquals("beside Autopilot's status line", AutopilotText.statusLine(AutopilotRuntime.status(app,
+                    System.currentTimeMillis(), true)), line.getText().toString());
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
             assertSame(row, line.getParent());
             assertFalse("never a line of its own", row.stacked());
-            View strip = stripWords(content);
-            int withChip = strip.getHeight();
+            // What the chip costs the page: how far down it pushes the header (0.6.3: the band's rows are fixed).
+            View strip = pageHeader(content);
+            int withChip = strip.getTop();
             int rowWith = row.getHeight();
             float shrunk = line.getTextSize();
             chip.setVisibility(View.GONE);
             layOut(content);
-            int withoutChip = strip.getHeight();
+            int withoutChip = strip.getTop();
             int rowAlone = row.getHeight();
             float full = line.getTextSize();
             chip.setVisibility(View.VISIBLE);
             layOut(content);
-            String measured = "strip " + withChip + " (" + withoutChip + " without the chip), row " + rowWith + " ("
-                    + rowAlone + "), line " + shrunk + " of " + full;
-            assertEquals("the row is the chip's or its words', whichever is taller: " + measured,
-                    Math.max(chip.getHeight(), line.getHeight()), rowWith);
+            String measured = "header at " + withChip + " (" + withoutChip + " without the chip), row " + rowWith
+                    + " (" + rowAlone + "), line " + shrunk + " of " + full;
+            assertEquals("the band's row, never grown by the chip or the words: " + measured,
+                    new Ui(app).dp(FluidLayout.ROW_DP), rowWith, 1f);
             assertTrue("the chip costs the page no more than its row grows: " + measured,
                     withChip - withoutChip <= Math.max(0, rowWith - rowAlone));
             float least = Math.min(full, Math.max(SetupRow.LEAST_SCALE * full, TypedValue.applyDimension(
@@ -1179,7 +1192,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             Ui ui = new Ui(activity.get());
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertNotNull(chip);
-            assertTrue("in the strip", isDescendant(stripWords(content), chip));
+            assertTrue("in the band's chip row", isDescendant(chipRow(content), chip));
             assertTrue("shown", chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             assertEquals("Autopilot bar 100 percent. Acceptance rate 53 percent, goal 70 percent: about 17 more accepts. "
@@ -1202,9 +1215,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             ScenePage scene = find(content, ScenePage.class);
             android.widget.ScrollView window = (android.widget.ScrollView) scene.getParent();
             Rect visible = new Rect();
-            assertTrue(verdictLine(content).getGlobalVisibleRect(visible));
-            assertEquals("the whole verdict on screen", verdictLine(content).getHeight(), visible.height());
-            boolean stripFits = inWindow(stripWords(content)).bottom <= window.getHeight();
+            assertTrue(verdictTile(content).getGlobalVisibleRect(visible));
+            assertEquals("the whole verdict on screen", verdictTile(content).getHeight(), visible.height());
+            boolean stripFits = inWindow(chipRow(content)).bottom <= window.getHeight();
             if (!stripFits) {
                 assertTrue("only at twice the font", fontScale >= 2f);
                 window.scrollTo(0, window.getChildAt(0).getHeight() - window.getHeight());
@@ -1213,8 +1226,15 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(chip.getGlobalVisibleRect(visible));
             assertEquals("the whole chip is on screen", chip.getHeight(), visible.height());
             assertEquals(chip.getWidth(), visible.width());
-            assertTrue(line.getGlobalVisibleRect(visible));
-            assertEquals("the whole line on screen", line.getHeight(), visible.height());
+            if (line.getWidth() >= ui.dp(48)) {
+                assertTrue(line.getGlobalVisibleRect(visible));
+                assertEquals("the whole line on screen", line.getHeight(), visible.height());
+            } else {
+                // 0.6.3: a narrow band leaves the words a sliver; the chip says the whole status.
+                assertTrue("too narrow to read, the chip says it: " + line.getWidth(),
+                        String.valueOf(chip.getContentDescription()).startsWith(AutopilotText.statusSaid(
+                                AutopilotRuntime.status(app, System.currentTimeMillis(), true))));
+            }
             window.scrollTo(0, 0);
             layOut(content);
 
@@ -1230,7 +1250,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             String before = "scale " + row.textScale() + ", tight " + row.tight() + ", chip " + chip.getWidth() + "x"
                     + chip.getHeight() + ", line " + line.getWidth() + "x" + line.getHeight() + " in "
                     + line.getLineCount() + " lines '" + line.getText() + "', row " + rowWith;
-            assertTrue("a line of its own only at twice the font: " + before, !stacked || fontScale >= 2f);
+            assertFalse("never a line of its own (0.6.3: the band's row never stacks): " + before, stacked);
             chip.setVisibility(View.GONE);
             layOut(content);
             int rowAlone = row.getHeight();
@@ -1240,11 +1260,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             chip.setVisibility(View.VISIBLE);
             layOut(content);
             assertEquals("the same row again: " + before + " / " + gone, rowWith, row.getHeight());
-            assertEquals("beside: the chip's or the words' height, whichever is taller; above: the two: " + before,
-                    stacked ? chip.getHeight() + line.getHeight() : Math.max(chip.getHeight(), line.getHeight()),
-                    rowWith);
-            assertTrue(verdictLine(content).getGlobalVisibleRect(visible));
-            assertEquals("the whole verdict on screen", verdictLine(content).getHeight(), visible.height());
+            assertEquals("the band's row, never grown by the chip or the words: " + before,
+                    ui.dp(FluidLayout.ROW_DP), rowWith, 1f);
+            assertTrue(verdictTile(content).getGlobalVisibleRect(visible));
+            assertEquals("the whole verdict on screen", verdictTile(content).getHeight(), visible.height());
             MinimumsStarView star = find(content, MinimumsStarView.class);
             if (scene.getHeight() > window.getHeight()) {
                 assertTrue("scrolling only at a very large font: " + scene.getHeight() + " in " + window.getHeight()
@@ -1630,8 +1649,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // On the homepage it never reads as a full pass: its line, its building and its marks say so.
             // The latest offer is said by the verdict at the top, never again under the skyline (0.6.1).
             assertNull(shownTextContaining(content, "Latest · "));
-            String verdict = verdictLine(content).getText().toString();
+            VerdictTile tile = verdictTile(content);
+            String verdict = String.valueOf(tile.getContentDescription());
             assertTrue(verdict, verdict.contains("$5.75") && verdict.contains("Passed below your minimums"));
+            assertTrue(tile.shownText(), tile.shownText().startsWith("$5.75"));
+            assertEquals("its purple tag", VerdictTile.TAG_BELOW, tile.tag());
             String skyline = String.valueOf(find(content, DecisionChartView.class).getContentDescription());
             assertTrue(skyline, skyline.contains("1 passed (1 below your minimums)")
                     && skyline.contains(": $5.75, 6.6 mi"));

@@ -404,7 +404,15 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             int[] sceneAt = new int[2];
             map.getLocationInWindow(mapAt);
             scene.getLocationInWindow(sceneAt);
-            assertTrue("the horizon is above the map", scene.horizonY() <= mapAt[1] - sceneAt[1]);
+            android.graphics.RectF chartBox = inWindow(chart);
+            if (inWindow(map).left >= chartBox.right - 1) {
+                // 0.6.3: a short window stands the stage in three columns (radar | skyline | map): the street is
+                // the skyline's own, in its column beside the map.
+                assertTrue("the horizon is the skyline's street, in its column", scene.horizonY()
+                        <= chartBox.bottom - sceneAt[1] + 1 && scene.horizonY() >= chartBox.top - sceneAt[1] - 1);
+            } else {
+                assertTrue("the horizon is above the map", scene.horizonY() <= mapAt[1] - sceneAt[1]);
+            }
         } finally {
             service.destroy();
         }
@@ -622,7 +630,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
 
             // The strip: the verdict and the chip whole on screen, the chip at the status line's start.
             android.graphics.Rect visible = new android.graphics.Rect();
-            TextView verdict = verdictLine(content);
+            VerdictTile verdict = verdictTile(content);
             assertTrue(verdict.getGlobalVisibleRect(visible));
             assertEquals("the verdict whole", verdict.getHeight(), visible.height());
             AutopilotChip chip = find(content, AutopilotChip.class);
@@ -630,12 +638,21 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue("the chip at the status line's start", chip.isShown() && chip.getParent() == status.getParent());
             assertTrue(chip.getGlobalVisibleRect(visible));
             assertEquals("whole", chip.getHeight(), visible.height());
-            assertTrue(status.getGlobalVisibleRect(visible));
-            assertEquals("the status line whole", status.getHeight(), visible.height());
+            if (status.getWidth() >= ui.dp(48)) {
+                assertTrue(status.getGlobalVisibleRect(visible));
+                assertEquals("the status line whole", status.getHeight(), visible.height());
+            } else if (autopilot) {
+                assertTrue("too narrow to read (0.6.3), the chip says the status", String.valueOf(
+                        chip.getContentDescription()).startsWith(AutopilotText.statusSaid(AutopilotRuntime.status(app,
+                        System.currentTimeMillis(), OfferFilterService.isConnected()))));
+            }
             if (autopilot) {
                 assertEquals("the status line is Autopilot's", AutopilotText.statusLine(AutopilotRuntime.status(app,
                         System.currentTimeMillis(), OfferFilterService.isConnected())), status.getText().toString());
-                assertTrue("the bar is the chip's: " + chip.getText(), chip.getText().toString().startsWith("Auto 100%"));
+                String bar = chip.getText().toString();
+                assertEquals("the bar is the chip's", AutopilotText.chip(AutopilotRuntime.status(app,
+                        System.currentTimeMillis(), OfferFilterService.isConnected())), bar);
+                assertTrue("at 100%, learning: " + bar, bar.equals("Auto learning") || bar.startsWith("Auto 100%"));
             } else {
                 assertEquals("off, the chip is the way in", "Auto off", chip.getText().toString());
             }

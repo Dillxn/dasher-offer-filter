@@ -308,10 +308,12 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
             assertEquals("and the map beside it", 1f, scene.shown(map), 0f);
             assertTrue("side by side, the radar on the left", star.getRight() <= map.getLeft());
-            android.graphics.RectF strip = inWindow(stripWords(content));
+            // 0.6.3: the chips' row and the header share the band (the buttons rise into the chips' row as it widens).
+            android.graphics.RectF strip = inWindow(chipRow(content));
             android.graphics.RectF header = inWindow(pageHeader(content));
-            assertTrue("both under the strip and the header", inWindow(star).top >= header.bottom - 1
-                    && inWindow(map).top >= header.bottom - 1 && header.top >= strip.bottom - 1);
+            assertTrue("both under the band: its chips' row and the header", inWindow(star).top >= header.bottom - 1
+                    && inWindow(map).top >= header.bottom - 1 && strip.bottom <= header.bottom + 1
+                    && inWindow(star).top >= strip.bottom - 1);
             float radius = star.skyRadius();
             assertTrue("a circle the knobs work at: " + radius,
                     radius >= new Ui(app).dp(FluidLayout.RADIUS_LEAST_DP) - 1);
@@ -341,7 +343,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             }
             assertFalse("the rings' dollars are on the page", star.levelWords().isEmpty());
             android.graphics.RectF page = inWindow(scene);
-            android.graphics.RectF verdict = inWindow(verdictLine(content));
+            android.graphics.RectF verdict = inWindow(verdictTile(content));
             assertTrue("the scene knows the verdict is words, so no star lands on it", containsPoint(scene.words(),
                     verdict.centerX() - page.left, verdict.centerY() - page.top));
 
@@ -413,7 +415,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // With no rule yet, the start is the strip's status line, at the top of the page.
             TextView start = statusLine(content);
             assertEquals(MainActivity.START_LINE, start.getText().toString());
-            assertTrue("the start above the header", inWindow(start).bottom <= header.top + 1);
+            assertTrue("the start in the band, beside or above the header", inWindow(start).bottom <= header.bottom + 1);
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
             assertTrue("under the steps", inWindow(star).top >= linesBottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
@@ -476,8 +478,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNotNull("a setup line to do", line);
             TextView start = statusLine(content);
             assertEquals("the start is the strip's status line", MainActivity.START_LINE, start.getText().toString());
-            assertTrue("at the top, above the header",
-                    inWindow(start).bottom <= inWindow(pageHeader(content)).top + 1);
+            assertTrue("at the top, in the band beside or above the header",
+                    inWindow(start).bottom <= inWindow(pageHeader(content)).bottom + 1);
             assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
             assertTrue("under the lines", inWindow(star).top >= inWindow(line).bottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
@@ -512,9 +514,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             int before = FilterStore.load(app).perMinuteCents;
             float[] knob = star.knobAt(AreaScore.MINUTE);
-            dragKnob(content, star, knob, alongSpoke(knob, AreaScore.MINUTE, -ui.dp(40), 0), null);
+            // A short drag (a quarter of the circle at most: 0.6.3's radar can be small enough at twice the font for
+            // 40 dp to run the whole spoke to its center).
+            float in = Math.min(ui.dp(40), star.skyRadius() / 4f);
+            dragKnob(content, star, knob, alongSpoke(knob, AreaScore.MINUTE, -in, 0), null);
             int after = FilterStore.load(app).perMinuteCents;
-            assertTrue("the knob took its drag: " + before + " -> " + after, after > 0 && after < before);
+            assertTrue("the knob took its drag: " + before + " -> " + after + " (radius " + star.skyRadius() + ")",
+                    after > 0 && after < before);
             assertFalse("still paused", FilterStore.load(app).enabled);
         } finally {
             service.destroy();
@@ -968,7 +974,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             android.graphics.RectF line = inWindow(paused);
             android.graphics.RectF radar = inWindow(star);
             assertTrue("the line at the top, the radar under the header: " + line + " / " + radar,
-                    line.bottom <= inWindow(pageHeader(content)).top + 1
+                    line.bottom <= inWindow(pageHeader(content)).bottom + 1
                             && radar.top >= inWindow(pageHeader(content)).bottom - 1);
             assertFalse("the knob nowhere near the line", line.contains(radar.left + knob[0], radar.top + knob[1]));
 

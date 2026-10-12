@@ -31,6 +31,7 @@ import org.robolectric.shadows.ShadowToast;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -179,10 +180,12 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             layOut(content);
             ScenePage page = find(content, ScenePage.class);
             assertTrue("one page at every size", page.isShown());
-            TextView verdict = verdictLine(content);
-            assertEquals(MainActivity.verdict(latest, System.currentTimeMillis()), verdict.getText().toString());
-            assertTrue(verdict.getText().toString(), verdict.getText().toString().startsWith("$7.90 · 7.2 mi · 21 min · Declined")
-                    && verdict.getText().toString().endsWith(" · just now"));
+            VerdictTile verdict = verdictTile(content);
+            String said = String.valueOf(verdict.getContentDescription());
+            assertTrue(said, said.startsWith(MainActivity.verdict(latest, System.currentTimeMillis()) + ". "));
+            assertTrue(said, said.startsWith("$7.90 · 7.2 mi · 21 min · Declined") && said.contains(" · just now. "));
+            assertEquals("declined, in the app's words", MainActivity.captionOutcome(latest), verdict.outcome());
+            assertTrue(verdict.shownText(), verdict.shownText().startsWith("$7.90"));
             assertWhollyOnScreen("the verdict", verdict);
             assertEquals("the awake mascot says auto-decline is on; the line adds nothing", "",
                     statusLine(content).getText().toString());
@@ -193,7 +196,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertWhollyOnScreen("the mascot", mascot);
             List<AutopilotChip> chips = shownChips(content);
             assertEquals("Autopilot's chip", 1, chips.size());
-            assertTrue("the strip's own", isDescendant(stripWords(content), chips.get(0)));
+            assertTrue("the band's own", isDescendant(chipRow(content), chips.get(0)));
             assertEquals("off, it is the way in", "Auto off", chips.get(0).getText().toString());
             assertWhollyOnScreen("the chip", chips.get(0));
             MinimumsStarView star = find(content, MinimumsStarView.class);
@@ -229,8 +232,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = splitScreen()) {
             View content = content(activity);
             layOut(content);
-            assertEquals("no offer yet, and not ready for one while a step is to do", "No offers yet",
-                    verdictLine(content).getText().toString());
+            assertEquals("no offer yet, and not ready for one while a step is to do", VerdictTile.NO_OFFERS,
+                    String.valueOf(verdictTile(content).getContentDescription()));
             TextView step = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
             assertNotNull("the step to do, on the page", step);
             assertWhollyOnScreen("the step", step);
@@ -247,9 +250,10 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
      * With no rule yet the mascot and the status line offer the typical minimums. "Set my own" points at the knobs
      * where the radar is wholly there; in a window too short for it, it says how to make room, saves nothing, and the
      * page is the same page once the divider gives it room: the radar there with its knobs, no mode chosen. "Use these"
-     * saves the minimums with auto-decline paused, then asks for Autopilot's goal, and the mascot turns it on.
+     * saves the minimums with auto-decline paused, then asks for Autopilot's goal, and the mascot turns it on. From
+     * 0.6.3 a 220 dp tall third keeps the radar whole (below), so the window too short for it is 170 dp tall.
      */
-    @Test @Config(qualifiers = "w411dp-h220dp-420dpi")
+    @Test @Config(qualifiers = "w411dp-h170dp-420dpi")
     public void withNoRuleYetSetMyOwnSaysHowToReachTheKnobs() {
         servicesUp();
         try (ActivityController<MainActivity> activity = splitScreen()) {
@@ -309,6 +313,30 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             refreshed();
             assertTrue(String.valueOf(find(content, FilterHeroView.class).mascotControl().getContentDescription())
                     .endsWith("Resume auto-decline."));
+        }
+    }
+
+    /** 0.6.3: a 220 dp tall third keeps the radar whole, so "Set my own" points at its knobs, with no word of room. */
+    @Test @Config(qualifiers = "w411dp-h220dp-420dpi")
+    public void withNoRuleYetInAThirdSetMyOwnPointsAtTheKnobs() {
+        servicesUp();
+        try (ActivityController<MainActivity> activity = splitScreen()) {
+            View content = content(activity);
+            refreshed();
+            layOut(content);
+            ScenePage page = find(content, ScenePage.class);
+            MinimumsStarView star = find(content, MinimumsStarView.class);
+            assertEquals("the radar wholly there", 1f, page.shown(star), 0f);
+            for (int axis : MinimumsStarView.SPOKES) assertNotNull("knob " + axis, star.knobAt(axis));
+            find(content, FilterHeroView.class).mascotControl().performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog starter = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(MainActivity.STARTER_TITLE, title(starter));
+            starter.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            refreshed();
+            assertNotEquals("no word of room: the knobs are there", MainActivity.KNOBS_NEED_ROOM,
+                    ShadowToast.getTextOfLatestToast());
+            assertFalse("nothing saved", FilterStore.load(app).hasAnyRule());
         }
     }
 
@@ -380,7 +408,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             List<AutopilotChip> chips = shownChips(content);
             assertEquals("one chip on screen", 1, chips.size());
             AutopilotChip chip = chips.get(0);
-            assertTrue("the strip's own chip", isDescendant(stripWords(content), chip));
+            assertTrue("the band's own chip", isDescendant(chipRow(content), chip));
             AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(), true);
             assertEquals("Auto learning", AutopilotText.chip(status));
             assertEquals(AutopilotText.chip(status), chip.getText().toString());
@@ -440,7 +468,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertTrue(chip.isShown());
             assertEquals(rowAlone, row.getHeight());
             assertEquals(1, shownChips(content).size());
-            assertNull("no live region anywhere in the strip", liveRegionIn(stripWords(content)));
+            assertNull("no live region anywhere in the band's chip row", liveRegionIn(chipRow(content)));
+            assertNull("nor in the verdict", liveRegionIn(verdictTile(content)));
         }
     }
 
@@ -464,12 +493,13 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         servicesUp();
         try (ActivityController<MainActivity> activity = splitScreen()) {
-            String said = verdictLine(content(activity)).getText().toString();
+            // The tile is heard as the verdict, then the reason: "<verdict>. <reason>. Open offer details".
+            String description = String.valueOf(verdictTile(content(activity)).getContentDescription());
+            String said = description.substring(0, description.indexOf(". "));
             assertTrue(said, said.startsWith("$5.75 · 6.6 mi · 27 min · " + AutopilotText.PASSED_BELOW_MINIMUMS));
             int below = said.indexOf(AutopilotText.PASSED_BELOW_MINIMUMS);
             assertFalse("once", said.substring(below + AutopilotText.PASSED_BELOW_MINIMUMS.length())
                     .contains("elow your minimums"));
-            String description = stripWords(content(activity)).getContentDescription().toString();
             assertTrue("the reason is still accessible: " + description, description.contains("82%"));
             assertFalse("the accessible reason does not repeat the below-minimums outcome", description
                     .substring(description.indexOf(AutopilotText.PASSED_BELOW_MINIMUMS)
@@ -505,9 +535,9 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
      * size nor the default size) and every word of Autopilot's status line; the mascot and the verdict on screen as
      * the page opens, and the chip and the status line too wherever the strip fits the window (at twice the font in a
      * third of a phone it may not: they are then a scroll away, as 0.5.1's strip scrolled to its line). The line
-     * saying why Peek paused is whole on the page, a scroll away at most. The chip adds no height of its own: the row
-     * is the chip's 48 dp or the status line's words beside it, whichever is taller, and at the normal size nothing
-     * shrinks.
+     * saying why Peek paused is whole on the page, a scroll away at most. The chip adds no height of its own: from
+     * 0.6.3 the row is the band's 56 dp at every font, its words cut with an ellipsis where they run on (the chip
+     * says them whole), and at the normal size nothing shrinks.
      */
     private void stripAt(float fontScale, String line) {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -522,12 +552,12 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             View content = content(activity);
             refreshed();
             layOut(content);
-            AutopilotChip chip = find(stripWords(content), AutopilotChip.class);
+            AutopilotChip chip = find(chipRow(content), AutopilotChip.class);
             AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
             TextView status = statusLine(content);
             String words = AutopilotText.statusLine(AutopilotRuntime.status(app, System.currentTimeMillis(), true));
             assertEquals(words, status.getText().toString());
-            String measured = "font " + fontScale + ", " + line + ": strip " + stripWords(content).getHeight()
+            String measured = "font " + fontScale + ", " + line + ": tile " + verdictTile(content).getHeight()
                     + ", row " + row.getHeight() + " (stacked " + row.stacked() + ", scale " + row.textScale()
                     + ", tight " + row.tight() + "), line " + status.getLineCount() + " lines";
 
@@ -546,17 +576,25 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
                         0.01f);
             }
 
-            // Every word of the line, inside its own height, and the strip on screen as the page opens.
-            assertEquals("every word: " + measured, words.length(),
-                    status.getLayout().getLineEnd(status.getLineCount() - 1));
+            // Every word of the line heard (0.6.3: the band's row is 56 dp, so on screen the words may end in an
+            // ellipsis, the chip saying the whole status), drawn inside their own height; the strip on screen as the
+            // page opens.
+            AutopilotText.Status shown = AutopilotRuntime.status(app, System.currentTimeMillis(), true);
+            if (status.getLayout().getEllipsisCount(status.getLineCount() - 1) > 0) {
+                assertTrue("cut on screen, every word heard: " + measured, String.valueOf(chip.getContentDescription())
+                        .startsWith(AutopilotText.statusSaid(shown)));
+            } else {
+                assertEquals("every word: " + measured, words.length(),
+                        status.getLayout().getLineEnd(status.getLineCount() - 1));
+            }
             assertTrue("inside the line: " + measured, status.getLayout().getHeight()
                     <= status.getHeight() - status.getTotalPaddingTop() - status.getTotalPaddingBottom());
             assertTrue(status.getHeight() >= ui.dp(48) - 1);
             assertWhollyOnScreen("the mascot; " + measured, find(content, FilterHeroView.class).mascotControl());
-            assertWhollyOnScreen("the verdict; " + measured, verdictLine(content));
+            assertWhollyOnScreen("the verdict; " + measured, verdictTile(content));
             android.widget.ScrollView scroller = (android.widget.ScrollView) find(content, ScenePage.class).getParent();
             int windowHeight = scroller.getHeight();
-            boolean stripFits = inWindowBottom(stripWords(content)) <= windowHeight;
+            boolean stripFits = inWindowBottom(chipRow(content)) <= windowHeight;
             if (fontScale <= 1f) assertTrue("at the normal size the strip fits: " + measured, stripFits);
             if (!stripFits) {
                 scroller.scrollTo(0, Math.max(0, scroller.getChildAt(0).getHeight() - windowHeight));
@@ -565,8 +603,9 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             for (View part : new View[] {chip, status}) assertWhollyOnScreen(part + "; " + measured, part);
             scroller.scrollTo(0, 0);
             layOut(content);
-            assertEquals("the row is the chip's or its words', whichever is taller: " + measured,
-                    Math.max(chip.getHeight(), status.getHeight()), row.getHeight());
+            assertEquals("the row is the band's, never grown by the chip or the words: " + measured,
+                    ui.dp(FluidLayout.ROW_DP), row.getHeight(), 1f);
+            assertFalse("never stacked: " + measured, row.stacked());
 
             // Why Peek paused: whole on the page, its Resume its own; a scroll away at most.
             if (line.equals("peek")) {
@@ -662,23 +701,22 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             View content = content(activity);
             refreshed();
             layOut(content);
-            TextView verdict = verdictLine(content);
-            String words = verdict.getText().toString();
-            assertTrue(words, words.startsWith(outcome) && words.endsWith(" · just now"));
-            String measured = "font " + fontScale + ", " + kind + ": verdict " + verdict.getHeight() + " ("
-                    + verdict.getLineCount() + " lines, laid out " + verdict.getLayout().getHeight() + ")";
+            // 0.6.3: the verdict is a tile of labels; its words are heard in full, the verdict first.
+            VerdictTile verdict = verdictTile(content);
+            String words = String.valueOf(verdict.getContentDescription());
+            assertTrue(words, words.startsWith(outcome) && words.contains(" · just now. "));
+            String pay = outcome.substring(0, outcome.indexOf(" · "));
+            String tag = kind.equals("below") ? VerdictTile.TAG_BELOW
+                    : kind.equals("automatic") ? VerdictTile.TAG_AUTO : VerdictTile.TAG_REQUESTED;
+            String measured = "font " + fontScale + ", " + kind + ": tile " + verdict.getWidth() + " x "
+                    + verdict.getHeight() + " showing \"" + verdict.shownText() + "\" (tag line " + verdict.tagLine()
+                    + ", age " + verdict.ageShown() + ")";
 
-            // Every word of the verdict, inside its own height: none cut off, with a mark or without.
-            assertEquals("every word: " + measured, words.length(),
-                    verdict.getLayout().getLineEnd(verdict.getLineCount() - 1));
-            assertEquals("never shortened with a mark either: " + measured, 0,
-                    verdict.getLayout().getEllipsisCount(verdict.getLineCount() - 1));
-            assertTrue("inside the verdict: " + measured, verdict.getLayout().getHeight()
-                    <= verdict.getHeight() - verdict.getTotalPaddingTop() - verdict.getTotalPaddingBottom());
-            if (verdict.getPaint().measureText(words) <= verdict.getWidth() - verdict.getTotalPaddingLeft()
-                    - verdict.getTotalPaddingRight()) {
-                assertEquals("one line where it fits: " + measured, 1, verdict.getLineCount());
-            }
+            // Its one height at this font; the pay never cut, the outcome's tag kept where it fits.
+            assertEquals("the tile's one height: " + measured, VerdictTile.heightFor(activity.get()), verdict.getHeight());
+            assertTrue("the pay first, never cut: " + measured, verdict.shownText().startsWith(pay));
+            assertEquals("the outcome's tag: " + measured, tag, verdict.tag());
+            if (fontScale <= 1f) assertTrue("its tag drawn at the normal font: " + measured, verdict.tagLine() > 0);
             assertWhollyOnScreen("the whole verdict: " + measured, verdict);
         }
     }

@@ -306,10 +306,28 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             assertTrue("its two lines fit: " + tile.getHeight(),
                     tile.getHeight() >= VerdictTile.heightFor(tile.getContext()) - 1);
             String shown = tile.shownText();
-            assertEquals("the pay at its own size: " + shown + " in " + tile.getWidth() + " px",
-                    VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16), tile.payTextSize(), 0.5f);
+            float paySize = VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16);
+            assertTrue("the pay never cut: " + shown, shown.startsWith("$18.35") && !shown.startsWith("$18.35…"));
             assertTrue("condensed at most to four fifths: " + tile.payCondensed(), tile.payCondensed() >= 0.8f - 1e-4f);
-            assertTrue("the trip whole: " + shown, shown.contains("3 mi · 15 min") && !shown.contains("…"));
+            if (tile.getWidth() >= ui.dp(140)) {
+                // Room for the template ("$88.88" and "88.8 mi · 88 min" at twice the font): nothing gives way.
+                assertEquals("the pay at its own size: " + shown + " in " + tile.getWidth() + " px",
+                        paySize, tile.payTextSize(), 0.5f);
+                assertTrue("the trip whole: " + shown, shown.contains("3 mi · 15 min") && !shown.contains("…"));
+            } else {
+                // A tile squeezed by the counts at twice the font gives way in the spec's order: the age, the pay
+                // condensed to four fifths and only then smaller, the trip ended with an ellipsis; never clipped,
+                // and the whole offer still heard.
+                if (tile.payTextSize() < paySize - 0.5f) {
+                    assertFalse("the age goes before the pay gets smaller: " + shown, tile.ageShown());
+                    assertEquals("condensed to four fifths first: " + shown, 0.8f, tile.payCondensed(), 1e-3f);
+                }
+                assertTrue("the trip ends whole or with an ellipsis: " + shown,
+                        shown.contains("3 mi · 15 min") || shown.endsWith("…"));
+                String said = String.valueOf(tile.getContentDescription());
+                assertTrue("heard whole: " + said, said.contains("$18.35") && said.contains("3 mi")
+                        && said.contains("15 min"));
+            }
             Bitmap bitmap = Bitmap.createBitmap(content.getWidth(), content.getHeight(), Bitmap.Config.ARGB_8888);
             content.draw(new Canvas(bitmap));
             File dir = new File("build/reports/offer-caption");
