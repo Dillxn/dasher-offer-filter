@@ -112,17 +112,19 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
 
     @Test public void nativeAdoptUndoAndConfirmedResetPreserveSavedRulesAndRetainedOffBests() {
         learn();
-        // The new high raised the minimums at once (0.6.1); the knobs dragged back down end that raise's Undo, and the
-        // learned bests now ask more than the saved minimums: Adopt raises them again.
-        FilterSettings raised = FilterStore.load(app);
-        assertEquals(801, raised.flatCents);
-        FilterStore.save(app, raised, raised.withMinimums(RULES.flatCents, RULES.perMileCents, RULES.perMinuteCents));
+        // The new high raised the learned minimums, never the saved ones (the owner, 12 October 2026): Adopt makes
+        // them the user's own.
+        assertEquals(500, FilterStore.load(app).flatCents);
         assertNull(FilterStore.pendingAdoption(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertNull("no note: no raise to undo", shownTextContaining(content, LearnedRaiseCard.TITLE));
+            TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
+            assertNotNull("the homepage notes the raise", note);
+            shownButton((View) note.getParent(), LearnedRaiseCard.OK).performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            layOut(content);
             AlertDialog details = learnedMinimums(star);
             find(details.getWindow().getDecorView(), Switch.class).performClick();
             assertNotNull("open dialog follows its switch", shownTextContaining(details.getWindow().getDecorView(),
@@ -132,10 +134,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             shownButton(details.getWindow().getDecorView(), "Adopt").performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(801, FilterStore.load(app).flatCents);
-            FilterStore.Adoption adopted = FilterStore.pendingAdoption(app);
-            assertNotNull(adopted);
-            assertFalse("the Adopt button's raise, not learning's", adopted.automatic);
-            assertNull("which the homepage does not note", FilterStore.learnedRaiseNote(app));
+            assertNotNull(FilterStore.pendingAdoption(app));
+            assertNull("adopted: no learned raise is left to note", FilterStore.learnedRaise(app));
             details = learnedMinimums(star);
             Button undo = shownButton(details.getWindow().getDecorView(), "Undo adoption");
             assertNotNull(undo);
@@ -159,10 +159,11 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A new high the user accepts raises the minimums at once, and the homepage says so in one line of changes with
-     * Undo and OK (0.6.1). Undo puts back the minimums and forgets that lesson; learning stays on.
+     * A new high the user accepts raises the learned minimums, and the homepage says so in labels, the learned asks
+     * beside the user's own, with Adopt and OK (0.6.1; the owner, 12 October 2026: the knobs never move by themselves,
+     * "we have the adopt mins feature for that"). Adopt makes them the user's own, with Undo in Learned minimums.
      */
-    @Test public void aNewHighsRaiseIsNotedOnTheHomepageAndItsUndoPutsBackTheMinimumsAndTheLesson() {
+    @Test public void aNewHighsRaiseIsNotedOnTheHomepageAndAdoptMakesTheLearnedMinimumsYours() {
         learn();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -170,27 +171,34 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
             assertNotNull("the note is on the homepage", note);
             String words = note.getText().toString();
-            for (String change : new String[] {"$5.00 → $8.01", "$1.00/mi → $2.00/mi", "$15/hr → $24/hr"}) {
-                assertTrue(words, words.contains(change));
-            }
-            assertEquals("Your minimums rose. A new high you accepted raised them: minimum pay $5.00 to $8.01, per mile "
-                    + "$1.00 to $2.00, per hour $15 to $24.", String.valueOf(note.getContentDescription()));
+            assertTrue(words, words.contains("$8.01 · $2.00/mi · $24/hr · yours $5.00 · $1.00/mi · $15/hr"));
+            assertEquals("Learned minimums rose. A new high you accepted raised them: minimum pay $8.01 (yours $5.00), "
+                    + "per mile $2.00 (yours $1.00), per hour $24 (yours $15). Your own minimums stay as you set them; "
+                    + "Adopt makes these yours.", String.valueOf(note.getContentDescription()));
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertEquals("the knobs moved with it", 801, star.setAsks(AreaScore.PAY), 0);
-            shownButton((View) note.getParent(), LearnedRaiseCard.UNDO).performClick();
+            assertEquals("the knobs stay as set", 500, star.setAsks(AreaScore.PAY), 0);
+            shownButton((View) note.getParent(), LearnedRaiseCard.ADOPT).performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             layOut(content);
             FilterSettings after = FilterStore.load(app);
-            assertArrayEquals(RULES.minimums(), after.minimums());
-            assertTrue("and the lesson is forgotten", after.accepted.isEmpty());
+            assertEquals(801, after.flatCents); assertEquals(200, after.perMileCents);
+            assertEquals(40, after.perMinuteCents); assertEquals(RULES.maxStops, after.maxStops);
+            assertEquals(MainActivity.ADOPTED_TOAST, ShadowToast.getTextOfLatestToast());
+            assertFalse("the bests stay", after.accepted.isEmpty());
             assertTrue("learning stays on", after.acceptanceLearning);
             assertNull("the note goes", shownTextContaining(content, LearnedRaiseCard.TITLE));
-            assertEquals(500, star.setAsks(AreaScore.PAY), 0);
+            assertEquals(801, star.setAsks(AreaScore.PAY), 0);
+            Button undo = shownButton(learnedMinimums(star).getWindow().getDecorView(), "Undo adoption");
+            assertNotNull("its Undo is in Learned minimums", undo);
+            undo.performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
+            assertFalse(FilterStore.load(app).accepted.isEmpty());
         }
     }
 
-    /** OK closes the note for good; the raise stays, and its Undo stays in Learned minimums. */
-    @Test public void okClosesTheRaisesNoteAndItsUndoStaysInLearnedMinimums() {
+    /** OK closes the note for good; the knobs stay, and the learned minimums go on applying. */
+    @Test public void okClosesTheRaisesNoteAndLeavesTheKnobsAndTheLearnedMinimums() {
         learn();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -201,15 +209,11 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             layOut(content);
             assertNull("OK closes it", shownTextContaining(content, LearnedRaiseCard.TITLE));
-            assertEquals("the raise stays", 801, FilterStore.load(app).flatCents);
-            assertNull(FilterStore.learnedRaiseNote(app));
-            Button undo = shownButton(learnedMinimums(find(content, MinimumsStarView.class)).getWindow().getDecorView(),
-                    "Undo adoption");
-            assertNotNull("its Undo stays in Learned minimums", undo);
-            undo.performClick();
-            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertArrayEquals(RULES.minimums(), FilterStore.load(app).minimums());
-            assertTrue(FilterStore.load(app).accepted.isEmpty());
+            assertArrayEquals("the knobs stay", RULES.minimums(), FilterStore.load(app).minimums());
+            assertEquals("the learned minimums stay", 800, FilterStore.load(app).accepted.highestPayCents);
+            assertNull(FilterStore.learnedRaise(app));
+            assertNull("nothing adopted, nothing to undo", shownButton(
+                    learnedMinimums(find(content, MinimumsStarView.class)).getWindow().getDecorView(), "Undo adoption"));
         }
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -235,7 +239,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         star.show(rules, comparison, Collections.singletonList(decided(rules, new OfferSnapshot(300, 40.0, 90, 2))));
         assertEquals(ring, star.ringCents());
         String said = star.getContentDescription().toString();
-        for (String fact : new String[] {"blue is saved", "teal is learned", "purple", "raises the saved knobs to match"}) {
+        for (String fact : new String[] {"blue is saved", "teal is learned", "purple", "do not move saved knobs"}) {
             assertTrue(fact + ": " + said, said.contains(fact));
         }
         star.show(rules.withAcceptanceLearning(false), comparison, Collections.emptyList());
@@ -380,7 +384,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             listener.get().onListenerConnected();
             Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
             if (font > 1f) {
-                // The note of the raise read and closed (its Undo stays in Learned minimums).
+                // The note of the raise read and closed (Adopt stays in Learned minimums).
                 TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
                 assertNotNull(note);
                 shownButton((View) note.getParent(), LearnedRaiseCard.OK).performClick();

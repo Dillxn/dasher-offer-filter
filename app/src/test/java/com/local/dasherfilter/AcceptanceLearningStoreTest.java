@@ -43,32 +43,87 @@ public class AcceptanceLearningStoreTest {
         FilterSettings stored = FilterStore.load(fresh);
         assertEquals(1420, stored.accepted.highestPayCents);
         assertEquals(1420, stored.accepted.milePay); assertEquals(6, stored.accepted.miles, 0);
-        // The new high raised the saved minimums too (0.6.1), and a stale copy's save never puts the old ones back.
-        assertArrayEquals(new int[] {1421, 237, 60, 0, 0, 0}, stored.minimums()); assertFalse(stored.enabled);
+        // The saved minimums stay as the user set them (the owner, 12 October 2026).
+        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, stored.minimums()); assertFalse(stored.enabled);
     }
-    /** The owner, 11 October 2026: "new highs ... raise mins". Undo puts them back and forgets that lesson. */
-    @Test public void aNewHighRaisesTheSavedMinimumsWithANoteAndAnUndoThatForgetsTheLesson() {
+    /**
+     * The owner, 11 and 12 October 2026: "new highs ... raise mins", but the saved ones never by themselves ("we have
+     * the adopt mins feature for that"). The learned minimums rise, the note says so, and OK keeps everything.
+     */
+    @Test public void aNewHighRaisesTheLearnedMinimumsNotTheSavedOnes() {
         assertEquals(FilterStore.AcceptedLesson.RAISED, learn(OFFER));
-        assertArrayEquals(new int[] {1421, 237, 60, 0, 0, 0}, FilterStore.load(app).minimums());
-        FilterStore.Adoption raise = FilterStore.learnedRaiseNote(app);
-        assertNotNull(raise); assertTrue(raise.automatic);
-        assertEquals("A new high you accepted raised them: $7.00 → $14.21 · $1.50/mi → $2.37/mi · $18/hr → $36/hr.",
-                LearnedRaiseCard.line(raise));
-        // OK closes the note; Undo stays.
-        FilterStore.noteAdoption(app, raise.id);
-        assertNull(FilterStore.learnedRaiseNote(app));
-        assertNotNull(FilterStore.pendingAdoption(app));
-        assertTrue(FilterStore.undoAdoption(app, raise.id));
+        FilterSettings after = FilterStore.load(app);
+        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, after.minimums());
+        assertEquals(1420, after.accepted.highestPayCents);
+        FilterStore.LearnedRaise raise = FilterStore.learnedRaise(app);
+        assertNotNull(raise);
+        assertEquals(1421, raise.flat); assertEquals(237, raise.mile); assertEquals(60, raise.minute);
+        assertEquals("$14.21 · $2.37/mi · $36/hr · yours $7.00 · $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
+        assertNull("nothing was adopted", FilterStore.pendingAdoption(app));
+        // OK closes the note; the learned minimums still apply and the saved ones stay.
+        FilterStore.closeLearnedRaise(app, raise.id);
+        assertNull(FilterStore.learnedRaise(app));
+        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertEquals(1420, FilterStore.load(app).accepted.highestPayCents);
+    }
+    /** Adopt on the note makes the learned minimums the user's own, with Learned minimums' Undo. */
+    @Test public void adoptFromTheNoteRaisesOnlyLowerSavedMinimumsWithUndo() {
+        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {2000, 150, 30, 0, 0, 0}));
+        assertEquals(FilterStore.AcceptedLesson.RAISED, learn(OFFER));
+        FilterStore.LearnedRaise raise = FilterStore.learnedRaise(app);
+        assertNotNull(raise);
+        assertEquals("pay asks no more than yours", 0, raise.flat);
+        assertEquals("$2.37/mi · $36/hr · yours $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
+        assertTrue(FilterStore.adoptAccepted(app));
+        assertArrayEquals(new int[] {2000, 237, 60, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertNull("adopted, nothing is left to note", FilterStore.learnedRaise(app));
+        FilterStore.Adoption a = FilterStore.pendingAdoption(app);
+        assertNotNull(a);
+        assertTrue(FilterStore.undoAdoption(app, a.id));
         FilterSettings undone = FilterStore.load(app);
-        assertArrayEquals(new int[] {700, 150, 30, 0, 0, 0}, undone.minimums());
-        assertTrue("the lesson is forgotten too, or it would go on asking for the same", undone.accepted.isEmpty());
-        assertTrue(undone.acceptanceLearning);
+        assertArrayEquals(new int[] {2000, 150, 30, 0, 0, 0}, undone.minimums());
+        assertEquals("Undo of an adoption keeps the bests", 1420, undone.accepted.highestPayCents);
+    }
+    /** The note goes once its lesson's bests change, and hides while learning is off. */
+    @Test public void theNoteFollowsItsLessonAndTheLearner() {
+        learn(OFFER);
+        assertNotNull(FilterStore.learnedRaise(app));
+        FilterStore.setAcceptanceLearning(app, false);
+        assertNull("learned minimums off: nothing rose", FilterStore.learnedRaise(app));
+        FilterStore.setAcceptanceLearning(app, true);
+        assertNotNull("the bests still stand", FilterStore.learnedRaise(app));
+        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {5000, 5000, 5000, 0, 0, 0}));
+        assertNull("no learned minimum asks more than yours", FilterStore.learnedRaise(app));
+        FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {700, 150, 30, 0, 0, 0}));
+        assertNull("forgotten once it could not show", FilterStore.learnedRaise(app));
+        learn(new OfferSnapshot(2000, 6.0, 24, 2));
+        FilterStore.LearnedRaise next = FilterStore.learnedRaise(app);
+        assertNotNull(next); assertEquals(2001, next.flat);
+        FilterStore.resetAccepted(app);
+        assertNull(FilterStore.learnedRaise(app));
+    }
+    /**
+     * The owner's 11 October 7:02 PM offer: he stepped the knobs while it showed. His own change keeps its lesson
+     * valid; Adopt (the learned minimums made his) still starts lessons afresh.
+     */
+    @Test public void theUsersKnobChangeKeepsAnOfferOnScreensLessonButAdoptDoesNot() {
+        FilterStore.LearningPermit onScreen = FilterStore.captureLearning(app, OFFER);
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before, before.withMinimums(new int[] {900, 150, 30, 0, 0, 0}));
+        FilterStore.save(app, FilterStore.load(app).withMaxStops(2));
+        assertEquals(FilterStore.AcceptedLesson.RAISED,
+                FilterStore.recordConfirmedManualAcceptance(app, onScreen, OFFER));
+        OfferSnapshot next = new OfferSnapshot(3000, 6.0, 24, 2);
+        FilterStore.LearningPermit later = FilterStore.captureLearning(app, next);
+        assertTrue(FilterStore.adoptAccepted(app));
+        assertEquals(FilterStore.AcceptedLesson.STALE, FilterStore.recordConfirmedManualAcceptance(app, later, next));
+        assertEquals(1420, FilterStore.load(app).accepted.highestPayCents);
     }
     @Test public void aBestBelowTheSavedMinimumsRaisesNothing() {
         FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {5000, 5000, 5000, 0, 0, 0}));
         assertEquals(FilterStore.AcceptedLesson.SAVED, learn(OFFER));
         assertArrayEquals(new int[] {5000, 5000, 5000, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertNull(FilterStore.learnedRaiseNote(app));
+        assertNull(FilterStore.learnedRaise(app));
     }
     @Test public void learningOffOrPausedRaisesNoMinimum() {
         FilterStore.save(app, FilterStore.load(app).withEnabled(false));
@@ -134,10 +189,8 @@ public class AcceptanceLearningStoreTest {
         FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {3000, 150, 30, 0, 0, 0}));
         learn(OFFER); FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 112));
-        // The lesson raised the knobs already (0.6.1); dragged back down, Adopt raises them to the bests again.
-        FilterSettings raised = FilterStore.load(app);
-        assertArrayEquals(new int[] {3000, 237, 60, 0, 0, 0}, raised.minimums());
-        FilterStore.save(app, raised, raised.withMinimums(new int[] {3000, 150, 30, 0, 0, 0}));
+        // The lesson left the knobs as they were; Adopt raises the lower ones to the bests.
+        assertArrayEquals(new int[] {3000, 150, 30, 0, 0, 0}, FilterStore.load(app).minimums());
         assertTrue(FilterStore.adoptAccepted(app));
         FilterStore.Adoption a = FilterStore.pendingAdoption(app);
         assertNotNull(a); assertEquals(3000, a.flatBefore); assertEquals(3000, a.flatAfter);

@@ -357,6 +357,46 @@ public class DeclineHandBackTest {
         assertEquals(before.minimumScalePercent, after.minimumScalePercent);
     }
 
+    /**
+     * The owner's 11 October question why the offers he took back and accepted taught nothing: one he took back before
+     * Offer Filter tapped Dasher's question (so Dasher had not declined it), that came while he waited for offers, is
+     * his acceptance when Dasher's delivery screen follows. His saved minimums stay.
+     */
+    @Test
+    public void anOfferTakenBackBeforeItsConfirmationThatCameWhileWaitingTeaches() {
+        FilterStore.setAcceptanceLearning(app, true);
+        OfferFilterService service = service();
+        show(service, idle());
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        userClicks(service, button("View offer details"));
+        show(service, node("Complete delivery steps", false));
+        DecisionLog.flush();
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(entry));
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED));
+        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertEquals(790, FilterStore.load(app).accepted.highestPayCents);
+        assertTrue(Arrays.equals(new int[] {2000, 0, 0, 0, 0, 0}, FilterStore.load(app).minimums()));
+        contains(DiagnosticLog.read(app), "you took it back before its decline was confirmed");
+    }
+
+    /** One that came with no wait for offers read before it (a peek's, say) stays display only, and teaches nothing. */
+    @Test
+    public void anOfferTakenBackWithNoWaitSeenBeforeItTeachesNothing() {
+        FilterStore.setAcceptanceLearning(app, true);
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        userClicks(service, button("View offer details"));
+        show(service, node("Complete delivery steps", false));
+        DecisionLog.flush();
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertTrue(FilterStore.load(app).accepted.isEmpty());
+        contains(DiagnosticLog.read(app), "[learner] acceptance not taught: you took it over");
+    }
+
     @Test
     public void returningToAnExistingRouteAfterTakeoverDoesNotInventAnAcceptance() {
         ActiveRouteStore.save(app, new OfferSnapshot(2000, 8.0, 30, 2));

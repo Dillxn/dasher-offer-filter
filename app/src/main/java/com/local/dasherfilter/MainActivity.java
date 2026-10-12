@@ -86,8 +86,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String PAUSED_LINE = "Paused · nothing is declined";
     /** The learner button's toasts. */
-    static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise your minimums.";
-    static final String LEARN_OFF_TOAST = "Learning off: your minimums stay as they are.";
+    static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise the learned minimums.";
+    static final String LEARN_OFF_TOAST = "Learning off: only your own minimums count.";
+    /** Adopt's toast, from Learned minimums or the homepage's note of a learned raise. */
+    static final String ADOPTED_TOAST = "Learned minimums adopted. Undo is in Learned minimums.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
@@ -279,7 +281,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private PeekIntroCard peekIntro;
     /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
     private GrowthCard growthCard;
-    /** The note that a new high the user accepted raised the minimums (0.6.1), with Undo and OK. */
+    /** The note that a new high the user accepted raised the learned minimums (0.6.1), with Adopt and OK. */
     private LearnedRaiseCard learnedRaiseCard;
     private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by day and night): its first resume checks at once. */
@@ -796,6 +798,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         learnedRaiseCard = new LearnedRaiseCard(this, ui, problems, () -> {
             rulesChanged();
             refresh();
+            toast(ADOPTED_TOAST);
         });
         addFeeNotice(problems);
         // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
@@ -1070,7 +1073,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             dialog.dismiss();
             if (changed) rulesChanged();
             refresh();
-            toast(changed ? adoption == null ? "Learned minimums adopted. Undo is in Learned minimums."
+            toast(changed ? adoption == null ? ADOPTED_TOAST
                     : "Adopted minimums put back." : "No minimums changed.");
         });
         adopt.setPadding(ui.dp(8), 0, ui.dp(8), 0);
@@ -1085,14 +1088,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private static String learningDetailWords(FilterSettings rules) {
         return "On by default. When you accept an offer yourself and it beats your best pay, pay per mile or pay per "
-                + "hour, your minimums rise to match it at once, and the homepage says so with Undo. Automatic "
-                + "accepts, add-ons, declines and unclear acceptances do not teach it; pay per mile needs a trip of at "
-                + "least 2 miles and pay per hour at least 10 minutes. Off keeps the bests without learning.\n\n"
+                + "hour, the learned minimums rise to match it, and offers must meet them as well as your own. Your "
+                + "own minimums stay as you set them. Automatic accepts, add-ons, declines and unclear acceptances do "
+                + "not teach it; pay per mile needs a trip of at least 2 miles and pay per hour at least 10 minutes. "
+                + "Off keeps the bests without using them or learning.\n\n"
                 + MinimumsDetails.learningSummary(rules) + "\n\n"
-                + "Teal on the chart is your learned bests. Adopt raises any lower minimum to them again (after you "
-                + "dragged a knob down, say). Undo puts back the last raise until a later minimum change, Reset or "
-                + "Clear history. Reset clears learned bests, not your minimums or Autopilot settings. Autopilot's "
-                + "minimum growth and its Undo are separate.";
+                + "Teal on the chart is your learned bests. Adopt raises any lower minimum of yours to them. Undo puts "
+                + "back the last adoption until a later minimum change, Reset or Clear history. Reset clears learned "
+                + "bests, not your minimums or Autopilot settings. Autopilot's minimum growth and its Undo are "
+                + "separate.";
     }
 
     private void confirmResetLearning() {

@@ -785,6 +785,13 @@ public final class OfferFilterService extends AccessibilityService {
     private int lateCompletionTries;
     private long takeoverDisplayUntil;
     private boolean takeoverDisplayEligible;
+    /**
+     * The user took the offer back before the app's tap on Dasher's question was made, and it came while they were
+     * positively waiting: Dasher declines only once its question is confirmed, so a delivery screen after it is their
+     * acceptance, counted and taught as one (the owner's 11 October report: a $17.50 offer he took back from Peek's
+     * decline and accepted taught nothing).
+     */
+    private boolean takeoverTeaches;
     private boolean declinedHadRoute;
     private boolean declinedDuringRoute;
     private OfferSnapshot boundedOffer;
@@ -973,6 +980,8 @@ public final class OfferFilterService extends AccessibilityService {
      * before's, while a read is under way.
      */
     private String decidedKey = "";
+    /** The offer last left to the user because their own rules changed while it showed (logged once for it). */
+    private String keptForUserKey = "";
     private String decidedBefore = "";
     /** Whether a delivery or route is under way: a stored route, or the last read a delivery, pickup or map route. */
     private boolean deliveryCalm;
@@ -1699,7 +1708,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Asks for a screen read after the rules changed, or auto-decline was paused or resumed from the tab:
-     * the offer on screen is judged under them. A drag on the minimums scale saves at every step, so these come in
+     * the offer on screen is judged under them (one already left to the user stays theirs; 0.6.1). A drag on the minimums scale saves at every step, so these come in
      * floods: one read is queued at a time, {@link #QUIET_SCAN_GAP_MS} after the last one at the soonest, and none of
      * them resets the read budget or Dasher's judged slowness (an offer's notification does).
      */
@@ -3590,6 +3599,7 @@ public final class OfferFilterService extends AccessibilityService {
                 && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
+        takeoverTeaches = takeoverDisplayEligible && !alreadyConfirmed && acceptedTracker.waitedFor(declinedOffer);
         if (why == HandBack.NOT_TAPPED && alreadyConfirmed) {
             lateCompletionUntil = now + 5_000;
             lateCompletionUserActions = userActions.get();
@@ -7348,7 +7358,9 @@ public final class OfferFilterService extends AccessibilityService {
         }
         applyNotes();
         if (OfferEvidence.isIdle(scan.text) || OfferEvidence.isDashOver(scan.text)) {
-            if (noRoute) {
+            // A wait-for-offers frame between the user's Accept tap and its pickup screen leaves that tap waiting, so
+            // it leaves its lesson's evidence too: a delivery screen after it still teaches.
+            if (noRoute && !acceptedTracker.acceptTapPending()) {
                 learningObservedOffer = null;
                 learningPermit = null;
             }
@@ -7388,10 +7400,19 @@ public final class OfferFilterService extends AccessibilityService {
         // Declining an add-on returns straight to the delivery: no confirmation is coming after that.
         if (DasherScene.showsRoute(scan.text) && !facts && !scan.acceptLabel && !scan.declineLabel) {
             if (takeoverDisplayEligible && now <= takeoverDisplayUntil && takeover != Takeover.NONE) {
-                step(takeover.offer, DecisionLog.StepKind.ACCEPTED_OBSERVED,
-                        "delivery screen followed the offer you took over; display only");
+                if (takeoverTeaches) {
+                    recordAcceptance(new AcceptedOfferTracker.Acceptance(takeover.offer, takeover.offer, false,
+                            takeover.offer, false), "you took it back before its decline was confirmed, and Dasher "
+                            + "showed a delivery screen");
+                } else {
+                    step(takeover.offer, DecisionLog.StepKind.ACCEPTED_OBSERVED,
+                            "delivery screen followed the offer you took over; display only");
+                    DiagnosticLog.log(this, "learner", "acceptance not taught: you took it over after "
+                            + AppName.NAME + "'s decline was confirmed, or it did not come while you waited");
+                }
             }
             takeoverDisplayEligible = false;
+            takeoverTeaches = false;
             endAuthority("delivery", false);
             episode.end();
             forgetTakeover("delivery");
@@ -7761,7 +7782,7 @@ public final class OfferFilterService extends AccessibilityService {
     /** A lesson's fate in fixed words ("[learner]" lines): never an amount, a best or a minimum. */
     static String lessonWords(FilterStore.AcceptedLesson lesson, boolean permitted) {
         switch (lesson) {
-            case RAISED: return "learned; your minimums rose to match (Undo on the homepage)";
+            case RAISED: return "learned; the learned minimums rose (Adopt on the homepage)";
             case SAVED: return "learned a new best; your saved minimums are still higher";
             case UNCHANGED: return "nothing new: no best beaten (rates need at least 2 mi and 10 min)";
             case OFF: return "not taught: learning or filtering is off, or the notice is not accepted";
@@ -7910,7 +7931,19 @@ public final class OfferFilterService extends AccessibilityService {
                 && (newCountdown || !key.equals(autoAcceptWatchedKey))) {
             noteAutoAcceptNotSent("candidate_replaced");
         }
-        boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE;
+        // The offer the read before decided and left to the user, the same showing of it, now failing: only the user's
+        // own change does that while an offer is up (a knob or the badge stepped across its pay, Autopilot turned off;
+        // Autopilot moves its bar only at a safe point). It stays theirs, and the new rules judge the next offer (the
+        // owner's 11 October report: a knob step took a $14.40 offer's requirement to $14.48, and it was declined under
+        // his finger).
+        boolean keptForUser = settings.enabled && decision.result == OfferRule.Result.DECLINE && !newCountdown
+                && !newScreenInstancePending && !key.isEmpty() && key.equals(decidedBefore) && !declineUnderWay(now)
+                && !isTakenOver(offer, now);
+        if (keptForUser && !key.equals(keptForUserKey)) {
+            keptForUserKey = key;
+            DiagnosticLog.log(this, "rules", "offer on screen left to you: your rules changed while it showed");
+        }
+        boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE && !keptForUser;
         // The slim bar over the offer: green for a pass, amber for review or for a pass below the user's own minimums
         // (Autopilot's bar let it through; it is the user's to accept): presentation only, never a decision.
         offerVerdict = settings.enabled && !declines ? OfferNotificationService.announced(decision) : null;
@@ -7942,8 +7975,7 @@ public final class OfferFilterService extends AccessibilityService {
         } else if (lateCompletionUntil != 0 && offer.contradicts(declinedOffer)) {
             recoverLateCompletion(now, "next offer");
         }
-        declinedOfferShowing = decision.result == OfferRule.Result.DECLINE
-                && (key.equals(declinedKey) || offer.agreesWith(declinedOffer));
+        declinedOfferShowing = declines && (key.equals(declinedKey) || offer.agreesWith(declinedOffer));
 
         // An Accept already requested (or a quiet interval the user cancelled) never becomes an automatic Decline
         // of the same offer because its rules changed. Only a positively new instance clears this suppression.
@@ -7955,8 +7987,9 @@ public final class OfferFilterService extends AccessibilityService {
             return false;
         }
 
-        if (!settings.enabled || decision.result != OfferRule.Result.DECLINE) {
-            endAuthority("offer does not fail active rules", true);
+        if (!settings.enabled || decision.result != OfferRule.Result.DECLINE || keptForUser) {
+            endAuthority(keptForUser ? "your rules changed while the offer showed" : "offer does not fail active rules",
+                    true);
             // Left alone: what the user does with it, and what Dasher shows after it, may count. The step of the
             // offer before (another offer came first) goes to the main thread ahead of this offer's line.
             acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn,
@@ -7966,13 +7999,14 @@ public final class OfferFilterService extends AccessibilityService {
             boolean peeked = peekReads(offer);
             record(scan, isAddOn, decision, settings, !settings.enabled
                     ? DecisionLog.Action.PAUSED
+                    : keptForUser ? DecisionLog.Action.REPLAY
                     : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
                     : DecisionLog.Action.NEEDS_REVIEW, peeked);
             if (handleAutoAccept(scan, offer, settings, isAddOn, routeStored, key, secondsLeft,
                     generation, newCountdown, now)) return false;
             // Passing or unclear, the peeked offer is the user's: Dasher stays up, or while they navigate it goes back
             // to the map with its card (the user's decision).
-            if (peeked) {
+            if (peeked && !keptForUser) {
                 peek.screen(false, Peek.now());
                 peek.countdown(secondsLeft, Peek.now());
                 // An add-on's card carries the add-on's own figures (its "+$" and what it adds), never the standalone
@@ -7981,7 +8015,8 @@ public final class OfferFilterService extends AccessibilityService {
                         secondsLeft >= 0 ? System.currentTimeMillis() + secondsLeft * 1000L : 0, lastFolded);
             }
             if (decision.result == OfferRule.Result.REVIEW) countUnreadable(scan, offer);
-            status(detail + "\n" + decision.summary() + (settings.enabled ? "" : "\nAuto-decline is off."));
+            status(detail + "\n" + decision.summary() + (!settings.enabled ? "\nAuto-decline is off."
+                    : keptForUser ? "\nYour rules changed while it showed; it is left to you." : ""));
             // The same offer as the read before, decided and left to the user, nothing of the app's under way on it:
             // nothing more to do with it, so its changes get the quiet gap (as an unchanged decided offer under
             // takeover does), and an offer needing review is settled. A window change, a new window or an event whose

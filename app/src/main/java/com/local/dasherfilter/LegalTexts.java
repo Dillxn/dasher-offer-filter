@@ -71,16 +71,17 @@ final class LegalTexts {
             minimum. Area mode is a separate, initially off choice: stronger pay or rates can compensate for weaker \
             ones in the combined score. Maximum stops remains a hard limit, missing required facts stay for review, \
             and add-ons remain strict. An offer permitted by the filter is not an accepted delivery. When an offer \
-            fails the chosen rules, the app can tap Decline and Dasher's confirmation for you. Autopilot is off \
-            until you turn it on. It then applies one bar to the chosen scoring model and resolved saved/learned \
-            requirements, between 50% and 150%, using your recent offers, how often they come and the acceptance \
-            rate Dasher shows when you decline. Above 100% it declines offers that meet your minimums. Offers it \
-            lets through below your minimums are left to you. Autopilot also raises your minimums once its bar has \
-            stayed at 103% or more for 30 offers over at least 2 days: all of them by the same share, at most 10% \
-            at a time, while its bar comes down so offers are asked about the same right after. It never lowers \
-            them; you can. A note on the homepage says what grew, with Undo, until you tap it or your minimums \
-            change another way. This bar-based growth waits while an enabled learned floor exceeds its saved \
-            minimum, so growing saved knobs and lowering the bar cannot loosen a learned requirement. Raised \
+            fails the chosen rules, the app can tap Decline and Dasher's confirmation for you. An offer already \
+            left to you stays yours if you change your rules while it shows; the new rules judge the next offer. \
+            Autopilot is off until you turn it on. It then applies one bar to the chosen scoring model and resolved \
+            saved/learned requirements, between 50% and 150%, using your recent offers, how often they come and the \
+            acceptance rate Dasher shows when you decline. Above 100% it declines offers that meet your minimums. \
+            Offers it lets through below your minimums are left to you. Autopilot also raises your minimums once \
+            its bar has stayed at 103% or more for 30 offers over at least 2 days: all of them by the same share, \
+            at most 10% at a time, while its bar comes down so offers are asked about the same right after. It \
+            never lowers them; you can. A note on the homepage says what grew, with Undo, until you tap it or your \
+            minimums change another way. This bar-based growth waits while an enabled learned floor exceeds its \
+            saved minimum, so growing saved knobs and lowering the bar cannot loosen a learned requirement. Raised \
             minimums can mean more declines. Turn this off with Let my minimums grow in Autopilot's details; while \
             Autopilot is off, it does not grow your saved minimums. Auto-accept starts off. If you separately \
             enable it in Settings, it can tap Accept on a complete standalone offer that strictly meets every \
@@ -90,20 +91,21 @@ final class LegalTexts {
             apply to add-ons unless adopted as saved minimums.
             - Acceptance learning is separate from area mode and Autopilot, and is on by default; the Learn button \
             on the homepage turns it off and on. While filtering and learning are on, each positively confirmed \
-            manual standalone acceptance (an offer you accepted yourself) can keep your best accepted pay (as a \
-            requirement of that pay plus one cent) and independent exact best pay-per-mile and pay-per-minute \
-            rates. When a new best asks more than a saved minimum, that saved minimum rises to match at once, which \
-            can mean more declines. A note on the homepage says what rose, with Undo, which puts those minimums \
-            back and forgets that lesson; OK closes the note and Undo stays in Learned minimums. Undo is \
-            conditional and cannot overwrite later changes. Pay per mile learns only from trips of at least 2 miles \
-            and pay per minute from at least 10 minutes. Automatic accepts, declines, add-ons and ambiguous \
-            outcomes do not teach it. Unknown facts do not teach their axes; any known implausible figure rejects \
-            the lesson. Learned bests can activate an unset money minimum. Off or paused retains learned bests \
-            without new learning. Confirmed Reset clears active bests and Undo; prior decision snapshots remain \
-            until Clear history. Clear history clears both active learning and that history. Adopt raises any lower \
-            saved minimum to the learned bests again, and raised minimums then apply to add-ons too. Reset and \
-            Clear history keep your minimums as they are. Learning is local and makes no promise about earnings or \
-            future offers.
+            manual standalone acceptance (an offer you accepted yourself, including one you took back from the \
+            app's decline before it tapped Dasher's confirmation, when it came while you were waiting for offers) \
+            can keep your best accepted pay (as a requirement of that pay plus one cent) and independent exact best \
+            pay-per-mile and pay-per-minute rates. When a new best asks more than a saved minimum, offers must meet \
+            that learned minimum as well, which can mean more declines; your saved minimums stay as you set them. A \
+            note on the homepage says what rose, with Adopt, which makes those learned minimums your saved ones; OK \
+            closes the note. Undo of an adoption is in Learned minimums; it is conditional and cannot overwrite \
+            later changes. Pay per mile learns only from trips of at least 2 miles and pay per minute from at least \
+            10 minutes. Automatic accepts, declines, add-ons and ambiguous outcomes do not teach it. Unknown facts \
+            do not teach their axes; any known implausible figure rejects the lesson. Learned bests can activate an \
+            unset money minimum. Off or paused retains learned bests without new learning. Confirmed Reset clears \
+            active bests and Undo; prior decision snapshots remain until Clear history. Clear history clears both \
+            active learning and that history. Adopt raises only lower saved minimums, which then apply to add-ons \
+            too. Reset and Clear history keep your minimums as they are. Learning is local and makes no promise \
+            about earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -334,18 +336,19 @@ final class LegalTexts {
             deleted old lessons and historical decisions are not reconstructed. While filtering and learning are \
             on, positively confirmed manual standalone acceptances can store the highest accepted pay and \
             independent exact best pay-per-mile and pay-per-minute numeric pairs, and a new best that asks more \
-            than a saved minimum raises that saved minimum on this phone. Automatic accepts, declines, add-ons and \
-            ambiguous outcomes do not train it. Unknown facts do not teach their axes; any known implausible figure \
-            rejects the lesson. The app also keeps a bounded local identity record to prevent the same acceptance \
-            teaching twice and a generation marker to reject stale observations. Learned bests have no age expiry; \
-            pausing or switching learning off retains them. Confirmed Reset clears active bests and Undo. Earlier \
-            decision snapshots keep their original numeric saved/learned requirements and model for provenance \
-            until Clear history, eviction by newer decisions or uninstall. Clear history and uninstall remove both \
-            active learning and decision history. Adopt and each raise learning makes keep the saved minima before \
-            and after it, and for a raise learning made also the learned bests before and after that lesson and \
-            whether its homepage note was closed, with its identity/time, for conditional Undo until a later \
-            change, Reset or Clear history invalidates it. Raised and adopted saved minima remain settings after \
-            those clears.
+            than a saved minimum applies as a learned minimum alongside it; the saved minimum stays as you set it \
+            unless you adopt the learned ones. Automatic accepts, declines, add-ons and ambiguous outcomes do not \
+            train it. Unknown facts do not teach their axes; any known implausible figure rejects the lesson. The \
+            app also keeps a bounded local identity record to prevent the same acceptance teaching twice and a \
+            generation marker to reject stale observations. Learned bests have no age expiry; pausing or switching \
+            learning off retains them. Confirmed Reset clears active bests and Undo. Earlier decision snapshots \
+            keep their original numeric saved/learned requirements and model for provenance until Clear history, \
+            eviction by newer decisions or uninstall. Clear history and uninstall remove both active learning and \
+            decision history. Adopt keeps the saved minima before and after that adoption and its identity/time for \
+            conditional Undo until a later change, Reset or Clear history invalidates it. When a lesson raises the \
+            learned minimums, the app keeps the learned bests of that lesson, with its identity, for the homepage \
+            note until you close it, adopt them, learning changes, Reset or Clear history. Adopted saved minima \
+            remain settings after those clears.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, a numeric local \
             snapshot of the saved and learned requirements used, whether the offer declared items or shopping, the \
             result, what the app did, the recorded scoring model and score (strict pay fitness or area fitness), \

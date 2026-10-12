@@ -6,51 +6,55 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The homepage's one-time note that learning raised the minimums (0.6.1; the owner, 11 October 2026: "new highs ...
- * raise mins"): "Your minimums rose" over the minimums that rose, then Undo and OK. A new high the user accepted
- * raised a minimum in use, so the saved minimums were raised to match ({@link FilterStore#adoptLearned}). Undo puts
- * the minimums back and forgets that lesson; OK closes the note, and Undo stays in Learned minimums (the learner
- * button's long press). It goes by itself once the minimums change any other way. Quiet, as the growth note is: no
- * live region and nothing announced; part of the page, never over Dasher, among the lines that never fade.
+ * The homepage's one-time note that learning raised the learned minimums (0.6.1; the owner, 11 October 2026: "new
+ * highs ... raise mins"): "Learned minimums rose" over what they now ask above the user's own, then Adopt and OK. A new
+ * high the user accepted made a learned minimum ask more than the saved one ({@link FilterStore.LearnedRaise}). The
+ * saved minimums never move by themselves (the owner, 12 October 2026: "this shouldn't happen ... we have the adopt
+ * mins feature for that"): Adopt makes the learned minimums the user's own, as Learned minimums' Adopt does, with its
+ * Undo there; OK closes the note. It goes by itself once the learned bests change, learning is turned off or no learned
+ * minimum asks more than its saved one. Quiet, as the growth note is: no live region and nothing announced; part of
+ * the page, never over Dasher, among the lines that never fade.
  */
 final class LearnedRaiseCard {
-    static final String TITLE = "Your minimums rose";
-    static final String UNDO = "Undo";
+    static final String TITLE = "Learned minimums rose";
+    static final String ADOPT = "Adopt";
     static final String OK = "OK";
 
     private final Context context;
     private final OnboardingCard card;
-    /** The raise shown, by its adoption id; 0 while none is. */
+    /** The raise shown, by its lesson's id; 0 while none is. */
     private long shownId;
 
-    /** @param changed what the page does after Undo or OK changed the rules (follow them) */
-    LearnedRaiseCard(Context context, Ui ui, LinearLayout parent, Runnable changed) {
+    /** @param adopted what the page does after Adopt made the learned minimums the user's own (follow them) */
+    LearnedRaiseCard(Context context, Ui ui, LinearLayout parent, Runnable adopted) {
         this.context = context;
         card = new OnboardingCard(context, ui, parent);
-        card.addAction(ui, UNDO, () -> {
-            if (shownId != 0) FilterStore.undoAdoption(context, shownId);
-            changed.run();
+        card.addAction(ui, ADOPT, () -> {
+            long id = shownId;
+            if (id != 0) {
+                FilterStore.adoptAccepted(context);
+                FilterStore.closeLearnedRaise(context, id);
+                adopted.run();
+            }
             refresh();
         });
         card.addAction(ui, OK, () -> {
-            if (shownId != 0) FilterStore.noteAdoption(context, shownId);
+            if (shownId != 0) FilterStore.closeLearnedRaise(context, shownId);
             refresh();
         });
     }
 
-    /** Shown while an automatic raise's note waits and the minimums are still the raised ones; hidden otherwise. */
+    /** Shown while a learned raise's note waits and it still asks more than the saved minimums; hidden otherwise. */
     void refresh() {
-        FilterStore.Adoption raise = FilterStore.learnedRaiseNote(context);
+        FilterStore.LearnedRaise raise = FilterStore.learnedRaise(context);
         if (raise == null) {
             shownId = 0;
             card.show(false);
             return;
         }
-        if (raise.id != shownId) {
-            shownId = raise.id;
-            card.setWords(OnboardingCard.titled(TITLE, line(raise)));
-            card.setSaid(said(raise));
-        }
+        shownId = raise.id;
+        card.setWords(OnboardingCard.titled(TITLE, line(raise)));
+        card.setSaid(said(raise));
         card.show(true);
     }
 
@@ -58,36 +62,41 @@ final class LearnedRaiseCard {
         return card.shown();
     }
 
-    /** "A new high you accepted raised them: $1.70/mi → $2.77/mi." */
-    static String line(FilterStore.Adoption raise) {
-        List<String> parts = new ArrayList<>();
-        if (raise.flatAfter != raise.flatBefore) {
-            parts.add(DecisionLog.money(raise.flatBefore) + " → " + DecisionLog.money(raise.flatAfter));
+    /** "$14.21 · $2.37/mi · $36/hr · yours $7.00 · $1.50/mi · $18/hr": labels, not a sentence. */
+    static String line(FilterStore.LearnedRaise raise) {
+        List<String> learned = new ArrayList<>();
+        List<String> yours = new ArrayList<>();
+        if (raise.flat > 0) {
+            learned.add(DecisionLog.money(raise.flat));
+            yours.add(raise.savedFlat > 0 ? DecisionLog.money(raise.savedFlat) : "no minimum pay");
         }
-        if (raise.mileAfter != raise.mileBefore) {
-            parts.add(DecisionLog.money(raise.mileBefore) + "/mi → " + DecisionLog.money(raise.mileAfter) + "/mi");
+        if (raise.mile > 0) {
+            learned.add(DecisionLog.money(raise.mile) + "/mi");
+            yours.add(raise.savedMile > 0 ? DecisionLog.money(raise.savedMile) + "/mi" : "no $/mi");
         }
-        if (raise.minuteAfter != raise.minuteBefore) {
-            parts.add(DecisionLog.shortMoney(raise.minuteBefore * 60L) + "/hr → "
-                    + DecisionLog.shortMoney(raise.minuteAfter * 60L) + "/hr");
+        if (raise.minute > 0) {
+            learned.add(DecisionLog.shortMoney(raise.minute * 60L) + "/hr");
+            yours.add(raise.savedMinute > 0 ? DecisionLog.shortMoney(raise.savedMinute * 60L) + "/hr" : "no $/hr");
         }
-        return "A new high you accepted raised them: " + String.join(" · ", parts) + ".";
+        return String.join(" · ", learned) + " · yours " + String.join(" · ", yours);
     }
 
-    /** The note in words, for screen readers: "minimum pay $15.50 to $16.00, per mile $1.70 to $2.77". */
-    static String said(FilterStore.Adoption raise) {
+    /** The note in words, for screen readers. */
+    static String said(FilterStore.LearnedRaise raise) {
         List<String> parts = new ArrayList<>();
-        if (raise.flatAfter != raise.flatBefore) {
-            parts.add("minimum pay " + DecisionLog.money(raise.flatBefore) + " to "
-                    + DecisionLog.money(raise.flatAfter));
+        if (raise.flat > 0) {
+            parts.add("minimum pay " + DecisionLog.money(raise.flat) + " (yours "
+                    + (raise.savedFlat > 0 ? DecisionLog.money(raise.savedFlat) : "not set") + ")");
         }
-        if (raise.mileAfter != raise.mileBefore) {
-            parts.add("per mile " + DecisionLog.money(raise.mileBefore) + " to " + DecisionLog.money(raise.mileAfter));
+        if (raise.mile > 0) {
+            parts.add("per mile " + DecisionLog.money(raise.mile) + " (yours "
+                    + (raise.savedMile > 0 ? DecisionLog.money(raise.savedMile) : "not set") + ")");
         }
-        if (raise.minuteAfter != raise.minuteBefore) {
-            parts.add("per hour " + DecisionLog.shortMoney(raise.minuteBefore * 60L) + " to "
-                    + DecisionLog.shortMoney(raise.minuteAfter * 60L));
+        if (raise.minute > 0) {
+            parts.add("per hour " + DecisionLog.shortMoney(raise.minute * 60L) + " (yours "
+                    + (raise.savedMinute > 0 ? DecisionLog.shortMoney(raise.savedMinute * 60L) : "not set") + ")");
         }
-        return TITLE + ". A new high you accepted raised them: " + String.join(", ", parts) + ".";
+        return TITLE + ". A new high you accepted raised them: " + String.join(", ", parts)
+                + ". Your own minimums stay as you set them; Adopt makes these yours.";
     }
 }

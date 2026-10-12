@@ -108,7 +108,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                     + "$7.00, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Strict mode checks every active "
                     + "minimum. Farther out means higher pay or pay rates. Solid blue is saved minimums; gray is learned "
                     + "bests stored but off; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
-                    + "A new high you accept raises the saved knobs to match while learning is on. Colored shapes are offers.",
+                    + "Learned bests do not move saved knobs. Colored shapes are offers.",
                     star.getContentDescription().toString());
             assertEquals(700, star.setAsks(AreaScore.PAY), 0);
             assertEquals(750, star.setAsks(AreaScore.MILE), 0);

@@ -66,10 +66,12 @@ final class BundledNotes {
                 "Automatic acceptance stays strict. The optional timing study still needs its own saved choice; "
                         + "this notice enables neither learning nor sharing.");
         notice(18,
-                "Learning is now on by default: when you accept an offer that beats your best pay, pay per mile or "
-                        + "pay per hour, your minimums rise to match it.",
-                "Higher minimums can mean more declines. The homepage says what rose, with Undo; the Learn button "
-                        + "on the radar turns learning off.");
+                "Learning is on by default: an accept of yours that beats your best pay, pay per mile or pay per hour "
+                        + "raises the learned minimums.",
+                "Offers must meet the learned minimums too, which can mean more declines. Your own minimums stay as "
+                        + "you set them.",
+                "The homepage says what rose, with Adopt to make them yours; the Learn button on the radar turns "
+                        + "learning off.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -133,12 +135,12 @@ final class BundledNotes {
                 "Learning starts empty. Autopilot, its growth Undo and 0.5.11 repairs remain. Permitted by the "
                         + "filter means left for you to decide, not accepted.");
         release("0.6.1",
-                "Accepting a new high now raises your minimums, with Undo on the homepage. An accept on a new "
-                        + "dash's first pickup is counted again.",
-                "Learning is on by default; the round Learn button on the radar turns it off, and a long press shows "
-                        + "what it learned. Autopilot is the chip at the top.",
-                "Split during a delivery opens recent apps instead of restarting Dasher. Fewer repeated words on the "
-                        + "homepage.");
+                "A new high you accept raises the learned minimums, with Adopt on the homepage; your own stay as you "
+                        + "set them. Accepts on a new dash's first pickup count again.",
+                "Moving a knob leaves the offer on screen to you. An offer you take back from a decline before its "
+                        + "confirmation teaches when you accept it.",
+                "Learning is on by default: the radar's Learn button, long press for what it learned. Autopilot is "
+                        + "the chip at the top. Split mid-delivery opens recent apps.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

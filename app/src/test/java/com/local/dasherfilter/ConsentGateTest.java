@@ -192,8 +192,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         assertTrue(Consent.POINTS[6][1].contains("no warranty"));
         assertTrue(Consent.POINTS[7][1].contains("Don't handle your phone while driving."));
         String learning = Consent.POINTS[4][1];
-        for (String fact : new String[] {"When you accept an offer yourself", "your minimums rise to match it",
-                "more declines", "with Undo", "Automatic accepts, declines, add-ons", "The Learn button on the homepage",
+        for (String fact : new String[] {"When you accept an offer yourself", "the learned minimums rise to match it",
+                "as well as your own minimums", "more declines", "Your own minimums stay as you set them",
+                "with Adopt to make them yours", "Automatic accepts, declines, add-ons", "The Learn button on the homepage",
                 "off keeps the bests without learning", "Reset clears the bests", "your minimums stay"}) {
             assertTrue(fact, learning.contains(fact));
         }

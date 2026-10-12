@@ -578,6 +578,11 @@ final class AcceptedOfferTracker {
         return true;
     }
 
+    /** The user's own Accept tap is waiting for its delivery screen (an automatic request's is not theirs). */
+    boolean acceptTapPending() {
+        return pending != null && !pending.automaticRequest;
+    }
+
     /** @return the offer the tap is taken to accept, or null when no readable offer was on screen recently */
     OfferSnapshot acceptClicked(long now) {
         Watch w = watch;
@@ -746,6 +751,17 @@ final class AcceptedOfferTracker {
         lastClear = null;
         Watch w = watch;
         if (w != null && w.declinePending) w.otherSince = true;
+    }
+
+    /**
+     * Whether this standalone offer came while the user was positively waiting: Dasher's wait for offers read after the
+     * offer before it and before it came, and no delivery under way (its sighting's own evidence, as the no-tap path
+     * asks). Read as the user takes an offer back from a decline of the app's.
+     */
+    boolean waitedFor(OfferSnapshot offer) {
+        Sighting s = last;
+        return s != null && offer != null && !s.addOn && !s.automaticRequest && s.waitingBefore && !s.deliveryBefore
+                && offer.agreesWith(s.offer);
     }
 
     /** Offer Filter requested a decline of this offer (or the user took it over during one): it is not watched. */

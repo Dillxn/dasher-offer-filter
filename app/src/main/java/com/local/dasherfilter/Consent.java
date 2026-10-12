@@ -20,7 +20,7 @@ final class Consent {
      */
     // 16: separate prospective study scope; accepting this notice never enables that optional choice.
     // 17: separate area mode and local acceptance learning; study confirmation remains independent.
-    // 18 (0.6.1): learning on by default, and a new high you accept raises your saved minimums itself, with Undo.
+    // 18 (0.6.1): learning on by default, so a new high you accept raises the learned minimums offers must meet.
     static final int VERSION = 18;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
@@ -51,9 +51,10 @@ final class Consent {
                 + "background offer (also just after you unlock, for one that came while it was locked), then return to "
                 + "your previous app. Turn Peek off in Settings."},
         {"Learning is on by default.", "When you accept an offer yourself and it beats your best pay, pay per mile "
-                + "(trips of 2 miles or more) or pay per hour (10 minutes or more), your minimums rise to match it at "
-                + "once, which can mean more declines. The homepage says what rose, with Undo, which also forgets that "
-                + "offer. The bests stay on this phone. Automatic accepts, declines, add-ons and unclear acceptances "
+                + "(trips of 2 miles or more) or pay per hour (10 minutes or more), the learned minimums rise to match "
+                + "it at once. Offers must meet them as well as your own minimums, which can mean more declines. Your "
+                + "own minimums stay as you set them; the homepage says what rose, with Adopt to make them yours. "
+                + "The bests stay on this phone. Automatic accepts, declines, add-ons and unclear acceptances "
                 + "do not teach it; any known implausible figure rejects the lesson. The Learn button on the homepage "
                 + "turns it off; off keeps the bests without learning. Reset clears the bests and Clear history clears them "
                 + "too; your minimums stay. Area mode starts off. Autopilot growth is separate."},

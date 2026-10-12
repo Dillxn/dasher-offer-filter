@@ -8,6 +8,8 @@ import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -74,6 +76,21 @@ public class AcceptanceLearningAdapterTest {
         Shadows.shadowOf(root).addChild(button("Decline")); accept = button("Accept");
         Shadows.shadowOf(root).addChild(accept); show(root);
     }
+    /** The same offer, its Decline counting the app's taps on it. */
+    private AccessibilityNodeInfo offerCountingDeclines(List<Integer> taps) {
+        return offerCountingDeclines("$16.75", taps);
+    }
+    private AccessibilityNodeInfo offerCountingDeclines(String pay, List<Integer> taps) {
+        AccessibilityNodeInfo root = screen(pay, "incl. tips", "3 stops (3.9 mi) • 30 min", "0:35");
+        AccessibilityNodeInfo decline = button("Decline");
+        Shadows.shadowOf(decline).setOnPerformActionListener((action, args) -> {
+            if (action == AccessibilityNodeInfo.ACTION_CLICK) taps.add(action);
+            return true;
+        });
+        Shadows.shadowOf(root).addChild(decline); accept = button("Accept");
+        Shadows.shadowOf(root).addChild(accept);
+        return root;
+    }
     private void waiting() { show(screen("This dash", "You're in a good place to wait for offers")); }
     private void show(AccessibilityNodeInfo root) {
         TestWindows.full(controller.get(), root);
@@ -104,10 +121,58 @@ public class AcceptanceLearningAdapterTest {
         assertEquals(1675, FilterStore.load(app).accepted.milePay);
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.LEARNER_MINIMUM_RAISED));
-        // The new high raised the saved minimums to match (0.6.1), with the homepage's note and Undo.
-        assertArrayEquals(new int[] {1676, 430, 56, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertNotNull(FilterStore.learnedRaiseNote(app));
-        assertTrue(DiagnosticLog.read(app).contains("[learner] manual acceptance: learned; your minimums rose"));
+        // The new high raised the learned minimums, with the homepage's note and Adopt; the saved ones stay (the
+        // owner, 12 October 2026).
+        assertArrayEquals(new int[] {500, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertNotNull(FilterStore.learnedRaise(app));
+        assertTrue(DiagnosticLog.read(app).contains(
+                "[learner] manual acceptance: learned; the learned minimums rose"));
+    }
+    /**
+     * The owner's 11 October 7:02 PM offer: it passed while he stepped a knob, until a step took its requirement past
+     * its pay and it was declined under his finger. Now it stays his, and his accept of it still teaches.
+     */
+    @Test public void aKnobChangedWhileAnOfferShowsLeavesItToYouAndItsAcceptStillTeaches() {
+        waiting();
+        List<Integer> declines = new ArrayList<>();
+        AccessibilityNodeInfo shown = offerCountingDeclines(declines);
+        show(shown);
+        assertTrue("it passes", declines.isEmpty());
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before, before.withMinimums(new int[] {2000, 100, 25, 0, 0, 0}));
+        ShadowSystemClock.advanceBy(Duration.ofMillis(200));
+        show(shown);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue("the offer on screen is left to you", declines.isEmpty());
+        assertTrue(DiagnosticLog.read(app).contains("[rules] offer on screen left to you"));
+        tapAccept(); delivery();
+        assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
+        assertEquals("the knob change did not void its lesson", 1675, FilterStore.load(app).accepted.highestPayCents);
+        assertArrayEquals(new int[] {2000, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+    }
+    @Test public void theNewRulesJudgeTheNextOffer() {
+        waiting();
+        List<Integer> first = new ArrayList<>();
+        show(offerCountingDeclines(first));
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before, before.withMinimums(new int[] {2000, 100, 25, 0, 0, 0}));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        waiting();
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        List<Integer> next = new ArrayList<>();
+        show(offerCountingDeclines("$18.25", next));
+        assertTrue(first.isEmpty());
+        assertEquals("the next offer is declined under the new rules", 1, next.size());
+    }
+    /** A wait-for-offers frame between the user's Accept tap and the pickup screen leaves the lesson standing. */
+    @Test public void aWaitFrameAfterTheAcceptTapStillTeaches() {
+        waiting(); offer(); tapAccept();
+        ShadowSystemClock.advanceBy(Duration.ofMillis(300));
+        waiting();
+        ShadowSystemClock.advanceBy(Duration.ofMillis(300));
+        delivery();
+        assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
+        assertEquals(1675, FilterStore.load(app).accepted.highestPayCents);
     }
     @Test public void aPickupShowingTheDashsZeroEarningsStillCountsAndTeaches() {
         waiting(); assertFalse(OfferFilterService.dasherOnDelivery(app));

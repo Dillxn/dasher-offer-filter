@@ -262,16 +262,23 @@ public class BundledNotesTest {
                 "timing study", "neither learning nor sharing"}) assertTrue(fact, notice.contains(fact));
     }
 
-    /** 0.6.1 (the owner, 11 October 2026): learning on by default, and new highs raise the minimums with Undo. */
+    /**
+     * 0.6.1 (the owner, 11 and 12 October 2026): learning on by default, and new highs raise the learned minimums,
+     * never the user's own, with Adopt.
+     */
     @Test public void learningOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
         assertEquals(18, Consent.VERSION);
         assertEquals("0.6.1", Updater.version(RuntimeEnvironment.getApplication()));
         String notice = String.join(" ", notice(18));
-        for (String fact : new String[] {"on by default", "beats your best pay", "rise to match", "more declines",
-                "Undo", "Learn button"}) assertTrue(fact, notice.contains(fact));
+        for (String fact : new String[] {"on by default", "beats your best pay", "raises the learned minimums",
+                "more declines", "stay as you set them", "Adopt", "Learn button"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        assertFalse(notice.contains("Undo"));
         String release = String.join(" ", BundledNotes.whatsNew("0.6.1"));
-        for (String fact : new String[] {"raises your minimums", "Undo", "new dash's first pickup", "on by default",
-                "Learn button", "long press", "Autopilot is the chip", "recent apps"}) {
+        for (String fact : new String[] {"raises the learned minimums", "Adopt", "stay as you set them",
+                "new dash's first pickup", "Moving a knob", "take back", "on by default", "Learn button",
+                "long press", "Autopilot is the chip", "recent apps"}) {
             assertTrue(fact, release.contains(fact));
         }
         for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {

@@ -744,8 +744,8 @@ final class MinimumsStarView extends View {
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
                 + (shownRules.acceptanceLearning ? "teal is learned bests in use" : "gray is learned bests stored but off")
-                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. A new high you "
-                + "accept raises the saved knobs to match while learning is on. Colored shapes are offers.";
+                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do "
+                + "not move saved knobs. Colored shapes are offers.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
     }
@@ -2473,7 +2473,7 @@ final class MinimumsStarView extends View {
 
     /** What screen readers hear of the learner button. */
     static String learnSaid(boolean on) {
-        return on ? "Learning from your accepts, on: new highs you accept raise your minimums"
+        return on ? "Learning from your accepts, on: new highs you accept raise the learned minimums"
                 : "Learning from your accepts, off";
     }
 
