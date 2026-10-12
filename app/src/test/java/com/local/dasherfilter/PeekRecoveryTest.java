@@ -2226,6 +2226,14 @@ public class PeekRecoveryTest {
         pass(Peek.PRESENT_MS + 500);
         assertEquals("the card's watch sends no second tap for the same offer", 1, ownTaps.size());
         contains(log(app), "[alert] card: Dasher's own notification tap: skipped (sent for this offer already)");
+        // Each of those starts of Dasher, through its own code, is watched on its own: the peek's, its own tap and the
+        // card's each get their looks at Android's list of windows (a later start drops no earlier one's).
+        pass(OfferFilterService.LAUNCH_VERDICT_MS);
+        String launches = log(app);
+        contains(launches, "[launch] peek + 10 s: win=");
+        contains(launches, "[launch] own tap + 10 s: win=");
+        contains(launches, "[launch] card + 10 s: win=");
+        assertFalse("Dasher drew for each: " + launches, launches.contains("Dasher still on its launch screen"));
     }
 
     /** A peek whose offer Dasher never drew while the user navigated: its card that says so, tapped. */

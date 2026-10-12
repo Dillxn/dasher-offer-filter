@@ -739,8 +739,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = splitScreen()) {
             View content = content(activity);
             assertNull("no dash: nothing to say", shownTextContaining(content, "need a tap in this layout"));
-            assertNotNull("outside a dash the button puts Dasher beside",
-                    shownIcon(content, DasherSplit.BESIDE_LABEL));
+            assertNotNull("outside a dash the button swaps Dasher in too (Put Dasher beside is retired)",
+                    shownIcon(content, DasherSplit.SWAP_LABEL));
         }
         Dashing.seen(app);
         try (ActivityController<MainActivity> activity = splitScreen()) {
@@ -756,14 +756,15 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertEquals(DASHER_HOME, swap.getComponent());
             assertEquals("Dasher into this half, as its launcher opens it: no adjacent launch, nothing cleared",
                     Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, swap.getFlags());
-            logSays("[split] tap in split screen during a dash: Dasher's launch intent into this half (the other half "
-                    + "stays)");
+            logSays("[split] swap: Dasher's launch intent into this half (the other half stays)");
 
             shownIcon(content, DasherSplit.SWAP_LABEL).performClick();
             Intent again = started();
             assertNotNull(again);
             assertEquals("the header's button does the same", 0,
                     again.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, again.getFlags());
+            logSays("[split] tap in split screen: Dasher's launch intent into this half (the other half stays)");
         }
     }
 

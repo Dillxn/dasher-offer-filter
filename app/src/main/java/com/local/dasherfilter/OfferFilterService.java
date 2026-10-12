@@ -349,8 +349,6 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private final Set<Integer> ownWindows = ConcurrentHashMap.newKeySet();
     private final Set<Integer> otherWindows = ConcurrentHashMap.newKeySet();
-    /** Identified other windows (true for a map), from existing reads. Visibility is not active-route proof. */
-    private final java.util.Map<Integer, Boolean> splitOtherWindows = new ConcurrentHashMap<>();
     private final Set<Integer> overlayWindows = ConcurrentHashMap.newKeySet();
     private volatile AccessibilityWindowInfo lastReadableWindow;
     private int remoteFetches;
@@ -920,6 +918,11 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean waitReadNewInstance;
     /** This read's labels once it has read a screen without finding it too big, else null. */
     private List<String> sceneLabels;
+    /**
+     * When (uptime) the last read that read Dasher's screen whole began, {@link #NEVER} before the first: the Split
+     * tap's Dasher first waits for one begun after the tap before it starts this app beside Dasher.
+     */
+    private long judgedReadAt = NEVER;
     /** Whether this read was skipped: Android did not give the active window. */
     private boolean readSkipped;
     /**
@@ -1435,7 +1438,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Whether Dasher is in the other half of a split screen, as last seen within {@link #BESIDE_MS} of screen-on time:
-     * the homepage then shows no map of its own, and no "Put Dasher beside" button.
+     * the homepage then shows no map of its own, and no Split or "Swap in Dasher" button.
      */
     static boolean dasherBeside() {
         long at = dasherBesideAt;
@@ -1473,17 +1476,11 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
-    /** Fresh card placement only: no app roots, no cached UI grace, and unknown is an ordinary launcher request. */
+    /**
+     * Fresh card placement only (no app roots, no cached UI grace), for the card tap's log word: Dasher already in one
+     * half ("in its own half") or anything else ("launcher"). A card's tap always starts Dasher's plain launcher.
+     */
     static SplitWindows.CardPlacement cardSplitPlacementNow() {
-        return splitPlacementNow(false);
-    }
-
-    /** Completion of an old split request is more conservative than a new, explicit user handoff. */
-    static boolean mayCompleteSplitNow() {
-        return splitPlacementNow(true) == SplitWindows.CardPlacement.OTHER_PAIR;
-    }
-
-    private static SplitWindows.CardPlacement splitPlacementNow(boolean completing) {
         OfferFilterService service = active;
         if (service == null || service.stopped || service.scannerFaulted || !Consent.accepted(service)) {
             return SplitWindows.CardPlacement.UNKNOWN;
@@ -1493,26 +1490,12 @@ public final class OfferFilterService extends AccessibilityService {
             PowerManager power = service.getSystemService(PowerManager.class);
             if (power != null && !power.isInteractive()) return SplitWindows.CardPlacement.UNKNOWN;
             List<AccessibilityWindowInfo> windows = service.windowSource.get();
-            if (completing) {
-                if (Dashing.now(service)) return SplitWindows.CardPlacement.UNKNOWN;
-                boolean ours = false;
-                if (windows != null) for (AccessibilityWindowInfo window : windows) {
-                    if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION
-                            && service.isOwnWindow(window.getId())) ours = true;
-                    if (Boolean.TRUE.equals(service.splitOtherWindows.get(window.getId()))) {
-                        return SplitWindows.CardPlacement.UNKNOWN;
-                    }
-                }
-                if (!ours) return SplitWindows.CardPlacement.UNKNOWN;
-            }
             return SplitWindows.cardPlacement(windows, window -> {
                 int id = window.getId();
                 if (!realWindowId(id)) return null;
                 if (service.dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
                 if (service.ownWindows.contains(id)) return SplitWindows.Owner.OURS;
-                if (service.otherWindows.contains(id) && (!completing || service.splitOtherWindows.containsKey(id))) {
-                    return SplitWindows.Owner.OTHER;
-                }
+                if (service.otherWindows.contains(id)) return SplitWindows.Owner.OTHER;
                 return null;
             });
         } catch (RuntimeException unavailable) {
@@ -1576,12 +1559,28 @@ public final class OfferFilterService extends AccessibilityService {
      * app), and whether the screen is on and locked: "win=hidden/-/system/0 screen=off locked=yes".
      */
     static String windowsNow(Context context) {
-        String win = "win=unknown";
         OfferFilterService service = active;
+        List<AccessibilityWindowInfo> listed = null;
         if (service != null) {
             try {
-                List<AccessibilityWindowInfo> listed = service.windowSource.get();
+                listed = service.windowSource.get();
                 if (listed == null) listed = Collections.emptyList();
+            } catch (RuntimeException unavailable) {
+                listed = null;
+            }
+        }
+        return windowsLine(context, listed);
+    }
+
+    /**
+     * {@link #windowsNow} from a list of windows already taken (null when Android would not give one): the window
+     * field, and whether the screen is on and locked.
+     */
+    private static String windowsLine(Context context, List<AccessibilityWindowInfo> listed) {
+        String win = "win=unknown";
+        OfferFilterService service = active;
+        if (service != null && listed != null) {
+            try {
                 win = SplitWindows.field(listed, service::knownOwner, service.display());
             } catch (RuntimeException unavailable) {
                 win = "win=unknown";
@@ -1637,38 +1636,9 @@ public final class OfferFilterService extends AccessibilityService {
     static final String SPLIT_SETUP = "a split screen with Dasher is being set up";
 
     /**
-     * Whether this phone lists Android's split action for accessibility services (Android 11 and later can say):
-     * from Android 15 the action is SystemUI's to offer, and a phone that lists none refuses every request for it.
-     * Null when Android cannot say.
-     */
-    static Boolean splitActionListed() {
-        OfferFilterService service = active;
-        if (service == null) return null;
-        try {
-            List<AccessibilityNodeInfo.AccessibilityAction> actions = service.getSystemActions();
-            if (actions == null || actions.isEmpty()) return null;
-            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
-                if (action.getId() == GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN) return true;
-            }
-            return false;
-        } catch (RuntimeException unknown) {
-            return null;
-        }
-    }
-
-    /**
-     * At the user's tap on Split with Dasher: asks Android to split the screen, as its own Split screen accessibility
-     * shortcut does. Never called otherwise.
-     *
-     * @return whether Android took the request
-     */
-    static boolean splitScreen() {
-        return globalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
-    }
-
-    /**
-     * At the user's tap on Split with Dasher, when the phone would not split the screen for us: opens recent apps,
-     * where the user starts split screen from Offer Filter's card. Never called otherwise.
+     * At the user's tap (Split with Dasher during a delivery, or when this app's own start beside Dasher made no
+     * split; the homepage's "Recent apps" while Dasher seemed stuck on its launch screen): opens recent apps, where the
+     * user splits the screen from Offer Filter's card or picks Dasher's own card. Never called otherwise.
      *
      * @return whether Android took the request
      */
@@ -1818,6 +1788,8 @@ public final class OfferFilterService extends AccessibilityService {
         scannerFaulted = false;
         loadTickPending = false;
         restartStateLoaded = false;
+        // The launch-screen line belongs to this screen reader's own watch of a start: a new connection has none.
+        launchHold.set(0);
         active = this;
         // During an active dash the screen is not let time out, whatever app is in front (the owner: "Don't let it lock
         // mid-dash"), so Peek can still bring Dasher up; it never wakes or unlocks the phone, and the power button wins.
@@ -2043,6 +2015,11 @@ public final class OfferFilterService extends AccessibilityService {
             dasherClicks.incrementAndGet();
             putAwayAfterUserTap(at);
         }
+        // A Split tap's Dasher first waits for Dasher: its window changes (and the user's click, counted just above,
+        // which gives it up) are looked at now, not at the next of its looks.
+        if (splitPairingPending && (windowsChanged || clicked || type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
+            pairingLookSoon();
+        }
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
         // during a peek leaves Dasher up.
         if (click != null) {
@@ -2177,37 +2154,818 @@ public final class OfferFilterService extends AccessibilityService {
         }
     };
 
+    // ---- The launch watch: every start of Dasher this app makes (main thread notes, scanner looks) ----
+
+    /** What started Dasher, as the [launch] lines name it: the Split tap's Dasher first. */
+    static final String LAUNCH_SPLIT = "split";
+    /** Swap in Dasher, from this app's half of a split screen. */
+    static final String LAUNCH_SWAP = "swap";
+    /** The header's Open Dasher. */
+    static final String LAUNCH_OPEN_DASHER = "open dasher";
+    /** A tap on one of our cards (Dasher's launcher, or Dasher's own notification intent the card carried). */
+    static final String LAUNCH_CARD = "card";
+    /** Dasher's launcher after a card's own-intent-first start brought nothing of Dasher's up. */
+    static final String LAUNCH_CARD_FALLBACK = "card fallback";
+    /** A peek's start of Dasher's launcher. */
+    static final String LAUNCH_PEEK = "peek";
+    /** Dasher's own notification tap, sent by the screen reader (after a peek's or a card's launch, or on screen). */
+    static final String LAUNCH_OWN_TAP = "own tap";
+    /** After each start of Dasher, Android's list of windows is logged this long after it ("[launch] split + 5 s"). */
+    static final long[] LAUNCH_LOOKS_MS = {5_000, 10_000};
     /**
-     * Main thread: within {@link #LAUNCH_WATCH_MS} of a peek's, a card's or the Split tap's launch of Dasher (or of
-     * Dasher's own notification tap), each of Dasher's window changes is named in the log by its class alone, a few at most: whether
-     * Dasher resumed its screen or stacked its start screen on it. Never any app but Dasher, never any words.
+     * Dasher named only by its launcher activity this long after a start of this app's, with no screen of Dasher's
+     * recognised since: the homepage asks whether Dasher is stuck on its launch screen ({@link #launchLook}).
+     */
+    static final long LAUNCH_VERDICT_MS = 10_000;
+    /**
+     * The homepage's launch-screen line goes after this long at most, by the clock that counts the phone's deep sleep
+     * ({@link SystemClock#elapsedRealtime}), so a night with the screen off never keeps it for the morning.
+     */
+    static final long LAUNCH_HOLD_MS = 30 * 60_000L;
+    /** What a read recognised none of Dasher's screens in, for the [launch] lines. */
+    private static final String UNRECOGNISED = "unrecognised";
+    /** Dasher's activities described in the log at most, per connection ({@link #describeDasherActivity}). */
+    private static final int DESCRIBED_CLASSES = 16;
+    /** One of Dasher's activities is described again (on the describer's thread) at most this often. */
+    private static final long DESCRIBE_AGAIN_MS = 60 * 60_000L;
+    /** Starts of Dasher watched at once at most, each judged on its own ({@link #launches}). */
+    private static final int LAUNCHES_KEPT = 8;
+    /**
+     * Dasher's activities are described for a report on a thread of their own, at the lowest priority: the package
+     * manager's answer (Dasher's whole list of activities) never holds up the scanner, whose next read may be an offer's.
+     */
+    private static final java.util.concurrent.ExecutorService DESCRIBER =
+            java.util.concurrent.Executors.newSingleThreadExecutor(work -> {
+                Thread thread = new Thread(work, "dasher-describe");
+                thread.setDaemon(true);
+                thread.setPriority(Thread.MIN_PRIORITY);
+                return thread;
+            });
+    /** Dasher's versions and activities already described ("version|class"; the describer's thread only). */
+    private static final Set<String> DESCRIBED = new java.util.HashSet<>();
+    /**
+     * Where Dasher's activities are described instead of {@link #DESCRIBER}; null on a phone. Tests run it on the
+     * calling thread (ConsentedTestApp), so no test leaves that work running into the next one, or hold it back to see
+     * that nothing of it ran on the scanner.
+     */
+    static volatile java.util.concurrent.Executor describerForTests;
+
+    /**
+     * One start of Dasher this app made: what started it, when, Dasher's launcher activity, Dasher's window IDs known
+     * before it, and what Dasher's own window changes and reads showed since. Written on the main thread (window
+     * changes) and the scanner (reads); nothing of it is kept.
+     */
+    private static final class LaunchWatch {
+        final String path;
+        /** The log's source for the window-class lines: "split" for the Split button's starts, else "peek". */
+        final String tag;
+        final long at;
+        /** The full class name of Dasher's launcher activity as last resolved, or null. */
+        final String launcher;
+        final Set<Integer> knownBefore;
+        /** A window change of Dasher's named its launcher activity. */
+        volatile boolean launcherSeen;
+        /** Dasher is past its launcher: one of its own other classes was named, or a read recognised its screen. */
+        volatile boolean past;
+        /** The last class Dasher's window changes named (short), and whether its window was new since the start. */
+        volatile String lastClass;
+        volatile boolean lastNew;
+        /** What the last read since the start made of Dasher's screen ({@link #readWord}), or null for none. */
+        volatile String lastRead;
+        /** The verdict was logged for this start (scanner). */
+        boolean verdict;
+
+        LaunchWatch(String path, long at, String launcher, Set<Integer> knownBefore) {
+            this.path = path;
+            this.tag = LAUNCH_SPLIT.equals(path) || LAUNCH_SWAP.equals(path) || LAUNCH_OPEN_DASHER.equals(path)
+                    ? "split" : "peek";
+            this.at = at;
+            this.launcher = launcher;
+            this.knownBefore = knownBefore;
+        }
+    }
+
+    /** The newest start of Dasher this app made, watched; null before the first. */
+    private volatile LaunchWatch launch;
+    /**
+     * Every start of Dasher this app made whose verdict may still come ({@link #LAUNCH_VERDICT_MS}), oldest first, a
+     * few at most: Dasher's window changes and reads tell each of them, and each is judged on its own, so a later start
+     * (Dasher's own notification tap a card's or a peek's watch sent, about 2.5 s after it) never drops an earlier one's
+     * verdict, and a Split tap's pairing keeps the watch its own start armed. Changed under its own lock; read from any
+     * thread.
+     */
+    private final java.util.concurrent.CopyOnWriteArrayList<LaunchWatch> launches =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    /**
+     * When (elapsed real time, which counts deep sleep) Dasher was judged still on its launch screen after a start of
+     * this app's, 0 for none: the homepage's launch-screen line shows while it holds ({@link #launchScreenHeldSince}).
+     * Memory only.
+     */
+    private static final AtomicLong launchHold = new AtomicLong();
+    /** The same moment by the wall clock, so a dash begun since lifts the hold. */
+    private static volatile long launchHoldWall;
+    /**
+     * When (uptime) each of Dasher's activities was last handed to the describer ({@link #describeDasherActivity}), by
+     * full class name: a sighting within {@link #DESCRIBE_AGAIN_MS} costs a map lookup, nothing more.
+     */
+    private final ConcurrentHashMap<String, Long> describedAt = new ConcurrentHashMap<>();
+
+    /**
+     * Main thread, for each of Dasher's window changes: within {@link #LAUNCH_WATCH_MS} of the newest start of Dasher
+     * this app made (a peek's, a card's, the Split button's, Open Dasher's, or Dasher's own notification tap), each is
+     * named in the log by its class alone, a few at most, with whether its window was new since that start: whether
+     * Dasher resumed its screen or stacked its start screen on it. Within {@link #LAUNCH_VERDICT_MS} of each start
+     * watched it also tells that start's watch whether Dasher showed its launcher activity or went past it; and a class
+     * of Dasher's own other than its launcher lifts the launch-screen line. A framework class (a dialog, a view's pane
+     * title) says neither. Never any app but Dasher, never any words; nothing asked of the package manager here (its
+     * description goes to its own thread).
      */
     private void noteDasherWindow(AccessibilityEvent event, long at) {
-        if (launchWatchUntil == NEVER || at >= launchWatchUntil || launchWindowLines >= LAUNCH_WINDOW_LINES) return;
+        boolean watching = false;
+        for (LaunchWatch watch : launches) {
+            if (at - watch.at < LAUNCH_VERDICT_MS) watching = true;
+        }
+        boolean held = launchHold.get() != 0;
+        if (!watching && !held) return;
         CharSequence name = event.getClassName();
         if (name == null || name.length() == 0) return;
-        launchWindowLines++;
         String full = name.toString();
-        DiagnosticLog.log(this, "peek", "Dasher window: " + full.substring(full.lastIndexOf('.') + 1));
+        String shortName = shortClass(full);
+        boolean framework = frameworkClass(full);
+        int id = event.getWindowId();
+        for (LaunchWatch watch : launches) {
+            if (at - watch.at >= LAUNCH_VERDICT_MS) continue;
+            String launcher = watch.launcher != null ? watch.launcher : DasherSplit.launcherClass();
+            // Dasher's launcher not known: no class can say Dasher is past it, nor that it is only on it.
+            boolean launcherClass = launcher != null && full.equals(launcher);
+            watch.lastClass = shortName;
+            watch.lastNew = !realWindowId(id) || !watch.knownBefore.contains(id);
+            if (launcherClass) watch.launcherSeen = true;
+            else if (launcher != null && !framework) watch.past = true;
+        }
+        LaunchWatch newest = launch;
+        if (newest != null && at - newest.at < LAUNCH_VERDICT_MS && launchWatchUntil != NEVER
+                && at < launchWatchUntil && launchWindowLines < LAUNCH_WINDOW_LINES) {
+            launchWindowLines++;
+            boolean fresh = !realWindowId(id) || !newest.knownBefore.contains(id);
+            DiagnosticLog.log(this, newest.tag, "Dasher window: " + shortName
+                    + (fresh ? " (new window)" : " (known window)"));
+            if (!framework) describeDasherActivity(full);
+        }
+        String launcher = newest != null && newest.launcher != null ? newest.launcher : DasherSplit.launcherClass();
+        boolean drawn = launcher != null && !full.equals(launcher) && !framework;
+        if (held && drawn) liftLaunchHold(this, shortName, "Dasher drew");
+    }
+
+    /** A class name's last part: "Home" for "com.doordash.driverapp.Home". */
+    private static String shortClass(String full) {
+        return full == null ? "none" : full.substring(full.lastIndexOf('.') + 1);
+    }
+
+    /** Android's own classes (a dialog, a view announcing a pane): they say nothing of which screen of Dasher's is up. */
+    private static boolean frameworkClass(String full) {
+        return full.startsWith("android.") || full.startsWith("androidx.")
+                || full.startsWith("com.google.android.material.");
     }
 
     /**
-     * The Split tap (or its completion) started Dasher's launcher beside this app: Dasher's window changes are named in
-     * the log as after a peek's launch ({@link #noteDasherWindow}). Any thread.
+     * A start of Dasher this app just made, from any thread (the Split button's starts, Open Dasher, a card's tap): its
+     * window changes are named in the log, Android's list of windows is logged {@link #LAUNCH_LOOKS_MS} after it, and
+     * Dasher named only by its launcher {@link #LAUNCH_VERDICT_MS} after it shows the homepage's launch-screen line.
+     *
+     * @param path what started it ({@link #LAUNCH_SPLIT}, {@link #LAUNCH_CARD}, …)
      */
-    static void splitLaunched() {
+    static void launchWatch(String path) {
         OfferFilterService service = active;
         if (service == null || service.stopped) return;
-        service.watchLaunch();
+        service.watchLaunch(path);
     }
 
-    /** Any thread: Dasher was just launched (or sent its own notification tap): its window changes are named again. */
-    private void watchLaunch() {
-        long until = SystemClock.uptimeMillis() + LAUNCH_WATCH_MS;
+    /**
+     * Any thread: Dasher was just launched (or sent its own notification tap): its window changes are named again, and
+     * this start is watched beside any earlier one whose verdict is still to come.
+     */
+    private void watchLaunch(String path) {
+        long now = SystemClock.uptimeMillis();
+        // Dasher's launcher activity, so its window change is told from Dasher past it: resolved once per process.
+        if (DasherSplit.launcherClass() == null) DasherSplit.launcher(this);
+        LaunchWatch watch = new LaunchWatch(path, now, DasherSplit.launcherClass(),
+                new java.util.HashSet<>(dasherWindowIds));
+        synchronized (launches) {
+            for (LaunchWatch old : launches) {
+                if (now - old.at > LAUNCH_VERDICT_MS + PAIRING_LOOK_MS) launches.remove(old);
+            }
+            while (launches.size() >= LAUNCHES_KEPT) launches.remove(0);
+            launches.add(watch);
+        }
+        launch = watch;
+        long until = now + LAUNCH_WATCH_MS;
         onMainFirst(() -> {
             launchWindowLines = 0;
             launchWatchUntil = until;
         });
+        for (long after : LAUNCH_LOOKS_MS) scanner.postDelayed(() -> launchLook(watch, after), after);
+    }
+
+    /**
+     * Scanner thread, {@link #LAUNCH_LOOKS_MS} after a start of Dasher: Android's list of windows (nothing asked of any
+     * app), how many of Dasher's windows it lists and how many are new since the start, the last class Dasher named
+     * and what the last read since the start made of its screen. At {@link #LAUNCH_VERDICT_MS}, for each start on its
+     * own (a later start, such as Dasher's own notification tap after a card's, drops no earlier one's verdict, unless
+     * Dasher went past its launcher for it): Dasher named only by its launcher, with no screen of its recognised, is
+     * logged once as still on its launch screen, and the homepage's line asks the user ({@link
+     * #launchScreenHeldSince}). Nothing is done to Dasher for it: no start, no Back, no task moved.
+     */
+    private void launchLook(LaunchWatch watch, long after) {
+        if (stopped) return;
+        List<AccessibilityWindowInfo> listed;
+        try {
+            listed = windowSource.get();
+        } catch (RuntimeException unavailable) {
+            listed = null;
+        }
+        if (listed == null) listed = Collections.emptyList();
+        int dasher = 0;
+        int fresh = 0;
+        for (AccessibilityWindowInfo window : listed) {
+            int id = window.getId();
+            if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || !realWindowId(id)
+                    || !dasherWindowIds.contains(id)) {
+                continue;
+            }
+            dasher++;
+            if (!watch.knownBefore.contains(id)) fresh++;
+        }
+        String lastClass = watch.lastClass;
+        String lastRead = watch.lastRead;
+        DiagnosticLog.log(this, "launch", watch.path + " + " + after / 1000 + " s: " + windowsLine(this, listed)
+                + "; Dasher windows listed " + dasher + " (new " + fresh + "); last Dasher class "
+                + (lastClass == null ? "none" : lastClass) + "; last read " + (lastRead == null ? "none" : lastRead));
+        if (after < LAUNCH_VERDICT_MS) return;
+        // Its last look: nothing more of Dasher's is told to it.
+        launches.remove(watch);
+        if (watch.verdict || !watch.launcherSeen || watch.past) return;
+        // A newer start Dasher went past its launcher for speaks for this one too.
+        LaunchWatch newest = launch;
+        if (newest != null && newest != watch && newest.at > watch.at && newest.past) return;
+        watch.verdict = true;
+        launchHoldWall = System.currentTimeMillis();
+        launchHold.set(Math.max(1, SystemClock.elapsedRealtime()));
+        DiagnosticLog.log(this, "launch", "Dasher still on its launch screen " + after / 1000 + " s after "
+                + watch.path + " (only " + shortClass(watch.launcher) + " named; no Dasher screen recognised)");
+    }
+
+    /**
+     * After a read (scanner thread): what it recognised of Dasher's screen, for the launch watch, the Split tap's wait
+     * for Dasher and the launch-screen line. From the read just made: no word kept, no new call into Dasher; nothing
+     * at all while none of them is under way.
+     *
+     * @param started when the read began (uptime): only a read begun after a start speaks for it
+     */
+    private void noteLaunchRead(long started) {
+        long now = SystemClock.uptimeMillis();
+        boolean watching = false;
+        for (LaunchWatch watch : launches) {
+            if (now - watch.at <= LAUNCH_VERDICT_MS && started >= watch.at) watching = true;
+        }
+        boolean held = launchHold.get() != 0;
+        SplitPairing pairing = splitPairing;
+        if (!watching && !held && pairing == null) return;
+        String word = readWord();
+        if (word != null) {
+            boolean recognised = !UNRECOGNISED.equals(word);
+            for (LaunchWatch watch : launches) {
+                if (now - watch.at > LAUNCH_VERDICT_MS || started < watch.at) continue;
+                watch.lastRead = word;
+                if (recognised) watch.past = true;
+            }
+            if (held && recognised) liftLaunchHold(this, word, "Dasher drew");
+        }
+        if (pairing != null && pairing.ownAt == NEVER) {
+            scanner.removeCallbacks(pairingTick);
+            scanner.post(pairingTick);
+        }
+    }
+
+    /**
+     * What the read just made recognised of Dasher's screen, in fixed words: offer, question, paused, over,
+     * navigation, delivery, home, waiting, or {@link #UNRECOGNISED}; null for a read that read nothing of Dasher (a
+     * skipped read, or one too big to read).
+     */
+    private String readWord() {
+        if (readSkipped || sceneLabels == null) return null;
+        if (offerOnScreen || offerEvidence) return "offer";
+        if (readShowsQuestion) return "question";
+        Scan primary = readPrimary;
+        List<String> labels = primary != null ? withParts(primary) : sceneLabels;
+        if (OfferEvidence.isPaused(labels)) return "paused";
+        if (OfferEvidence.isDashOver(labels)) return "over";
+        if (DasherScene.showsNavigation(labels)) return "navigation";
+        if (DasherScene.showsRoute(labels) || AcceptedOfferTracker.isDeliveryScreen(labels)) return "delivery";
+        if (OfferEvidence.isPreDashHome(labels)) return "home";
+        if (DasherScene.showsWaiting(labels) || OfferEvidence.isIdle(labels)) return "waiting";
+        return UNRECOGNISED;
+    }
+
+    /**
+     * When (elapsed real time) the homepage's "Dasher stuck on its launch screen?" line began to hold, 0 while it does
+     * not (any thread; the homepage asks once a second). It lifts when a read recognises a screen of Dasher's, when
+     * Dasher names one of its own classes other than its launcher, when a dash begins after it, after {@link
+     * #LAUNCH_HOLD_MS} (deep sleep counted), or at the user's tap on its Recent apps; each but the last is logged
+     * ("[split] launch-screen line gone: …").
+     */
+    static long launchScreenHeldSince(Context context) {
+        long at = launchHold.get();
+        if (at == 0) return 0;
+        long now = SystemClock.elapsedRealtime();
+        if (now < at || now - at >= LAUNCH_HOLD_MS) {
+            liftLaunchHold(context, null, "30 minutes");
+            return 0;
+        }
+        long wall = launchHoldWall;
+        long dash = Dashing.currentStart(context);
+        if (wall != 0 && dash > wall) {
+            liftLaunchHold(context, null, "a new dash");
+            return 0;
+        }
+        return at;
+    }
+
+    /** The user tapped the launch-screen line's Recent apps (main thread): the line goes. */
+    static void launchScreenAnswered() {
+        launchHold.set(0);
+    }
+
+    /** For tests: Dasher judged still on its launch screen at {@code uptime} (0 for not). */
+    static void holdLaunchScreen(long uptime) {
+        launchHoldWall = uptime == 0 ? 0 : System.currentTimeMillis();
+        launchHold.set(uptime == 0 ? 0
+                : Math.max(1, SystemClock.elapsedRealtime() - (SystemClock.uptimeMillis() - uptime)));
+    }
+
+    /** For tests: no launch-screen line. */
+    static void forgetLaunchScreen() {
+        holdLaunchScreen(0);
+    }
+
+    /**
+     * The launch-screen line lifts, once: logged as Dasher past its launch screen ({@code what}: the screen a read
+     * recognised, or the class Dasher named), then why the line went.
+     */
+    private static void liftLaunchHold(Context context, String what, String why) {
+        long at = launchHold.getAndSet(0);
+        if (at == 0) return;
+        if (what != null) {
+            DiagnosticLog.log(context, "launch", "Dasher past its launch screen "
+                    + Math.max(0, SystemClock.elapsedRealtime() - at) / 1000 + " s after the verdict (" + what + ")");
+        }
+        DiagnosticLog.log(context, "split", "launch-screen line gone: " + why);
+    }
+
+    /**
+     * Any thread: how one of Dasher's activities starts (its launcher, or one a launch watch named), from Dasher's own
+     * manifest as Android reports it, for a report, on the describer's own thread ({@link #DESCRIBER}): never on the
+     * scanner, whose next read may be an offer's, and never asked of Dasher. Here only a map lookup: an activity handed
+     * over within {@link #DESCRIBE_AGAIN_MS} (a few at most per connection) costs nothing more. There the package
+     * manager is asked once, and its line logged once per Dasher version (the launcher's as a state: logged again only
+     * when it changes).
+     */
+    private void describeDasherActivity(String className) {
+        describeDasherActivity(className, className != null && className.equals(DasherSplit.launcherClass()));
+    }
+
+    /**
+     * {@link #describeDasherActivity(String)} for an activity known to be (or not to be) Dasher's launcher: at a peek's
+     * start and the Split tap's, and when a launch watch names it.
+     */
+    private void describeDasherActivity(String className, boolean launcher) {
+        if (className == null || className.isEmpty()) return;
+        long now = SystemClock.uptimeMillis();
+        Long last = describedAt.get(className);
+        if (last != null && now >= last && now - last < DESCRIBE_AGAIN_MS) return;
+        if (last == null && describedAt.size() >= DESCRIBED_CLASSES) return;
+        describedAt.put(className, now);
+        Context context = getApplicationContext();
+        java.util.concurrent.Executor describer = describerForTests;
+        try {
+            (describer != null ? describer : DESCRIBER).execute(() -> describeNow(context, className, launcher));
+        } catch (RuntimeException refused) {
+            // Only a report's detail.
+        }
+    }
+
+    /** The describer's thread: one of Dasher's activities described, once per Dasher version. */
+    @SuppressWarnings("deprecation")
+    private static void describeNow(Context context, String className, boolean launcher) {
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo(DASHER_PACKAGE,
+                    PackageManager.GET_ACTIVITIES);
+            if (launcher) {
+                DiagnosticLog.logOnChange(context, "launch", "dasher-launcher",
+                        describeActivity(info, className, "launcher"));
+            } else if (DESCRIBED.add(info.versionName + "|" + className)) {
+                DiagnosticLog.log(context, "launch", describeActivity(info, className, "activity"));
+            }
+        } catch (PackageManager.NameNotFoundException | RuntimeException unknown) {
+            // Only a report's detail.
+        }
+    }
+
+    /**
+     * "Dasher 8.100.12 activity Home: launchMode=2 taskAffinity=same clearTaskOnLaunch=false finishOnTaskLaunch=false
+     * noHistory=false excludeFromRecents=false": its task affinity is said only as the package's own ("same"),
+     * another ("other") or none, never by name.
+     */
+    private static String describeActivity(PackageInfo info, String className, String word) {
+        String head = "Dasher " + info.versionName + " " + word + " " + shortClass(className);
+        ActivityInfo found = null;
+        if (info.activities != null) {
+            for (ActivityInfo activity : info.activities) {
+                if (className.equals(activity.name)) found = activity;
+            }
+        }
+        if (found == null) return head + " (not listed)";
+        String own = info.applicationInfo != null && info.applicationInfo.taskAffinity != null
+                ? info.applicationInfo.taskAffinity : info.packageName;
+        String affinity = found.taskAffinity == null || found.taskAffinity.isEmpty() ? "none"
+                : found.taskAffinity.equals(own) ? "same" : "other";
+        return head + ": launchMode=" + found.launchMode + " taskAffinity=" + affinity
+                + " clearTaskOnLaunch=" + ((found.flags & ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH) != 0)
+                + " finishOnTaskLaunch=" + ((found.flags & ActivityInfo.FLAG_FINISH_ON_TASK_LAUNCH) != 0)
+                + " noHistory=" + ((found.flags & ActivityInfo.FLAG_NO_HISTORY) != 0)
+                + " excludeFromRecents=" + ((found.flags & ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS) != 0);
+    }
+
+    // ---- The Split tap's Dasher first: this app's own task started beside Dasher, once (scanner thread) ----
+
+    /** Between Dasher's own window changes, the pairing looks at Android's list of windows this often. */
+    static final long PAIRING_LOOK_MS = 250;
+    /** Why the pairing last waited, as its "not paired" line says once the tap's time ran out. */
+    private static final String WAIT_UP = "Dasher not up " + DasherSplit.PENDING_MS / 1000 + " s after the tap";
+    private static final String WAIT_LAUNCHER = "Dasher still on its launch screen";
+    private static final String WAIT_UNNAMED = "Dasher's screen not recognised " + DasherSplit.PENDING_MS / 1000
+            + " s after the tap";
+    private static final String WAIT_READ = "Dasher's latest screen not read " + DasherSplit.PENDING_MS / 1000
+            + " s after the tap";
+    private static final String WAIT_OFFER = "an offer or Dasher's question is up";
+    private static final String WAIT_BUSY = "a decline, peek or automatic acceptance is under way";
+    /**
+     * Paused (auto-decline off, or no rule set): nothing of Dasher's is read, so no read can say that no offer is up,
+     * and no split is made beside it ({@link DasherSplit#start} opens recent apps then).
+     */
+    static final String NOT_READING = "not reading Dasher while paused";
+    /** Where the pairing's look found Dasher. */
+    private static final int PAIR_NOT_YET = 0;
+    private static final int PAIR_DASHER = 1;
+    private static final int PAIR_OTHER = 2;
+    private static final int PAIR_SPLIT = 3;
+    /** Unknown windows whose root (alone) a pairing asks for at most, each once, to learn whose they are. */
+    private static final int PAIR_ASKED_MAX = 8;
+
+    /** A Split tap's Dasher-first start: Dasher started, this app's own task to start beside it once it is up. */
+    private static final class SplitPairing {
+        final int gen;
+        final long tapAt;
+        /** The user's clicks on Dasher, and the last card tap (Peek's clock), as the tap was made. */
+        final long clicks;
+        final long cardTaps;
+        /** The launch watch the tap's start of Dasher armed. */
+        final LaunchWatch watch;
+        /** Unknown windows whose root alone was asked for, to learn whose they are. */
+        final Set<Integer> asked = new java.util.HashSet<>();
+        /** When this app's own start beside Dasher was made, {@link #NEVER} before. */
+        long ownAt = NEVER;
+
+        SplitPairing(int gen, long tapAt, long clicks, long cardTaps, LaunchWatch watch) {
+            this.gen = gen;
+            this.tapAt = tapAt;
+            this.clicks = clicks;
+            this.cardTaps = cardTaps;
+            this.watch = watch;
+        }
+    }
+
+    /** The Split tap's pairing under way (scanner only), null for none. */
+    private SplitPairing splitPairing;
+    /** Whether one is waiting for Dasher (main thread reads): Dasher's window changes and the user's clicks look again. */
+    private volatile boolean splitPairingPending;
+    private final Runnable pairingTick = this::pairingTick;
+    private final Runnable ownBesideCheck = this::ownBesideCheck;
+
+    /**
+     * The Split tap started Dasher's launcher, full screen (main thread, from {@link DasherSplit}): once Dasher is up past
+     * its launch screen with nothing of an offer up, this app's own task is started beside it, once, launch-adjacent.
+     * From Android's list of windows and Dasher's own events only: nothing new is read from Dasher for it, Dasher's
+     * root is never asked for (an unknown window's alone, once, to learn whose it is), and nothing is kept.
+     *
+     * @param gen the tap's number ({@link DasherSplit#pairingCurrent})
+     */
+    static void pairWhenDasherIsUp(Context context, int gen) {
+        OfferFilterService service = active;
+        if (service == null || service.stopped) {
+            if (DasherSplit.endPairing(gen)) {
+                DiagnosticLog.log(context, "split", "not paired: screen reading is off; nothing more opened");
+            }
+            return;
+        }
+        long at = SystemClock.uptimeMillis();
+        SplitPairing pairing = new SplitPairing(gen, at, service.dasherClicks.get(), service.cardTapAt, service.launch);
+        service.splitPairingPending = true;
+        service.scanner.post(() -> service.beginPairing(pairing));
+    }
+
+    private void beginPairing(SplitPairing pairing) {
+        if (stopped) return;
+        scanner.removeCallbacks(pairingTick);
+        scanner.removeCallbacks(ownBesideCheck);
+        splitPairing = pairing;
+        // How Dasher's launcher starts, once per Dasher version, for a report (on the describer's thread).
+        describeDasherActivity(DasherSplit.launcherClass(), true);
+        pairingTick();
+    }
+
+    /** Main thread: Dasher's window changed, or the user clicked on it, while the pairing waits: it looks again now. */
+    private void pairingLookSoon() {
+        scanner.removeCallbacks(pairingTick);
+        scanner.post(pairingTick);
+    }
+
+    /**
+     * The pairing's look (scanner): given up for the user's tap on Dasher, a card's tap, the screen off or locked,
+     * another app in front, a split made another way, the notice not accepted, or auto-decline paused (nothing of
+     * Dasher's is read then, so no read can say no offer is up); else, with Dasher up full screen past its launch
+     * screen, its latest change read and nothing of an offer up (no offer's notification tracked; no decline,
+     * question, decline-error recovery, automatic acceptance or peek under way), this app's own start beside it; else
+     * it looks again, until {@link DasherSplit#PENDING_MS} after the tap.
+     */
+    private void pairingTick() {
+        SplitPairing pairing = splitPairing;
+        if (pairing == null || stopped) return;
+        scanner.removeCallbacks(pairingTick);
+        if (pairing.ownAt != NEVER) return;
+        // Ended on the page (it came back without a split, a newer tap): that said why.
+        if (!DasherSplit.pairingCurrent(pairing.gen)) {
+            forgetPairing(pairing);
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        String cancel = pairingCancel(pairing);
+        if (cancel != null) {
+            endPairing(pairing, cancel);
+            return;
+        }
+        int place = pairingPlace(pairing);
+        if (place == PAIR_OTHER) {
+            endPairing(pairing, "another app came to the front");
+            return;
+        }
+        if (place == PAIR_SPLIT) {
+            endPairing(pairing, "the screen split before this app's own start");
+            return;
+        }
+        LaunchWatch watch = pairing.watch;
+        String waiting;
+        if (place != PAIR_DASHER) {
+            waiting = WAIT_UP;
+        } else if (watch == null || !watch.past) {
+            waiting = watch != null && watch.launcherSeen ? WAIT_LAUNCHER : WAIT_UNNAMED;
+        } else if (passive || queued.get() != QUEUED_NONE || quietScanPending || judgedReadAt < pairing.tapAt) {
+            // Paused by the saved rules gives the pairing up (above); still paused only until the resume's read.
+            waiting = WAIT_READ;
+        } else {
+            waiting = pairingBusy(now);
+        }
+        if (waiting == null) {
+            startOwnBeside(pairing, now);
+            return;
+        }
+        if (now - pairing.tapAt >= DasherSplit.PENDING_MS) {
+            endPairing(pairing, waiting);
+            return;
+        }
+        scanner.postDelayed(pairingTick, PAIRING_LOOK_MS);
+    }
+
+    /** Why the pairing is given up now, whatever Dasher shows, or null. */
+    private String pairingCancel(SplitPairing pairing) {
+        if (!Consent.accepted(this)) return "the notice is not accepted";
+        if (!phoneReadable()) return "the screen is off or locked";
+        if (dasherClicks.get() != pairing.clicks) return "your tap on Dasher";
+        if (cardTapAt != pairing.cardTaps) return "a card was tapped";
+        if (pausedNow()) return NOT_READING;
+        return null;
+    }
+
+    /**
+     * Where Android's list of windows has Dasher, for the pairing (window metadata; an unknown active window's root
+     * alone is asked for once to learn whose it is; Dasher's never): up full screen in front, uncovered; another app in
+     * front; the screen split; or not yet (this app's own screen, the shade, nothing active).
+     */
+    private int pairingPlace(SplitPairing pairing) {
+        List<AccessibilityWindowInfo> windows;
+        try {
+            windows = windowSource.get();
+        } catch (RuntimeException unavailable) {
+            return PAIR_NOT_YET;
+        }
+        if (windows == null) return PAIR_NOT_YET;
+        boolean split = false;
+        boolean system = false;
+        AccessibilityWindowInfo activeApp = null;
+        for (AccessibilityWindowInfo window : windows) {
+            int type = window.getType();
+            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
+            if (!window.isActive()) continue;
+            if (type == AccessibilityWindowInfo.TYPE_APPLICATION && activeApp == null) activeApp = window;
+            else if (type == AccessibilityWindowInfo.TYPE_SYSTEM) system = true;
+        }
+        if (split) return PAIR_SPLIT;
+        if (system || activeApp == null) return PAIR_NOT_YET;
+        SplitWindows.Owner owner = pairingOwner(pairing, activeApp);
+        if (owner == SplitWindows.Owner.OTHER) return PAIR_OTHER;
+        if (owner == SplitWindows.Owner.DASHER && activeWindowUncovered(windows, activeApp)) return PAIR_DASHER;
+        return PAIR_NOT_YET;
+    }
+
+    /** Whose the active window is, by its ID; an unknown one's root alone is asked for once. Null when not known. */
+    private SplitWindows.Owner pairingOwner(SplitPairing pairing, AccessibilityWindowInfo window) {
+        int id = window.getId();
+        if (!realWindowId(id)) return window == lastReadableWindow ? SplitWindows.Owner.DASHER : null;
+        if (dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
+        if (isOwnWindow(id)) return SplitWindows.Owner.OURS;
+        if (otherWindows.contains(id)) return SplitWindows.Owner.OTHER;
+        if (pairing.asked.size() >= PAIR_ASKED_MAX || !pairing.asked.add(id)) return null;
+        AccessibilityNodeInfo root = fetchRoot(window, ROOT_IDENTITY, true);
+        if (root == null) return null;
+        if (isDasher(root)) return SplitWindows.Owner.DASHER;
+        return getPackageName().contentEquals(nonNull(root.getPackageName())) ? SplitWindows.Owner.OURS
+                : SplitWindows.Owner.OTHER;
+    }
+
+    /**
+     * Whether something of an offer, or of the app's own work on one, would meet the split now: the last read showed
+     * an offer's figures, Dasher's question or a screen too big to read; an offer's notification is tracked (Dasher
+     * draws its offer a little after it, so a read of the wait just before says nothing of it); or a decline (its
+     * question awaited or held, a decline-error recovery), an automatic acceptance or a peek is under way. Never asked
+     * while paused: the pairing is given up then ({@link #NOT_READING}).
+     */
+    private String pairingBusy(long now) {
+        if (readShowsOffer() || scene == DasherScene.OFFER || OfferNotificationService.hasActiveOffer()) {
+            return WAIT_OFFER;
+        }
+        if (declineUnderWay(now) || declineState.hasPendingConfirmation(now) || heldConfirmation != null
+                || declineError.pending() || peek.active() || autoAccept.candidate() != null || autoAcceptWatched
+                || (autoRequestedAt != 0 && now - autoRequestedAt <= AutoAccept.SUPPRESS_MS)) {
+            return WAIT_BUSY;
+        }
+        return null;
+    }
+
+    /**
+     * Dasher is up past its launch screen at a safe moment: this app's own task is started beside it, once, as its
+     * task's base intent (else its enabled launcher alias) with exactly two flags, a new task launched adjacent, which
+     * the phone answers by splitting the screen. The only launch-adjacent start this app makes; never of Dasher.
+     */
+    private void startOwnBeside(SplitPairing pairing, long now) {
+        if (!DasherSplit.ownStarting(pairing.gen)) {
+            forgetPairing(pairing);
+            return;
+        }
+        pairing.ownAt = now;
+        splitPairingPending = false;
+        Intent own = ownTaskIntent();
+        String refused = own == null ? "no launch intent of its own" : null;
+        if (own != null) {
+            own.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+            try {
+                peekStarter.accept(own);
+            } catch (RuntimeException failed) {
+                // Refused (not from the background, say), or a start Android answered with an error of its own: never
+                // the scanner's failure, which would stop all screen reading. Recent apps instead.
+                refused = failed.getClass().getSimpleName();
+            }
+        }
+        if (refused != null) {
+            forgetPairing(pairing);
+            String why = "this app's own launch-adjacent start was refused: opening recent apps (" + refused + ")";
+            onMain(() -> DasherSplit.recentAppsAfterOwnStart(this, pairing.gen, why));
+            return;
+        }
+        LaunchWatch watch = pairing.watch;
+        String named = watch == null || watch.lastClass == null ? "no class named"
+                : watch.lastClass + (watch.lastNew ? ", new window" : ", known window");
+        DiagnosticLog.log(this, "split", "Dasher up " + (now - pairing.tapAt) + " ms after the tap (" + named
+                + "): this app's own launch-adjacent start");
+        scanner.postDelayed(ownBesideCheck, DasherSplit.VERIFY_MS);
+    }
+
+    /**
+     * Offer Filter's own task's base intent, as Android lists it ({@link ActivityManager#getAppTasks}: the task whose
+     * root is the homepage), else its enabled launcher alias; null when neither. Flags are the caller's.
+     */
+    private Intent ownTaskIntent() {
+        try {
+            ActivityManager activities = getSystemService(ActivityManager.class);
+            if (activities != null) {
+                for (ActivityManager.AppTask task : activities.getAppTasks()) {
+                    ActivityManager.RecentTaskInfo info = task.getTaskInfo();
+                    if (info == null || info.baseIntent == null) continue;
+                    ComponentName root = info.baseIntent.getComponent();
+                    if (root == null) root = info.baseActivity;
+                    if (LauncherAppearance.ourHome(this, root)) return new Intent(info.baseIntent);
+                }
+            }
+        } catch (RuntimeException unavailable) {
+            // Its launcher alias, below.
+        }
+        return DasherSplit.launcher(this, getPackageName());
+    }
+
+    /**
+     * {@link DasherSplit#VERIFY_MS} after this app's own start beside Dasher: split (the divider listed), and the line
+     * says so, unless the page said it already. Else recent apps open with the phone's words (main thread), unless
+     * something since would meet them: the user's tap on Dasher or a card, the screen off or locked, the notice, a
+     * pause, another app in front, an offer or its notification, or a decline, peek or automatic acceptance under way
+     * (the pairing's own checks, again); then nothing more opens, and the line says why.
+     */
+    private void ownBesideCheck() {
+        SplitPairing pairing = splitPairing;
+        if (pairing == null || pairing.ownAt == NEVER || stopped) return;
+        forgetPairing(pairing);
+        if (!DasherSplit.ownStartCurrent(pairing.gen)) return;
+        int place = pairingPlace(pairing);
+        if (place == PAIR_SPLIT) {
+            if (DasherSplit.ownStartSplit(pairing.gen)) logSplitByOwnStart();
+            return;
+        }
+        String why = pairingCancel(pairing);
+        if (why == null && place == PAIR_OTHER) why = "another app came to the front";
+        if (why == null) why = pairingBusy(SystemClock.uptimeMillis());
+        if (why != null) {
+            if (DasherSplit.endPairing(pairing.gen)) {
+                DiagnosticLog.log(this, "split", "not paired: " + why + " (no split after this app's own start); "
+                        + "nothing more opened");
+            }
+            return;
+        }
+        onMain(() -> DasherSplit.recentAppsAfterOwnStart(this, pairing.gen, "no split " + DasherSplit.VERIFY_MS
+                + " ms after this app's own launch-adjacent start: opening recent apps"));
+    }
+
+    /** The pairing is over (scanner): nothing more of it runs. */
+    private void forgetPairing(SplitPairing pairing) {
+        if (splitPairing != pairing) return;
+        splitPairing = null;
+        splitPairingPending = false;
+        scanner.removeCallbacks(pairingTick);
+    }
+
+    /** The pairing is given up (scanner): nothing more is started, and the line says why, once. */
+    private void endPairing(SplitPairing pairing, String why) {
+        forgetPairing(pairing);
+        if (DasherSplit.endPairing(pairing.gen)) {
+            DiagnosticLog.log(this, "split", "not paired: " + why + "; nothing more opened");
+        }
+    }
+
+    /** A card was tapped (scanner): a pairing waiting for Dasher is given up, and Dasher stays as the card opened it. */
+    private void cancelPairing(String why) {
+        SplitPairing pairing = splitPairing;
+        if (pairing != null && pairing.ownAt == NEVER) endPairing(pairing, why);
+    }
+
+    /**
+     * The screen split after this app's own start beside Dasher (any thread): one line, from the scanner, with where
+     * Dasher is (Android's list of windows) and how many tasks of its own this app has (one more than at the tap means
+     * Android made a second one).
+     */
+    static void splitMadeByOwnStart(Context context) {
+        OfferFilterService service = active;
+        if (service == null || service.stopped) {
+            DiagnosticLog.log(context, "split", "split beside Dasher by this app's own launch-adjacent start (own tasks "
+                    + DasherSplit.ownTasks(context) + "); nothing more opened");
+            return;
+        }
+        service.onScanner(service::logSplitByOwnStart);
+    }
+
+    private void logSplitByOwnStart() {
+        DiagnosticLog.log(this, "split", "split beside Dasher by this app's own launch-adjacent start (" + dasherPlace()
+                + ", own tasks " + DasherSplit.ownTasks(this) + "); nothing more opened");
+    }
+
+    /** "Dasher bottom 48%" from Android's list of windows now ({@link SplitWindows#field}), else not identified. */
+    private String dasherPlace() {
+        try {
+            List<AccessibilityWindowInfo> listed = windowSource.get();
+            if (listed == null) listed = Collections.emptyList();
+            String[] field = SplitWindows.field(listed, this::knownOwner, display()).substring("win=".length())
+                    .split("/");
+            if (field.length == 4 && !"-".equals(field[1])) return "Dasher " + field[1] + " " + field[3] + "%";
+        } catch (RuntimeException unavailable) {
+            // Said as not identified.
+        }
+        return "Dasher not identified";
     }
 
     /** Our touch watch, tab and guide never change which Dasher screen is being read. */
@@ -2283,12 +3041,13 @@ public final class OfferFilterService extends AccessibilityService {
         dasherBesideAt = uptime == 0 ? 0 : screenOnTime(uptime);
     }
 
-    /** For tests: the screen on, and no time off counted. */
+    /** For tests: the screen on, no time off counted, and no launch-screen line. */
     static void forgetScreenState() {
         screenOffSince = 0;
         screenOffTotal = 0;
         ownScreenTouchAt = NEVER;
         deliveryScreenAt = 0;
+        forgetLaunchScreen();
     }
 
     /** For tests: the filter tab over Dasher. */
@@ -2331,6 +3090,11 @@ public final class OfferFilterService extends AccessibilityService {
         boolean first = !stopped;
         stopped = true;
         if (screenAwake != null) screenAwake.stop();
+        // A Split tap's pairing ends with the screen reader that would have made this app's own start.
+        int pairing = DasherSplit.pairing();
+        if (pairing != 0 && !DasherSplit.ownStartCurrent(pairing) && DasherSplit.endPairing(pairing)) {
+            DiagnosticLog.log(this, "split", "not paired: screen reading stopped; nothing more opened");
+        }
         if (active == this) {
             active = null;
             // No commit of Autopilot's is asked of a stopped screen reader (Autopilot then waits for the next one); its
@@ -3889,6 +4653,8 @@ public final class OfferFilterService extends AccessibilityService {
                 Peek.log(service, CARD_BEFORE_UNLOCK);
             }
             service.peekOver("left Dasher up because you tapped the offer's card", Peek.Outcome.INTERRUPTED);
+            // A Split tap's Dasher first waiting for Dasher starts nothing beside it now: the card opened Dasher.
+            service.cancelPairing("a card was tapped");
             // Tapped from a navigation app: the Back to map chip waits for the offer to end.
             service.noteCardFront(atTap);
         });
@@ -3899,12 +4665,12 @@ public final class OfferFilterService extends AccessibilityService {
      * its task: once Dasher is up in front and shows none of the offer's figures {@link Peek#PRESENT_MS} later, with no
      * click of the user's on Dasher since and the offer's notification still posted, Dasher's own notification tap is
      * sent once ({@code own} is the card's copy of it), and never when it was sent for that offer already. "[alert]
-     * card: …" lines say what was done.
+     * card: …" lines say what was done. The start itself is watched as every start of Dasher is ({@link #launchWatch},
+     * from {@link OpenDasherActivity}).
      */
     static void cardOpened(String tag, PendingIntent own) {
         OfferFilterService service = active;
         if (service == null || service.stopped || tag == null) return;
-        service.watchLaunch();
         long clicks = service.dasherClicks.get();
         service.scanner.post(() -> service.watchCardOpen(tag, own, clicks));
     }
@@ -3996,7 +4762,7 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "alert", "card: Dasher's own notification tap: skipped (" + skip + ")");
             return;
         }
-        watchLaunch();
+        watchLaunch(LAUNCH_OWN_TAP);
         try {
             ownTapSender.send(tap.intent, DasherOwnIntent.options(false));
             DiagnosticLog.log(this, "alert", "card: Dasher's own notification tap: requested");
@@ -4090,7 +4856,7 @@ public final class OfferFilterService extends AccessibilityService {
                     + skip + ")");
             return;
         }
-        watchLaunch();
+        watchLaunch(LAUNCH_OWN_TAP);
         try {
             ownTapSender.send(tap.intent, DasherOwnIntent.options(false));
             DiagnosticLog.log(this, "alert", "on screen: " + after + "; Dasher's own notification tap: requested"
@@ -4110,7 +4876,7 @@ public final class OfferFilterService extends AccessibilityService {
     static void cardOpenedOwnFirst(String tag) {
         OfferFilterService service = active;
         if (service == null || service.stopped || tag == null) return;
-        service.watchLaunch();
+        service.watchLaunch(LAUNCH_CARD);
         long windows = service.dasherWindowEvents.get();
         service.scanner.post(() -> service.watchOwnFirst(tag, windows));
     }
@@ -4151,7 +4917,7 @@ public final class OfferFilterService extends AccessibilityService {
                     + skip + ")");
             return;
         }
-        watchLaunch();
+        watchLaunch(LAUNCH_CARD_FALLBACK);
         try {
             peekStarter.accept(launch);
             DiagnosticLog.log(this, "alert", "card: nothing of Dasher's came up " + Peek.seconds(Peek.now() - ownFirstAt)
@@ -4238,7 +5004,7 @@ public final class OfferFilterService extends AccessibilityService {
                 if (why.equals(phone) && isLockRefusal(phone)) keepForUnlock(request);
                 return;
             }
-            logDasherLauncher(dasher);
+            describeDasherActivity(dasher.getClassName(), true);
             // For a post kept for the unlock, Dasher's own window changing since it was kept means the user is opening
             // Dasher (its notification on the lock screen, its icon): the quiet wait then ends with no peek.
             catchUpArming = afterUnlock;
@@ -4506,27 +5272,6 @@ public final class OfferFilterService extends AccessibilityService {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
     }
 
-    /** Once per Dasher version: how its launcher activity starts (its launch mode, task and clearing), for a report. */
-    @SuppressWarnings("deprecation")
-    private void logDasherLauncher(ComponentName dasher) {
-        try {
-            PackageInfo info = getPackageManager().getPackageInfo(DASHER_PACKAGE, PackageManager.GET_ACTIVITIES);
-            ActivityInfo found = null;
-            if (info.activities != null) {
-                for (ActivityInfo activity : info.activities) {
-                    if (dasher.getClassName().equals(activity.name)) found = activity;
-                }
-            }
-            String what = "Dasher " + info.versionName + " launcher " + dasher.getShortClassName()
-                    + (found == null ? " (not listed)" : " launchMode=" + found.launchMode + " taskAffinity="
-                    + found.taskAffinity + " clearTaskOnLaunch="
-                    + ((found.flags & ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH) != 0));
-            DiagnosticLog.logOnChange(this, "peek", "dasher-launcher", what);
-        } catch (PackageManager.NameNotFoundException | RuntimeException unknown) {
-            // Only a report's detail.
-        }
-    }
-
     /** While Dasher shows no offer and its notification is still posted, whether it was withdrawn is asked this often. */
     private static final long POST_CHECK_MS = 1_000;
     /** Not before then (Peek's clock) is the offer's notification asked about again for want of an offer. */
@@ -4763,7 +5508,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         // Published before the call: Dasher's reaction may be read before it even returns.
         peek.ownTapSent(Peek.now());
-        watchLaunch();
+        watchLaunch(LAUNCH_OWN_TAP);
         try {
             ownTapSender.send(tap.intent, DasherOwnIntent.options(false));
             Peek.log(this, "Dasher's own notification tap: requested");
@@ -4888,7 +5633,7 @@ public final class OfferFilterService extends AccessibilityService {
         peekEventsAtOpen = dasherEvents.get();
         peekScreen = "unreadable";
         syncAutomation();
-        watchLaunch();
+        watchLaunch(LAUNCH_PEEK);
         try {
             peekStarter.accept(dasher);
         } catch (RuntimeException refused) {
@@ -5976,7 +6721,10 @@ public final class OfferFilterService extends AccessibilityService {
         } finally {
             lastScanEndAt = SystemClock.uptimeMillis();
             readEvidence = schedulingEvidence();
-            if (judged) dasherScreenKnown = true;
+            if (judged) {
+                dasherScreenKnown = true;
+                judgedReadAt = started;
+            }
             // The read's decision and tap are done: Peek's lines of it now.
             flushPeekLines();
             if (readEvidence && readWaitedMs > 0 && lastReadDurationMs > 0) {
@@ -5997,6 +6745,7 @@ public final class OfferFilterService extends AccessibilityService {
             // After the read's decision and tap: what the tab and guide make of the screen, and the slow-read line.
             scene = sceneOfRead(before);
             noteDashOnScreen();
+            noteLaunchRead(started);
             noteBackToMapRead();
             noteResized();
             noteCardOpenRead();
@@ -6179,7 +6928,15 @@ public final class OfferFilterService extends AccessibilityService {
 
     /** Paused: auto-decline off, or no rule set (the homepage calls both paused). Nothing of Dasher's is read then. */
     private boolean pausedNow() {
-        FilterSettings settings = FilterStore.load(this);
+        return readingPaused(this);
+    }
+
+    /**
+     * Any thread, by the rules as saved: auto-decline off, or no rule set (the homepage calls both paused), so nothing
+     * of Dasher's is read. The Split tap opens recent apps then instead of Dasher first ({@link DasherSplit#start}).
+     */
+    static boolean readingPaused(Context context) {
+        FilterSettings settings = FilterStore.load(context);
         return !settings.enabled || !settings.hasAnyRule();
     }
 
@@ -9063,14 +9820,8 @@ public final class OfferFilterService extends AccessibilityService {
         if (!realWindowId(windowId)) return;
         if (isDasher(root)) { rememberDasher(windowId); return; }
         Set<Integer> set = getPackageName().contentEquals(nonNull(root.getPackageName())) ? ownWindows : otherWindows;
-        if (set.size() >= MAX_OWN_WINDOWS) {
-            set.clear();
-            if (set == otherWindows) splitOtherWindows.clear();
-        }
+        if (set.size() >= MAX_OWN_WINDOWS) set.clear();
         set.add(windowId);
-        String pkg = nonNull(root.getPackageName()).toString();
-        if (set == otherWindows && !pkg.isEmpty()) splitOtherWindows.put(windowId, Peek.NAVIGATION.contains(pkg));
-        else splitOtherWindows.remove(windowId);
     }
 
     private boolean isOwnWindow(int windowId) {
@@ -9279,11 +10030,13 @@ public final class OfferFilterService extends AccessibilityService {
     private static Supplier<String> labelsLine(String head, Scan scan, boolean navigation) {
         List<String> text = new ArrayList<>(scan.text);
         List<String> parts = new ArrayList<>(scan.metricParts);
+        // An unrecognised screen keeps no word, only counts from the read already made (no call into Dasher).
+        String counts = "; nodes " + scan.visited + ", clickable " + scan.clickable + ", with text " + text.size();
         return () -> {
             if (PersonalText.accountScreen(text) || PersonalText.accountScreen(parts)) return DiagnosticLog.NOT_KEPT;
             List<String> all = new ArrayList<>(text);
             all.addAll(parts);
-            if (!PersonalText.recognizedDashScreen(all)) return PersonalText.UNKNOWN_NOT_KEPT;
+            if (!PersonalText.recognizedDashScreen(all)) return PersonalText.UNKNOWN_NOT_KEPT + counts;
             boolean streets = navigation || DasherScene.showsNavigation(all);
             return head + " labels=" + PersonalText.mask(text, streets) + " metricParts="
                     + PersonalText.mask(parts, streets);
@@ -9529,6 +10282,8 @@ public final class OfferFilterService extends AccessibilityService {
         boolean declineOffScreen;
         /** Any visible enabled click target blocks global Back, even an unrecognized control. */
         boolean actionable;
+        /** How many of them the read found: a count only, for an unrecognised screen's line. */
+        int clickable;
         boolean truncated;
         int visited;
         /** Which window this read was of, for the log ("the active window", "another window of Dasher's"). */
@@ -9566,7 +10321,10 @@ public final class OfferFilterService extends AccessibilityService {
             }
             String own = "";
             if (node.isVisibleToUser()) {
-                if (node.isEnabled() && hasClickAction(node)) actionable = true;
+                if (node.isEnabled() && hasClickAction(node)) {
+                    actionable = true;
+                    clickable++;
+                }
                 addLabel(node, node.getText());
                 addLabel(node, node.getContentDescription());
                 own = OfferEvidence.normalize(node.getText() == null ? null : node.getText().toString());
