@@ -61,12 +61,10 @@ import java.util.Locale;
  * middle must be pushed a clear way further in). The ring scale holds still while a knob moves (it may be pushed a
  * little past the outer ring) and settles to fit when it is let go.
  *
- * <p>One round 48 dp button is Autopilot: "Auto" over its bar ("82%"), or over "Off", ringed in purple while on (amber
- * while the acceptance rate is below the goal, as the page's chip is), in grey while off. A tap is the
- * page's ({@link Changes#toggleAutopilot}: off while on; while off, the goal chooser), a long press asks for the goal
- * at any time; it has no drag. The button's words and ring follow the bar quietly: nothing is announced when Autopilot
- * moves it. Screen readers reach each knob and the badge as adjustable controls and the button as a switch, with the
- * long press and the details among its actions.
+ * <p>One round 48 dp button is the learner's switch (0.6.1): "Learn" over "On" or "Off", ringed in teal while on, in
+ * grey while off. A tap turns learning on or off, a long press shows Learned minimums; it has no drag. Autopilot's
+ * control is the page's chip alone. Screen readers reach each knob and the badge as adjustable controls and the button
+ * as a switch, with the long press among its actions.
  *
  * <p>The displayed offer's points are joined in the spokes' order, leaving out a spoke it did not say. Other offers
  * remain in history and can be selected on the skyline; their hidden polygons receive no touches or accessibility

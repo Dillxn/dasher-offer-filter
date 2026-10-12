@@ -669,9 +669,9 @@ final class LegalTexts {
             Dasher shows it, and never with battery saver on or the battery at 20% or less and not charging. It \
             never wakes or unlocks the phone, and the power button still turns the screen off; pausing auto-decline \
             ends the hold. Peek pauses while your phone is locked.
-            - Area mode is a choice in Settings; acceptance learning is the Learn button on the homepage (a long \
-            press shows what it learned). Turning learning off retains bests; confirmed Reset or Clear history \
-            clears them. Neither enables the optional timing study or sharing.
+            - Area mode is the Strict/Area chip beside Autopilot's on the homepage; acceptance learning is the \
+            Learn button on the homepage (a long press shows what it learned). Turning learning off retains bests; \
+            confirmed Reset or Clear history clears them. Neither enables the optional timing study or sharing.
             - Autopilot is on by default; turning it off (from its chip on the homepage) puts the bar back to \
             exactly your minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear \
             history removes it. Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising \
