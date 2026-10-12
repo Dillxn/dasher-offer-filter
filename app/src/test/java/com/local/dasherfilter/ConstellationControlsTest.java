@@ -192,7 +192,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertEquals("Rule saved. Tap the mascot to turn on auto-decline.", ShadowToast.getTextOfLatestToast());
             assertNull("the start line goes once there is a rule", shownTextContaining(content,
                     MainActivity.START_LINE));
-            assertNotNull(shownTextContaining(content, "Paused"));
+            assertNotNull(shownTextContaining(content, MainActivity.PAUSED_LINE));
         }
     }
 

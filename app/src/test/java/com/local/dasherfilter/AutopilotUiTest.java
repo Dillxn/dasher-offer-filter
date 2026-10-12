@@ -1409,7 +1409,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("answered: never asked again on its own", FilterStore.goalAsked(app));
             settleSky(content);
             assertNull("the start line goes", shownTextContaining(content, "Tap to start with typical minimums"));
-            assertNotNull(shownTextContaining(content, "Paused"));
+            assertNotNull(shownTextContaining(content, MainActivity.PAUSED_LINE));
 
             // The mascot turns auto-decline on, and the goal is not asked again.
             ShadowAlertDialog.reset();

@@ -379,10 +379,17 @@ public class AccessibilityAdapterTest {
     private static final Rect TOP_HALF = new Rect(0, 0, 1080, 1000);
     private static final Rect DIVIDER = new Rect(0, 1000, 1080, 1040);
     private static final Rect BOTTOM_HALF = new Rect(0, 1040, 1080, 2040);
+    /** A map in the other half: a driving layout of its own (the owner's approval, A2). */
+    private static final String MAPS = "com.google.android.apps.maps";
 
     /** Offer Filter in the top half (the one the user last touched), Dasher showing {@code dasher} in the bottom. */
     private void splitWithDasherBelow(AccessibilityNodeInfo dasher) {
-        AccessibilityNodeInfo ours = appRoot("com.local.dasherfilter");
+        splitWithDasherBelow(dasher, "com.local.dasherfilter");
+    }
+
+    /** Split screen with Dasher's half below the active half of {@code above} (Offer Filter's own, or a map). */
+    private void splitWithDasherBelow(AccessibilityNodeInfo dasher, String above) {
+        AccessibilityNodeInfo ours = appRoot(above);
         Shadows.shadowOf(controller.get()).setWindows(java.util.Arrays.asList(
                 window(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, TOP_HALF),
                 window(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false, DIVIDER),
@@ -557,7 +564,12 @@ public class AccessibilityAdapterTest {
         at(37.7749, -122.4194);
         controller.get().onServiceConnected();
 
+        // Beside Offer Filter's own half the offer map and its area line say it: no guide over Dasher (0.6.3).
         splitWithDasherBelow(node("Finding offers", false));
+        for (View view : windows()) assertFalse("said once, by the area line", view instanceof DasherGuide);
+
+        // Beside a map, Dasher's half gets it.
+        splitWithDasherBelow(node("Finding offers", false), MAPS);
         DasherGuide guide = null;
         for (View view : windows()) if (view instanceof DasherGuide) guide = (DasherGuide) view;
         assertNotNull("pointed out at the top of Dasher's half", guide);
@@ -571,7 +583,7 @@ public class AccessibilityAdapterTest {
         assertTrue("the guide is not a touch watch", overlays().isEmpty());
 
         // An offer comes up in Dasher's half: the guide gets out of its way.
-        splitWithDasherBelow(offer("$25.00"));
+        splitWithDasherBelow(offer("$25.00"), MAPS);
         for (View view : windows()) assertFalse(view instanceof DasherGuide);
     }
 

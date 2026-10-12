@@ -45,6 +45,9 @@ public class ConsentedTestApp extends Application {
         // earlier test planned or read is remembered (the tests of that thread set their own executor).
         AutopilotRuntime.executorForTests = Runnable::run;
         AutopilotRuntime.forgetCache();
+        // Dasher's activities are described for a report on a thread of their own on a phone: here on the calling
+        // thread, for the same reason (LaunchWatchAdapterTest holds that work back to see the scanner never does it).
+        OfferFilterService.describerForTests = Runnable::run;
         // From 0.6.2 Autopilot is on by default. Tests written before that run as an install whose user turned it off
         // (or kept it off); AutopilotDefaultTest turns the default back on to test it.
         FilterStore.autopilotOnByDefault = false;

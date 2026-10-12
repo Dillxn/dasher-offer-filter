@@ -473,7 +473,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             FilterHeroView mascot = find(content, FilterHeroView.class);
             assertEquals("Resume auto-decline", mascot.action());
-            assertNotNull("paused says so, in one word", shownTextContaining(content, "Paused"));
+            assertNotNull("paused says so", shownTextContaining(content, MainActivity.PAUSED_LINE));
             mascot.performClick();
 
             FilterSettings saved = FilterStore.load(app);
@@ -482,7 +482,7 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             assertEquals(150, saved.perMileCents);
             // The same mascot now offers to pause again.
             assertEquals("Pause auto-decline", mascot.action());
-            assertNull("on, the picture says it all", shownTextContaining(content, "Paused"));
+            assertNull("on, the picture says it all", shownTextContaining(content, MainActivity.PAUSED_LINE));
         }
     }
 

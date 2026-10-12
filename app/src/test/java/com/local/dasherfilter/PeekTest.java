@@ -887,10 +887,12 @@ public class PeekTest {
         assertTrue("nothing decided", DecisionLog.recent(app, 10).isEmpty());
     }
 
-    /** The user's tap on Split, refused, recent apps opened over the page (a plain activity stands in for it). */
+    /**
+     * The user's tap on Split with recent apps opened over the page, as during a delivery (a plain activity stands in
+     * for the page): the user is splitting the screen there.
+     */
     private void splitTapWaitingInRecentApps() {
-        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
-        DasherSplit.split = () -> false;
+        DasherSplit.onDelivery = context -> true;
         DasherSplit.recents = () -> true;
         android.app.Activity page = Robolectric.buildActivity(android.app.Activity.class).setup().get();
         DasherSplit.start(page, said -> { });
@@ -916,6 +918,19 @@ public class PeekTest {
         dasherOpened();
         contains(log(app), "[split] left recent apps for a navigation app without a split: the tap is over");
         assertFalse(DasherSplit.pending());
+    }
+
+    /**
+     * The homepage's "Dasher stuck on its launch screen?" line only asks the user: it holds back no peek (a peek opens
+     * Dasher as its launcher icon does, as ever).
+     */
+    @Test
+    public void aLaunchScreenLineDoesNotHoldBackAPeek() {
+        connect(app(MAPS));
+        OfferFilterService.holdLaunchScreen(SystemClock.uptimeMillis());
+        assertTrue("the line shows", OfferFilterService.launchScreenHeldSince(app) != 0);
+        post("Taco Bell");
+        dasherOpened();
     }
 
     @Test

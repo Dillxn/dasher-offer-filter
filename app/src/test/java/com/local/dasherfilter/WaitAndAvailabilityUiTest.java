@@ -70,7 +70,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertFalse(FilterStore.load(app).enabled);
             assertNull(shownTextContaining(content, "Waiting for offers"));
-            assertNotNull(shownTextContaining(content, "Paused"));
+            assertNotNull(shownTextContaining(content, MainActivity.PAUSED_LINE));
         } finally {
             listener.destroy();
             service.destroy();

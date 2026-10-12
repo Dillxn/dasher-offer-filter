@@ -394,61 +394,87 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         }
     }
 
+    /**
+     * The Split button from full screen (0.6.3, Dasher first): screen reading is how it is done, so without it the tap
+     * only says so. With it, Dasher's launcher starts as its home-screen icon starts it (full screen, never launch
+     * adjacent), and once Dasher is up past its launch screen this app's own task is started beside it, once, launch
+     * adjacent; the split that makes opens nothing more, and never recent apps or Android's split action.
+     */
     @Test
-    public void splitWithDasherSplitsTheScreenAtATapThenOpensDasherBelow() throws Exception {
+    public void splitWithDasherOpensDasherFirstThenThisAppBesideIt() throws Exception {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertNull("no Dasher, no button", shownIcon(content, "Split screen with Dasher"));
         }
         dasherInstalled();
+        // Auto-decline on with a rule, so Dasher's screen is read: paused, nothing of Dasher's is read and the tap opens
+        // recent apps instead (SplitJourneyTest).
+        FilterStore.save(app, FilterSettings.of(true, 400, 0, 0, 0));
         DasherSplit.forget();
-        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             View split = shownIcon(content, "Split screen with Dasher");
             assertNotNull(split);
 
-            // Screen reading is how Android is asked; without it, the tap only says so.
+            // Screen reading makes this app's own start beside Dasher; without it, the tap only says so.
             split.performClick();
             assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().startsWith("Turn on screen reading"));
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
             service.get().onServiceConnected();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             split.performClick();
-            assertEquals(Collections.singletonList(
-                    android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN),
-                    Shadows.shadowOf(service.get()).getGlobalActionsPerformed());
-            assertNull("Dasher waits for the split", Shadows.shadowOf(app).getNextStartedActivity());
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Intent dasher = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull("Dasher first", dasher);
+            assertEquals("com.doordash.driverapp", dasher.getComponent().getPackageName());
+            assertEquals("as its home-screen icon starts it, never launch adjacent",
+                    Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, dasher.getFlags());
+            assertTrue("nothing asked of Android's split action",
+                    Shadows.shadowOf(service.get()).getGlobalActionsPerformed().isEmpty());
+            assertTrue("the tap waits for Dasher", DasherSplit.pending());
 
-            // Android identifies our pane beside its app chooser: Dasher opens in that half, once.
-            splitWaitingForDasher(service.get());
+            // Dasher comes up over the page, past its launch screen: this app's own task beside it, once.
+            activity.pause();
+            dasherUp(service.get());
+            Intent own = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull("this app's own start beside Dasher", own);
+            assertTrue(String.valueOf(own.getComponent()), LauncherAppearance.ourHome(app, own.getComponent()));
+            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, own.getFlags());
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+
+            // The phone splits the screen: this app above, Dasher below. Nothing more opens.
+            splitAboveDasher(service.get());
             Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
             activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
-            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
-            assertNotNull(opened);
-            assertEquals("com.doordash.driverapp", opened.getComponent() != null
-                    ? opened.getComponent().getPackageName() : opened.getPackage());
-            assertTrue((opened.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT) != 0);
+            activity.resume();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherSplit.VERIFY_MS + 100));
+            assertNull("the split it made opens nothing more", Shadows.shadowOf(app).getNextStartedActivity());
             assertFalse("the completed tap no longer waits", DasherSplit.pending());
+            assertTrue("never recent apps", Shadows.shadowOf(service.get()).getGlobalActionsPerformed().isEmpty());
             activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
-            assertNull("already split: no button", shownIcon(content, "Split screen with Dasher"));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertNull("already split: no Split button", shownIcon(content, "Split screen with Dasher"));
         } finally {
             service.destroy();
+            DasherSplit.forget();
         }
     }
 
+    /**
+     * This app's own start beside Dasher made no split (a phone that will not split from it): recent apps open once,
+     * with the phone's words, and the split the user makes there half a minute later with Dasher's own card opens
+     * nothing (0.6.2 started Dasher's launcher launch-adjacent into it).
+     */
     @Test
-    public void aPhoneThatWillNotSplitOpensRecentAppsAndDasherStillFollows() {
+    public void aPhoneThatDoesNotSplitOpensRecentAppsAndTheSplitMadeThereOpensNothing() {
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Fairphone");
         dasherInstalled();
+        FilterStore.save(app, FilterSettings.of(true, 400, 0, 0, 0));
         DasherSplit.forget();
-        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
         List<String> asked = new ArrayList<>();
-        DasherSplit.split = () -> {
-            asked.add("split");
-            return false;
-        };
         DasherSplit.recents = () -> {
             asked.add("recents");
             return true;
@@ -456,63 +482,119 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             service.get().onServiceConnected();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             View content = activity.get().findViewById(android.R.id.content);
             shownIcon(content, "Split screen with Dasher").performClick();
-            assertEquals("asked to split, then opened recent apps", Arrays.asList("split", "recents"), asked);
-            assertEquals("Tap Offer Filter's icon above its card → split screen",
-                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Intent dasher = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(dasher);
+            assertEquals(0, dasher.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+            activity.pause();
+            dasherUp(service.get());
+            Intent own = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(own);
+            assertTrue(LauncherAppearance.ourHome(app, own.getComponent()));
+            assertTrue("not before the look", asked.isEmpty());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherSplit.VERIFY_MS + 100));
+            assertEquals("no split: recent apps, once", Arrays.asList("recents"), asked);
+            assertEquals(DasherSplit.hintWithDasher("other"), org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
             assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
-            // The user splits it from recent apps half a minute later: Dasher still opens in the other half.
+            // The user splits it from recent apps half a minute later, Dasher's own card beside: nothing opens.
             ShadowSystemClock.advanceBy(Duration.ofSeconds(30));
-            splitWaitingForDasher(service.get());
+            splitBesideAppChooser(service.get());
             Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
             activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
-            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
-            assertNotNull(opened);
-            assertEquals("com.doordash.driverapp", opened.getComponent() != null
-                    ? opened.getComponent().getPackageName() : opened.getPackage());
-            assertTrue((opened.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT) != 0);
-            assertFalse("the completed tap no longer waits", DasherSplit.pending());
+            assertNull("nothing is opened into the split made there", Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse("the tap no longer waits", DasherSplit.pending());
             activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());
-            assertNull("the same split never launches twice", Shadows.shadowOf(app).getNextStartedActivity());
+            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
+            assertEquals(Arrays.asList("recents"), asked);
         } finally {
             service.destroy();
             DasherSplit.forget();
         }
     }
 
-    /** Current identified panes, as the service sees them; a multiwindow flag alone leaves placement unknown. */
-    private void splitWaitingForDasher(OfferFilterService service) {
+    /**
+     * Dasher's own window change past its launcher, with Dasher up full screen in front in window 950, waiting for
+     * offers (the read after it says no offer is up).
+     */
+    private void dasherUp(OfferFilterService service) {
+        AccessibilityNodeInfo dasher = AccessibilityNodeInfo.obtain(new View(app));
+        dasher.setPackageName("com.doordash.driverapp");
+        dasher.setVisibleToUser(true);
+        AccessibilityNodeInfo waiting = AccessibilityNodeInfo.obtain(new View(app));
+        waiting.setPackageName("com.doordash.driverapp");
+        waiting.setText("Finding offers");
+        waiting.setVisibleToUser(true);
+        Shadows.shadowOf(dasher).addChild(waiting);
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setId(950);
+        shadow.setType(AccessibilityWindowInfo.TYPE_APPLICATION);
+        shadow.setActive(true);
+        shadow.setBoundsInScreen(new Rect(0, 0, 1080, 2040));
+        shadow.setRoot(dasher);
+        Shadows.shadowOf(dasher).setAccessibilityWindowInfo(window);
+        Shadows.shadowOf(service).setWindows(Collections.singletonList(window));
+        Shadows.shadowOf(service).setRootInActiveWindow(dasher);
+        android.view.accessibility.AccessibilityEvent event = android.view.accessibility.AccessibilityEvent.obtain(
+                android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
+        event.setPackageName("com.doordash.driverapp");
+        event.setClassName("com.doordash.driverapp.ui.MainActivity");
+        event.setEventTime(android.os.SystemClock.uptimeMillis());
+        ((org.robolectric.shadows.ShadowAccessibilityRecord) Shadow.extract(event)).setWindowId(950);
+        service.onAccessibilityEvent(event);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(300));
+    }
+
+    /** The screen split: this app above (active), the divider, Dasher's window 950 below. */
+    private void splitAboveDasher(OfferFilterService service) {
+        List<AccessibilityWindowInfo> windows = new ArrayList<>();
+        String[] packages = {app.getPackageName(), null, "com.doordash.driverapp"};
+        int[] ids = {901, 902, 950};
+        Rect[] bounds = {new Rect(0, 0, 1080, 1000), new Rect(0, 1000, 1080, 1040),
+                new Rect(0, 1040, 1080, 2040)};
+        for (int i = 0; i < packages.length; i++) windows.add(pane(ids[i], packages[i], i == 0, bounds[i]));
+        Shadows.shadowOf(service).setWindows(windows);
+        Shadows.shadowOf(service).setRootInActiveWindow(windows.get(0).getRoot());
+    }
+
+    private AccessibilityWindowInfo pane(int id, String packageName, boolean active, Rect bounds) {
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setId(id);
+        shadow.setType(packageName == null ? AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER
+                : AccessibilityWindowInfo.TYPE_APPLICATION);
+        shadow.setActive(active);
+        shadow.setBoundsInScreen(bounds);
+        if (packageName != null) {
+            AccessibilityNodeInfo root = AccessibilityNodeInfo.obtain(new View(app));
+            root.setPackageName(packageName);
+            root.setVisibleToUser(true);
+            Shadows.shadowOf(root).setAccessibilityWindowInfo(window);
+            shadow.setRoot(root);
+        }
+        return window;
+    }
+
+    /**
+     * Current identified panes, as the service sees them: this app beside recent apps' app chooser (a multiwindow
+     * flag alone leaves placement unknown).
+     */
+    private void splitBesideAppChooser(OfferFilterService service) {
         String[] packages = {app.getPackageName(), null, "com.example.launcher"};
         Rect[] bounds = {new Rect(0, 0, 1080, 1000), new Rect(0, 1000, 1080, 1040),
                 new Rect(0, 1040, 1080, 2040)};
         List<AccessibilityWindowInfo> windows = new ArrayList<>();
-        for (int i = 0; i < packages.length; i++) {
-            AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
-            ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
-            shadow.setId(901 + i);
-            shadow.setType(packages[i] == null ? AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER
-                    : AccessibilityWindowInfo.TYPE_APPLICATION);
-            shadow.setActive(i == 0);
-            shadow.setBoundsInScreen(bounds[i]);
-            if (packages[i] != null) {
-                AccessibilityNodeInfo root = AccessibilityNodeInfo.obtain(new View(app));
-                root.setPackageName(packages[i]);
-                root.setVisibleToUser(true);
-                Shadows.shadowOf(root).setAccessibilityWindowInfo(window);
-                shadow.setRoot(root);
-            }
-            windows.add(window);
-        }
+        for (int i = 0; i < packages.length; i++) windows.add(pane(901 + i, packages[i], i == 0, bounds[i]));
         Shadows.shadowOf(service).setWindows(windows);
         Shadows.shadowOf(service).setRootInActiveWindow(windows.get(0).getRoot());
         OfferFilterService.lookSoon(null);
         Shadows.shadowOf(Looper.getMainLooper()).idle();
         assertEquals("the current identified pair is ours and the chooser", SplitWindows.CardPlacement.OTHER_PAIR,
                 OfferFilterService.cardSplitPlacementNow());
-        assertFalse("no existing dash is being displaced", Dashing.now(app));
-        assertTrue("the existing tap may complete into this known non-map pane", OfferFilterService.mayCompleteSplitNow());
         assertNull("identifying the panes does not itself launch Dasher", Shadows.shadowOf(app).getNextStartedActivity());
     }
 
@@ -544,14 +626,15 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     public void aSplitLongAfterTheTapOpensNothing() {
         dasherInstalled();
         DasherSplit.forget();
-        DasherSplit.adjacentFirst = () -> false; // the split action first, as before Android 12L
-        DasherSplit.split = () -> false;
+        // The tap opens recent apps (as during a delivery), and the split comes long after it.
+        DasherSplit.onDelivery = context -> true;
         DasherSplit.recents = () -> true;
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             service.get().onServiceConnected();
             View content = activity.get().findViewById(android.R.id.content);
             shownIcon(content, "Split screen with Dasher").performClick();
+            assertNull("nothing of Dasher's started", Shadows.shadowOf(app).getNextStartedActivity());
             ShadowSystemClock.advanceBy(Duration.ofMillis(DasherSplit.BY_HAND_MS + 1000));
             Shadows.shadowOf(activity.get()).setInMultiWindowMode(true);
             activity.get().onMultiWindowModeChanged(true, activity.get().getResources().getConfiguration());

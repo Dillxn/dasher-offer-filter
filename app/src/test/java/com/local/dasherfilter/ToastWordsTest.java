@@ -22,10 +22,10 @@ public final class ToastWordsTest {
                 SetupChecklist.FIND_IN_LIST, SetupChecklist.RESTART_ON_PAGE, SetupChecklist.RESTART_IN_LIST,
                 SetupChecklist.NOW_ON_PAGE, SetupChecklist.FIND_LISTENER, SetupChecklist.NOW_LISTENER,
                 SetupChecklist.RECONNECT_ON_PAGE, SetupChecklist.RECONNECT_IN_LIST, SetupChecklist.ALLOW_SOURCE,
-                SetupChecklist.ALLOW_NOTIFICATIONS, DasherSplit.hint("pixel"), DasherSplit.hint("samsung"),
-                DasherSplit.hint("other"), DasherSplit.hintWithDasher("pixel"), DasherSplit.hintWithDasher("samsung"),
-                DasherSplit.hintWithDasher("other"), DasherSplit.FLOATING_HINT, DasherSplit.SCREEN_READING_FIRST,
-                DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
+                SetupChecklist.ALLOW_NOTIFICATIONS, DasherSplit.hintWithDasher("pixel"),
+                DasherSplit.hintWithDasher("samsung"), DasherSplit.hintWithDasher("other"), DasherSplit.FLOATING_HINT,
+                DasherSplit.SCREEN_READING_FIRST, DasherSplit.RECENTS_REFUSED, DasherSplit.PICK_DASHER_CARD,
+                DasherSplit.PICK_DASHER_CARD_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
                 MainActivity.FIRST_RULE, LocationRationale.PATH, "Not allowed. " + LocationRationale.PATH,
         };
         for (String toast : toasts) {
@@ -36,18 +36,28 @@ public final class ToastWordsTest {
     @Test
     public void theirWordsStillSayWhereToGoAndWhatToDo() {
         // AGENTS: the list "saying where to look ("Downloaded apps (or Installed apps) → Offer Filter")"; the split
-        // hints in the phone's own words (Pixel: the icon, Split screen, then Dasher; Samsung: Open in split screen view).
+        // hints in the phone's own words (Pixel: the icon, Split screen, then Dasher; Samsung: Open in split screen view,
+        // then Dasher).
         assertTrue(SetupChecklist.FIND_IN_LIST.startsWith("Downloaded apps (or Installed apps) → Offer Filter"));
         assertTrue(SetupChecklist.FIND_IN_LIST.endsWith("turn it on"));
         assertTrue(SetupChecklist.RESTART_IN_LIST.startsWith("Downloaded apps (or Installed apps) → Offer Filter"));
         assertTrue(SetupChecklist.RESTART_IN_LIST.endsWith("turn it off and on"));
-        assertTrue(DasherSplit.hint("pixel").contains("Offer Filter's icon")
-                && DasherSplit.hint("pixel").contains("Split screen, then Dasher"));
-        assertTrue(DasherSplit.hint("samsung").contains("Open in split screen view"));
-        // During a dash nothing is started into the other half: every phone's words end with Dasher's card.
+        assertTrue(DasherSplit.hintWithDasher("pixel").contains("Offer Filter's icon")
+                && DasherSplit.hintWithDasher("pixel").contains("Split screen, then Dasher"));
+        assertTrue(DasherSplit.hintWithDasher("samsung").contains("Offer Filter's icon")
+                && DasherSplit.hintWithDasher("samsung").contains("Open in split screen view"));
+        // Recent apps open only for the user to split there: nothing is started into the other half, so every phone's
+        // words end with Dasher's own card.
         for (String phone : new String[] {"pixel", "samsung", "other"}) {
             assertTrue(DasherSplit.hintWithDasher(phone), DasherSplit.hintWithDasher(phone).endsWith("then Dasher"));
         }
         assertTrue(DasherSplit.RECENTS_REFUSED.contains("recent apps"));
+        assertTrue(DasherSplit.RECENTS_REFUSED, DasherSplit.RECENTS_REFUSED.endsWith("then Dasher"));
+        // The launch-screen line's tap: recent apps, where the user picks Dasher's card with the dash.
+        assertTrue(DasherSplit.PICK_DASHER_CARD.contains("Dasher card"));
+        assertTrue(DasherSplit.PICK_DASHER_CARD_REFUSED.startsWith("Open recent apps"));
+        // The homepage line is one short line beside its Recent apps button.
+        assertTrue(DasherSplit.LAUNCH_SCREEN_LINE, DasherSplit.LAUNCH_SCREEN_LINE.length() <= 40);
+        assertTrue(DasherSplit.LAUNCH_SCREEN_SPOKEN.endsWith(DasherSplit.LAUNCH_SCREEN_ACTION));
     }
 }

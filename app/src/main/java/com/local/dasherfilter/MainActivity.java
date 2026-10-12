@@ -148,7 +148,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final long ASK_EVERY_MS = 30_000;
     /** Where the phone is, for the map's dot, asked at most this often while the map shows. */
     static final long HERE_EVERY_MS = 5_000;
-    private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.dasher(this) != null);
+    private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.launcher(this) != null);
     private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
@@ -161,7 +161,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The main page's scroller: it scrolls only where even the strip, the header and the lines need more. */
     private ScrollView mainPage;
     private ScenePage scene;
-    /** The header's Split with Dasher button (Put Dasher beside once split), while Dasher is not beside already. */
+    /** The header's Split with Dasher button (Swap in Dasher once split), while Dasher is not beside already. */
     private View splitButton;
     /** The header's one-tap Open Dasher, filling the screen (F22). */
     private View openDasherButton;
@@ -215,6 +215,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private SetupChecklist checklist;
     /** Peek paused itself for a while (never the Settings switch): why, and Resume. */
     private Readiness peekPaused;
+    /**
+     * Dasher seen only on its launch screen 10 s after a start of this app's
+     * ({@link OfferFilterService#launchScreenHeldSince}): "Dasher stuck on its launch screen?" with Recent apps, the
+     * user's to tap. Nothing is done to Dasher for it.
+     */
+    private Readiness launchScreen;
+    /**
+     * The hold the launch-screen line was last logged as shown for (its start, elapsed real time), so it is logged once
+     * per hold.
+     */
+    private static long launchScreenLogged;
     /**
      * The lines that need the user, under the header: setup, an update, Peek paused, a stop, the split screen's layout
      * note, the one-time cards and note.
@@ -822,6 +833,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
             Peek.resumeNow(this);
             refresh();
         });
+        // Dasher seen only on its launch screen after a start of this app's: the user may pick its card with the dash
+        // in recent apps. Only their tap opens them; nothing automatic acts on Dasher for it.
+        launchScreen = new Readiness(problems, DasherSplit.LAUNCH_SCREEN_LINE, DasherSplit.LAUNCH_SCREEN_ACTION, () -> {
+            toast(DasherSplit.recentAppsForLaunchScreen(this));
+            refresh();
+        });
+        launchScreen.spokenAsButton(DasherSplit.LAUNCH_SCREEN_SPOKEN);
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
@@ -1720,6 +1738,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String paused = FilterStore.peek(this) ? Peek.pausedWhy(this) : null;
         if (paused != null) peekPaused.problem("Peek paused: " + paused);
         peekPaused.update(paused == null);
+        long stuck = OfferFilterService.launchScreenHeldSince(this);
+        if (stuck != 0 && stuck != launchScreenLogged) {
+            launchScreenLogged = stuck;
+            DiagnosticLog.log(this, "split", "launch-screen line shown");
+        }
+        // No hold now: the next one is logged as shown, whenever it began.
+        if (stuck == 0) launchScreenLogged = 0;
+        launchScreen.update(stuck == 0);
         stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
@@ -2838,6 +2864,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (problem.contentEquals(text.getText())) return;
             text.setText(problem);
             row.setContentDescription(problem + ". " + action + ".");
+        }
+
+        /** What screen readers hear of the row instead of its words, as a button ("…, button"). */
+        void spokenAsButton(String words) {
+            row.setContentDescription(words);
+            row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override public void onInitializeAccessibilityNodeInfo(View host,
+                        android.view.accessibility.AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    info.setClassName(android.widget.Button.class.getName());
+                }
+            });
         }
     }
 }

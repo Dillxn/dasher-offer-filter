@@ -11,15 +11,17 @@ import android.os.Bundle;
 /**
  * Where a tap on one of Offer Filter's offer cards lands: a screen that never shows. It opens Dasher the way Dasher's
  * launcher icon does, so Dasher's task comes to the front with the offer it is showing (nothing in it is cleared or
- * reset), in its own half when it is already in one half of a split screen, or into the other half when this screen
- * opened in one half without Dasher beside it; then it clears that card and is gone. Dasher's launcher resumes its
- * task, and Dasher sometimes never draws a background offer it has to fetch, or draws it without its details (the
- * 0.4.72 report): with Dasher up and none of the offer's figures {@link Peek#PRESENT_MS} later, the screen reader sends
- * Dasher's own notification tap once for that offer ({@link OfferFilterService#cardOpened}). A card that says Dasher did not show the offer when it opened sends Dasher's
- * own notification intent first, its launcher at once if that cannot be sent, or from the screen reader if nothing of
- * Dasher's came up {@link OfferFilterService#OWN_FIRST_WAIT_MS} later ({@link OfferFilterService#cardOpenedOwnFirst}).
- * Dasher's own intent is otherwise used only when Dasher has no launch intent. It runs only at the user's tap on a card.
- * The app opens Dasher by itself only for Peek ({@link Peek}), from its screen reader, the same way.
+ * reset), in its own half when it is already in one half of a split screen; never into the other half (no start of
+ * Dasher by this app asks for one: {@link DasherSplit}); then it clears that card and is gone. Dasher's launcher
+ * resumes its task, and Dasher sometimes never draws a background offer it has to fetch, or draws it without its
+ * details (the 0.4.72 report): with Dasher up and none of the offer's figures {@link Peek#PRESENT_MS} later, the
+ * screen reader sends Dasher's own notification tap once for that offer ({@link OfferFilterService#cardOpened}). A card
+ * that says Dasher did not show the offer when it opened sends Dasher's own notification intent first, its launcher at
+ * once if that cannot be sent, or from the screen reader if nothing of Dasher's came up
+ * {@link OfferFilterService#OWN_FIRST_WAIT_MS} later ({@link OfferFilterService#cardOpenedOwnFirst}). Dasher's own
+ * intent is otherwise used only when Dasher has no launch intent. Every start is watched
+ * ({@link OfferFilterService#launchWatch}). It runs only at the user's tap on a card. The app opens Dasher by itself
+ * only for Peek ({@link Peek}), from its screen reader, the same way.
  */
 public final class OpenDasherActivity extends Activity {
     static final String EXTRA_CARD = "card";
@@ -67,26 +69,25 @@ public final class OpenDasherActivity extends Activity {
             if (card != null) {
                 OfferNotificationService.claimOwnTap(card);
                 OfferFilterService.cardOpenedOwnFirst(card);
+            } else {
+                OfferFilterService.launchWatch(OfferFilterService.LAUNCH_CARD);
             }
         }
         boolean launched = false;
         if (opened == null) {
-            // Dasher already in one half of a split screen: its plain launch intent brings its task forward there.
-            // Only when fresh metadata identifies a real pair without Dasher does it open into the other half. The old
-            // UI sighting cannot choose a task to replace; uncertain placement uses a normal launcher request.
-            // During a dash (as nearly always with a card) Dasher's launcher is never started beside this app: it can
-            // stay on its launch screen there (DasherSplit.running). Its plain launch intent brings Dasher's own task
-            // forward, as Swap in Dasher does.
+            // Dasher's plain launch intent, wherever this screen opened: already in one half of a split screen, it
+            // brings Dasher's task forward there; beside another app, or full screen, it starts as its icon does. Never
+            // launch-adjacent (DasherSplit): a launch-adjacent start of Dasher's launcher is what the owner's "dd is
+            // stuck again" reports followed. Fresh window metadata only names the log's word.
             SplitWindows.CardPlacement placement = OfferFilterService.cardSplitPlacementNow();
             boolean beside = placement == SplitWindows.CardPlacement.DASHER_PRESENT;
-            boolean adjacent = placement == SplitWindows.CardPlacement.OTHER_PAIR && DasherSplit.inSplit(this)
-                    && !DasherSplit.running.test(this);
-            Intent dasher = adjacent ? DasherSplit.dasher(this) : DasherSplit.launcher(this);
+            Intent dasher = DasherSplit.launcher(this);
             if (dasher != null) {
                 try {
                     startActivity(dasher);
-                    opened = beside ? "in its own half" : adjacent ? "in the other half" : "launcher";
+                    opened = beside ? "in its own half" : "launcher";
                     launched = true;
+                    OfferFilterService.launchWatch(OfferFilterService.LAUNCH_CARD);
                 } catch (ActivityNotFoundException | SecurityException refused) {
                     opened = null;
                 }
@@ -95,7 +96,10 @@ public final class OpenDasherActivity extends Activity {
         // Dasher's launcher resumes its task: with no sign of the offer once Dasher is up, Dasher's own notification
         // tap is sent once (not again when it was just tried first).
         if (launched && card != null) OfferFilterService.cardOpened(card, preferOwn ? null : dashersOwn(tap));
-        if (opened == null && !preferOwn && sendDashersOwn(tap)) opened = "its own notification's screen";
+        if (opened == null && !preferOwn && sendDashersOwn(tap)) {
+            opened = "its own notification's screen";
+            OfferFilterService.launchWatch(OfferFilterService.LAUNCH_CARD);
+        }
         DiagnosticLog.log(this, "alert", opened != null
                 ? "card tapped → opened Dasher (" + opened + ")" : "card tapped; Dasher could not be opened");
         if (card != null) OfferAlerts.clear(this, card);
