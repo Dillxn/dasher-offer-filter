@@ -120,13 +120,18 @@ final class MinimumsStarView extends View {
     /** ...and offers side by side on a spoke step this many dp aside from each other (at full detail). */
     private static final float MARK_STEP_DP = 2.2f;
     /** As the page's sky, the icons at the spokes' ends are a little larger. */
-    private static final int BACKDROP_ICON_DP = 22;
+    static final int BACKDROP_ICON_DP = 22;
     /**
-     * As the sky, an icon stands this far above the end of an upper spoke (below a lower one), its middle this far out
-     * to the side, so the circle can run on past the page's edges while its spokes' ends and icons stay inside it.
+     * As the sky, an icon stands this far above the end of an upper spoke (below a lower one) where the radar has its
+     * room, its middle this far out to the side, so the circle can run on past the page's edges while its spokes' ends
+     * and icons stay inside it. In a short window the page tucks the icons in toward the rim, down to the least gap,
+     * so the circle keeps its least radius in a radar as short as 116 dp (0.6.3; the owner, 12 October 2026: "at small
+     * split ratios I still want to see all relevant infographic"); an icon then keeps this far inside the radar's box.
      */
-    private static final int ICON_GAP_DP = 12;
+    static final int ICON_GAP_DP = 12;
+    static final int ICON_GAP_LEAST_DP = 4;
     private static final int ICON_OUT_DP = 4;
+    static final int ICON_EDGE_DP = 4;
     /** As the sky, the rings fade out over this much of the view's top and bottom edges rather than stop at them. */
     private static final int EDGE_FADE_DP = 28;
     private final Ui ui;
@@ -193,10 +198,11 @@ final class MinimumsStarView extends View {
     private final Glyph[] icons = new Glyph[ICONS.length];
     /** How much of their full size the stars and marks are drawn at: less on a small circle. */
     private float detail = 1;
-    /** Where the page put the circle (a radius of 0 until it has). */
+    /** Where the page put the circle (a radius of 0 until it has), and how far out its icons stand (-1: full gap). */
     private float skyX;
     private float skyY;
     private float skyRadius;
+    private float skyGap = -1;
     private final Paint edgeFade = new Paint();
     private final Paint sideFade = new Paint();
     private float edgeFadeFor = Float.NaN;
@@ -282,7 +288,7 @@ final class MinimumsStarView extends View {
     /**
      * The round button below the middle is the learner's switch from 0.6.1 (the owner, 11 October 2026: the homepage
      * showed "Auto off" twice, as the strip's chip and as this button, and learning belongs on the homepage). The
-     * strip's chip is Autopilot's one control at every size.
+     * band's chip is Autopilot's one control at every size.
      */
     static final String LEARN_TITLE = "Learn";
     /** What a long press on the learner button does, for screen readers. */
@@ -751,18 +757,35 @@ final class MinimumsStarView extends View {
     // ---- The page's sky: one circle, placed by the page in the constellation's own box. ----
 
     /**
-     * Draws the constellation as the page's sky: its circle of {@code radius} around ({@code x}, {@code y}), in this
-     * view's pixels.
+     * Draws the constellation as the page's sky: its circle of {@code radius} around ({@code x}, {@code y}), its icons
+     * the full gap from the spokes' ends, in this view's pixels.
      */
     void compose(float x, float y, float radius) {
-        boolean moved = x != skyX || y != skyY || radius != skyRadius;
+        compose(x, y, radius, ui.dp(ICON_GAP_DP));
+    }
+
+    /**
+     * Draws the constellation as the page's sky: its circle of {@code radius} around ({@code x}, {@code y}), its icons
+     * {@code iconGap} from the spokes' ends (the page's: 12 dp where the radar has its room, tucked in to 4 dp in a
+     * short one), in this view's pixels. The spokes' names, the rings' dollars, the badge and the button go by the
+     * icons, so they follow.
+     */
+    void compose(float x, float y, float radius, float iconGap) {
+        float gap = Math.max(0, iconGap);
+        boolean moved = x != skyX || y != skyY || radius != skyRadius || gap != skyGap;
         skyX = x;
         skyY = y;
         skyRadius = radius;
+        skyGap = gap;
         if (moved) {
             restStale = true;
             invalidate();
         }
+    }
+
+    /** How far the icons stand from the spokes' ends now, in pixels (for tests too). */
+    float skyGap() {
+        return skyGap >= 0 ? skyGap : ui.dp(ICON_GAP_DP);
     }
 
     /** Drawn as the page's sky: the page has placed its circle (nothing is drawn until it has). */
@@ -801,9 +824,10 @@ final class MinimumsStarView extends View {
         boolean below = axis == AreaScore.MINUTE || axis == AreaScore.STOP;
         float size = backdropIcon();
         float middle = tip[0] + (right ? 1 : -1) * ui.dp(ICON_OUT_DP);
+        float gap = skyGap();
         for (int side = 0; side < 2; side++) {
             boolean under = below == (side == 0);
-            float top = under ? tip[1] + ui.dp(ICON_GAP_DP) : tip[1] - ui.dp(ICON_GAP_DP) - size;
+            float top = under ? tip[1] + gap : tip[1] - gap - size;
             out.set(middle - size / 2, top, middle + size / 2, top + size);
             if (out.top >= ui.dp(2) && out.bottom <= getHeight() - ui.dp(2)) return true;
         }
@@ -1031,10 +1055,14 @@ final class MinimumsStarView extends View {
         return super.dispatchHoverEvent(event);
     }
 
-    /** Whatever the page gives it (its own box); asked with no limit, a circle of the least radius the page uses. */
+    /**
+     * Whatever the page gives it (its own box); asked with no limit, a circle of the least radius the page uses, its
+     * icons tucked in as far as the page tucks them, and the room it keeps past them.
+     */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        int least = Math.round(2 * ui.dp(FluidLayout.RADIUS_LEAST_DP) + 2 * ui.dp(ICON_GAP_DP + BACKDROP_ICON_DP));
+        int least = Math.round(2 * ui.dp(FluidLayout.RADIUS_LEAST_DP)
+                + 2 * ui.dp(ICON_GAP_LEAST_DP + BACKDROP_ICON_DP + ICON_EDGE_DP));
         setMeasuredDimension(width, resolveSize(least, heightSpec));
     }
 
@@ -2339,7 +2367,7 @@ final class MinimumsStarView extends View {
         return STOPS_SAID + ", " + (stops > 0 ? Integer.toString(stops) : "off");
     }
 
-    // ---- The learner button (Autopilot's until 0.6.1; the strip's chip is Autopilot's control). ----
+    // ---- The learner button (Autopilot's until 0.6.1; the band's chip is Autopilot's control). ----
 
     /** The learner button: shown as the sky, and used, while it is wholly there ({@link #placeButton}). */
     boolean learnShown() {

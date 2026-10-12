@@ -27,23 +27,32 @@ import java.util.function.Consumer;
  * skyline's badge); paused, it sleeps (dashed, amber, drifting "z"s); off, it is grey and still. "Filtered"
  * follows the observed decline outcome; a hidden notification counts as review, never filtered.
  *
- * <p>The page ({@link ScenePage}) places the mascot and the counts apart: the mascot at the start of the strip along
- * the top, the counts in their own row under the header, where they shrink and fade out with the row when the window
- * is short (their targets then gone). Only a touch (or a screen reader's finger) on the mascot or the counts is
- * theirs; anywhere else in this view it goes on to what stands below.
+ * <p>The page ({@link ScenePage}) places the mascot and the counts apart: the mascot at the start of the band along
+ * the top, the counts at the end of its first row, beside the latest offer's tile (0.6.3: a block 48 dp tall, where
+ * their own row under the header took 66 dp; the owner, 12 October 2026: "at small split ratios I still want to see
+ * all relevant infographic"), so they never fade. Only a touch (or a screen reader's finger) on the mascot or the
+ * counts is theirs; anywhere else in this view it goes on to what stands below.
  */
 @SuppressLint("ViewConstructor")
 final class FilterHeroView extends FrameLayout {
     enum State { ON, PAUSED, OFF }
 
     /**
-     * The counts' height (the heading, the numbers and the totals under them); their three columns stand this share of
-     * the width given apart, at most so far; and the two outer columns take this much more than that across.
+     * The counts' height: the heading column ("DASH" or "LAST" over "ALL") and, for each of passed, filtered and left
+     * to review, its badge and the dash's number over the all-time total.
      */
-    static final int COUNTS_HEIGHT_DP = 66;
-    static final float COUNTS_SPACING_SHARE = 0.3f;
-    static final int COUNTS_SPACING_MOST_DP = 96;
-    static final int COUNTS_ENDS_DP = 64;
+    static final int COUNTS_HEIGHT_DP = 48;
+    /** A count's column is never narrower than a touch target; its badge's radius, and the room before its number. */
+    private static final int COUNT_COLUMN_LEAST_DP = 48;
+    private static final int COUNT_BADGE_DP = 8;
+    private static final int COUNT_GAP_DP = 4;
+    /** The heading column is its widest word and this much more. */
+    private static final int HEADING_SPARE_DP = 4;
+    /** The middles of the counts' two lines, down from the block's top: the dash's (and its heading's), the totals'. */
+    private static final int COUNTS_UPPER_DP = 16;
+    private static final int COUNTS_LOWER_DP = 38;
+    /** The narrowest a number or a heading condenses to (of its width) before it is drawn smaller. */
+    private static final float LEAST_CONDENSED = 0.8f;
     private static final float ON_SWEEP = 324;
     private static final float PAUSED_SWEEP = 228;
     private static final long RING_DRAW_MS = 1100;
@@ -61,6 +70,8 @@ final class FilterHeroView extends FrameLayout {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** The counts' words and numbers. */
+    private final Paint countText = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final RectF rect = new RectF();
     private final DashPathEffect pausedDash;
@@ -91,18 +102,18 @@ final class FilterHeroView extends FrameLayout {
     /** Whether the app is watching a dash; the page shows it with searchlights, screen readers hear it here. */
     private boolean watching;
     /**
-     * Placed by the page: where the mascot's ring stands and how large, where the counts stand at their full size, and
-     * how much of them is there (1: wholly; less while their row shrinks away, drawn that much smaller and fainter).
+     * Placed by the page: where the mascot's ring stands and how large, where the counts stand (empty: nowhere), and
+     * what else the twinkling stars keep out of (the latest offer's tile).
      */
     private boolean placed;
     private float mascotX;
     private float mascotY;
     private float mascotRadius;
     private final RectF countsBox = new RectF();
-    private float countsSpacing;
-    private float countsShown = 1;
-    /** Where the counts are drawn this frame, which the twinkling stars keep out of. */
-    private final RectF countsDrawn = new RectF();
+    private final RectF keepOut = new RectF();
+    /** The heading column's and a count column's width at the user's font, worked out once (0: not yet). */
+    private float headingWide;
+    private float columnWide;
     // Real controls over the drawing keep touch, keyboard and accessibility boundaries identical.
     private final Button mascotControl;
     private final Button[] countControls = new Button[3];
@@ -115,6 +126,7 @@ final class FilterHeroView extends FrameLayout {
         line.setStrokeCap(Paint.Cap.ROUND);
         line.setStrokeJoin(Paint.Join.ROUND);
         text.setTextAlign(Paint.Align.CENTER);
+        countText.setTextAlign(Paint.Align.CENTER);
         pausedDash = new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0);
         dotted = new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, 0);
         setWillNotDraw(false);
@@ -172,15 +184,17 @@ final class FilterHeroView extends FrameLayout {
         if (getWidth() <= 0 || getHeight() <= 0 || !placed) return;
         float reach = Math.max(ui.dp(24), mascotRadius);
         layoutControl(mascotControl, new RectF(mascotX - reach, mascotY - reach, mascotX + reach, mascotY + reach));
-        RectF counts = new RectF();
-        float spacing = countsAt(counts);
-        // Midpoints between the drawn columns divide the targets, including their totals. While the counts' row
-        // shrinks away they take no touch and screen readers do not reach them.
-        int shown = countsShown >= 1 ? VISIBLE : INVISIBLE;
+        // Each count's target is its whole column, its total included: 48 dp each way at least wherever the counts
+        // are 144 dp across (the heading gives way first, headingIn); the first also takes the heading's. With the
+        // counts placed nowhere they take no touch and screen readers do not reach them.
+        boolean there = !countsBox.isEmpty();
+        float heading = headingIn(countsBox.width());
+        float column = (countsBox.width() - heading) / 3f;
+        int shown = there ? VISIBLE : INVISIBLE;
         for (int i = 0; i < countControls.length; i++) {
-            float left = i == 0 ? counts.left : counts.centerX() + (i - 1.5f) * spacing;
-            float right = i == 2 ? counts.right : counts.centerX() + (i - 0.5f) * spacing;
-            layoutControl(countControls[i], new RectF(left, counts.top, right, counts.bottom));
+            float left = i == 0 ? countsBox.left : countsBox.left + heading + i * column;
+            float right = i == 2 ? countsBox.right : countsBox.left + heading + (i + 1) * column;
+            layoutControl(countControls[i], new RectF(left, countsBox.top, right, countsBox.bottom));
             if (countControls[i].getVisibility() != shown) countControls[i].setVisibility(shown);
         }
     }
@@ -200,24 +214,74 @@ final class FilterHeroView extends FrameLayout {
 
     /**
      * Draws the mascot's ring, of outer {@code radius}, around ({@code x}, {@code y}), and the counts in {@code counts}
-     * (their full size) with their columns {@code spacing} apart, {@code shown} of them there (from their top's
-     * middle), all in this view's pixels. Touches elsewhere in the view pass through.
+     * (empty: nowhere; {@link #countsWidth} wide where the band has the room, and 48 dp tall), the twinkling stars
+     * kept out of them and of {@code keepOut} (the latest offer's tile; null or empty: nothing more), all in this
+     * view's pixels. Touches elsewhere in the view pass through.
      */
-    void place(float x, float y, float radius, RectF counts, float spacing, float shown) {
-        float amount = Math.max(0, Math.min(1, shown));
+    void place(float x, float y, float radius, RectF counts, RectF keepOut) {
         boolean moved = !placed || x != mascotX || y != mascotY || radius != mascotRadius
-                || !counts.equals(countsBox) || spacing != countsSpacing || amount != countsShown;
+                || !counts.equals(countsBox)
+                || !(keepOut == null ? this.keepOut.isEmpty() : keepOut.equals(this.keepOut));
         placed = true;
         mascotX = x;
         mascotY = y;
         mascotRadius = radius;
         countsBox.set(counts);
-        countsSpacing = spacing;
-        countsShown = amount;
+        if (keepOut == null) this.keepOut.setEmpty();
+        else this.keepOut.set(keepOut);
         if (moved) {
             layoutControls();
             invalidate();
         }
+    }
+
+    /**
+     * How wide the counts are at the user's font, in pixels: the heading column (the widest of "DASH", "LAST" and
+     * "ALL", and 4 dp more) and three columns, each its badge, 4 dp and a number as wide as "88", never narrower than
+     * 48 dp (about 178 dp at the normal font). The page gives them this much at the band's end, less only in a window
+     * too narrow for it.
+     */
+    int countsWidth() {
+        measureColumns();
+        return Math.round(headingWide + 3 * columnWide);
+    }
+
+    /** Works out, once, how wide the heading column and a count's column are at the user's font. */
+    private void measureColumns() {
+        if (columnWide > 0) return;
+        headingPaint();
+        float widest = 0;
+        for (String word : new String[] {"DASH", "LAST", "ALL"}) widest = Math.max(widest, countText.measureText(word));
+        countText.setLetterSpacing(0);
+        headingWide = (float) Math.ceil(widest) + ui.dp(HEADING_SPARE_DP);
+        countText.setFakeBoldText(true);
+        countText.setTextScaleX(1);
+        countText.setTextSize(numberSize());
+        columnWide = Math.max(ui.dp(COUNT_COLUMN_LEAST_DP),
+                2 * ui.dp(COUNT_BADGE_DP) + ui.dp(COUNT_GAP_DP) + countText.measureText("88"));
+    }
+
+    /**
+     * The heading column's width in counts {@code wide} across: its own where they have their room. Where they are
+     * narrower the columns give way first, down to a touch target (48 dp) each, then the heading, so every count stays
+     * a 48 dp target for as long as the counts are 144 dp across; only narrower still do the columns.
+     */
+    private float headingIn(float wide) {
+        measureColumns();
+        return Math.max(0, Math.min(headingWide, wide - 3 * ui.dp(COUNT_COLUMN_LEAST_DP)));
+    }
+
+    /** The heading's words: muted, bold, spaced out, as large as the user's font but never past 14 dp. */
+    private void headingPaint() {
+        countText.setFakeBoldText(true);
+        countText.setTextScaleX(1);
+        countText.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
+        countText.setLetterSpacing(0.12f);
+    }
+
+    /** The dash's numbers, as large as the user's font but never past 26 dp. */
+    private float numberSize() {
+        return Math.min(ui.sp(18), ui.dp(26));
     }
 
     boolean placed() {
@@ -298,7 +362,7 @@ final class FilterHeroView extends FrameLayout {
         }
     }
 
-    /** Whatever the page gives it; asked with no limit, the mascot's ring with the counts under it. */
+    /** Whatever the page gives it; asked with no limit, the mascot's ring with the counts' height under it. */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
         int least = ui.dp(2 * RING_OUTER_DP / 3) + ui.dp(COUNTS_HEIGHT_DP);
@@ -314,23 +378,20 @@ final class FilterHeroView extends FrameLayout {
     }
 
     /**
-     * Where the counts stand at their full size, in this view's pixels, into {@code out}; answers how far apart their
-     * columns are. While their row shrinks away they are drawn smaller, from their top's middle ({@link #countsShown}).
+     * Where the counts stand, in this view's pixels, into {@code out} (empty: nowhere); answers how far apart their
+     * three columns' middles are.
      */
     float countsAt(RectF out) {
         out.set(countsBox);
-        float shown = countsShown;
-        if (shown < 1) {
-            float middle = countsBox.centerX();
-            out.set(middle - countsBox.width() / 2 * shown, countsBox.top, middle + countsBox.width() / 2 * shown,
-                    countsBox.top + countsBox.height() * shown);
-        }
-        return countsSpacing * shown;
+        return countsBox.isEmpty() ? 0 : (countsBox.width() - headingIn(countsBox.width())) / 3f;
     }
 
-    /** How much of the counts is there: 1 wholly, less while their row shrinks away (for tests too). */
+    /**
+     * How much of the counts is there: 1 wholly, wherever they are placed (from 0.6.3 they never fade, the band
+     * holding them never does), 0 while they are placed nowhere (for tests too).
+     */
     float countsShown() {
-        return countsShown;
+        return countsBox.isEmpty() ? 0 : 1;
     }
 
     /**
@@ -339,7 +400,6 @@ final class FilterHeroView extends FrameLayout {
      */
     private void drawPlaced(Canvas canvas) {
         float scale = mascotRadius / ui.dp(RING_OUTER_DP);
-        countsAt(countsDrawn);
         canvas.save();
         canvas.translate(mascotX, mascotY);
         canvas.scale(scale, scale);
@@ -352,16 +412,7 @@ final class FilterHeroView extends FrameLayout {
         drawMascot(canvas, 0);
         drawOfferPlayed(canvas, 0, false);
         canvas.restore();
-        if (countsShown <= 0) return;
-        if (countsShown >= 1) {
-            drawCounts(canvas, countsBox.centerX(), countsSpacing, countsBox.top);
-            return;
-        }
-        int faded = canvas.saveLayerAlpha(countsBox.left - ui.dp(8), countsBox.top - ui.dp(8),
-                countsBox.right + ui.dp(8), countsBox.bottom + ui.dp(8), Math.round(255 * countsShown));
-        canvas.scale(countsShown, countsShown, countsBox.centerX(), countsBox.top);
-        drawCounts(canvas, countsBox.centerX(), countsSpacing, countsBox.top);
-        canvas.restoreToCount(faded);
+        if (!countsBox.isEmpty()) drawCounts(canvas);
     }
 
     private void slide(Canvas canvas, float depth) {
@@ -398,9 +449,9 @@ final class FilterHeroView extends FrameLayout {
     }
 
     /**
-     * Small stars around the ring that brighten and fade in turn; none while off, none on the counts, and only those on
-     * its left, away from the words beside it. The drawing is scaled by {@code scale} from ({@code x}, {@code y}) in
-     * this view.
+     * Small stars around the ring that brighten and fade in turn; none while off, none on the counts or the latest
+     * offer's tile, and only those on its left, away from the words beside it. The drawing is scaled by {@code scale}
+     * from ({@code x}, {@code y}) in this view.
      */
     private void drawTwinkles(Canvas canvas, float x, float y, float scale) {
         if (state == State.OFF) return;
@@ -411,14 +462,17 @@ final class FilterHeroView extends FrameLayout {
             if (star[0] > 0) continue;
             float atX = x + ui.dp(star[0]) * scale;
             float atY = y + ui.dp(star[1]) * scale;
-            if (atX > countsDrawn.left - margin && atX < countsDrawn.right + margin
-                    && atY > countsDrawn.top - margin && atY < countsDrawn.bottom + margin) {
-                continue;
-            }
+            if (near(countsBox, atX, atY, margin) || near(keepOut, atX, atY, margin)) continue;
             float twinkle = 0.5f + 0.5f * Motion.wave(2.4f + i * 0.45f, i * 0.23f);
             fill.setColor(withAlpha(color, (int) (40 + 150 * twinkle)));
             sparkle(canvas, ui.dp(star[0]), ui.dp(star[1]), ui.dp(star[2]) * (0.55f + 0.45f * twinkle));
         }
+    }
+
+    /** ({@code x}, {@code y}) is in {@code box}, or within {@code margin} of it (never for an empty box). */
+    private static boolean near(RectF box, float x, float y, float margin) {
+        return !box.isEmpty() && x > box.left - margin && x < box.right + margin && y > box.top - margin
+                && y < box.bottom + margin;
     }
 
     private void sparkle(Canvas canvas, float x, float y, float half) {
@@ -747,51 +801,97 @@ final class FilterHeroView extends FrameLayout {
     }
 
     /**
-     * "THIS DASH · 6" over three counts, each a badge (✓ ✕ ?) and its number with, under it, the all-time total.
-     * The badges say which is which; the words are in the description screen readers read.
+     * The counts as a block 48 dp tall, centred down the box the page gave them: the heading column, "DASH" (this dash,
+     * or none yet) or "LAST" over "ALL", then for each of passed, filtered and left to review a badge (✓ ✕ ?) and the
+     * dash's number ("–" in the muted ink before any dash) over the all-time total. The badges say which is which; the
+     * words are in the descriptions screen readers read. A number wider than its column condenses to four fifths of
+     * its width, then is drawn smaller: never cut.
      */
-    private void drawCounts(Canvas canvas, float cx, float spacing, float top) {
-        text.setFakeBoldText(true);
-        text.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
-        text.setLetterSpacing(0.12f);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setColor(ui.inkMuted);
-        int offers = passed + filtered + review;
-        String heading = dashLabel.startsWith("No") ? dashLabel : dashLabel + " · " + offers;
-        canvas.drawText(heading.toUpperCase(Locale.US), cx, top + ui.dp(8) - text.getFontMetrics().ascent / 2, text);
-        text.setLetterSpacing(0);
-        float row = top + ui.dp(30);
-        drawCount(canvas, cx - spacing, row, OfferRule.Result.KEEP, passed, totals[0], state != State.OFF);
-        drawCount(canvas, cx, row, OfferRule.Result.DECLINE, filtered, totals[1], state == State.ON);
-        drawCount(canvas, cx + spacing, row, OfferRule.Result.REVIEW, review, totals[2], state != State.OFF);
+    private void drawCounts(Canvas canvas) {
+        float top = countsBox.top + Math.max(0, (countsBox.height() - ui.dp(COUNTS_HEIGHT_DP)) / 2);
+        float heading = headingIn(countsBox.width());
+        float column = (countsBox.width() - heading) / 3f;
+        float upper = top + ui.dp(COUNTS_UPPER_DP);
+        float lower = top + ui.dp(COUNTS_LOWER_DP);
+        headingPaint();
+        countText.setTextAlign(Paint.Align.CENTER);
+        countText.setColor(ui.inkMuted);
+        float room = Math.max(0, heading - ui.dp(HEADING_SPARE_DP));
+        float x = countsBox.left + heading / 2;
+        // The heading's words only where they have any room (the counts given less than 148 dp have none).
+        if (room >= 1) {
+            String dash = dashLabel.startsWith("Last") ? "LAST" : "DASH";
+            condense(countText, dash, countText.getTextSize(), room);
+            canvas.drawText(dash, x, middle(countText, upper), countText);
+            headingPaint();
+            condense(countText, "ALL", countText.getTextSize(), room);
+            canvas.drawText("ALL", x, middle(countText, lower), countText);
+        }
+        countText.setLetterSpacing(0);
+        boolean none = dashLabel.startsWith("No");
+        float first = countsBox.left + heading + column / 2;
+        drawCount(canvas, first, column, upper, lower, OfferRule.Result.KEEP, passed, totals[0], state != State.OFF,
+                none);
+        drawCount(canvas, first + column, column, upper, lower, OfferRule.Result.DECLINE, filtered, totals[1],
+                state == State.ON, none);
+        drawCount(canvas, first + 2 * column, column, upper, lower, OfferRule.Result.REVIEW, review, totals[2],
+                state != State.OFF, none);
     }
 
-    private void drawCount(Canvas canvas, float x, float top, OfferRule.Result result, int count, int total,
-                           boolean live) {
+    /**
+     * One count's column, centred on {@code x} and {@code column} wide: its badge and the dash's number (or "–" with
+     * {@code none} yet) centred on {@code upper}, the all-time total alone under them on {@code lower}.
+     */
+    private void drawCount(Canvas canvas, float x, float column, float upper, float lower, OfferRule.Result result,
+                           int count, int total, boolean live, boolean none) {
         int color = Ui.resultColor(result);
-        // The number and its word size with the font setting, shrunk only as far as their space needs.
-        text.setFakeBoldText(true);
-        float numberSize = Math.min(ui.sp(18), ui.dp(26));
-        text.setTextSize(numberSize);
-        String number = Integer.toString(count);
-        float badge = ui.dp(8);
-        float numberWidth = text.measureText(number);
-        float rowWidth = badge * 2 + ui.dp(6) + numberWidth;
-        float left = x - rowWidth / 2;
+        float badge = ui.dp(COUNT_BADGE_DP);
+        float gap = ui.dp(COUNT_GAP_DP);
+        String number = none ? "–" : Integer.toString(count);
+        // The number sizes with the font setting, condensed and then shrunk only as far as its column needs.
+        countText.setFakeBoldText(true);
+        countText.setTextAlign(Paint.Align.LEFT);
+        condense(countText, number, numberSize(), Math.max(0, column - 2 * badge - gap));
+        float numberWidth = countText.measureText(number);
+        float left = x - (2 * badge + gap + numberWidth) / 2;
         fill.setColor(withAlpha(color, live ? 0xFF : 0x60));
-        canvas.drawCircle(left + badge, top, badge, fill);
-        Paint.FontMetrics metrics = text.getFontMetrics();
-        text.setColor(live ? ui.ink : ui.inkMuted);
-        text.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(number, left + badge * 2 + ui.dp(6), top - (metrics.ascent + metrics.descent) / 2, text);
-        text.setTextSize(ui.dp(9));
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setColor(withAlpha(Ui.onStatus(color), live ? 0xFF : 0xB0));
-        canvas.drawText(Ui.resultSymbol(result), left + badge, top + text.getTextSize() / 3, text);
-        text.setFakeBoldText(false);
-        text.setTextSize(Math.min(ui.sp(11), ui.dp(15)));
-        text.setColor(ui.inkMuted);
-        canvas.drawText(total + " total", x, top + ui.dp(24) + text.getTextSize() / 2, text);
+        canvas.drawCircle(left + badge, upper, badge, fill);
+        countText.setColor(live && !none ? ui.ink : ui.inkMuted);
+        canvas.drawText(number, left + 2 * badge + gap, middle(countText, upper), countText);
+        countText.setTextScaleX(1);
+        countText.setTextSize(ui.dp(9));
+        countText.setTextAlign(Paint.Align.CENTER);
+        countText.setColor(withAlpha(Ui.onStatus(color), live ? 0xFF : 0xB0));
+        canvas.drawText(Ui.resultSymbol(result), left + badge, upper + countText.getTextSize() / 3, countText);
+        countText.setFakeBoldText(false);
+        String all = Integer.toString(total);
+        condense(countText, all, Math.min(ui.sp(11), ui.dp(15)), column);
+        countText.setColor(ui.inkMuted);
+        canvas.drawText(all, x, middle(countText, lower), countText);
+    }
+
+    /**
+     * {@code paint} at {@code size} for {@code words} in {@code room}: as it is where they fit, else condensed down to
+     * four fifths of their width, else at that and smaller still, so they are never cut.
+     */
+    private static void condense(Paint paint, String words, float size, float room) {
+        paint.setTextScaleX(1);
+        paint.setTextSize(size);
+        float wide = paint.measureText(words);
+        if (wide <= room || wide <= 0) return;
+        float share = room / wide;
+        if (share >= LEAST_CONDENSED) {
+            paint.setTextScaleX(share);
+            return;
+        }
+        paint.setTextScaleX(LEAST_CONDENSED);
+        paint.setTextSize(size * share / LEAST_CONDENSED);
+    }
+
+    /** The baseline that puts {@code paint}'s line's middle on {@code y}. */
+    private static float middle(Paint paint, float y) {
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        return y - (metrics.ascent + metrics.descent) / 2;
     }
 
     private static int withAlpha(int color, int alpha) {

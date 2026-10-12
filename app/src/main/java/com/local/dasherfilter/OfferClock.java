@@ -156,6 +156,14 @@ final class OfferClock {
         static final int SCALE_MOST = 300;
         /** It fades in over this long as it comes into its row, never popping in (an older offer's words leave at once). */
         static final long APPEAR_MS = 200;
+        /**
+         * It is drawn from this wide (0.6.3: 100 dp, from 120, so the skyline's column keeps it in a short split
+         * screen), its sides 8 dp in there, widening to 12 dp by 20 dp more and staying so.
+         */
+        static final float LEAST_WIDE_DP = 100;
+        private static final float SIDE_LEAST_DP = 8;
+        private static final float SIDE_MORE_DP = 4;
+        private static final float SIDE_OVER_DP = 20;
         private final Ui ui;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -186,6 +194,12 @@ final class OfferClock {
             return clock;
         }
 
+        /** The room at each side of a face {@code wide} pixels across: 8 dp at 100 dp, 12 dp from 120 dp, in step. */
+        float sideFor(float wide) {
+            float more = Math.max(0, Math.min(1, (wide - ui.dp(LEAST_WIDE_DP)) / ui.dp(SIDE_OVER_DP)));
+            return ui.dp(SIDE_LEAST_DP) + ui.dp(SIDE_MORE_DP) * more;
+        }
+
         /** The top of the scale for this clock: 150% at least, else the highest middle rounded up to 50, at most 300%. */
         static int scaleTop(OfferClock clock) {
             int top = 150;
@@ -196,12 +210,12 @@ final class OfferClock {
         @Override public void draw(Canvas canvas) {
             OfferClock c = clock;
             android.graphics.Rect b = getBounds();
-            if (c == null || b.height() < ui.dp(32) || b.width() < ui.dp(120)) return;
+            if (c == null || b.height() < ui.dp(32) || b.width() < ui.dp(LEAST_WIDE_DP)) return;
             long since = SystemClock.uptimeMillis() - appearedAt;
             float appear = since >= APPEAR_MS || since < 0 ? 1f : since / (float) APPEAR_MS;
             drawAlpha = Math.round(alpha * appear);
             if (appear < 1f) invalidateSelf();
-            float side = ui.dp(12);
+            float side = sideFor(b.width());
             float left = b.left + side;
             float right = b.right - side;
             float text = Math.min(ui.sp(10), ui.dp(11));

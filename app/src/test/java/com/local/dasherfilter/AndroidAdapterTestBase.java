@@ -404,19 +404,37 @@ abstract class AndroidAdapterTestBase {
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 
-    /** The homepage's strip along the top, its words beside the mascot: the verdict, then the chip and the status. */
+    /**
+     * Gone in 0.6.3 with the verdict's sentence (the owner, 12 October 2026: "that sentence needs to be removed at all
+     * sizes"): the band has {@link #verdictTile} and {@link #chipRow} in its place. Kept only so the suites that still
+     * call it compile; it fails, saying so.
+     */
+    @Deprecated
     static android.widget.LinearLayout stripWords(View content) {
-        return (android.widget.LinearLayout) find(content, ScenePage.class).getChildAt(0);
+        throw new AssertionError("0.6.3: no strip of words any more; use verdictTile(content) or chipRow(content)");
     }
 
-    /** The latest offer's verdict, at the top of the homepage. */
+    /** Gone in 0.6.3 with the verdict's sentence, as {@link #stripWords}: it fails, saying so. */
+    @Deprecated
     static TextView verdictLine(View content) {
-        return (TextView) stripWords(content).getChildAt(0);
+        throw new AssertionError("0.6.3: no verdict sentence any more; use verdictTile(content), whose description"
+                + " screen readers hear says what the sentence said");
     }
 
-    /** The status line beside Autopilot's chip, under the verdict. */
+    /** The latest offer's tile at the top of the homepage, beside the mascot (0.6.3). */
+    static VerdictTile verdictTile(View content) {
+        return find(content, VerdictTile.class);
+    }
+
+    /** The band's second row: Autopilot's chip, the scoring mode's, then the status words (0.6.3). */
+    static AutopilotChip.Row chipRow(View content) {
+        return find(content, AutopilotChip.Row.class);
+    }
+
+    /** The status words beside Autopilot's chip and the scoring mode's: the chip row's last child. */
     static TextView statusLine(View content) {
-        return (TextView) ((ViewGroup) stripWords(content).getChildAt(1)).getChildAt(1);
+        AutopilotChip.Row row = chipRow(content);
+        return (TextView) row.getChildAt(row.getChildCount() - 1);
     }
 
     /** The homepage's header: the empty title and the round buttons (Navigate, Dasher, the sun, Settings). */

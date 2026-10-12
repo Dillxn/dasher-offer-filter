@@ -133,8 +133,9 @@ public final class AutopilotTextTest {
         AutopilotText.Status s = status(owner(70, 50), plan, nine, change(4, 100, 50, Autopilot.Reason.TURNED_ON));
 
         assertEquals(AutopilotText.Status.Kind.PINNED, s.kind);
-        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
-        assertEquals("Auto 50% lowest", AutopilotText.chip(s));
+        assertEquals("the line says it is the lowest (0.6.3: the chip only its bar)",
+                "Lowest bar · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
+        assertEquals("Auto 50%", AutopilotText.chip(s));
         assertEquals("heard in words, not symbols", "Autopilot bar 50 percent, the lowest. Acceptance rate 9 percent, "
                 + "goal 70 percent: about 61 more accepts. Opens Autopilot details.", AutopilotText.chipDescription(s));
         assertTrue("the ring is amber", s.belowGoal());
@@ -178,7 +179,8 @@ public final class AutopilotTextTest {
         Autopilot.Plan unread = plan(owner(70, 100), window(20), null, 100);
         assertEquals(Autopilot.Mode.PINNED, unread.mode);
         AutopilotText.Status noAr = status(owner(70, 50), unread, null, null);
-        assertEquals("Lower a minimum to pass more", AutopilotText.statusLine(noAr));
+        assertEquals("Lowest bar · lower a minimum to pass more", AutopilotText.statusLine(noAr));
+        assertEquals("Auto 50%", AutopilotText.chip(noAr));
         assertEquals(AutopilotText.DETAILS_AR_NOT_SEEN, AutopilotText.detailsAcceptanceRate(noAr));
         assertNull("no goal progress without a rate", AutopilotText.detailsGoalProgress(noAr));
     }
@@ -506,6 +508,52 @@ public final class AutopilotTextTest {
                 + "mix 12", AutopilotText.logPlan(plan, -1, NOW));
     }
 
+    /**
+     * Every word the chip shows has the room the page keeps for it beside the status line (0.6.3): one of
+     * {@link AutopilotText#CHIP_WIDEST}'s fixed words, or its bar, "Auto N%" with "▲" below the goal, N from 50 to 150,
+     * no wider than "Auto 150% ▲" (digits are all as wide as each other). A longer word must be added to that list.
+     */
+    @Test
+    public void everyChipWordHasItsRoom() {
+        List<String> fixed = Arrays.asList(AutopilotText.CHIP_WIDEST);
+        assertTrue("the widest bar is kept room for", fixed.contains("Auto 150% ▲"));
+        List<AutopilotText.Status> statuses = new ArrayList<>();
+        for (int goal : new int[] {70, 50, 0}) {
+            for (List<Autopilot.OfferRecord> lines : Arrays.asList(window(20), window(12))) {
+                for (AutopilotStore.Reading reading : Arrays.asList(null, dasher(9, 1), dasher(74, 1))) {
+                    for (FilterSettings minimums : Arrays.asList(starters(goal, 100), owner(goal, 100))) {
+                        Autopilot.Plan plan = plan(minimums, lines, reading, 100);
+                        for (int bar : new int[] {50, 51, 82, 99, 100, 101, 119, 150}) {
+                            FilterSettings at = rules(minimums.flatCents, minimums.perMileCents,
+                                    minimums.perMinuteCents, 0, goal, bar);
+                            statuses.add(status(at, plan, reading, null));
+                            statuses.add(new AutopilotText.Status(at, false, plan, reading, null, NOW));
+                        }
+                    }
+                }
+            }
+        }
+        statuses.add(status(starters(70, 100), null, null, null));
+        statuses.add(status(rules(0, 0, 0, 3, 70, 100), null, null, null));
+        statuses.add(status(new FilterSettings(false, 400, 100, 25, 0, true, 70, 82), null, null, null));
+        statuses.add(status(FilterSettings.of(true, 400, 100, 25, 0), null, null, null));
+        java.util.Set<AutopilotText.Status.Kind> kinds = java.util.EnumSet.noneOf(AutopilotText.Status.Kind.class);
+        java.util.regex.Pattern bar = java.util.regex.Pattern.compile("Auto (\\d+)%( ▲)?");
+        for (AutopilotText.Status s : statuses) {
+            kinds.add(s.kind);
+            String chip = AutopilotText.chip(s);
+            if (fixed.contains(chip)) continue;
+            java.util.regex.Matcher m = bar.matcher(chip);
+            assertTrue(s.kind + ": \"" + chip + "\" is one of the widest words or a bar", m.matches());
+            int percent = Integer.parseInt(m.group(1));
+            assertTrue(s.kind + ": " + chip, percent >= Autopilot.BAR_MIN && percent <= Autopilot.BAR_MAX);
+        }
+        assertTrue("every kind of chip was seen: " + kinds, kinds.containsAll(java.util.EnumSet.of(
+                AutopilotText.Status.Kind.OFF, AutopilotText.Status.Kind.WAITS,
+                AutopilotText.Status.Kind.NEEDS_MINIMUM, AutopilotText.Status.Kind.LEARNING,
+                AutopilotText.Status.Kind.PINNED, AutopilotText.Status.Kind.BELOW_GOAL)));
+    }
+
     @Test
     public void theGatesComeFirst() {
         Autopilot.Plan plan = plan(starters(70, 100), window(20), dasher(55, 12), 100);
@@ -519,8 +567,9 @@ public final class AutopilotTextTest {
 
         FilterSettings stopsOnly = rules(0, 0, 0, 3, 70, 100);
         AutopilotText.Status needs = status(stopsOnly, null, null, null);
-        assertEquals("", AutopilotText.statusLine(needs));
-        assertEquals("Auto needs a minimum", AutopilotText.chip(needs));
+        assertEquals("the line says what it needs (0.6.3: the chip only \"Auto\")", "Needs a minimum",
+                AutopilotText.statusLine(needs));
+        assertEquals("Auto", AutopilotText.chip(needs));
 
         FilterSettings paused = new FilterSettings(false, 400, 100, 25, 0, true, 70, 82);
         assertEquals("Auto-decline paused",

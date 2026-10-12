@@ -638,7 +638,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         DecisionChartView chart = find(content, DecisionChartView.class);
         MinimumsStarView star = find(content, MinimumsStarView.class);
         AreaMapView map = find(content, AreaMapView.class);
-        float[] shown = {scene.shown(road), scene.countsShown(), scene.shown(chart), scene.shown(star)};
+        float[] shown = {scene.shown(road), find(content, FilterHeroView.class).countsShown(), scene.shown(chart),
+                scene.shown(star)};
         String said = java.util.Arrays.toString(shown);
         for (int i = 1; i < shown.length; i++) {
             if (shown[i] < 1) assertEquals("the " + i + "th fades only once those before it are gone: " + said, 0f,

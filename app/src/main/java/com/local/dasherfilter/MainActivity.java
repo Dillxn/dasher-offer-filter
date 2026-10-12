@@ -41,19 +41,21 @@ import java.util.regex.Pattern;
 
 /**
  * The app's two pages, kept quiet. The main page is one picture in one fluid layout ({@link ScenePage},
- * {@link FluidLayout}), the same at every window size: along the top the strip, the mascot in its ring (the one button
- * that pauses or resumes) beside the latest offer's facts, outcome and age and, under it,
- * Autopilot's chip and the status line; the header's buttons; the dash's three counts; a line only when something needs
- * the user; then the minimums as a constellation with recent offers marked (tap an offer for its ticket), the skyline
- * of recent offers under it (tap for a ticket), and beside or below them a map of where offers pay best; the road along
- * the bottom. Every rule lives on the constellation and saves at once: the knobs (pay, per mile and per hour, hollow
- * until set), the max stops badge by the pin, and the Learn button (a tap turns learning from the user's accepts on or
- * off; a long press shows Learned minimums). Autopilot is the strip's chip. As the window shrinks, the road, the
- * counts, the skyline and at last the constellation with the map shrink and fade away, in that order, never all at
- * once; the strip, the header and the lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only what
- * exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip, each
- * one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt while the
- * app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt sensor
+ * {@link FluidLayout}), the same at every window size: along the top the band, which never fades (the mascot in its
+ * ring, the one button that pauses or resumes; the latest offer's tile, its outcome's badge, pay and age over its trip,
+ * as labels, never a sentence; the dash's three counts; under them Autopilot's chip, the scoring mode's and the status
+ * words, with the header's buttons at their end where the window is wide enough, else on a row of their own); a line
+ * only when something needs the user; then the stage: the minimums as a constellation with recent offers marked (tap
+ * an offer for its ticket), the skyline of recent offers (tap for a ticket) and a map of where offers pay best, in
+ * three columns in a short window, the map under the skyline as it grows taller, the constellation above them in a
+ * tall one; the road along the bottom. Every rule lives on the constellation and saves at once: the knobs (pay, per
+ * mile and per hour, hollow until set), the max stops badge by the pin, and the Learn button (a tap turns learning
+ * from the user's accepts on or off; a long press shows Learned minimums). Autopilot is the band's chip. As the window
+ * shrinks, the road goes first; then the stage shrinks to its three columns, and only then fades away; the band and
+ * the lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only
+ * what exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip,
+ * each one row. Pause and Resume take effect at once. The drawings move gently and shift with the phone's tilt while
+ * the app fills the screen, unless Android's animations are off; in split screen they move calmly and the tilt sensor
  * rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
@@ -67,7 +69,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final String SHOWING_SETTINGS = "settings";
     private static final String FEE_NOTICE = "fee_notice";
     /**
-     * With no rule saved, the status line under the verdict: the fewest words that say how to begin. It opens the
+     * With no rule saved, the status words beside the chips: the fewest words that say how to begin. It opens the
      * starter.
      */
     static final String START_LINE = "Tap to start with typical minimums";
@@ -158,7 +160,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private boolean resumed;
     private boolean started;
     private Ui ui;
-    /** The main page's scroller: it scrolls only where even the strip, the header and the lines need more. */
+    /** The main page's scroller: it scrolls only where even the band and the lines need more. */
     private ScrollView mainPage;
     private ScenePage scene;
     /** The header's Split with Dasher button (Swap in Dasher once split), while Dasher is not beside already. */
@@ -184,11 +186,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private ScrollView notice;
 
-    // Main page: the strip along the top.
-    /** The latest offer's verdict with, under it, the chip and the status line; a tap opens that offer's ticket. */
-    private LinearLayout stripWords;
-    private SetupRow.Words verdictLine;
-    /** The status line beside the chip: the start, paused, Autopilot's status or the wait ({@code slot} says which). */
+    // Main page: the band along the top.
+    /** The latest offer as a label and its badge (0.6.3: never a sentence); a tap opens that offer's ticket. */
+    private VerdictTile verdictTile;
+    /** Autopilot's chip, the scoring mode's and the status words, in the band's second row. */
+    private AutopilotChip.Row chipRow;
+    /** The status words beside the chips: the start, paused, Autopilot's status or the wait (as {@code slot} says). */
     private TextView statusLine;
     private int slot = SLOT_ON;
     /** Autopilot's chip at the status line's start, at every size: a tap opens the details, a long press the goal. */
@@ -231,6 +234,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * note, the one-time cards and note.
      */
     private LinearLayout problems;
+    /** The stored route's own line, only while its offer is older than the skyline's (0.6.3: else they mark it). */
     private LinearLayout routeRow;
     private TextView routeNote;
     /** The retired extra-stop fee's note, shown once on the homepage until tapped; null when there is none. */
@@ -263,7 +267,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
-    /** The strip's scoring-mode chip beside Autopilot's (0.6.3: the owner, "the mode button being on the homepage"). */
+    /** The band's scoring-mode chip beside Autopilot's (0.6.3: the owner, "the mode button being on the homepage"). */
     private ModeChip modeChip;
     /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
@@ -626,46 +630,64 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** A sky strip across the top of a page: the title and one round button. */
+    /**
+     * A sky strip across the top of a page: the title and its round buttons. Settings' ({@code back}) has its own strip
+     * of sky, Back and the title. The main page's is only the band's buttons (0.6.3; {@link FluidLayout} puts them at
+     * the end of the chips' row, or on their own row under it in a narrow window): Navigate, Open Dasher, Split, the
+     * sun and Settings, each round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty
+     * heading only screen readers hear (the page's picture needs none) in the band's gap before them.
+     */
     private View header(String title, boolean back) {
         LinearLayout header = ui.row();
-        // The main page's sky is the whole scene behind it; Settings has its own strip of sky.
-        if (back) header.setBackground(new Scenery(Scenery.Part.SKY, ui));
-        header.setPadding(ui.dp(back ? 8 : 12), ui.dp(back ? 18 : 0), ui.dp(back ? 12 : 8), ui.dp(back ? 12 : 0));
         header.setMinimumHeight(ui.dp(back ? 84 : 56));
-        if (back) header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
-        // The main page's picture needs no title; screen readers still hear it.
-        TextView name = ui.text(back ? title : "", 22, ui.ink, true);
-        if (!back) name.setContentDescription(title);
-        if (back) name.setPadding(ui.dp(8), 0, 0, 0);
-        name.setAccessibilityHeading(true);
-        header.addView(name, Ui.weighted());
         if (!back) {
+            // The title takes what the header's box has beside the buttons (the band's gap, as the page leaves it for
+            // the title: FluidLayout.BAND_GAP_DP), so a pixel's rounding never pushes Settings past the box's edge.
+            TextView name = ui.text("", 22, ui.ink, true);
+            name.setContentDescription(title);
+            name.setAccessibilityHeading(true);
+            name.setMinWidth(ui.dp(FluidLayout.BAND_GAP_DP));
+            header.addView(name, new LinearLayout.LayoutParams(0, ui.dp(48), 1f));
             mainTitle = name;
-            header.addView(iconButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
+            header.addView(bandButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
             // One tap to Dasher filling the screen (with the tab over it), at the user's tap only.
-            openDasherButton = iconButton(Glyph.Shape.PHONE, DasherSplit.OPEN_LABEL, () -> {
+            openDasherButton = bandButton(Glyph.Shape.PHONE, DasherSplit.OPEN_LABEL, () -> {
                 String said = DasherSplit.openDasher(this);
                 if (said != null) toast(said);
             });
             openDasherButton.setVisibility(View.GONE);
             header.addView(openDasherButton);
-            splitButton = iconButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
-            LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52));
-            splitParams.setMarginEnd(ui.dp(4));
-            header.addView(splitButton, splitParams);
+            splitButton = bandButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
+            header.addView(splitButton);
             // The existing sun/moon cycles modes directly; no chooser or duplicate Settings row.
             AppearanceButton sun = new AppearanceButton(this, ui);
             sun.show(Appearance.resolve(this));
             sun.setOnClickListener(tapped -> cycleAppearance());
-            LinearLayout.LayoutParams sunParams = new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56));
-            sunParams.setMarginEnd(ui.dp(10));
-            header.addView(sun, sunParams);
+            header.addView(sun, new LinearLayout.LayoutParams(ui.dp(56), ui.dp(56)));
             scene.setSunAnchor(sun);
             sunButton = sun;
-            header.addView(iconButton(Glyph.Shape.SLIDERS, "Settings", () -> showSettings(true)));
+            header.addView(bandButton(Glyph.Shape.SLIDERS, "Settings", () -> showSettings(true)));
+            return header;
         }
+        // Settings has its own strip of sky; the main page's sky is the whole scene behind it.
+        header.setBackground(new Scenery(Scenery.Part.SKY, ui));
+        header.setPadding(ui.dp(8), ui.dp(18), ui.dp(12), ui.dp(12));
+        header.addView(iconButton(Glyph.Shape.BACK, "Back", () -> showSettings(false)));
+        TextView name = ui.text(title, 22, ui.ink, true);
+        name.setPadding(ui.dp(8), 0, 0, 0);
+        name.setAccessibilityHeading(true);
+        header.addView(name, Ui.weighted());
         return header;
+    }
+
+    /** A round button of the main page's band: 48 dp, 4 dp after what stands before it (0.6.3; it was 52 dp). */
+    private ImageButton bandButton(Glyph.Shape icon, String description, Runnable action) {
+        ImageButton button = iconButton(icon, description, action);
+        button.setBackground(ui.rounded(ui.surface, ui.dark ? 0x40FFFFFF : 0x330B0B0B, 24));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48));
+        params.setMarginStart(ui.dp(4));
+        button.setLayoutParams(params);
+        return button;
     }
 
     /** A round button carrying a drawn icon; its description is what screen readers say. */
@@ -781,27 +803,21 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void buildMain(ScenePage page) {
         View header = header(AppName.NAME, false);
 
-        // The strip along the top: the mascot is the button (a tap pauses, resumes, or with no rule yet offers typical
-        // minimums), beside the latest offer's verdict and, under it, Autopilot's chip and the status line.
+        // The band along the top (0.6.3): the mascot is the button (a tap pauses, resumes, or with no rule yet offers
+        // typical minimums), beside the latest offer's tile and the dash's counts; under them Autopilot's chip, the
+        // scoring mode's and the status words, with the header's buttons at their end where the window is wide enough.
         hero = new FilterHeroView(this, ui);
         hero.setOnMascotClickListener(tapped -> toggleAutoDecline());
         hero.setOnCountClickListener(this::openLatestCountedOffer);
-        stripWords = ui.column();
-        stripWords.setBackground(ui.pressable(12));
-        // A tap on the verdict opens that offer's ticket (the chip and the status line keep their own taps).
-        stripWords.setOnClickListener(tapped -> openLatestOffer());
-        stripWords.setClickable(false);
-        // 15 sp, as every homepage line; at a large font, a little smaller by the least that keeps it to two lines (as
-        // a setup step's words), so even the longest verdict stays whole on screen in a small window.
-        verdictLine = new SetupRow.Words(this);
-        verdictLine.setTextColor(ui.ink);
-        verdictLine.setTypeface(Ui.MEDIUM);
-        verdictLine.setLineSpacing(0, 1.15f);
-        verdictLine.setPadding(0, ui.dp(4), 0, 0);
-        stripWords.addView(verdictLine, Ui.matchWidth());
-        // The status line, 14 sp and at least 48 dp: with no rule, the start; with Autopilot on, its status in every
+        // The latest offer as labels and its badge, never a sentence (the owner, 12 October 2026: "that sentence needs
+        // to be removed at all sizes and replaced with more thoughtful, concise (either via label and or graphic)
+        // expression"); screen readers hear the whole sentence and its reason, and a tap opens its ticket.
+        verdictTile = new VerdictTile(this, ui);
+        verdictTile.setOnClickListener(tapped -> openLatestOffer());
+        // The status words, 14 sp in the row's 56 dp: with no rule, the start; with Autopilot on, its status in every
         // state, a tap opening its details; else, with Autopilot off, paused (a tap resumes), the wait for a matching
-        // offer, or that auto-decline is on. Never a live region: Autopilot moving its bar by itself is never announced.
+        // offer, or that auto-decline is on. A tap only where they are a touch target wide (the chips and the mascot
+        // do the same). Never a live region: Autopilot moving its bar by itself is never announced.
         statusLine = ui.text("", 14, ui.inkSecondary, false);
         statusLine.setMinHeight(ui.dp(48));
         statusLine.setGravity(Gravity.CENTER_VERTICAL);
@@ -817,8 +833,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // row). Its own control, never Autopilot's.
         modeChip = new ModeChip(this, ui);
         modeChip.setOnClickListener(tapped -> chooseScoreMode());
-        stripWords.addView(new AutopilotChip.Row(this, ui, new TextView[] {chip, modeChip}, statusLine, 14),
-                Ui.matchWidth());
+        chipRow = new AutopilotChip.Row(this, ui, new TextView[] {chip, modeChip}, statusLine, 14);
 
         // The lines that need the user, under the header.
         LinearLayout lines = ui.column();
@@ -859,6 +874,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
         // beside another app.
         splitLines = new SplitLines(this, ui, root, mainPage, problems, this::swapInDasher);
+        // The stored route's own line, only for an offer older than the skyline's (refreshRoute).
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
         routeNote = ui.text("", 13, ui.inkSecondary, false);
@@ -872,13 +888,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }));
         lines.addView(routeRow);
 
-        // Then the stage: the minimums' constellation with the skyline's caption and the skyline under it, above the
-        // map in a tall window and beside it in a wide one; and the road along the bottom.
+        // Then the stage: the minimums' constellation, the skyline's caption over the skyline, and the map over its
+        // area's line, in three columns in a short window, the map under the skyline as the window grows taller, the
+        // constellation above both in a tall one; and the road along the bottom.
         addMinimums();
-        offerCaption = caption(13, ui.ink);
-        offerCaption.setPadding(ui.dp(12), 0, ui.dp(12), 0);
-        // The row is empty unless an older offer is selected: the offer clock stands in it then.
+        // The row is empty unless an older offer is selected: the offer clock stands in it then, its sides the words'.
         clockFace = new OfferClock.Face(ui);
+        offerCaption = caption(13, ui.ink, wide -> Math.round(clockFace.sideFor(wide)));
         offerCaption.setBackground(clockFace);
         offerCaption.setOnClickListener(tapped -> {
             if (offerCaption.length() > 0 && chart.selectedEntry() != null) setTicketOpen(true);
@@ -888,11 +904,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         addAreas();
         View road = new View(this);
         road.setBackground(new Scenery(Scenery.Part.GROUND, ui));
-        page.setParts(stripWords, hero, header, lines, minimums, offerCaption, chart, areaMap, areaLine, road);
-        // The empty title takes the header's spare room, so screen readers reach it, and hear it first.
+        page.setParts(verdictTile, chipRow, hero, header, lines, minimums, offerCaption, chart, areaMap, areaLine,
+                road);
+        // Screen readers hear the page's name first, from the header's empty title, then the latest offer.
         mainTitle.setId(View.generateViewId());
-        stripWords.setId(View.generateViewId());
-        mainTitle.setAccessibilityTraversalBefore(stripWords.getId());
+        verdictTile.setId(View.generateViewId());
+        mainTitle.setAccessibilityTraversalBefore(verdictTile.getId());
     }
 
     /**
@@ -900,10 +917,23 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * line where the words fit, else two, smaller by the least that fits, never below three quarters of the user's size
      * nor below the default size; only words longer still are cut short with a mark (screen readers hear the whole of
      * it). Lines without the font's own padding above and below: with it, two lines at the least size came out taller
-     * than the row at twice the font on Android 8.
+     * than the row at twice the font on Android 8. Its side padding is what {@code sides} gives, in pixels, for the
+     * width it is measured at (0.6.3: less in a narrow column), set as it is measured: set from a layout listener, it
+     * would ask for a layout Android drops, and the words would keep the width they were measured for.
      */
-    private TextView caption(float sp, int color) {
-        TextView line = ui.text("", sp, color, true);
+    private TextView caption(float sp, int color, java.util.function.IntUnaryOperator sides) {
+        TextView line = new TextView(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                if (MeasureSpec.getMode(widthSpec) != MeasureSpec.UNSPECIFIED) {
+                    int side = Math.max(0, sides.applyAsInt(MeasureSpec.getSize(widthSpec)));
+                    if (getPaddingLeft() != side || getPaddingRight() != side) setPadding(side, 0, side, 0);
+                }
+                super.onMeasure(widthSpec, heightSpec);
+            }
+        };
+        line.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp);
+        line.setTextColor(color);
+        line.setTypeface(Ui.MEDIUM);
         line.setMaxLines(2);
         line.setEllipsize(android.text.TextUtils.TruncateAt.END);
         line.setGravity(Gravity.CENTER);
@@ -960,7 +990,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         setTicketOpen(true);
     }
 
-    /** A tap on the verdict: the latest offer's ticket, as a tap on its building opens it. */
+    /** A tap on the latest offer's tile: its ticket, as a tap on its building opens it. */
     private void openLatestOffer() {
         refreshHistory();
         if (!recentEntries.isEmpty()) openOffer(recentEntries.get(0));
@@ -1063,7 +1093,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // The constellation's round button is the learner's switch (the owner, 11 October 2026: "option on
         // homepage not settings page").
         if (minimums != null) minimums.setLearning(rules.acceptanceLearning);
-        // The scoring mode is the strip's own chip beside Autopilot's (0.6.3; Settings has no Mode row).
+        // The scoring mode is the band's own chip beside Autopilot's (0.6.3; Settings has no Mode row).
         if (modeChip != null) modeChip.show(rules.scoreByArea);
     }
 
@@ -1487,8 +1517,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (!AreaMap.hasPermission(this)) askForLocation();
         });
         // One line where it fits (else two, its rate and count a little smaller), a 48 dp target under the map.
-        areaLine = caption(13, ui.ink);
-        areaLine.setPadding(ui.dp(16), 0, ui.dp(16), 0);
+        // Its sides 8 dp in a column 120 dp wide, 16 dp from 200 dp, in step (0.6.3: they were 16 dp at every width).
+        areaLine = caption(13, ui.ink, wide -> ui.dp(8) + Math.round(ui.dp(8)
+                * Math.max(0f, Math.min(1f, (wide - ui.dp(120)) / (float) ui.dp(80)))));
         areaLine.setBackground(ui.pressable(12));
         areaLine.setOnClickListener(tapped -> openArea());
         areaLine.setVisibility(View.GONE);
@@ -1501,7 +1532,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * the homepage), behavior switches, updates, anonymous feedback, reports and a tip, then the version and the
      * bundled texts.
      * Saved minimums are on the homepage's constellation, the learner's switch is its round button and the scoring
-     * mode is the strip's chip beside Autopilot's (0.6.3): none of them is here.
+     * mode is the band's chip beside Autopilot's (0.6.3): none of them is here.
      */
     private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
@@ -1771,8 +1802,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
 
         refreshHistory();
-        refreshVerdict();
-        refreshRoute();
+        OfferSnapshot route = ActiveRouteStore.load(this);
+        refreshVerdict(route);
+        refreshRoute(route);
         refreshRuleChoices(saved);
         refreshOfferCaption(chart.selectedEntry());
         refreshLive();
@@ -1827,7 +1859,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         android.graphics.Typeface face = which == SLOT_START || which == SLOT_PAUSED ? Ui.MEDIUM
                 : android.graphics.Typeface.DEFAULT;
         if (statusLine.getTypeface() != face) statusLine.setTypeface(face);
-        statusLine.setClickable(which != SLOT_ON && !blank);
+        // A tap only where the row gives the words a touch target's width (AutopilotChip.Row).
+        chipRow.setWordsTappable(which != SLOT_ON && !blank);
         int important = blank ? View.IMPORTANT_FOR_ACCESSIBILITY_NO : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO;
         if (statusLine.getImportantForAccessibility() != important) statusLine.setImportantForAccessibility(important);
     }
@@ -1856,25 +1889,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The latest offer's verdict at the top of the page, at every window size (the owner: an offer dinged in split
-     * screen and Dasher showed only "Finding offers"): pay, miles and trip time first, then its outcome and age.
-     * The reason stays in its accessible description and ticket. With no offer yet, whether everything is ready.
+     * The latest offer at the top of the page, at every window size (the owner: an offer dinged in split screen and
+     * Dasher showed only "Finding offers"): its tile's badge, pay, tag, age and trip, with the stored {@code route}'s
+     * road and stops when it is that offer (0.6.3, {@link VerdictTile}; never a sentence). Screen readers hear the
+     * verdict ({@link #verdict}) and its reason; the reason is in its ticket too. With no offer yet, whether everything
+     * is ready.
      */
-    private void refreshVerdict() {
+    private void refreshVerdict(OfferSnapshot route) {
         DecisionLog.Entry latest = recentEntries.isEmpty() ? null : recentEntries.get(0);
-        long now = System.currentTimeMillis();
-        String words = latest == null ? (readyForOffers ? "Waiting for offers" : "No offers yet")
-                : verdict(latest, now);
-        if (!words.contentEquals(verdictLine.getText())) verdictLine.setText(words);
-        // Sized, and its height kept, for the longest "how long ago" of the hour after the offer: the minutes passing
-        // never move the page.
-        verdictLine.fitTo(latest == null ? null : verdict(latest, LONGEST_AGO));
-        String said = latest == null ? null : words + ". " + verdictReason(latest) + ". Open offer details";
-        if (!java.util.Objects.equals(said, stripWords.getContentDescription() == null ? null
-                : stripWords.getContentDescription().toString())) {
-            stripWords.setContentDescription(said);
-        }
-        if (stripWords.isClickable() != (latest != null)) stripWords.setClickable(latest != null);
+        verdictTile.show(latest, readyForOffers, System.currentTimeMillis(), route);
     }
 
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
@@ -2081,7 +2104,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void refreshOfferCaption(DecisionLog.Entry entry) {
         boolean latest = entry != null && !recentEntries.isEmpty() && recentEntries.get(0).at == entry.at;
         if (entry == null || latest) {
-            // No offer yet, or the latest: the verdict at the top of the page says it already (the owner, 11 October
+            // No offer yet, or the latest: the tile at the top of the page shows it already (the owner, 11 October
             // 2026: the latest offer showed twice). Only another offer tapped on the skyline gets this caption; the
             // row shows the offer clock instead (0.6.2), its current slot following the clock on the wall.
             if (offerCaption.length() > 0) offerCaption.setText("");
@@ -2116,7 +2139,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Qualify acceptance only when the stored observation distinguishes its source: "Automatically accepted" after the
      * app's own Accept request, "Accepted by you" after the user's; older lines by their old steps. An offer that
      * passed only by Autopilot's lowered bar never reads as a full pass: "Passed below your minimums" (left to the
-     * user). The verdict at the top of the page says the same ({@link #verdict}).
+     * user). The tile at the top of the page shows the same, and screen readers hear it there ({@link #verdict}).
      */
     static String captionOutcome(DecisionLog.Entry entry) {
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
@@ -2126,14 +2149,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (outcome != DecisionLog.Outcome.ACCEPTED) return outcome.said;
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
             DecisionLog.Step step = entry.steps.get(i);
-            if (step.kind == DecisionLog.StepKind.ACCEPTED_AUTOMATIC) return "Automatically accepted";
+            if (step.kind == DecisionLog.StepKind.ACCEPTED_AUTOMATIC) return VerdictTile.AUTOMATICALLY_ACCEPTED;
             if (step.kind == DecisionLog.StepKind.ACCEPTED || step.kind == DecisionLog.StepKind.ACCEPTED_ADD_ON) {
                 return "Accepted by you";
             }
             // Written before 0.5.0.
             if (step.kind == DecisionLog.StepKind.ACCEPTED_NOT_LEARNED) {
                 return step.detail.startsWith("automatic Accept was requested, and Dasher showed a delivery screen")
-                        ? "Automatically accepted" : DecisionLog.Outcome.ACCEPTED.said;
+                        ? VerdictTile.AUTOMATICALLY_ACCEPTED : DecisionLog.Outcome.ACCEPTED.said;
             }
             if (step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED) return DecisionLog.Outcome.ACCEPTED.said;
             if (step.kind == DecisionLog.StepKind.ACCEPTED_LEARNED
@@ -2144,16 +2167,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * The latest offer's overview, in one line where it fits: its pay, miles and trip time before the outcome and
-     * age. These facts stay visible when a short window has no room for its chart or ticket. An unread fact is named,
-     * never omitted or inferred. The reason is available in the accessible description and the ticket.
+     * The latest offer's verdict as screen readers hear it from the tile at the top of the page (0.6.3: no longer shown
+     * as a sentence, {@link VerdictTile}): its pay, miles and trip time before the outcome and age. An unread fact is
+     * named, never omitted or inferred. The reason follows it in the tile's description, and is in the ticket.
      */
     static String verdict(DecisionLog.Entry entry, long now) {
         return verdict(entry, ago(now - entry.at));
     }
-
-    /** The longest "how long ago" a verdict says in the hour after its offer ("1 h ago" and on are shorter). */
-    private static final String LONGEST_AGO = "59 min ago";
 
     /** The verdict for {@code entry}, saying how long ago in {@code ago}'s words. */
     private static String verdict(DecisionLog.Entry entry, String ago) {
@@ -2169,7 +2189,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /** The full reason, without repeating the below-minimums outcome, kept in the overview's spoken description. */
-    private static String verdictReason(DecisionLog.Entry entry) {
+    static String verdictReason(DecisionLog.Entry entry) {
         String why = reasonLine(entry);
         String below = "Below your minimums · ";
         if (captionOutcome(entry).equals(AutopilotText.PASSED_BELOW_MINIMUMS) && why.startsWith(below)) {
@@ -2178,31 +2198,38 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return why;
     }
 
-    /** The route row under the header, after the history (the verdict it leaves the offer's figures to). */
-    private void refreshRoute() {
-        OfferSnapshot route = ActiveRouteStore.load(this);
-        routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
-        if (route == null) return;
-        DecisionLog.Entry newest = recentEntries.isEmpty() ? null : recentEntries.get(0);
-        boolean same = newest != null && route.fingerprint().equals(newest.facts.fingerprint());
-        String words = routeLine(route, same);
+    /**
+     * The stored {@code route} where its offer shows (0.6.3; after the history is refreshed): the road on the tile's
+     * badge and its stops on the tile's trip while it is the latest offer ({@link #refreshVerdict}), and the road over
+     * its building while it is among the skyline's, whose ticket has "Forget this route". Its own line under the
+     * header, with Forget, only for an offer older than those, or one not in the history.
+     */
+    private void refreshRoute(OfferSnapshot route) {
+        String fingerprint = route == null ? null : route.fingerprint();
+        chart.setRoute(fingerprint);
+        boolean inSkyline = false;
+        int shown = Math.min(DecisionChartView.SLOTS, recentEntries.size());
+        for (int i = 0; fingerprint != null && !inSkyline && i < shown; i++) {
+            inSkyline = fingerprint.equals(recentEntries.get(i).facts.fingerprint());
+        }
+        int visibility = route == null || inSkyline ? View.GONE : View.VISIBLE;
+        if (routeRow.getVisibility() != visibility) routeRow.setVisibility(visibility);
+        if (visibility != View.VISIBLE) return;
+        String words = routeLine(route);
         if (!words.contentEquals(routeNote.getText())) routeNote.setText(words);
         String said = routeSaid(route);
         if (!said.contentEquals(String.valueOf(routeNote.getContentDescription()))) routeNote.setContentDescription(said);
     }
 
     /**
-     * The route row's words, as labels: "On a route · $9.30 · 5.2 mi · 21 min · 2 stops"; only "On a route · 2 stops"
-     * while its offer is the verdict's (the line above says its pay, miles and minutes already). Unread facts are
-     * named, never left out.
+     * The route row's words, as labels: "On a route · $9.30 · 5.2 mi · 21 min · 2 stops" (it shows only for an offer
+     * the tile and the skyline do not show). Unread facts are named, never left out.
      */
-    static String routeLine(OfferSnapshot route, boolean verdictShowsIt) {
+    static String routeLine(OfferSnapshot route) {
         StringBuilder line = new StringBuilder("On a route");
-        if (!verdictShowsIt) {
-            line.append(" · ").append(route.payCents == null ? "Pay unread" : DecisionLog.money(route.payCents));
-            line.append(" · ").append(route.miles == null ? "Miles unread" : miles(route.miles) + " mi");
-            line.append(" · ").append(route.minutes == null ? "Time unread" : route.minutes + " min");
-        }
+        line.append(" · ").append(route.payCents == null ? "Pay unread" : DecisionLog.money(route.payCents));
+        line.append(" · ").append(route.miles == null ? "Miles unread" : miles(route.miles) + " mi");
+        line.append(" · ").append(route.minutes == null ? "Time unread" : route.minutes + " min");
         line.append(" · ").append(route.stops == null ? "Stops unread"
                 : route.stops + (route.stops == 1 ? " stop" : " stops"));
         if (route.itemCountApplicable) {
@@ -2223,7 +2250,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /** Miles as the verdict says them: "5.2", or "5" for a whole number. */
-    private static String miles(double miles) {
+    static String miles(double miles) {
         return miles == Math.rint(miles) ? String.valueOf((long) miles) : String.valueOf(miles);
     }
 
@@ -2334,6 +2361,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
             read.setPadding(0, ui.dp(4), 0, 0);
             read.setTextIsSelectable(true);
             ticket.addView(read);
+        }
+        // The stored route's offer: its ticket forgets the route (0.6.3: the route's own line under the header shows
+        // only for an offer older than the skyline's).
+        OfferSnapshot route = ActiveRouteStore.load(this);
+        if (route != null && route.fingerprint().equals(entry.facts.fingerprint())) {
+            ui.addButton(ticket, "Forget this route", false, () -> {
+                ActiveRouteStore.clear(this);
+                refresh();
+                // The ticket again without this button (refresh rebuilds it only for a new history).
+                DecisionLog.Entry shownNow = countTicket != null ? countTicket : chart.selectedEntry();
+                if (shownNow != null) showSelection(shownNow);
+            });
         }
         ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
     }

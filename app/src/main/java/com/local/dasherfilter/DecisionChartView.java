@@ -32,7 +32,8 @@ import java.util.Map;
  * open street-level marker, never a tree. An offer whose pay was not read is a signpost at street level. Tapping a
  * building selects it (a spotlight picks it out) and reports it to the listener; an offer picked on the constellation
  * is selected the same way ({@link #choose}). Buildings and trees rise together; with Android's animations off they
- * rest.
+ * rest. The offer the stored route is (0.6.3, {@link #setRoute}) has a small road beside its flag, and screen readers
+ * hear "On a route." with it.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -69,6 +70,16 @@ final class DecisionChartView extends View {
     static final String EMPTY_SAID = "No offers recorded yet.";
     /** When each shown offer (by its time) began to rise. */
     private final Map<Long, Long> risingSince = new HashMap<>();
+    /** The stored route's offer, by its facts (null: none), and which shown offer it is (-1: none of them). */
+    private String routeFingerprint;
+    private int routed = -1;
+    /**
+     * The road beside a route's flag: its size, and how far right of and below the flag's middle it stands (clear of
+     * a quiet mark, on the edge of the selected offer's full badge, above the roof and clear of the flag's pole).
+     */
+    private static final float ROAD_MARK_DP = 10;
+    private static final float ROAD_MARK_RIGHT_DP = 10;
+    private static final float ROAD_MARK_DOWN_DP = 4;
 
     DecisionChartView(android.content.Context context, Ui ui) {
         super(context);
@@ -132,8 +143,46 @@ final class DecisionChartView extends View {
         for (int i = 0; selected < 0 && previous != null && i < ordered.size(); i++) {
             if (ordered.get(i).at == previous.at) selected = i;
         }
+        routed = routedIndex();
         setContentDescription(describe(ordered));
         invalidate();
+    }
+
+    /**
+     * The stored route, by its offer's facts ({@link OfferSnapshot#fingerprint}; null: none): the newest shown offer
+     * with those facts has a small road beside its flag, and its spoken entry ends "On a route." (0.6.3: the route's
+     * own line under the header goes while its offer is in the skyline).
+     */
+    void setRoute(String fingerprint) {
+        if (java.util.Objects.equals(fingerprint, routeFingerprint)) return;
+        routeFingerprint = fingerprint;
+        routed = routedIndex();
+        setContentDescription(describe(entries));
+        invalidate();
+    }
+
+    /** The newest shown offer that is the stored route's, -1 for none. */
+    private int routedIndex() {
+        if (routeFingerprint == null) return -1;
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            if (routeFingerprint.equals(entries.get(i).facts.fingerprint())) return i;
+        }
+        return -1;
+    }
+
+    /** Which shown offer (oldest first, as drawn) is the stored route's: -1 for none (for tests). */
+    int routeIndex() {
+        return routed;
+    }
+
+    /**
+     * Where the stored route's road stands once its building has risen, its middle in this view's pixels; null with
+     * no route among the shown offers (for tests).
+     */
+    float[] routeMarkAt() {
+        float[] flag = flagAt(routed);
+        if (flag == null) return null;
+        return new float[] {flag[0] + ui.dp(ROAD_MARK_RIGHT_DP), flag[1] + ui.dp(ROAD_MARK_DOWN_DP)};
     }
 
     DecisionLog.Entry selectedEntry() {
@@ -225,6 +274,12 @@ final class DecisionChartView extends View {
             line.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
             canvas.drawLine(center, roof, center, roof - ui.dp(5), line);
             drawBadge(canvas, center, roof - ui.dp(12), DecisionLog.outcome(entry), i == selected);
+            // The stored route's offer: a small road at its flag's lower right, above the roof (as on the tile).
+            if (i == routed) {
+                float flag = Math.max(roof - ui.dp(12), ui.dp(10));
+                OutcomeBadge.drawRoadPip(canvas, ui, center + ui.dp(ROAD_MARK_RIGHT_DP),
+                        flag + ui.dp(ROAD_MARK_DOWN_DP), ui.dp(ROAD_MARK_DP), ui.ink);
+            }
         }
         drawThresholdLabels(canvas, left, right);
         if (spotlight < 1) Motion.settling(this);
@@ -429,7 +484,10 @@ final class DecisionChartView extends View {
         for (int i = 0; i < entries.size(); i++) {
             DecisionLog.Entry entry = entries.get(i);
             float center = buildingCenter(i, slot);
-            if (center + reach >= from && center - reach <= to) {
+            // The route's road stands at its flag's lower right, no higher than the flag, a little further right.
+            float rightReach = i == routed
+                    ? Math.max(reach, ui.dp(ROAD_MARK_RIGHT_DP) + ui.dp(ROAD_MARK_DP) / 2f + ui.dp(1)) : reach;
+            if (center + rightReach >= from && center - reach <= to) {
                 float roof = entry.facts.payCents != null ? y(entry.facts.payCents, maxCents, top, bottom)
                         : bottom - ui.dp(14);
                 highest = Math.min(highest, Math.max(roof - ui.dp(12), ui.dp(10)) - ui.dp(9));
@@ -620,6 +678,7 @@ final class DecisionChartView extends View {
                 + (tree(entry) ? entry.model >= 3 && "area".equals(entry.scoreKind)
                         ? ", recorded area score " + entry.scorePercent + "%."
                         : ", score " + entry.scorePercent + "% of your minimums."
-                : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.");
+                : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")
+                + (selected == routed ? " On a route." : "");
     }
 }

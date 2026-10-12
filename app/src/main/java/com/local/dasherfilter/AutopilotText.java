@@ -317,21 +317,23 @@ final class AutopilotText {
 
     /**
      * The homepage's one status line (in place of "Next match" while Autopilot is on; a tap opens the details), beside
-     * the chip, which already says Autopilot's bar (or that it waits, needs a minimum or is learning): only what the chip
-     * does not say, in labels (the owner, 11 October 2026: each fact once, a label before a sentence; 0.6.3 took the bar
-     * off this line, where it stood beside the chip's). Empty where the chip says it all (waiting for the screen reader,
-     * no money minimum: the setup step and the hollow knobs say the rest). The first matching line wins, in the spec's
-     * order: auto-decline paused; no plan yet; learning; pinned; below the goal; at or above it; no reading yet; pay
-     * first's floor; pay first. Screen readers hear the whole status, the bar included, from the chip ({@link
-     * #chipDescription}).
+     * the chip, which already says Autopilot's bar (or that it waits or is learning): only what the chip does not say,
+     * in labels (the owner, 11 October 2026: each fact once, a label before a sentence; 0.6.3 took the bar off this
+     * line, where it stood beside the chip's). Empty where the chip says it all (waiting for the screen reader). With
+     * no money minimum, "Needs a minimum", the chip only "Auto"; pinned at the lowest bar, "Lowest bar · " before the
+     * rest, the chip only its bar (0.6.3: the chips' words kept short, so they keep their room beside these in a split
+     * screen). The first matching line wins, in the spec's order: auto-decline paused; no plan yet; learning; pinned;
+     * below the goal; at or above it; no reading yet; pay first's floor; pay first. Screen readers hear the whole
+     * status, the bar included, from the chip ({@link #chipDescription}).
      */
     static String statusLine(Status s) {
         switch (s.kind) {
             case OFF:
                 return "Autopilot off";
             case WAITS:
-            case NEEDS_MINIMUM:
                 return "";
+            case NEEDS_MINIMUM:
+                return "Needs a minimum";
             case PAUSED:
                 return "Auto-decline paused";
             case CHECKING:
@@ -339,6 +341,9 @@ final class AutopilotText {
             case LEARNING:
                 return s.plan.counted + " of " + Autopilot.MIN_WINDOW + " offers";
             case PINNED:
+                if (s.bar == Autopilot.BAR_MIN) {
+                    return "Lowest bar · " + (s.belowGoal() ? progress(s) : "lower a minimum to pass more");
+                }
                 return s.belowGoal() ? progress(s) : "Lower a minimum to pass more";
             case BELOW_GOAL:
                 return progress(s);
@@ -420,7 +425,19 @@ final class AutopilotText {
 
     // ---- The chip ----
 
-    /** The one-line chip under the verdict: "Auto off", "Auto learning", "Auto 82%", "Auto 82% ▲" (below the goal). */
+    /**
+     * Every word the chip shows, at its widest (its bar's widest is "Auto 150% ▲"), which the page keeps room for
+     * beside the status line ({@link AutopilotChip.Row#widestChips}). A longer word added to the chip must be added
+     * here (AutopilotTextTest holds it).
+     */
+    static final String[] CHIP_WIDEST = {"Auto off", "Auto waits", "Auto learning", "Auto 150% ▲", "Auto"};
+
+    /**
+     * The one-line chip at the status line's start: "Auto off", "Auto learning" (at 100%; its bar while learning
+     * with any other), "Auto 82%", "Auto 82% ▲" (below the goal), "Auto waits"; "Auto" with no money minimum and "Auto 50%" pinned at the lowest bar, the status line beside
+     * it saying the rest ({@link #statusLine}). Every word it shows is one of {@link #CHIP_WIDEST} or its bar, no wider
+     * than theirs.
+     */
     static String chip(Status s) {
         switch (s.kind) {
             case OFF:
@@ -428,11 +445,13 @@ final class AutopilotText {
             case WAITS:
                 return "Auto waits";
             case NEEDS_MINIMUM:
-                return "Auto needs a minimum";
+                return "Auto";
             case LEARNING:
-                return "Auto learning";
+                // Learning keeps the bar at exactly 100%; a bar it has not moved back yet (as just after Clear history)
+                // is still shown, since it still judges offers.
+                return s.bar == FilterSettings.BAR_AT_MINIMUMS ? "Auto learning" : chipBar(s);
             case PINNED:
-                if (s.bar == Autopilot.BAR_MIN) return "Auto " + s.bar + "% lowest";
+                if (s.bar == Autopilot.BAR_MIN) return "Auto " + s.bar + "%";
                 return chipBar(s);
             default:
                 return chipBar(s);

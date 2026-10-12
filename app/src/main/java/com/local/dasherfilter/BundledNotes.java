@@ -91,8 +91,8 @@ final class BundledNotes {
                         + "version and whether this install was counted before.",
                 "Nothing about your offers, phone or account goes with it; the service keeps daily totals for 400 "
                         + "days. Settings → Send an anonymous daily count turns it off.",
-                "Also new: Strict or Area is a chip beside Autopilot's on the homepage, and during a dash Split "
-                        + "opens recent apps for you to put Dasher beside.");
+                "Also new: Strict or Area is a chip beside Autopilot's, the latest offer is a short label, and Split "
+                        + "opens Dasher first, then puts this app beside it.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -168,6 +168,13 @@ final class BundledNotes {
                 "Offers by time of day, over the skyline: each bar is the middle score of your offers in those three "
                         + "hours, as a percent of your minimums now.",
                 "Tap it for what it means. It is history, not a promise.");
+        release("0.6.3",
+                "The latest offer is a label now: its badge, pay, age and trip. A small split window keeps the radar, "
+                        + "skyline, offer map and counts.",
+                "Split opens Dasher full screen first, then puts this app beside it. Strict or Area is a chip beside "
+                        + "Autopilot's; Settings has no Mode row.",
+                "A take-back from a peek's decline teaches, the green or amber tab shows beside this app too, and a "
+                        + "daily anonymous count has a Settings switch.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

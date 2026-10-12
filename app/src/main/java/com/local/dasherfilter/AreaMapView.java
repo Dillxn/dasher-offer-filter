@@ -28,7 +28,8 @@ import java.util.Locale;
  * dashed outlines. A dot marks where the phone is now; a scale bar and a compass rose give distance and direction.
  * The land fades out toward every edge instead of stopping at a hard line, so a square or coin the edge cuts through
  * dissolves into the scene's ground; the compass and the scale stay crisp above it. Tap a square to select it. With
- * nothing to show yet, it says why.
+ * nothing to show yet, it says why, in as many lines as the land holds (three at most). In a short map (0.6.3: a split
+ * screen's three columns) the compass fades out between 84 and 68 dp tall and its room goes to the land.
  */
 @SuppressLint("ViewConstructor")
 final class AreaMapView extends View {
@@ -62,6 +63,12 @@ final class AreaMapView extends View {
     private final RectF pill = new RectF();
     private final android.text.TextPaint labelText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final android.text.TextPaint keyText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final android.text.TextPaint emptyText = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    /** The words with nothing mapped, laid out for the message, width and height they were worked out for. */
+    private android.text.StaticLayout emptyLayout;
+    private String emptyLaidOut;
+    private float emptyLaidWidth = -1;
+    private float emptyLaidHeight = -1;
     private final RectF hereLabel = new RectF();
     private final RectF labelObstacle = new RectF();
     private boolean helpPressed;
@@ -71,6 +78,18 @@ final class AreaMapView extends View {
     private final DashPathEffect frameDash;
     /** How far in from each edge the land fades from nothing to full. */
     static final int FADE_DP = 22;
+    /** The compass rose is gone in a map this tall or less, wholly there in one this much taller (0.6.3). */
+    private static final float COMPASS_GONE_DP = 68;
+    private static final float COMPASS_OVER_DP = 16;
+    /**
+     * The right-hand gutter beside the land: the info control's 48 dp target and 1 dp, and the compass's 9 dp more as
+     * much as the compass is there.
+     */
+    private static final float GUTTER_DP = 49;
+    private static final float GUTTER_COMPASS_DP = 9;
+    /** The words with nothing mapped: at most this many lines, this far in from the land's sides (both together). */
+    private static final int EMPTY_LINES_MOST = 3;
+    private static final float EMPTY_SIDES_DP = 12;
     /** Keeps the land only where the edge ramps allow: multiplies what was drawn by the ramp's alpha. */
     private final Paint fade = new Paint();
     private final RectF strip = new RectF();
@@ -114,7 +133,7 @@ final class AreaMapView extends View {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        float landWidth = mapWidth(width);
+        float landWidth = mapWidth(width, height);
         float across = sideFade(landWidth);
         float down = topFade(height);
         int clear = 0x00000000;
@@ -256,7 +275,7 @@ final class AreaMapView extends View {
 
     private void project(float width, float height) {
         // The heading and right-hand ornaments have their own space, including the info control's full hit area.
-        width = mapWidth(width);
+        width = mapWidth(width, height);
         float keyHeight = keyHeight();
         height = Math.max(ui.dp(34), height - keyHeight);
         double minLat = Double.MAX_VALUE;
@@ -327,8 +346,23 @@ final class AreaMapView extends View {
         return ui.dp(20);
     }
 
-    private float mapWidth(float width) {
-        return Math.max(1, width - ui.dp(58));
+    /**
+     * The land's width in a map {@code width} by {@code height} pixels: all but the right-hand gutter, which keeps the
+     * info control's 48 dp and, as much as the compass is there, its 9 dp more (58 dp in all, 49 with the compass
+     * gone).
+     */
+    private float mapWidth(float width, float height) {
+        return Math.max(1, width - ui.dp(GUTTER_DP) - ui.dp(GUTTER_COMPASS_DP) * compass(height));
+    }
+
+    /** How much of the compass rose is there in a map {@code height} pixels tall: 1 from 84 dp, 0 at 68 dp and less. */
+    float compass(float height) {
+        return Math.max(0, Math.min(1, (height - ui.dp(COMPASS_GONE_DP)) / ui.dp(COMPASS_OVER_DP)));
+    }
+
+    /** The land's width now, in pixels (for tests too). */
+    float landWidth() {
+        return mapWidth(getWidth(), getHeight());
     }
 
     private void cellBounds(AreaMap.Cell cell, RectF out) {
@@ -373,7 +407,7 @@ final class AreaMapView extends View {
     @Override protected void onDraw(Canvas canvas) {
         float width = getWidth();
         float height = getHeight();
-        float landWidth = mapWidth(width);
+        float landWidth = mapWidth(width, height);
         hereLabel.setEmpty();
         // No paper: the squares lie on the scene's own ground.
         rect.set(0, 0, width, height);
@@ -383,12 +417,15 @@ final class AreaMapView extends View {
             drawEmptyFields(canvas, landWidth, height);
             fadeEdges(canvas, landWidth, height);
             canvas.restoreToCount(fields);
-            text.setColor(brown());
-            text.setTextSize(Math.min(ui.sp(14), ui.dp(20)));
-            text.setFakeBoldText(false);
-            canvas.drawText(emptyMessage, width / 2, (height + keyHeight()) / 2, text);
-            text.setFakeBoldText(true);
-            drawNorth(canvas, width);
+            android.text.StaticLayout words = emptyLayout(landWidth, height);
+            if (words != null) {
+                canvas.save();
+                canvas.translate(ui.dp(EMPTY_SIDES_DP) / 2f,
+                        keyHeight() + Math.max(0, (height - keyHeight() - words.getHeight()) / 2));
+                words.draw(canvas);
+                canvas.restore();
+            }
+            drawNorth(canvas, width, compass(height));
             drawKey(canvas, width);
             return;
         }
@@ -429,7 +466,7 @@ final class AreaMapView extends View {
         if (here != null) drawHere(canvas);
         fadeEdges(canvas, landWidth, height);
         canvas.restoreToCount(land);
-        drawNorth(canvas, width);
+        drawNorth(canvas, width, compass(height));
         drawScale(canvas, height);
         drawKey(canvas, width);
         if (here != null) Motion.next(this);
@@ -437,6 +474,70 @@ final class AreaMapView extends View {
 
     private int brown() {
         return ui.dark ? 0xFFC9B48C : 0xFF7A5C3A;
+    }
+
+    /**
+     * The words with nothing mapped, laid out in the land's width less 12 dp, centred: as many lines as the land under
+     * the heading holds, three at most (one at the least); at 14 sp (20 dp at most), or where they need it smaller by
+     * the least that fits them, never below three quarters of the user's size nor below the default size; still too
+     * long there, their end is cut with an ellipsis. Screen readers hear them whole. Worked out again only when the
+     * words or the size change.
+     */
+    private android.text.StaticLayout emptyLayout(float landWidth, float height) {
+        int across = Math.round(landWidth - ui.dp(EMPTY_SIDES_DP));
+        if (across <= 0) return null;
+        if (emptyLayout != null && emptyMessage.equals(emptyLaidOut) && landWidth == emptyLaidWidth
+                && height == emptyLaidHeight) {
+            return emptyLayout;
+        }
+        emptyLaidOut = emptyMessage;
+        emptyLaidWidth = landWidth;
+        emptyLaidHeight = height;
+        emptyText.setColor(brown());
+        emptyText.setTypeface(android.graphics.Typeface.DEFAULT);
+        float start = Math.min(ui.sp(14), ui.dp(20));
+        float least = Math.min(start, Math.max(ui.sp(14) * SetupRow.LEAST_SCALE, ui.dp(14)));
+        float room = Math.max(0, height - keyHeight());
+        float step = Math.max(1f, (start - least) / 10f);
+        android.text.StaticLayout laid = null;
+        for (float size = start; ; size = Math.max(least, size - step)) {
+            emptyText.setTextSize(size);
+            int lines = Math.max(1, Math.min(EMPTY_LINES_MOST, (int) (room / Ui.lineHeight(emptyText))));
+            laid = android.text.StaticLayout.Builder.obtain(emptyMessage, 0, emptyMessage.length(), emptyText, across)
+                    .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER)
+                    .setIncludePad(false)
+                    .setMaxLines(lines)
+                    .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                    .build();
+            boolean whole = laid.getEllipsisCount(laid.getLineCount() - 1) == 0
+                    && laid.getLineEnd(laid.getLineCount() - 1) >= emptyMessage.length();
+            if (whole || size <= least) break;
+        }
+        emptyLayout = laid;
+        return laid;
+    }
+
+    /** The words with nothing mapped as the map shows them now, an ellipsis where they are cut (for tests). */
+    String emptyShown() {
+        android.text.StaticLayout words = emptyLayout(landWidth(), getHeight());
+        if (words == null) return "";
+        StringBuilder shown = new StringBuilder();
+        for (int line = 0; line < words.getLineCount(); line++) {
+            int start = words.getLineStart(line);
+            boolean cut = words.getEllipsisCount(line) > 0;
+            int end = cut ? start + words.getEllipsisStart(line) : words.getLineEnd(line);
+            String text = emptyMessage.substring(start, Math.max(start, Math.min(emptyMessage.length(), end))).trim();
+            if (shown.length() > 0 && !text.isEmpty()) shown.append(' ');
+            shown.append(text);
+            if (cut) shown.append('…');
+        }
+        return shown.toString();
+    }
+
+    /** The empty words' size as laid out now, in pixels (for tests). */
+    float emptyTextSize() {
+        android.text.StaticLayout words = emptyLayout(landWidth(), getHeight());
+        return words == null ? 0 : words.getPaint().getTextSize();
     }
 
     /** One quiet heading; the full key is one tap away, outside Settings. */
@@ -627,7 +728,7 @@ final class AreaMapView extends View {
     }
 
     private boolean labelHasRoom(boolean avoidSquares) {
-        if (hereLabel.left < ui.dp(6) || hereLabel.right > mapWidth(getWidth()) - ui.dp(6)
+        if (hereLabel.left < ui.dp(6) || hereLabel.right > landWidth() - ui.dp(6)
                 || hereLabel.top < keyHeight() + ui.dp(2) || hereLabel.bottom > getHeight() - ui.dp(8)) return false;
         for (int i = 0; i < Math.min(3, ranked.size()); i++) {
             medalBounds(ranked.get(i), labelObstacle);
@@ -638,7 +739,7 @@ final class AreaMapView extends View {
             if (RectF.intersects(hereLabel, namePills[i])) return false;
         }
         // Reserve the distance bar and its text as well as the ornaments in the right-hand gutter.
-        labelObstacle.set(ui.dp(12), getHeight() - ui.dp(38), ui.dp(22) + mapWidth(getWidth()) / 3,
+        labelObstacle.set(ui.dp(12), getHeight() - ui.dp(38), ui.dp(22) + landWidth() / 3,
                 getHeight() - ui.dp(14));
         if (RectF.intersects(hereLabel, labelObstacle)) return false;
         if (avoidSquares) {
@@ -650,14 +751,15 @@ final class AreaMapView extends View {
         return true;
     }
 
-    /** A compass rose with north marked. */
-    private void drawNorth(Canvas canvas, float width) {
+    /** A compass rose with north marked, {@code shown} of it there (0: none, in a map too short for it). */
+    private void drawNorth(Canvas canvas, float width, float shown) {
+        if (shown <= 0) return;
         float cx = width - ui.dp(30);
         float cy = ui.dp(54);
         float big = ui.dp(15);
         float small = ui.dp(4);
-        int ink = brown();
-        line.setColor((ink & 0x00FFFFFF) | 0x80000000);
+        int ink = faded(brown(), shown);
+        line.setColor(faded((ink & 0x00FFFFFF) | 0x80000000, shown));
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         canvas.drawCircle(cx, cy, ui.dp(10), line);
         for (int point = 0; point < 4; point++) {
@@ -668,7 +770,7 @@ final class AreaMapView extends View {
             path.lineTo((float) (cx + Math.cos(side) * small), (float) (cy + Math.sin(side) * small));
             path.lineTo((float) (cx + Math.cos(angle) * big), (float) (cy + Math.sin(angle) * big));
             path.close();
-            fill.setColor(point == 0 ? (ui.dark ? 0xFFE0876E : 0xFFB5523B) : ink);
+            fill.setColor(point == 0 ? faded(ui.dark ? 0xFFE0876E : 0xFFB5523B, shown) : ink);
             canvas.drawPath(path, fill);
         }
         text.setColor(ink);
@@ -676,12 +778,18 @@ final class AreaMapView extends View {
         canvas.drawText("N", cx, cy - big - ui.dp(3), text);
     }
 
+    /** {@code color} with its alpha multiplied by {@code shown} (0 to 1). */
+    private static int faded(int color, float shown) {
+        int alpha = Math.round((color >>> 24) * Math.max(0, Math.min(1, shown)));
+        return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
     /** A bar of a round distance (¼, ½, 1, 2, 5… mi) no wider than a third of the map. */
     private void drawScale(Canvas canvas, float height) {
         double pixelsPerMile = scale / MILES_PER_DEGREE_LATITUDE;
         double[] choices = {0.25, 0.5, 1, 2, 5, 10, 20, 50};
         double miles = choices[0];
-        for (double choice : choices) if (choice * pixelsPerMile <= mapWidth(getWidth()) / 3.0) miles = choice;
+        for (double choice : choices) if (choice * pixelsPerMile <= landWidth() / 3.0) miles = choice;
         float length = (float) (miles * pixelsPerMile);
         float x0 = ui.dp(18);
         float y0 = height - ui.dp(18);
@@ -715,13 +823,13 @@ final class AreaMapView extends View {
             return true;
         }
         if (event.getAction() == MotionEvent.ACTION_UP && !cells.isEmpty()
-                && event.getX() >= 0 && event.getX() < mapWidth(getWidth()) && event.getY() >= keyHeight()) {
+                && event.getX() >= 0 && event.getX() < landWidth() && event.getY() >= keyHeight()) {
             project(getWidth(), getHeight());
             AreaMap.Cell nearest = null;
             double nearestDistance = ui.dp(28);
             for (AreaMap.Cell cell : cells) {
                 cellBounds(cell, rect);
-                if (rect.right <= 0 || rect.left >= mapWidth(getWidth()) || rect.bottom <= keyHeight()
+                if (rect.right <= 0 || rect.left >= landWidth() || rect.bottom <= keyHeight()
                         || rect.top >= getHeight()) continue;
                 double distance = Math.hypot(x(cell.longitude()) - event.getX(), y(cell.latitude()) - event.getY());
                 double half = AreaMap.CELL_DEGREES * scale / 2;

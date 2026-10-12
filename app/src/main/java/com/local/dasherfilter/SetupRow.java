@@ -116,11 +116,11 @@ final class SetupRow {
     }
 
     /**
-     * A step's words (or the homepage's verdict) at the user's text size, unless they would take more than two lines:
-     * a large font on a narrow phone ("Allow / notification / access"). Then a little smaller, by the least that keeps
-     * them to two lines (or, for longer words, to as few as it can), never below {@link #LEAST_SCALE} of the user's
-     * size nor below the default size, so a line to fix still leaves the homepage's sky and map in one screen. Words
-     * that change as they stand (the verdict's "how long ago") are fitted, and kept their height, as their longest
+     * A step's words at the user's text size, unless they would take more than two lines: a large font on a narrow
+     * phone ("Allow / notification / access"). Then a little smaller, by the least that keeps them to two lines (or,
+     * for longer words, to as few as it can), never below {@link #LEAST_SCALE} of the user's size nor below the default
+     * size, so a line to fix still leaves the homepage's sky and map in one screen. Words that change as they stand
+     * (the homepage's verdict's "how long ago" until 0.6.3) are fitted, and kept their height, as their longest
      * ({@link #fitTo}), so neither their size nor the page under them moves as they change.
      */
     static final class Words extends TextView {

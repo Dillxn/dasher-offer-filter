@@ -18,23 +18,27 @@ import android.widget.TextView;
 
 /**
  * Autopilot's one-line chip ({@link AutopilotText#chip}): "Auto off", "Auto learning", "Auto 82%", "Auto 82% ▲" (below
- * the goal, in amber), "Auto 50% lowest", "Auto needs a minimum" or "Auto waits". A pill in Autopilot's purple (amber
- * below the goal, grey while off) inside a target at least 48 dp each way. A tap opens the details and a long press the
- * goal chooser: the page that holds it says how ({@link #setOnClickListener}, {@link #setOnLongClickListener}).
+ * the goal, in amber), "Auto 50%" (its lowest bar), "Auto" (it needs a minimum; the status line beside it says so) or
+ * "Auto waits". A pill in Autopilot's purple (amber below the goal, grey while off) inside a target at least 48 dp each
+ * way. A tap opens the details and a long press the goal chooser: the page that holds it says how
+ * ({@link #setOnClickListener}, {@link #setOnLongClickListener}).
  *
  * <p>Screen readers hear the whole status in words and what a tap does ({@link AutopilotText#chipDescription}), and
  * the long press as "Change acceptance goal". It is no live region and never announces itself, so an automatic bar
  * change never interrupts TalkBack while driving. The homepage shows it at every window size at the start of the
- * status line, under the latest offer's verdict in the strip along the top ({@link Row}), so Autopilot stays one tap
- * away however short the window. It is Autopilot's one control (0.6.1: the radar's round button is the learner's).
+ * status line, in the band along the top ({@link Row}), so Autopilot stays one tap away however short the window. It
+ * is Autopilot's one control (0.6.1: the radar's round button is the learner's).
  */
 @SuppressLint("ViewConstructor")
 final class AutopilotChip extends TextView {
     /** How the chip is drawn: grey while off, purple while on, amber while below the goal. */
     private enum Look { OFF, ON, BELOW_GOAL }
 
-    /** The pill's words stand this far in from its rounded ends. */
-    private static final int SIDE_DP = 14;
+    /**
+     * The pill's words stand this far in from its rounded ends (0.6.3: 8 dp, from 14, so Autopilot's chip, the mode's
+     * and the status words share one row of the band in a split screen).
+     */
+    private static final int SIDE_DP = 8;
     /** The chip's words, at the normal font size (its default size). */
     static final float SP = 13;
 
@@ -128,6 +132,14 @@ final class AutopilotChip extends TextView {
      * own above the words only where that is shorter still (a window too narrow for both side by side). Autopilot's
      * chip comes first, then the scoring mode's (0.6.3); a chip that is gone takes no room, and with none left the
      * words have the whole width, at their full size, spacing and padding.
+     *
+     * <p>Given a height exactly (0.6.3: the band's row, 56 dp), the row is that tall, never more, and never stacks:
+     * the chips and the words side by side at the largest share of their sizes (down to the least) at which the words
+     * fit beside the chips in that height; else at the least, the words cut to the lines that fit, an ellipsis at
+     * their end. Chips and words stand in the row's middle. The page keeps the chips the room they take at their
+     * widest ({@link #widestChips}), so only the words are ever cut, and those only where the page is narrow; their
+     * tap is the page's to give ({@link #setWordsTappable}), and they take it only while they are at least a touch
+     * target wide.
      */
     @SuppressLint("ViewConstructor")
     static final class Row extends ViewGroup {
@@ -145,6 +157,13 @@ final class AutopilotChip extends TextView {
         private final float wordsSpacing;
         private final int padTop;
         private final int padBottom;
+        /** The words' own line limit and ellipsis, as the page made them; a row given its height limits the lines. */
+        private final int wordsMaxLines;
+        private final TextUtils.TruncateAt wordsEllipsize;
+        /** A touch target's width, the least at which the words take a tap. */
+        private final int target;
+        /** Whether the words take a tap where they are wide enough; null: the page manages the words' tap itself. */
+        private Boolean wordsTappable;
         private final TextPaint measuring = new TextPaint();
         /** How the row stands now: the chips above the words, the share of the full sizes, the lines closed up. */
         private boolean stacked;
@@ -157,6 +176,12 @@ final class AutopilotChip extends TextView {
         private boolean fitStacked;
         private float fitScale = 1f;
         private boolean fitTight;
+        /** The same, for a row given its height: what it was worked out for, and the share of the full sizes. */
+        private int exactWidth = -1;
+        private int exactHeight = -1;
+        private String exactChips;
+        private String exactWords;
+        private float exactScale = 1f;
 
         /** One chip beside {@code words}. */
         Row(Context context, Ui ui, TextView chip, TextView words, float wordsSp) {
@@ -187,8 +212,56 @@ final class AutopilotChip extends TextView {
             wordsSpacing = words.getLineSpacingMultiplier();
             padTop = words.getPaddingTop();
             padBottom = words.getPaddingBottom();
+            wordsMaxLines = words.getMaxLines();
+            wordsEllipsize = words.getEllipsize();
+            target = ui.dp(48);
             for (TextView chip : chips) addView(chip);
             addView(words);
+        }
+
+        /**
+         * The most the chips take side by side, in pixels, at the least share of their sizes, with the gaps between
+         * them, shown or not: each at the widest of the words it can show (Autopilot's
+         * {@link AutopilotText#CHIP_WIDEST}; the mode's "Strict" and "Area"; another chip its words now), at least
+         * 48 dp. The page keeps them this much room (0.6.3), so beside the status line they are never cut.
+         */
+        int widestChips() {
+            int total = 0;
+            for (int i = 0; i < chips.length; i++) {
+                if (i > 0) total += gap;
+                int widest = 0;
+                for (String each : chipWords(chips[i])) {
+                    widest = Math.max(widest, chipWidth(chips[i], each, chipsFull[i] * least, Integer.MAX_VALUE));
+                }
+                total += widest;
+            }
+            return total;
+        }
+
+        /** Every word {@code chip} can show. */
+        private static String[] chipWords(TextView chip) {
+            if (chip instanceof AutopilotChip) return AutopilotText.CHIP_WIDEST;
+            if (chip instanceof ModeChip) return new String[] {ModeChip.STRICT, ModeChip.AREA};
+            return new String[] {chip.getText().toString()};
+        }
+
+        /**
+         * Whether the words take a tap (the page's: their line opens something now). They take it only while they are
+         * also at least 48 dp wide as laid out, so a sliver of words beside the chips is never a target; until the page
+         * says, the words' own tap stands as the page set it.
+         */
+        void setWordsTappable(boolean tappable) {
+            if (wordsTappable != null && wordsTappable == tappable) return;
+            wordsTappable = tappable;
+            applyWordsTap();
+        }
+
+        /** The words take a tap only while the page gives them one and they are a touch target wide. */
+        private void applyWordsTap() {
+            if (wordsTappable == null) return;
+            boolean tappable = wordsTappable && words.getVisibility() == VISIBLE && words.getWidth() >= target;
+            if (words.isClickable() != tappable) words.setClickable(tappable);
+            if (words.isFocusable() != tappable) words.setFocusable(tappable);
         }
 
         /** The chips stand above the words, not beside them (for tests). */
@@ -215,6 +288,11 @@ final class AutopilotChip extends TextView {
             int width = MeasureSpec.getSize(widthSpec);
             int inner = Math.max(0, width - getPaddingLeft() - getPaddingRight());
             int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            if (MeasureSpec.getMode(heightSpec) == MeasureSpec.EXACTLY) {
+                measureIn(width, inner, MeasureSpec.getSize(heightSpec));
+                return;
+            }
+            limitLines(wordsMaxLines, wordsEllipsize);
             if (!anyChip()) {
                 stacked = false;
                 scale = 1f;
@@ -253,6 +331,73 @@ final class AutopilotChip extends TextView {
                 height = Math.max(chipsTall, words.getMeasuredHeight());
             }
             setMeasuredDimension(width, height + getPaddingTop() + getPaddingBottom());
+        }
+
+        /**
+         * The row given its height (the band's): exactly {@code height} tall, never stacked. The chips and the words
+         * side by side at the largest share of their full sizes, down to {@link #least}, at which the words fit beside
+         * the chips in that height ({@link #fitIn}), their spacing and padding as the page made them; the words cut
+         * to the lines that fit there, an ellipsis at their end.
+         */
+        private void measureIn(int width, int inner, int height) {
+            int tall = Math.max(0, height - getPaddingTop() - getPaddingBottom());
+            int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            boolean chipsShown = anyChip();
+            stacked = false;
+            tight = false;
+            scale = chipsShown ? fitIn(inner, tall) : 1f;
+            int chipsWide = 0;
+            for (int i = 0; i < chips.length; i++) {
+                TextView chip = chips[i];
+                size(chip, chipsFull[i] * scale);
+                if (chip.getVisibility() == GONE) continue;
+                chip.measure(MeasureSpec.makeMeasureSpec(Math.max(0, inner - chipsWide), MeasureSpec.AT_MOST), any);
+                chipsWide += (chipsWide > 0 ? gap : 0) + chip.getMeasuredWidth();
+            }
+            size(words, wordsFull * scale);
+            spacing(words, wordsSpacing);
+            padding(words, padTop, padBottom);
+            int beside = chipsShown ? Math.max(0, inner - chipsWide - gap) : inner;
+            // As many lines as the height holds, at least one, the last cut short with an ellipsis where they run on.
+            measuring.set(words.getPaint());
+            measuring.setTextSize(wordsFull * scale);
+            int line = Math.max(1, Math.round(measuring.getFontMetricsInt(null) * wordsSpacing
+                    + words.getLineSpacingExtra()));
+            limitLines(Math.max(1, (tall - padTop - padBottom) / line), TextUtils.TruncateAt.END);
+            words.measure(MeasureSpec.makeMeasureSpec(beside, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(tall, MeasureSpec.AT_MOST));
+            setMeasuredDimension(width, height);
+        }
+
+        /**
+         * The largest share of the full sizes, from 1 down to {@link #least}, at which the chips and the words side by
+         * side across {@code inner} are no taller than {@code tall}; the least where none is. Worked out without
+         * touching any view, and kept while the width, the height and the words stay the same.
+         */
+        private float fitIn(int inner, int tall) {
+            StringBuilder key = new StringBuilder();
+            for (TextView chip : chips) {
+                if (chip.getVisibility() != GONE) key.append(chip.getText()).append('\u0000');
+            }
+            String chipsText = key.toString();
+            String wordsText = words.getText().toString();
+            if (inner == exactWidth && tall == exactHeight && chipsText.equals(exactChips)
+                    && wordsText.equals(exactWords)) {
+                return exactScale;
+            }
+            exactWidth = inner;
+            exactHeight = tall;
+            exactChips = chipsText;
+            exactWords = wordsText;
+            float found = largestFitting(wordsText, inner, false, tall);
+            exactScale = found > 0 ? found : least;
+            return exactScale;
+        }
+
+        /** The words' line limit and ellipsis ({@code lines} lines at most, cut at {@code where}), when they change. */
+        private void limitLines(int lines, TextUtils.TruncateAt where) {
+            if (words.getMaxLines() != lines) words.setMaxLines(lines);
+            if (words.getEllipsize() != where) words.setEllipsize(where);
         }
 
         /**
@@ -389,10 +534,18 @@ final class AutopilotChip extends TextView {
         }
 
         @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            layoutParts(left, top, right, bottom);
+            applyWordsTap();
+        }
+
+        private void layoutParts(int left, int top, int right, int bottom) {
             int x = getPaddingLeft();
             int y = getPaddingTop();
             if (!anyChip()) {
-                words.layout(x, y, x + words.getMeasuredWidth(), y + words.getMeasuredHeight());
+                int height = bottom - top - getPaddingTop() - getPaddingBottom();
+                // Given its height, the words stand in its middle; else from its top, the row as tall as they are.
+                int wordsTop = Math.max(y, y + (height - words.getMeasuredHeight()) / 2);
+                words.layout(x, wordsTop, x + words.getMeasuredWidth(), wordsTop + words.getMeasuredHeight());
                 return;
             }
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
