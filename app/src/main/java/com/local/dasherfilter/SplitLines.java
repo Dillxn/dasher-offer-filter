@@ -13,7 +13,7 @@ import android.widget.TextView;
 /**
  * What only a split screen needs on the homepage (the owner: "the user isn't juggling multiple windows (dasher, filter,
  * gps) and can just flow"). Beside Dasher, once ever: a hint that dragging the divider toward Offer Filter gives
- * Dasher's map more room (Offer Filter's half then keeps its strip along the top, the rest shrinking away gradually,
+ * Dasher's map more room (Offer Filter's half then keeps its band along the top, the rest shrinking away gradually,
  * {@link FluidLayout}). It lies over the bottom of the page for a few seconds and takes no touches and no room, so the
  * page under it is laid out as without it. During
  * a dash beside another app (a map, say), with Peek on: a readiness line saying background offers need a tap in this

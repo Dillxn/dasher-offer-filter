@@ -15,12 +15,13 @@ import android.view.ViewGroup;
 /**
  * The main page as one illustration, and its one fluid layout ({@link FluidLayout}). A sky runs from the top of the page
  * down to the horizon, the offers' skyline's street; the ground runs from there down to the road at the bottom. The
- * strip (the mascot, the latest offer's verdict, Autopilot's chip and the status line), the header's buttons, the
- * dash's counts and the lines that need the user stand along the top; under them the minimums' constellation with the
- * skyline under it, above the offer map in a tall window and beside it in a wide one; then the road. Every part keeps
- * its place at every window size and only its size changes, continuously: what must go at a small size shrinks and
- * fades out over a range of heights, least important first, and is used again (touched, heard) only once it is wholly
- * there. A resize does nothing but lay the page out and draw it.
+ * band (the mascot, the latest offer's tile and the dash's counts; Autopilot's chip, the scoring mode's and the status
+ * words; the header's buttons) and the lines that need the user stand along the top, and never fade; under them the
+ * stage: the minimums' constellation, the skyline and the offer map, in three columns in a short window, the map under
+ * the skyline beside the constellation as it grows taller, and the constellation above both in a tall one; then the
+ * road. Every part keeps its place at every window size and only its size changes, continuously: what must go at a
+ * small size shrinks and fades out over a range of heights, least important first, and is used again (touched, heard)
+ * only once it is wholly there. A resize does nothing but lay the page out and draw it.
  *
  * <p>By day the sky is a soft morning blue warming towards the horizon, with a sun and drifting clouds; by night (dark
  * theme) it is deep blue, with a moon and stars. Each region stays light enough (or dark enough) for the page's own
@@ -63,6 +64,8 @@ final class ScenePage extends ViewGroup {
     /** Where the mascot's drawing and its counts stand, worked out at each layout into the same two boxes. */
     private final FluidLayout.Box heroBox = new FluidLayout.Box();
     private final android.graphics.RectF countsBox = new android.graphics.RectF();
+    /** The latest offer's tile, in the mascot's drawing's pixels: its twinkling stars keep out of it. */
+    private final android.graphics.RectF tileBox = new android.graphics.RectF();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path farHills = new Path();
     private final Path nearHills = new Path();
@@ -93,8 +96,9 @@ final class ScenePage extends ViewGroup {
     private final java.util.List<android.graphics.RectF> overIcons = new java.util.ArrayList<>();
 
     // ---- The page's parts, in the order screen readers reach them ----
+    private VerdictTile tile;
+    private AutopilotChip.Row chipRow;
     private FilterHeroView hero;
-    private View strip;
     private View header;
     private View lines;
     private MinimumsStarView star;
@@ -118,14 +122,16 @@ final class ScenePage extends ViewGroup {
     }
 
     /**
-     * The page's parts, added in the order screen readers reach them: the strip's words (the verdict, the chip and the
-     * status line), the mascot with the counts, the header, the lines, the constellation, the skyline's caption, the
-     * skyline, the map, its area's line and the road. Only the mascot's drawing spans more than its row (the counts
-     * stand under the header), and it takes no touch but on the mascot and the counts.
+     * The page's parts, added in the order screen readers reach them: the band's (the latest offer's tile, the chips'
+     * row with the status words, the mascot with the counts, the header with its buttons), the lines, the
+     * constellation, the skyline's caption, the skyline, the map, its area's line and the road. Only the mascot's
+     * drawing spans more than one part (from the mascot across the tile to the counts at the band's end), and it takes
+     * no touch but on the mascot and the counts.
      */
-    void setParts(View strip, FilterHeroView hero, View header, View lines, MinimumsStarView star, View caption,
-                  DecisionChartView chart, AreaMapView map, View area, View road) {
-        this.strip = strip;
+    void setParts(VerdictTile tile, AutopilotChip.Row chipRow, FilterHeroView hero, View header, View lines,
+                  MinimumsStarView star, View caption, DecisionChartView chart, AreaMapView map, View area, View road) {
+        this.tile = tile;
+        this.chipRow = chipRow;
         this.hero = hero;
         this.header = header;
         this.lines = lines;
@@ -135,7 +141,9 @@ final class ScenePage extends ViewGroup {
         this.map = map;
         this.area = area;
         this.road = road;
-        for (View part : new View[] {strip, hero, header, lines, star, caption, chart, map, area, road}) addView(part);
+        for (View part : new View[] {tile, chipRow, hero, header, lines, star, caption, chart, map, area, road}) {
+            addView(part);
+        }
         road.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         fading = new View[] {star, caption, chart, map, area};
         shown = new float[fading.length];
@@ -190,23 +198,30 @@ final class ScenePage extends ViewGroup {
 
     /**
      * Exactly the height given, the parts sharing it ({@link FluidLayout}); asked with no limit (the page's scroller
-     * working out whether it fits), only what never goes: the strip, the header and the lines. The scroller then gives
-     * it the screen, or, where even those need more (a very large font in a small window), it scrolls by the
-     * difference, everything else gone.
+     * working out whether it fits), only what never goes: the band and the lines. The scroller then gives it the
+     * screen, or, where even those need more (a very large font in a small window), it scrolls by the difference,
+     * everything else gone. The band goes by sizes of its parts' own that never change with what they show: the tile's
+     * height, the counts' width, the chips' at their widest words and the header's buttons side by side (its own
+     * width, less its title's room), so the minutes passing and the status changing move nothing.
      */
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
         int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
-        strip.measure(exactly(fluid.wordsWidth(width)), any);
-        header.measure(exactly(width), any);
+        header.measure(any, any);
         lines.measure(exactly(width), any);
         fluid.width = width;
         fluid.height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? 0 : MeasureSpec.getSize(heightSpec);
-        fluid.wordsHeight = strip.getMeasuredHeight();
-        fluid.headerHeight = header.getMeasuredHeight();
+        fluid.tileHeight = VerdictTile.heightFor(getContext());
+        fluid.countsWidth = hero.countsWidth();
+        fluid.chipsMost = chipRow.widestChips();
+        // The header's title (a heading for screen readers, nothing drawn) takes the band's gap before the buttons.
+        fluid.buttonsWidth = Math.max(0, header.getMeasuredWidth() - ui.dp(FluidLayout.BAND_GAP_DP));
         fluid.linesHeight = lines.getMeasuredHeight();
         fluid.areaLine = area.getVisibility() != GONE;
         fluid.solve();
+        measure(tile, fluid.tile);
+        measure(chipRow, fluid.chipRow);
+        measure(header, fluid.header);
         measure(hero, heroBox());
         measure(star, fluid.radar);
         measure(caption, fluid.caption);
@@ -230,29 +245,34 @@ final class ScenePage extends ViewGroup {
         part.layout(Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom));
     }
 
-    /** The mascot's drawing: from the mascot down to the counts' row, across both (one box, reused). */
+    /** The mascot's drawing: the band's first row from the mascot across the tile to the counts (one box, reused). */
     private FluidLayout.Box heroBox() {
-        heroBox.set((float) Math.floor(Math.min(fluid.mascot.left, fluid.counts.left)), fluid.mascot.top,
+        heroBox.set((float) Math.floor(Math.min(fluid.mascot.left, fluid.counts.left)),
+                (float) Math.floor(Math.min(fluid.mascot.top, fluid.counts.top)),
                 (float) Math.ceil(Math.max(fluid.mascot.right, fluid.counts.right)),
-                (float) Math.ceil(Math.max(fluid.mascot.bottom, fluid.countsRow.bottom)));
+                (float) Math.ceil(Math.max(fluid.mascot.bottom, fluid.counts.bottom)));
         return heroBox;
     }
 
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        place(strip, fluid.words);
+        place(tile, fluid.tile);
+        place(chipRow, fluid.chipRow);
         FluidLayout.Box heroBox = heroBox();
         place(hero, heroBox);
         float mascotRadius = fluid.mascot.width() / 2;
+        // The counts stand at the band's end whole wherever the window has their width (else in what there is past the
+        // mascot), and never fade: the band never does.
         countsBox.set(fluid.counts.left - heroBox.left, fluid.counts.top - heroBox.top,
                 fluid.counts.right - heroBox.left, fluid.counts.bottom - heroBox.top);
+        tileBox.set(Math.round(fluid.tile.left) - heroBox.left, Math.round(fluid.tile.top) - heroBox.top,
+                Math.round(fluid.tile.right) - heroBox.left, Math.round(fluid.tile.bottom) - heroBox.top);
         hero.place((fluid.mascot.left + fluid.mascot.right) / 2 - heroBox.left,
-                (fluid.mascot.top + fluid.mascot.bottom) / 2 - heroBox.top, mascotRadius, countsBox,
-                fluid.countsSpacing, fluid.countsShown);
+                (fluid.mascot.top + fluid.mascot.bottom) / 2 - heroBox.top, mascotRadius, countsBox, tileBox);
         place(header, fluid.header);
         place(lines, fluid.lines);
         place(star, fluid.radar);
         star.compose(fluid.radarX - Math.round(fluid.radar.left), fluid.radarY - Math.round(fluid.radar.top),
-                fluid.radius);
+                fluid.radius, fluid.iconGap);
         place(caption, fluid.caption);
         place(chart, fluid.chart);
         place(map, fluid.map);
@@ -277,17 +297,15 @@ final class ScenePage extends ViewGroup {
         if (part.getImportantForAccessibility() != importance) part.setImportantForAccessibility(importance);
     }
 
-    /** How much of {@code part} is there now: 1 wholly (it is used), 0 gone, between on its way out (for tests too). */
+    /**
+     * How much of {@code part} is there now: 1 wholly (it is used), 0 gone, between on its way out (for tests too). The
+     * band's parts (the tile, the chips' row, the mascot with the counts, the header) and the lines are always wholly
+     * there.
+     */
     float shown(View part) {
-        if (part == hero) return 1;
         if (part == road) return fluid.roadShown;
         for (int i = 0; i < fading.length; i++) if (fading[i] == part) return shown[i];
         return 1;
-    }
-
-    /** How much of the dash's counts is there now. */
-    float countsShown() {
-        return fluid.countsShown;
     }
 
     /** The constellation and the map are wholly there (for the one-time notices that name them, and the knobs). */
@@ -298,6 +316,11 @@ final class ScenePage extends ViewGroup {
     /** From the radar above the map (0) to side by side (1) (for tests). */
     float turn() {
         return fluid.turn;
+    }
+
+    /** From the skyline over the map (0) to the skyline and the map side by side in three columns (1) (for tests). */
+    float inner() {
+        return fluid.inner;
     }
 
     /** A finger going down on a part on its way out is the page's: nothing there acts on it, nor on its drag. */
@@ -333,11 +356,13 @@ final class ScenePage extends ViewGroup {
     private void gatherOver() {
         words.clear();
         overIcons.clear();
-        if (strip == null || getHeight() <= 0) return;
-        addWords(strip);
-        if (fluid.countsShown > 0) {
-            android.graphics.RectF counts = new android.graphics.RectF();
-            hero.countsAt(counts);
+        if (tile == null || getHeight() <= 0) return;
+        addWords(tile);
+        addWords(chipRow);
+        // The counts never fade: wherever they stand, nothing shines or drifts under them.
+        android.graphics.RectF counts = new android.graphics.RectF();
+        hero.countsAt(counts);
+        if (!counts.isEmpty()) {
             counts.offset(hero.getLeft(), hero.getTop());
             counts.inset(-ui.dp(4), -ui.dp(2));
             words.add(counts);
@@ -624,8 +649,8 @@ final class ScenePage extends ViewGroup {
 
     /**
      * Two ranges of hills along the horizon, behind the skyline, the nearer darker. They never rise over the sun (or
-     * moon), the header's day and night button: where the horizon comes up near it (a short window, the skyline gone),
-     * they flatten as it comes.
+     * moon), the header's day and night button, wherever the band puts it (beside the chips, or on the buttons' own row
+     * under them): where the horizon comes up near it (a short window, the skyline gone), they flatten as it comes.
      */
     private void drawHills(Canvas canvas, float width, float line) {
         float rise = Math.max(0, Math.min(1, (line - sunBottom()) / ui.dp(FAR_HILL_DP)));

@@ -96,7 +96,7 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             RectF counts = new RectF();
             hero.countsAt(counts);
             counts.offset(hero.getLeft(), hero.getTop());
-            if (page.countsShown() > 0) {
+            if (hero.countsShown() > 0) {
                 assertTrue("the counts in their own row under the header", counts.top >= header.getBottom() - 1);
             }
             List<RectF> obstacles = new ArrayList<>();
@@ -122,7 +122,7 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             try (FileOutputStream stream = new FileOutputStream(new File(out, name + ".png"))) {
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
             } finally { bitmap.recycle(); }
-            if (page.countsShown() >= 1) {
+            if (hero.countsShown() >= 1) {
                 for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
                     android.widget.Button count = hero.countControl(tally);
                     assertTrue("native count target stays at least 48dp wide", count.getWidth() >= ui.dp(48));
