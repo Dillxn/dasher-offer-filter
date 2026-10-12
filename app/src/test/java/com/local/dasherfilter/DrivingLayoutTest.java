@@ -790,9 +790,15 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void openDasherIsOneHeaderTapToDasherFullScreen() {
         dasherInstalled();
+        Shadows.shadowOf(app.getPackageManager()).setApplicationIcon("com.doordash.driverapp",
+                new android.graphics.drawable.ColorDrawable(0xFFFF3008));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View open = shownIcon(content(activity), DasherSplit.OPEN_LABEL);
             assertNotNull("in the header, full screen", open);
+            // The owner: the drawn phone with a pin "isn't clear visually what it does". Dasher's own icon is.
+            assertTrue("Dasher's own icon, not the drawn phone", ((android.widget.ImageButton) open).getDrawable()
+                    instanceof android.graphics.drawable.BitmapDrawable);
+            assertEquals("a long press names it", DasherSplit.OPEN_LABEL, String.valueOf(open.getTooltipText()));
             assertTrue(open.getWidth() >= new Ui(app).dp(48) || open.getLayoutParams().width >= new Ui(app).dp(48));
             open.performClick();
             Intent opened = started();

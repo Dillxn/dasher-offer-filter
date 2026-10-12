@@ -281,11 +281,18 @@ public class SplitWindowsTest {
         }
         at(37.7749, -122.4194);
         AccessibilityNodeInfo ours = ours();
-        // Dasher in the top half (its window from the screen's top edge, under the status bar), Offer Filter below.
+        ShadowWindowManagerImpl manager = Shadow.extract(app.getSystemService(WindowManager.class));
+        // Dasher in the top half (its window from the screen's top edge, under the status bar), Offer Filter below:
+        // no guide, since Offer Filter's own half says where the best area is (0.6.3).
         windows(ours, app(dasher("Finding offers"), false, TOP_HALF), divider(),
                 app(ours, true, BOTTOM_HALF));
+        for (View view : manager.getViews()) assertFalse("no guide beside Offer Filter's own half",
+                view instanceof DasherGuide);
+        // A map below instead (Maps beside Dasher is a driving layout of its own): the guide over Dasher's half.
+        AccessibilityNodeInfo maps = node("com.google.android.apps.maps", null, false);
+        windows(maps, app(dasher("Finding offers"), false, TOP_HALF), divider(),
+                app(maps, true, BOTTOM_HALF));
         DasherGuide guide = null;
-        ShadowWindowManagerImpl manager = Shadow.extract(app.getSystemService(WindowManager.class));
         for (View view : manager.getViews()) if (view instanceof DasherGuide) guide = (DasherGuide) view;
         assertNotNull("the guide over Dasher's half", guide);
         int statusBar = DasherOverlay.statusBarHeight(app);

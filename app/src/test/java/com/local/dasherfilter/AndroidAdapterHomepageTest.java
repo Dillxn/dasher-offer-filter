@@ -158,6 +158,32 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * A place name beside the area keeps how far and which way: beside Dasher in split screen this line, not a guide
+     * over Dasher's half, says where the best area is (0.6.3, the owner: "we have two sections displaying nearest
+     * hotspot in split mode").
+     */
+    @Test
+    public void aNamedAreaKeepsHowFarAndWhichWay() {
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        AreaMap.setEnabled(app, true);
+        noteOfferAt(37.8149, -122.3794, 1500, 5.0);
+        noteOfferAt(37.8149, -122.3794, 1800, 6.0);
+        noteOfferAt(37.8149, -122.3794, 1200, 4.0);
+        AreaMap.Cell best = AreaMap.ranked(AreaMap.cells(app)).get(0);
+        app.getSharedPreferences("places", android.content.Context.MODE_PRIVATE).edit()
+                .putString("name:" + Places.key(best.latitude(), best.longitude()), "Hunt Road").commit();
+        setLocation(37.7749, -122.4194);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            assertNotNull("its name, then how far and which way",
+                    shownTextContaining(content, "Hunt Road · 3.6 mi NE · $3.00/mi · 3 offers  ›"));
+            assertTrue(areaLineSaid(content), areaLineSaid(content)
+                    .startsWith("#1 · Hunt Road · 3.6 mi NE of you · $3.00/mi · 3 offers. Average"));
+        }
+    }
+
     @Test
     public void theBestAreaIsFollowedUntilOneIsPicked() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION,

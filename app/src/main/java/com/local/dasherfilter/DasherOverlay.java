@@ -28,9 +28,12 @@ import android.widget.Toast;
  * auto-decline, as tapping the mascot does; with no rule saved yet, it opens Offer Filter. A tap during an automatic
  * decline is a touch like any other, so that offer is handed back to the user.
  *
- * <p>Beside the tab (or, in split screen, at the top of Dasher's half) a {@link DasherGuide} points toward the best
- * offer area, only while Dasher's screen positively shows the wait for offers ({@link DasherScene#WAITING}): never
- * over an offer, a confirmation, a delivery or a screen not recognised. Touches pass through it. Under the tab, over
+ * <p>Beside the tab (or, in split screen beside another app, at the top of Dasher's half) a {@link DasherGuide} points
+ * toward the best offer area, only while Dasher's screen positively shows the wait for offers
+ * ({@link DasherScene#WAITING}): never over an offer, a confirmation, a delivery or a screen not recognised. Beside
+ * Offer Filter's own half it does not show: that half's offer map and its area line say the same, how far and which
+ * way included (0.6.3, the owner: "we have two sections displaying nearest hotspot in split mode"). Touches pass
+ * through it. Under the tab, over
  * the wait for offers only and while Dasher fills the screen, the {@link BackToMapChip} offers a way back to the map
  * the user was in when the screen reader says so; from any change of Dasher's until a read sees it, it takes no
  * touches ({@link #dasherChanged}). A tap on the tab acts only while Android's list of windows still has Dasher on
@@ -458,8 +461,10 @@ final class DasherOverlay implements DasherTab.Listener {
                 pointer = null;
             }
         }
-        // Only over the wait for offers; never while the tab is being moved, or beside a tab that is not there.
-        if (suspended || pointer == null || scene != DasherScene.WAITING || dragging || area.isEmpty() || (!split && tab == null)) {
+        // Only over the wait for offers; never while the tab is being moved, or beside a tab that is not there; and
+        // never beside Offer Filter's own half, whose offer map and area line say the same (each fact once).
+        if (suspended || pointer == null || scene != DasherScene.WAITING || dragging || area.isEmpty()
+                || (!split && tab == null) || oursBeside) {
             hideGuide();
             return;
         }

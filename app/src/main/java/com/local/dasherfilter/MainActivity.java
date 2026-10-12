@@ -165,6 +165,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private View splitButton;
     /** The header's one-tap Open Dasher, filling the screen (F22). */
     private View openDasherButton;
+    /** Whether Open Dasher was given Dasher's own icon yet (asked of Android once, as it first shows). */
+    private boolean openDasherDressed;
     /** The split screen's own lines: the divider hint beside Dasher, and the layout note beside another app. */
     private SplitLines splitLines;
     private FrameLayout root;
@@ -660,10 +662,32 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ImageButton button = new ImageButton(this);
         button.setImageDrawable(new Glyph(icon, ui.ink, ui.dp(24)));
         button.setContentDescription(description);
+        // A long press names it, for eyes as screen readers hear it.
+        button.setTooltipText(description);
         button.setBackground(ui.rounded(ui.surface, ui.dark ? 0x40FFFFFF : 0x330B0B0B, 26));
         button.setOnClickListener(clicked -> action.run());
         button.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(52), ui.dp(52)));
         return button;
+    }
+
+    /**
+     * Dasher's own icon on the header's Open Dasher, as this phone's home screen draws it (the owner, 12 October 2026:
+     * the drawn phone with a pin in it, beside Navigate's pin, "isn't clear visually what it does"). Only the icon is
+     * asked of Android: nothing of Dasher is opened or read for it. The drawn phone stays when Android cannot give it.
+     */
+    private void showDashersIcon(View button) {
+        if (!(button instanceof ImageButton)) return;
+        try {
+            android.graphics.drawable.Drawable icon = getPackageManager().getApplicationIcon(DASHER_PACKAGE);
+            int size = ui.dp(30);
+            android.graphics.Bitmap drawn = android.graphics.Bitmap.createBitmap(size, size,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            icon.setBounds(0, 0, size, size);
+            icon.draw(new android.graphics.Canvas(drawn));
+            ((ImageButton) button).setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(), drawn));
+        } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) {
+            // The drawn phone it already has.
+        }
     }
 
     /** The padded column a page's content goes in, between its sky and its ground. */
@@ -1669,10 +1693,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
             String label = DasherSplit.label(this);
             if (!label.equals(String.valueOf(splitButton.getContentDescription()))) {
                 splitButton.setContentDescription(label);
+                splitButton.setTooltipText(label);
             }
         }
         if (openDasherButton != null) {
             int open = DasherSplit.opens(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE;
+            if (open == View.VISIBLE && !openDasherDressed) {
+                openDasherDressed = true;
+                showDashersIcon(openDasherButton);
+            }
             if (openDasherButton.getVisibility() != open) openDasherButton.setVisibility(open);
         }
         if (splitLines != null) splitLines.refresh(besideDasherNow(), dasherInstalled.get());
@@ -2519,7 +2548,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** The chosen square in one line under the map: its rank and place, its pay per mile, and a way to see it. */
+    /**
+     * The chosen square in one line under the map: its place, how far and which way, its pay per mile, and a way to see
+     * it. Beside Dasher in split screen this line, not a guide over Dasher's half, says where the best area is (0.6.3).
+     */
     private void showArea(AreaMap.Cell cell) {
         shownArea = cell;
         int rank = areaMap.rank(cell);
@@ -2527,10 +2559,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String name = Places.name(this, cell.latitude(), cell.longitude());
         String samples = cell.mileOffers + (cell.mileOffers == 1 ? " offer" : " offers");
         String rate = cell.ranked() ? cell.perMile() + " · " + samples : "Unranked · " + samples + " with miles";
-        // Its rank is on its coin; "of you" and Maps go without saying on the page, not to screen readers.
+        // Its rank is on its coin; "of you" and Maps go without saying on the page, not to screen readers. How far and
+        // which way stay beside a place name ("Hunt Road · 2.2 mi S"): beside Offer Filter's own half no guide over
+        // Dasher says it.
         List<String> parts = new java.util.ArrayList<>();
         if (name != null) parts.add(name);
-        else if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
+        if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
         parts.add(rate);
         areaLine.setText(String.join(" · ", parts) + "  ›");
         String spoken = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)

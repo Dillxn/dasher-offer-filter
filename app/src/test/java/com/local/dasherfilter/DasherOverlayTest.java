@@ -434,6 +434,24 @@ public class DasherOverlayTest {
         assertTrue(FilterStore.load(app).enabled);
     }
 
+    /**
+     * Beside Offer Filter's own half no guide points out the best area over Dasher's half: that half's offer map and its
+     * area line say the same (0.6.3, the owner: "we have two sections displaying nearest hotspot in split mode").
+     * Dasher full screen, the guide is back.
+     */
+    @Test
+    public void besideOfferFiltersOwnHalfTheGuideLeavesTheBestAreaToItsAreaLine() {
+        seedBestArea();
+        show(screen("Finding offers"));
+        assertNotNull("full screen, the guide points the way", guide());
+
+        besideOurOwnHalf(screen("Finding offers"));
+        assertNull("beside Offer Filter's own half, its area line says it", guide());
+
+        show(screen("Finding offers"));
+        assertNotNull("full screen again, the guide is back", guide());
+    }
+
     @Test
     public void aScreenNotRecognisedTucksTheTabAwayOnlyDuringADash() {
         show(screen("Ratings", "Earnings"));
