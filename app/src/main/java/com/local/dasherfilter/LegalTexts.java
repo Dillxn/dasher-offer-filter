@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 12 October 2026 · for {app} 0.6.1
+            Beta terms, effective 12 October 2026 · for {app} 0.6.2
 
             ## What {app} is
 
@@ -73,7 +73,9 @@ final class LegalTexts {
             and add-ons remain strict. An offer permitted by the filter is not an accepted delivery. When an offer \
             fails the chosen rules, the app can tap Decline and Dasher's confirmation for you. An offer already \
             left to you stays yours if you change your rules while it shows; the new rules judge the next offer. \
-            Autopilot is off until you turn it on. It then applies one bar to the chosen scoring model and resolved \
+            Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a goal \
+            chosen before), with an acceptance-rate goal of 70% until you choose another; you can turn it off from \
+            its chip on the homepage. While it is on, it applies one bar to the chosen scoring model and resolved \
             saved/learned requirements, between 50% and 150%, using your recent offers, how often they come and the \
             acceptance rate Dasher shows when you decline. Above 100% it declines offers that meet your minimums. \
             Offers it lets through below your minimums are left to you. Autopilot also raises your minimums once \
@@ -206,7 +208,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.1
+            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.2
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -510,15 +512,15 @@ final class LegalTexts {
 
             ## Autopilot and your acceptance rate
 
-            Autopilot is off unless you turn it on. While it is on, it moves the bar (how much of your minimums an \
-            offer must pay, from 50% to 150%) between offers, only through the screen reader, using your decision \
-            history, the wait-estimate records above and the acceptance rate Dasher shows. Turning it off puts the \
-            bar back to exactly your minimums. While it is on and Let my minimums grow is on, it also raises your \
-            minimums, at most 10% at a time, once the bars it recorded in your decision history have stayed at 103% \
-            or more for 30 offers over at least 2 days, but not while it is recovering toward your acceptance goal; \
-            how much they grow comes only from those bars, never from what you accepted or declined. This growth \
-            waits while enabled learned floors exceed saved minimums; the acceptance learner retains its \
-            independent bests.
+            Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs) until you turn it \
+            off. While it is on, it moves the bar (how much of your minimums an offer must pay, from 50% to 150%) \
+            between offers, only through the screen reader, using your decision history, the wait-estimate records \
+            above and the acceptance rate Dasher shows. Turning it off puts the bar back to exactly your minimums. \
+            While it is on and Let my minimums grow is on, it also raises your minimums, at most 10% at a time, \
+            once the bars it recorded in your decision history have stayed at 103% or more for 30 offers over at \
+            least 2 days, but not while it is recovering toward your acceptance goal; how much they grow comes only \
+            from those bars, never from what you accepted or declined. This growth waits while enabled learned \
+            floors exceed saved minimums; the acceptance learner retains its independent bests.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
@@ -670,10 +672,10 @@ final class LegalTexts {
             - Area mode is a choice in Settings; acceptance learning is the Learn button on the homepage (a long \
             press shows what it learned). Turning learning off retains bests; confirmed Reset or Clear history \
             clears them. Neither enables the optional timing study or sharing.
-            - Autopilot is off unless you turn it on, and turning it off puts the bar back to exactly your \
-            minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear history removes it. \
-            Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising saved minimums. Enabled \
-            acceptance learning can still change effective requirements independently.
+            - Autopilot is on by default; turning it off (from its chip on the homepage) puts the bar back to \
+            exactly your minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear \
+            history removes it. Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising \
+            saved minimums. Enabled acceptance learning can still change effective requirements independently.
             - Clear history (Settings) removes the decisions, both logs and the latest states, the observed-wait \
             records, the offer map and cached place names, the temporary restart/error records above, stop \
             summaries, the current dash's problem counts and after-dash summaries not yet sent, plus Autopilot's \

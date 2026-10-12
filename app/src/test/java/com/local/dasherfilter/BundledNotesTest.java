@@ -118,6 +118,7 @@ public class BundledNotesTest {
         both.addAll(notice(16));
         both.addAll(notice(17));
         both.addAll(notice(18));
+        both.addAll(notice(19));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -266,9 +267,7 @@ public class BundledNotesTest {
      * 0.6.1 (the owner, 11 and 12 October 2026): learning on by default, and new highs raise the learned minimums,
      * never the user's own, with Adopt.
      */
-    @Test public void learningOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
-        assertEquals(18, Consent.VERSION);
-        assertEquals("0.6.1", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void learningOnByDefaultHasItsOwnNoticeAndRelease() {
         String notice = String.join(" ", notice(18));
         for (String fact : new String[] {"on by default", "beats your best pay", "raises the learned minimums",
                 "more declines", "stay as you set them", "Adopt", "Learn button"}) {
@@ -282,6 +281,32 @@ public class BundledNotesTest {
             assertTrue(fact, release.contains(fact));
         }
         for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {
+            assertFalse(outcome, (release + notice).toLowerCase(java.util.Locale.US).contains(outcome));
+        }
+    }
+
+    /**
+     * 0.6.2 (the owner, 12 October 2026): Autopilot on by default, turned on once for installs updating, and the offer
+     * clock. Its notice carries the clock too, since a reader of notice 18 gets no What's-new card with it.
+     */
+    @Test public void autopilotOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
+        assertEquals(19, Consent.VERSION);
+        assertEquals("0.6.2", Updater.version(RuntimeEnvironment.getApplication()));
+        String notice = String.join(" ", notice(19));
+        for (String fact : new String[] {"Autopilot is on by default", "turns it on once", "the goal you chose before",
+                "70% acceptance rate", "turns it off", FilterStore.BAR_MIN + "% and " + FilterStore.BAR_MAX + "%",
+                "declines offers that meet them", "yours to decide", "at most " + Growth.MOST_PERCENT + "% at a time",
+                "Undo", "by time of day", "as a percent of your minimums now"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        String release = String.join(" ", BundledNotes.whatsNew("0.6.2"));
+        for (String fact : new String[] {"Autopilot is on by default", "turns it on once", "chip at the top",
+                OfferClock.TITLE, "middle score", "three hours", "as a percent of your minimums now",
+                "history, not a promise"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
+                "busiest", "best time"}) {
             assertFalse(outcome, (release + notice).toLowerCase(java.util.Locale.US).contains(outcome));
         }
     }

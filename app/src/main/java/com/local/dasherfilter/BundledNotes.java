@@ -72,6 +72,17 @@ final class BundledNotes {
                         + "you set them.",
                 "The homepage says what rose, with Adopt to make them yours; the Learn button on the radar turns "
                         + "learning off.");
+        // 0.6.2 (the owner, 12 October 2026): Autopilot on by default. A reader of notice 18 sees no What's-new card
+        // with this notice, so its last line names the offer clock too.
+        notice(19,
+                "Autopilot is on by default: this update turns it on once, with the goal you chose before or else "
+                        + "70% acceptance rate. Its chip on the homepage turns it off.",
+                "It moves your cutoff between 50% and 150% of your minimums: raised, it declines offers that meet "
+                        + "them; lowered, offers below them are yours to decide.",
+                "It also raises your minimums after offers have paid above them for a while, at most 10% at a time, "
+                        + "with Undo.",
+                "New over the skyline: your offers by time of day, as a percent of your minimums now. Tap it for "
+                        + "what it means.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -141,6 +152,12 @@ final class BundledNotes {
                         + "confirmation teaches when you accept it.",
                 "Learning is on by default: the radar's Learn button, long press for what it learned. Autopilot is "
                         + "the chip at the top. Split mid-delivery opens recent apps.");
+        release("0.6.2",
+                "Autopilot is on by default: this update turns it on once, with the goal you chose before or else "
+                        + "70% acceptance rate. Its chip at the top turns it off.",
+                "Offers by time of day, over the skyline: each bar is the middle score of your offers in those three "
+                        + "hours, as a percent of your minimums now.",
+                "Tap it for what it means. It is history, not a promise.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

@@ -32,10 +32,17 @@ final class AutopilotText {
     static final String CHOOSER_TITLE = "What matters more?";
     /**
      * Under the choices while Autopilot is off, so an answer never turns it on unawares (the chooser also opens after
-     * the starter's "Use these" and the first resume, when no one asked for Autopilot by name).
+     * the starter's "Use these" and the first resume, when no one asked for Autopilot by name; from 0.6.2 that is with
+     * Autopilot already on by default, {@link #CHOOSER_ON_BY_DEFAULT}).
      */
     static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which adjusts how much of your minimums "
             + "an offer must meet. Not now leaves it off.";
+    /**
+     * Under the choices while Autopilot is on by default and no goal was chosen yet (0.6.2): it is already on, with the
+     * suggested goal checked, and Not now keeps it so.
+     */
+    static final String CHOOSER_ON_BY_DEFAULT = "Autopilot is on with the suggested goal. Choose another, or Not now to "
+            + "keep it. You can turn it off from its chip.";
     static final String CHOOSER_ABOUT = "About acceptance rate";
     static final String CHOOSER_NOT_NOW = "Not now";
     static final String ABOUT_ACCEPTANCE_RATE = "DoorDash computes acceptance rate over your recent offers (it "
@@ -81,6 +88,8 @@ final class AutopilotText {
     // ---- The diagnostic log (category "autopilot") ----
 
     static final String LOG_OFF = "off; bar back to " + Autopilot.BAR_OFF + "%";
+    /** Autopilot turned on by default, once (0.6.2: a new install, or an install updating from an earlier version). */
+    static final String LOG_ON_BY_DEFAULT = "on by default; bar " + Autopilot.BAR_OFF + "% until it plans";
     static final String LOG_DEFERRED = "commit deferred: offer or decline in flight";
     static final String DISCARD_RULES = "plan discarded: rules changed";
     static final String DISCARD_OLD = "plan discarded: older than " + Autopilot.PLAN_MAX_AGE_MS / 60_000 + " min";

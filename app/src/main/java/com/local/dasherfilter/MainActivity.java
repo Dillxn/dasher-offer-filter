@@ -31,6 +31,7 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.time.ZoneId;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -191,6 +192,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private AutopilotChip chip;
     /** The skyline's caption: the chosen offer's line ("Latest" or "Selected"), a tap opening its ticket. */
     private TextView offerCaption;
+    /** The offer clock drawn in the skyline caption's row while it has no words (0.6.2), and what it shows. */
+    private OfferClock.Face clockFace;
+    private OfferClock offerClock;
     /** What Autopilot is doing, as last shown. */
     private AutopilotText.Status autopilotStatus;
     /** Told on the main thread after a plan or a commit: the page shows the new status. */
@@ -822,8 +826,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         addMinimums();
         offerCaption = caption(13, ui.ink);
         offerCaption.setPadding(ui.dp(12), 0, ui.dp(12), 0);
+        // The row is empty unless an older offer is selected: the offer clock stands in it then.
+        clockFace = new OfferClock.Face(ui);
+        offerCaption.setBackground(clockFace);
         offerCaption.setOnClickListener(tapped -> {
-            if (chart.selectedEntry() != null) setTicketOpen(true);
+            if (offerCaption.length() > 0 && chart.selectedEntry() != null) setTicketOpen(true);
+            else if (offerClock != null) showClockDetails();
         });
         addOffers();
         addAreas();
@@ -1138,7 +1146,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * closes (Autopilot on with it, or its goal changed while on); "About acceptance rate" explains, leaving the choice
      * open; "Not now" (or Back) leaves Autopilot as it was. While Autopilot is off, one line under the choices says an
      * answer turns it on (the chooser also opens after the starter and the first resume, when no one asked for
-     * Autopilot by name). Any answer counts as asked. With Autopilot off and no money minimum, it cannot be on: the
+     * Autopilot by name); while it is on by default with no goal chosen yet (0.6.2), one line says it is on already and
+     * Not now keeps it. Any answer counts as asked. With Autopilot off and no money minimum, it cannot be on: the
      * toast says what is needed.
      */
     private void chooseAutopilotGoal() {
@@ -1157,10 +1166,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .setNeutralButton(AutopilotText.CHOOSER_ABOUT, null)
                 .setNegativeButton(AutopilotText.CHOOSER_NOT_NOW, (dialog, which) -> FilterStore.setGoalAsked(this, true))
                 .setOnCancelListener(dialog -> FilterStore.setGoalAsked(this, true));
-        if (!saved.autopilot) {
-            TextView turnsOn = ui.text(AutopilotText.CHOOSER_TURNS_ON, 14, ui.inkSecondary, false);
-            turnsOn.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(4));
-            builder.setView(turnsOn);
+        String under = !saved.autopilot ? AutopilotText.CHOOSER_TURNS_ON
+                : !FilterStore.goalAsked(this) ? AutopilotText.CHOOSER_ON_BY_DEFAULT : null;
+        if (under != null) {
+            TextView words = ui.text(under, 14, ui.inkSecondary, false);
+            words.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(4));
+            builder.setView(words);
         }
         AlertDialog chooser = OwnWindowTouches.show(builder);
         // About explains without closing the choice.
@@ -1987,18 +1998,42 @@ public final class MainActivity extends Activity implements Updater.Busy {
         FilterSettings rules = FilterStore.load(this);
         if (chart != null) chart.setRules(rules);
         minimums.show(rules, CHART_COMPARISON, recentEntries);
+        offerClock = OfferClock.of(recentEntries, rules, ZoneId.systemDefault(), System.currentTimeMillis());
+        if (offerCaption != null && chart != null) refreshOfferCaption(chart.selectedEntry());
+    }
+
+    /** What the clock means, then each slot on a line of its own (OfferClock.table). */
+    private void showClockDetails() {
+        if (offerClock == null) return;
+        OwnWindowTouches.show(new AlertDialog.Builder(this)
+                .setTitle(OfferClock.TITLE)
+                .setMessage(OfferClock.DETAILS + "\n\n" + offerClock.table())
+                .setPositiveButton("OK", null));
     }
 
     private void refreshOfferCaption(DecisionLog.Entry entry) {
         boolean latest = entry != null && !recentEntries.isEmpty() && recentEntries.get(0).at == entry.at;
         if (entry == null || latest) {
             // No offer yet, or the latest: the verdict at the top of the page says it already (the owner, 11 October
-            // 2026: the latest offer showed twice). Only another offer tapped on the skyline gets this caption.
+            // 2026: the latest offer showed twice). Only another offer tapped on the skyline gets this caption; the
+            // row shows the offer clock instead (0.6.2), its current slot following the clock on the wall.
             if (offerCaption.length() > 0) offerCaption.setText("");
-            offerCaption.setContentDescription(null);
-            offerCaption.setClickable(false);
+            // A new slot, or another time zone (travel, or the zone changed in Settings): the offers sort afresh.
+            long now = System.currentTimeMillis();
+            ZoneId zone = ZoneId.systemDefault();
+            if (offerClock != null && !offerClock.current(now, zone)) {
+                offerClock = OfferClock.of(recentEntries, FilterStore.load(this), zone, now);
+            }
+            clockFace.show(offerClock);
+            String said = offerClock == null ? null : offerClock.said();
+            CharSequence heard = offerCaption.getContentDescription();
+            if (!java.util.Objects.equals(said, heard == null ? null : heard.toString())) {
+                offerCaption.setContentDescription(said);
+            }
+            offerCaption.setClickable(offerClock != null);
             return;
         }
+        clockFace.show(null);
         String label = "Selected · "
                 + (entry.facts.payCents == null ? "Pay unread" : DecisionLog.money(entry.facts.payCents))
                 + " · " + captionOutcome(entry);
@@ -2543,7 +2578,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.USER);
         rulesChanged();
         toast("Auto-decline is on.");
-        if (saved.hasMonetaryRule() && !saved.autopilot && !FilterStore.goalAsked(this)) chooseAutopilotGoal();
+        // Once, off or on (on by default from 0.6.2: the chooser then confirms the suggested goal).
+        if (saved.hasMonetaryRule() && !FilterStore.goalAsked(this)) chooseAutopilotGoal();
     }
 
     private void rulesChanged() {

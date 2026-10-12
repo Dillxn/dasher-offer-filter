@@ -43,7 +43,10 @@ final class FilterStore {
     private static final String PER_MINUTE = "minute";
     private static final String MAX_STOPS = "max_stops";
 
-    /** Autopilot on: only Autopilot moves the bar, between offers. Off unless turned on. */
+    /**
+     * Autopilot on: only Autopilot moves the bar, between offers. On by default from 0.6.2 ({@link #AUTOPILOT_SCHEMA});
+     * off once the user turns it off.
+     */
     private static final String AUTOPILOT_ON = "autopilot_on";
     /** Autopilot's acceptance-rate goal: 70, 50 or 0 (pay first). */
     private static final String AUTOPILOT_GOAL = "autopilot_goal";
@@ -71,6 +74,19 @@ final class FilterStore {
     private static final String LEARNER_SCHEMA = "learner_v3_schema";
     /** 1: 0.6.0's fresh state, learning off; 2: learning on by default (0.6.1). */
     private static final int LEARNER_SCHEMA_NOW = 2;
+    /**
+     * Autopilot on by default (0.6.2; the owner, 12 October 2026): 1 once {@link #initializeAutopilot} has turned it
+     * on, for a new install and, once, for an install updating from an earlier version. From then on the user's own
+     * switch decides.
+     */
+    private static final String AUTOPILOT_SCHEMA = "autopilot_default_schema";
+    private static final int AUTOPILOT_SCHEMA_NOW = 1;
+    /**
+     * Test seam: whether {@link #initializeAutopilot} turns Autopilot on. On in the app. Tests written before 0.6.2 run
+     * as an install whose user keeps Autopilot off (ConsentedTestApp turns this off); AutopilotDefaultTest turns it
+     * back on to test the default itself.
+     */
+    static volatile boolean autopilotOnByDefault = true;
     static final String AREA_MODE = "area_mode_v3";
     static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
     static final String ACCEPTED_PAY = "accepted_v3_pay";
@@ -154,6 +170,7 @@ final class FilterStore {
         SharedPreferences prefs = prefs(context);
         retireExtraStopFee(context, prefs);
         migrateToModel2(context, prefs);
+        initializeAutopilot(context, prefs);
         initializeLearning(prefs);
         stampMinimumsSince(prefs);
         return read(prefs);
@@ -212,6 +229,38 @@ final class FilterStore {
             }
             edit.apply();
         }
+    }
+
+    /**
+     * Autopilot on by default (0.6.2; the owner, 12 October 2026: Autopilot "should be on by default"): a new install,
+     * and once an install updating from an earlier version whatever it had, get Autopilot on with its stored goal (70%,
+     * the suggested one, when none was chosen) and the bar at exactly the minimums. Nothing else changes: not the
+     * minimums, "minimums since", "Let my minimums grow" or whether the goal was asked (the goal chooser still asks
+     * once, with Autopilot already on). It makes no jump: Autopilot moves the bar from 100% only by its own commits, at
+     * its safe points, and plans nothing before the current notice is accepted. Runs after the model-2 migration
+     * (which writes it off) and before every read of the switch. It writes prefs, forgets any goal state left from an
+     * earlier time Autopilot was on, and logs one fixed line, never calling Autopilot's runtime (whose lock is taken
+     * before this class's); the app was just installed or updated, so the runtime holds no plan of its own yet.
+     */
+    private static void initializeAutopilot(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(AUTOPILOT_SCHEMA, 0) >= AUTOPILOT_SCHEMA_NOW) return;
+        boolean turnedOn = false;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(AUTOPILOT_SCHEMA, 0) >= AUTOPILOT_SCHEMA_NOW) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(AUTOPILOT_SCHEMA, AUTOPILOT_SCHEMA_NOW);
+            if (autopilotOnByDefault && !prefs.getBoolean(AUTOPILOT_ON, false)) {
+                edit.putBoolean(AUTOPILOT_ON, true).putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS)
+                        .putInt(AUTOPILOT_GOAL, FilterSettings.sanitizedGoal(
+                                prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)));
+                turnedOn = true;
+            }
+            edit.commit();
+        }
+        if (!turnedOn || context == null) return;
+        // As turning it on does: no recovery or stall correction left from an earlier time it was on (outside this
+        // class's lock; Autopilot's store takes no other).
+        AutopilotStore.resetGoalState(context);
+        DiagnosticLog.log(context, "autopilot", AutopilotText.LOG_ON_BY_DEFAULT);
     }
 
     private static AcceptedFloors accepted(SharedPreferences prefs) {
@@ -320,7 +369,8 @@ final class FilterStore {
      *   <li>The 25 {@link #RETIRED_KEYS} are removed.</li>
      *   <li>Auto-decline is paused when it was on and no rule is left; auto-accept is turned off once when a retired
      *       rule or learned value was in use, the scale was not 100, or only max stops is left.</li>
-     *   <li>Autopilot starts off, goal 70, bar 100 (each only if absent).</li>
+     *   <li>Autopilot starts off, goal 70, bar 100 (each only if absent); from 0.6.2 {@link #initializeAutopilot}
+     *       then turns it on, once.</li>
      *   <li>An install that had rules gets one "rules" log line, and a notice ({@link #peekModelNotice}) and status
      *       when the meaning of its rules changed; its minimums take effect now ({@link #minimumsSince}).</li>
      * </ul>
@@ -558,6 +608,7 @@ final class FilterStore {
     static void save(Context context, FilterSettings base, FilterSettings next) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializeAutopilot(context, prefs);
         initializeLearning(prefs);
         synchronized (FilterStore.class) {
             FilterSettings stored = read(prefs);
@@ -599,6 +650,8 @@ final class FilterStore {
     static void setAutopilot(Context context, boolean on, int goal) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        // The default first, so a choice made before the rules were ever loaded is the one that stands.
+        initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
             boolean wasOn = prefs.getBoolean(AUTOPILOT_ON, false);
             SharedPreferences.Editor edit = prefs.edit().putBoolean(AUTOPILOT_ON, on)
@@ -628,6 +681,7 @@ final class FilterStore {
         if (next < BAR_MIN || next > BAR_MAX) return false;
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || bar(prefs) != expected) return false;
             prefs.edit().putInt(AUTOPILOT_BAR, next).apply();
@@ -661,6 +715,7 @@ final class FilterStore {
         if (grown.barAfter < BAR_MIN || grown.barAfter > BAR_MAX) return false;
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || !prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
             FilterSettings stored = read(prefs);

@@ -42,10 +42,10 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "12 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.1";
+    static final String TERMS_VERSION = "0.6.2";
     /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
     static final String PRIVACY_EFFECTIVE = "12 October 2026";
-    static final String PRIVACY_VERSION = "0.6.1";
+    static final String PRIVACY_VERSION = "0.6.2";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -100,7 +100,11 @@ public final class LegalTextsTest {
         // 0.5.0's minimums, Autopilot and auto-accept (finalSpec.privacyConsent, TERMS).
         for (String fact : new String[] {"It compares each offer with your active minimums: pay, pay per mile and pay "
                 + "per hour of Dasher's time estimate, plus an optional maximum number of stops.",
-                "Autopilot is off until you turn it on.", "between 50% and 150%",
+                // 0.6.2: on by default, turned on once for earlier installs, and turned off from its chip.
+                "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a "
+                        + "goal chosen before), with an "
+                        + "acceptance-rate goal of 70% until you choose another; you can turn it off from its chip on "
+                        + "the homepage.", "between 50% and 150%",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
                 // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
                 "Above 100% it declines offers that meet your minimums.",

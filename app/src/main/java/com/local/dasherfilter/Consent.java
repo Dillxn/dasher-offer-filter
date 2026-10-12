@@ -21,7 +21,8 @@ final class Consent {
     // 16: separate prospective study scope; accepting this notice never enables that optional choice.
     // 17: separate area mode and local acceptance learning; study confirmation remains independent.
     // 18 (0.6.1): learning on by default, so a new high you accept raises the learned minimums offers must meet.
-    static final int VERSION = 18;
+    // 19 (0.6.2): Autopilot on by default, for new installs and once for installs updating, with goal 70%.
+    static final int VERSION = 19;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -37,12 +38,12 @@ final class Consent {
                 + "on offers that fail your chosen rules. Strict mode checks every active minimum; optional area mode "
                 + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
                 + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
-                + "mean accepted. Optional Autopilot moves that cutoff up or down by itself (50% to 150% of "
+                + "mean accepted. Autopilot is on by default and moves that cutoff up or down by itself (50% to 150% of "
                 + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
                 + "you decline: raised, it declines offers that meet your minimums; to protect your acceptance goal it can "
                 + "let offers below your minimums through for you to decide. Autopilot also raises your minimums after "
                 + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
-                + "declines. Auto-accept is off by default; if "
+                + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "
                 + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
                 + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
                 + "most twice. Your touch stops it. It can briefly turn offer sound down. During a dash it keeps your "
