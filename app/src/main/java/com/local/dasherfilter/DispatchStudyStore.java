@@ -261,8 +261,16 @@ final class DispatchStudyStore {
     private static File file(Context app) { return new File(app.getFilesDir(), FILE); }
 
     static void flush() {
-        try { WORK.submit(() -> {}).get(5, TimeUnit.SECONDS); }
-        catch (Exception failure) { throw new IllegalStateException(failure); }
+        // A withdrawal or a clear (resetSoon) cancels what is queued, this barrier too; queued again, it waits behind
+        // that reset. Submitted under WORK's lock, so it never lands between resetSoon's cancels and its clear().
+        for (int tries = 0; tries < 4; tries++) {
+            java.util.concurrent.Future<?> barrier;
+            synchronized (WORK) { barrier = WORK.submit(() -> {}); }
+            try { barrier.get(5, TimeUnit.SECONDS); return; }
+            catch (java.util.concurrent.CancellationException resetMeanwhile) { /* queue it again */ }
+            catch (Exception failure) { throw new IllegalStateException(failure); }
+        }
+        throw new IllegalStateException("offer timing study work kept being reset");
     }
     static void resetProcessForTest() { flush(); model = null; owner = null; modelEpoch = -1; overflow = false; }
     private DispatchStudyStore() {}

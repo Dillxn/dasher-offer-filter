@@ -25,18 +25,19 @@ import static org.junit.Assert.assertTrue;
  *
  * <p>The market model is floating point, as a simulation may be; every decision inside it is the engine's exact
  * arithmetic. Seeds are fixed, so every figure is deterministic; the thresholds sit well inside what the seeds show.
+ * Its two longest runs are {@link AutopilotGoalHoldsTest}'s, so no one test class holds up a parallel test JVM.
  */
 public final class AutopilotClosedLoopTest {
-    private static final long START = 1_760_000_000_000L;
-    private static final long MIN = 60_000L;
-    private static final long HOUR = 60 * MIN;
+    static final long START = 1_760_000_000_000L;
+    static final long MIN = 60_000L;
+    static final long HOUR = 60 * MIN;
     /** Autopilot off: the bar stays exactly at the minimums. */
-    private static final int OFF = -1;
-    private static final int OFFERS = 2_000;
-    private static final int WARMUP = 500;
-    private static final double BUSY = 26;
-    private static final double MODERATE = 12;
-    private static final double SLOW = 3;
+    static final int OFF = -1;
+    static final int OFFERS = 2_000;
+    static final int WARMUP = 500;
+    static final double BUSY = 26;
+    static final double MODERATE = 12;
+    static final double SLOW = 3;
 
     /** The calibrated stream (econ_check.sample): lognormal pay correlated with minutes, minutes linear in miles. */
     private static final class Market {
@@ -72,7 +73,7 @@ public final class AutopilotClosedLoopTest {
     }
 
     /** What one simulated dash did. */
-    private static final class Dash {
+    static final class Dash {
         /** Pay per hour of waiting and trips after the warm-up. */
         double dollarsPerHour;
         /** DoorDash's acceptance rate (accepted of the last 100 offers): at the end, its mean and least after the
@@ -107,7 +108,7 @@ public final class AutopilotClosedLoopTest {
     }
 
     /** {@link #dash(int, double, double, int, boolean, double, boolean, long, int, int)}, every question read. */
-    private static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
+    static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
                              long seed, int offers, int warmup) {
         return dash(goal, offersPerHour, takeRate, startAr, correction, 1.0, false, seed, offers, warmup);
     }
@@ -120,7 +121,7 @@ public final class AutopilotClosedLoopTest {
      * Dasher's question is read for a share {@code questionShare} of the app's declines (the rest go through Dasher's
      * notification); with {@code readingAtStart} it was read once as the dash began, showing {@code startAr}.
      */
-    private static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
+    static Dash dash(int goal, double offersPerHour, double takeRate, int startAr, boolean correction,
                              double questionShare, boolean readingAtStart, long seed, int offers, int warmup) {
         Market market = new Market(seed);
         Random arrivals = new Random(seed * 1_000_003L + 1);
@@ -274,29 +275,15 @@ public final class AutopilotClosedLoopTest {
         return dash;
     }
 
-    private static String market(double offersPerHour) {
+    static String market(double offersPerHour) {
         return String.format(Locale.US, "%.0f offers an hour", offersPerHour);
     }
 
     /** The bar stays within its range, settles, and never turns back within half an hour of a commit. */
-    private static void assertCalm(String what, Dash dash) {
+    static void assertCalm(String what, Dash dash) {
         assertTrue(what + ": bar in 50–150", dash.finalBar >= Autopilot.BAR_MIN && dash.finalBar <= Autopilot.BAR_MAX);
         assertTrue(what + ": at most 6 commits an hour", dash.maxCommitsPerHour <= 6);
         assertTrue(what + ": no reversal within 30 minutes of a commit", dash.minReversalGapMs >= 30 * MIN);
-    }
-
-    @Test
-    public void goalSeventyWithEveryPassingOfferTakenHoldsSeventyPercentInEveryMarket() {
-        for (double offersPerHour : new double[] {BUSY, MODERATE, SLOW}) {
-            for (long seed = 1; seed <= 2; seed++) {
-                Dash dash = dash(FilterSettings.GOAL_TOP_TIER, offersPerHour, 1.0, 70, true, seed, OFFERS, WARMUP);
-                String what = market(offersPerHour) + ", seed " + seed + ": " + dash;
-                assertTrue(what + ": AR over the last 100 offers at least 70%", dash.finalAr >= 70);
-                assertTrue(what + ": mean AR at least the goal + 5", dash.meanAr >= 75);
-                assertTrue(what + ": dips stay small", dash.minAr >= 65);
-                assertCalm(what, dash);
-            }
-        }
     }
 
     @Test
@@ -357,24 +344,6 @@ public final class AutopilotClosedLoopTest {
             assertEquals(what + ": nothing added on the way", 0, dash.maxExtraBeforeGoal);
             assertEquals(what + ": nothing left at the end", 0, dash.finalExtra);
             assertCalm(what, dash);
-        }
-    }
-
-    @Test
-    public void readingOnlySomeQuestionsNeverWindsTheCorrectionUp() {
-        // Recovering from the owner's 9% while Dasher's question is read for all, a fifth, a tenth or none of the
-        // declines (the rest through Dasher's notification): the correction stays off on the way, and is off once the
-        // rate is well above the goal, whatever the app's own count or Dasher's last reading says.
-        for (double share : new double[] {1.0, 0.2, 0.1, 0.0}) {
-            for (long seed = 1; seed <= 2; seed++) {
-                Dash dash = dash(FilterSettings.GOAL_TOP_TIER, MODERATE, 1.0, 9, true, share, true, seed, 1_200, 200);
-                String what = "questions read " + share + ", seed " + seed + ": " + dash;
-                assertTrue(what + ": the goal is reached", dash.offersToGoal <= 150);
-                assertEquals(what + ": nothing added on the way", 0, dash.maxExtraBeforeGoal);
-                assertEquals(what + ": nothing left at the end", 0, dash.finalExtra);
-                assertTrue(what + ": the goal holds", dash.meanAr >= 70);
-                assertCalm(what, dash);
-            }
         }
     }
 
