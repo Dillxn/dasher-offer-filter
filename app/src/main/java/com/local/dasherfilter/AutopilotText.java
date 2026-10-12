@@ -316,39 +316,40 @@ final class AutopilotText {
     // ---- The homepage status line ----
 
     /**
-     * The homepage's one status line (in place of "Next match" while Autopilot is on; a tap opens the details). The
-     * first matching line wins, in the spec's order: waiting for the screen reader; no money minimum; auto-decline
-     * paused; no plan yet ("checking your offers"); learning; pinned at the lowest bar; below the goal; at or above it;
-     * no reading yet; pay first's floor; pay first.
+     * The homepage's one status line (in place of "Next match" while Autopilot is on; a tap opens the details), beside
+     * the chip, which already says Autopilot's bar (or that it waits, needs a minimum or is learning): only what the chip
+     * does not say, in labels (the owner, 11 October 2026: each fact once, a label before a sentence; 0.6.3 took the bar
+     * off this line, where it stood beside the chip's). Empty where the chip says it all (waiting for the screen reader,
+     * no money minimum: the setup step and the hollow knobs say the rest). The first matching line wins, in the spec's
+     * order: auto-decline paused; no plan yet; learning; pinned; below the goal; at or above it; no reading yet; pay
+     * first's floor; pay first. Screen readers hear the whole status, the bar included, from the chip ({@link
+     * #chipDescription}).
      */
     static String statusLine(Status s) {
         switch (s.kind) {
             case OFF:
                 return "Autopilot off";
             case WAITS:
-                return "Autopilot waits for screen reading";
             case NEEDS_MINIMUM:
-                return "Autopilot needs a pay, per-mile or hourly minimum";
+                return "";
             case PAUSED:
-                return "Autopilot " + s.bar + "% · auto-decline paused";
+                return "Auto-decline paused";
             case CHECKING:
-                return "Autopilot " + s.bar + "% · checking your offers";
+                return "Checking offers";
             case LEARNING:
-                return "Autopilot " + s.bar + "% · learning (" + s.plan.counted + " of " + Autopilot.MIN_WINDOW
-                        + " offers)";
+                return s.plan.counted + " of " + Autopilot.MIN_WINDOW + " offers";
             case PINNED:
-                return "Autopilot " + s.bar + "%" + (s.bar == Autopilot.BAR_MIN ? " (lowest)" : "") + " · "
-                        + (s.belowGoal() ? progress(s) : "lower a minimum to pass more");
+                return s.belowGoal() ? progress(s) : "Lower a minimum to pass more";
             case BELOW_GOAL:
-                return "Autopilot " + s.bar + "% · " + progress(s);
+                return progress(s);
             case AT_GOAL:
-                return "Autopilot " + s.bar + "% · AR " + arShort(s) + ", goal " + s.goal + "%";
+                return "AR " + arShort(s) + " · goal " + s.goal + "%";
             case AR_UNKNOWN:
-                return "Autopilot " + s.bar + "% · goal " + s.goal + "% · AR not seen yet";
+                return "Goal " + s.goal + "% · AR not seen yet";
             case PASS_FLOOR:
-                return "Autopilot " + s.bar + "% · pay first · keeping 1 in 5 offers";
+                return "Pay first · keeping 1 in 5";
             default:
-                return "Autopilot " + s.bar + "% · pay first";
+                return "Pay first";
         }
     }
 
@@ -364,9 +365,10 @@ final class AutopilotText {
     }
 
     /**
-     * The status line as a screen reader says it, in whole sentences and words: no "→", "·", "~" or "AR" ("Autopilot
-     * bar 82 percent. Acceptance rate 55 percent, goal 70 percent: about 15 more accepts."). The same facts, in the
-     * same order, as {@link #statusLine}; the chip and the status line are heard so, with what a tap does.
+     * The chip and the status line as a screen reader says them, in whole sentences and words: no "→", "·", "~" or
+     * "AR" ("Autopilot bar 82 percent. Acceptance rate 55 percent, goal 70 percent: about 15 more accepts."): the
+     * chip's bar, then the same facts in the same order as {@link #statusLine}. The chip is heard so, with what a tap
+     * does.
      */
     static String statusSaid(Status s) {
         switch (s.kind) {

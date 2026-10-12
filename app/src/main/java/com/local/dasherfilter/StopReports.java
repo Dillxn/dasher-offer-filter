@@ -154,10 +154,12 @@ final class StopReports {
         ActivityManager activities = app.getSystemService(ActivityManager.class);
         List<ApplicationExitInfo> exits = activities == null ? new ArrayList<>()
                 : activities.getHistoricalProcessExitReasons(app.getPackageName(), 0, 16);
+        List<ApplicationExitInfo> told = new ArrayList<>();
         for (ApplicationExitInfo exit : exits) {
             long at = exit.getTimestamp();
             if (at <= seenUntil || now - at > KEEP_MS || at > now + MATCH_MS) continue;
             newest = Math.max(newest, at);
+            told.add(exit);
             String kind;
             String where = "";
             switch (exit.getReason()) {
@@ -182,6 +184,14 @@ final class StopReports {
                     ? ", app in front" : ", app in the background";
             found.add(new Stop(at, kind, where, false));
         }
+        // Every stop, whatever its reason, goes in the log once (oldest first): a force stop, a permission change or
+        // Android's memory cleanup ends the screen reader and notification access as a crash does (the owner's report
+        // of 12 October 2026, which could not say which it was).
+        told.sort((a, b) -> Long.compare(a.getTimestamp(), b.getTimestamp()));
+        for (ApplicationExitInfo exit : told) {
+            DiagnosticLog.log(app, "app", stoppedLine(exit.getTimestamp(), exit.getReason(), exit.getStatus(),
+                    exit.getImportance() <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE));
+        }
         // Android lists the newest first; kept oldest first.
         found.sort((a, b) -> Long.compare(a.at, b.at));
         synchronized (StopReports.class) {
@@ -192,6 +202,41 @@ final class StopReports {
         if (note != null && (noteUsed || now - note.optLong("at") > KEEP_MS)) {
             //noinspection ResultOfMethodCallIgnored
             new File(app.getFilesDir(), NOTE).delete();
+        }
+    }
+
+    /**
+     * One log line for a stop of this app's process, in fixed words: when (the phone's time), Android's reason and
+     * whether the app was in front. Nothing of Android's own description of it, which can name other apps.
+     */
+    static String stoppedLine(long at, int reason, int status, boolean inFront) {
+        java.text.SimpleDateFormat clock = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US);
+        return "stopped at " + clock.format(new java.util.Date(at)) + ": " + reason(reason, status)
+                + (inFront ? ", app in front" : ", app in the background");
+    }
+
+    /** Android's reason for a stop, in words. */
+    static String reason(int reason, int status) {
+        switch (reason) {
+            case ApplicationExitInfo.REASON_EXIT_SELF: return "it exited by itself";
+            case ApplicationExitInfo.REASON_SIGNALED: return "ended by signal " + status;
+            case ApplicationExitInfo.REASON_LOW_MEMORY: return "Android was low on memory";
+            case ApplicationExitInfo.REASON_CRASH: return "a crash";
+            case ApplicationExitInfo.REASON_CRASH_NATIVE: return "a native crash";
+            case ApplicationExitInfo.REASON_ANR: return "not responding (ANR)";
+            case ApplicationExitInfo.REASON_INITIALIZATION_FAILURE: return "it failed to start";
+            case ApplicationExitInfo.REASON_PERMISSION_CHANGE: return "a permission of its changed";
+            case ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE: return "Android judged its battery or CPU use "
+                    + "too high";
+            case ApplicationExitInfo.REASON_USER_REQUESTED: return "force stopped (from Settings, or by the phone "
+                    + "for the user)";
+            case ApplicationExitInfo.REASON_USER_STOPPED: return "the phone's user profile stopped";
+            case ApplicationExitInfo.REASON_DEPENDENCY_DIED: return "something it depended on stopped";
+            case ApplicationExitInfo.REASON_OTHER: return "Android's own other reason";
+            case ApplicationExitInfo.REASON_FREEZER: return "frozen while in the background";
+            case 15: return "the app was turned off or on (package state)"; // REASON_PACKAGE_STATE_CHANGE, API 34
+            case 16: return "the app was updated"; // REASON_PACKAGE_UPDATED, API 34
+            default: return "an unknown reason (" + reason + ")";
         }
     }
 

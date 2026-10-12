@@ -178,29 +178,35 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     /**
      * Autopilot's status line on the page, checked to be the strip's status line (in "Next match"'s place) with the
-     * chip at its start, and its words.
+     * chip at its start, and its words: labels only, never the bar, which the chip shows (0.6.3). With nothing to say
+     * (Autopilot waits, or needs a minimum: the chip says it) the line is empty, and neither tapped nor heard.
      */
     private String autopilotLine(View content) {
         refreshed();
-        TextView line = shownLineStarting(content, "Autopilot ");
+        TextView line = statusLine(content);
         assertNotNull("Autopilot's status line", line);
-        assertSame("the strip's status line", statusLine(content), line);
+        AutopilotChip chip = find(content, AutopilotChip.class);
+        assertTrue("the chip at its start", chip.isShown() && chip.getParent() == line.getParent());
+        String words = line.getText().toString();
+        AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(),
+                OfferFilterService.isConnected());
+        assertEquals("the line as drawn", AutopilotText.statusLine(status), words);
+        assertFalse("the bar is the chip's alone: " + words, words.startsWith("Autopilot"));
+        assertEquals("never a live region", View.ACCESSIBILITY_LIVE_REGION_NONE, line.getAccessibilityLiveRegion());
+        if (words.isEmpty()) {
+            assertFalse("nothing to tap", line.isClickable());
+            assertEquals("nothing heard", View.IMPORTANT_FOR_ACCESSIBILITY_NO, line.getImportantForAccessibility());
+            return words;
+        }
         Ui ui = new Ui(app);
         assertEquals("14 sp", TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14,
                 app.getResources().getDisplayMetrics()), line.getTextSize(), 0.01f);
         assertTrue("a 48 dp target", line.getMinHeight() >= ui.dp(48));
         assertTrue("a tap opens the details", line.isClickable());
-        assertEquals("never a live region", View.ACCESSIBILITY_LIVE_REGION_NONE, line.getAccessibilityLiveRegion());
-        String words = line.getText().toString();
-        AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(),
-                OfferFilterService.isConnected());
-        assertEquals("the line as drawn", AutopilotText.statusLine(status), words);
         assertHeardInWords(String.valueOf(line.getContentDescription()));
         assertEquals("heard whole, in words, with what a tap does", AutopilotText.chipDescription(status),
                 String.valueOf(line.getContentDescription()));
         assertNull("in place of the wait for a matching offer", shownLineStarting(content, "Next match"));
-        AutopilotChip chip = find(content, AutopilotChip.class);
-        assertTrue("the chip at its start", chip.isShown() && chip.getParent() == line.getParent());
         return words;
     }
 
@@ -347,7 +353,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // its chip say Autopilot waits.
             refreshed();
             assertNotNull(shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
-            assertEquals("Autopilot waits for screen reading", statusLine(content).getText().toString());
+            assertEquals("", statusLine(content).getText().toString());
             assertEquals("Auto waits", find(content, AutopilotChip.class).getText().toString());
             assertTrue(find(content, AutopilotChip.class).isShown());
 
@@ -447,7 +453,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
             refreshed();
             assertNotNull("setup to do", shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
-            assertEquals("Autopilot waits for screen reading", autopilotLine(content));
+            assertEquals("", autopilotLine(content));
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip waits = find(content, AutopilotChip.class);
             assertTrue(waits.isShown());
@@ -459,47 +465,47 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             AutopilotRuntime.executorForTests = queued::add;
             connectReader();
             FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 3));
-            assertEquals("Autopilot needs a pay, per-mile or hourly minimum", autopilotLine(content));
+            assertEquals("", autopilotLine(content));
 
             FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
-            assertEquals("Autopilot 100% · auto-decline paused", autopilotLine(content));
+            assertEquals("Auto-decline paused", autopilotLine(content));
 
             // No plan yet for these rules: the connection's still waits to be worked out.
             minimums(400, 100, 25);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
-            assertEquals("Autopilot 100% · checking your offers", autopilotLine(content));
+            assertEquals("Checking offers", autopilotLine(content));
 
             history(8, 20);
             assertEquals("one plan waits, however often one was asked for", 1, queued.size());
             queued.remove(0).run();
-            assertEquals("Autopilot 100% · learning (12 of 20 offers)", autopilotLine(content));
+            assertEquals("12 of 20 offers", autopilotLine(content));
             AutopilotRuntime.executorForTests = Runnable::run;
 
             history(0, 8);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
-            assertEquals("Autopilot 100% · goal 70% · AR not seen yet", autopilotLine(content));
+            assertEquals("Goal 70% · AR not seen yet", autopilotLine(content));
 
             // Four offers came after Dasher's 55% and none was accepted: about 53%, 17 accepts short of 70%.
             reading(55, 12);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.READING);
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
 
             reading(74, 1);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.READING);
-            assertEquals("Autopilot 100% · AR 74%, goal 70%", autopilotLine(content));
+            assertEquals("AR 74% · goal 70%", autopilotLine(content));
 
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
-            assertEquals("Autopilot 100% · pay first", autopilotLine(content));
+            assertEquals("Pay first", autopilotLine(content));
 
             // Minimums so high that fewer than one in five of these offers meet them: pay first keeps one in five.
             minimums(2040, 400, 48);
             AutopilotRuntime.rulesChanged(app);
-            assertEquals("Autopilot 100% · pay first · keeping 1 in 5 offers", autopilotLine(content));
+            assertEquals("Pay first · keeping 1 in 5", autopilotLine(content));
 
             // With a goal, even the lowest bar passes too few: pinned.
             reading(9, 1);
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-            assertEquals("Autopilot 100% · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
 
             // Autopilot moves the bar by itself at its next safe point: the line, the chip, the button and the dashed
             // shape follow, and nothing is announced.
@@ -508,7 +514,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             int sent = Shadows.shadowOf(accessibility).getSentAccessibilityEvents().size();
             assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
             assertEquals(50, FilterStore.load(app).minimumScalePercent);
-            assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertEquals("Auto 50% lowest", find(content, AutopilotChip.class).getText().toString());
@@ -574,7 +580,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             Ui ui = new Ui(activity.get());
             ScenePage scene = find(content, ScenePage.class);
             View window = (View) scene.getParent();
-            String words = "Autopilot 100% · AR 53% → 70%: about 17 more accepts";
+            String words = "AR 53% → 70%: about 17 more accepts";
             if (fontScale <= 1f) assertEquals(words, autopilotLine(content));
             layOut(content);
             TextView line = statusLine(content);
@@ -674,7 +680,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertNotNull("background offers are off: a line to fix", fix);
             assertTrue("under the header", inWindow((View) fix.getParent()).top
                     >= inWindow(pageHeader(content)).bottom - 1);
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals("Auto 100% ▲", chip.getText().toString());
             layOut(content);
@@ -686,7 +692,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             layOut(content);
             assertNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
             assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
             float[] without = stageAsItStands(content, new Ui(activity.get()));
             for (int i = 0; i < withLine.length; i++) {
@@ -719,7 +725,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertNotNull("Peek paused itself: a line that needs the user", paused);
             assertTrue("under the header", inWindow((View) paused.getParent()).top
                     >= inWindow(pageHeader(content)).bottom - 1);
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
             assertNull("and never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals("Auto 100% ▲", chip.getText().toString());
@@ -734,7 +740,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             assertNull(Peek.pausedWhy(app));
             assertNull(shownTextContaining(content, "Peek paused: "));
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
         }
     }
 
@@ -832,9 +838,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", autopilotLine(content));
+            assertEquals("AR 53% → 70%: about 17 more accepts", autopilotLine(content));
 
-            TextView status = shownLineStarting(content, "Autopilot ");
+            TextView status = statusLine(content);
             status.performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
@@ -933,8 +939,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
-            shownLineStarting(content, "Autopilot ").performClick();
+            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
             String said = message(details);
@@ -993,8 +999,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", autopilotLine(content));
-            shownLineStarting(content, "Autopilot ").performClick();
+            assertEquals("AR 9% → 70%: about 61 more accepts", autopilotLine(content));
+            statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
             String said = message(details);
@@ -1522,20 +1528,20 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Autopilot 100% · auto-decline paused", autopilotLine(content));
+            assertEquals("Auto-decline paused", autopilotLine(content));
             assertNull("no change pending", AutopilotStore.jump(app));
             FilterHeroView mascot = find(content, FilterHeroView.class);
             mascot.performClick();
             idle();
             assertTrue(FilterStore.load(app).enabled);
-            assertEquals("not left checking until the next visit", "Autopilot 100% · AR 74%, goal 70%",
+            assertEquals("not left checking until the next visit", "AR 74% · goal 70%",
                     autopilotLine(content));
             mascot.performClick();
             idle();
-            assertEquals("Autopilot 100% · auto-decline paused", autopilotLine(content));
+            assertEquals("Auto-decline paused", autopilotLine(content));
             mascot.performClick();
             idle();
-            assertEquals("Autopilot 100% · AR 74%, goal 70%", autopilotLine(content));
+            assertEquals("AR 74% · goal 70%", autopilotLine(content));
             assertNull("a pause and a resume make no jump", AutopilotStore.jump(app));
             assertFalse(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("commit "));
         }
@@ -1590,7 +1596,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals(Autopilot.Mode.LEARNING, plan.mode);
             iconDescribed(content, "Back").performClick();
             idle();
-            assertEquals("Autopilot " + bar + "% · learning (0 of 20 offers)", autopilotLine(content));
+            assertEquals("0 of 20 offers", autopilotLine(content));
+            assertTrue("the bar is the chip's", find(content, AutopilotChip.class).getText().toString()
+                    .startsWith("Auto " + bar + "%"));
         }
     }
 

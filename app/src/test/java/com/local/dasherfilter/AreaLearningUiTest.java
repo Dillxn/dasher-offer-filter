@@ -87,14 +87,14 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertFalse(FilterStore.load(app).acceptanceLearning);
             assertEquals(MainActivity.LEARN_OFF_TOAST, ShadowToast.getTextOfLatestToast());
 
-            // Settings keeps the scoring mode, its own choice; learning is not there.
-            openSettings(content);
-            Button mode = shownButton(content, "Mode · Strict");
+            // The scoring mode is the strip's own chip beside Autopilot's (0.6.3), its own choice; neither it nor
+            // learning is in Settings.
+            ModeChip mode = find(content, ModeChip.class);
             assertNotNull(mode);
-            for (String learned : new String[] {"Learned · Off", "Learned · On"}) {
-                assertNull("no learning entry in Settings", shownButton(content, learned));
-            }
-            assertTrue(mode.getContentDescription().toString().contains("Autopilot is separate"));
+            assertTrue(mode.isShown());
+            assertEquals(ModeChip.STRICT, mode.getText().toString());
+            assertEquals(ModeChip.STRICT_SAID, mode.getContentDescription().toString());
+            assertNotSame("never Autopilot's chip", find(content, AutopilotChip.class), mode);
             mode.performClick();
             ShadowAlertDialog.getLatestAlertDialog().cancel();
             assertFalse(FilterStore.load(app).scoreByArea);
@@ -106,7 +106,14 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertFalse(after.enabled);
             assertFalse(after.autopilot);
             assertArrayEquals(RULES.minimums(), after.minimums());
+            assertEquals("the chip says so", ModeChip.AREA, mode.getText().toString());
+            assertEquals(ModeChip.AREA_SAID, mode.getContentDescription().toString());
             assertNotNull(find(content, AutopilotChip.class));
+            openSettings(content);
+            assertNull("no Mode entry in Settings", shownButton(content, "Mode · Area"));
+            for (String learned : new String[] {"Learned · Off", "Learned · On"}) {
+                assertNull("no learning entry in Settings", shownButton(content, learned));
+            }
         }
     }
 
@@ -361,16 +368,16 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertTrue(settings.getWidth() >= new Ui(app).dp(48));
             assertTrue(settings.getGlobalVisibleRect(visible));
             assertEquals(settings.getHeight(), visible.height());
-            render(content, "main-font" + (int) font);
-            openSettings(content);
-            Button mode = shownButton(content, "Mode · Strict");
+            // The scoring mode's chip, in the strip that never fades: whole, a 48 dp target at every font.
+            ModeChip mode = find(content, ModeChip.class);
             assertNotNull(mode);
             assertTrue(mode.getHeight() >= new Ui(app).dp(48));
             assertTrue(mode.getWidth() >= new Ui(app).dp(48));
-            mode.requestRectangleOnScreen(new Rect(0, 0, mode.getWidth(), mode.getHeight()), true);
-            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertTrue("Mode reachable by scrolling", mode.getGlobalVisibleRect(visible));
+            assertTrue("Mode whole on screen", mode.getGlobalVisibleRect(visible));
             assertEquals("Mode whole touch target", mode.getHeight(), visible.height());
+            render(content, "main-font" + (int) font);
+            openSettings(content);
+            assertNull("no Mode entry in Settings", shownButton(content, "Mode · Strict"));
             assertNull("learning is the radar's button, not a Settings entry", shownButton(content, "Learned · Off"));
             render(content, "controls-font" + (int) font);
             activity.get().onBackPressed();

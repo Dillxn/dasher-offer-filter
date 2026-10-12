@@ -70,8 +70,23 @@ final class DasherSplit {
     /** What a tap does during a delivery instead of starting Dasher's launcher beside this app, for the log. */
     static final String DELIVERY_RECENTS = "recent apps instead of Dasher's launcher, which can leave Dasher on its "
             + "launch screen";
+    /**
+     * Whether Dasher is running a dash ({@link #dasherRunning}): then its launcher is never started beside this app.
+     * Replaced only by tests.
+     */
+    static java.util.function.Predicate<Context> running = DasherSplit::dasherRunning;
+    /** The same during a dash with no delivery under way, for the log. */
+    static final String RUNNING_RECENTS = "recent apps instead of Dasher's launcher: a dash is on, and Dasher's "
+            + "launcher started beside this app can stay on its launch screen";
+    /**
+     * After the tap's own launch-adjacent start (no dash on), when Android's list of windows is logged again, so a
+     * report shows whether Dasher's half drew or stayed on its launch screen.
+     */
+    static final long[] LAUNCH_LOOKS_MS = {5_000, 10_000};
     /** The tap's own launch-adjacent start is what may split the screen: that split opens nothing more. */
     private static volatile boolean launchedBeside;
+    /** The tap opened recent apps during a dash: the user picks Dasher's card, and a split opens nothing more. */
+    private static volatile boolean byHandRunning;
 
     /** When the user last tapped Split (uptime), 0 when nothing is waiting. */
     private static volatile long requestedAt;
@@ -191,6 +206,15 @@ final class DasherSplit {
     }
 
     /**
+     * Whether a dash is on ({@link Dashing#on}: something of it seen within its half hour, or a route stored, and no
+     * end since) or Dasher is on a delivery: Dasher's task is running, and its launcher started beside this app would
+     * not be it.
+     */
+    static boolean dasherRunning(Context context) {
+        return Dashing.on(context) || onDelivery.test(context);
+    }
+
+    /**
      * Whether the header's Open Dasher shows (F22): Dasher installed, and this screen filling the screen (in split
      * screen the split button puts Dasher on screen).
      */
@@ -265,6 +289,7 @@ final class DasherSplit {
      */
     static String start(Activity activity, Consumer<String> later) {
         cancelVerify();
+        byHandRunning = false;
         Intent dasher = dasher(activity);
         if (dasher == null) {
             log(activity, "tap: Dasher is not installed");
@@ -286,8 +311,14 @@ final class DasherSplit {
                 return byHand(activity);
             }
             if (swaps(activity)) return swapIn(activity);
+            if (running.test(activity)) {
+                log(activity, "tap in split screen during a dash: " + RUNNING_RECENTS);
+                return byHand(activity);
+            }
             log(activity, "tap in split screen: Dasher's launch intent into the other half");
-            return open(activity, dasher);
+            String failed = open(activity, dasher);
+            if (failed == null) lookAfterLaunch(activity);
+            return failed;
         }
         if (!OfferFilterService.isConnected()) {
             log(activity, "tap: screen reading is off, nothing asked");
@@ -304,12 +335,21 @@ final class DasherSplit {
             log(activity, "tap during a delivery: " + DELIVERY_RECENTS);
             return byHand(activity);
         }
+        if (running.test(activity)) {
+            // The same during the rest of a dash (the owner, 12 October 2026: Dasher's half stayed on its launch
+            // screen after Split while it was finding offers). Android starts a launch-adjacent launcher in a task of
+            // its own unless a live launcher screen of Dasher's matches it exactly, and Dasher's own task is then left
+            // behind; recent apps move Dasher's task as it is. Why that launcher screen stays is Dasher's to say.
+            log(activity, "tap during a dash: " + RUNNING_RECENTS);
+            return byHand(activity);
+        }
         if (adjacentFirst.getAsBoolean()) {
             // Dasher's own launcher, NEW_TASK | LAUNCH_ADJACENT ({@link #dasher}), never MULTIPLE_TASK: Dasher's task,
             // its offer and all, moves beside this screen; no second Dasher task. Looked at again as a request
             // Android took is: no split by then, and recent apps open with the phone's words, as before.
             if (open(activity, dasher) == null) {
                 launchedBeside = true;
+                lookAfterLaunch(activity);
                 log(activity, "tap: Dasher's launch intent beside this screen (launch adjacent); looking again in "
                         + VERIFY_MS + " ms");
                 verifyLater(activity, later);
@@ -363,12 +403,17 @@ final class DasherSplit {
     private static String byHand(Activity activity) {
         requestedAt = SystemClock.uptimeMillis();
         waitMs = BY_HAND_MS;
+        // With Dasher running, the user picks Dasher's own card for the other half: nothing is started into it.
+        byHandRunning = running.test(activity);
         String phone = phone();
         if (recents.getAsBoolean()) {
-            log(activity, "recent apps opened, with the " + phone + " hint; Dasher opens beside a split made within "
-                    + BY_HAND_MS / 1000 + " s");
-            return hint(phone);
+            log(activity, byHandRunning
+                    ? "recent apps opened, with the " + phone + " hint to pick Dasher's card"
+                    : "recent apps opened, with the " + phone + " hint; Dasher opens beside a split made within "
+                            + BY_HAND_MS / 1000 + " s");
+            return byHandRunning ? hintWithDasher(phone) : hint(phone);
         }
+        byHandRunning = false;
         requestedAt = 0;
         log(activity, "Android refused to open recent apps");
         return RECENTS_REFUSED;
@@ -383,6 +428,7 @@ final class DasherSplit {
     static void abandon(Context context, String front) {
         if (!pending()) return;
         requestedAt = 0;
+        byHandRunning = false;
         away = false;
         log(context, "left recent apps for " + front + " without a split: the tap is over");
     }
@@ -417,6 +463,21 @@ final class DasherSplit {
                 return "Tap " + AppName.NAME + "'s icon above its card → Open in split screen view";
             default:
                 return "Tap " + AppName.NAME + "'s icon above its card → split screen";
+        }
+    }
+
+    /**
+     * The same during a dash, when Dasher's own card is what goes in the other half (nothing is started into it): on a
+     * Pixel the hint says so already.
+     */
+    static String hintWithDasher(String phone) {
+        switch (phone) {
+            case "pixel":
+                return hint(phone);
+            case "samsung":
+                return "Tap " + AppName.NAME + "'s card icon → Open in split screen view, then Dasher";
+            default:
+                return "Tap " + AppName.NAME + "'s icon above its card → split screen, then Dasher";
         }
     }
 
@@ -494,6 +555,7 @@ final class DasherSplit {
             if (!away) return;
             boolean waiting = pending();
             requestedAt = 0;
+            byHandRunning = false;
             away = false;
             if (waiting) log(activity, "back on " + AppName.NAME + " without a split: the tap is over");
             return;
@@ -513,6 +575,8 @@ final class DasherSplit {
         }
         long after = SystemClock.uptimeMillis() - requestedAt;
         boolean fresh = after < waitMs;
+        boolean pickedByHand = byHandRunning;
+        byHandRunning = false;
         requestedAt = 0;
         Intent dasher = dasher(activity);
         if (!fresh) {
@@ -522,6 +586,11 @@ final class DasherSplit {
         if (dasher == null) return;
         if (OfferFilterService.dasherBesideNow()) {
             log(activity, "split " + after + " ms after the tap: Dasher already visible beside; no launch requested");
+            return;
+        }
+        if (pickedByHand) {
+            log(activity, "split " + after + " ms after the tap during a dash: Dasher's own card goes in the other "
+                    + "half; nothing opened");
             return;
         }
         // A resize/resume can temporarily omit a paired task's windows. Absence of evidence must not send
@@ -536,6 +605,23 @@ final class DasherSplit {
         log(activity, "split " + after + " ms after the tap: Dasher's launch intent into the other half");
         String failed = open(activity, dasher);
         if (failed != null) log(activity, "Dasher could not be opened");
+        else lookAfterLaunch(activity);
+    }
+
+    /**
+     * After a launch-adjacent start of Dasher's launcher (main thread): Dasher's window changes are named in the log by
+     * their class ({@link OfferFilterService#splitLaunched}), and Android's list of windows is logged
+     * {@link #LAUNCH_LOOKS_MS} later, so a report shows whether Dasher's half drew or stayed on its launch screen.
+     * Nothing is asked of Dasher.
+     */
+    private static void lookAfterLaunch(Activity activity) {
+        OfferFilterService.splitLaunched();
+        Context app = activity.getApplicationContext();
+        Handler main = new Handler(Looper.getMainLooper());
+        for (long after : LAUNCH_LOOKS_MS) {
+            main.postDelayed(() -> log(app, "Dasher's launch-adjacent start + " + after / 1000 + " s: "
+                    + OfferFilterService.windowsNow(app)), after);
+        }
     }
 
     /** Offer Filter's screen entered or left split screen (or came back in it): logged once per change. */
@@ -569,9 +655,11 @@ final class DasherSplit {
         requestedAt = 0;
         away = false;
         launchedBeside = false;
+        byHandRunning = false;
         loggedSplit = null;
         adjacentFirst = DasherSplit::adjacentByDefault;
         onDelivery = OfferFilterService::dasherOnDelivery;
+        running = DasherSplit::dasherRunning;
         split = OfferFilterService::splitScreen;
         recents = OfferFilterService::openRecents;
     }

@@ -607,8 +607,9 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(status.getGlobalVisibleRect(visible));
             assertEquals("the status line whole", status.getHeight(), visible.height());
             if (autopilot) {
-                assertTrue("the status line is Autopilot's: " + status.getText(),
-                        status.getText().toString().startsWith("Autopilot 100%"));
+                assertEquals("the status line is Autopilot's", AutopilotText.statusLine(AutopilotRuntime.status(app,
+                        System.currentTimeMillis(), OfferFilterService.isConnected())), status.getText().toString());
+                assertTrue("the bar is the chip's: " + chip.getText(), chip.getText().toString().startsWith("Auto 100%"));
             } else {
                 assertEquals("off, the chip is the way in", "Auto off", chip.getText().toString());
             }

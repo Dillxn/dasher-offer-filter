@@ -23,7 +23,8 @@ public final class ToastWordsTest {
                 SetupChecklist.NOW_ON_PAGE, SetupChecklist.FIND_LISTENER, SetupChecklist.NOW_LISTENER,
                 SetupChecklist.RECONNECT_ON_PAGE, SetupChecklist.RECONNECT_IN_LIST, SetupChecklist.ALLOW_SOURCE,
                 SetupChecklist.ALLOW_NOTIFICATIONS, DasherSplit.hint("pixel"), DasherSplit.hint("samsung"),
-                DasherSplit.hint("other"), DasherSplit.FLOATING_HINT, DasherSplit.SCREEN_READING_FIRST,
+                DasherSplit.hint("other"), DasherSplit.hintWithDasher("pixel"), DasherSplit.hintWithDasher("samsung"),
+                DasherSplit.hintWithDasher("other"), DasherSplit.FLOATING_HINT, DasherSplit.SCREEN_READING_FIRST,
                 DasherSplit.RECENTS_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
                 MainActivity.FIRST_RULE, LocationRationale.PATH, "Not allowed. " + LocationRationale.PATH,
         };
@@ -43,6 +44,10 @@ public final class ToastWordsTest {
         assertTrue(DasherSplit.hint("pixel").contains("Offer Filter's icon")
                 && DasherSplit.hint("pixel").contains("Split screen, then Dasher"));
         assertTrue(DasherSplit.hint("samsung").contains("Open in split screen view"));
+        // During a dash nothing is started into the other half: every phone's words end with Dasher's card.
+        for (String phone : new String[] {"pixel", "samsung", "other"}) {
+            assertTrue(DasherSplit.hintWithDasher(phone), DasherSplit.hintWithDasher(phone).endsWith("then Dasher"));
+        }
         assertTrue(DasherSplit.RECENTS_REFUSED.contains("recent apps"));
     }
 }

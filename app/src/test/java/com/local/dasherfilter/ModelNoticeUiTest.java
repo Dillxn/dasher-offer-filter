@@ -44,9 +44,9 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ModelNoticeUiTest extends AndroidAdapterTestBase {
-    private static final String RESTORED_CHOICES = "Area scoring and acceptance learning are available again as "
-            + "separate choices in Settings → Mode and Settings → Learned. Their initial settings were Strict and "
-            + "Off, with no old learned values carried over. Autopilot remains separate.";
+    private static final String RESTORED_CHOICES = "Area scoring and learning from your accepts are back as separate "
+            + "choices on the homepage: the Strict chip beside Autopilot's, and the radar's Learn button. No old "
+            + "learned values were carried over, and Autopilot remains separate.";
 
     /** The owner's notice (their Oct 5–6 rules): every line that applies to them, in the spec's order. */
     private static final String OWNER_LINES = "• 0.5.0 replaced area scoring with strict checks."

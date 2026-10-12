@@ -186,7 +186,7 @@ public class OnboardingCardsTest extends AndroidAdapterTestBase {
             TextView card = shownTextContaining(content, PeekIntroCard.LEAD);
             assertNotNull("the first time filtering is on", card);
             assertEquals("Peek is on: when an offer arrives while Dasher is in the background, " + AppName.NAME
-                    + " briefly opens Dasher to read it. Turn off in Settings.", card.getText().toString());
+                    + " briefly opens Dasher to read it.", card.getText().toString());
             shownButton(content, PeekIntroCard.SETTINGS).performClick();
             tick();
             assertTrue("the link opens Settings, where its switch is", settingsShown(content));

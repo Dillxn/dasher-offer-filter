@@ -16,10 +16,11 @@ import android.widget.Toast;
 /**
  * Keeps the filter's tab ({@link DasherTab}) over Dasher while Dasher fills the screen, and over Dasher's half of a
  * split screen beside another app (Maps beside Dasher is a driving layout of its own: the owner's approval, A2); split
- * beside Offer Filter's own half, which has the mascot, there is no tab. It is an accessibility overlay: no extra
- * permission. It starts on the left edge a little above the middle; the user drags it up or down either edge, or across
- * to the other edge (it lands on the nearer one), and it stays where it was put, one place for portrait, one for
- * landscape and one for a split screen. A drag is never a tap. At rest about half of it is tucked past the edge. During
+ * beside Offer Filter's own half, which has the mascot, only its slim coloured peek over an offer that passes or needs
+ * review (0.6.3, the owner: the colour code in split mode too), and no tab otherwise. It is an accessibility overlay:
+ * no extra permission. It starts on the left edge a little above the middle; the user drags it up or down either
+ * edge, or across to the other edge (it lands on the nearer one), and it stays where it was put, one place for
+ * portrait, one for landscape and one for a split screen. A drag is never a tap. At rest about half of it is tucked past the edge. During
  * an offer or its confirmation, during a delivery, and on a screen not recognised during a dash, only a slim peek
  * shows, so it covers none of Dasher's offer or delivery; over an offer that passes it is green, over one that needs
  * review amber (presentation only). Away from an offer a tap on the peek brings the tab out for a few seconds; over an
@@ -168,7 +169,10 @@ final class DasherOverlay implements DasherTab.Listener {
         this.chipWanted = backToMap;
         this.chipCurrent = backToMap && chipCurrent;
         dashing = Dashing.now(service);
-        if (this.oursBeside) {
+        // Beside Offer Filter's own half (which has the mascot) only the slim peek over a decided offer shows, in its
+        // verdict's colour (the owner, 12 October 2026: "the color code should be available on split mode too"): it
+        // takes no touches and covers none of the offer, as over Dasher full screen.
+        if (this.oursBeside && !colourOnly()) {
             hideTab();
         } else {
             if (tab == null) show();
@@ -180,6 +184,12 @@ final class DasherOverlay implements DasherTab.Listener {
         }
         syncGuide();
         syncChip();
+    }
+
+    /** Beside Offer Filter's own half: over an offer that passes or needs review, the coloured peek alone. */
+    private boolean colourOnly() {
+        return oursBeside && scene == DasherScene.OFFER
+                && (verdict == OfferRule.Result.KEEP || verdict == OfferRule.Result.REVIEW);
     }
 
     // ---- The tab's place ----

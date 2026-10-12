@@ -31,6 +31,7 @@ import org.robolectric.shadows.ShadowToast;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -259,6 +260,10 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             assertFalse(DasherSplit.pending());
             contains(DiagnosticLog.read(app), "[split] tap: Dasher's launch intent beside this screen (launch adjacent)");
             contains(DiagnosticLog.read(app), "[split] split by Dasher's launch-adjacent start; nothing more opened");
+            // Android's list of windows 5 and 10 s after the start, so a report shows whether Dasher's half drew.
+            pass(10_000);
+            contains(DiagnosticLog.read(app), "[split] Dasher's launch-adjacent start + 5 s: win=");
+            contains(DiagnosticLog.read(app), "[split] Dasher's launch-adjacent start + 10 s: win=");
         } finally {
             service.destroy();
         }
@@ -284,9 +289,47 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
             assertNull("nothing of Dasher's started", Shadows.shadowOf(app).getNextStartedActivity());
             assertEquals(Arrays.asList("recents"), asked);
-            assertEquals("Tap Offer Filter's icon above its card → Open in split screen view",
-                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            assertEquals(DasherSplit.hintWithDasher("samsung"), org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
             contains(DiagnosticLog.read(app), "[split] tap during a delivery: " + DasherSplit.DELIVERY_RECENTS);
+            contains(DiagnosticLog.read(app), "[split] recent apps opened, with the samsung hint to pick Dasher's card");
+        } finally {
+            service.destroy();
+        }
+    }
+
+    /**
+     * The owner's reports of 12 October 2026: Split tapped while Dasher was finding offers left Dasher's half on its
+     * launch screen. During the whole dash, not only a delivery, the tap opens recent apps with the phone's words, and
+     * the split the user makes there opens nothing: Dasher's own card goes in the other half.
+     */
+    @Test
+    public void aTapDuringADashOpensRecentAppsAndTheSplitMadeThereOpensNothing() {
+        ShadowBuild.setManufacturer("samsung");
+        dasherInstalled();
+        DasherSplit.forget();
+        DasherSplit.adjacentFirst = () -> true;
+        DasherSplit.onDelivery = context -> false;
+        List<String> asked = new ArrayList<>();
+        DasherSplit.split = () -> asked.add("split");
+        DasherSplit.recents = () -> asked.add("recents");
+        Dashing.seen(app);
+        ServiceController<OfferFilterService> service = connectedService();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            shownIcon(activity.get().findViewById(android.R.id.content), DasherSplit.SPLIT_LABEL).performClick();
+            assertNull("Dasher's launcher is never started beside", Shadows.shadowOf(app).getNextStartedActivity());
+            assertEquals(Arrays.asList("recents"), asked);
+            assertEquals(DasherSplit.hintWithDasher("samsung"), org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            contains(DiagnosticLog.read(app), "[split] tap during a dash: " + DasherSplit.RUNNING_RECENTS);
+            // The user splits it in recent apps, picking Dasher's own card for the other half.
+            activity.pause();
+            enterSplit(activity);
+            activity.resume();
+            idle();
+            assertNull("nothing is opened into the other half", Shadows.shadowOf(app).getNextStartedActivity());
+            assertFalse(DasherSplit.pending());
+            contains(DiagnosticLog.read(app), "during a dash: Dasher's own card goes in the other half; nothing opened");
+            assertNotEquals("no toast after the split", "Keeping this split. Open Dasher from its icon if needed.",
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
         } finally {
             service.destroy();
         }

@@ -65,8 +65,8 @@ final class DecisionChartView extends View {
     private int flatCents;
     private boolean areaMode;
     private int minimumScalePercent = 100;
-    /** Autopilot on: only then does the dashed rail name its bar (off, the bar is always exactly 100%). */
-    private boolean autopilot;
+    /** What screen readers hear with no offer yet (nothing is drawn but the street). */
+    static final String EMPTY_SAID = "No offers recorded yet.";
     /** When each shown offer (by its time) began to rise. */
     private final Map<Long, Long> risingSince = new HashMap<>();
 
@@ -95,10 +95,9 @@ final class DecisionChartView extends View {
         java.math.BigDecimal resolvedPay = AreaScore.floors(rules, OfferSnapshot.UNKNOWN).effectiveCents[AreaScore.PAY];
         long payout = resolvedPay == null ? 0 : AreaScore.roundedCents(resolvedPay, rules.minimumScalePercent);
         if (payoutMinimumCents == payout && flatCents == flat && minimumScalePercent == rules.minimumScalePercent
-                && areaMode == rules.scoreByArea && autopilot == rules.autopilot) {
+                && areaMode == rules.scoreByArea) {
             return;
         }
-        autopilot = rules.autopilot;
         payoutMinimumCents = payout;
         flatCents = flat;
         areaMode = rules.scoreByArea;
@@ -155,8 +154,11 @@ final class DecisionChartView extends View {
         float bottom = plotBottom();
         if (right <= left || bottom <= top) return;
         if (entries.isEmpty()) {
-            label.setColor(ui.inkSecondary);
-            canvas.drawText("No offers recorded yet", getWidth() / 2f, getHeight() / 2f, label);
+            // No offer yet: the empty street, no words (the verdict at the top says so already; screen readers hear
+            // it from the description).
+            fill.setColor(ui.gridline);
+            rect.set(left, bottom, right, bottom + ui.dp(3));
+            canvas.drawRoundRect(rect, ui.dp(1.5f), ui.dp(1.5f), fill);
             return;
         }
 
@@ -278,10 +280,8 @@ final class DecisionChartView extends View {
         String pay = payoutMinimumCents <= 0 ? null : "Pay " + DecisionLog.money(payoutMinimumCents)
                 + (areaMode ? " ref" : " min");
         if (payoutMinimumCents > 0 && pay != null) drawRailLabel(canvas, pay, left, false, payoutColor());
-        // Off, the bar is always exactly your minimums: "Bar 100%" would say nothing (the owner, 11 October 2026).
-        if (autopilot) {
-            drawRailLabel(canvas, AutopilotText.skylineBarRail(minimumScalePercent), right, true, treeColor());
-        }
+        // The dashed rail, the bar, goes unnamed: Autopilot's chip above says its bar already, and off it is always
+        // exactly your minimums (the owner, 11 October 2026: say each fact once). Screen readers still hear it.
     }
 
     /** A reserved caption strip keeps every roof flag and tree visible, even in the 52dp skyline. */
@@ -566,6 +566,7 @@ final class DecisionChartView extends View {
      * lowered bar only when there are any.
      */
     private String describe(List<DecisionLog.Entry> entries) {
+        if (entries.isEmpty()) return EMPTY_SAID;
         int[] counts = new int[DecisionLog.Outcome.values().length];
         int below = 0;
         for (DecisionLog.Entry entry : entries) {

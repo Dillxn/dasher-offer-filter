@@ -143,7 +143,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     private static void assertNamedAxes(MinimumsStarView star) {
-        String[] expected = {"Payout $", "Pay / mile", "Pay / hour", "Max stops", "", ""};
+        String[] expected = {"Pay", "Pay / mile", "Pay / hour", "Max stops", "", ""};
         List<RectF> labels = new ArrayList<>();
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
             assertEquals("the visible name identifies the actual metric", expected[axis], star.axisLabelText(axis));

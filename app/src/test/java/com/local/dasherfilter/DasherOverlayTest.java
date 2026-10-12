@@ -127,6 +127,37 @@ public class DasherOverlayTest {
         show(root, PORTRAIT);
     }
 
+    /**
+     * A split screen: Offer Filter's own half on top, the one in use, and Dasher's half below it showing {@code root};
+     * read at once.
+     */
+    private void besideOurOwnHalf(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo ours = AccessibilityNodeInfo.obtain(new View(app));
+        ours.setPackageName(app.getPackageName());
+        ours.setVisibleToUser(true);
+        Shadows.shadowOf(controller.get()).setWindows(java.util.Arrays.asList(
+                splitWindow(AccessibilityWindowInfo.TYPE_APPLICATION, ours, true, new Rect(0, 0, 1080, 1000)),
+                splitWindow(AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, null, false,
+                        new Rect(0, 1000, 1080, 1040)),
+                splitWindow(AccessibilityWindowInfo.TYPE_APPLICATION, root, false, new Rect(0, 1040, 1080, 2040))));
+        Shadows.shadowOf(controller.get()).setRootInActiveWindow(ours);
+        AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
+        event.setPackageName("com.doordash.driverapp");
+        controller.get().onAccessibilityEvent(event);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    private static AccessibilityWindowInfo splitWindow(int type, AccessibilityNodeInfo root, boolean active,
+                                                       Rect bounds) {
+        AccessibilityWindowInfo window = AccessibilityWindowInfo.obtain();
+        ShadowAccessibilityWindowInfo shadow = Shadow.extract(window);
+        shadow.setType(type);
+        if (root != null) shadow.setRoot(root);
+        shadow.setActive(active);
+        shadow.setBoundsInScreen(bounds);
+        return window;
+    }
+
     /** Dasher leaves the screen (another app comes up), so the tab and guide go. */
     private void leaveDasher() {
         AccessibilityNodeInfo maps = AccessibilityNodeInfo.obtain(new View(app));
@@ -376,6 +407,31 @@ public class DasherOverlayTest {
         assertTrue(FilterStore.load(app).enabled);
         show(screen("Finding offers"));
         assertEquals(0, params(tab).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+    }
+
+    /**
+     * Beside Offer Filter's own half (which has the mascot) there is no tab, but over an offer that passes, or needs
+     * review, its slim peek shows in that colour, taking no touches (0.6.3, the owner: "the color code should be
+     * available on split mode too"); the offer gone, so is the peek.
+     */
+    @Test
+    public void besideOfferFiltersOwnHalfOnlyTheColouredPeekShowsOverAnOffer() {
+        besideOurOwnHalf(screen("Finding offers"));
+        assertNull("no tab beside Offer Filter's own half", tab());
+
+        besideOurOwnHalf(offer("$25.00"));
+        DasherTab tab = tab();
+        assertNotNull("the colour code over the offer", tab);
+        assertEquals(View.VISIBLE, tab.getVisibility());
+        assertEquals(DasherTab.Look.PEEK, tab.look());
+        assertEquals("green: it passes", OfferRule.Result.KEEP, tab.verdict());
+        assertTrue("it takes no touches", (params(tab).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
+        assertTrue("over Dasher's half", params(tab).y >= 1040);
+
+        besideOurOwnHalf(screen("Finding offers"));
+        tab = tab();
+        assertTrue("gone with the offer", tab == null || tab.getVisibility() != View.VISIBLE);
+        assertTrue(FilterStore.load(app).enabled);
     }
 
     @Test

@@ -85,7 +85,7 @@ final class MinimumsStarView extends View {
     /** The six stable axis indexes keep their screen readers' ids; only pay, per mile and per hour have knobs. */
     private static final String[] NAMES = {"Pay", "Per mile", "Per hour", "Per stop", "Hotspot", "Per item"};
     /** The names drawn by the icons: the three minimums, and max stops by the pin; hotspot and per item are gone. */
-    static final String[] AXIS_LABELS = {"Payout $", "Pay / mile", "Pay / hour", "Max stops", "", ""};
+    static final String[] AXIS_LABELS = {"Pay", "Pay / mile", "Pay / hour", "Max stops", "", ""};
     /** Each spoke's icon (the per-stop pin anchors the max stops badge); the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
             Glyph.Shape.PIN};

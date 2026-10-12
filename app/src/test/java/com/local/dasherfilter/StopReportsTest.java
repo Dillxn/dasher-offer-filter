@@ -163,6 +163,16 @@ public class StopReportsTest extends AndroidAdapterTestBase {
         StopReports.check(app);
         assertEquals("", StopReports.section(app));
         assertFalse(StopReports.unacknowledged(app));
+        // Every stop of the last day goes in the log once, whatever its reason (the owner's report of 12 October 2026
+        // could not say what stopped the screen reader); the crash of 25 hours ago does not.
+        String log = DiagnosticLog.read(app);
+        assertEquals(log, 3, occurrences(log, "[app] stopped at "));
+        assertEquals(log, 1, occurrences(log, ": force stopped (from Settings, or by the phone for the user), app in front"));
+        assertEquals(log, 1, occurrences(log, ": Android was low on memory, app in front"));
+        assertEquals(log, 1, occurrences(log, ": it exited by itself, app in front"));
+        assertFalse(log, log.contains("a crash"));
+        StopReports.check(app);
+        assertEquals("logged once", 3, occurrences(DiagnosticLog.read(app), "[app] stopped at "));
 
         // A later one is still read: what was seen before it stays seen.
         exited(ApplicationExitInfo.REASON_CRASH_NATIVE, now - 30_000L, front, null);

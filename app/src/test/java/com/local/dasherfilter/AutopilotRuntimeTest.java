@@ -268,7 +268,7 @@ public class AutopilotRuntimeTest {
         assertTrue("told of the commit", told[0] > before);
 
         AutopilotText.Status status = AutopilotRuntime.status(app, wall + 4 * MIN, true);
-        assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(status));
+        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(status));
         assertEquals("Last change 4 min ago: 100% → 50% (Autopilot turned on).",
                 AutopilotText.detailsLastChange(status));
 
@@ -390,7 +390,7 @@ public class AutopilotRuntimeTest {
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
         assertEquals(100, bar());
         assertEquals("commit 50% -> 100% (history cleared)", last(autopilotLog()));
-        assertEquals("Autopilot 100% · learning (0 of 20 offers)",
+        assertEquals("0 of 20 offers",
                 AutopilotText.statusLine(AutopilotRuntime.status(app, wall, true)));
     }
 
@@ -1041,16 +1041,16 @@ public class AutopilotRuntimeTest {
         assertEquals("Acceptance rate: 55%, shown by Dasher 12 min ago.", AutopilotText.detailsAcceptanceRate(off));
 
         FilterStore.setAutopilot(app, true, 70);
-        assertEquals("Autopilot 100% · checking your offers",
+        assertEquals("Checking offers",
                 AutopilotText.statusLine(AutopilotRuntime.status(app, wall, true)));
-        assertEquals("Autopilot waits for screen reading",
+        assertEquals("",
                 AutopilotText.statusLine(AutopilotRuntime.status(app, wall, false)));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
         AutopilotText.Status s = AutopilotRuntime.status(app, wall, true);
         // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280, shown everywhere as 53%
         // (rounded half up), with the goal less that, 17, still to accept.
         assertEquals(5_280, s.arHundredths);
-        assertEquals("Autopilot 100% · AR 53% → 70%: about 17 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 53% → 70%: about 17 more accepts", AutopilotText.statusLine(s));
         assertEquals("Acceptance rate: about 53% (Dasher showed 55% 12 min ago; 4 offers since).",
                 AutopilotText.detailsAcceptanceRate(s));
         assertTrue(s.recovering);

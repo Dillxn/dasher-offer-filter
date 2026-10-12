@@ -151,7 +151,9 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             }
             // The homepage's setup steps may name these; Settings' own page never does.
             View page = settingsPage(content);
-            assertNotNull("model choice has its own Settings entry", shownButton(page, "Mode · Strict"));
+            assertNull("the scoring mode is the homepage's chip (0.6.3), not a Settings entry",
+                    shownButton(page, "Mode · Strict"));
+            assertNull(findTextView(page, ModeChip.STRICT));
             for (String learned : new String[] {"Learned · Off", "Learned · On"}) {
                 assertNull("learning is the homepage radar's button (0.6.1), not a Settings entry",
                         shownButton(page, learned));

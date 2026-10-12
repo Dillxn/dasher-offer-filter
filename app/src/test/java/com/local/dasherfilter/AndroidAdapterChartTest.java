@@ -1043,8 +1043,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 assertTrue("no announcement while Autopilot moves the bar: " + event,
                         event.getEventType() != AccessibilityEvent.TYPE_ANNOUNCEMENT);
             }
-            TextView status = shownTextContaining(content, "Autopilot 82%");
-            assertNotNull("the status line follows too", status);
+            // The bar is the chip's alone (0.6.3: the status line no longer repeats it).
+            AutopilotChip status = find(content, AutopilotChip.class);
+            assertTrue("the chip follows too: " + status.getText(), status.getText().toString().startsWith("Auto 82%"));
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, status.getAccessibilityLiveRegion());
             assertNull("no live region anywhere on the page", liveRegionIn(content));
         } finally {

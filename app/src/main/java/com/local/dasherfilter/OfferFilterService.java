@@ -1769,8 +1769,10 @@ public final class OfferFilterService extends AccessibilityService {
         OfferSilencer.restore(this);
         // What an older version kept of Dasher's screens is cleaned up once, off the main thread.
         DiagnosticLog.cleanUpSoon(this);
-        // A crash notes where it happened (never what was on screen), for the next start's summary.
+        // A crash notes where it happened (never what was on screen), for the next start's summary; and how the last
+        // process ended, whatever the reason, goes in the log once.
         StopReports.install(this);
+        StopReports.checkSoon(this);
         watchBlockedStarts();
     }
 
@@ -2176,8 +2178,8 @@ public final class OfferFilterService extends AccessibilityService {
     };
 
     /**
-     * Main thread: within {@link #LAUNCH_WATCH_MS} of a peek's or a card's launch of Dasher (or of Dasher's own
-     * notification tap), each of Dasher's window changes is named in the log by its class alone, a few at most: whether
+     * Main thread: within {@link #LAUNCH_WATCH_MS} of a peek's, a card's or the Split tap's launch of Dasher (or of
+     * Dasher's own notification tap), each of Dasher's window changes is named in the log by its class alone, a few at most: whether
      * Dasher resumed its screen or stacked its start screen on it. Never any app but Dasher, never any words.
      */
     private void noteDasherWindow(AccessibilityEvent event, long at) {
@@ -2187,6 +2189,16 @@ public final class OfferFilterService extends AccessibilityService {
         launchWindowLines++;
         String full = name.toString();
         DiagnosticLog.log(this, "peek", "Dasher window: " + full.substring(full.lastIndexOf('.') + 1));
+    }
+
+    /**
+     * The Split tap (or its completion) started Dasher's launcher beside this app: Dasher's window changes are named in
+     * the log as after a peek's launch ({@link #noteDasherWindow}). Any thread.
+     */
+    static void splitLaunched() {
+        OfferFilterService service = active;
+        if (service == null || service.stopped) return;
+        service.watchLaunch();
     }
 
     /** Any thread: Dasher was just launched (or sent its own notification tap): its window changes are named again. */

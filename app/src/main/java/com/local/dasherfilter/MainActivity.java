@@ -81,11 +81,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** "Set my own" in a window too short for the constellation (it has faded away): how to reach its knobs. */
     static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
     /**
-     * The status line while auto-decline is paused with Autopilot off (with it on, the line is Autopilot's,
-     * "auto-decline paused" among its states). While auto-decline is on with nothing else to say, the line is empty:
-     * the awake mascot shows it, and says "Auto-decline on" to screen readers.
+     * The status line while auto-decline is paused with Autopilot off: the same words as Autopilot's line says then,
+     * so a pause reads the same either way, and two words where the sleeping mascot shows the rest (screen readers hear
+     * that nothing is declined). While auto-decline is on with nothing else to say, the line is empty: the awake mascot
+     * shows it, and says "Auto-decline on" to screen readers.
      */
-    static final String PAUSED_LINE = "Paused · nothing is declined";
+    static final String PAUSED_LINE = "Auto-decline paused";
     /** The learner button's toasts. */
     static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise the learned minimums.";
     static final String LEARN_OFF_TOAST = "Learning off: only your own minimums count.";
@@ -249,7 +250,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
-    private Button modeButton;
+    /** The strip's scoring-mode chip beside Autopilot's (0.6.3: the owner, "the mode button being on the homepage"). */
+    private ModeChip modeChip;
     /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
@@ -774,7 +776,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
             chooseAutopilotGoal();
             return true;
         });
-        stripWords.addView(new AutopilotChip.Row(this, ui, chip, statusLine, 14), Ui.matchWidth());
+        // The scoring mode beside it, one word ("Strict" or "Area"): a tap opens the chooser (0.6.3; it was a Settings
+        // row). Its own control, never Autopilot's.
+        modeChip = new ModeChip(this, ui);
+        modeChip.setOnClickListener(tapped -> chooseScoreMode());
+        stripWords.addView(new AutopilotChip.Row(this, ui, new TextView[] {chip, modeChip}, statusLine, 14),
+                Ui.matchWidth());
 
         // The lines that need the user, under the header.
         LinearLayout lines = ui.column();
@@ -1012,10 +1019,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // The constellation's round button is the learner's switch (the owner, 11 October 2026: "option on
         // homepage not settings page").
         if (minimums != null) minimums.setLearning(rules.acceptanceLearning);
-        if (modeButton == null) return;
-        modeButton.setText("Mode · " + (rules.scoreByArea ? "Area" : "Strict"));
-        modeButton.setContentDescription("Scoring mode: " + (rules.scoreByArea ? "area" : "strict")
-                + ". Choose how offers are judged. Autopilot is separate.");
+        // The scoring mode is the strip's own chip beside Autopilot's (0.6.3; Settings has no Mode row).
+        if (modeChip != null) modeChip.show(rules.scoreByArea);
     }
 
     /** The constellation's learner button: learning on or off, said once in a toast. */
@@ -1393,9 +1398,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             lines.add("Auto-accept was turned off because your rules changed. You can change it in Settings.");
         }
         if (facts.optBoolean("paused")) lines.add("No rule was left, so auto-decline was paused.");
-        lines.add("Area scoring and acceptance learning are available again as separate choices in Settings → Mode "
-                + "and Settings → Learned. Their initial settings were Strict and Off, with no old learned values "
-                + "carried over. Autopilot remains separate.");
+        lines.add("Area scoring and learning from your accepts are back as separate choices on the homepage: the "
+                + "Strict chip beside Autopilot's, and the radar's Learn button. No old learned values were carried "
+                + "over, and Autopilot remains separate.");
         return lines;
     }
 
@@ -1451,17 +1456,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * Only what exists nowhere else, one row each and no paragraphs: setup that still needs a fix (and has no row on
      * the homepage), behavior switches, updates, anonymous feedback, reports and a tip, then the version and the
      * bundled texts.
-     * Saved minimums are on the homepage's constellation; model and learning choices are here.
+     * Saved minimums are on the homepage's constellation, the learner's switch is its round button and the scoring
+     * mode is the strip's chip beside Autopilot's (0.6.3): none of them is here.
      */
     private void buildSettings(LinearLayout page) {
         page.addView(header("Settings", true));
         LinearLayout body = body(page);
-        // Separate visible controls in Settings preserve the main scene at every split height.
-        LinearLayout ruleChoices = ui.row();
-        modeButton = ui.button("Mode · Strict", false, this::chooseScoreMode);
-        modeButton.setMinHeight(ui.dp(48));
-        ruleChoices.addView(modeButton, Ui.weighted());
-        body.addView(ruleChoices, Ui.matchWidth());
 
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
@@ -1689,9 +1689,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         growthCard.refresh();
         learnedRaiseCard.refresh();
         refreshFeeNotice();
-        OfferSnapshot route = ActiveRouteStore.load(this);
-        routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
-        if (route != null) routeNote.setText("On a route: " + route.summary());
         // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
         // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that
         // nothing is declined (a tap resumes), else the wait, or that auto-decline is on.
@@ -1701,7 +1698,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                     ui.inkSecondary);
         } else if (!saved.enabled) {
-            showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ". Resume auto-decline", ui.ink);
+            showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ": nothing is declined. Resume auto-decline", ui.ink);
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
@@ -1712,6 +1709,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         refreshHistory();
         refreshVerdict();
+        refreshRoute();
         refreshRuleChoices(saved);
         refreshOfferCaption(chart.selectedEntry());
         refreshLive();
@@ -1753,6 +1751,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private void showSlot(int which, String words, String said, int color) {
         slot = which;
+        // Nothing to say (Autopilot waiting, say, whose chip says it all and opens its details): no words, no tap, and
+        // nothing for screen readers to stop on.
+        boolean blank = words.isEmpty();
+        if (blank) said = null;
         if (!words.contentEquals(statusLine.getText())) statusLine.setText(words);
         if (!java.util.Objects.equals(said, statusLine.getContentDescription() == null ? null
                 : statusLine.getContentDescription().toString())) {
@@ -1762,7 +1764,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         android.graphics.Typeface face = which == SLOT_START || which == SLOT_PAUSED ? Ui.MEDIUM
                 : android.graphics.Typeface.DEFAULT;
         if (statusLine.getTypeface() != face) statusLine.setTypeface(face);
-        statusLine.setClickable(which != SLOT_ON);
+        statusLine.setClickable(which != SLOT_ON && !blank);
+        int important = blank ? View.IMPORTANT_FOR_ACCESSIBILITY_NO : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO;
+        if (statusLine.getImportantForAccessibility() != important) statusLine.setImportantForAccessibility(important);
     }
 
     /** The status line's tap: the starter, resume, Autopilot's details, or how long until a matching offer. */
@@ -2109,6 +2113,55 @@ public final class MainActivity extends Activity implements Updater.Busy {
             why = why.substring(below.length());
         }
         return why;
+    }
+
+    /** The route row under the header, after the history (the verdict it leaves the offer's figures to). */
+    private void refreshRoute() {
+        OfferSnapshot route = ActiveRouteStore.load(this);
+        routeRow.setVisibility(route == null ? View.GONE : View.VISIBLE);
+        if (route == null) return;
+        DecisionLog.Entry newest = recentEntries.isEmpty() ? null : recentEntries.get(0);
+        boolean same = newest != null && route.fingerprint().equals(newest.facts.fingerprint());
+        String words = routeLine(route, same);
+        if (!words.contentEquals(routeNote.getText())) routeNote.setText(words);
+        String said = routeSaid(route);
+        if (!said.contentEquals(String.valueOf(routeNote.getContentDescription()))) routeNote.setContentDescription(said);
+    }
+
+    /**
+     * The route row's words, as labels: "On a route · $9.30 · 5.2 mi · 21 min · 2 stops"; only "On a route · 2 stops"
+     * while its offer is the verdict's (the line above says its pay, miles and minutes already). Unread facts are
+     * named, never left out.
+     */
+    static String routeLine(OfferSnapshot route, boolean verdictShowsIt) {
+        StringBuilder line = new StringBuilder("On a route");
+        if (!verdictShowsIt) {
+            line.append(" · ").append(route.payCents == null ? "Pay unread" : DecisionLog.money(route.payCents));
+            line.append(" · ").append(route.miles == null ? "Miles unread" : miles(route.miles) + " mi");
+            line.append(" · ").append(route.minutes == null ? "Time unread" : route.minutes + " min");
+        }
+        line.append(" · ").append(route.stops == null ? "Stops unread"
+                : route.stops + (route.stops == 1 ? " stop" : " stops"));
+        if (route.itemCountApplicable) {
+            line.append(" · ").append(route.items == null ? "Items unread"
+                    : route.items + (route.items == 1 ? " item" : " items"));
+        }
+        return line.toString();
+    }
+
+    /** The route row as screen readers hear it: every fact, in words. */
+    static String routeSaid(OfferSnapshot route) {
+        return "On a route: " + (route.payCents == null ? "pay unread" : "pay " + DecisionLog.money(route.payCents))
+                + ", " + (route.miles == null ? "miles unread" : miles(route.miles) + " miles")
+                + ", " + (route.minutes == null ? "minutes unread" : route.minutes + " minutes")
+                + ", " + (route.stops == null ? "stops unread" : route.stops + (route.stops == 1 ? " stop" : " stops"))
+                + (route.itemCountApplicable ? ", " + (route.items == null ? "items unread"
+                : route.items + (route.items == 1 ? " item" : " items")) : "") + ".";
+    }
+
+    /** Miles as the verdict says them: "5.2", or "5" for a whole number. */
+    private static String miles(double miles) {
+        return miles == Math.rint(miles) ? String.valueOf((long) miles) : String.valueOf(miles);
     }
 
     /** How long ago, in a few words: "just now", "12 min ago", "3 h ago" (under two days), "4 days ago". */

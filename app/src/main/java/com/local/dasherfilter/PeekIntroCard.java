@@ -5,16 +5,17 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 
 /**
- * Once, the first time the homepage sees filtering on with Peek on: what Peek does, in one sentence, and where to turn
- * it off (BETA-29). A stranger whose phone briefly shows Dasher over another app should know why. "Peek settings"
- * opens Settings, where its switch is; either link closes the card for good. Peek itself is unchanged.
+ * Once, the first time the homepage sees filtering on with Peek on: what Peek does, in one sentence, and the way to
+ * its switch (BETA-29). A stranger whose phone briefly shows Dasher over another app should know why. "Peek settings"
+ * opens Settings, where its switch is (0.6.3: the button says where it is, so the sentence no longer does); either
+ * link closes the card for good. Peek itself is unchanged.
  */
 final class PeekIntroCard {
     static final String PREFS = WhatsNewCard.PREFS;
     static final String SEEN = "peek_intro_seen";
     static final String LEAD = "Peek is on:";
     static final String TEXT = "when an offer arrives while Dasher is in the background, " + AppName.NAME
-            + " briefly opens Dasher to read it. Turn off in Settings.";
+            + " briefly opens Dasher to read it.";
     static final String SETTINGS = "Peek settings";
 
     private final Context context;

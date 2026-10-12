@@ -133,7 +133,7 @@ public final class AutopilotTextTest {
         AutopilotText.Status s = status(owner(70, 50), plan, nine, change(4, 100, 50, Autopilot.Reason.TURNED_ON));
 
         assertEquals(AutopilotText.Status.Kind.PINNED, s.kind);
-        assertEquals("Autopilot 50% (lowest) · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 50% lowest", AutopilotText.chip(s));
         assertEquals("heard in words, not symbols", "Autopilot bar 50 percent, the lowest. Acceptance rate 9 percent, "
                 + "goal 70 percent: about 61 more accepts. Opens Autopilot details.", AutopilotText.chipDescription(s));
@@ -169,7 +169,7 @@ public final class AutopilotTextTest {
 
         // On the way down (100 → 80 → 60 → 50) the bar is not the lowest yet.
         AutopilotText.Status stepping = status(owner(70, 80), plan, nine, null);
-        assertEquals("Autopilot 80% · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(stepping));
+        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(stepping));
         assertEquals("Auto 80% ▲", AutopilotText.chip(stepping));
         assertEquals("Of your last 20 offers, 0 would pass at 80% (your goal needs 16).",
                 AutopilotText.detailsPass(stepping));
@@ -178,7 +178,7 @@ public final class AutopilotTextTest {
         Autopilot.Plan unread = plan(owner(70, 100), window(20), null, 100);
         assertEquals(Autopilot.Mode.PINNED, unread.mode);
         AutopilotText.Status noAr = status(owner(70, 50), unread, null, null);
-        assertEquals("Autopilot 50% (lowest) · lower a minimum to pass more", AutopilotText.statusLine(noAr));
+        assertEquals("Lower a minimum to pass more", AutopilotText.statusLine(noAr));
         assertEquals(AutopilotText.DETAILS_AR_NOT_SEEN, AutopilotText.detailsAcceptanceRate(noAr));
         assertNull("no goal progress without a rate", AutopilotText.detailsGoalProgress(noAr));
     }
@@ -189,7 +189,7 @@ public final class AutopilotTextTest {
         Autopilot.Plan plan = plan(starters(70, 100), window(20), nine, 100);
         assertEquals(Autopilot.Mode.RECOVERY, plan.mode);
         AutopilotText.Status s = status(starters(70, 100), plan, nine, null);
-        assertEquals("Autopilot 100% · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 100% ▲", AutopilotText.chip(s));
         assertEquals(Arrays.asList("Change goal", "Turn off", "Close"), AutopilotText.detailsButtons(s));
         assertEquals("Of your last 20 offers, 16 would pass at 100% (your goal needs 16).",
@@ -316,7 +316,7 @@ public final class AutopilotTextTest {
         assertEquals("RECOVERY", s.modeName());
         assertTrue(s.recovering);
         assertEquals(0, s.extra);
-        assertEquals("Autopilot 82% · AR 55% → 70%: about 15 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 55% → 70%: about 15 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 82% ▲", AutopilotText.chip(s));
         assertEquals("Autopilot bar 82 percent. Acceptance rate 55 percent, goal 70 percent: about 15 more accepts. "
                 + "Opens Autopilot details.", AutopilotText.chipDescription(s));
@@ -359,7 +359,7 @@ public final class AutopilotTextTest {
         assertEquals(56, s.shownArPercent());
         assertEquals("a report keeps it exact", 55.9, s.exactArPercent(), 0);
         assertEquals("70 − 56", 14, s.acceptsNeeded());
-        assertEquals("Autopilot 100% · AR 56% → 70%: about 14 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 56% → 70%: about 14 more accepts", AutopilotText.statusLine(s));
         assertEquals("Auto 100% ▲", AutopilotText.chip(s));
         assertEquals("Acceptance rate: about 56% (Dasher showed 55% 12 min ago; 2 offers since).",
                 AutopilotText.detailsAcceptanceRate(s));
@@ -379,7 +379,7 @@ public final class AutopilotTextTest {
         assertFalse(shown.belowGoal());
         assertEquals(0, shown.acceptsNeeded());
         assertEquals(AutopilotText.Status.Kind.AT_GOAL, shown.kind);
-        assertEquals("Autopilot 100% · AR ~70%, goal 70%", AutopilotText.statusLine(shown));
+        assertEquals("AR ~70% · goal 70%", AutopilotText.statusLine(shown));
         assertEquals("Auto 100%", AutopilotText.chip(shown));
         assertEquals("Acceptance rate: about 70%, estimated from 23 of your recent offers.",
                 AutopilotText.detailsAcceptanceRate(shown));
@@ -398,7 +398,7 @@ public final class AutopilotTextTest {
         assertEquals(1_610, plan.arHundredths);
         assertEquals(10, plan.arOffersSince);
         AutopilotText.Status s = status(starters(70, 100), plan, nine, null);
-        assertEquals("Autopilot 100% · AR 16% → 70%: about 54 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR 16% → 70%: about 54 more accepts", AutopilotText.statusLine(s));
         assertEquals("Acceptance rate: about 16% (Dasher showed 9% 30 min ago; 10 offers since).",
                 AutopilotText.detailsAcceptanceRate(s));
         assertEquals("Below your goal: about 54 more accepts to reach 70% (an estimate — DoorDash counts your last "
@@ -414,8 +414,8 @@ public final class AutopilotTextTest {
         assertEquals(100, plan.target);
         AutopilotText.Status s = status(starters(70, 100), plan, reading, null);
         assertEquals(AutopilotText.Status.Kind.AT_GOAL, s.kind);
-        assertEquals("Autopilot 100% · AR 74%, goal 70%", AutopilotText.statusLine(s));
-        assertEquals("Autopilot 96% · AR 74%, goal 70%",
+        assertEquals("AR 74% · goal 70%", AutopilotText.statusLine(s));
+        assertEquals("AR 74% · goal 70%",
                 AutopilotText.statusLine(status(starters(70, 96), plan, reading, null)));
         assertEquals("Auto 100%", AutopilotText.chip(s));
         assertFalse(s.belowGoal());
@@ -434,7 +434,7 @@ public final class AutopilotTextTest {
         Autopilot.Plan plan = plan(starters(70, 100), window(20), null, 100);
         AutopilotText.Status s = status(starters(70, 100), plan, null, null);
         assertEquals(AutopilotText.Status.Kind.AR_UNKNOWN, s.kind);
-        assertEquals("Autopilot 100% · goal 70% · AR not seen yet", AutopilotText.statusLine(s));
+        assertEquals("Goal 70% · AR not seen yet", AutopilotText.statusLine(s));
         assertEquals("Auto 100%", AutopilotText.chip(s));
         assertEquals("Acceptance rate: not seen yet. Dasher shows it when an offer is declined.",
                 AutopilotText.detailsAcceptanceRate(s));
@@ -450,7 +450,7 @@ public final class AutopilotTextTest {
         assertEquals(Autopilot.ArSource.ESTIMATE, low.arSource);
         assertEquals(3_103, low.arHundredths);
         AutopilotText.Status s = status(starters(70, 100), low, null, null);
-        assertEquals("Autopilot 100% · AR ~31% → 70%: about 39 more accepts", AutopilotText.statusLine(s));
+        assertEquals("AR ~31% → 70%: about 39 more accepts", AutopilotText.statusLine(s));
         assertEquals("Acceptance rate: about 31%, estimated from 29 of your recent offers.",
                 AutopilotText.detailsAcceptanceRate(s));
         assertTrue(AutopilotText.reportLine(s).contains("; AR ~31% (estimate, 29 offers)"));
@@ -459,7 +459,7 @@ public final class AutopilotTextTest {
         // 20 of 27: 7,407 → 74%, at the goal.
         Autopilot.Plan high = plan(starters(70, 100), outcomes(27, 20), null, 100);
         assertEquals(7_407, high.arHundredths);
-        assertEquals("Autopilot 100% · AR ~74%, goal 70%",
+        assertEquals("AR ~74% · goal 70%",
                 AutopilotText.statusLine(status(starters(70, 100), high, null, null)));
     }
 
@@ -472,7 +472,7 @@ public final class AutopilotTextTest {
         assertEquals(119, plan.target);
         AutopilotText.Status s = status(starters(0, 119), plan, null, change(6, 115, 119, Autopilot.Reason.VALUE_UP));
         assertEquals(AutopilotText.Status.Kind.PAY_FIRST, s.kind);
-        assertEquals("Autopilot 119% · pay first", AutopilotText.statusLine(s));
+        assertEquals("Pay first", AutopilotText.statusLine(s));
         assertEquals("Auto 119%", AutopilotText.chip(s));
         assertEquals("Goal: Pay first — no acceptance-rate goal.", AutopilotText.detailsLines(s).get(1));
         assertEquals("Of your last 20 offers, 12 would pass at 119%.", AutopilotText.detailsPass(s));
@@ -485,9 +485,9 @@ public final class AutopilotTextTest {
         Autopilot.Plan floor = plan(owner(0, 100), window(20), null, 100);
         assertEquals(Autopilot.Mode.PASS_FLOOR, floor.mode);
         assertEquals(51, floor.target);
-        assertEquals("Autopilot 51% · pay first · keeping 1 in 5 offers",
+        assertEquals("Pay first · keeping 1 in 5",
                 AutopilotText.statusLine(status(owner(0, 51), floor, null, null)));
-        assertEquals("Autopilot 61% · pay first · keeping 1 in 5 offers",
+        assertEquals("Pay first · keeping 1 in 5",
                 AutopilotText.statusLine(status(owner(0, 61), floor, null, null)));
     }
 
@@ -498,7 +498,7 @@ public final class AutopilotTextTest {
         Autopilot.Plan plan = plan(starters(70, 100), window(12), null, 100);
         assertEquals(Autopilot.Mode.LEARNING, plan.mode);
         AutopilotText.Status s = status(starters(70, 100), plan, null, null);
-        assertEquals("Autopilot 100% · learning (12 of 20 offers)", AutopilotText.statusLine(s));
+        assertEquals("12 of 20 offers", AutopilotText.statusLine(s));
         assertEquals("Auto learning", AutopilotText.chip(s));
         assertEquals("before the need is planned, no goal part", "Of your last 12 offers, 8 would pass at 100%.",
                 AutopilotText.detailsPass(s));
@@ -509,27 +509,27 @@ public final class AutopilotTextTest {
     @Test
     public void theGatesComeFirst() {
         Autopilot.Plan plan = plan(starters(70, 100), window(20), dasher(55, 12), 100);
-        assertEquals("before the first plan", "Autopilot 100% · checking your offers",
+        assertEquals("before the first plan", "Checking offers",
                 AutopilotText.statusLine(status(starters(70, 100), null, null, null)));
         assertEquals("Auto 100%", AutopilotText.chip(status(starters(70, 100), null, null, null)));
 
         AutopilotText.Status waits = new AutopilotText.Status(starters(70, 82), false, plan, null, null, NOW);
-        assertEquals("Autopilot waits for screen reading", AutopilotText.statusLine(waits));
+        assertEquals("", AutopilotText.statusLine(waits));
         assertEquals("Auto waits", AutopilotText.chip(waits));
 
         FilterSettings stopsOnly = rules(0, 0, 0, 3, 70, 100);
         AutopilotText.Status needs = status(stopsOnly, null, null, null);
-        assertEquals("Autopilot needs a pay, per-mile or hourly minimum", AutopilotText.statusLine(needs));
+        assertEquals("", AutopilotText.statusLine(needs));
         assertEquals("Auto needs a minimum", AutopilotText.chip(needs));
 
         FilterSettings paused = new FilterSettings(false, 400, 100, 25, 0, true, 70, 82);
-        assertEquals("Autopilot 82% · auto-decline paused",
+        assertEquals("Auto-decline paused",
                 AutopilotText.statusLine(status(paused, plan, null, null)));
 
         // A plan made for other rules (another goal) says nothing about these.
         AutopilotText.Status otherGoal = status(starters(50, 100), plan, null, null);
         assertNull(otherGoal.plan);
-        assertEquals("Autopilot 100% · checking your offers", AutopilotText.statusLine(otherGoal));
+        assertEquals("Checking offers", AutopilotText.statusLine(otherGoal));
     }
 
     @Test
@@ -732,7 +732,7 @@ public final class AutopilotTextTest {
         Autopilot.Plan plan = plan(starters(70, 100), window(ages, 1), reading, 100);
         assertEquals("6,900 + 100 − 69", 6_931, plan.arHundredths);
         AutopilotText.Status s = status(starters(70, 100), plan, reading, null);
-        assertEquals("Autopilot 100% · AR 69% → 70%: about 1 more accept", AutopilotText.statusLine(s));
+        assertEquals("AR 69% → 70%: about 1 more accept", AutopilotText.statusLine(s));
         assertEquals("Acceptance rate: 69%, shown by Dasher 12 min ago (1 offer since).",
                 AutopilotText.detailsAcceptanceRate(s));
         assertTrue(AutopilotText.detailsGoalProgress(s).startsWith("Below your goal: about 1 more accept to reach"));

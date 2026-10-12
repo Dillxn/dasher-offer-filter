@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 /**
  * Recorded scores and the current minimums must be readable without changing what an offer meant: buildings are pay,
  * trees the score this version recorded (pay as a percent of the minimums; none for a line decided under the retired
- * rules), a dashed rail at the bar ("Bar 82%") and, only with a minimum pay, a solid rail at what it asks at the bar
+ * rules), a dashed rail at the bar (unnamed: the chip says the bar) and, only with a minimum pay, a solid rail at what it asks at the bar
  * ({@code ⌈bar × flat ÷ 100⌉}).
  */
 @RunWith(RobolectricTestRunner.class)
@@ -86,18 +86,19 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Bar ")));
         assertTrue("the dashed rail stays", Float.isFinite(chart.scoreThresholdY()));
 
-        // Autopilot's bar: ⌈82 × $10.00 ÷ 100⌉ = $8.20, and the dashed rail names the bar.
+        // Autopilot's bar: ⌈82 × $10.00 ÷ 100⌉ = $8.20; the dashed rail stays unnamed (0.6.3: Autopilot's chip says
+        // the bar, and the skyline said it again beside it).
         chart.setRules(atBar(RULES, 82));
         assertEquals(820L, chart.payoutThresholdCents());
         drawn = drawnWords(chart);
         assertTrue(drawn.toString(), drawn.contains("Pay $8.20 min"));
-        assertTrue(drawn.toString(), drawn.contains("Bar 82%"));
+        assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Bar ")));
         // Rounded up to the next cent: ⌈97 × $10.01 ÷ 100⌉ = $9.71, ⌈150 × $10.01 ÷ 100⌉ = $15.02.
         chart.setRules(atBar(FilterSettings.of(true, 1001, 0, 0, 0), 97));
         assertEquals(971L, chart.payoutThresholdCents());
         chart.setRules(atBar(FilterSettings.of(true, 1001, 0, 0, 0), 150));
         assertEquals(1502L, chart.payoutThresholdCents());
-        assertTrue(drawnWords(chart).contains("Bar 150%"));
+        assertFalse(drawnWords(chart).stream().anyMatch(word -> word.startsWith("Bar ")));
 
         // A per-mile or per-hour minimum is no level line of pay: no solid rail, and no zero-dollar one.
         chart.setRules(FilterSettings.of(true, 0, 9999, 30, 0));
