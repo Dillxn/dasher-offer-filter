@@ -119,6 +119,7 @@ public class BundledNotesTest {
         both.addAll(notice(17));
         both.addAll(notice(18));
         both.addAll(notice(19));
+        both.addAll(notice(20));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -290,7 +291,7 @@ public class BundledNotesTest {
      * clock. Its notice carries the clock too, since a reader of notice 18 gets no What's-new card with it.
      */
     @Test public void autopilotOnByDefaultHasItsOwnNoticeAndCurrentRelease() {
-        assertEquals(19, Consent.VERSION);
+        assertTrue("historical notice 19 is preserved", BundledNotes.hasNotice(19));
         assertEquals("0.6.2", Updater.version(RuntimeEnvironment.getApplication()));
         String notice = String.join(" ", notice(19));
         for (String fact : new String[] {"Autopilot is on by default", "turns it on once", "the goal you chose before",
@@ -308,6 +309,32 @@ public class BundledNotesTest {
         for (String outcome : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
                 "busiest", "best time"}) {
             assertFalse(outcome, (release + notice).toLowerCase(java.util.Locale.US).contains(outcome));
+        }
+    }
+
+    /**
+     * 0.6.3 (the owner, 12 October 2026: "i want to keep track of if anyone besides me downloads the app"): the
+     * anonymous daily count, on by default, in a reader of notice 19's What changed box: what it sends, the daily
+     * totals the service keeps and for how long (the notice's own point below the box says what else it keeps
+     * briefly, never "only daily totals"), and its switch in Settings by the switch's own words. That reader gets no
+     * What's-new card with it, so the box names the release's other homepage and split changes too.
+     */
+    @Test public void theDailyCountHasItsOwnNotice() {
+        assertEquals(20, Consent.VERSION);
+        List<String> twenty = notice(20);
+        assertTrue(twenty.toString(), twenty.size() >= 2 && twenty.size() <= 3);
+        String notice = String.join(" ", twenty);
+        for (String fact : new String[] {"Once a day", "one anonymous count", "how many people use it",
+                "its version and whether this install was counted before",
+                "Nothing about your offers, phone or account goes with it",
+                "the service keeps daily totals for 400 days",
+                "Settings → " + DailyCount.SWITCH + " turns it off", "Strict or Area", "Split"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        assertEquals("a reader of notice 19 sees only these", twenty, BundledNotes.noticeChanges(19, true));
+        for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
+                "only daily totals"}) {
+            assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
         }
     }
 

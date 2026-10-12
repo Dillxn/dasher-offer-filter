@@ -42,10 +42,10 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "12 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.2";
+    static final String TERMS_VERSION = "0.6.3";
     /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
     static final String PRIVACY_EFFECTIVE = "12 October 2026";
-    static final String PRIVACY_VERSION = "0.6.2";
+    static final String PRIVACY_VERSION = "0.6.3";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -423,6 +423,59 @@ public final class LegalTextsTest {
         assertEquals(10 * 60_000L, RestrictedSettingsGuide.RETURN_WITHIN_MS);
         assertTrue(BetaProgram.HELP_URL.startsWith("https://offerfilter.org/"));
         assertTrue(privacy.contains("your browser opens the install and setup page on offerfilter.org"));
+    }
+
+    /**
+     * 0.6.3 (notice 20): the anonymous daily count (DailyCount) and the install page's Download count, as the feedback
+     * service keeps them (backend/anonymous-feedback, the counts migration): what each sends and never sends, when, how
+     * a retry is counted once, what becomes of a refusal (the function deployed before counts refuses every one), the
+     * day-keyed network value kept only for its day, the daily totals kept 400 days, and the switch by its own words.
+     */
+    @Test public void privacySaysWhatTheCountsSendAndHowTheServiceKeepsThem() {
+        String privacy = LegalTexts.Doc.PRIVACY.text();
+        for (String fact : new String[] {"**" + DailyCount.SWITCH + "**, on unless you turn it off in Settings",
+                "Once a UTC day at most, and only after you accept the current notice",
+                "so the developer can see how many people use the app",
+                "the app's version name and number", "whether it would be this install's first count",
+                "a random code made new for each UTC day",
+                "The code is sent again only to retry that day's count, so a retry is not counted twice",
+                "no account, device, Android version, phone maker, language, time zone or install or device identifier",
+                "if the service refuses it (its earlier version refuses every count), it is not sent again until the "
+                        + "next UTC day",
+                "Turning the switch off stops it and discards that day's code;",
+                // The website's count, which the site's own Privacy page carries from this text.
+                "When you tap Download on offerfilter.org's install page, your browser sends the same feedback "
+                        + "service one anonymous count saying only that Download was tapped",
+                "The page sets no cookie and stores nothing in your browser for it",
+                // What the service keeps of both.
+                "The feedback service keeps counts as daily totals", "Totals are deleted after 400 days.",
+                "Each counted code is kept with its day and nothing else, for at most 2 days",
+                "under the same day-keyed one-way network value the feedback rate limit uses",
+                "deletes this once the day is over; no table records which network sent which code",
+                "more than 50 daily counts from one network in a day", "It counts at most 20,000 a day in all.",
+                // What is kept on the phone for it, and where the text says it.
+                "For the anonymous daily count: whether **" + DailyCount.SWITCH + "** is on",
+                "sends no feedback, diagnostics or daily count", "the anonymous daily count (on unless you turn it off)",
+                "what became of the daily count", "never its code",
+                "the last update result and what last became of the daily count",
+                "deleted the next time the app looks once its UTC day is over",
+                "setting the phone's date forward or back cannot send a second count the same day",
+                "if that day's count was already tried, turning it back on sends nothing more until the next UTC day",
+                "the daily totals counts went into", "sends feedback or its daily count",
+                // Optional, so still no mandatory analytics.
+                "no ads or mandatory analytics"}) {
+            assertTrue(fact, privacy.contains(fact));
+        }
+        String terms = LegalTexts.Doc.TERMS.text();
+        for (String fact : new String[] {"Once a day it sends the feedback service one anonymous count",
+                "turn it off with " + DailyCount.SWITCH + " in Settings",
+                "as daily totals for 400 days, and briefly what lets each count once"}) {
+            assertTrue(fact, terms.contains(fact));
+        }
+        for (String wrong : new String[] {"only daily totals", "only as daily totals", "daily totals only",
+                "nothing stored ties a code to a network"}) {
+            assertFalse(wrong, privacy.contains(wrong) || terms.contains(wrong));
+        }
     }
 
     @Test public void anUnknownNameOpensTheTerms() {

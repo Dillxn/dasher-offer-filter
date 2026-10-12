@@ -83,6 +83,16 @@ final class BundledNotes {
                         + "with Undo.",
                 "New over the skyline: your offers by time of day, as a percent of your minimums now. Tap it for "
                         + "what it means.");
+        // 0.6.3 (the owner, 12 October 2026: "i want to keep track of if anyone besides me downloads the app"): the
+        // anonymous daily count, on by default. A reader of notice 19 sees no What's-new card with this notice, so its
+        // last line names 0.6.3's homepage and split changes too.
+        notice(20,
+                "Once a day the app sends one anonymous count, so the developer can see how many people use it: its "
+                        + "version and whether this install was counted before.",
+                "Nothing about your offers, phone or account goes with it; the service keeps daily totals for 400 "
+                        + "days. Settings → Send an anonymous daily count turns it off.",
+                "Also new: Strict or Area is a chip beside Autopilot's on the homepage, and during a dash Split "
+                        + "opens recent apps for you to put Dasher beside.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",

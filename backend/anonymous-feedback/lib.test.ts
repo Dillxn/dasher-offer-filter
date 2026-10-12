@@ -5,13 +5,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ALLOWED_ORIGINS,
+  COUNT_EVENTS,
   Invalid,
   ipv6,
+  isCount,
   networkOf,
   reference,
   secondsUntilUtcMidnight,
   utcDay,
   validate,
+  validateCount,
 } from "./lib.ts";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -101,4 +104,134 @@ test("references, days and the daily cap's retry", () => {
   assert.equal(secondsUntilUtcMidnight(new Date("2026-10-06T23:30:00Z")), 1_800);
   assert.equal(secondsUntilUtcMidnight(new Date("2026-10-06T10:00:00Z")), 3_600, "at most an hour");
   assert.equal(secondsUntilUtcMidnight(new Date("2026-10-06T23:59:30Z")), 60, "at least a minute");
+  assert.equal(secondsUntilUtcMidnight(new Date("2026-10-06T10:00:00Z"), 86_400), 50_400, "a count's day: all of it");
+  assert.equal(secondsUntilUtcMidnight(new Date("2026-10-06T23:59:30Z"), 86_400), 60);
+});
+
+const WEBSITE = "https://offerfilter.org";
+const DAILY = {
+  kind: "count",
+  event: "daily",
+  countToken: TOKEN,
+  first: true,
+  appVersion: "0.6.3",
+  appVersionCode: 95,
+};
+
+test("the app's daily count and the Download button's are taken as sent", () => {
+  assert.deepEqual(COUNT_EVENTS, new Set(["daily", "download"]));
+  assert.deepEqual(validateCount(DAILY, null), {
+    event: "daily",
+    countToken: TOKEN,
+    first: true,
+    appVersion: "0.6.3",
+    appVersionCode: 95,
+  });
+  assert.deepEqual(
+    validateCount({ kind: "count", event: "daily", countToken: TOKEN }, null),
+    { event: "daily", countToken: TOKEN, first: false, appVersion: null, appVersionCode: null },
+    "first is false unless sent; the version is optional",
+  );
+  assert.equal(validateCount({ ...DAILY, first: false }, null).first, false);
+  assert.equal(validateCount({ ...DAILY, appVersion: "v".repeat(32) }, null).appVersion, "v".repeat(32));
+  assert.equal(validateCount({ ...DAILY, appVersionCode: 1 }, null).appVersionCode, 1);
+  assert.equal(validateCount({ ...DAILY, appVersionCode: 10_000_000 }, null).appVersionCode, 10_000_000);
+
+  const download = { event: "download", countToken: null, first: false, appVersion: null, appVersionCode: null };
+  assert.deepEqual(validateCount({ kind: "count", event: "download" }, WEBSITE), download);
+  assert.deepEqual(validateCount({ kind: "count", event: "download" }, "https://www.offerfilter.org"), download);
+  assert.deepEqual(
+    validateCount({ kind: "count", event: "download", countToken: TOKEN }, WEBSITE),
+    { ...download, countToken: TOKEN },
+  );
+});
+
+test("a count holds its event's keys and nothing else", () => {
+  const notForAnyCount: Record<string, unknown> = {
+    message: "hello",
+    diagnostics: "log",
+    category: "general",
+    reportToken: TOKEN,
+    partIndex: 0,
+    partCount: 1,
+    diagnosticsConsented: true,
+    device: "Pixel 9",
+    androidVersion: 36,
+    maker: "Google",
+    locale: "en-US",
+    timeZone: "America/New_York",
+    installId: TOKEN,
+  };
+  for (const [key, value] of Object.entries(notForAnyCount)) {
+    assert.throws(() => validateCount({ ...DAILY, [key]: value }, null), Invalid, `daily with ${key}`);
+    const download = { kind: "count", event: "download", [key]: value };
+    assert.throws(() => validateCount(download, WEBSITE), Invalid, `download with ${key}`);
+  }
+  // JSON can name a key like an object's own machinery: it is a key like any other.
+  const proto = JSON.parse(`{"kind":"count","event":"daily","countToken":"${TOKEN}","__proto__":{}}`);
+  assert.throws(() => validateCount(proto, null), Invalid);
+  // The Download button sends no app version and no first flag.
+  for (const [key, value] of Object.entries({ appVersion: "0.6.3", appVersionCode: 95, first: false })) {
+    assert.throws(
+      () => validateCount({ kind: "count", event: "download", [key]: value }, WEBSITE),
+      Invalid,
+      `download with ${key}`,
+    );
+  }
+});
+
+test("each count comes only from its own place", () => {
+  assert.throws(() => validateCount(DAILY, WEBSITE), Invalid, "the app's count from the website");
+  assert.throws(() => validateCount(DAILY, "https://www.offerfilter.org"), Invalid);
+  assert.throws(() => validateCount({ kind: "count", event: "download" }, null), Invalid, "a download with no Origin");
+  assert.throws(() => validateCount({ kind: "count", event: "download" }, "https://dillxn.github.io"), Invalid);
+  assert.throws(() => validateCount({ kind: "count", event: "download" }, "http://offerfilter.org"), Invalid);
+});
+
+test("a count's event, token, first flag and version are checked strictly", () => {
+  const refused: [string, Record<string, unknown>, string | null][] = [
+    ["no event", { kind: "count", countToken: TOKEN }, null],
+    ["another event", { ...DAILY, event: "install" }, null],
+    ["an event in capitals", { ...DAILY, event: "Daily" }, null],
+    ["an event that is not text", { ...DAILY, event: 1 }, null],
+    ["a kind in capitals", { ...DAILY, kind: "Count" }, null],
+    ["a daily count without its token", { kind: "count", event: "daily", first: true }, null],
+    ["a token in capitals", { ...DAILY, countToken: TOKEN.toUpperCase() }, null],
+    ["a short token", { ...DAILY, countToken: TOKEN.slice(1) }, null],
+    ["a long token", { ...DAILY, countToken: `${TOKEN}0` }, null],
+    ["a token with spaces", { ...DAILY, countToken: ` ${TOKEN}` }, null],
+    ["a token that is not text", { ...DAILY, countToken: 12345 }, null],
+    ["a null token", { ...DAILY, countToken: null }, null],
+    ["a download's bad token", { kind: "count", event: "download", countToken: "xyz" }, WEBSITE],
+    ["a download's null token", { kind: "count", event: "download", countToken: null }, WEBSITE],
+    ["first as text", { ...DAILY, first: "true" }, null],
+    ["first as a number", { ...DAILY, first: 1 }, null],
+    ["first as null", { ...DAILY, first: null }, null],
+    ["a version with a space", { ...DAILY, appVersion: "0.6.3 beta" }, null],
+    ["a version with spaces around", { ...DAILY, appVersion: " 0.6.3" }, null],
+    ["an empty version", { ...DAILY, appVersion: "" }, null],
+    ["a version too long", { ...DAILY, appVersion: "v".repeat(33) }, null],
+    ["a version that is not text", { ...DAILY, appVersion: 63 }, null],
+    ["a null version", { ...DAILY, appVersion: null }, null],
+    ["a version code of 0", { ...DAILY, appVersionCode: 0 }, null],
+    ["a version code too large", { ...DAILY, appVersionCode: 10_000_001 }, null],
+    ["a fractional version code", { ...DAILY, appVersionCode: 1.5 }, null],
+    ["a version code as text", { ...DAILY, appVersionCode: "95" }, null],
+    ["a null version code", { ...DAILY, appVersionCode: null }, null],
+  ];
+  for (const [what, body, origin] of refused) {
+    assert.throws(() => validateCount(body, origin), Invalid, what);
+  }
+});
+
+test("a count is not feedback, and feedback is not a count", () => {
+  assert.ok(isCount(DAILY));
+  assert.ok(isCount({ kind: "count", event: "download" }));
+  assert.ok(!isCount({ kind: "feedback", message: "Hello" }));
+  assert.ok(!isCount({ message: "Hello" }), "a body with no kind is feedback, as before");
+  assert.ok(!isCount({ kind: " count" }), "only exactly \"count\"");
+  assert.throws(() => validate(DAILY, null), Invalid, "count is no feedback kind");
+  assert.throws(() => validate({ kind: "count", message: "Hello" }, null), Invalid);
+  assert.throws(() => validate({ kind: "count", event: "download" }, WEBSITE), Invalid);
+  assert.throws(() => validateCount({ kind: "feedback", message: "Hello" }, null), Invalid);
 });

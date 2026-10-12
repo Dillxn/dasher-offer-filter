@@ -18,6 +18,8 @@ public final class UpdateReceiver extends BroadcastReceiver {
             LauncherAppearance.keep(context);
             OfferSilencer.restore(context);
             Updater.schedule(context);
+            // The daily count's job is persisted; today's count, if due, is looked at too (off this thread).
+            DailyCount.trigger(context);
         } else if (INSTALL_RESULT.equals(action)) {
             installResult(context, intent);
         }
@@ -51,6 +53,8 @@ public final class UpdateReceiver extends BroadcastReceiver {
         Updater.clearReady(context);
         Updater.status(context, "Updated to " + Updater.version(context));
         Updater.schedule(context);
+        // Today's anonymous count, if due, now from the new version (off this thread; never before the notice).
+        DailyCount.trigger(context);
         // Offer Filter's screen was up as the update began: it opens again only over its own window or the home screen,
         // never over Dasher, a map or any other app. With screen reading on, the screen reader alone decides, once it
         // has asked which app is in front (now, or as it reconnects after the update: until then nothing can say).

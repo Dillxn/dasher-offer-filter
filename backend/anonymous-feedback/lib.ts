@@ -1,5 +1,5 @@
-// Pure parts of the accountless feedback function: what a request must hold, and which network it came from.
-// No I/O here, so they can be tested on their own (lib.test.ts).
+// Pure parts of the accountless feedback function: what a request must hold (a part of a submission, or a count),
+// and which network it came from. No I/O here, so they can be tested on their own (lib.test.ts).
 
 /** The website's origins. A request with any other Origin is refused; the app sends none. */
 export const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
@@ -18,6 +18,9 @@ export const CATEGORIES: ReadonlySet<string> = new Set([
   "update",
   "other",
 ]);
+
+/** An app version as the app and the website send it ("0.6.3"): at most 32 characters, no spaces. */
+const APP_VERSION = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/;
 
 export const LIMITS = {
   /** A request's body, in bytes. */
@@ -97,7 +100,7 @@ export function validate(body: Record<string, unknown>, origin: string | null): 
   if (!message && !diagnostics) throw new Invalid("empty");
 
   const appVersion = trimmed(body.appVersion, 32);
-  if (appVersion && !/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(appVersion)) {
+  if (appVersion && !APP_VERSION.test(appVersion)) {
     throw new Invalid("invalid app version");
   }
   const appVersionCode = integer(body.appVersionCode, 1, 10_000_000);
@@ -123,6 +126,89 @@ export function validate(body: Record<string, unknown>, origin: string | null): 
     partIndex,
     partCount,
   };
+}
+
+/**
+ * What a count is: "daily", an install of the app checking in once a UTC day, or "download", a press of the install
+ * page's Download button. A count is not feedback: it carries no words, and it is kept as a daily total (its token
+ * and its network's day-keyed value only briefly, so it counts once).
+ */
+export const COUNT_EVENTS: ReadonlySet<string> = new Set(["daily", "download"]);
+
+/** The only keys each count may hold. Any other (a message, a device, a locale) is refused, never dropped. */
+const COUNT_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
+  daily: new Set(["kind", "event", "countToken", "first", "appVersion", "appVersionCode"]),
+  download: new Set(["kind", "event", "countToken"]),
+};
+
+/** A count's token: 32 lowercase hex digits, random. */
+const COUNT_TOKEN = /^[a-f0-9]{32}$/;
+
+/** One count, checked. */
+export interface Count {
+  event: "daily" | "download";
+  /**
+   * Random, so that a count retried (its answer was lost) is counted once. The app makes one for each UTC day and sends
+   * it again only to retry that day's count; the website may send one or none.
+   */
+  countToken: string | null;
+  /** True while the service has never accepted a count from this install. Always false for a download. */
+  first: boolean;
+  /** The app's version name; null for a download. */
+  appVersion: string | null;
+  /** The app's version code: checked, never stored. Null for a download. */
+  appVersionCode: number | null;
+}
+
+/** Whether a request's body is a count (kind "count") rather than a part of a submission. */
+export function isCount(body: Record<string, unknown>): boolean {
+  return body.kind === "count";
+}
+
+/** A count's key as sent: undefined when absent. A key that is present must hold a value: null is refused. */
+function given(body: Record<string, unknown>, key: string): unknown {
+  const value = body[key];
+  if (value === null) throw new Invalid("null field");
+  return value;
+}
+
+/** A count's text key: null when absent; present, exactly a text the pattern matches (nothing is trimmed). */
+function countText(body: Record<string, unknown>, key: string, pattern: RegExp): string | null {
+  const value = given(body, key);
+  if (value === undefined) return null;
+  if (typeof value !== "string" || !pattern.test(value)) throw new Invalid(`invalid ${key}`);
+  return value;
+}
+
+/**
+ * Checks a count. Stricter than a part of a submission: nothing is trimmed, a key that is present must hold a value
+ * of its kind, and a key the event does not name is refused. The app's daily count comes with no Origin; the Download
+ * button's only from the website's own origins.
+ * @throws Invalid for a count that could never be counted
+ */
+export function validateCount(body: Record<string, unknown>, origin: string | null): Count {
+  if (body.kind !== "count") throw new Invalid("not a count");
+  if (typeof body.event !== "string" || !COUNT_EVENTS.has(body.event)) throw new Invalid("invalid event");
+  const event = body.event as Count["event"];
+  const keys = COUNT_KEYS[event];
+  for (const key of Object.keys(body)) {
+    if (!keys.has(key)) throw new Invalid("unexpected field");
+  }
+  const fromWebsite = origin ? ALLOWED_ORIGINS.has(origin) : false;
+  if (event === "daily" ? Boolean(origin) : !fromWebsite) throw new Invalid("count from the wrong place");
+
+  const countToken = countText(body, "countToken", COUNT_TOKEN);
+  if (event === "download") {
+    return { event, countToken, first: false, appVersion: null, appVersionCode: null };
+  }
+
+  // The app's count is retried only with its own token: without one, a lost answer would have it counted twice.
+  if (countToken === null) throw new Invalid("a daily count needs a token");
+  const first = given(body, "first") ?? false;
+  if (typeof first !== "boolean") throw new Invalid("invalid first");
+  const appVersion = countText(body, "appVersion", APP_VERSION);
+  const appVersionCode = integer(given(body, "appVersionCode"), 1, 10_000_000);
+  return { event, countToken, first, appVersion, appVersionCode };
 }
 
 function ipv4(text: string): number[] | null {
@@ -193,11 +279,15 @@ export function networkOf(connectingIp: string | null | undefined): string {
   return `6:${v6.slice(0, 4).map((group) => group.toString(16)).join(":")}::/64`;
 }
 
-/** Seconds until the next UTC midnight (when the daily cap starts again), between a minute and an hour. */
-export function secondsUntilUtcMidnight(now: Date): number {
+/**
+ * Seconds until the next UTC midnight (when the daily caps and a network's day of counts start again), at least a
+ * minute and at most atMost: an hour unless asked otherwise, so that a submission refused by the cap is tried again
+ * within the hour (a count refused for its day waits the whole time).
+ */
+export function secondsUntilUtcMidnight(now: Date, atMost: number = 3_600): number {
   const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
   const seconds = Math.ceil((midnight - now.getTime()) / 1000);
-  return Math.min(3_600, Math.max(60, seconds));
+  return Math.min(atMost, Math.max(60, seconds));
 }
 
 /** "2026-10-06": the UTC day, which names the day's salt. */

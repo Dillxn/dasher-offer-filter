@@ -347,6 +347,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         DashSummary.checkSoon(this);
         // Feedback still waiting (its job lost to a crash, a reboot or a stop) goes now, off this thread.
         FeedbackOutbox.resume(this);
+        // Today's anonymous count, if due (never before the notice is accepted), goes off this thread.
+        DailyCount.trigger(this);
         if (Consent.accepted(this)) feedbackDialogs.restore(state);
         Updater.schedule(this);
         refresh();
@@ -1552,6 +1554,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
                         refresh();
                     }));
         });
+        // On unless the user turns it off: once a UTC day, the app's version, whether this install was counted before
+        // and the day's random token (DailyCount). Off cancels its job and discards the day's token, on looks at
+        // today's count, both off this thread.
+        Switch dailyCount = ui.toggle(reports, DailyCount.SWITCH, DailyCount.on(this));
+        dailyCount.setText(ui.twoLines(DailyCount.SWITCH, DailyCount.SWITCH_LINE));
+        dailyCount.setOnCheckedChangeListener((view, on) -> DailyCount.setOn(this, on));
         shareReportRow = ui.listRow(reports, "Share report", this::shareReport);
         ui.listRow(reports, "Clear history", this::confirmClearHistory);
 

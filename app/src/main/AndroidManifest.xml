@@ -90,6 +90,11 @@
             android:name=".FeedbackJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- Sends the anonymous daily count about once a day on any network, while its switch is on. -->
+        <service
+            android:name=".DailyCountJobService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver android:name=".UpdateReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

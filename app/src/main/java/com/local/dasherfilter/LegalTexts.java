@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 12 October 2026 · for {app} 0.6.2
+            Beta terms, effective 12 October 2026 · for {app} 0.6.3
 
             ## What {app} is
 
@@ -151,6 +151,11 @@ final class LegalTexts {
             after each dash (off by default). The privacy text says what each sends, where it goes and how long it \
             is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them \
             for 90 days. Sending feedback does not guarantee a reply, review or fix.
+            - Once a day it sends the feedback service one anonymous count, so the developer can see how many \
+            people use the app: its version, whether this install was counted before and a random code made new \
+            each day. It is on by default; turn it off with Send an anonymous daily count in Settings. The privacy \
+            text says what it sends and how the service keeps it (as daily totals for 400 days, and briefly what \
+            lets each count once).
 
             ## Your responsibilities
 
@@ -208,13 +213,14 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.2
+            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.3
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
-            optional diagnostics after each dash, place-name lookups and links you choose to open can send \
-            information to the services described under What leaves the phone. The developer's public project \
-            identity is Dillxn. {app} is beta software, and this text changes with it (see Changes).
+            optional diagnostics after each dash, the anonymous daily count (on unless you turn it off), place-name \
+            lookups and links you choose to open can send information to the services described under What leaves \
+            the phone. The developer's public project identity is Dillxn. {app} is beta software, and this text \
+            changes with it (see Changes).
 
             ## What it reads on the phone
 
@@ -279,11 +285,11 @@ final class LegalTexts {
             and later). Apart from how Android ranks and sets up Dasher's offer notifications (above) and, for \
             reports, Dasher's version and how its launcher screen starts, it reads no other app's settings.
 
-            Before you accept the current first-run notice, it reads none of this and sends no feedback or \
-            diagnostics, with three exceptions that read no words: the channel a new notification of Dasher's came \
-            on, to post one reminder that the app is paused; after an update, which app is in front, to reopen \
-            {app} only over its own screen or the home screen; and whether Android lets it install its own updates, \
-            since updates are checked for and installed before the notice is accepted too.
+            Before you accept the current first-run notice, it reads none of this and sends no feedback, \
+            diagnostics or daily count, with three exceptions that read no words: the channel a new notification of \
+            Dasher's came on, to post one reminder that the app is paused; after an update, which app is in front, \
+            to reopen {app} only over its own screen or the home screen; and whether Android lets it install its \
+            own updates, since updates are checked for and installed before the notice is accepted too.
 
             ## Optional offer timing study
 
@@ -382,13 +388,15 @@ final class LegalTexts {
             and what Peek did, including Dasher's own screens after it opens (short class names, at most six per \
             launch), what a peek cost Dasher (counts of reads, nodes and slow fetches), the shapes of money labels \
             when pay could not be read (counts only, never amounts), how much of the screen Dasher had when it was \
-            resized, and what happened to Dasher's own notification tap and to an offer that arrived while the \
-            phone was locked.
+            resized, what happened to Dasher's own notification tap and to an offer that arrived while the phone \
+            was locked, and what became of the daily count (sent, refused with the service's status code, or \
+            waiting to retry) and when its switch changed, never its code.
             - A few latest states, in fixed words, for reports: Dasher's version and how its launcher screen \
             starts, the settings of Dasher's offer notification channel and the names of its notification's fields, \
-            whether the touch watch could be put up, that Dasher reported an error after a decline, and the last \
-            update result. At most 12 are kept, each replaced when it changes, until Clear history; reports carry \
-            those from the last day.
+            whether the touch watch could be put up, that Dasher reported an error after a decline, the last update \
+            result and what last became of the daily count (sent, refused with the service's status code, or \
+            waiting to retry). At most 12 are kept, each replaced when it changes, until Clear history; reports \
+            carry those from the last day.
             - The app's last status line, with its date and time: what it last did or found, which can include the \
             last offer's figures (pay, miles, minutes, stops and item count) and the pay it required. The next \
             status replaces it; Clear history does not remove it.
@@ -434,6 +442,12 @@ final class LegalTexts {
             - The last 10 references of accepted submissions: the date, the short reference and whether it was \
             feedback, an offer report or diagnostics after a dash, so you can refer to them. Newer ones replace \
             older ones; uninstalling removes them.
+            - For the anonymous daily count: whether **Send an anonymous daily count** is on; the last UTC day \
+            whose count is done, with when it was done (also on the phone's since-boot clock with its boot number, \
+            so setting the phone's date forward or back cannot send a second count the same day); that day's random \
+            code until its count is done (only to retry it, and deleted the next time the app looks once its UTC \
+            day is over); and whether the feedback service has ever accepted a count from this install. Numbers and \
+            a yes or no; turning the switch off discards the day's code, and uninstalling removes all of it.
             - After the app stopped unexpectedly (a crash, or Android found it not responding), a short summary of \
             each stop in the last 24 hours: the kind of stop, the minute (UTC), whether the app was in front, and \
             where in the app's code it happened (the error's type and the top of its stack, or the top of the main \
@@ -611,12 +625,12 @@ final class LegalTexts {
             the website, and when it arrived: no account, name, email, IP address, user agent, install or device \
             identifier. To limit how often one network can send, it counts recent submissions under a one-way value \
             made with a secret key from the network's address and the date, so the value changes every day; the \
-            address itself is not stored. Counts older than two days are deleted as new submissions arrive. \
-            Cloudflare and Supabase necessarily receive ordinary connection metadata, such as your IP address, \
-            while handling a request and may keep infrastructure logs under their own policies. The developer can \
-            see the request logs Supabase keeps for the project, which can record each request's IP address and the \
-            app or browser that sent it, for as long as Supabase keeps them. So this is not a guarantee of \
-            anonymity.
+            address itself is not stored. Rate-limit counts older than two days are deleted as new submissions \
+            arrive. Cloudflare and Supabase necessarily receive ordinary connection metadata, such as your IP \
+            address, while handling a request and may keep infrastructure logs under their own policies. The \
+            developer can see the request logs Supabase keeps for the project, which can record each request's IP \
+            address and the app or browser that sent it, for as long as Supabase keeps them. So this is not a \
+            guarantee of anonymity.
             - Submissions are kept on the feedback service for 90 days, then deleted. The developer reads them, and \
             may use AI systems (Anthropic's Claude or OpenAI's ChatGPT/Codex) to investigate problems with them. A \
             submission does not guarantee review or a fix.
@@ -625,6 +639,38 @@ final class LegalTexts {
             network is available; the app also sends what waits when it next opens. Nothing is sent unless the \
             current notice is accepted, and an after-dash summary only while that option is still on; both are \
             checked again before every part.
+            - **Send an anonymous daily count**, on unless you turn it off in Settings (on by default from 0.6.3, \
+            for new installs and installs updating alike). Once a UTC day at most, and only after you accept the \
+            current notice, the app sends the same feedback service one count, so the developer can see how many \
+            people use the app. It carries only: that it is the app's daily count; the app's version name and \
+            number; whether it would be this install's first count (it says so until the service has accepted one, \
+            so the totals can tell new installs from ones counted before; reinstalling, or clearing the app's data, \
+            starts over); and a random code made new for each UTC day. The code is sent again only to retry that \
+            day's count, so a retry is not counted twice; the next day's count has a new one, so no two days' \
+            counts can be tied together by it. Nothing else goes with it: no offers, rules, history, logs or \
+            message, and no account, device, Android version, phone maker, language, time zone or install or device \
+            identifier. If the phone is offline or the service is unavailable, the count is tried again later that \
+            day with the same code; if the service refuses it (its earlier version refuses every count), it is not \
+            sent again until the next UTC day. Turning the switch off stops it and discards that day's code; if \
+            that day's count was already tried, turning it back on sends nothing more until the next UTC day, since \
+            the first try may have arrived.
+            - The install page's **Download** button. When you tap Download on offerfilter.org's install page, your \
+            browser sends the same feedback service one anonymous count saying only that Download was tapped. The \
+            page sets no cookie and stores nothing in your browser for it, and the download goes ahead whether or \
+            not the count arrives. Like any web request it carries your browser's ordinary request information \
+            (such as your IP address, the browser and the page's address), which Cloudflare and Supabase receive as \
+            described above.
+            - How counts are kept. The feedback service keeps counts as daily totals: for each UTC day, how many \
+            daily counts came for each app version and how many of those were an install's first, and how many \
+            Download taps came. A total carries no IP address, user agent, code, network value or identifier, so it \
+            cannot tell one phone or person from another. Totals are deleted after 400 days. Each counted code is \
+            kept with its day and nothing else, for at most 2 days, only so a retried count is counted once. To \
+            count one network's Download taps once a day, and to stop counting more than 50 daily counts from one \
+            network in a day (many phones can share one address), the service keeps, under the same day-keyed \
+            one-way network value the feedback rate limit uses, whether that network's Download tap was counted \
+            today and how many daily counts came from it today, and deletes this once the day is over; no table \
+            records which network sent which code. It counts at most 20,000 a day in all. Cloudflare and Supabase \
+            receive each count's ordinary connection metadata, as described under Where feedback goes.
             - **Share report**, only when you tap it, hands a masked report to the app you choose: the same report \
             attached diagnostics carry, with the latest acceptance-rate reading. From there, that app handles the \
             copy under its own privacy practices.
@@ -689,9 +735,12 @@ final class LegalTexts {
             send only your words, the category and the app's version.
             - **Share anonymous diagnostics after each dash** is off unless you turn it on, and you can turn it off \
             at any time.
+            - **Send an anonymous daily count** is on unless you turn it off in Settings; off, the app sends no \
+            count. Counts already made stay in the service's daily totals, which cannot tell which phone sent them, \
+            until those are deleted after 400 days.
             - Uninstalling removes the app's local data, including submissions still waiting and the kept \
-            references. It does not remove submissions the feedback service already received or copies you \
-            deliberately shared through another app.
+            references. It does not remove submissions the feedback service already received, the daily totals \
+            counts went into, or copies you deliberately shared through another app.
 
             ## Help and privacy contact
 
@@ -718,7 +767,7 @@ final class LegalTexts {
             ## Changes
 
             When this text changes in substance, the app shows its notice again before it reads anything more or \
-            sends feedback.
+            sends feedback or its daily count.
             """;
 
     private static final String LICENSE_TEXT = """

@@ -612,6 +612,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         DashSummary.checkSoon(this);
         // Feedback still waiting (its job lost to a crash, a reboot or a stop) goes now, off this thread.
         FeedbackOutbox.resume(this);
+        // Today's anonymous count, if due (never before the notice is accepted), goes off this thread.
+        DailyCount.trigger(this);
         DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting");
         reconcile();
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);

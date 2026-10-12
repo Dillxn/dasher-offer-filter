@@ -25,6 +25,13 @@ import static org.junit.Assert.assertEquals;
  * twice, and a request the service would refuse answered 400 and noted as a violation, which the sending test classes
  * fail on ({@link #assertHonored}). ConsentedTestApp installs one for every test, so no test can ever reach the real
  * service.
+ *
+ * <p>A count (kind "count", DailyCount) is kept apart, in {@link #counts()}, so tests that look at submissions never
+ * see one. It is checked against the count's own rules as the app sends it, with no Origin (lib.ts validateCount():
+ * the daily event's keys and nothing else, the token's shape, a boolean {@code first}, the version's shape; never the
+ * website's download event, which needs its Origin), answered from the same queue of planned answers, and else 201
+ * {"ok":true}, a token seen before included (the service counts it once). That every count carries all six of the
+ * daily event's keys is DailyCountTest's own check.
  */
 final class FakeFeedbackTransport implements Feedback.Transport {
     private static final Set<String> KINDS = new HashSet<>(Arrays.asList("feedback", "problem", "diagnostics"));
@@ -34,9 +41,16 @@ final class FakeFeedbackTransport implements Feedback.Transport {
     private static final Pattern TOKEN = Pattern.compile("[a-f0-9]{32}");
     private static final int MAX_BODY_BYTES = 150_000;
     private static final int MAX_PARTS = 4;
+    /** The app's daily count: these keys, each of them, and no other. */
+    private static final Set<String> DAILY_KEYS = new HashSet<>(Arrays.asList("kind", "event", "countToken", "first",
+            "appVersion", "appVersionCode"));
 
-    /** Every request body received, in order. */
+    /** Every request body received, in order (counts apart: {@link #counts}). */
     private final List<JSONObject> requests = new ArrayList<>();
+    /** Every count received, in order. */
+    private final List<JSONObject> counts = new ArrayList<>();
+    /** The count tokens the service counted (once each, whatever is retried). */
+    private final Set<String> counted = new HashSet<>();
     private final Deque<Object> answers = new ArrayDeque<>();
     /** What the service stored, by "token/part": stored once, whatever is retried. */
     private final Map<String, JSONObject> stored = new HashMap<>();
@@ -66,6 +80,7 @@ final class FakeFeedbackTransport implements Feedback.Transport {
         } catch (JSONException malformed) {
             throw new AssertionError("the app sent malformed JSON", malformed);
         }
+        if ("count".equals(json.opt("kind"))) return count(json, body);
         Object answer;
         String refused;
         synchronized (this) {
@@ -93,6 +108,72 @@ final class FakeFeedbackTransport implements Feedback.Transport {
         // The real service answers with the first characters of the submission's first row; here, the token's.
         String reference = token.isEmpty() ? "00000000" : token.substring(0, 8);
         return new Feedback.Response(201, "{\"ok\":true,\"reference\":\"" + reference + "\"}", 0);
+    }
+
+    /** A count: recorded apart, checked, and answered as planned, else as the service would (201, once per token). */
+    private Feedback.Response count(JSONObject json, byte[] body) throws IOException {
+        Object answer;
+        String refused;
+        synchronized (this) {
+            counts.add(json);
+            answer = answers.poll();
+            refused = body.length > MAX_BODY_BYTES ? "body over " + MAX_BODY_BYTES + " bytes" : countRefusal(json);
+            if (refused != null) violations.add(refused + ": " + shortly(json));
+        }
+        Runnable middle = during;
+        if (middle != null) middle.run();
+        if (down) throw new IOException("no connection in tests");
+        if (answer instanceof IOException) throw (IOException) answer;
+        if (answer instanceof Feedback.Response) {
+            Feedback.Response planned = (Feedback.Response) answer;
+            if (planned.status >= 200 && planned.status < 300 && refused == null) countOnce(json);
+            return planned;
+        }
+        if (refused != null) {
+            return new Feedback.Response(body.length > MAX_BODY_BYTES ? 413 : 400,
+                    "{\"ok\":false,\"error\":\"invalid_count\"}", 0);
+        }
+        countOnce(json);
+        return new Feedback.Response(201, "{\"ok\":true}", 0);
+    }
+
+    private synchronized void countOnce(JSONObject json) {
+        counted.add(json.optString("countToken", ""));
+    }
+
+    /**
+     * Why the service would refuse this count from the app, or null, as lib.ts validateCount() checks one that comes with
+     * no Origin (the app never sends one): an event it names, no key but that event's, the daily event only (the
+     * website's download needs its Origin), a token of 32 lowercase hex digits, and each other key, when present, a
+     * value of its kind (never null, nothing trimmed): {@code first} a boolean, the version name of its shape, the
+     * version code a whole number from 1 to 10,000,000.
+     */
+    private static String countRefusal(JSONObject json) {
+        Object event = json.opt("event");
+        if (!"daily".equals(event) && !"download".equals(event)) return "invalid count event";
+        Set<String> allowed = "daily".equals(event) ? DAILY_KEYS
+                : new HashSet<>(Arrays.asList("kind", "event", "countToken"));
+        for (java.util.Iterator<String> keys = json.keys(); keys.hasNext(); ) {
+            String key = keys.next();
+            if (!allowed.contains(key)) return "count with an unexpected field: " + key;
+            if (json.opt(key) == JSONObject.NULL) return "count with a null field: " + key;
+        }
+        if (!"daily".equals(event)) return "count from the wrong place (a download without the website's Origin)";
+        Object token = json.opt("countToken");
+        if (token == null) return "a daily count needs a token";
+        if (!(token instanceof String) || !TOKEN.matcher((String) token).matches()) return "invalid countToken";
+        Object first = json.opt("first");
+        if (first != null && !(first instanceof Boolean)) return "invalid first";
+        Object version = json.opt("appVersion");
+        if (version != null && (!(version instanceof String) || !APP_VERSION.matcher((String) version).matches())) {
+            return "invalid appVersion";
+        }
+        try {
+            integer(json, "appVersionCode", 1, 10_000_000, null);
+        } catch (IllegalArgumentException invalid) {
+            return invalid.getMessage();
+        }
+        return null;
     }
 
     /** Stored once: a retry of a stored part changes nothing and gets the same answer. */
@@ -203,6 +284,16 @@ final class FakeFeedbackTransport implements Feedback.Transport {
 
     synchronized int count() {
         return requests.size();
+    }
+
+    /** Every count received (DailyCount's), in order; never among {@link #requests}. */
+    synchronized List<JSONObject> counts() {
+        return new ArrayList<>(counts);
+    }
+
+    /** Whether the service counted the count with this token (it counts each token once). */
+    synchronized boolean counted(String token) {
+        return counted.contains(token);
     }
 
     /** The part the service keeps of {@code token}'s part {@code index} (the first one it accepted), or null. */

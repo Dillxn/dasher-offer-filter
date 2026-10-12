@@ -7,7 +7,8 @@ import android.content.SharedPreferences;
  * The first-run notice and the user's consent to it. Everyone sees it once, existing installs included, and again
  * only when {@link #VERSION} is raised. Until the current version is accepted, the screen reader reads, decides and
  * taps nothing, the notification path posts, hides and sends nothing (but for the one reminder that the app is
- * paused, {@link ConsentReminder}), no feedback or diagnostics leave the phone, and the homepage shows only the notice.
+ * paused, {@link ConsentReminder}), no feedback, diagnostics or daily count ({@link DailyCount}) leave the phone, and
+ * the homepage shows only the notice.
  * "Not now" closes the app and stores nothing. Nothing here ever turns consent off again.
  */
 final class Consent {
@@ -22,7 +23,9 @@ final class Consent {
     // 17: separate area mode and local acceptance learning; study confirmation remains independent.
     // 18 (0.6.1): learning on by default, so a new high you accept raises the learned minimums offers must meet.
     // 19 (0.6.2): Autopilot on by default, for new installs and once for installs updating, with goal 70%.
-    static final int VERSION = 19;
+    // 20 (0.6.3): the anonymous daily count (DailyCount), on by default with its switch in Settings, and in Privacy
+    // the install page's Download count; both kept by the feedback service only as daily totals.
+    static final int VERSION = 20;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -76,7 +79,13 @@ final class Consent {
                 + "you accept this notice. Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
                 + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex); clearing this phone "
                 + "does not erase sent copies. Network providers still receive normal connection metadata, and text masking can miss "
-                + "details. Privacy explains updates, feedback, place lookups and map links."},
+                + "details. Privacy explains updates, feedback, the daily count, place lookups and map links."},
+        {"A daily count is on by default.", "Once a day it sends the feedback service one anonymous count, so the "
+                + "developer can see how many people use the app: only its version, whether this install was counted "
+                + "before and a random code made new each day, so a retry counts once. Nothing about your offers, "
+                + "phone or account goes with it. The service keeps daily totals for 400 days; it keeps the code up "
+                + "to 2 days, and a one-way value made from your network's address only for that day, so each counts "
+                + "once. Turn it off with Send an anonymous daily count in Settings."},
         {"Optional offer timing study.", "Settings offers a checked draft choice to include new numeric offer-timing "
                 + "observations in diagnostics you choose to share. Nothing starts until you separately confirm it with Save choice. "
                 + "It compares estimates recorded before outcomes with observed waits, offer quality and actions; "
@@ -107,6 +116,8 @@ final class Consent {
                 + "may act");
         // Feedback the user sent before an updated notice waited for it.
         FeedbackOutbox.consented(context);
+        // So did the anonymous daily count (on unless turned off in Settings); it goes off this thread.
+        DailyCount.trigger(context);
         // How the app last stopped is looked at from now on: before the notice, Android's record of it is not read.
         StopReports.install(context);
         StopReports.checkSoon(context);

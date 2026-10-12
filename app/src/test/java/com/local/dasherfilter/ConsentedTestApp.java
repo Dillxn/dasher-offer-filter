@@ -29,6 +29,12 @@ public class ConsentedTestApp extends Application {
         FeedbackOutbox.forgetCache();
         FeedbackOutbox.clock = System::currentTimeMillis;
         FeedbackJobService.forgetCache();
+        // The anonymous daily count goes from every app opening and service connection on a phone: here only when a
+        // test turns it on (DailyCountTest), so no other suite sees a count among its requests.
+        DailyCount.automatic = false;
+        DailyCount.clock = System::currentTimeMillis;
+        DailyCount.elapsed = DailyCount.BOOT_CLOCK;
+        DailyCountJobService.forgetCache();
         FeedbackDialogs.forgetDraft();
         DashSummary.forgetCache();
         StopReports.forgetCache();

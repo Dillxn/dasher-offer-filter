@@ -7,10 +7,20 @@
 // per-network rate limit; a global daily cap protects storage. No IP address, user agent or account is stored: the
 // network (an IPv4 address or an IPv6 /64, from Cloudflare's cf-connecting-ip only) is turned into a keyed hash with
 // a random salt that changes every UTC day, used only to count recent submissions, and kept at most an hour.
+//
+// A count (kind "count") is one POST too: the app's daily check-in ("daily", no Origin) or a press of the install
+// page's Download button ("download", from the website's origins, sent with navigator.sendBeacon as text/plain, which
+// needs no preflight; text/plain is taken from those origins for a count and nothing else). Daily totals are what is
+// kept for long (day, event, app version, whether it was an install's first count). A count's random token is kept
+// two days at most, so a retried count is counted once; the same daily network hash, kept only until its day is over,
+// lets each network count one download and at most 50 daily counts a day. Counted and duplicate counts are both
+// answered 201.
 
 import {
   ALLOWED_ORIGINS,
+  type Count,
   Invalid,
+  isCount,
   LIMITS,
   networkOf,
   reference,
@@ -18,6 +28,7 @@ import {
   type Submission,
   utcDay,
   validate,
+  validateCount,
 } from "./lib.ts";
 
 const encoder = new TextEncoder();
@@ -25,6 +36,8 @@ const encoder = new TextEncoder();
 const UPSTREAM_RETRY_SECONDS = 60;
 /** The rate limit counts ten minutes. */
 const RATE_RETRY_SECONDS = 600;
+/** A count refused for its day (its network's limit, or the global cap) waits for the next UTC day, however long. */
+const COUNT_DAY_SECONDS = 86_400;
 
 function cors(origin: string | null): Record<string, string> {
   if (origin && ALLOWED_ORIGINS.has(origin)) {
@@ -145,6 +158,58 @@ async function store(submission: Submission, bucket: string): Promise<{ outcome:
   return { outcome, id };
 }
 
+/** Counts once: "counted", "duplicate", "network_limit", "daily_cap" or "invalid". */
+async function storeCount(count: Count, bucket: string): Promise<string> {
+  const result = await rpc("offer_filter_count_v1", {
+    p_rate_bucket: bucket,
+    p_event: count.event,
+    p_app_version: count.appVersion,
+    p_first: count.first,
+    p_token: count.countToken,
+  });
+  const row = Array.isArray(result) ? result[0] : result;
+  // PostgREST answers a function returning table(outcome text) with rows of {outcome}; a bare value is taken too.
+  const outcome = row && typeof row === "object" ? (row as Record<string, unknown>).outcome : row;
+  if (typeof outcome !== "string") throw new Upstream(502);
+  return outcome;
+}
+
+/**
+ * Answers a count. The app takes any 2xx as its day's count done; 400, 413, 415, 422 and 429 as its day's count given
+ * up (the function deployed before counts answers 400 to every count); anything else as a reason to try again later
+ * that day with the same token. The website does not look at the answer.
+ */
+async function answerCount(req: Request, origin: string | null, body: Record<string, unknown>): Promise<Response> {
+  let count: Count;
+  try {
+    count = validateCount(body, origin);
+  } catch {
+    return json(origin, 400, { ok: false, error: "invalid_count" });
+  }
+  try {
+    const now = new Date();
+    const bucket = await rateBucket(networkOf(req.headers.get("cf-connecting-ip")), now);
+    const outcome = await storeCount(count, bucket);
+    const untilTomorrow = secondsUntilUtcMidnight(now, COUNT_DAY_SECONDS);
+    switch (outcome) {
+      case "counted":
+      case "duplicate":
+        return json(origin, 201, { ok: true });
+      case "network_limit":
+        return json(origin, 429, { ok: false, error: "rate_limited" }, untilTomorrow);
+      case "daily_cap":
+        return json(origin, 503, { ok: false, error: "temporarily_unavailable" }, untilTomorrow);
+      case "invalid":
+        return json(origin, 400, { ok: false, error: "invalid_count" });
+      default:
+        throw new Upstream(502);
+    }
+  } catch (failure) {
+    console.error("count storage failed", failure instanceof Upstream ? failure.status : "unexpected");
+    return json(origin, 503, { ok: false, error: "temporarily_unavailable" }, UPSTREAM_RETRY_SECONDS);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
 
@@ -159,7 +224,10 @@ Deno.serve(async (req: Request) => {
   if (origin && !ALLOWED_ORIGINS.has(origin)) return json(origin, 403, { ok: false, error: "origin_not_allowed" });
 
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
-  if (!contentType.startsWith("application/json")) {
+  // The Download button's count comes by navigator.sendBeacon as text/plain (a JSON body all the same): taken only
+  // from the website's own origins, and only for a count.
+  const plainText = contentType.startsWith("text/plain") && origin !== null && ALLOWED_ORIGINS.has(origin);
+  if (!contentType.startsWith("application/json") && !plainText) {
     return json(origin, 415, { ok: false, error: "json_required" });
   }
 
@@ -172,11 +240,20 @@ Deno.serve(async (req: Request) => {
     return json(origin, 413, { ok: false, error: "too_large" });
   }
 
-  let submission: Submission;
+  let body: Record<string, unknown> | null = null;
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Invalid("invalid json");
-    submission = validate(parsed as Record<string, unknown>, origin);
+    if (parsed && !Array.isArray(parsed) && typeof parsed === "object") body = parsed as Record<string, unknown>;
+  } catch {
+    // Not JSON: refused below.
+  }
+  if (body && isCount(body)) return await answerCount(req, origin, body);
+  if (plainText) return json(origin, 415, { ok: false, error: "json_required" });
+
+  let submission: Submission;
+  try {
+    if (!body) throw new Invalid("invalid json");
+    submission = validate(body, origin);
   } catch {
     return json(origin, 400, { ok: false, error: "invalid_feedback" });
   }

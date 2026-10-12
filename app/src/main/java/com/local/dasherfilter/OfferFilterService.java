@@ -1835,6 +1835,8 @@ public final class OfferFilterService extends AccessibilityService {
         DashSummary.checkSoon(this);
         // Feedback still waiting (its job lost to a crash, a reboot or a stop) goes now, off this thread.
         FeedbackOutbox.resume(this);
+        // Today's anonymous count, if due (never before the notice is accepted), goes off this thread.
+        DailyCount.trigger(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
         // Autopilot moves the bar only through this screen reader, at a safe point between offers: its commits are

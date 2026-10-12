@@ -161,8 +161,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (int i = 0; i < leads.length; i++) leads[i] = Consent.POINTS[i][0];
         assertEquals("existing safety points plus the separate optional study disclosure", java.util.Arrays.asList("Acceptance rate.",
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
-                "At your own risk.", "Not while driving.", "Your data.", "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("Autopilot on by default renews the notice", 19, Consent.VERSION);
+                "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
+                "Optional offer timing study."), java.util.Arrays.asList(leads));
+        assertEquals("the daily count renews the notice", 20, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -201,6 +202,32 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
             assertTrue(fact, learning.contains(fact));
         }
         assertTrue(does.contains("Permitted by the filter does not mean accepted"));
+    }
+
+    /**
+     * 0.6.3 (notice 20): the anonymous daily count (DailyCount) is on by default, so the notice says so in one point of
+     * its own, true to what the request carries (DailyCount.body: the version, the first flag, the day's random code),
+     * to what the service keeps of it (the counts migration: daily totals 400 days, the code at most 2 days, the
+     * day-keyed network value for its day) and naming the Settings switch by its own words.
+     */
+    @Test
+    public void theNoticeSaysWhatTheDailyCountSendsAndHowToTurnItOff() {
+        String count = null;
+        for (String[] point : Consent.POINTS) if ("A daily count is on by default.".equals(point[0])) count = point[1];
+        assertNotNull(count);
+        for (String fact : new String[] {"Once a day it sends the feedback service one anonymous count",
+                "so the developer can see how many people use the app",
+                "only its version, whether this install was counted before and a random code made new each day, so a "
+                        + "retry counts once",
+                "Nothing about your offers, phone or account goes with it.",
+                "The service keeps daily totals for 400 days; it keeps the code up to 2 days, and a one-way value made "
+                        + "from your network's address only for that day, so each counts once.",
+                "Turn it off with " + DailyCount.SWITCH + " in Settings."}) {
+            assertTrue(fact, count.contains(fact));
+        }
+        String data = null;
+        for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
+        assertTrue(data.contains("Privacy explains updates, feedback, the daily count, place lookups and map links."));
     }
 
     @Test
@@ -321,8 +348,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
-        // growth. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(19, Consent.VERSION);
+        // growth; 20, the anonymous daily count. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(20, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
