@@ -286,6 +286,8 @@ public final class OfferNotificationService extends NotificationListenerService 
     private static volatile OfferNotificationService active;
     private static volatile boolean offerOutstanding;
     private static volatile long generation;
+    /** Counts this listener's connections and losses: posts while it was away were never seen. */
+    private static volatile long listenerChanges;
     /** When Dasher's Decline action on a notification was last sent (uptime), 0 for never. */
     private static volatile long declineActionAt;
 
@@ -434,6 +436,16 @@ public final class OfferNotificationService extends NotificationListenerService 
      */
     static long generation() {
         return generation;
+    }
+
+    /**
+     * Where Dasher's offer notifications stand: one more with each newly tracked offer (as {@link #generation}), and
+     * changed by more than that as this listener connects or is lost, so two stamps one apart mean exactly one offer's
+     * notification came between them, seen; -1 while the listener is not connected (a post may come unseen).
+     */
+    static long offerStamp() {
+        if (active == null) return -1;
+        return (listenerChanges << 32) + generation;
     }
 
     private long staleNotices;
@@ -588,6 +600,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     @Override public void onListenerConnected() {
+        listenerChanges++;
         active = this;
         OfferAlerts.ensureChannel(this);
         OfferAlerts.clearAll(this);
@@ -605,6 +618,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     @Override public void onListenerDisconnected() {
+        listenerChanges++;
         clearTracked();
         if (active == this) active = null;
         DiagnosticLog.log(this, "notification", "listener disconnected; delivery monitoring unavailable");
@@ -616,6 +630,7 @@ public final class OfferNotificationService extends NotificationListenerService 
     }
 
     @Override public void onDestroy() {
+        listenerChanges++;
         clearTracked();
         handler.removeCallbacksAndMessages(null);
         if (active == this) active = null;

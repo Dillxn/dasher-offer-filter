@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -397,6 +398,17 @@ final class AcceptedOfferTracker {
         }
     }
 
+    /** Where Dasher's offer notifications stand ({@link OfferNotificationService#offerStamp}); -1 when not known. */
+    private final LongSupplier offerStamp;
+
+    AcceptedOfferTracker() {
+        this(() -> -1);
+    }
+
+    AcceptedOfferTracker(LongSupplier offerStamp) {
+        this.offerStamp = offerStamp;
+    }
+
     /** The offer on screen now; null once Dasher left the screen. */
     private Sighting visible;
     /** The latest offer seen, kept while Dasher is away, so the same offer drawn again keeps what came before it. */
@@ -417,6 +429,8 @@ final class AcceptedOfferTracker {
      * ends on anything else.
      */
     private After lastClear;
+    /** Where Dasher's offer notifications stood as {@link #lastClear} read the wait for offers, else -1. */
+    private long waitStamp = -1;
     private final List<Note> notes = new ArrayList<>();
 
     private static final class Watch {
@@ -743,14 +757,22 @@ final class AcceptedOfferTracker {
     }
 
     /**
-     * A peek brought Dasher up: an offer read during it counts only what is read during it. The wait for offers read
-     * before (perhaps long before, while Dasher was hidden) is forgotten, and a decline by hand held for an offer before
-     * it has had another screen since, so the peeked offer never counts it.
+     * A peek brought Dasher up: an offer read during it counts only what is read during it, and a decline by hand held
+     * for an offer before it has had another screen since, so the peeked offer never counts it. The wait for offers read
+     * before (perhaps long before, while Dasher was hidden) still stands only when exactly one offer's notification came
+     * since, the one peeked at, with Dasher's notifications watched throughout (0.6.3; the owner's 11 October 11:57 AM
+     * $17.50, taken back from a peek): no other offer came that the user could have accepted unseen, so no delivery
+     * began. Anything else (another offer, the listener lost or never connected, a delivery read last) is forgotten.
+     *
+     * @return whether the wait read before still stands for the peeked offer
      */
-    void peekBegan() {
-        lastClear = null;
+    boolean peekBegan() {
+        long now = offerStamp.getAsLong();
+        boolean waited = lastClear == After.WAITING && waitStamp >= 0 && now >= 0 && now == waitStamp + 1;
+        if (!waited) lastClear = null;
         Watch w = watch;
         if (w != null && w.declinePending) w.otherSince = true;
+        return waited;
     }
 
     /**
@@ -864,7 +886,10 @@ final class AcceptedOfferTracker {
                 || notAcceptedBecause(w, w.leftAt < 0 ? now : w.leftAt) != null ? null : w.learn;
         After shown = endOfDash(labels,
                 acceptanceScreen(labels, offerFacts, read, completeWithoutControls, original), now);
-        if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) lastClear = shown;
+        if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) {
+            lastClear = shown;
+            waitStamp = shown == After.WAITING ? offerStamp.getAsLong() : -1;
+        }
         if (shown != After.EMPTY && shown != After.NEW_OFFER && shown != After.OFFER_FACTS) screenSinceOffer = true;
         if (w == null) {
             // A wait read before an unrelated/unclear screen is not proof the user was waiting when the next offer

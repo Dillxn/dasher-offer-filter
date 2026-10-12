@@ -736,6 +736,102 @@ public class PeekTest {
         contains(log(app), "[peek] left Dasher up because you touched the screen");
     }
 
+    // ---- A peek's offer taken back and accepted (0.6.3) ----
+
+    /** Dasher's pickup screen: the offer it shows was accepted. */
+    private AccessibilityNodeInfo pickup() {
+        AccessibilityNodeInfo root = node(DASHER, null, false);
+        Shadows.shadowOf(root).addChild(node(DASHER, "Complete delivery steps", false));
+        return root;
+    }
+
+    /** A peek of {@code store}'s offer; the user touches Dasher before its question is tapped, then accepts it. */
+    private void takenBackFromAPeekAndAccepted(String store) {
+        post(store);
+        dasherOpened();
+        offerRoot = offer("$17.50");
+        List<Long> declines = taps(decline);
+        dasherShows(offerRoot);
+        assertEquals("declined at once, as any offer on screen", 1, declines.size());
+        // Past the tap's echo, before Dasher asks: the user's own touch takes the offer back.
+        pass(300);
+        touchNow();
+        dasherShows(pickup());
+        pass(25_000);
+        assertNull("Dasher stays up after anything of the user's", started());
+    }
+
+    /** The first peek of the owner's sequence: declined, and back to Maps from Dasher's wait for offers. */
+    private void aPeekEndingOnTheWaitForOffers() {
+        post("Taco Bell");
+        dasherOpened();
+        offerRoot = offer("$7.90");
+        declinedOnScreen();
+        dasherShows(finding());
+        assertEquals(MAPS_HOME, started().getComponent());
+        inFront(app(MAPS));
+    }
+
+    /**
+     * The owner's 11 October: at 11:54 AM a peek declined one offer and went back to Maps from Dasher's wait for offers;
+     * at 11:57 the next offer's peek opened Dasher, Offer Filter tapped Decline, and he touched the screen, took the
+     * $17.50 back and accepted it. No other offer came between, so it came while he waited, and his acceptance teaches
+     * as one taken back on Dasher's own screen does (0.6.3: before, a peek forgot the wait, and it was display only).
+     */
+    @Test
+    public void anOfferTakenBackFromAPeekThatCameWhileWaitingTeaches() {
+        FilterStore.setAcceptanceLearning(app, true);
+        connect(app(MAPS));
+        aPeekEndingOnTheWaitForOffers();
+        pass(10_000);
+        takenBackFromAPeekAndAccepted("Burger King");
+        contains(log(app), "[peek] opening Dasher for Burger King (was in front: a navigation app); it came while "
+                + "you waited for offers");
+        DecisionLog.flush();
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Outcome.ACCEPTED, DecisionLog.outcome(entry));
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED));
+        assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertEquals(1750, FilterStore.load(app).accepted.highestPayCents);
+        assertTrue("his own minimums stay", Arrays.equals(new int[] {2000, 0, 0, 0, 0, 0},
+                FilterStore.load(app).minimums()));
+        contains(log(app), "you took it back before its decline was confirmed");
+    }
+
+    /**
+     * Another offer's notification between the wait and the peeked offer (skipped as too soon after the last peek): the
+     * user may have accepted that one from its notification, so the delivery screen proves nothing of the peeked one.
+     */
+    @Test
+    public void anOfferTakenBackFromAPeekAfterAnotherOfferCameTeachesNothing() {
+        FilterStore.setAcceptanceLearning(app, true);
+        connect(app(MAPS));
+        aPeekEndingOnTheWaitForOffers();
+        pass(800);
+        post("Store B");
+        assertNull("too soon: not peeked at", started());
+        pass(10_000);
+        takenBackFromAPeekAndAccepted("Store C");
+        assertFalse(log(app).contains("it came while you waited for offers"));
+        DecisionLog.flush();
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertTrue(FilterStore.load(app).accepted.isEmpty());
+        contains(log(app), "[learner] acceptance not taught: you took it over");
+    }
+
+    /** With no wait for offers read before it at all (Maps in front since screen reading connected): as before. */
+    @Test
+    public void anOfferTakenBackFromAPeekWithNoWaitReadTeachesNothing() {
+        FilterStore.setAcceptanceLearning(app, true);
+        connect(app(MAPS));
+        takenBackFromAPeekAndAccepted("Burger King");
+        DecisionLog.flush();
+        DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
+        assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
+        assertTrue(FilterStore.load(app).accepted.isEmpty());
+    }
+
     // ---- Why a peek does not start ----
 
     /** Maps in front, the offer's notification: no peek, the card as today, and one line saying why. */

@@ -137,4 +137,59 @@ public final class AcceptedOfferTrackerTest {
         tracker.observeOffer(offer, offer, false, offer, 40, false, 2100);
         assertNull(tracker.observeOtherScreen(Arrays.asList("Arrived at store"), 2500));
     }
+    // ---- A peek and the wait for offers read before it (0.6.3) ----
+
+    /** The wait read with Dasher's offer notifications at {@code waitStamp}, then a peek with them at {@code peekStamp}. */
+    private static AcceptedOfferTracker peekedAfterWaiting(long waitStamp, long peekStamp, boolean expectWaited) {
+        long[] stamp = {waitStamp};
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker(() -> stamp[0]);
+        tracker.afterScreen(Arrays.asList("Finding offers"), 900);
+        stamp[0] = peekStamp;
+        assertEquals(expectWaited, tracker.peekBegan());
+        OfferSnapshot offer = new OfferSnapshot(1750, 16.6, 34, 2);
+        tracker.observeOffer(offer, offer, false, offer, 30, false, 1000);
+        assertEquals(expectWaited, tracker.waitedFor(offer));
+        return tracker;
+    }
+
+    /** The owner's 11:57 AM $17.50: the one offer's notification since the wait was read is the one peeked at. */
+    @Test public void aPeekedOfferWithNoOtherOfferSinceTheWaitCameWhileTheUserWaited() {
+        peekedAfterWaiting(41, 42, true);
+    }
+
+    @Test public void anotherOfferSinceTheWaitForgetsItForThePeekedOne() {
+        peekedAfterWaiting(41, 43, false);
+    }
+
+    @Test public void noOfferPostedSinceTheWaitIsNotThePeekedOnesEither() {
+        // The peeked offer's notification was counted before the wait was read: the wait says nothing of it.
+        peekedAfterWaiting(42, 42, false);
+    }
+
+    @Test public void notificationsNotWatchedThenOrNowProveNothing() {
+        peekedAfterWaiting(-1, 0, false);
+        peekedAfterWaiting(41, -1, false);
+        // The listener lost and connected again between them: the stamp moved by far more than one.
+        peekedAfterWaiting(41, (1L << 32) + 42, false);
+    }
+
+    @Test public void aDeliveryReadLastIsForgottenAtAPeekAsBefore() {
+        long[] stamp = {41};
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker(() -> stamp[0]);
+        tracker.afterScreen(Arrays.asList("Arrived at store"), 900);
+        stamp[0] = 42;
+        assertFalse(tracker.peekBegan());
+        OfferSnapshot offer = new OfferSnapshot(1750, 16.6, 34, 2);
+        tracker.observeOffer(offer, offer, false, offer, 30, false, 1000);
+        assertFalse(tracker.waitedFor(offer));
+    }
+
+    @Test public void withoutAStampAPeekForgetsTheWaitAsBefore() {
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker();
+        tracker.afterScreen(Arrays.asList("Finding offers"), 900);
+        assertFalse(tracker.peekBegan());
+        OfferSnapshot offer = new OfferSnapshot(1750, 16.6, 34, 2);
+        tracker.observeOffer(offer, offer, false, offer, 30, false, 1000);
+        assertFalse(tracker.waitedFor(offer));
+    }
 }

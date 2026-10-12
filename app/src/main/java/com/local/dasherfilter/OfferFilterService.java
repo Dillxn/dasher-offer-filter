@@ -629,7 +629,7 @@ public final class OfferFilterService extends AccessibilityService {
     private long resizedAt = NEVER;
     /** What the last look found of the windows a return goes by ({@link #returnSignature}). */
     private long lastReturnSignature;
-    private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker();
+    private final AcceptedOfferTracker acceptedTracker = new AcceptedOfferTracker(OfferNotificationService::offerStamp);
     private OfferSnapshot learningObservedOffer;
     private boolean learningObservedAddOn;
     private FilterStore.LearningPermit learningPermit;
@@ -4885,12 +4885,13 @@ public final class OfferFilterService extends AccessibilityService {
             OfferNotificationService.peekNotTaken(request.alertTag);
             return;
         }
-        // A peeked offer counts only what is read during the peek: nothing of the wait for offers before it, and no
-        // decline held by hand goes on through it.
-        acceptedTracker.peekBegan();
+        // A peeked offer counts only what is read during the peek, and no decline held by hand goes on through it. The
+        // wait for offers read before it stands only when no other offer came since (AcceptedOfferTracker.peekBegan).
+        boolean waited = acceptedTracker.peekBegan();
         // A delivery under way says so: a peek then is for another store's offer (the order's own re-posts are held).
         Peek.log(this, "opening Dasher for " + request.what() + " (was in front: " + peek.front().kind() + ")"
-                + (ActiveRouteStore.load(this) != null ? "; a delivery under way" : ""));
+                + (ActiveRouteStore.load(this) != null ? "; a delivery under way"
+                : waited ? "; it came while you waited for offers" : ""));
         schedulePeekTick();
     }
 
