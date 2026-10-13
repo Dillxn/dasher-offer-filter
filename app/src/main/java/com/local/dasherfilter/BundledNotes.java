@@ -189,6 +189,10 @@ final class BundledNotes {
                         + "what happened, with the dash's counts under it.",
                 "Each minimum stands at its knob, the mode sits in the radar's middle, Autopilot shows a small meter, "
                         + "and the map names the best area.");
+        release("0.6.7",
+                "Split is back to how 0.6.2 did it: one tap opens Dasher beside this app straight away, with no small "
+                        + "pane in between.",
+                "If the screen doesn't split, recent apps open so you can pick Dasher's card.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

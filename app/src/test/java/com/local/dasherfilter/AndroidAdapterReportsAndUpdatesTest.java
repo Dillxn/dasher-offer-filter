@@ -395,13 +395,12 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     /**
-     * The Split button from full screen (0.6.4, the split pane): screen reading is required, so without it the tap only
-     * says so. With it, this app's own split pane starts beside the page, launch adjacent, and the page itself starts
-     * nothing of Dasher's; in split screen the pane starts Dasher's launcher as its home-screen icon starts it (never
-     * launch adjacent); the split opens nothing more, and never recent apps or Android's split action.
+     * The Split button from full screen (0.6.7, as 0.6.2): screen reading is required, so without it the tap only says
+     * so. With it, the page starts Dasher's launcher beside itself, launch adjacent; the split opens nothing more, and
+     * never recent apps or Android's split action.
      */
     @Test
-    public void splitWithDasherOpensThePaneBesideThePageThenDasherFromIt() throws Exception {
+    public void splitWithDasherStartsDasherBesideThePage() throws Exception {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             assertNull("no Dasher, no button", shownIcon(content, "Split screen with Dasher"));
@@ -426,27 +425,15 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             split.performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            Intent pane = Shadows.shadowOf(app).getNextStartedActivity();
-            assertNotNull("the split pane", pane);
-            assertEquals(SplitPaneActivity.class.getName(), pane.getComponent().getClassName());
-            assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, pane.getFlags());
-            assertNull("nothing of Dasher's from the page", Shadows.shadowOf(app).getNextStartedActivity());
+            Intent dasher = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull("Dasher beside the page", dasher);
+            assertEquals("com.doordash.driverapp", dasher.getComponent().getPackageName());
+            assertEquals("its launch intent, launched adjacent", Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, dasher.getFlags());
+            assertNull("one start", Shadows.shadowOf(app).getNextStartedActivity());
             assertTrue("nothing asked of Android's split action",
                     Shadows.shadowOf(service.get()).getGlobalActionsPerformed().isEmpty());
             assertTrue("the tap waits for the split", DasherSplit.pending());
-
-            // The pane, in split screen, starts Dasher's launcher as its home-screen icon does, and is gone.
-            ActivityController<SplitPaneActivity> paneUp = Robolectric.buildActivity(SplitPaneActivity.class, pane);
-            Shadows.shadowOf(paneUp.get()).setInMultiWindowMode(true);
-            paneUp.setup();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-            Intent dasher = Shadows.shadowOf(app).getNextStartedActivity();
-            assertNotNull("Dasher from the pane", dasher);
-            assertEquals("com.doordash.driverapp", dasher.getComponent().getPackageName());
-            assertEquals("as its home-screen icon starts it, never launch adjacent",
-                    Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, dasher.getFlags());
-            assertTrue(paneUp.get().isFinishing());
-            assertNull(Shadows.shadowOf(app).getNextStartedActivity());
 
             // The phone splits the screen: this app above, Dasher below. Nothing more opens.
             splitAboveDasher(service.get());
@@ -468,8 +455,8 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
     }
 
     /**
-     * The split pane's start made no split (a phone that will not split from it): recent apps open once, with the
-     * phone's words, and the split the user makes there half a minute later with Dasher's own card opens nothing
+     * Dasher's launch-adjacent start made no split (a phone that will not split from it): recent apps open once, with
+     * the phone's words, and the split the user makes there half a minute later with Dasher's own card opens nothing
      * (0.6.2 started Dasher's launcher launch-adjacent into it).
      */
     @Test
@@ -478,7 +465,6 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         dasherInstalled();
         FilterStore.save(app, FilterSettings.of(true, 400, 0, 0, 0));
         DasherSplit.forget();
-        app.getSharedPreferences(DasherSplit.PANE_PREFS, Context.MODE_PRIVATE).edit().clear().commit();
         List<String> asked = new ArrayList<>();
         DasherSplit.recents = () -> {
             asked.add("recents");
@@ -491,10 +477,10 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             View content = activity.get().findViewById(android.R.id.content);
             shownIcon(content, "Split screen with Dasher").performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            Intent pane = Shadows.shadowOf(app).getNextStartedActivity();
-            assertNotNull(pane);
-            assertEquals(SplitPaneActivity.class.getName(), pane.getComponent().getClassName());
-            assertNull("nothing of Dasher's", Shadows.shadowOf(app).getNextStartedActivity());
+            Intent dasher = Shadows.shadowOf(app).getNextStartedActivity();
+            assertNotNull(dasher);
+            assertEquals("com.doordash.driverapp", dasher.getComponent().getPackageName());
+            assertNull("one start", Shadows.shadowOf(app).getNextStartedActivity());
             activity.pause();
             assertTrue("not before the look", asked.isEmpty());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherSplit.VERIFY_MS + 100));
@@ -515,7 +501,6 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
         } finally {
             service.destroy();
             DasherSplit.forget();
-            app.getSharedPreferences(DasherSplit.PANE_PREFS, Context.MODE_PRIVATE).edit().clear().commit();
         }
     }
 

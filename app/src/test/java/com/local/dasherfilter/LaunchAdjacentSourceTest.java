@@ -19,20 +19,20 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * From 0.6.3 no start of Dasher by this app asks for the other half (launch adjacent), from any path, dash or not: the
- * owner's "dd is stuck again" reports of 10, 11 and 12 October 2026 followed Split taps that started Dasher's launcher
- * launch-adjacent, and Dasher's half stayed on its red launch screen (why it stayed is not established). The one
- * launch-adjacent start left is this app's own task beside Dasher, once Dasher is up past its launch screen
- * (OfferFilterService.startOwnBeside). This suite reads the app's code, comments and words in strings left out, so a
- * second launch-adjacent start, the retired DasherSplit.dasher(Context) (Dasher's launcher made launch-adjacent),
- * Android's split action or a task ID read from Android's windows cannot come back unnoticed.
+ * One start of Dasher by this app asks for the other half (launch adjacent): the homepage's Split tap, as 0.6.2 made it,
+ * restored in 0.6.7 at the owner's word ("it's still worse than before we tried to fix split", 13 October 2026, of
+ * 0.6.4's split pane). Every other start of Dasher stays plain: the "dd is stuck again" reports of 10, 11 and 12
+ * October 2026 followed Split taps that started Dasher's launcher launch-adjacent, and why Dasher's half stayed on its
+ * red launch screen is not established. This suite reads the app's code, comments and words in strings left out, so a
+ * second launch-adjacent start, the retired DasherSplit.dasher(Context), Android's split action or a task ID read from
+ * Android's windows cannot come back unnoticed.
  */
 public final class LaunchAdjacentSourceTest {
     private static final String PACKAGE = "app/src/main/java/com/local/dasherfilter/";
     private static final String FLAG = "FLAG_ACTIVITY_LAUNCH_ADJACENT";
 
     @Test
-    public void theOnlyLaunchAdjacentStartIsThisAppsOwnSplitPane() throws IOException {
+    public void theOnlyLaunchAdjacentStartIsTheHomepageSplitTapsStartOfDasher() throws IOException {
         List<String> found = new ArrayList<>();
         for (Path source : mainJava()) {
             String code = codeOnly(read(source));
@@ -44,19 +44,30 @@ public final class LaunchAdjacentSourceTest {
         assertTrue(found.get(0), found.get(0).startsWith("DasherSplit.java:"));
 
         String split = codeOnly(read(new File(root(), PACKAGE + "DasherSplit.java").toPath()));
-        int[] body = methodBody(split, "private static String paneFirst(");
+        int[] body = methodBody(split, "private static String adjacentFirst(");
         int flag = split.indexOf(FLAG);
-        assertTrue("the flag is set inside paneFirst's own body", flag > body[0] && flag < body[1]);
-        // On this app's own pane's intent, with exactly a new task beside it: nothing reset, cleared or reordered.
+        assertTrue("the flag is set inside adjacentFirst's own body", flag > body[0] && flag < body[1]);
+        // Added to Dasher's launch intent as its icon starts it: nothing else reset, cleared or reordered.
         String statement = statementAround(split, flag).replaceAll("\\s+", "");
-        assertEquals("pane.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)", statement);
-        String inBody = split.substring(body[0], body[1]);
-        assertTrue("it is this app's own split pane's intent",
-                inBody.contains("Intent pane = new Intent(activity, SplitPaneActivity.class)"));
-        assertFalse("never Dasher's launcher", inBody.contains("launcher("));
-        // The screen reader's own start beside Dasher is gone.
+        assertEquals("Intentbeside=newIntent(dasher).addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)", statement);
+        // adjacentFirst is reached only from the tap (DasherSplit.start), and start only from the homepage.
+        Matcher calls = Pattern.compile("\\badjacentFirst\\s*\\(").matcher(split);
+        List<Integer> at = new ArrayList<>();
+        while (calls.find()) at.add(calls.start());
+        assertEquals("declared and called once: " + at, 2, at.size());
+        int[] start = methodBody(split, "static String start(Activity activity, Consumer<String> later)");
+        int call = at.get(0) == split.indexOf("private static String adjacentFirst(") + "private static String ".length()
+                ? at.get(1) : at.get(0);
+        assertTrue("called from the tap", call > start[0] && call < start[1]);
+        List<String> starters = new ArrayList<>();
+        for (Path source : mainJava()) {
+            if (codeOnly(read(source)).contains("DasherSplit.start(")) starters.add(source.getFileName().toString());
+        }
+        assertEquals(java.util.Collections.singletonList("MainActivity.java"), starters);
+        // The screen reader's own start beside Dasher, and 0.6.4's split pane, are gone.
         String service = codeOnly(read(new File(root(), PACKAGE + "OfferFilterService.java").toPath()));
         assertFalse("no startOwnBeside", service.contains("startOwnBeside("));
+        assertFalse("no split pane", new File(root(), PACKAGE + "SplitPaneActivity.java").exists());
     }
 
     @Test

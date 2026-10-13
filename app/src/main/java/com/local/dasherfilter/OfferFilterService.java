@@ -2591,20 +2591,19 @@ public final class OfferFilterService extends AccessibilityService {
                 + " excludeFromRecents=" + ((found.flags & ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS) != 0);
     }
 
-    // ---- The Split tap: the split pane's start, logged once the screen split (DasherSplit, SplitPaneActivity) ----
+    // ---- The Split tap: Dasher's launch-adjacent start, logged once the screen split (DasherSplit) ----
 
     static final String NOT_READING = "not reading Dasher while paused";
     static final String SPLIT_OFFER_UP = "an offer or Dasher's question is up";
     static final String SPLIT_BUSY = "a decline, peek or automatic acceptance is under way";
 
     /**
-     * Before the Split tap opens recent apps by itself (main thread; no split after the split pane's start, or Dasher
-     * not beside after its start from the pane): on the scanner, whether anything would meet them, the notice not
-     * accepted, the screen off or locked, a pause, an offer up or its notification, or a decline, peek or automatic
+     * Before the Split tap opens recent apps by itself (main thread; no split after Dasher's launch-adjacent start): on
+     * the scanner, whether anything would meet them, the notice not accepted, the screen off or locked, a pause, an offer up or its notification, or a decline, peek or automatic
      * acceptance under way. Nothing then, with one line saying why; else {@code open} runs on the main thread. With
      * screen reading off, {@code open} runs at once.
      *
-     * @param why what is logged with a refusal ("no split after the split pane's start")
+     * @param why what is logged with a refusal ("no split after Dasher's launch-adjacent start")
      */
     static void beforeSplitRecents(Context context, String why, Runnable open) {
         beforeSplitRecents(context, why, false, open);
@@ -2612,7 +2611,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * As {@link #beforeSplitRecents(Context, String, Runnable)}; with {@code dividerIsTheSplit}, a split divider in
-     * Android's list of windows is the split pane's split (the page has not said so yet): that line, and nothing opens.
+     * Android's list of windows is the split that start made (the page has not said so yet): that line, and nothing opens.
      */
     static void beforeSplitRecents(Context context, String why, boolean dividerIsTheSplit, Runnable open) {
         OfferFilterService service = active;
@@ -2671,22 +2670,22 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * The screen split after the split pane's start beside the homepage (any thread): one line, from the scanner, with
-     * where Dasher is (Android's list of windows; the pane starts it next) and how many tasks of its own this app has.
+     * The screen split after Dasher's launch-adjacent start from the homepage (any thread): one line, from the scanner, with
+     * where Dasher is (Android's list of windows) and how many tasks of its own this app has.
      */
     static void splitMadeByOwnStart(Context context) {
         OfferFilterService service = active;
         if (service == null || service.stopped) {
-            DiagnosticLog.log(context, "split", "screen split by the split pane's launch-adjacent start (own tasks "
-                    + DasherSplit.ownTasks(context) + "); the pane starts Dasher");
+            DiagnosticLog.log(context, "split", "split by Dasher's launch-adjacent start (own tasks "
+                    + DasherSplit.ownTasks(context) + "); nothing more opened");
             return;
         }
         service.onScanner(service::logSplitByOwnStart);
     }
 
     private void logSplitByOwnStart() {
-        DiagnosticLog.log(this, "split", "screen split by the split pane's launch-adjacent start (" + dasherPlace()
-                + ", own tasks " + DasherSplit.ownTasks(this) + "); the pane starts Dasher");
+        DiagnosticLog.log(this, "split", "split by Dasher's launch-adjacent start (" + dasherPlace()
+                + ", own tasks " + DasherSplit.ownTasks(this) + "); nothing more opened");
     }
 
     /** "Dasher bottom 48%" from Android's list of windows now ({@link SplitWindows#field}), else not identified. */

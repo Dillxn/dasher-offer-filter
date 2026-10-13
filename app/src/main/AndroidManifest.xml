@@ -73,16 +73,6 @@
         <activity
             android:name=".LegalActivity"
             android:exported="false" />
-        <!-- Only the homepage's Split tap starts this, beside the homepage: in split screen it opens Dasher in its own
-             half and is gone. -->
-        <activity
-            android:name=".SplitPaneActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:resizeableActivity="true"
-            android:taskAffinity="com.local.dasherfilter.splitpane"
-            android:theme="@style/CardTap" />
         <!-- Only a tap on one of our offer cards starts this: it opens Dasher and is gone. -->
         <activity
             android:name=".OpenDasherActivity"

@@ -24,26 +24,17 @@ import java.util.function.Consumer;
  * Split screen with Dasher, at the user's tap only, so Dasher stays on screen with its offers in view (and its offers
  * are still read and declined at once) while the map here is looked at.
  *
- * <p>No start of Dasher by this app ever asks for the other half (launch adjacent), from any path, dash or not. The
- * owner's reports of 10, 11 and 12 October 2026 ("dd is stuck again") followed Split taps that started Dasher's
- * launcher launch-adjacent, and Dasher's half stayed on its red launch screen. Android (AOSP 16, read from its bytecode;
- * not checked on the owner's phone) reuses a task for a launch-adjacent start only when a live launcher screen of
- * Dasher's matches the intent exactly, and otherwise starts a fresh launcher screen in a task of its own; a plain start
- * finds the task rooted at that launcher, as the home-screen icon does. Why Dasher's launcher stayed on its launch
- * screen is Dasher's to say: it is not established here, and nothing claims it.
- *
- * <p>So a tap from full screen starts this app's own split pane ({@link SplitPaneActivity}), launch-adjacent, in a
- * task of its own, from the homepage in front: One UI split for an activity's launch-adjacent start (0.6.2, 15:52:50
- * on 12 October 2026) but not for the screen reader's (0.6.3's "Dasher first", 19:34 the same day; inferred, not
- * established, that only a start from an activity in front counts). Once the pane is in split screen it starts
- * Dasher's launcher plainly, as its home-screen icon does, and finishes, so Dasher comes into that half
- * ({@link #fromPane}). With no split {@link #VERIFY_MS} later, or Dasher not beside {@link #BESIDE_CHECK_MS} after its
- * start, recent apps open with the phone's words, where the user puts Dasher's own card in the other half. A phone
- * whose pane has failed and never split goes to recent apps at once on later taps. During a delivery nothing of
- * Dasher's is started: recent apps open at once (the owner's 0.6.1 rule); so too while auto-decline is paused. A split
- * the user makes from recent apps opens nothing. Already split without Dasher beside, the button reads "Swap in
- * Dasher" and starts Dasher's launcher from this half, so the app beside stays. Android's own
- * split action is no longer asked for. Each step goes in the log as a [split] line.
+ * <p>A tap from full screen starts Dasher's launcher from the homepage, as its icon starts it, with
+ * NEW_TASK | LAUNCH_ADJACENT, which the phone answers by putting Dasher beside this screen (0.6.7: 0.6.2's start,
+ * restored at the owner's word, "it's still worse than before we tried to fix split", after 0.6.3's "Dasher first" and
+ * 0.6.4's split pane). It is the one launch-adjacent start of Dasher: every other start of Dasher stays plain. The
+ * owner's "dd is stuck again" reports of 10–12 October followed launch-adjacent starts of Dasher's launcher; why
+ * Dasher's launcher sometimes stayed on its launch screen is not established, and the launch watch
+ * ({@link OfferFilterService#launchWatch}) and its homepage line ({@link #LAUNCH_SCREEN_LINE}) stay for it. With no
+ * split {@link #VERIFY_MS} later, recent apps open with the phone's words. During a delivery nothing of Dasher's is
+ * started: recent apps open at once (the owner's 0.6.1 rule); so too while auto-decline is paused. A split the user
+ * makes from recent apps opens nothing. Already split without Dasher beside, the button reads "Swap in Dasher" and
+ * starts Dasher's launcher from this half, so the app beside stays. Each step goes in the log as a [split] line.
  */
 final class DasherSplit {
     static final String DASHER_PACKAGE = "com.doordash.driverapp";
@@ -54,16 +45,8 @@ final class DasherSplit {
     static final long PENDING_MS = 8_000;
     /** How long a tap that opened recent apps waits for the user to split the screen there (it opens nothing then). */
     static final long BY_HAND_MS = 60_000;
-    /** How long after the split pane's launch-adjacent start the screen is looked at again, to see whether it split. */
+    /** How long after Dasher's launch-adjacent start the screen is looked at again, to see whether it split. */
     static final long VERIFY_MS = 1_500;
-    /** How long after Dasher's start from the split pane the screen is looked at, to see Dasher beside. */
-    static final long BESIDE_CHECK_MS = 2_500;
-    /** What a tap does on a phone whose split pane never split the screen, for the log. */
-    static final String PANE_RECENTS = "recent apps at once";
-    /** Where this phone's split pane is remembered: it split the screen once, or how many starts did not. */
-    static final String PANE_PREFS = "split_pane";
-    static final String PANE_WORKED = "worked";
-    static final String PANE_FAILED = "failed";
     private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
     /** The button's words, as screen readers hear them: before a split, and split without Dasher beside. */
     static final String SPLIT_LABEL = "Split screen with Dasher";
@@ -289,15 +272,15 @@ final class DasherSplit {
 
     /**
      * The tap. From full screen: during a delivery, recent apps; while auto-decline is paused (nothing of Dasher's read,
-     * so no read can say no offer is up), recent apps too; otherwise Dasher first, and this app's own task beside it
-     * once Dasher is up ({@link OfferFilterService#pairWhenDasherIsUp}). Already split: {@link #swapIn}.
+     * so no read can say no offer is up), recent apps too; otherwise Dasher's launcher beside this screen, launch
+     * adjacent ({@link #adjacentFirst}). Already split: {@link #swapIn}.
      *
      * @param later what to tell the user should recent apps open after all (on the main thread, at most
      *     {@link #PENDING_MS} plus {@link #VERIFY_MS} later)
      * @return what to tell the user now (what to do in recent apps, or why it cannot be done), else null
      */
     static String start(Activity activity, Consumer<String> later) {
-        // An earlier tap's Dasher-first start still under way ends here: this tap decides now.
+        // An earlier tap's start still under way ends here: this tap decides now.
         int earlier = pairing();
         if (earlier != 0 && endPairing(earlier)) log(activity, "not paired: a newer tap; nothing more opened");
         Intent dasher = launcher(activity);
@@ -334,24 +317,18 @@ final class DasherSplit {
             log(activity, "tap while paused: " + PAUSED_RECENTS);
             return byHand(activity);
         }
-        if (paneNeverSplits(activity)) {
-            // A pane's start has never split this phone's screen: recent apps at once, without Dasher full screen first.
-            log(activity, "tap: this phone has not split for the split pane before: " + PANE_RECENTS);
-            return byHand(activity);
-        }
-        return paneFirst(activity, later);
+        return adjacentFirst(activity, dasher, later);
     }
 
     /**
-     * The split pane (0.6.4): this screen, in front full screen, starts a small invisible screen of this app's own in a
-     * task of its own beside it, launch-adjacent, which the phone answers by splitting the screen (the start One UI
-     * honoured on the owner's phone in 0.6.2, from the homepage, where 0.6.3's start of the same kind from the screen
-     * reader did nothing). In split screen, the pane starts Dasher's launcher as its icon does, with no adjacent flag,
-     * and is gone ({@link SplitPaneActivity}); Dasher's task comes into the pane's half. No start of Dasher is ever
-     * launch-adjacent. With no split {@link #VERIFY_MS} after the pane's start, recent apps open with the phone's words,
-     * and this phone is remembered: until a pane splits on it, a tap opens recent apps at once. Main thread.
+     * Dasher's launcher started from this screen, in front full screen, with NEW_TASK | LAUNCH_ADJACENT (0.6.7, back
+     * to 0.6.2's start: the owner, 13 October 2026, on 0.6.4's split pane: "it's still worse than before we tried to
+     * fix split"). In 0.6.2 that start split his phone's screen in 125–270 ms at every tap of 12 October with Dasher's
+     * offers read in its half seconds later; 0.6.4's pane split at once but Dasher took seconds to reach its half, and
+     * its later look opened recent apps over a split that worked. The phone answers by putting Dasher beside this
+     * screen; with no split {@link #VERIFY_MS} later, recent apps open with the phone's words. Main thread.
      */
-    private static String paneFirst(Activity activity, Consumer<String> later) {
+    private static String adjacentFirst(Activity activity, Intent dasher, Consumer<String> later) {
         int gen;
         synchronized (DasherSplit.class) {
             gen = ++taps;
@@ -361,109 +338,35 @@ final class DasherSplit {
         }
         requestedAt = SystemClock.uptimeMillis();
         waitMs = VERIFY_MS + 1_000;
-        Intent pane = new Intent(activity, SplitPaneActivity.class).putExtra(SplitPaneActivity.EXTRA_TAP, gen);
-        pane.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
-        log(activity, "tap: this app's split pane beside this screen, launch-adjacent (own tasks " + ownTasks(activity)
-                + ")");
+        Intent beside = new Intent(dasher).addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
         try {
-            activity.startActivity(pane);
+            activity.startActivity(beside);
         } catch (RuntimeException refused) {
-            recentAppsAfterOwnStart(activity, gen, "the split pane's start was refused: opening recent apps ("
+            recentAppsAfterOwnStart(activity, gen, "Dasher's launch-adjacent start was refused: opening recent apps ("
                     + refused.getClass().getSimpleName() + ")");
             return null;
         }
+        log(activity, "tap: Dasher's launch intent beside this screen (launch adjacent); looking again in "
+                + VERIFY_MS + " ms");
+        OfferFilterService.launchWatch(OfferFilterService.LAUNCH_SPLIT);
         Context app = activity.getApplicationContext();
-        MAIN.postDelayed(() -> paneCheck(app, gen), VERIFY_MS);
+        MAIN.postDelayed(() -> adjacentCheck(app, gen), VERIFY_MS);
         return null;
     }
 
     /**
-     * {@link #VERIFY_MS} after the pane's start (main thread): split, the page already said so and nothing more is
-     * done; else recent apps open with the phone's words, and this phone's split start is noted as not working.
+     * {@link #VERIFY_MS} after Dasher's launch-adjacent start (main thread): split, nothing more is done; else recent
+     * apps open with the phone's words (unless an offer is up or the app's own work is under way).
      */
-    private static void paneCheck(Context context, int gen) {
+    private static void adjacentCheck(Context context, int gen) {
         if (!ownStartCurrent(gen)) return;
         if (Boolean.TRUE.equals(loggedSplit)) {
             if (ownStartSplit(gen)) OfferFilterService.splitMadeByOwnStart(context);
             return;
         }
-        OfferFilterService.beforeSplitRecents(context, "no split after the split pane's start", true,
-                () -> paneFailed(context, gen));
-    }
-
-    /** The pane's start made no split (main thread): noted for this phone, then recent apps with the phone's words. */
-    private static void paneFailed(Context context, int gen) {
-        if (!ownStartCurrent(gen)) return;
-        if (!Boolean.TRUE.equals(loggedSplit)) notePane(context, false);
-        recentAppsAfterOwnStart(context, gen, "no split " + VERIFY_MS + " ms after the split pane's "
-                        + "launch-adjacent start: opening recent apps");
-    }
-
-    /**
-     * The pane is up in split screen (main thread, from {@link SplitPaneActivity}): this phone splits for it, and
-     * Dasher's launcher starts from the pane as its icon starts it, into the pane's half; a look a little later says
-     * whether Dasher is beside, and opens recent apps when it is not.
-     *
-     * @return whether Dasher's launcher was started
-     */
-    static boolean fromPane(Activity pane) {
-        notePane(pane, true);
-        Intent dasher = launcher(pane);
-        if (dasher == null) {
-            log(pane, "split pane in split screen: Dasher is not installed");
-            return false;
-        }
-        log(pane, "split pane in split screen: Dasher's launcher from the pane, as its icon starts it");
-        String failed = open(pane, dasher);
-        if (failed != null) {
-            log(pane, "split pane: Dasher could not be opened");
-            return false;
-        }
-        OfferFilterService.launchWatch(OfferFilterService.LAUNCH_SPLIT);
-        Context app = pane.getApplicationContext();
-        MAIN.postDelayed(() -> besideCheck(app), BESIDE_CHECK_MS);
-        return true;
-    }
-
-    /** The pane never saw split screen (main thread, from {@link SplitPaneActivity}): it is gone, nothing started. */
-    static void paneWithoutSplit(Context context) {
-        log(context, "split pane never in split screen: gone, nothing started");
-    }
-
-    /** {@link #BESIDE_CHECK_MS} after Dasher's start from the pane: Dasher beside, or recent apps with the words. */
-    private static void besideCheck(Context context) {
-        if (!Boolean.TRUE.equals(loggedSplit)) {
-            log(context, "after Dasher's start from the pane: not split now; nothing more opened");
-            return;
-        }
-        if (!OfferFilterService.isConnected() || OfferFilterService.dasherBesideNow()) {
-            log(context, "after Dasher's start from the pane: Dasher beside "
-                    + (OfferFilterService.isConnected() ? "yes" : "not known (screen reading is off)"));
-            return;
-        }
-        OfferFilterService.beforeSplitRecents(context, "Dasher not beside after its start from the pane", () -> {
-            log(context, "after Dasher's start from the pane: Dasher not beside; opening recent apps");
-            String said = byHand(context);
-            if (said != null) Toast.makeText(context.getApplicationContext(), said, Toast.LENGTH_LONG).show();
-        });
-    }
-
-    /** This phone's split pane worked ({@code worked}), or a pane's start made no split. */
-    private static void notePane(Context context, boolean worked) {
-        android.content.SharedPreferences prefs = context.getApplicationContext()
-                .getSharedPreferences(PANE_PREFS, Context.MODE_PRIVATE);
-        if (worked) {
-            if (!prefs.getBoolean(PANE_WORKED, false)) prefs.edit().putBoolean(PANE_WORKED, true).apply();
-        } else {
-            prefs.edit().putInt(PANE_FAILED, prefs.getInt(PANE_FAILED, 0) + 1).apply();
-        }
-    }
-
-    /** No pane's start has ever split this phone's screen, and one has failed: a tap opens recent apps at once. */
-    static boolean paneNeverSplits(Context context) {
-        android.content.SharedPreferences prefs = context.getApplicationContext()
-                .getSharedPreferences(PANE_PREFS, Context.MODE_PRIVATE);
-        return !prefs.getBoolean(PANE_WORKED, false) && prefs.getInt(PANE_FAILED, 0) > 0;
+        OfferFilterService.beforeSplitRecents(context, "no split after Dasher's launch-adjacent start", true,
+                () -> recentAppsAfterOwnStart(context, gen, "no split " + VERIFY_MS + " ms after Dasher's "
+                        + "launch-adjacent start: opening recent apps"));
     }
 
     /**

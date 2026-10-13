@@ -44,11 +44,11 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Getting into split screen with Dasher and staying there (split-audit P1, P5, P9), through the real page and the
- * real screen-reading service, Android simulated. From 0.6.4 a tap from full screen starts this app's own split pane
- * beside the page, launch-adjacent (during a delivery, or while auto-decline is paused, recent apps instead); in split
- * screen the pane starts Dasher's launcher as its home-screen icon does, and is gone. No start of Dasher ever asks for
- * the other half (the owner's "dd is stuck again" reports followed
- * Split taps that started Dasher's launcher launch-adjacent). Each test fails on 0.4.45, on 0.6.2 or on 0.6.3:
+ * real screen-reading service, Android simulated. From 0.6.7, as in 0.6.2, a tap from full screen starts Dasher's
+ * launcher beside the page, launch-adjacent (during a delivery, or while auto-decline is paused, recent apps instead);
+ * with no split 1.5 s later, recent apps open with the phone's words. That tap's start is the one start of Dasher that
+ * asks for the other half (the owner, 13 October 2026, of 0.6.4's split pane: "it's still worse than before we tried
+ * to fix split"). Each test fails on 0.4.45, on 0.6.2, on 0.6.3 or on 0.6.4:
  * <ul>
  *   <li>0.4.45 took Android's "true" for the split as the split itself, so on a Pixel the button did nothing and said
  *       nothing; and its recent-apps words were the same on every phone;
@@ -58,9 +58,11 @@ import static org.junit.Assert.assertTrue;
  *       Dasher's next event, and a sighting of Dasher beside aged while the screen was off;
  *   <li>0.6.2 started Dasher's launcher launch-adjacent from the tap, and again into a split the user made;
  *   <li>0.6.3 started Dasher full screen and left its own launch-adjacent start to the screen reader, which One UI
- *       never split for.
+ *       never split for;
+ *   <li>0.6.4 started this app's own split pane beside the page, which then started Dasher in its half.
  * </ul>
- * Every activity start these tests saw is recorded, and none of Dasher's may carry the launch-adjacent flag.
+ * Every activity start these tests saw is recorded, and none of Dasher's may carry the launch-adjacent flag but the
+ * Split tap's own start ({@link #assertAdjacentDasher}).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -81,26 +83,27 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
 
     /** Every activity started in a test (by the page or by the screen reader), in order. */
     private final List<Intent> everStarted = new ArrayList<>();
+    /** The Split taps' own starts of Dasher, the only ones that may be launch-adjacent. */
+    private final List<Intent> tapStarts = new ArrayList<>();
 
     @After
     public void forgetSplit() {
         for (Intent left = next(); left != null; left = next()) {
             // Drained: recorded with the rest.
         }
-        // No start of Dasher, from any path, is launch-adjacent: only this app's own task may be.
+        // No start of Dasher, from any path, is launch-adjacent, but the Split tap's own.
         for (Intent started : everStarted) {
-            if (isDashers(started)) {
+            if (isDashers(started) && !tapStarts.contains(started)) {
                 assertEquals(started.toString(), 0, started.getFlags() & Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
             }
         }
         DasherSplit.forget();
-        app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear().commit();
         OfferFilterService.sawDasherBeside(0);
         OfferFilterService.forgetScreenState();
     }
 
     /**
-     * Auto-decline on with a $4.00 minimum, so Dasher's screen is read: the look after the pane's start can say no
+     * Auto-decline on with a $4.00 minimum, so Dasher's screen is read: the look after the tap's start can say no
      * offer is up. Paused (no rule, the default, or auto-decline off) nothing of Dasher's is read, and the tap opens
      * recent apps instead ({@link #aTapWhilePausedOpensRecentAppsAndStartsNothing}).
      */
@@ -318,35 +321,29 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         assertEquals(SplitWindows.CardPlacement.OTHER_PAIR, OfferFilterService.cardSplitPlacementNow());
     }
 
-    // ---- The split pane: one tap, this app's own pane beside the page, then Dasher from the pane ----
+    // ---- The tap: Dasher's launcher beside the page, launch-adjacent, as 0.6.2 started it ----
 
-    /** The split pane started beside the page: exactly a new task launched adjacent, nothing reset or cleared. */
-    private void assertPane(String why, Intent opened) {
-        assertNotNull(why + ": the split pane is started", opened);
-        assertEquals(why, new ComponentName(app, SplitPaneActivity.class), opened.getComponent());
-        assertEquals(why + ": exactly a new task, launched adjacent",
-                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, opened.getFlags());
-        assertNotEquals(why + ": the tap's number", 0, opened.getIntExtra(SplitPaneActivity.EXTRA_TAP, 0));
-    }
-
-    /** The split pane comes up as Android starts it, in split screen ({@code split}) or full screen. */
-    private static ActivityController<SplitPaneActivity> paneUp(Intent pane, boolean split) {
-        ActivityController<SplitPaneActivity> controller = Robolectric.buildActivity(SplitPaneActivity.class, pane);
-        Shadows.shadowOf(controller.get()).setInMultiWindowMode(split);
-        controller.setup();
-        idle();
-        return controller;
+    /**
+     * Dasher's launcher started by the Split tap beside the page: as its icon starts it, plus launch adjacent; nothing
+     * cleared. Recorded as the one start of Dasher that may ask for the other half.
+     */
+    private void assertAdjacentDasher(String why, Intent opened) {
+        assertNotNull(why + ": Dasher's launcher is started", opened);
+        assertEquals(why, DASHER_HOME, opened.getComponent());
+        assertTrue(why, opened.hasCategory(Intent.CATEGORY_LAUNCHER));
+        assertEquals(why + ": its launch intent, launched adjacent", Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT, opened.getFlags());
+        tapStarts.add(opened);
     }
 
     /**
-     * The owner's report of 12 October 2026, 7:37 PM ("split screen button didnt work"): 0.6.3 opened Dasher full screen
-     * and its screen reader's launch-adjacent start of this app never split One UI's screen, where 0.6.2's start from
-     * the homepage had. The tap now starts this app's own split pane beside the page, launch-adjacent; the phone splits;
-     * the pane starts Dasher's launcher as its icon does (never launch-adjacent) and is gone; Dasher is beside, and
-     * nothing more opens. The same whether a dash is on. The phone is remembered as one the pane splits.
+     * The owner's report of 13 October 2026 on 0.6.4 ("it's still worse than before we tried to fix split"): 0.6.2's
+     * start split his phone in about a quarter of a second at every tap, Dasher's offers read in its half; 0.6.4's pane
+     * split, but Dasher took 2 to 3 s to reach its half. The tap starts Dasher's launcher beside the page,
+     * launch-adjacent; the phone splits; nothing more opens, never recent apps. The same whether a dash is on.
      */
     @Test
-    public void thePaneSplitsWithOneTapWithAndWithoutADash() {
+    public void aTapStartsDasherBesideAndTheSplitItMakesOpensNothingMore() {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         readingDasher();
@@ -358,34 +355,28 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 int toasts = ShadowToast.shownToastCount();
                 tapSplit(activity);
-                Intent pane = next();
-                assertPane(variant, pane);
-                assertNull(variant + ": nothing else, and nothing of Dasher's, from the page", next());
+                assertAdjacentDasher(variant, next());
+                assertNull(variant + ": nothing else from the page", next());
                 assertTrue(variant, DasherSplit.pending());
-                // The phone splits the screen: the page above, the pane below.
+                // The phone splits the screen: the page above, Dasher below.
+                activity.pause();
+                pass(200);
                 enterSplit(activity);
+                splitAboveDasher(service.get());
                 activity.resume();
                 idle();
                 assertFalse(variant + ": the split is made", DasherSplit.pending());
-                ActivityController<SplitPaneActivity> up = paneUp(pane, true);
-                assertDashersLauncher(variant + ": Dasher from the pane", next());
-                assertTrue(variant + ": the pane is gone", up.get().isFinishing());
-                assertNull(variant + ": once", next());
-                // Dasher comes into the pane's half.
-                splitAboveDasher(service.get());
                 dasherWindowChange(service.get(), DASHER_MAIN, true);
-                pass(DasherSplit.BESIDE_CHECK_MS + 100);
+                pass(DasherSplit.VERIFY_MS + 100);
                 assertNull(variant + ": the split opens nothing more", next());
                 assertTrue(variant + ": never recent apps, never Android's split action", globalActions(service).isEmpty());
                 assertEquals(variant + ": no words", toasts, ShadowToast.shownToastCount());
-                assertFalse(variant, DasherSplit.paneNeverSplits(app));
                 String log = DiagnosticLog.read(app);
-                contains(log, "[split] tap: this app's split pane beside this screen, launch-adjacent (own tasks ");
-                contains(log, "[split] screen split by the split pane's launch-adjacent start (");
-                contains(log, "[split] split pane started (in split screen: yes)");
-                contains(log, "[split] split pane in split screen: Dasher's launcher from the pane, as its icon starts it");
-                contains(log, "[split] after Dasher's start from the pane: Dasher beside yes");
+                contains(log, "[split] tap: Dasher's launch intent beside this screen (launch adjacent); looking again in "
+                        + DasherSplit.VERIFY_MS + " ms");
+                assertEquals(log, 1, count(log, "[split] split by Dasher's launch-adjacent start ("));
                 assertFalse(variant + ": " + log, log.contains("not paired"));
+                assertFalse(variant + ": " + log, log.contains("no split 1500 ms"));
                 // Android's list of windows 5 and 10 s after Dasher's start, so a report shows whether Dasher drew.
                 pass(10_000);
                 log = DiagnosticLog.read(app);
@@ -393,7 +384,6 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
                 contains(log, "[launch] split + 10 s: win=");
                 assertFalse(variant + ": Dasher drew", log.contains("Dasher still on its launch screen"));
                 assertEquals(0, OfferFilterService.launchScreenHeldSince(app));
-                up.destroy();
             } finally {
                 service.destroy();
             }
@@ -401,12 +391,12 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * Dasher started from the pane but named only by its launcher activity, its red launch screen (the incident of 10
+     * Dasher started beside the page but named only by its launcher activity, its red launch screen (the incident of 10
      * to 12 October): 10 s after its start the launch watch says so once; nothing is started again for it and nothing
      * automatic acts on Dasher, and the line goes once Dasher draws.
      */
     @Test
-    public void dasherOnItsLaunchScreenAfterThePaneIsWatchedNeverStartedAgain() {
+    public void dasherOnItsLaunchScreenAfterTheTapIsWatchedNeverStartedAgain() {
         dasherInstalled();
         readingDasher();
         DasherSplit.forget();
@@ -414,14 +404,12 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            Intent pane = next();
-            assertPane("the tap", pane);
+            assertAdjacentDasher("the tap", next());
+            activity.pause();
             enterSplit(activity);
+            splitAboveDasher(service.get(), null);
             activity.resume();
             idle();
-            ActivityController<SplitPaneActivity> up = paneUp(pane, true);
-            assertDashersLauncher("Dasher from the pane", next());
-            splitAboveDasher(service.get(), null);
             dasherWindowChange(service.get(), DASHER_HOME.getClassName(), true);
             pass(OfferFilterService.LAUNCH_VERDICT_MS);
             String log = DiagnosticLog.read(app);
@@ -439,48 +427,13 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             contains(log, "[launch] Dasher past its launch screen ");
             contains(log, "[split] launch-screen line gone: Dasher drew");
             assertNull(next());
-            up.destroy();
         } finally {
             service.destroy();
         }
     }
 
     /**
-     * The pane never starts Dasher outside split screen: up full screen (no split), it waits, starts nothing and is
-     * gone; the page's look opens recent apps. (0.6.3's Dasher first opened Dasher full screen and waited out any offer
-     * before its own start; the pane never puts Dasher in front full screen, so there is nothing of Dasher's to wait out
-     * before the split, and the look below waits out an offer instead.)
-     */
-    @Test
-    public void thePaneOutsideSplitScreenStartsNothing() {
-        ShadowBuild.setManufacturer("samsung");
-        dasherInstalled();
-        readingDasher();
-        DasherSplit.forget();
-        DasherSplit.recents = () -> true;
-        DiagnosticLog.clear(app);
-        ServiceController<OfferFilterService> service = connectedService();
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            tapSplit(activity);
-            Intent pane = next();
-            assertPane("the tap", pane);
-            activity.pause();
-            ActivityController<SplitPaneActivity> up = paneUp(pane, false);
-            pass(DasherSplit.VERIFY_MS + 100);
-            assertNull("nothing of Dasher's from a pane not in split screen", next());
-            assertTrue("gone", up.get().isFinishing());
-            String log = DiagnosticLog.read(app);
-            contains(log, "[split] split pane started (in split screen: no)");
-            contains(log, "[split] split pane never in split screen: gone, nothing started");
-            assertFalse(log, log.contains("Dasher's launcher from the pane"));
-            up.destroy();
-        } finally {
-            service.destroy();
-        }
-    }
-
-    /**
-     * A newer tap ends the earlier one with its own line, and only the newer tap's look runs: one pane per tap, no
+     * A newer tap ends the earlier one with its own line, and only the newer tap's look runs: one start per tap, no
      * recent apps from the earlier one. Another app in front (a peek's look finds it) ends the tap too, and its look
      * opens nothing.
      */
@@ -494,15 +447,11 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             ServiceController<OfferFilterService> service = connectedService();
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 tapSplit(activity);
-                Intent first = next();
-                assertPane(cause, first);
+                assertAdjacentDasher(cause, next());
                 pass(300);
                 if (cause.equals("newer tap")) {
                     tapSplit(activity);
-                    Intent second = next();
-                    assertPane("the newer tap", second);
-                    assertNotEquals(first.getIntExtra(SplitPaneActivity.EXTRA_TAP, 0),
-                            second.getIntExtra(SplitPaneActivity.EXTRA_TAP, 0));
+                    assertAdjacentDasher("the newer tap", next());
                     String log = DiagnosticLog.read(app);
                     assertEquals(log, 1, count(log, "[split] not paired: a newer tap; nothing more opened"));
                     // The earlier tap's look finds it over; the newer tap's is the one that runs.
@@ -511,7 +460,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
                     idle();
                     pass(DasherSplit.VERIFY_MS + 100);
                     assertFalse(DasherSplit.pending());
-                    assertEquals(1, count(DiagnosticLog.read(app), "screen split by the split pane's"));
+                    assertEquals(1, count(DiagnosticLog.read(app), "split by Dasher's launch-adjacent start ("));
                 } else {
                     activity.pause();
                     DasherSplit.abandon(app, "another app");
@@ -528,34 +477,32 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * The pane's start made no split (Android opened it full screen, say): recent apps then, once, with the phone's
-     * words, where the user puts Dasher's own card in the other half; the split made there opens nothing. The phone is
-     * remembered: until a pane splits on it, the next tap opens recent apps at once, starting nothing.
+     * Dasher's launch-adjacent start made no split (the phone opened Dasher full screen, say): recent apps then, once,
+     * 1.5 s after the tap, with the phone's words, where the user puts Dasher's own card in the other half; the split
+     * made there opens nothing. Nothing is remembered: the next tap starts Dasher beside the page again.
      */
     @Test
-    public void thePaneWithoutASplitOpensRecentAppsAndThePhoneIsRemembered() {
+    public void anAdjacentStartThatDoesNotSplitOpensRecentAppsWithThePhonesWords() {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         readingDasher();
         DasherSplit.forget();
         DiagnosticLog.clear(app);
-        app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear().commit();
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             activity.pause();
             pass(DasherSplit.VERIFY_MS - 100);
             assertTrue("not yet", globalActions(service).isEmpty());
             pass(200);
             contains(DiagnosticLog.read(app),
-                    "[split] no split 1500 ms after the split pane's launch-adjacent start: opening recent apps");
+                    "[split] no split 1500 ms after Dasher's launch-adjacent start: opening recent apps");
             assertEquals("recent apps, once", Collections.singletonList(AccessibilityService.GLOBAL_ACTION_RECENTS),
                     globalActions(service));
             assertEquals(DasherSplit.hintWithDasher("samsung"), ShadowToast.getTextOfLatestToast());
             contains(DiagnosticLog.read(app), "[split] recent apps opened, with the samsung hint to pick Dasher's card");
             assertNull(next());
-            assertTrue("remembered", DasherSplit.paneNeverSplits(app));
 
             // The user splits it there 20 s later, Dasher's own card in the other half: nothing is opened into it.
             pass(20_000);
@@ -572,20 +519,16 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             service.destroy();
         }
 
-        // The next tap, full screen again: recent apps at once, no pane, nothing of Dasher's.
+        // The next tap, full screen again: Dasher beside the page again, nothing remembered.
         DasherSplit.forget();
         DiagnosticLog.clear(app);
         service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertNull("nothing started", next());
-            assertEquals(Collections.singletonList(AccessibilityService.GLOBAL_ACTION_RECENTS), globalActions(service));
-            contains(DiagnosticLog.read(app), "[split] tap: this phone has not split for the split pane before: "
-                    + DasherSplit.PANE_RECENTS);
+            assertAdjacentDasher("the next tap", next());
+            assertTrue(globalActions(service).isEmpty());
         } finally {
             service.destroy();
-            app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear()
-                    .commit();
         }
     }
     /**
@@ -607,14 +550,14 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 tapSplit(activity);
                 assertNull(paused + ": nothing of Dasher's started", next());
-                assertEquals(paused + ": no split pane", 0, DasherSplit.pairing());
+                assertEquals(paused + ": no start beside the page", 0, DasherSplit.pairing());
                 assertEquals(paused, Collections.singletonList(AccessibilityService.GLOBAL_ACTION_RECENTS),
                         globalActions(service));
                 assertEquals(DasherSplit.hintWithDasher("samsung"), ShadowToast.getTextOfLatestToast());
                 String log = DiagnosticLog.read(app);
                 contains(log, "[split] tap while paused: " + DasherSplit.PAUSED_RECENTS);
                 contains(log, "[split] recent apps opened, with the samsung hint to pick Dasher's card");
-                assertFalse(log, log.contains("[split] tap: this app's split pane"));
+                assertFalse(log, log.contains("[split] tap: Dasher's launch intent beside"));
 
                 // The user splits it there, Dasher's own card in the other half: nothing is opened into it.
                 activity.pause();
@@ -639,7 +582,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             activity.pause();
             pass(300);
             FilterStore.save(app, FilterSettings.of(false, 400, 0, 0, 0));
@@ -649,30 +592,29 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             assertTrue("no recent apps", globalActions(service).isEmpty());
             String log = DiagnosticLog.read(app);
             assertEquals(log, 1, count(log, "[split] not paired: " + OfferFilterService.NOT_READING
-                    + " (no split after the split pane's start); nothing more opened"));
+                    + " (no split after Dasher's launch-adjacent start); nothing more opened"));
         } finally {
             service.destroy();
         }
     }
     /**
-     * The pane up full screen over the page, not split (a phone may do that): the page paused under it is not the user
-     * leaving, so the tap still waits for the look 1.5 s after the pane's start, which opens recent apps with the
-     * phone's words; the split made there opens nothing.
+     * Dasher up full screen over the page, not split (a phone may do that): the page paused under it is not the user
+     * leaving, so the tap still waits for the look 1.5 s after the start, which opens recent apps with the phone's
+     * words.
      */
     @Test
-    public void thePaneFullScreenOverThePageIsNotTheUserComingBack() {
+    public void dasherFullScreenOverThePageIsNotTheUserComingBack() {
         ShadowBuild.setManufacturer("samsung");
         dasherInstalled();
         readingDasher();
         DasherSplit.forget();
-        app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear().commit();
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            Intent pane = next();
-            assertPane("the tap", pane);
+            assertAdjacentDasher("the tap", next());
             activity.pause();
-            ActivityController<SplitPaneActivity> up = paneUp(pane, false);
+            dasherInFront(service.get(), root(DASHER, "Finding offers"));
+            dasherWindowChange(service.get(), DASHER_MAIN, true);
             pass(300);
             String log = DiagnosticLog.read(app);
             assertFalse("not the user back on the page: " + log, log.contains("not paired"));
@@ -685,34 +627,20 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             assertEquals(Collections.singletonList(AccessibilityService.GLOBAL_ACTION_RECENTS), globalActions(service));
             assertEquals(DasherSplit.hintWithDasher("samsung"), ShadowToast.getTextOfLatestToast());
             contains(DiagnosticLog.read(app),
-                    "[split] no split 1500 ms after the split pane's launch-adjacent start: opening recent apps");
+                    "[split] no split 1500 ms after Dasher's launch-adjacent start: opening recent apps");
             assertNull(next());
-            up.destroy();
-
-            // The user splits it there: nothing is opened into it.
-            pass(20_000);
-            splitAboveDasher(service.get());
-            enterSplit(activity);
-            activity.resume();
-            idle();
-            assertNull("the split made in recent apps opens nothing", next());
-            assertFalse(DasherSplit.pending());
-            assertEquals(1, globalActions(service).size());
-            contains(DiagnosticLog.read(app), "nothing opened (recent apps path)");
         } finally {
             service.destroy();
-            app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear()
-                    .commit();
         }
     }
 
     /**
-     * The look 1.5 s after the pane's start opens recent apps only when nothing would meet them: the phone locked, an
+     * The look 1.5 s after the tap's start opens recent apps only when nothing would meet them: the phone locked, an
      * offer up, an automatic acceptance just requested, or the notice no longer accepted each leave everything as it
-     * is, with one line saying why, and nothing more opens. The phone is not remembered as one that never splits.
+     * is, with one line saying why, and nothing more opens.
      */
     @Test
-    public void theLookAfterThePanesStartOpensNothingOverAnOfferOrTheUsersOwnMove() {
+    public void theLookAfterTheTapsStartOpensNothingOverAnOfferOrTheUsersOwnMove() {
         dasherInstalled();
         readingDasher();
         String[][] causes = {
@@ -724,13 +652,11 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         for (String[] cause : causes) {
             DasherSplit.forget();
             DiagnosticLog.clear(app);
-            app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear()
-                    .commit();
             ServiceController<OfferFilterService> service = connectedService();
             OfferFilterService screen = service.get();
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 tapSplit(activity);
-                assertPane(cause[0], next());
+                assertAdjacentDasher(cause[0], next());
                 activity.pause();
                 switch (cause[0]) {
                     case "lock":
@@ -750,12 +676,11 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
                 pass(DasherSplit.VERIFY_MS + 100);
                 String log = DiagnosticLog.read(app);
                 assertEquals(cause[0] + ":\n" + log, 1, count(log, "[split] not paired: " + cause[1]
-                        + " (no split after the split pane's start); nothing more opened"));
+                        + " (no split after Dasher's launch-adjacent start); nothing more opened"));
                 assertFalse(cause[0] + ": " + log, log.contains("no split 1500 ms"));
                 assertTrue(cause[0] + ": no recent apps", globalActions(service).isEmpty());
                 assertNull(cause[0] + ": nothing more started", next());
                 assertFalse(cause[0], DasherSplit.pending());
-                assertFalse(cause[0], DasherSplit.paneNeverSplits(app));
             } finally {
                 Shadows.shadowOf(screen.getSystemService(KeyguardManager.class)).setKeyguardLocked(false);
                 ConsentedTestApp.accept(app);
@@ -764,51 +689,6 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         }
     }
 
-    /**
-     * Dasher not beside 2.5 s after its start from the pane (the phone put it elsewhere): recent apps with the phone's
-     * words, so the user can put Dasher's card in the other half; with an automatic acceptance just requested (an offer
-     * being answered), nothing opens.
-     */
-    @Test
-    public void dasherNotBesideAfterThePaneOpensRecentAppsUnlessAnOfferIsBeingAnswered() {
-        ShadowBuild.setManufacturer("samsung");
-        dasherInstalled();
-        readingDasher();
-        for (boolean offer : new boolean[] {false, true}) {
-            DasherSplit.forget();
-            DiagnosticLog.clear(app);
-            ServiceController<OfferFilterService> service = connectedService();
-            try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-                tapSplit(activity);
-                Intent pane = next();
-                assertPane("the tap", pane);
-                enterSplit(activity);
-                activity.resume();
-                idle();
-                ActivityController<SplitPaneActivity> up = paneUp(pane, true);
-                assertDashersLauncher("Dasher from the pane", next());
-                if (offer) ReflectionHelpers.setField(service.get(), "autoRequestedAt", SystemClock.uptimeMillis());
-                // Split beside another app, not Dasher.
-                pairedWith(service.get(), app.getPackageName(), "com.example.reader");
-                pass(DasherSplit.BESIDE_CHECK_MS + 100);
-                String log = DiagnosticLog.read(app);
-                if (offer) {
-                    assertTrue("no recent apps over the offer", globalActions(service).isEmpty());
-                    contains(log, "[split] not paired: " + OfferFilterService.SPLIT_BUSY
-                            + " (Dasher not beside after its start from the pane); nothing more opened");
-                } else {
-                    assertEquals(Collections.singletonList(AccessibilityService.GLOBAL_ACTION_RECENTS),
-                            globalActions(service));
-                    assertEquals(DasherSplit.hintWithDasher("samsung"), ShadowToast.getTextOfLatestToast());
-                    contains(log, "[split] after Dasher's start from the pane: Dasher not beside; opening recent apps");
-                }
-                assertNull(next());
-                up.destroy();
-            } finally {
-                service.destroy();
-            }
-        }
-    }
     /**
      * The owner's 0.6.1 rule, kept: during a delivery (a stored route, or Dasher's pickup, delivery or turn-by-turn
      * screen read within 10 minutes) nothing of Dasher's is started, from full screen or in split screen: recent apps
@@ -889,17 +769,16 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     // ---- P1: when no split follows, recent apps, in the phone's own words ----
 
     @Test
-    public void onAPixelThePanesStartThatDoesNotSplitOpensRecentAppsWithPixelWords() {
-        // A Pixel: Android takes the split pane's start and splits nothing.
+    public void onAPixelAnAdjacentStartThatDoesNotSplitOpensRecentAppsWithPixelWords() {
+        // A Pixel: Android takes Dasher's launch-adjacent start and splits nothing.
         ShadowBuild.setManufacturer("Google");
         dasherInstalled();
         readingDasher();
         DasherSplit.forget();
-        app.getSharedPreferences(DasherSplit.PANE_PREFS, android.content.Context.MODE_PRIVATE).edit().clear().commit();
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             assertTrue("Android's split action is no longer asked for", globalActions(service).isEmpty());
             activity.pause();
 
@@ -912,7 +791,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
                     ShadowToast.getTextOfLatestToast());
             assertNull(next());
             String log = DiagnosticLog.read(app);
-            contains(log, "[split] no split 1500 ms after the split pane's launch-adjacent start: opening recent apps");
+            contains(log, "[split] no split 1500 ms after Dasher's launch-adjacent start: opening recent apps");
             contains(log, "[split] recent apps opened, with the pixel hint");
 
             // The user splits it there 20 s later with Dasher's own card: nothing is opened into it.
@@ -981,15 +860,15 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         }
     }
 
-    // ---- A split made another way, before this app's own start, opens nothing ----
+    // ---- A split after the tap's start opens nothing more ----
 
     /**
      * The screen split after the tap, whether the page said so first or Android's list of windows did at the look, is
-     * the split pane's split: nothing more is started from the page, the tap no longer waits and recent apps never
+     * the split Dasher's launch-adjacent start made: nothing more is started from the page, the tap no longer waits and recent apps never
      * open. The line says so once.
      */
     @Test
-    public void aSplitAfterTheTapIsThePanesAndOpensNoRecentApps() {
+    public void aSplitAfterTheTapIsTheStartsAndOpensNoRecentApps() {
         dasherInstalled();
         readingDasher();
         for (boolean pageFirst : new boolean[] {true, false}) {
@@ -998,7 +877,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
             ServiceController<OfferFilterService> service = connectedService();
             try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
                 tapSplit(activity);
-                assertPane("the tap", next());
+                assertAdjacentDasher("the tap", next());
                 pass(500);
                 if (pageFirst) {
                     enterSplit(activity);
@@ -1015,7 +894,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
                 assertNull(next());
                 assertTrue("never recent apps", globalActions(service).isEmpty());
                 String log = DiagnosticLog.read(app);
-                assertEquals(log, 1, count(log, "[split] screen split by the split pane's launch-adjacent start ("));
+                assertEquals(log, 1, count(log, "[split] split by Dasher's launch-adjacent start ("));
                 assertFalse(log, log.contains("no split 1500 ms"));
                 assertFalse(log, log.contains("not paired"));
             } finally {
@@ -1033,7 +912,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             splitWithDasherBelow(service.get());
             OfferFilterService.lookSoon(null);
             idle();
@@ -1070,7 +949,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             Dashing.seen(app);
             identifiedPair(service.get(), "com.google.android.apps.maps");
             AccessibilityWindowInfo mapPane = service.get().getWindows().get(2);
@@ -1091,7 +970,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             identifiedPair(service.get(), "com.waze");
             assertFalse("no observed dash or route is inferred from a visible map", Dashing.now(app));
             enterSplit(activity);
@@ -1106,7 +985,7 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = connectedService();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             tapSplit(activity);
-            assertPane("the tap", next());
+            assertAdjacentDasher("the tap", next());
             identifiedPair(service.get(), "com.example.reader", "com.example.notes");
             enterSplit(activity);
             assertNull("a resumed Activity is not proof our pane is in the current pair", next());
