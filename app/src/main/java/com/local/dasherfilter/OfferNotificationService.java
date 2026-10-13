@@ -29,8 +29,9 @@ import java.util.Map;
  * an offer the user had in Dasher ({@link TrackedOffer#heldInDasherUntil}). It gets a card of its own, which
  * rings once while Dasher is in the background (silently when Android shows Dasher's own alert for it sounded), unless
  * Dasher's own notification of it really alerts the user: listed, tappable, and ranked by Android to pop up or sound by
- * itself ({@link #alertsByItself}). Never a payless card beside Dasher's own that alerts (the owner's request), and
- * never an offer left with no alert at all when Dasher's own is silenced. One offer is one history line: a
+ * itself, or on DoorDash's offer channel made with no sound, Dasher ringing for the offer itself
+ * ({@link #alertsByItself}). Never a payless card beside Dasher's own that alerts (the owner's request), and never an
+ * offer left with no alert at all when Dasher's own is silenced on a channel Dasher does not ring beside. One offer is one history line: a
  * notification of an offer the screen reads is folded into the screen's line, and its card is cleared then. Native
  * passing/unknown alerts are never dismissed by this presentation decision.
  */
@@ -342,11 +343,14 @@ public final class OfferNotificationService extends NotificationListenerService 
         boolean dasherSounded;
         /**
          * Android ranks Dasher's latest post of it as alerting the user by itself ({@link #alertsByItself}): it pops up
-         * on screen, or sounds, and Do Not Disturb lets it through. Only then does a payless card give way to it; when
-         * Dasher's offer alerts are silenced (as Settings' Fix row for DoorDash's offer channel may lead to), held back
-         * by Do Not Disturb, or Android does not say, the card is still how the offer is heard.
+         * on screen, or sounds, or is on DoorDash's offer channel made with no sound (Dasher rings for the offer
+         * itself), and Do Not Disturb lets it through. Only then does a payless card give way to it; when Dasher's offer
+         * alerts are silenced on another channel, held back by Do Not Disturb, or Android does not say, the card is
+         * still how the offer is heard.
          */
         boolean dasherAlerts;
+        /** Dasher's latest post of it is on its offer channel made with no sound ({@link #ringsByItself}). */
+        boolean dasherRings;
         /** Our notification was asked to sound; keep that sole alert unless the native one is known heard. */
         boolean ownAlerted;
         /** A quiet generic card was omitted because the current native alert supplies its tap. */
@@ -736,6 +740,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             offer.dasherSounded |= dasherSounded;
             // As Android ranks Dasher's latest post of it; a post it does not rank is not known to alert.
             offer.dasherAlerts = alertsByItself(rank);
+            offer.dasherRings = rank != null && ringsByItself(rank.getChannel());
             offer.contentIntent = notification.contentIntent;
             // A same-key update with sufficient figures is already judged. It revokes the earlier payless
             // request while that request is still waiting for quiet (a peek already opened goes by the post below).
@@ -1118,9 +1123,12 @@ public final class OfferNotificationService extends NotificationListenerService 
      * (the owner: ".72 still gives redundant notifications on dashes (says dasher notification didn't have price
      * info...etc)"): a payless card adds nothing to it. DoorDash's own offer channel, as phones report it, has no sound
      * at the highest importance: its notification pops up while Dasher rings by itself, whatever Android's record of
-     * the post's sound says. The card shows (ringing once, as before) while Dasher's notification is gone or cannot be
-     * tapped (or Android cannot say which), as the way into the offer, and while it cannot alert by itself
-     * ({@link #alertsByItself}: silenced, held back by Do Not Disturb, or not ranked), as how the offer is heard.
+     * the post's sound says; set to Silent it no longer pops up, and Dasher still rings for the offer itself
+     * ({@link #ringsByItself}; the owner, 13 October 2026: "still getting duplicate notifications from our app
+     * mirroring dasher notifications"). The card shows (ringing once, as before) while Dasher's notification is gone or
+     * cannot be tapped (or Android cannot say which), as the way into the offer, and while it cannot alert by itself
+     * ({@link #alertsByItself}: silenced on another channel, held back by Do Not Disturb, or not ranked), as how the
+     * offer is heard.
      *
      * <p>With a peek about to read it ({@code peeking}), the card, when one is due, is posted silently: no ring, and so
      * no sound given back over the decline that may follow ({@link OfferSilencer#yieldToPassingAlert}). It rings once
@@ -1172,8 +1180,12 @@ public final class OfferNotificationService extends NotificationListenerService 
             offer.nativeCard = true;
             offer.state.delivered(signature, decision.result, dasherSounds);
             if (foreground) OfferFilterService.requestCheckFromNotification();
+            // Beside DoorDash's offer channel made with no sound, what was playing (streams and usages only, never an
+            // app) says whether Dasher's own ring was heard as the card was left out.
             DiagnosticLog.log(this, "alert", payless
                     ? "actionable native alert retained; payless card omitted: Dasher's own alerts by itself"
+                            + (offer.dasherRings ? " (Dasher rings for offers itself; playing="
+                            + OfferSilencer.playing(this) + ")" : "")
                     : "actionable native alert retained; duplicate generic card omitted");
             return DecisionLog.Action.NATIVE_ALERT;
         }
@@ -1650,18 +1662,38 @@ public final class OfferNotificationService extends NotificationListenerService 
     /**
      * Whether Android ranks this post of Dasher's as alerting the user by itself: Do Not Disturb lets it through, and it
      * pops up on screen (high importance or above), or it sounds (default importance or above, on a channel with a
-     * sound). DoorDash's own offer channel, as phones report it, has no sound at the highest importance: its
-     * notification pops up while Dasher rings by itself. Blocked, Silent or minimized (below default importance), a
-     * channel at default importance with no sound, a post Do Not Disturb holds back, or a post Android does not rank
-     * does not: a card of ours is then how the offer is heard. Channel settings only, never the post's words.
+     * sound), or it is on DoorDash's offer channel made with no sound, at any importance Android shows
+     * ({@link #ringsByItself}: Dasher rings for the offer itself). DoorDash's own offer channel, as phones report it,
+     * has no sound at the highest importance: its notification pops up while Dasher rings by itself. Blocked, Silent or
+     * minimized (below default importance), a channel at default importance with no sound, a post Do Not Disturb holds
+     * back, or a post Android does not rank does not, on any other channel: a card of ours is then how the offer is
+     * heard. Channel settings and the channel's id only, never the post's words.
      */
     static boolean alertsByItself(Ranking rank) {
         if (rank == null || !rank.matchesInterruptionFilter()) return false;
         int importance = rank.getImportance();
         if (importance >= NotificationManager.IMPORTANCE_HIGH) return true;
         NotificationChannel channel = rank.getChannel();
+        if (importance > NotificationManager.IMPORTANCE_NONE && ringsByItself(channel)) return true;
         return importance >= NotificationManager.IMPORTANCE_DEFAULT && channel != null && channel.getSound() != null;
     }
+
+    /**
+     * Whether Dasher's post is on DoorDash's offer channel made with no sound or vibration of its own, as the channel's
+     * id says ("dasher-notification-channel-nexus-new-offer-no-sound-haptics"): Dasher rings for the offer itself, on the
+     * alarm stream ({@link OfferSilencer}), however that channel is set, Silent included. The owner (13 October 2026):
+     * "still getting duplicate notifications from our app mirroring dasher notifications", his offer channel Silent
+     * since 7 October; Dasher's ring was playing at 16 of the 18 rings of our card that his reports logged from 4 to 12
+     * October, Dasher hidden, beside our own half or the screen off. The channel's id only, never the post's words.
+     */
+    static boolean ringsByItself(NotificationChannel channel) {
+        String id = channel == null ? null : channel.getId();
+        return id != null && id.startsWith(DASHER_CHANNEL_PREFIX) && id.contains(NO_SOUND);
+    }
+
+    /** DoorDash's prefix for its notification channels' ids, and the words its offer channel's id says it is made with. */
+    private static final String DASHER_CHANNEL_PREFIX = "dasher-notification-channel-";
+    private static final String NO_SOUND = "-no-sound";
 
     /**
      * Records the source channel's actual sound/vibration settings and extra key names (never their values): each is

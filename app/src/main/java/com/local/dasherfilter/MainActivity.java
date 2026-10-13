@@ -1669,9 +1669,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         LinearLayout setup = ui.column();
         body.addView(setup, Ui.matchWidth());
         // DoorDash's offer channel sounded for an offer (so for declined ones too): its own page lets the user silence
-        // it. Silenced (Silent, its sound and pop-up off, or held back by Do Not Disturb), an offer Offer Filter cannot
-        // judge gets Offer Filter's own card, ringing once, instead (OfferNotificationService.alertsByItself): following
-        // this Fix never leaves an offer with no alert at all.
+        // it. Dasher still rings for an offer itself beside its offer channel made with no sound
+        // (OfferNotificationService.ringsByItself); silenced on any other channel (Silent, its sound and pop-up off, or
+        // held back by Do Not Disturb), an offer Offer Filter cannot judge gets Offer Filter's own card, ringing once,
+        // instead (OfferNotificationService.alertsByItself): following this Fix never leaves an offer with no alert.
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
         battery = new Readiness(setup, BatteryLimits.PROBLEM, () -> BatteryLimits.open(this, this::open));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);

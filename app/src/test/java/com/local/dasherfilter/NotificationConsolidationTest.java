@@ -149,6 +149,78 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
         }
     }
 
+    /** DoorDash's offer channel as the owner's phone reports it since 7 October: Silent, no sound, no vibration. */
+    private NotificationListenerService.RankingMap dashersOfferChannel(StatusBarNotification source, int importance,
+                                                                       boolean throughDoNotDisturb) {
+        NotificationChannel channel = new NotificationChannel(
+                "dasher-notification-channel-nexus-new-offer-no-sound-haptics", "New offers",
+                Math.max(importance, NotificationManager.IMPORTANCE_MIN));
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        try {
+            return SameOfferAdapterTest.ranking(source, channel, importance, throughDoNotDisturb, 0);
+        } catch (Exception failure) { throw new AssertionError(failure); }
+    }
+
+    /** One of Dasher's offer posts, on a key of its own. */
+    private StatusBarNotification offerPost(int key, boolean tappable, long at) {
+        return new StatusBarNotification("com.doordash.driverapp", "com.doordash.driverapp", 60 + key,
+                "NEW_ORDER_" + key, 10001, 0, 0, source(tappable, false, at).getNotification(),
+                android.os.Process.myUserHandle(), at + key * 1_000L);
+    }
+
+    /**
+     * The owner (13 October 2026): "still getting duplicate notifications from our app mirroring dasher notifications".
+     * His DoorDash offer channel has been Silent since 7 October (importance 2, no sound), so Android ranks its post as
+     * neither popping up nor sounding, and our card rang beside it with Dasher hidden; Dasher rings for the offer itself
+     * on the alarm stream (16 of those 18 rings had it playing). Beside that channel's tappable post no payless card
+     * shows, at any importance Android shows it. Do Not Disturb holding it back, Dasher's post blocked or untappable
+     * still get our card, ringing once: never an offer with no alert, or no way in.
+     */
+    @Test public void besideDashersSilentOfferChannelDasherRingsItselfSoNoPaylessCard() {
+        long at = System.currentTimeMillis() - 30_000;
+        int key = 0;
+        for (int importance : new int[] {NotificationManager.IMPORTANCE_LOW, NotificationManager.IMPORTANCE_MIN,
+                NotificationManager.IMPORTANCE_DEFAULT}) {
+            DiagnosticLog.clear(app);
+            StatusBarNotification source = offerPost(key++, true, at);
+            nativeAlerts.addActiveNotification(source);
+            listener.onNotificationPosted(source, dashersOfferChannel(source, importance, true));
+            nativeOnly(source);
+            assertEquals("importance " + importance, DecisionLog.Action.NATIVE_ALERT,
+                    DecisionLog.recent(app, 1).get(0).action);
+            assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("payless card omitted: Dasher's own "
+                    + "alerts by itself (Dasher rings for offers itself; playing="));
+        }
+        int cards = 0;
+        for (Object[] fallback : new Object[][] {
+                {true, NotificationManager.IMPORTANCE_LOW, false},   // held back by Do Not Disturb
+                {true, NotificationManager.IMPORTANCE_NONE, true},   // blocked
+                {false, NotificationManager.IMPORTANCE_LOW, true},   // Dasher's post cannot be tapped
+        }) {
+            StatusBarNotification source = offerPost(key++, (Boolean) fallback[0], at);
+            nativeAlerts.addActiveNotification(source);
+            listener.onNotificationPosted(source, dashersOfferChannel(source, (Integer) fallback[1],
+                    (Boolean) fallback[2]));
+            assertEquals("a card for " + java.util.Arrays.toString(fallback), ++cards, notifications().size());
+            assertEquals(OfferAlerts.REVIEW_CHANNEL_ID, cardFor(source).getChannelId());
+            assertEquals(DecisionLog.Action.CHECK_BELL, DecisionLog.recent(app, 1).get(0).action);
+        }
+        assertEquals("Dasher's own is never dismissed", 0, nativeAlerts.cancellations);
+    }
+
+    /** Only DoorDash's channel made with no sound counts, by its id: never another of Dasher's, or another app's. */
+    @Test public void onlyDashersOfferChannelMadeWithNoSoundRingsByItself() {
+        assertTrue(OfferNotificationService.ringsByItself(new NotificationChannel(
+                "dasher-notification-channel-nexus-new-offer-no-sound-haptics", "New offers",
+                NotificationManager.IMPORTANCE_LOW)));
+        assertFalse(OfferNotificationService.ringsByItself(new NotificationChannel(
+                "dasher-notification-channel-delivery-update", "Delivery updates", NotificationManager.IMPORTANCE_LOW)));
+        assertFalse(OfferNotificationService.ringsByItself(new NotificationChannel(
+                "source", "Dasher", NotificationManager.IMPORTANCE_LOW)));
+        assertFalse(OfferNotificationService.ringsByItself(null));
+    }
+
     @Test public void besideDashersNotificationAndroidDoesNotRankTheCardRingsOnce() {
         StatusBarNotification source = source(true, false, System.currentTimeMillis());
         nativeAlerts.addActiveNotification(source);
