@@ -92,14 +92,14 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
-            assertEquals("exactly the minimums", 1000L, find(content, DecisionChartView.class).payoutThresholdCents());
+            assertEquals("exactly the minimums", 100, find(content, DecisionChartView.class).scoreThresholdPercent());
         }
         autopilotBarAt(97);
         try (ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             DecisionChartView chart = find(content, DecisionChartView.class);
-            assertEquals(970L, chart.payoutThresholdCents());
+            assertEquals(97, chart.scoreThresholdPercent());
             assertEquals("a recorded 97% tree meets the new 97% reference", chart.treeAt(0)[1],
                     chart.scoreThresholdY(), 0.01f);
             assertEquals(97, FilterStore.load(app).minimumScalePercent);
@@ -109,7 +109,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             chart = find(content, DecisionChartView.class);
-            assertEquals(970L, chart.payoutThresholdCents());
+            assertEquals(97, chart.scoreThresholdPercent());
             assertEquals(chart.treeAt(0)[1], chart.scoreThresholdY(), 0.01f);
         }
     }
@@ -130,7 +130,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             assertEquals("only Autopilot moves the bar", 97, saved.minimumScalePercent);
             assertTrue("a drag is not a tap that turns Autopilot off", saved.autopilot);
             assertArrayEquals(RULES.minimums(), saved.minimums());
-            assertEquals(970L, find(content, DecisionChartView.class).payoutThresholdCents());
+            assertEquals(97, find(content, DecisionChartView.class).scoreThresholdPercent());
         }
     }
 
@@ -201,7 +201,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
             DecisionChartView chart = find(content, DecisionChartView.class);
             assertNotNull(chart);
             assertEquals(night, new Ui(app).dark);
-            assertEquals(970L, chart.payoutThresholdCents());
+            assertEquals(97, chart.scoreThresholdPercent());
             assertEquals(chart.treeAt(13)[1], chart.scoreThresholdY(), 0.01f);
             assertTrue(chart.scoreThresholdY() >= 0 && chart.scoreThresholdY() < chart.getHeight());
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1400));

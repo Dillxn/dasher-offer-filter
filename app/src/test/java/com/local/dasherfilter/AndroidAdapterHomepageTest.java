@@ -147,12 +147,13 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(map.getContentDescription().toString().startsWith(
                     "Best paying areas by pay per mile: 1, 3.6 mi NE of you, $3.00/mi over 3 offers; "
                     + "2, Around you, $2.00/mi over 3 offers."));
-            TextView best = shownTextContaining(content, "3.6 mi NE · $3.00/mi · 3 offers  ›");
-            assertNotNull("the best area is shown until another is picked", best);
+            // 0.6.6: the map names the selected square (the best until another is picked) with its rate.
+            assertEquals("the best area is shown until another is picked", "$3.00/mi", map.nameShown(map.selected()));
+            assertNull("no line under the map", shownTextContaining(content, "  ›"));
             assertTrue(areaLineSaid(content), areaLineSaid(content)
                     .startsWith("#1 · 3.6 mi NE of you · $3.00/mi · 3 offers. Average"));
-            assertTrue(areaLineSaid(content).endsWith("Opens it in Maps."));
-            best.performClick();
+            assertTrue(areaLineSaid(content).endsWith("Tap it again to open it in Maps."));
+            map.pick(map.selected());
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertTrue(opened.getDataString(), opened.getDataString().startsWith("geo:37.81"));
         }
@@ -177,8 +178,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         setLocation(37.7749, -122.4194);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertNotNull("its name, then how far and which way",
-                    shownTextContaining(content, "Hunt Road · 3.6 mi NE · $3.00/mi · 3 offers  ›"));
+            AreaMapView map = find(content, AreaMapView.class);
+            assertEquals("its name and its rate on the map", "Hunt Road · $3.00/mi", map.nameShown(map.selected()));
             assertTrue(areaLineSaid(content), areaLineSaid(content)
                     .startsWith("#1 · Hunt Road · 3.6 mi NE of you · $3.00/mi · 3 offers. Average"));
         }
@@ -626,7 +627,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue("the constellation is the sky", star.backdrop());
             assertTrue("the map at its least at least: " + map.getHeight(),
                     map.getHeight() >= ui.dp(FluidLayout.MAP_LEAST_DP) - 1);
-            assertNotNull("the line naming the best area stands under it", shownTextContaining(content, "/mi"));
+            assertTrue("the map names the best area", map.nameShown(map.selected()).endsWith("/mi"));
 
             // The strip: the verdict and the chip whole on screen, the chip at the status line's start.
             android.graphics.Rect visible = new android.graphics.Rect();

@@ -144,9 +144,16 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
 
     private static void assertNamedAxes(MinimumsStarView star) {
         String[] expected = {"Pay", "Pay / mile", "Pay / hour", "Max stops", "", ""};
+        // 0.6.6: a set minimum stands at its knob as the label, its unit naming the metric ("$10.00", "$1.50/mi",
+        // "$30/hr"); an unset one keeps its name.
+        String[] units = {"$", "/mi", "/hr", "", "", ""};
         List<RectF> labels = new ArrayList<>();
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
-            assertEquals("the visible name identifies the actual metric", expected[axis], star.axisLabelText(axis));
+            String shown = star.axisLabelText(axis);
+            boolean named = expected[axis].equals(shown);
+            boolean valued = !units[axis].isEmpty() && shown.startsWith("$") && (axis == AreaScore.PAY
+                    ? !shown.contains("/") : shown.endsWith(units[axis]));
+            assertTrue("the visible name identifies the actual metric: " + shown, named || valued);
             RectF label = star.axisLabelBox(axis);
             if (expected[axis].isEmpty()) {
                 assertNull("a retired spoke has no name: " + axis, label);

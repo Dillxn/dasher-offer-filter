@@ -335,32 +335,18 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             // The badge's fill, beside its symbol.
             int pixel = bitmap.getPixel(Math.round(flag[0] - ui.dp(5)), Math.round(flag[1]));
             assertColor("selected flag " + i, expected[i], pixel);
-            for (int j = 0; j < expected.length; j++) if (j != i) {
-                float[] quiet = chart.flagAt(j);
-                assertEquals("unselected flag has no filled badge", 0, Color.alpha(bitmap.getPixel(
-                        Math.round(quiet[0] - ui.dp(5)), Math.round(quiet[1]))));
-                assertTrue("unselected outcome symbol remains visible", hasInk(bitmap, quiet, ui));
-            }
+            // 0.6.6: one badge, on the selected offer; the others say what happened by their bar's colour.
+            for (int j = 0; j < expected.length; j++) if (j != i) assertNull("one badge", chart.flagAt(j));
         }
         assertTrue(chart.getContentDescription().toString().startsWith("Chart of the last 3 offers: 0 passed, 1 accepted, 1 declined, 1 left to you, 0 need review."));
-        // The building keeps the muted rules' color: all three were declined by the rules as written.
-        for (int i = 0; i < expected.length; i++) {
-            float[] flag = chart.flagAt(i);
-            int wall = bitmap.getPixel(Math.round(flag[0] - ui.dp(9)), Math.round(flag[1] + ui.dp(30)));
-            assertColor("building " + i, ui.dark ? 0xFF87645E : 0xFFAA8C81, wall);
+        // The bar's colour is what happened, not the rules' verdict: left to you amber, accepted green, declined red.
+        int[] bars = {Ui.resultColor(OfferRule.Result.REVIEW), Ui.resultColor(OfferRule.Result.KEEP),
+                Ui.resultColor(OfferRule.Result.DECLINE)};
+        for (int i = 0; i < bars.length; i++) {
+            if (!chart.unreadAt(i)) assertEquals("bar " + i, bars[i], chart.barColorAt(i));
         }
         assertFalse(DecisionLog.Outcome.YOURS.isVerdict(OfferRule.Result.DECLINE));
         bitmap.recycle();
-    }
-
-    private static boolean hasInk(Bitmap bitmap, float[] flag, Ui ui) {
-        int cx = Math.round(flag[0]), cy = Math.round(flag[1]), reach = ui.dp(4);
-        for (int y = cy - reach; y <= cy + reach; y++) {
-            for (int x = cx - reach; x <= cx + reach; x++) {
-                if (bitmap.getPixel(x, y) == ui.inkSecondary) return true;
-            }
-        }
-        return false;
     }
 
     private static void assertColor(String what, int expected, int actual) {

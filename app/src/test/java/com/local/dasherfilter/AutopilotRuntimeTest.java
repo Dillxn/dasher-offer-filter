@@ -269,7 +269,7 @@ public class AutopilotRuntimeTest {
 
         AutopilotText.Status status = AutopilotRuntime.status(app, wall + 4 * MIN, true);
         // At the lowest bar (0.6.3) the line says so first: the chip shows only "Auto 50%".
-        assertEquals("Lowest bar · AR 9% → 70%: about 61 more accepts", AutopilotText.statusLine(status));
+        assertEquals("Lowest bar · 9% / 70%", AutopilotText.statusLine(status));
         assertEquals("Auto 50%", AutopilotText.chip(status));
         assertEquals("Last change 4 min ago: 100% → 50% (Autopilot turned on).",
                 AutopilotText.detailsLastChange(status));
@@ -1052,7 +1052,7 @@ public class AutopilotRuntimeTest {
         // Four offers came after Dasher's 55% and none was accepted: 5,500 − 4 × 55 = 5,280, shown everywhere as 53%
         // (rounded half up), with the goal less that, 17, still to accept.
         assertEquals(5_280, s.arHundredths);
-        assertEquals("AR 53% → 70%: about 17 more accepts", AutopilotText.statusLine(s));
+        assertEquals("53% / 70%", AutopilotText.statusLine(s));
         assertEquals("Acceptance rate: about 53% (Dasher showed 55% 12 min ago; 4 offers since).",
                 AutopilotText.detailsAcceptanceRate(s));
         assertTrue(s.recovering);

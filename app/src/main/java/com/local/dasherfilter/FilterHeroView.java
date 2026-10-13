@@ -190,7 +190,7 @@ final class FilterHeroView extends FrameLayout {
         boolean there = !countsBox.isEmpty();
         float heading = headingIn(countsBox.width());
         float column = (countsBox.width() - heading) / 3f;
-        int shown = there ? VISIBLE : INVISIBLE;
+        int shown = there ? VISIBLE : GONE;
         for (int i = 0; i < countControls.length; i++) {
             float left = i == 0 ? countsBox.left : countsBox.left + heading + i * column;
             float right = i == 2 ? countsBox.right : countsBox.left + heading + (i + 1) * column;

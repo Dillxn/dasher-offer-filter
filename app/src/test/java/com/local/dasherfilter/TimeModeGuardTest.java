@@ -116,6 +116,31 @@ public class TimeModeGuardTest {
         assertNull(TimeModeGuard.line(app));
     }
 
+    /**
+     * The owner's time-mode report (12 October 2026, 9:23 PM): after the first Decline Dasher showed a screen of its
+     * own, not its usual question, whose words the report did not keep. Words like these on such a screen hand the
+     * offer back and pause too, and the screen's words are kept, masked, for the next report.
+     */
+    @Test
+    public void aScreenOfItsOwnSayingTheDashWouldEndHandsTheOfferBack() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo root = node(null, false);
+        Shadows.shadowOf(root).addChild(node("Declining this offer will end your dash", false));
+        Shadows.shadowOf(root).addChild(button("Keep offer"));
+        Shadows.shadowOf(root).addChild(button("End dash"));
+        show(service, root);
+        for (int i = 0; i < 40; i++) pass(50);
+
+        assertFalse("auto-decline paused", FilterStore.load(app).enabled);
+        assertEquals(TimeModeGuard.WOULD_END_LINE, TimeModeGuard.line(app));
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(DecisionLog.recent(app, 1).get(0)));
+        assertTrue("its words kept, masked", PersonalText.recognizedDashScreen(Arrays.asList(
+                "Declining this offer will end your dash", "Keep offer", "End dash")));
+        assertTrue(PersonalText.recognizedDashScreen(Arrays.asList("You've reached your decline limit", "OK")));
+    }
+
     @Test
     public void dasherEndingTheDashRightAfterAConfirmedDeclinePausesOnlyThen() {
         for (boolean rightAfter : new boolean[] {true, false}) {

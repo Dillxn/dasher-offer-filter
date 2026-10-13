@@ -239,6 +239,9 @@ final class MinimumsStarView extends View {
 
         /** The round button's long press: what the learner has learned, with Adopt, Undo and Reset. */
         default void showLearning() {}
+
+        /** The middle's word (0.6.6): the scoring mode's chooser, as the band's Mode chip opened it before. */
+        default void chooseScoreMode() {}
     }
 
     /** What the page does when a marked offer is tapped (or a screen reader opens it). */
@@ -296,6 +299,15 @@ final class MinimumsStarView extends View {
     /** Learning from the user's accepts, as the round button shows it. */
     private boolean learningOn;
     static final int ADAPTIVE_ID = NAMES.length + 2;
+    /**
+     * The scoring mode's word in the middle ("Strict" or "Area", 0.6.6: the owner's "consolidate the number of ways we
+     * express information"; it was the band's own chip): a tap opens the chooser. It takes the retired adaptive
+     * toggle's id.
+     */
+    static final int MODE_ID = ADAPTIVE_ID;
+    private String modeWord;
+    private final RectF modeBox = new RectF();
+    private boolean modePressed;
     static final int STOPS_ID = NAMES.length + 3;
     /** Each marked offer's id: this plus its place among them, newest first. */
     static final int OFFER_ID = NAMES.length + 4;
@@ -862,9 +874,14 @@ final class MinimumsStarView extends View {
         }
     }
 
-    /** The constellation spells out each icon's name beside it. */
+    /**
+     * Beside each icon, the minimum it is set to ("$19.76", "$3.74/mi", "$42/hr"; 0.6.6), which says both what the
+     * spoke is and where it is set; its name while it has none ("Pay / mile"), and "Max stops" over the badge.
+     */
     String axisLabelText(int axis) {
-        return axis >= 0 && axis < AXIS_LABELS.length ? AXIS_LABELS[axis] : "";
+        if (axis < 0 || axis >= AXIS_LABELS.length || AXIS_LABELS[axis].isEmpty()) return "";
+        if (spoke(axis) && setRates[axis] > 0) return readout(axis, setRates[axis]);
+        return AXIS_LABELS[axis];
     }
 
     /** Where spoke {@code axis}'s name stands now, in this view's pixels; null while it is gone (for tests). */
@@ -907,7 +924,7 @@ final class MinimumsStarView extends View {
         RectF padded = new RectF();
         for (int axis : AreaScore.DRAW_ORDER) {
             if (AXIS_LABELS[axis].isEmpty() || !skyIcon(axis, skyX, skyY, skyRadius, iconBox)) continue;
-            float width = Math.max(ui.dp(1), axisText.measureText(AXIS_LABELS[axis]));
+            float width = Math.max(ui.dp(1), axisText.measureText(axisLabelText(axis)));
             float left = axis == AreaScore.PAY ? iconBox.right + gap
                     : axis == AreaScore.STOP ? iconBox.left : iconBox.left - gap - width;
             float top = axis == AreaScore.STOP
@@ -993,7 +1010,7 @@ final class MinimumsStarView extends View {
             RectF box = axisLabels[i];
             if (box.isEmpty()) continue;
             axisText.setAlpha(Math.round(alpha * axisShown[i]));
-            canvas.drawText(AXIS_LABELS[i], box.left, box.top - axisText.ascent(), axisText);
+            canvas.drawText(axisLabelText(i), box.left, box.top - axisText.ascent(), axisText);
         }
         axisText.setAlpha(alpha);
     }
@@ -1112,6 +1129,7 @@ final class MinimumsStarView extends View {
         // Over everything: the names (each as much as it is there), the badge and the button over them, and the knob
         // under the finger (with what it is set to, once it moves).
         drawAxisLabels(canvas);
+        if (modeShown()) drawMode(canvas);
         if (stopsShown()) drawStops(canvas);
         float button = placeButton();
         if (button > 0) drawLearn(canvas, button);
@@ -1226,8 +1244,11 @@ final class MinimumsStarView extends View {
         return "$" + (ringCents * ring / 100);
     }
 
-    /** The rings that are labeled: the middle and the outer ring. */
-    private static final int[] LABELED_RINGS = {2, 3};
+    /**
+     * The rings that are labeled: none from 0.6.6, as each knob's own label says its minimum (the owner: "consolidate
+     * the number of ways we express information"). The rings stay as faint guides.
+     */
+    private static final int[] LABELED_RINGS = {};
 
     /** Faint rings and the three spokes. */
     private void drawGrid(Canvas canvas, float cx, float cy, float radius) {
@@ -1737,6 +1758,18 @@ final class MinimumsStarView extends View {
                 found = SCORE_ID;
             }
         }
+        if (modeShown()) {
+            // A 48 dp target at least around the word; a knob nearer the finger keeps it.
+            float around = Math.max(0, ui.dp(BUTTON_DP) - modeBox.height()) / 2;
+            float dx = Math.max(0, Math.max(modeBox.left - x, x - modeBox.right));
+            float dy = Math.max(0, Math.max(modeBox.top - y, y - modeBox.bottom));
+            float cx = x - modeBox.centerX();
+            float cy = y - modeBox.centerY();
+            if (dx <= around && dy <= around && (found == NO_NODE || cx * cx + cy * cy < nearest)) {
+                nearest = cx * cx + cy * cy;
+                found = MODE_ID;
+            }
+        }
         if (stopsShown()) {
             // A 48 dp target at least around the badge; a finger on the badge itself is on it however near a knob.
             float around = Math.max(0, ui.dp(BUTTON_DP) - stopsBox.height()) / 2;
@@ -1886,6 +1919,7 @@ final class MinimumsStarView extends View {
                 downY = y;
                 int on = target(x, y);
                 learnPressed = on == SCORE_ID;
+                modePressed = on == MODE_ID;
                 learnHeld = false;
                 stopsPressed = on == STOPS_ID;
                 stopsDragging = false;
@@ -1907,6 +1941,10 @@ final class MinimumsStarView extends View {
             case MotionEvent.ACTION_MOVE:
                 if (tapping && Math.hypot(x - downX, y - downY) > slop) {
                     tapping = false;
+                    if (modePressed) {
+                        modePressed = false;
+                        invalidate();
+                    }
                     if (learnPressed) {
                         // The button has no drag: a finger moving off it is neither a tap nor a hold.
                         learnPressed = false;
@@ -1940,6 +1978,7 @@ final class MinimumsStarView extends View {
                 return true;
             case MotionEvent.ACTION_UP: {
                 boolean button = learnPressed && tapping;
+                boolean mode = modePressed && tapping;
                 // A hold that showed Learned minimums is done: the finger lifting is no tap.
                 boolean asked = learnHeld;
                 boolean stops = stopsPressed && tapping;
@@ -1949,6 +1988,9 @@ final class MinimumsStarView extends View {
                 if (button) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     pressLearn();
+                } else if (mode) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    pressMode();
                 } else if (stops) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                     setStops(nextStops(maxStops));
@@ -1982,9 +2024,10 @@ final class MinimumsStarView extends View {
         touching = false;
         tapping = false;
         removeCallbacks(holdLearn);
-        if (learnPressed || stopsPressed || pressed || pressedAt >= 0) {
+        if (learnPressed || stopsPressed || modePressed || pressed || pressedAt >= 0) {
             learnPressed = false;
             stopsPressed = false;
+            modePressed = false;
             pressedAt = -1;
             invalidate();
         }
@@ -2374,6 +2417,68 @@ final class MinimumsStarView extends View {
         return knobsOn() && placeButton() >= 1;
     }
 
+    /** The scoring mode for the middle's word: area scoring ("Area") or strict ("Strict"). */
+    void setScoreMode(boolean area) {
+        String word = area ? ModeChip.AREA : ModeChip.STRICT;
+        if (word.equals(modeWord)) return;
+        modeWord = word;
+        invalidate();
+    }
+
+    /** The middle's word, as shown (for tests); null while it is not there. */
+    String modeShownWord() {
+        return modeShown() ? modeWord : null;
+    }
+
+    /** Where the middle's word stands (for tests); null while it is not there. */
+    RectF modeBox() {
+        return modeShown() ? new RectF(modeBox) : null;
+    }
+
+    /** Whether the middle's word is there: the knobs are, and the circle holds the word with room around it. */
+    private boolean modeShown() {
+        if (!knobsOn() || modeWord == null) return false;
+        placeMode();
+        return !modeBox.isEmpty();
+    }
+
+    /** The middle's word in its pill, centred on the middle; empty where the circle is too small for it. */
+    private void placeMode() {
+        modeBox.setEmpty();
+        if (modeWord == null) return;
+        pillText.setTextSize(Math.min(ui.sp(13), ui.dp(16)));
+        float width = pillText.measureText(modeWord) + ui.dp(20);
+        float height = Math.max(ui.dp(26), Ui.lineHeight(pillText) + ui.dp(8));
+        if (skyRadius < width / 2 + ui.dp(18)) return;
+        modeBox.set(skyX - width / 2, skyY - height / 2, skyX + width / 2, skyY + height / 2);
+    }
+
+    private void drawMode(Canvas canvas) {
+        float corner = modeBox.height() / 2;
+        fill.setColor(modePressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
+        canvas.drawRoundRect(modeBox, corner, corner, fill);
+        line.setPathEffect(null);
+        line.setColor(ui.dark ? 0x66FFFFFF : 0x550B0B0B);
+        line.setStrokeWidth(Math.max(1, ui.dp(1)));
+        canvas.drawRoundRect(modeBox, corner, corner, line);
+        pillText.setColor(ui.ink);
+        Paint.Align align = pillText.getTextAlign();
+        pillText.setTextAlign(Paint.Align.CENTER);
+        Paint.FontMetrics metrics = pillText.getFontMetrics();
+        canvas.drawText(modeWord, modeBox.centerX(), modeBox.centerY() - (metrics.ascent + metrics.descent) / 2,
+                pillText);
+        pillText.setTextAlign(align);
+    }
+
+    /** What the middle's word is, for screen readers: the band's chip's words before 0.6.6. */
+    private String modeSaid() {
+        return ModeChip.AREA.equals(modeWord) ? ModeChip.AREA_SAID : ModeChip.STRICT_SAID;
+    }
+
+    private void pressMode() {
+        if (changes != null) changes.chooseScoreMode();
+    }
+
     /** Where the learner button stands, in this view's pixels (for tests); null when it is not wholly there. */
     RectF learnBox() {
         return learnShown() ? new RectF(scoreBox) : null;
@@ -2604,7 +2709,7 @@ final class MinimumsStarView extends View {
         if (manager == null || !manager.isEnabled() || getParent() == null) return;
         AccessibilityEvent event = newEvent(type);
         event.setPackageName(getContext().getPackageName());
-        event.setClassName(node >= OFFER_ID ? Button.class.getName()
+        event.setClassName(node >= OFFER_ID || node == MODE_ID ? Button.class.getName()
                 : node == SCORE_ID ? Switch.class.getName() : SeekBar.class.getName());
         if (node == SCORE_ID) event.setChecked(learningOn);
         // An offer that went meanwhile (a focus being let go) has nothing left to say.
@@ -2617,6 +2722,7 @@ final class MinimumsStarView extends View {
     private String nodeSaid(int node) {
         if (node >= OFFER_ID) return offerSaid(node - OFFER_ID);
         if (node == SCORE_ID) return learnSaid(learningOn);
+        if (node == MODE_ID) return modeSaid();
         if (node == STOPS_ID) return stopsSaid(maxStops);
         return knobSaid(node);
     }
@@ -2685,6 +2791,12 @@ final class MinimumsStarView extends View {
                     Math.round(stopsBox.right + grow), Math.round(stopsBox.bottom + grow));
             return;
         }
+        if (node == MODE_ID) {
+            float grow = Math.max(0, ui.dp(BUTTON_DP) - modeBox.height()) / 2;
+            out.set(Math.round(modeBox.left - grow), Math.round(modeBox.top - grow),
+                    Math.round(modeBox.right + grow), Math.round(modeBox.bottom + grow));
+            return;
+        }
         if (node == SCORE_ID) {
             float reach = ui.dp(BUTTON_REACH_DP);
             out.set(Math.round(scoreBox.centerX() - reach), Math.round(scoreBox.centerY() - reach),
@@ -2702,6 +2814,7 @@ final class MinimumsStarView extends View {
         if (id >= OFFER_ID) return offersOn() && outer > 0 && displayedOffer(id - OFFER_ID);
         if (!knobsOn()) return false;
         if (id == SCORE_ID) return learnShown();
+        if (id == MODE_ID) return modeShown();
         if (id == STOPS_ID) return stopsShown();
         return knobShown(id);
     }
@@ -2725,6 +2838,7 @@ final class MinimumsStarView extends View {
                 for (int axis : SPOKES) if (shownNode(axis)) info.addChild(host, axis);
                 if (stopsShown()) info.addChild(host, STOPS_ID);
                 if (learnShown()) info.addChild(host, SCORE_ID);
+                if (modeShown()) info.addChild(host, MODE_ID);
                 for (int m = 0; m < marks.size(); m++) if (shownNode(OFFER_ID + m)) info.addChild(host, OFFER_ID + m);
                 return info;
             }
@@ -2757,6 +2871,14 @@ final class MinimumsStarView extends View {
                 info.setSelected(id - OFFER_ID == opened());
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
                         "show details"));
+                return info;
+            }
+            if (id == MODE_ID) {
+                // "Scoring mode: area. …, button. Double-tap to choose how offers are judged."
+                info.setClassName(Button.class.getName());
+                info.setClickable(true);
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                        "choose how offers are judged"));
                 return info;
             }
             if (id == SCORE_ID) {
@@ -2830,6 +2952,10 @@ final class MinimumsStarView extends View {
                         return true;
                     }
                     if (id == STOPS_ID) return setStops(nextStops(maxStops));
+                    if (id == MODE_ID) {
+                        pressMode();
+                        return true;
+                    }
                     return false;
                 case AccessibilityNodeInfo.ACTION_LONG_CLICK:
                     if (id != SCORE_ID || changes == null) return false;

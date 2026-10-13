@@ -341,7 +341,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                         + star.getHeight(), icon.left >= 0 && icon.top >= 0 && icon.right <= star.getWidth()
                         && icon.bottom <= star.getHeight());
             }
-            assertFalse("the rings' dollars are on the page", star.levelWords().isEmpty());
+            assertTrue("no ring dollars (0.6.6: each minimum stands at its knob)", star.levelWords().isEmpty());
             android.graphics.RectF page = inWindow(scene);
             android.graphics.RectF verdict = inWindow(verdictTile(content));
             assertTrue("the scene knows the verdict is words, so no star lands on it", containsPoint(scene.words(),
@@ -669,7 +669,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull("each knob is its own control", nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("three knobs, the max stops badge and the Autopilot button", 5, host.getChildCount());
+            assertEquals("three knobs, the max stops badge, the Autopilot button and the mode's word", 6,
+                    host.getChildCount());
             AccessibilityNodeInfo mile = nodes.createAccessibilityNodeInfo(1);
             assertEquals("Minimum per mile, $1.50", mile.getContentDescription().toString());
             assertEquals(android.widget.SeekBar.class.getName(), mile.getClassName().toString());
@@ -723,11 +724,14 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
-            assertEquals("three knobs, the badge, the learner button and the offer marked", 6,
+            assertEquals("three knobs, the badge, the learner button, the mode's word and the offer marked", 7,
                     nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
-            for (int retired : new int[] {MinimumsStarView.ADOPT_ID, MinimumsStarView.ADAPTIVE_ID}) {
-                assertNull("the retired buttons' ids are never shown", nodes.createAccessibilityNodeInfo(retired));
-            }
+            assertNull("the retired adopt button's id is never shown",
+                    nodes.createAccessibilityNodeInfo(MinimumsStarView.ADOPT_ID));
+            // 0.6.6: the retired adaptive toggle's id is the mode's word now.
+            assertEquals(MinimumsStarView.MODE_ID, MinimumsStarView.ADAPTIVE_ID);
+            assertEquals(ModeChip.STRICT_SAID, nodes.createAccessibilityNodeInfo(MinimumsStarView.MODE_ID)
+                    .getContentDescription().toString());
 
             android.graphics.RectF button = star.learnBox();
             assertNotNull("one round button", button);
@@ -1103,7 +1107,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 assertEquals("resting just outside the middle", new Ui(app).dp(MinimumsStarView.KNOB_REST_DP),
                         Math.hypot(knob[0] - middle[0], knob[1] - middle[1]), 1);
             }
-            assertEquals("screen readers find the three knobs, the badge and the Autopilot button", 5,
+            assertEquals("screen readers find the three knobs, the badge, the Autopilot button and the mode's word", 6,
                     star.getAccessibilityNodeProvider().createAccessibilityNodeInfo(
                             AccessibilityNodeProvider.HOST_VIEW_ID).getChildCount());
             assertNotNull(shownTextContaining(content, MainActivity.START_LINE));

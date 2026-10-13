@@ -209,7 +209,6 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         VerdictTile tile = verdictTile(content);
         AutopilotChip.Row row = chipRow(content);
         AutopilotChip chip = find(row, AutopilotChip.class);
-        ModeChip mode = find(row, ModeChip.class);
         TextView status = statusLine(content);
         View header = pageHeader(content);
         FilterHeroView hero = find(page, FilterHeroView.class);
@@ -268,15 +267,14 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             if (tile.getWidth() >= tile.templateWidth()) {
                 assertTrue(where + ": the whole offer where the tile has its room: " + shown, shown.matches(WHOLE_OFFER));
             }
-            // The band's targets: the mascot, the tile, the dash's counts, the two chips and the header's buttons,
+            // The band's targets: the mascot, the tile, Autopilot's chip and the header's buttons (0.6.6: the counts
+            // are the chart's key, the mode the radar's middle word),
             // each wholly there and a whole target; on screen wherever the band fits the window, else a scroll away.
             boolean bandFits = now.get("header").box.bottom <= height && now.get("chips").box.bottom <= height;
             List<View> targets = new ArrayList<>();
             targets.add(hero.mascotControl());
             targets.add(tile);
-            for (DecisionLog.Tally tally : DecisionLog.Tally.values()) targets.add(hero.countControl(tally));
             targets.add(chip);
-            targets.add(mode);
             targets.addAll(buttons);
             for (View part : targets) {
                 assertTrue(where + ": " + part, part.isShown() && whole(part, page) && part.isClickable());
@@ -285,14 +283,13 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                 if (bandFits) assertOnScreen(where + ": " + part, part, height);
             }
             assertEquals(where + ": Autopilot's chip never cut", 0, chip.getLayout().getEllipsisCount(0));
-            assertEquals(where + ": the mode's chip never cut", 0, mode.getLayout().getEllipsisCount(0));
             // The status words, after the chips in their row, laid out inside their height: cut to the room the band
             // leaves them, an ellipsis at their end, screen readers hearing them whole; a tap only as a whole target.
             RectF words = box(status, page);
             RectF chips = now.get("chips").box;
             assertTrue(where + ": the status words in the chips' row " + words + " / " + chips,
                     words.left >= chips.left - 1 && words.right <= chips.right + 1 && words.top >= chips.top - 1
-                            && words.bottom <= chips.bottom + 1 && words.left >= box(mode, page).right - 1);
+                            && words.bottom <= chips.bottom + 1 && words.left >= box(chip, page).right - 1);
             assertInsideItsHeight(where + ": the status words", status);
             if (stepToDo) {
                 // Auto-decline on, Autopilot off: the awake mascot says it all, so no words, no tap.
@@ -456,7 +453,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         assertEquals(where + ": the skyline's caption wholly there", 1f, page.shown(caption), 0f);
         assertEquals(where + ": the skyline wholly there", 1f, page.shown(chart), 0f);
         assertEquals(where + ": the map wholly there", 1f, page.shown(map), 0f);
-        assertEquals(where + ": the counts wholly there", 1f, hero.countsShown(), 0f);
+        assertEquals(where + ": no counts in the band (0.6.6: the chart's key)", 0f, hero.countsShown(), 0f);
         assertEquals(where + ": three columns", 1f, page.inner(), 0f);
         assertEquals(where + ": the radar beside the ground", 1f, page.turn(), 0f);
         RectF radarBox = box(star, page);
@@ -493,22 +490,17 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             assertNull(where + ": nor its node", node(star, MinimumsStarView.SCORE_ID));
         }
 
-        // The three counts, each a whole target inside the counts, apart from one another.
-        RectF counts = new RectF();
-        hero.countsAt(counts);
+        // The three counts, the chart's key under its bars (0.6.6), each inside the chart and apart from one another,
+        // and each an action screen readers reach on the chart.
         List<Rect> countTargets = new ArrayList<>();
         List<String> countNames = new ArrayList<>();
         for (DecisionLog.Tally tally : DecisionLog.Tally.values()) {
-            View count = hero.countControl(tally);
-            assertTrue(where + ": the " + tally + " count shown", count.isShown() && count.isClickable());
-            Rect target = new Rect(count.getLeft(), count.getTop(), count.getRight(), count.getBottom());
-            assertTrue(where + ": the " + tally + " count a whole target " + target, target.width() >= ui.dp(48) - 1
-                    && target.height() >= ui.dp(48) - 1);
-            assertTrue(where + ": the " + tally + " count inside the counts " + target + " / " + counts,
-                    target.left >= counts.left - 1 && target.right <= counts.right + 1 && target.top >= counts.top - 1
-                            && target.bottom <= counts.bottom + 1);
-            assertOnScreen(where + ": the " + tally + " count", count, height);
-            countTargets.add(target);
+            RectF key = chart.keyBox(tally);
+            assertFalse(where + ": the " + tally + " count drawn", key.isEmpty());
+            assertTrue(where + ": the " + tally + " count inside the chart " + key, key.left >= -1
+                    && key.right <= chart.getWidth() + 1 && key.bottom <= chart.getHeight() + 1);
+            countTargets.add(new Rect(Math.round(key.left), Math.round(key.top), Math.round(key.right),
+                    Math.round(key.bottom)));
             countNames.add("the " + tally + " count");
         }
         assertDisjoint(where, countNames, countTargets);

@@ -184,6 +184,11 @@ final class BundledNotes {
                 "In Earn by Time, when Dasher says another decline would end your dash, the offer is left to you and "
                         + "auto-decline pauses until you resume it.",
                 "It pauses too if Dasher ends the dash right after a decline.");
+        release("0.6.6",
+                "A calmer homepage that says each thing once: one bar per offer, in % of your minimums, coloured by "
+                        + "what happened, with the dash's counts under it.",
+                "Each minimum stands at its knob, the mode sits in the radar's middle, Autopilot shows a small meter, "
+                        + "and the map names the best area.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

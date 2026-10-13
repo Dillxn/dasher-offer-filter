@@ -285,11 +285,20 @@ final class PersonalText {
         return recognizedDashScreen(labels) ? String.valueOf(mask(labels)) : "[" + UNKNOWN_NOT_KEPT + "]";
     }
 
-    /** Unknown/partial screens are not diagnostic text: a CVV alone has no payment marker to mask. */
+    /**
+     * Unknown/partial screens are not diagnostic text: a CVV alone has no payment marker to mask. A screen whose words
+     * speak of declining, unassigning or the dash ending is kept, masked (0.6.6: the owner's time-mode report showed
+     * an unknown screen right after a Decline, and Earn by Time's real wording is still needed, {@link TimeModeGuard}).
+     */
     static boolean recognizedDashScreen(List<String> labels) {
         if (labels == null || accountScreen(labels)) return false;
         if (OfferEvidence.isIdle(labels) || AcceptedOfferTracker.isDeliveryScreen(labels)
-                || DasherScene.showsNavigation(labels) || DeclineConfirmation.hasPrompt(labels)) return true;
+                || DasherScene.showsNavigation(labels) || DeclineConfirmation.hasPrompt(labels)
+                || TimeModeGuard.endsDash(labels)) return true;
+        for (String label : labels) {
+            String lower = label == null ? "" : OfferEvidence.normalize(label).toLowerCase(Locale.US);
+            if (lower.contains("declin") || lower.contains("unassign")) return true;
+        }
         boolean accept = false, decline = false;
         for (String label : labels) {
             if (label == null) continue;

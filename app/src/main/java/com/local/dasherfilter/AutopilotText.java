@@ -82,8 +82,9 @@ final class AutopilotText {
 
     // ---- The skyline ----
 
-    static final String SKYLINE_DESCRIPTION = "Tree height is the recorded score: strict pay fitness or area fitness; "
-            + "the dashed line is the current bar.";
+    static final String SKYLINE_DESCRIPTION = "Bar height is the recorded score, percent of your minimums; the "
+            + "solid line is your minimums, 100%. Bar colour is what happened: green passed, amber passed below your "
+            + "minimums or left for review, red filtered.";
 
     // ---- The diagnostic log (category "autopilot") ----
 
@@ -348,7 +349,7 @@ final class AutopilotText {
             case BELOW_GOAL:
                 return progress(s);
             case AT_GOAL:
-                return "AR " + arShort(s) + " · goal " + s.goal + "%";
+                return meterWords(s);
             case AR_UNKNOWN:
                 return "Goal " + s.goal + "% · AR not seen yet";
             case PASS_FLOOR:
@@ -358,10 +359,30 @@ final class AutopilotText {
         }
     }
 
-    /** "AR 55% → 70%: about 15 more accepts" ("AR ~31%" when it is the app's own estimate). */
+    /**
+     * Below the goal: "55% / 70%" beside the acceptance meter (0.6.6; the words "AR 55% → 70%: about 15 more accepts"
+     * stay in the chip's details and for screen readers).
+     */
     private static String progress(Status s) {
-        int accepts = s.acceptsNeeded();
-        return "AR " + arShort(s) + " → " + s.goal + "%: about " + accepts + " more " + plural(accepts, "accept");
+        return meterWords(s);
+    }
+
+    /** "55% / 70%" ("~31% / 70%" when the rate is the app's own estimate): the meter's words. */
+    static String meterWords(Status s) {
+        return arShort(s) + " / " + s.goal + "%";
+    }
+
+    /** Whether the status line shows the acceptance meter: Autopilot on with a goal and a known rate. */
+    static boolean meters(Status s) {
+        switch (s.kind) {
+            case BELOW_GOAL:
+            case AT_GOAL:
+                return true;
+            case PINNED:
+                return s.belowGoal();
+            default:
+                return false;
+        }
     }
 
     /** "56%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded half up. */

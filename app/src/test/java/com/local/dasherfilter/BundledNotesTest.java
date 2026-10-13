@@ -379,11 +379,28 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.6 (the owner, 12 October 2026: "that home screen is so busy … consolidate the number of ways we express
+     * information"): the calmer homepage, said as what moved where.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.6", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.6");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"each thing once", "one bar", "% of your minimums", "at its knob",
+                "the map names"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
      * 0.6.5 (the owner, 13 October 2026, on #DeclineNow's recommendations: "yeah I want all its recommendations"): the
      * Earn by Time guard, said as what it does, with no promise about the dash or pay.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.5", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release065SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.5");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);

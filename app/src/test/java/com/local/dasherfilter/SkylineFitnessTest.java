@@ -37,24 +37,21 @@ import static org.junit.Assert.*;
 public class SkylineFitnessTest extends AndroidAdapterTestBase {
     private static final FilterSettings RULES = FilterSettings.of(true, 1000, 200, 30, 0);
 
-    @Test public void payoutAndFitnessHaveIndependentHeightsAndScales() {
+    @Test public void payNeverMovesABarOnlyItsRecordedScoreDoes() {
         DecisionLog.Entry low = offer(1, 1200, 1000, 50);
         DecisionLog.Entry high = offer(2, 1200, 1000, 150);
         DecisionChartView chart = chart(RULES, high, low);
-        assertEquals("equal payouts have equal roof flags", chart.flagAt(0)[1], chart.flagAt(1)[1], 0.01f);
-        assertTrue("the fitter offer has the taller tree", chart.treeAt(1)[1] < chart.treeAt(0)[1]);
+        assertTrue("the fitter offer has the taller bar", chart.treeAt(1)[1] < chart.treeAt(0)[1]);
         float[] lowTree = chart.treeAt(0), highTree = chart.treeAt(1);
         float scoreLine = chart.scoreThresholdY();
 
+        // 0.6.6: one scale; a large payout moves nothing (pay in dollars is on the verdict and the ticket).
         chart.setEntries(Arrays.asList(offer(2, 20_000, 1000, 150), low));
-        assertEquals("large payout cannot rescale the score tree", lowTree[1], chart.treeAt(0)[1], 0.01f);
+        assertEquals("large payout cannot rescale the bars", lowTree[1], chart.treeAt(0)[1], 0.01f);
         assertEquals(highTree[1], chart.treeAt(1)[1], 0.01f);
         assertEquals(scoreLine, chart.scoreThresholdY(), 0.01f);
-        assertTrue("larger payout still has a higher building", chart.flagAt(1)[1] < chart.flagAt(0)[1]);
-
-        float oldRoof = chart.flagAt(0)[1];
-        chart.setEntries(Arrays.asList(offer(2, 20_000, 1000, 399), low));
-        assertEquals("a fitness change cannot rescale payout", oldRoof, chart.flagAt(0)[1], 0.01f);
+        assertNotNull("the newest offer has the badge", chart.flagAt(1));
+        assertTrue("over its bar", chart.flagAt(1)[1] < chart.treeAt(1)[1]);
     }
 
     @Test public void treesCrossTheScoreLineAtOneHundredPercentAndUnknownDoesNotBecomeZero() {
@@ -75,40 +72,41 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue("a clipped tree is explicitly marked", chart.treeClippedAt(0));
     }
 
-    @Test public void payoutRailIsTheMinimumPayAtTheBarAndOnlyWithAMinimumPay() {
+    @Test public void oneScaleOfPercentWithTheMinimumsLineAndAutopilotsDashedLineOnlyOffOneHundred() {
         DecisionChartView chart = chart(RULES, offer(1, 1200, 1000, 75));
-        assertEquals("exactly the minimum pay at a bar of 100%", 1000L, chart.payoutThresholdCents());
-        assertTrue(Float.isFinite(chart.payoutThresholdY()));
         List<String> drawn = drawnWords(chart);
-        assertTrue(drawn.toString(), drawn.contains("Pay $10.00 min"));
-        // Autopilot off, the bar is always exactly the minimums: the dashed rail stands unnamed (0.6.1, the owner:
-        // say each thing once).
+        // 0.6.6: one scale, % of the minimums; no pay in dollars on the chart (the verdict and the ticket say it).
+        assertTrue(drawn.toString(), drawn.contains("100%"));
+        assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Pay $")));
         assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Bar ")));
-        assertTrue("the dashed rail stays", Float.isFinite(chart.scoreThresholdY()));
+        assertEquals("at a bar of 100% the minimums' line is the bar", chart.hundredY(), chart.scoreThresholdY(), 0.01f);
+        assertFalse(chart.getContentDescription().toString().contains("Dashed line"));
 
-        // Autopilot's bar: ⌈82 × $10.00 ÷ 100⌉ = $8.20; the dashed rail stays unnamed (0.6.3: Autopilot's chip says
-        // the bar, and the skyline said it again beside it).
+        // Autopilot's bar: its dashed line stands below the minimums' line, unnamed (Autopilot's chip says the bar).
         chart.setRules(atBar(RULES, 82));
-        assertEquals(820L, chart.payoutThresholdCents());
         drawn = drawnWords(chart);
-        assertTrue(drawn.toString(), drawn.contains("Pay $8.20 min"));
         assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Bar ")));
-        // Rounded up to the next cent: ⌈97 × $10.01 ÷ 100⌉ = $9.71, ⌈150 × $10.01 ÷ 100⌉ = $15.02.
-        chart.setRules(atBar(FilterSettings.of(true, 1001, 0, 0, 0), 97));
-        assertEquals(971L, chart.payoutThresholdCents());
-        chart.setRules(atBar(FilterSettings.of(true, 1001, 0, 0, 0), 150));
-        assertEquals(1502L, chart.payoutThresholdCents());
-        assertFalse(drawnWords(chart).stream().anyMatch(word -> word.startsWith("Bar ")));
+        assertTrue("82% stands below 100%", chart.scoreThresholdY() > chart.hundredY());
+        assertTrue(chart.getContentDescription().toString().contains("Dashed line: Bar 82%."));
 
-        // A per-mile or per-hour minimum is no level line of pay: no solid rail, and no zero-dollar one.
+        // A per-mile or per-hour minimum alone draws the same lines: no line of dollars anywhere.
         chart.setRules(FilterSettings.of(true, 0, 9999, 30, 0));
-        assertEquals(0L, chart.payoutThresholdCents());
-        assertTrue("off draws no misleading zero-dollar minimum line", Float.isNaN(chart.payoutThresholdY()));
         drawn = drawnWords(chart);
         assertFalse(drawn.toString(), drawn.stream().anyMatch(word -> word.startsWith("Pay $")));
-        assertTrue("the bar's rail stays", Float.isFinite(chart.scoreThresholdY()));
-        assertFalse("unnamed while Autopilot is off", drawn.contains("Bar 100%"));
-        assertTrue(chart.getContentDescription().toString().contains("No minimum pay is set."));
+        assertTrue(Float.isFinite(chart.hundredY()));
+    }
+
+    @Test public void eachBarsColourIsWhatHappenedAndAnUnreadScoreIsAHollowBar() {
+        DecisionLog.Entry passed = offer(4, 1200, 1000, 120);
+        DecisionLog.Entry declined = offer(3, 600, 1000, 60);
+        DecisionLog.Entry unread = offer(2, 900, 1000, -1);
+        DecisionChartView chart = chart(RULES, passed, declined, unread);
+        assertTrue("unread: a hollow bar", chart.unreadAt(0));
+        assertEquals("no filled bar for an unread score", 0, chart.barColorAt(0));
+        assertEquals(Ui.resultColor(OfferRule.Result.DECLINE), chart.barColorAt(1));
+        assertEquals(Ui.resultColor(OfferRule.Result.KEEP), chart.barColorAt(2));
+        assertNull("one badge, on the newest", chart.flagAt(1));
+        assertNotNull(chart.flagAt(2));
     }
 
     @Test public void tappingATreeSelectsTheSameOfferAsItsBuilding() {
@@ -121,8 +119,8 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         tapChart(chart, tree[0], (tree[1] + tree[2]) / 2);
         assertSame(older, chart.selectedEntry());
         assertSame(older, selected.get(selected.size() - 1));
-        float[] flag = chart.flagAt(1);
-        tapChart(chart, flag[0], flag[1]);
+        float[] bar = chart.treeAt(1);
+        tapChart(chart, bar[0], (bar[1] + bar[2]) / 2);
         assertSame(newer, chart.selectedEntry());
         assertSame(newer, selected.get(selected.size() - 1));
     }
@@ -133,9 +131,9 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         float treeY = chart.treeAt(0)[1];
         String said = chart.getContentDescription().toString();
         assertTrue(said, said.contains(AutopilotText.SKYLINE_DESCRIPTION));
-        assertTrue(said, said.contains("Dashed line: Bar 100%."));
-        assertTrue(said, said.contains("Solid line: your minimum pay at the bar, $10.00."));
-        assertTrue(said, said.contains("1 recorded scores unavailable: open markers, no trees."));
+        assertFalse("no dashed line at 100%", said.contains("Dashed line"));
+        assertFalse("no pay rail", said.contains("Solid line: your minimum pay"));
+        assertTrue(said, said.contains("1 recorded scores unavailable: hollow bars."));
         for (String retired : new String[] {"advisory", "spoke"}) {
             assertFalse(retired + ": " + said, said.toLowerCase(java.util.Locale.US).contains(retired));
         }
@@ -151,7 +149,6 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertEquals(OfferRule.Result.KEEP, known.result);
         said = chart.getContentDescription().toString();
         assertTrue(said, said.contains("Dashed line: Bar 82%."));
-        assertTrue(said, said.contains("Solid line: your minimum pay at the bar, $49.20."));
     }
 
     @Test public void aLineDecidedUnderTheRetiredRulesHasNoTreeWhateverItsAreaScore() throws Exception {
@@ -164,7 +161,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertFalse(chart.treeClippedAt(0));
         assertNotNull("this version's score has its tree", chart.treeAt(1));
         String said = chart.getContentDescription().toString();
-        assertTrue(said, said.contains("1 scores from earlier rules: open markers, no trees."));
+        assertTrue(said, said.contains("1 scores from earlier rules: hollow bars."));
         assertTrue(chart.choose(retired));
         assertTrue(chart.getContentDescription().toString().contains("score from earlier area rules."));
         // A huge retired score cannot stretch the percent scale either.
@@ -217,13 +214,13 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
             settleSky(content);
             DecisionChartView chart = find(content, DecisionChartView.class);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertEquals(1000L, chart.payoutThresholdCents());
+            float hundred = chart.hundredY();
             android.os.Bundle value = new android.os.Bundle();
             value.putFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 20f);
             assertTrue(star.getAccessibilityNodeProvider().performAction(AreaScore.PAY,
                     android.R.id.accessibilityActionSetProgress, value));
             Shadows.shadowOf(Looper.getMainLooper()).idle();
-            assertEquals(2000L, chart.payoutThresholdCents());
+            assertEquals("the minimums are 100% whatever their dollars", hundred, chart.hundredY(), 0.01f);
             assertEquals(recorded.at, chart.selectedEntry().at);
             assertEquals("the same historical score stays selected", 123, chart.selectedEntry().scorePercent);
             float[] tree = chart.treeAt(0);
@@ -239,7 +236,6 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             layOut(content);
-            assertEquals("82% of $20.00", 1640L, chart.payoutThresholdCents());
             assertTrue(chart.getContentDescription().toString().contains("Dashed line: Bar 82%."));
             assertEquals(82, chart.scoreThresholdPercent());
             float[] moved = chart.treeAt(0);
@@ -289,9 +285,9 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
             assertNotNull(chart);
             assertTrue(chart.isShown());
             assertEquals(dark, new Ui(activity.get()).dark);
-            assertEquals("the main page supplied the minimum pay at its bar", (bar * 1000L + 99) / 100,
-                    chart.payoutThresholdCents());
-            assertTrue(chart.getContentDescription().toString().contains("Dashed line: Bar " + bar + "%."));
+            assertEquals("the main page supplied its bar", bar, chart.scoreThresholdPercent());
+            assertEquals(bar != 100,
+                    chart.getContentDescription().toString().contains("Dashed line: Bar " + bar + "%."));
             assertVisibleGeometry(chart);
             export(content, name);
         }
@@ -311,7 +307,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
     }
 
     private static void assertVisibleGeometry(DecisionChartView chart) {
-        for (float lineY : new float[] {chart.scoreThresholdY(), chart.payoutThresholdY()}) {
+        for (float lineY : new float[] {chart.scoreThresholdY(), chart.hundredY()}) {
             assertTrue("reference line is finite", Float.isFinite(lineY));
             assertTrue("reference line stays in the drawing", lineY >= 0 && lineY < chart.getHeight());
         }

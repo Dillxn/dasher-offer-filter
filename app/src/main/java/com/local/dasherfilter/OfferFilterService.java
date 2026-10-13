@@ -7778,6 +7778,13 @@ public final class OfferFilterService extends AccessibilityService {
         acceptanceObservationEligible = controlsGone && !DasherScene.showsNewOffer(scan.text)
                 && !DeclineConfirmation.isSurface(scan.text) && OfferEvidence.secondsLeft(scan.text) < 0;
         noteOutcomeEvidence(scan, offer);
+        // Earn by Time's warning as a screen of its own rather than Dasher's usual question (the owner's time-mode
+        // report of 12 October 2026, 9:23 PM: after the first Decline Dasher showed a screen the app did not know, its
+        // words not kept): never confirmed, the offer left to the user and auto-decline paused (TimeModeGuard).
+        if (settings.enabled && episode.active(now) && !episode.wasConfirmed() && TimeModeGuard.endsDash(scan.text)) {
+            handBack(HandBack.DASH_WOULD_END, "a screen of Dasher's of its own after the Decline", now);
+            return false;
+        }
         // A shopping declaration/count alone may be an offer still drawing over the idle map. It cannot
         // authorize a tap, establish completion, clear a stored route, or become an acceptance observation.
         if (!actionFact(offer) && AcceptedOfferTracker.itemOfferEvidence(offer, withParts(scan))) {

@@ -123,14 +123,14 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.load(app).enabled);
             assertEquals("No recent offers left to review in history.", ShadowToast.getTextOfLatestToast());
             FilterHeroView hero = find(content, FilterHeroView.class);
-            RectF counts = new RectF();
-            hero.countsAt(counts);
+            DecisionChartView chart = find(content, DecisionChartView.class);
+            RectF counts = chart.keyBox(DecisionLog.Tally.REVIEW);
             long now = android.os.SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN,
                     counts.centerX(), counts.centerY(), 0);
             MotionEvent cancel = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_CANCEL,
                     counts.centerX(), counts.centerY(), 0);
-            try { hero.dispatchTouchEvent(down); hero.dispatchTouchEvent(cancel); }
+            try { chart.dispatchTouchEvent(down); chart.dispatchTouchEvent(cancel); }
             finally { down.recycle(); cancel.recycle(); }
             assertTrue(FilterStore.load(app).enabled);
             hero.performClick();
@@ -147,23 +147,23 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             Button mascot = describedButton(content, "Pause auto-decline");
-            Button review = describedButton(content, "Show latest offer left to review");
             assertNotNull(mascot);
+            // 0.6.6: the counts are the chart's key; screen readers reach each as an action on the chart, labelled
+            // with exactly what it does, apart from the mascot's pause.
+            Button band = describedButton(content, "Show latest offer left to review");
+            assertTrue("no count buttons in the band", band == null || !band.isShown());
+            DecisionChartView chart = find(content, DecisionChartView.class);
+            AccessibilityNodeInfo node = chart.createAccessibilityNodeInfo();
+            AccessibilityNodeInfo.AccessibilityAction review = null;
+            for (AccessibilityNodeInfo.AccessibilityAction action : node.getActionList()) {
+                if (action.getLabel() != null && action.getLabel().toString().equals("Show latest offer left to review")) {
+                    review = action;
+                }
+            }
             assertNotNull(review);
-            assertNotSame(mascot, review);
-            Rect first = new Rect(), second = new Rect();
-            mascot.getGlobalVisibleRect(first);
-            review.getGlobalVisibleRect(second);
-            assertFalse("accessible action regions do not overlap", Rect.intersects(first, second));
-            int least = new Ui(app).dp(48);
-            assertTrue(first.width() >= least && first.height() >= least);
-            assertTrue(second.width() >= least && second.height() >= least);
-            AccessibilityNodeInfo node = review.createAccessibilityNodeInfo();
-            assertEquals(Button.class.getName(), node.getClassName());
-            assertTrue(node.isClickable());
-            assertTrue(node.isFocusable());
-            assertFalse(node.getContentDescription().toString().contains("Pause"));
-            assertTrue(review.performAccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, null));
+            assertFalse(review.getLabel().toString().contains("Pause"));
+            assertTrue(chart.performAccessibilityAction(review.getId(), null));
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertTrue(FilterStore.load(app).enabled);
             assertEquals("Review", find(content, Decor.Stamp.class).getContentDescription().toString());
         }
@@ -196,12 +196,11 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
                 4.0, 20, 2), 2000, result, reason, action, true, Collections.emptyList()));
     }
 
+    /** A tap on the chart's key's count {@code index} (passed, filtered, review: 0.6.6, the band's before). */
     private static void tapCount(View content, int index) {
-        FilterHeroView hero = find(content, FilterHeroView.class);
-        RectF box = new RectF();
-        float spacing = hero.countsAt(box);
-        tap((ViewGroup) hero.getParent(), hero.getLeft() + box.centerX() + (index - 1) * spacing,
-                hero.getTop() + box.centerY());
+        DecisionChartView chart = find(content, DecisionChartView.class);
+        RectF box = chart.keyBox(DecisionLog.Tally.values()[index]);
+        tap((ViewGroup) chart.getParent(), chart.getLeft() + box.centerX(), chart.getTop() + box.centerY());
     }
 
     private static Button describedButton(View view, String words) {

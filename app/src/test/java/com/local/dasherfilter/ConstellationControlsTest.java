@@ -227,7 +227,8 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
                         >= ui.dp(24) + button.width() / 2 - 1);
             }
             assertNull("the retired buttons are gone", node(star, MinimumsStarView.ADOPT_ID));
-            assertNull(node(star, MinimumsStarView.ADAPTIVE_ID));
+            // 0.6.6: the retired adaptive toggle's id is the mode's word in the middle now.
+            assertEquals(ModeChip.STRICT_SAID, node(star, MinimumsStarView.MODE_ID).getContentDescription().toString());
             assertFalse(star.learningShown());
 
             // Off: a tap turns learning on, at once, with nothing asked.

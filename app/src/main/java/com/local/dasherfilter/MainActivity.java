@@ -193,6 +193,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private AutopilotChip.Row chipRow;
     /** The status words beside the chips: the start, paused, Autopilot's status or the wait (as {@code slot} says). */
     private TextView statusLine;
+    private AcceptanceMeter meter;
     private int slot = SLOT_ON;
     /** Autopilot's chip at the status line's start, at every size: a tap opens the details, a long press the goal. */
     private AutopilotChip chip;
@@ -268,7 +269,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Main page: minimums and areas.
     private MinimumsStarView minimums;
     /** The band's scoring-mode chip beside Autopilot's (0.6.3: the owner, "the mode button being on the homepage"). */
-    private ModeChip modeChip;
     /** The main page's empty title: screen readers hear the page's name from it first. */
     private TextView mainTitle;
     /** The sun (or moon) button in the main page's header. */
@@ -821,6 +821,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         statusLine = ui.text("", 14, ui.inkSecondary, false);
         statusLine.setMinHeight(ui.dp(48));
         statusLine.setGravity(Gravity.CENTER_VERTICAL);
+        meter = new AcceptanceMeter(ui);
+        statusLine.setCompoundDrawablePadding(ui.dp(6));
         statusLine.setOnClickListener(tapped -> statusTapped());
         // Autopilot's chip at the status line's start, at every size: beside its 48 dp line it costs no height.
         chip = new AutopilotChip(this, ui);
@@ -829,11 +831,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             chooseAutopilotGoal();
             return true;
         });
-        // The scoring mode beside it, one word ("Strict" or "Area"): a tap opens the chooser (0.6.3; it was a Settings
-        // row). Its own control, never Autopilot's.
-        modeChip = new ModeChip(this, ui);
-        modeChip.setOnClickListener(tapped -> chooseScoreMode());
-        chipRow = new AutopilotChip.Row(this, ui, new TextView[] {chip, modeChip}, statusLine, 14);
+        // The scoring mode is the radar's middle word from 0.6.6 (MinimumsStarView): the band keeps Autopilot's chip.
+        chipRow = new AutopilotChip.Row(this, ui, new TextView[] {chip}, statusLine, 14);
 
         // The lines that need the user, under the header.
         LinearLayout lines = ui.column();
@@ -963,6 +962,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         // A tapped building opens its ticket; the screen's own choice of the newest does not.
         chart.setOnClickListener(tapped -> setTicketOpen(true));
+        chart.setOnCount(this::openLatestCountedOffer);
         // The ticket unfolds in the sheet over the page.
         ticket = ui.column();
         ticketShape = new Decor.Ticket(ui);
@@ -1030,6 +1030,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             @Override public void showLearning() {
                 showLearningDetails();
             }
+
+            @Override public void chooseScoreMode() {
+                MainActivity.this.chooseScoreMode();
+            }
         });
     }
 
@@ -1093,8 +1097,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // The constellation's round button is the learner's switch (the owner, 11 October 2026: "option on
         // homepage not settings page").
         if (minimums != null) minimums.setLearning(rules.acceptanceLearning);
-        // The scoring mode is the band's own chip beside Autopilot's (0.6.3; Settings has no Mode row).
-        if (modeChip != null) modeChip.show(rules.scoreByArea);
+        // The scoring mode is the radar's middle word (0.6.6; the band's chip before, Settings before that).
+        if (minimums != null) minimums.setScoreMode(rules.scoreByArea);
     }
 
     /** The constellation's learner button: learning on or off, said once in a toast. */
@@ -1505,7 +1509,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private void addAreas() {
         areaMap = new AreaMapView(this, ui);
+        // A tap on the square already named (the best, until another is picked) opens it in Maps: the line under the
+        // map that did is gone (0.6.6).
         areaMap.setOnSelect(cell -> {
+            if (shownArea != null && shownArea.row == cell.row && shownArea.col == cell.col) {
+                openArea();
+                return;
+            }
             pickedArea = true;
             showArea(cell);
         });
@@ -1795,6 +1805,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         } else if (saved.autopilot) {
             showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                     ui.inkSecondary);
+            if (AutopilotText.meters(status)) {
+                meter.set(status.shownArPercent(), status.goal, status.belowGoal()
+                        ? Ui.resultColor(OfferRule.Result.REVIEW) : Ui.resultColor(OfferRule.Result.KEEP));
+                showMeter(true);
+            }
         } else if (!saved.enabled) {
             showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ": nothing is declined. Resume auto-decline", ui.ink);
         } else if (showWait) {
@@ -1850,6 +1865,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private void showSlot(int which, String words, String said, int color) {
         slot = which;
+        showMeter(false);
         // Nothing to say (Autopilot waiting, say, whose chip says it all and opens its details): no words, no tap, and
         // nothing for screen readers to stop on.
         boolean blank = words.isEmpty();
@@ -1867,6 +1883,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         chipRow.setWordsTappable(which != SLOT_ON && !blank);
         int important = blank ? View.IMPORTANT_FOR_ACCESSIBILITY_NO : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO;
         if (statusLine.getImportantForAccessibility() != important) statusLine.setImportantForAccessibility(important);
+    }
+
+    /** Autopilot's acceptance meter before the status line's words ({@link AcceptanceMeter}), or none. */
+    private void showMeter(boolean shown) {
+        android.graphics.drawable.Drawable now = statusLine.getCompoundDrawablesRelative()[0];
+        if ((now == meter) == shown) return;
+        statusLine.setCompoundDrawablesRelativeWithIntrinsicBounds(shown ? meter : null, null, null, null);
     }
 
     /** The status line's tap: the starter, resume, Autopilot's details, or how long until a matching offer. */
@@ -2081,6 +2104,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (shown.equals(shownHero)) return;
         shownHero = shown;
         hero.set(state, counts, totals, label);
+        chart.setCounts(counts, totals, label, state == FilterHeroView.State.ON);
     }
 
     /** Fixed display comparison only: actual offers are still scored using their own miles and trip time. */
@@ -2605,8 +2629,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         String hereName = here == null ? null : Places.name(this, here[0], here[1]);
         areaMap.setNames(names, hereName);
-        // The signpost stands on the hills beside the skyline.
-        scene.setPlace(hereName);
+        // No signpost from 0.6.6: the map names the best area itself.
         // Until a square is picked, the best one is shown, following it as the ranking changes.
         if (!pickedArea && !ranked.isEmpty()) areaMap.select(ranked.get(0));
         if (areaMap.selected() != null) {
@@ -2636,11 +2659,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!where.isEmpty()) parts.add(where.replace(" of you", ""));
         parts.add(rate);
         areaLine.setText(String.join(" · ", parts) + "  ›");
+        // 0.6.6: the map names the square and its rate; the line stays only for what screen readers hear on the map.
         String spoken = (rank > 0 ? "#" + rank : "Not ranked yet") + (name == null ? "" : " · " + name)
                 + (where.isEmpty() ? "" : " · " + where) + " · " + rate;
         areaLine.setContentDescription(spoken + ". Average " + DecisionLog.money(cell.averagePayCents()) + ", last "
                 + when(cell.lastAt) + ". Opens it in Maps.");
-        if (areaLine.getVisibility() != View.VISIBLE) areaLine.setVisibility(View.VISIBLE);
+        areaMap.setSelectedSaid("Selected: " + spoken + ". Average " + DecisionLog.money(cell.averagePayCents())
+                + ", last " + when(cell.lastAt) + ". Tap it again to open it in Maps.");
+        areaMap.invalidate();
     }
 
     private void openArea() {

@@ -87,18 +87,15 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertFalse(FilterStore.load(app).acceptanceLearning);
             assertEquals(MainActivity.LEARN_OFF_TOAST, ShadowToast.getTextOfLatestToast());
 
-            // The scoring mode is the strip's own chip beside Autopilot's (0.6.3), its own choice; neither it nor
-            // learning is in Settings.
-            ModeChip mode = find(content, ModeChip.class);
-            assertNotNull(mode);
-            assertTrue(mode.isShown());
-            assertEquals(ModeChip.STRICT, mode.getText().toString());
-            assertEquals(ModeChip.STRICT_SAID, mode.getContentDescription().toString());
-            assertNotSame("never Autopilot's chip", find(content, AutopilotChip.class), mode);
-            mode.performClick();
+            // The scoring mode is the radar's middle word (0.6.6; the strip's own chip from 0.6.3), its own choice;
+            // neither it nor learning is in Settings.
+            assertNull("no mode chip in the strip", find(content, ModeChip.class));
+            assertEquals(ModeChip.STRICT, star.modeShownWord());
+            assertEquals(ModeChip.STRICT_SAID, node(star, MinimumsStarView.MODE_ID).getContentDescription().toString());
+            assertTrue(act(star, MinimumsStarView.MODE_ID, AccessibilityNodeInfo.ACTION_CLICK));
             ShadowAlertDialog.getLatestAlertDialog().cancel();
             assertFalse(FilterStore.load(app).scoreByArea);
-            mode.performClick();
+            assertTrue(act(star, MinimumsStarView.MODE_ID, AccessibilityNodeInfo.ACTION_CLICK));
             Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1);
             after = FilterStore.load(app);
             assertTrue(after.scoreByArea);
@@ -106,8 +103,9 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertFalse(after.enabled);
             assertFalse(after.autopilot);
             assertArrayEquals(RULES.minimums(), after.minimums());
-            assertEquals("the chip says so", ModeChip.AREA, mode.getText().toString());
-            assertEquals(ModeChip.AREA_SAID, mode.getContentDescription().toString());
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals("the radar says so", ModeChip.AREA, star.modeShownWord());
+            assertEquals(ModeChip.AREA_SAID, node(star, MinimumsStarView.MODE_ID).getContentDescription().toString());
             assertNotNull(find(content, AutopilotChip.class));
             openSettings(content);
             assertNull("no Mode entry in Settings", shownButton(content, "Mode · Area"));
@@ -377,13 +375,15 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertTrue(settings.getWidth() >= new Ui(app).dp(48));
             assertTrue(settings.getGlobalVisibleRect(visible));
             assertEquals(settings.getHeight(), visible.height());
-            // The scoring mode's chip, in the strip that never fades: whole, a 48 dp target at every font.
-            ModeChip mode = find(content, ModeChip.class);
-            assertNotNull(mode);
-            assertTrue(mode.getHeight() >= new Ui(app).dp(48));
-            assertTrue(mode.getWidth() >= new Ui(app).dp(48));
-            assertTrue("Mode whole on screen", mode.getGlobalVisibleRect(visible));
-            assertEquals("Mode whole touch target", mode.getHeight(), visible.height());
+            // The scoring mode's word in the radar's middle (0.6.6): a 48 dp target where the radar has room for it,
+            // and always a node screen readers reach while it is shown.
+            MinimumsStarView radar = find(content, MinimumsStarView.class);
+            if (radar.modeShownWord() != null) {
+                Rect target = new Rect();
+                node(radar, MinimumsStarView.MODE_ID).getBoundsInParent(target);
+                assertTrue("Mode a whole target: " + target, target.height() >= new Ui(app).dp(48) - 1
+                        && target.width() >= new Ui(app).dp(48) - 1);
+            }
             render(content, "main-font" + (int) font);
             openSettings(content);
             assertNull("no Mode entry in Settings", shownButton(content, "Mode · Strict"));

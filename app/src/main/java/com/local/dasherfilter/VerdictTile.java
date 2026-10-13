@@ -21,7 +21,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
  * and or graphic) expression"). Two lines in a box of one fixed size, beside the mascot:
  * <ul>
  * <li>the outcome's badge (the skyline's, {@link OutcomeBadge}), the pay in bold, a short tag only where the badge
- * alone would leave the outcome unsaid ("below min" in Autopilot's purple, with its purple dot on the badge; "auto";
+ * alone would leave the outcome unsaid ("below min" in Autopilot's purple; "auto";
  * "requested" in amber), and how long ago at the right: "now", "12m", "3h", "4d";</li>
  * <li>the trip under it, "2.1 mi · 13 min", and its stops when the offer is the stored route's (whose road marks the
  * badge's lower right).</li>
@@ -253,7 +253,8 @@ final class VerdictTile extends View {
             // An offer passed below the minimums by Autopilot's bar never reads as a full pass: an amber tick.
             badgeColor = below ? Ui.WARNING : Ui.outcomeColor(result);
             symbol = OutcomeBadge.symbol(result);
-            pipColor = below ? AutopilotChip.purple(ui) : 0;
+            // No purple dot (0.6.6): "below min" in purple already says it.
+            pipColor = 0;
             onRoute = routed;
             OfferSnapshot facts = latest.facts;
             pay = facts.payCents == null ? "$?" : DecisionLog.money(facts.payCents);

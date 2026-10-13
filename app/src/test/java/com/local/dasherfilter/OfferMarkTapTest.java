@@ -277,9 +277,9 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             AccessibilityNodeProvider nodes = star.getAccessibilityNodeProvider();
             assertNotNull(nodes);
             AccessibilityNodeInfo host = nodes.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            assertEquals("the three knobs, max stops, the Autopilot button, then only the displayed offer",
-                    Arrays.asList(AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE, MinimumsStarView.STOPS_ID,
-                            MinimumsStarView.SCORE_ID, MinimumsStarView.OFFER_ID),
+            assertEquals("the three knobs, max stops, the Autopilot button, the mode's word, then only the displayed "
+                    + "offer", Arrays.asList(AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE, MinimumsStarView.STOPS_ID,
+                            MinimumsStarView.SCORE_ID, MinimumsStarView.MODE_ID, MinimumsStarView.OFFER_ID),
                     childIds(host));
             assertNull(nodes.createAccessibilityNodeInfo(MinimumsStarView.OFFER_ID + OLDER));
             assertFalse("hidden offers cannot be activated through stale accessibility ids",

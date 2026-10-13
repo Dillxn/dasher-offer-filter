@@ -25,11 +25,12 @@ import java.util.Locale;
  * The offer areas drawn into the homepage's ground, north up, with no map tiles: each square where offers came in is
  * gilded deeper the better its pay per mile, with coins on the best three (named after their neighbourhood when the
  * phone's place lookup knows it) and a dotted trail from you to the best. Squares with too few offers to rank are
- * dashed outlines. A dot marks where the phone is now; a scale bar and a compass rose give distance and direction.
+ * dashed outlines. A dot marks where the phone is now; a scale bar and a small "N ↑" give distance and direction.
  * The land fades out toward every edge instead of stopping at a hard line, so a square or coin the edge cuts through
- * dissolves into the scene's ground; the compass and the scale stay crisp above it. Tap a square to select it. With
- * nothing to show yet, it says why, in as many lines as the land holds (three at most). In a short map (0.6.3: a split
- * screen's three columns) the compass fades out between 84 and 68 dp tall and its room goes to the land.
+ * dissolves into the scene's ground; the scale stays crisp above it. The selected square (the best until another is
+ * picked) is named on the map with its pay per mile ("Hunt Rd · $2.40/mi"; 0.6.6, the line under the map, its title
+ * and its compass rose gone: say each thing once). Tap a square to select it. With nothing to show yet, it says why, in
+ * as many lines as the land holds (three at most).
  */
 @SuppressLint("ViewConstructor")
 final class AreaMapView extends View {
@@ -41,7 +42,7 @@ final class AreaMapView extends View {
     private static final int[] MEDALS = {0xFFE3B341, 0xFFB9BDC3, 0xFFCD8B4E};
     private static final int GOLD = 0xFFD39B2A;
     static final int EXPLAIN_ATLAS = 0x01030001;
-    private static final String TITLE = "Offers received · $/mi";
+    static final String NORTH = "N ↑";
     private static final String HELP = "Each square is the approximate area your phone was in when standalone "
             + "offers arrived, including declined offers. These are receiving areas, not pickups, final stops "
             + "or Dasher hotspots.\n\n"
@@ -73,14 +74,12 @@ final class AreaMapView extends View {
     private final RectF labelObstacle = new RectF();
     private boolean helpPressed;
     private final Path path = new Path();
+    private String selectedSaid;
     /** Made once: the map redraws every frame while its "You" halo breathes. */
     private final DashPathEffect unrankedDash;
     private final DashPathEffect frameDash;
     /** How far in from each edge the land fades from nothing to full. */
     static final int FADE_DP = 22;
-    /** The compass rose is gone in a map this tall or less, wholly there in one this much taller (0.6.3). */
-    private static final float COMPASS_GONE_DP = 68;
-    private static final float COMPASS_OVER_DP = 16;
     /**
      * The right-hand gutter beside the land: the info control's 48 dp target and 1 dp, and the compass's 9 dp more as
      * much as the compass is there.
@@ -206,6 +205,18 @@ final class AreaMapView extends View {
         invalidate();
     }
 
+    /** What screen readers hear of the selected square (where, how far, its rate; a second tap opens Maps). */
+    void setSelectedSaid(String said) {
+        if (java.util.Objects.equals(said, selectedSaid)) return;
+        selectedSaid = said;
+        setContentDescription(describe());
+    }
+
+    /** What screen readers hear of the selected square, as set (for tests); null before one is shown. */
+    String selectedSaid() {
+        return selectedSaid;
+    }
+
     static String key(AreaMap.Cell cell) {
         return cell.row + "," + cell.col;
     }
@@ -254,7 +265,8 @@ final class AreaMapView extends View {
         return (hereName == null ? "" : "You are in " + hereName + ". ")
                 + "Best paying areas by pay per mile: " + (best.isEmpty() ? "none ranked yet" : String.join("; ", best))
                 + "." + (unranked > 0 ? " " + unranked + (unranked == 1 ? " area has" : " areas have")
-                + " too few offers to rank." : "") + " " + spokenKey();
+                + " too few offers to rank." : "") + (selectedSaid == null ? "" : " " + selectedSaid) + " "
+                + spokenKey();
     }
 
     private String spokenKey() {
@@ -355,9 +367,9 @@ final class AreaMapView extends View {
         return Math.max(1, width - ui.dp(GUTTER_DP) - ui.dp(GUTTER_COMPASS_DP) * compass(height));
     }
 
-    /** How much of the compass rose is there in a map {@code height} pixels tall: 1 from 84 dp, 0 at 68 dp and less. */
+    /** How much of the compass rose is there: none from 0.6.6 ("N ↑" in the key's row says north). */
     float compass(float height) {
-        return Math.max(0, Math.min(1, (height - ui.dp(COMPASS_GONE_DP)) / ui.dp(COMPASS_OVER_DP)));
+        return 0;
     }
 
     /** The land's width now, in pixels (for tests too). */
@@ -425,7 +437,6 @@ final class AreaMapView extends View {
                 words.draw(canvas);
                 canvas.restore();
             }
-            drawNorth(canvas, width, compass(height));
             drawKey(canvas, width);
             return;
         }
@@ -462,11 +473,16 @@ final class AreaMapView extends View {
         if (here != null && !ranked.isEmpty()) drawTrail(canvas, ranked.get(0));
         for (int i = Math.min(3, ranked.size()) - 1; i >= 0; i--) drawMedal(canvas, ranked.get(i), i);
         namesShown = 0;
-        for (int i = 0; i < Math.min(3, ranked.size()); i++) drawName(canvas, ranked.get(i));
+        // The selected square's name and pay per mile first, so another name gives way to it.
+        if (selected != null) drawName(canvas, selected);
+        for (int i = 0; i < Math.min(3, ranked.size()); i++) {
+            if (selected == null || ranked.get(i).row != selected.row || ranked.get(i).col != selected.col) {
+                drawName(canvas, ranked.get(i));
+            }
+        }
         if (here != null) drawHere(canvas);
         fadeEdges(canvas, landWidth, height);
         canvas.restoreToCount(land);
-        drawNorth(canvas, width, compass(height));
         drawScale(canvas, height);
         drawKey(canvas, width);
         if (here != null) Motion.next(this);
@@ -540,14 +556,13 @@ final class AreaMapView extends View {
         return words == null ? 0 : words.getPaint().getTextSize();
     }
 
-    /** One quiet heading; the full key is one tap away, outside Settings. */
+    /** "N ↑" for north; the full key is one tap away on the ⓘ, outside Settings. */
     private void drawKey(Canvas canvas, float width) {
         keyText.setColor(brown());
         keyText.setTextAlign(Paint.Align.LEFT);
-        keyText.setTypeface(android.graphics.Typeface.DEFAULT);
+        keyText.setTypeface(Ui.MEDIUM);
         keyText.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
-        CharSequence title = Ui.fit(keyText, TITLE, width - ui.dp(60), 0.9f);
-        canvas.drawText(title, 0, title.length(), ui.dp(12), ui.dp(14), keyText);
+        canvas.drawText(NORTH, ui.dp(12), ui.dp(14), keyText);
 
         float cx = width - ui.dp(25), cy = ui.dp(13);
         line.setColor(brown());
@@ -598,7 +613,7 @@ final class AreaMapView extends View {
      * square's name goes first; a later one that would overlap a name already shown is left out.
      */
     private void drawName(Canvas canvas, AreaMap.Cell cell) {
-        String name = names.get(key(cell));
+        String name = nameShown(cell);
         if (name == null) return;
         float half = (float) (AreaMap.CELL_DEGREES * scale / 2);
         float cx = x(cell.longitude());
@@ -611,6 +626,18 @@ final class AreaMapView extends View {
         drawLabel(canvas, shown, cx, cy);
     }
 
+    /**
+     * What the map names a square: its neighbourhood, and for the selected one its pay per mile too ("Hunt Rd ·
+     * $2.40/mi", or the rate alone with no name known; an unranked one says so); null for no label.
+     */
+    String nameShown(AreaMap.Cell cell) {
+        String name = names.get(key(cell));
+        boolean chosen = selected != null && selected.row == cell.row && selected.col == cell.col;
+        if (!chosen) return name;
+        String rate = cell.ranked() ? cell.perMile() : "Unranked";
+        return name == null ? rate : name + " · " + rate;
+    }
+
     /** How many place names the last drawing showed (for tests). */
     int namesShown() {
         return namesShown;
@@ -621,7 +648,7 @@ final class AreaMapView extends View {
         labelText.setFakeBoldText(true);
         labelText.setTextAlign(Paint.Align.CENTER);
         labelText.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
-        CharSequence shown = Ui.fit(labelText, label, ui.dp(120), 0.8f);
+        CharSequence shown = Ui.fit(labelText, label, ui.dp(160), 0.8f);
         float halfWidth = labelText.measureText(shown, 0, shown.length()) / 2 + ui.dp(5);
         float halfHeight = labelText.getTextSize() * 0.75f;
         pill.set(cx - halfWidth, cy - halfHeight, cx + halfWidth, cy + halfHeight);
@@ -749,33 +776,6 @@ final class AreaMapView extends View {
             }
         }
         return true;
-    }
-
-    /** A compass rose with north marked, {@code shown} of it there (0: none, in a map too short for it). */
-    private void drawNorth(Canvas canvas, float width, float shown) {
-        if (shown <= 0) return;
-        float cx = width - ui.dp(30);
-        float cy = ui.dp(54);
-        float big = ui.dp(15);
-        float small = ui.dp(4);
-        int ink = faded(brown(), shown);
-        line.setColor(faded((ink & 0x00FFFFFF) | 0x80000000, shown));
-        line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        canvas.drawCircle(cx, cy, ui.dp(10), line);
-        for (int point = 0; point < 4; point++) {
-            double angle = Math.toRadians(point * 90 - 90);
-            double side = Math.toRadians(point * 90 - 45);
-            path.reset();
-            path.moveTo(cx, cy);
-            path.lineTo((float) (cx + Math.cos(side) * small), (float) (cy + Math.sin(side) * small));
-            path.lineTo((float) (cx + Math.cos(angle) * big), (float) (cy + Math.sin(angle) * big));
-            path.close();
-            fill.setColor(point == 0 ? faded(ui.dark ? 0xFFE0876E : 0xFFB5523B, shown) : ink);
-            canvas.drawPath(path, fill);
-        }
-        text.setColor(ink);
-        text.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
-        canvas.drawText("N", cx, cy - big - ui.dp(3), text);
     }
 
     /** {@code color} with its alpha multiplied by {@code shown} (0 to 1). */

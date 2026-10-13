@@ -568,9 +568,11 @@ abstract class AndroidAdapterTestBase {
     }
 
     /** The line under the map as screen readers hear it: its rank is on the map's coin, not in its words. */
+    /** What screen readers hear of the map's selected square (0.6.6: the line under the map that said it is gone). */
     static String areaLineSaid(View content) {
-        TextView line = shownTextContaining(content, "  ›");
-        return line == null || line.getContentDescription() == null ? "" : line.getContentDescription().toString();
+        AreaMapView map = find(content, AreaMapView.class);
+        String said = map == null ? null : map.selectedSaid();
+        return said == null ? "" : said.replaceFirst("^Selected: ", "");
     }
 
     /** Any TextView (a switch's label too) whose text contains {@code part}, shown or not. */

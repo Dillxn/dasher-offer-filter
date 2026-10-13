@@ -212,7 +212,8 @@ final class ScenePage extends ViewGroup {
         fluid.width = width;
         fluid.height = MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED ? 0 : MeasureSpec.getSize(heightSpec);
         fluid.tileHeight = VerdictTile.heightFor(getContext());
-        fluid.countsWidth = hero.countsWidth();
+        // 0.6.6: the dash's counts are the chart's key ({@link DecisionChartView#setCounts}), not the band's.
+        fluid.countsWidth = 0;
         fluid.chipsMost = chipRow.widestChips();
         // The header's title (a heading for screen readers, nothing drawn) takes the band's gap before the buttons.
         fluid.buttonsWidth = Math.max(0, header.getMeasuredWidth() - ui.dp(FluidLayout.BAND_GAP_DP));
@@ -467,7 +468,8 @@ final class ScenePage extends ViewGroup {
     private void drawStars(Canvas canvas, float width, float line) {
         canvas.save();
         canvas.translate(-Tilt.x() * ui.dp(STARS_DEPTH), -Tilt.y() * ui.dp(STARS_DEPTH));
-        float reach = line - ui.dp(70);
+        // Only in the sky band over the mascot (0.6.6): none over the radar, the chart or the map.
+        float reach = Math.max(0, Math.min(line - ui.dp(70), fluid.band - ui.dp(16)));
         float shiftX = -Tilt.x() * ui.dp(STARS_DEPTH);
         float shiftY = -Tilt.y() * ui.dp(STARS_DEPTH);
         for (float[] star : STARS) {
