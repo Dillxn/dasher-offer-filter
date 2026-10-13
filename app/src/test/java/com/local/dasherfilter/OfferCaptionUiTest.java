@@ -167,7 +167,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void olderSelectionAndItsCaptionSurviveALaterOutcomeAndNewArrivals() {
+    @Test public void olderSelectionSurvivesALaterOutcomeAndANewOfferBringsBackTheNewest() {
         FilterStore.save(app, RULES);
         long now = System.currentTimeMillis();
         DecisionLog.Entry older = entry(now - 5000, 1234, null);
@@ -199,11 +199,11 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
                     countText(content, "Accepted: you tapped Accept"));
             assertArrayEquals("an acceptance changes no minimum", RULES.minimums(), FilterStore.load(app).minimums());
             activity.get().onBackPressed();
+            // 0.6.12 (the owner, with an older bar still picked: "not seeing time chart anymore"): a new offer, its
+            // ticket closed, brings the skyline back to the newest, and the offer clock into the caption's row.
             DecisionLog.record(app, entry(now - 1000, 2500, null));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertEquals(older.at, chart.selectedEntry().at);
-            assertNotNull(shownTextContaining(content, "Selected · $12.34 · Accepted by you"));
-            chart.select(2);
+            assertEquals(now - 1000, chart.selectedEntry().at);
             assertNull("the latest has no caption of its own", shownTextContaining(content, "Selected ·"));
             assertNull(shownTextContaining(content, "Latest ·"));
             latestTile(content, "$25.00", "Passed");

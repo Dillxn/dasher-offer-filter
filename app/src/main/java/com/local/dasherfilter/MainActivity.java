@@ -670,8 +670,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (shown < 2 || last == null) return;
             int extra = (r - l) - getPaddingRight() - last.getRight();
             if (extra <= 0) return;
-            // The title's room (it shows no words here) joins the spread as the row widens past the buttons' own.
-            int from = first.getLeft() - Math.min(first.getLeft() - title.getLeft(), extra);
+            // The title's room (it shows no words here) joins the spread as the row widens past the buttons' own: the
+            // title narrows by what the first button takes of it.
+            // It keeps a pixel, so screen readers still find the heading.
+            int from = Math.max(title.getLeft() + 1, first.getLeft() - Math.min(first.getLeft() - title.getLeft(), extra));
+            if (from < title.getRight()) title.layout(title.getLeft(), title.getTop(), from, title.getBottom());
             int to = (r - l) - getPaddingRight() - last.getWidth();
             int step = 0;
             for (int i = 1; i < getChildCount(); i++) {

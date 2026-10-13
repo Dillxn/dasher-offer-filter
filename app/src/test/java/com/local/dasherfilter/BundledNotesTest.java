@@ -392,9 +392,10 @@ public class BundledNotesTest {
     @Test public void theCurrentReleaseSaysWhatChanged() {
         assertEquals("0.6.12", Updater.version(RuntimeEnvironment.getApplication()));
         List<String> lines = BundledNotes.whatsNew("0.6.12");
-        assertEquals(lines.toString(), 3, lines.size());
+        assertEquals(lines.toString(), 4, lines.size());
         String release = String.join(" ", lines);
-        for (String fact : new String[] {"pay per stop", "after the first pickup", "3-stop offer asks twice",
+        for (String fact : new String[] {"pay per stop", "after the first pickup", "gaps on the homepage",
+                "time-of-day chart comes back", "3-stop offer asks twice",
                 "Single orders are judged exactly as before", "didn't change", "best pay per stop"}) {
             assertTrue(fact, release.contains(fact));
         }
