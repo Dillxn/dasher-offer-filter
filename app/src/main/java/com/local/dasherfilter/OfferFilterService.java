@@ -1409,6 +1409,102 @@ public final class OfferFilterService extends AccessibilityService {
                 && now >= lateCompletionUntil;
     }
 
+    // ---- The split divider during a delivery ({@link SplitDividerMover}; scanner thread) ----
+
+    /** The last read of Dasher showed its own turn-by-turn navigation: the divider is never moved then. */
+    private volatile boolean dasherNavigationRead;
+    /** Moves the split divider for a delivery, with the divider's own actions; null before {@link #onCreate}. */
+    private SplitDividerMover splitDivider;
+
+    /** Any thread: the windows may have changed, so the split divider's mover looks soon. */
+    private void kickSplitDivider() {
+        SplitDividerMover mover = splitDivider;
+        if (mover != null && !stopped) mover.kick();
+    }
+
+    /** What {@link SplitDividerMover} is given: Android's windows, the IDs known, and the guards' facts. */
+    private SplitDividerMover.Host splitDividerHost() {
+        OfferFilterService service = this;
+        return new SplitDividerMover.Host() {
+            @Override public Context context() { return service; }
+
+            @Override public List<AccessibilityWindowInfo> windows() { return windowSource.get(); }
+
+            @Override public boolean running() {
+                return !stopped && !scannerFaulted && active == service && Consent.accepted(service) && phoneReadable();
+            }
+
+            @Override public SplitWindows.Owner knownOwner(AccessibilityWindowInfo window) {
+                int id = window.getId();
+                if (realWindowId(id) ? dasherWindowIds.contains(id) : window == lastReadableWindow) {
+                    return SplitWindows.Owner.DASHER;
+                }
+                return isOwnWindow(id) ? SplitWindows.Owner.OURS : null;
+            }
+
+            @Override public String rootPackage(AccessibilityWindowInfo window) {
+                AccessibilityNodeInfo root = windowRoot(window, true);
+                CharSequence name = root == null ? null : root.getPackageName();
+                return name == null || name.length() == 0 ? null : name.toString();
+            }
+
+            @Override public SplitDivider.Moment moment(long now) { return splitDividerMoment(now); }
+
+            @Override public boolean busy(long now) { return hot(now) || declineUnderWay(now); }
+
+            @Override public boolean onDelivery() { return dasherOnDelivery(service); }
+
+            @Override public long dashKey() { return Dashing.currentStart(service); }
+
+            @Override public void postAt(Runnable run, long uptime) {
+                if (!stopped) scanner.postAtTime(run, uptime);
+            }
+
+            @Override public void remove(Runnable run) { scanner.removeCallbacks(run); }
+        };
+    }
+
+    /**
+     * The guards' facts for a divider move ({@link SplitDivider#blocked}): as {@link #safeForBarChange}, with
+     * {@link SplitDivider#QUIET_MS} of quiet after a sign of an offer, the user's last click on Dasher and last touch on
+     * Offer Filter's half (the own-touch guard's times), and whether the last read was Dasher's navigation.
+     */
+    private SplitDivider.Moment splitDividerMoment(long now) {
+        SplitDivider.Moment moment = new SplitDivider.Moment();
+        moment.noticeAccepted = Consent.accepted(this);
+        moment.paused = pausedNow();
+        moment.unlocked = phoneReadable();
+        moment.offerUp = busy(now);
+        moment.sinceOfferSign = now - offerSeenAt;
+        moment.underWay = splitDividerWaitsFor(now);
+        long tapSettle = userTapSettleAt;
+        moment.sinceUserClick = tapSettle == NEVER ? Long.MAX_VALUE : now - (tapSettle - TAP_SETTLE_MS);
+        long touched = ownScreenTouchAt;
+        moment.sinceOwnTouch = touched == NEVER ? Long.MAX_VALUE : now - touched;
+        moment.navigationRead = dasherNavigationRead;
+        return moment;
+    }
+
+    /** What under way a divider move waits for, or null for nothing. */
+    private String splitDividerWaitsFor(long now) {
+        if (declineUnderWay(now) || episode.active(now) || declineState.hasPendingConfirmation(now)
+                || heldConfirmation != null) {
+            return "a decline";
+        }
+        if (declineError.pending()) return "a decline-error recovery";
+        if (autoAccept.candidate() != null || autoAcceptWatched
+                || (autoRequestedAt != 0 && now - autoRequestedAt <= AutoAccept.SUPPRESS_MS)) {
+            return "an automatic acceptance";
+        }
+        if (peek.active()) return "a peek";
+        if (queued.get() != QUEUED_NONE) return "a read";
+        if ((takeover != Takeover.NONE && now - takeover.at < TAKEOVER_MS) || RestartSuppression.load(this) != null) {
+            return "an offer left to you";
+        }
+        if (now < lateCompletionUntil) return "an offer's late completion";
+        return null;
+    }
+
     static boolean isConnected() {
         return active != null && !active.scannerFaulted;
     }
@@ -1737,6 +1833,7 @@ public final class OfferFilterService extends AccessibilityService {
                 catch (RuntimeException error) { scannerFailed(error); }
             }
         };
+        splitDivider = new SplitDividerMover(splitDividerHost());
         touchWatch = new TouchWatch(this, this::touched);
         overlay = new DasherOverlay(this);
         overlay.setBackToMap(this::backToMapTapped);
@@ -7025,6 +7122,7 @@ public final class OfferFilterService extends AccessibilityService {
             noteEndDashFront(dasherActive, split, activeOwner);
         }
         knownPlace = new DasherPlace(listed, activeApp, split, dasherActive, dasher != null, split && dasherListed);
+        if (split) kickSplitDivider();
         return true;
     }
 
@@ -7957,11 +8055,15 @@ public final class OfferFilterService extends AccessibilityService {
         // would otherwise hold the guide, the tab, update installs and what an acceptance needs, for hours).
         boolean noRoute = AcceptedOfferTracker.showsNoRoute(scan.text);
         // Dasher on a delivery, as the Split button needs to know (DasherSplit: no launcher start beside it then).
-        if (DasherScene.showsRoute(scan.text) || DasherScene.showsNavigation(withParts(scan))) {
+        boolean navigation = DasherScene.showsNavigation(withParts(scan));
+        if (DasherScene.showsRoute(scan.text) || navigation) {
             deliveryScreenAt = SystemClock.uptimeMillis();
         } else if (noRoute) {
             deliveryScreenAt = 0;
         }
+        // The split divider is never moved while Dasher's own navigation was the last read (it may not survive one).
+        dasherNavigationRead = navigation;
+        if (screen.split) kickSplitDivider();
         if (noRoute) {
             if (ActiveRouteStore.load(this) != null) {
                 String end = OfferEvidence.isDashOver(scan.text) ? "dash_over"
@@ -9573,6 +9675,7 @@ public final class OfferFilterService extends AccessibilityService {
         lastLookAt = now;
         Look seen = see(true, stop);
         if (seen == null) return null;
+        if (seen.split) kickSplitDivider();
         lastLookWindows = windowsSignature(seen.windows);
         lastReturnSignature = returnSignature(seen.windows);
         scanWindows = Math.max(scanWindows, seen.windows.size());
