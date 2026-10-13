@@ -196,7 +196,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Autopilot's chip, the scoring mode's and the status words, in the band's second row. */
     private AutopilotChip.Row chipRow;
     /** The status words beside the chips: the start, paused, Autopilot's status or the wait (as {@code slot} says). */
-    private TextView statusLine;
+    private AcceptanceMeter.Words statusLine;
     private AcceptanceMeter meter;
     private int slot = SLOT_ON;
     /** Autopilot's chip at the status line's start, at every size: a tap opens the details, a long press the goal. */
@@ -822,10 +822,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // state, a tap opening its details; else, with Autopilot off, paused (a tap resumes), the wait for a matching
         // offer, or that auto-decline is on. A tap only where they are a touch target wide (the chips and the mascot
         // do the same). Never a live region: Autopilot moving its bar by itself is never announced.
-        statusLine = ui.text("", 14, ui.inkSecondary, false);
+        statusLine = new AcceptanceMeter.Words(this, ui);
+        statusLine.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        statusLine.setTextColor(ui.inkSecondary);
+        statusLine.setLineSpacing(0, 1.15f);
         statusLine.setMinHeight(ui.dp(48));
         statusLine.setGravity(Gravity.CENTER_VERTICAL);
-        meter = new AcceptanceMeter(ui);
+        meter = new AcceptanceMeter(ui, statusLine);
         statusLine.setCompoundDrawablePadding(ui.dp(6));
         statusLine.setOnClickListener(tapped -> statusTapped());
         // Autopilot's chip at the status line's start, at every size: beside its 48 dp line it costs no height.
@@ -1882,10 +1885,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (AutopilotText.meters(status)) {
                 int fill = status.belowGoal() ? Ui.resultColor(OfferRule.Result.REVIEW)
                         : Ui.resultColor(OfferRule.Result.KEEP);
-                showSlot(SLOT_AUTOPILOT, meterWords(AutopilotText.meterLabel(status), AutopilotText.meterWords(status), fill),
+                String rate = AutopilotText.arShort(status);
+                String goal = rate + " / " + status.goal + "%";
+                showSlot(SLOT_AUTOPILOT, meterWords(AutopilotText.meterLabel(status), goal, fill),
                         AutopilotText.chipDescription(status), ui.inkSecondary);
                 meter.set(status.shownArPercent(), status.goal, fill);
-                showMeter(true);
+                showMeter(meterWords(AutopilotText.meterLabel(status), goal, fill), meterWords(AutopilotText.METER_SHORT, goal, fill),
+                        meterWords(AutopilotText.METER_SHORT, rate, fill));
             } else {
                 showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                         ui.inkSecondary);
@@ -1899,7 +1905,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             String words = (status.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + rate + "%";
             showSlot(SLOT_ON, meterWords("ACCEPTANCE  ", words, ui.ink), "Acceptance rate " + rate + " percent", ui.inkSecondary);
             meter.set(rate, 0, ui.inkSecondary);
-            showMeter(true);
+            showMeter(meterWords("ACCEPTANCE  ", words, ui.ink), meterWords(AutopilotText.METER_SHORT, words, ui.ink));
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
@@ -1975,12 +1981,23 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (statusLine.getImportantForAccessibility() != important) statusLine.setImportantForAccessibility(important);
     }
 
-    /** The acceptance meter along the status words' bottom ({@link AcceptanceMeter}), or none. */
+    /**
+     * The acceptance meter after the status words on their one line ({@link AcceptanceMeter}), or none: drawn as their
+     * background, it takes none of their room (until 0.6.10 its track ran under them, which read as a line break).
+     */
     private void showMeter(boolean shown) {
+        if (!shown) statusLine.forms((CharSequence[]) null);
         if ((statusLine.getBackground() == meter) == shown) return;
         statusLine.setBackground(shown ? meter : null);
-        statusLine.setPaddingRelative(statusLine.getPaddingStart(), 0, statusLine.getPaddingEnd(),
-                shown ? ui.dp(AcceptanceMeter.ROOM_DP) : 0);
+    }
+
+    /**
+     * The meter with the status words in {@code forms}, longest first: the first that leaves its track room on their
+     * one line ({@link AcceptanceMeter.Words}; 0.6.11, never wrapped).
+     */
+    private void showMeter(CharSequence... forms) {
+        showMeter(true);
+        statusLine.forms(forms);
     }
 
     /** "ACCEPTANCE 7% / 70%": the {@code label} small and quiet, the rate bold in the fill's {@code ink}. */

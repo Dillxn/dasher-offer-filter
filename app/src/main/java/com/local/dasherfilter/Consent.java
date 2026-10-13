@@ -27,7 +27,9 @@ final class Consent {
     // the install page's Download count; both kept by the feedback service only as daily totals.
     // 21 (0.6.10): the store skip list, a reason the app declines (any pay), and the driver's own cost per mile, one
     // of Autopilot's inputs (off by default); both kept on the phone like the rules.
-    static final int VERSION = 21;
+    // 22 (0.6.11): Autopilot's bar rises to the score of an offer you accept yourself, for the rest of the dash; and in
+    // split screen during a delivery the divider moves, by its own controls, to give the navigating app more room.
+    static final int VERSION = 22;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -48,12 +50,16 @@ final class Consent {
                 + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
                 + "you decline, and your own cost per mile if you set one in its details (off by default): raised, "
                 + "it declines offers that meet your minimums; to protect your acceptance goal it can "
-                + "let offers below your minimums through for you to decide. Autopilot also raises your minimums after "
+                + "let offers below your minimums through for you to decide. When you accept an offer yourself that "
+                + "scores above that cutoff, it raises the cutoff to that offer's score for the rest of the dash, even "
+                + "above what your acceptance goal allows. Autopilot also raises your minimums after "
                 + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
                 + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "
                 + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
                 + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
-                + "most twice. Your touch stops it. It can briefly turn offer sound down. During a dash it keeps your "
+                + "most twice. Your touch stops it. In split screen during a delivery it moves the divider, using the "
+                + "divider's own controls, to give the navigating app more room, and puts it back afterward; move it "
+                + "yourself and it stops for that dash. It can briefly turn offer sound down. During a dash it keeps your "
                 + "unlocked screen from timing out; it never wakes or unlocks it."},
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer (also just after you unlock, for one that came while it was locked), then return to "

@@ -432,6 +432,38 @@ abstract class AndroidAdapterTestBase {
     }
 
     /** The status words beside Autopilot's chip and the scoring mode's: the chip row's last child. */
+    /**
+     * The status line's words where Autopilot's status shows: where it meters, one of the meter's forms (0.6.11:
+     * shortened, never wrapped where the row leaves the shortest its line), a longer one only with the track's room
+     * after it on one line; else its words exactly.
+     */
+    static void assertStatusWords(String where, AutopilotText.Status status, TextView line) {
+        String words = line.getText().toString();
+        if (!AutopilotText.meters(status)) {
+            org.junit.Assert.assertEquals(where, AutopilotText.shownLine(status), words);
+            return;
+        }
+        java.util.List<String> forms = AutopilotText.meterForms(status);
+        int form = forms.indexOf(words);
+        org.junit.Assert.assertTrue(where + ": one of the meter's forms, " + words, form >= 0);
+        assertMeterForm(where, (AcceptanceMeter.Words) line, form == forms.size() - 1);
+    }
+
+    /**
+     * The meter's words as shown in {@code line}: on one line wherever the row leaves them its width, and a form
+     * before the {@code last} only with the track's room after it.
+     */
+    static void assertMeterForm(String where, AcceptanceMeter.Words line, boolean last) {
+        String words = line.getText().toString();
+        float room = line.getWidth() - line.getCompoundPaddingLeft() - line.getCompoundPaddingRight();
+        float wide = android.text.Layout.getDesiredWidth(line.getText(), line.getPaint());
+        if (wide <= room - 1) {
+            org.junit.Assert.assertEquals(where + ": on one line, " + words, 1, line.getLayout().getLineCount());
+            org.junit.Assert.assertEquals(where + ": none cut, " + words, 0, line.getLayout().getEllipsisCount(0));
+        }
+        if (!last) org.junit.Assert.assertTrue(where + ": the track's room after " + words, line.leavesTrack());
+    }
+
     static TextView statusLine(View content) {
         AutopilotChip.Row row = chipRow(content);
         return (TextView) row.getChildAt(row.getChildCount() - 1);

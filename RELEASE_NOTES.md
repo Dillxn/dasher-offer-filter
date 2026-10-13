@@ -1,3 +1,13 @@
+## 0.6.11 — Autopilot follows your accepts; more room for the map in split screen; the acceptance meter on one line
+
+Version 0.6.11 (code 103) answers the owner's asks of 13 October 2026 from his 0.6.10 dash.
+
+- **Autopilot follows your accepts.** Accept an offer yourself that scores above Autopilot's bar and the bar rises to that score at the next quiet moment, for the rest of the dash, even past what the acceptance goal allows. A new dash, or a change of goal or minimums, lets it go. Bars held this way never grow your minimums.
+- **More room for the map.** In split screen during a delivery the divider moves, using its own controls, to give the navigating app more room, and moves back afterward; moving it yourself stops it for that dash. Never during Dasher's own navigation or with an offer up. Unverified on a phone; the log names the divider's controls.
+- **The acceptance meter stays on one line.** Its track stands after the words on their line; where room is short the label shortens to "AR", then the goal is left to the track's tick.
+- **The Directions watch.** After a tap on Dasher's Directions, the log names the screens Dasher opens and whether it drops back, for the next report. Diagnostics only.
+- Notice 22.
+
 ## 0.6.3 — Split opens Dasher first; the latest offer as a label; small windows keep every picture; Mode on the homepage; anonymous counts
 
 Version 0.6.3 (code 95) answers the owner's requests and reports of 12 October 2026: "dd is stuck again" (twice, with reports), "Can you fix take backs", "what about the mode button being on the homepage and removing redundant info from the homepage?", "the color code should be available on split mode too", "i want to keep track of if anyone besides me downloads the app" ("Both"), "at small split ratios I still want to see all relevant infographic. also that sentence needs to be removed at all sizes and replaced with more thoughtful, concise (either via label and or graphic) expression", "we have two sections displaying nearest hotspot in split mode" and "the full screen dasher app icon isn't clear visually what it does". Notice 20.

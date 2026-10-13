@@ -290,6 +290,16 @@ final class PersonalText {
      * speak of declining, unassigning or the dash ending is kept, masked (0.6.6: the owner's time-mode report showed
      * an unknown screen right after a Decline, and Earn by Time's real wording is still needed, {@link TimeModeGuard}).
      */
+    /**
+     * Whether one of the labels is exactly "Directions" (a control's own words, any case): during a delivery such a
+     * screen of Dasher's is kept in the log, masked (0.6.11, for the Directions watch). Not a payment or account screen.
+     */
+    static boolean namesDirections(List<String> labels) {
+        if (labels == null || accountScreen(labels)) return false;
+        for (String label : labels) if (DirectionsWatch.isDirections(label)) return true;
+        return false;
+    }
+
     static boolean recognizedDashScreen(List<String> labels) {
         if (labels == null || accountScreen(labels)) return false;
         if (OfferEvidence.isIdle(labels) || AcceptedOfferTracker.isDeliveryScreen(labels)

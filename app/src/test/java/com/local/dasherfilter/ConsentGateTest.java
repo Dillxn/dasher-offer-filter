@@ -163,7 +163,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the skip list renews the notice (after the daily count's 20)", 21, Consent.VERSION);
+        assertEquals("the floor and the divider renew the notice (after the skip list's 21)", 22, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -187,6 +187,13 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
                         + "offers that meet your minimums and commit you to a delivery.",
                 "it may go Back and retry, at most twice", "Your touch stops it.",
+                // 0.6.11 (notice 22): an offer the user accepts holds the bar for the dash, past the goal; the divider
+                // moves by its own controls during a delivery, and stops once the user moves it.
+                "When you accept an offer yourself that scores above that cutoff, it raises the cutoff to that offer's "
+                        + "score for the rest of the dash, even above what your acceptance goal allows.",
+                "In split screen during a delivery it moves the divider, using the divider's own controls, to give the "
+                        + "navigating app more room, and puts it back afterward; move it yourself and it stops for that "
+                        + "dash.",
                 "It can briefly turn offer sound down.",
                 "During a dash it keeps your unlocked screen from timing out; it never wakes or unlocks it."}) {
             assertTrue(fact, does.contains(fact));
@@ -353,9 +360,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
-        // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile. A phone that accepted
-        // 14 (0.5.0) sees it again too.
-        assertEquals(21, Consent.VERSION);
+        // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
+        // offer holds and the divider moved during a delivery. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(22, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

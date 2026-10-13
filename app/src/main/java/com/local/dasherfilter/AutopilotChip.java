@@ -285,6 +285,43 @@ final class AutopilotChip extends TextView {
         }
 
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            // Words with shorter forms (the acceptance meter's, 0.6.11): the first that keeps to one line with the
+            // meter's track after it, each measured as the row would size the chips beside it; else the last.
+            AcceptanceMeter.Words forms = words instanceof AcceptanceMeter.Words ? (AcceptanceMeter.Words) words : null;
+            int count = forms == null ? 0 : forms.formCount();
+            if (count == 0) {
+                measureRow(widthSpec, heightSpec);
+                return;
+            }
+            // The same row and words as last time: the form chosen then, with no new words (each would ask for
+            // another layout).
+            StringBuilder key = new StringBuilder().append(widthSpec).append('/').append(heightSpec).append('/')
+                    .append(wordsFull).append('/').append(forms.formText(0));
+            for (TextView chip : chips) key.append('/').append(chip.getVisibility()).append(chip.getText());
+            String now = key.toString();
+            Integer chosen = formsChosen.get(now);
+            if (chosen != null && chosen < count) {
+                forms.showForm(chosen);
+                measureRow(widthSpec, heightSpec);
+                return;
+            }
+            for (int i = 0; i < count; i++) {
+                forms.showForm(i);
+                measureRow(widthSpec, heightSpec);
+                formsChosen.put(now, i);
+                if (forms.leavesTrack()) return;
+            }
+        }
+
+        /** The words' form chosen for the last few ways the row was measured (an index into their forms). */
+        private final java.util.Map<String, Integer> formsChosen =
+                new java.util.LinkedHashMap<String, Integer>(8, 0.75f, true) {
+                    @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> eldest) {
+                        return size() > 4;
+                    }
+                };
+
+        private void measureRow(int widthSpec, int heightSpec) {
             int width = MeasureSpec.getSize(widthSpec);
             int inner = Math.max(0, width - getPaddingLeft() - getPaddingRight());
             int any = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);

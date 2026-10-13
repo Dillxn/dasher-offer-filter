@@ -373,11 +373,24 @@ final class AutopilotText {
     }
 
     /**
-     * The meter's label (0.6.8, the words over its track): "LOWEST BAR" where Autopilot's bar is pinned at its lowest,
-     * else "ACCEPTANCE".
+     * The meter's label (0.6.8; from 0.6.11 on one line with its track): "LOWEST BAR" where Autopilot's bar is
+     * pinned at its lowest, else "ACCEPTANCE".
      */
     static String meterLabel(Status s) {
         return s.kind == Status.Kind.PINNED && s.bar == Autopilot.BAR_MIN ? "LOWEST BAR  " : "ACCEPTANCE  ";
+    }
+
+    /** The meter's short label (0.6.11), where "ACCEPTANCE" leaves its track too little room: Dashers' own word. */
+    static final String METER_SHORT = "AR  ";
+
+    /**
+     * The meter's words in their forms, longest first (0.6.11): "ACCEPTANCE 8% / 70%", "AR 8% / 70%", "AR 8%". The
+     * status line shows the first that leaves the track its room on one line ({@link AcceptanceMeter.Words}).
+     */
+    static java.util.List<String> meterForms(Status s) {
+        String rate = arShort(s);
+        String goal = rate + " / " + s.goal + "%";
+        return java.util.Arrays.asList(meterLabel(s) + goal, METER_SHORT + goal, METER_SHORT + rate);
     }
 
     /** The status line's words as shown: the meter's label and words where it meters, else {@link #statusLine}. */
@@ -399,7 +412,7 @@ final class AutopilotText {
     }
 
     /** "56%" (Dasher's, carried forward) or "~31%" (the app's own estimate): whole percent, rounded half up. */
-    private static String arShort(Status s) {
+    static String arShort(Status s) {
         return (s.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + s.shownArPercent() + "%";
     }
 

@@ -190,8 +190,10 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         String words = line.getText().toString();
         AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(),
                 OfferFilterService.isConnected());
-        assertEquals("the line as drawn", AutopilotText.shownLine(status), words);
+        assertStatusWords("the line as drawn", status, line);
         assertFalse("the bar is the chip's alone: " + words, words.startsWith("Autopilot"));
+        // The meter's words in whichever form the row has room for (checked above): its longest says the state.
+        if (AutopilotText.meters(status)) words = AutopilotText.shownLine(status);
         assertEquals("never a live region", View.ACCESSIBILITY_LIVE_REGION_NONE, line.getAccessibilityLiveRegion());
         if (words.isEmpty()) {
             assertFalse("nothing to tap", line.isClickable());
@@ -590,7 +592,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             if (fontScale <= 1f) assertEquals(words, autopilotLine(content));
             layOut(content);
             TextView line = statusLine(content);
-            assertEquals(words, line.getText().toString());
+            assertStatusWords(words, AutopilotRuntime.status(app, System.currentTimeMillis(), true), line);
             assertNull("never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals("Auto 100% ▲", chip.getText().toString());
@@ -610,7 +612,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                         part.getGlobalVisibleRect(visible));
                 assertEquals("whole on screen: " + part, part.getHeight(), visible.height());
             }
-            assertEquals("every word of the line", words.length(), line.getLayout().getLineEnd(line.getLineCount() - 1));
+            assertEquals("every word of the line", line.getText().length(),
+                    line.getLayout().getLineEnd(line.getLineCount() - 1));
             assertTrue("inside its height", line.getLayout().getHeight()
                     <= line.getHeight() - line.getPaddingTop() - line.getPaddingBottom());
             assertTrue("one screen: " + scene.getHeight() + " in " + window.getHeight(),
@@ -799,8 +802,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("the chip", chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             TextView line = statusLine(content);
-            assertEquals("beside Autopilot's status line", AutopilotText.shownLine(AutopilotRuntime.status(app,
-                    System.currentTimeMillis(), true)), line.getText().toString());
+            assertStatusWords("beside Autopilot's status line", AutopilotRuntime.status(app,
+                    System.currentTimeMillis(), true), line);
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
             assertSame(row, line.getParent());
@@ -1203,8 +1206,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     contrast(chip.getCurrentTextColor(), ui.surface) >= 4.5);
             assertEquals("amber below the goal", AutopilotChip.amber(ui), chip.getCurrentTextColor());
             TextView line = statusLine(content);
-            assertEquals("Autopilot's status beside it", AutopilotText.shownLine(AutopilotRuntime.status(app,
-                    System.currentTimeMillis(), true)), line.getText().toString());
+            assertStatusWords("Autopilot's status beside it", AutopilotRuntime.status(app,
+                    System.currentTimeMillis(), true), line);
             assertEquals("every word of it", line.getText().length(),
                     line.getLayout().getLineEnd(line.getLineCount() - 1));
             assertNull("never Next match while Autopilot is on", shownLineStarting(content, "Next match"));

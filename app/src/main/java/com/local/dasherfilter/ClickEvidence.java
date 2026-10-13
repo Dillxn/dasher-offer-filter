@@ -21,7 +21,7 @@ final class ClickEvidence {
      */
     static final int MAX_BELOW_LABELS = 6;
 
-    enum Verdict { OWN, ACCEPT, DECLINE, BOTH, END_DASH, OTHER }
+    enum Verdict { OWN, ACCEPT, DECLINE, BOTH, END_DASH, DIRECTIONS, OTHER }
 
     final List<String> eventText;
     final String description;
@@ -109,6 +109,18 @@ final class ClickEvidence {
         return endDash;
     }
 
+    /**
+     * The user's tap on Dasher's "Directions" (0.6.11, for the Directions watch only): not Offer Filter's own tap, and
+     * the click's own words, its event text or description, are exactly that. The labels around it don't count. It is
+     * none of Accept, Decline or End dash, and changes nothing else.
+     */
+    boolean directions() {
+        if (own || acceptSignal() || declineSignal()) return false;
+        if (DirectionsWatch.isDirections(description)) return true;
+        for (String label : eventText) if (DirectionsWatch.isDirections(label)) return true;
+        return false;
+    }
+
     Verdict verdict() {
         if (own) return Verdict.OWN;
         boolean accept = acceptSignal();
@@ -116,7 +128,8 @@ final class ClickEvidence {
         if (accept && decline) return Verdict.BOTH;
         if (accept) return Verdict.ACCEPT;
         if (decline) return Verdict.DECLINE;
-        return endDash() ? Verdict.END_DASH : Verdict.OTHER;
+        if (endDash()) return Verdict.END_DASH;
+        return directions() ? Verdict.DIRECTIONS : Verdict.OTHER;
     }
 
     /**

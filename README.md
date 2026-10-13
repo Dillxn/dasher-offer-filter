@@ -88,7 +88,7 @@ One unknown pay is judged by its ceiling, by your own rule for one narrow shape:
 
 Before persistence or dispatch, a content event during the final check can request at most two new complete reads of the same offer. They preserve the original identity, rules, notification generation, quiet interval and countdown deadline; no stale node is clicked. Changed or incomplete evidence still cancels. Once suppression has been persisted, a changed final check permanently stops that offer as before; no second Accept request is introduced.
 
-Nothing is learned from any acceptance, automatic or yours. An automatic one is marked "Accepted after an automatic Accept request" on its history line, only to say where it came from.
+Nothing is learned from an automatic acceptance. Your own acceptances can teach the learner (when it is on) and hold Autopilot's bar at least at the accepted offer's score for the rest of the dash. An automatic one is marked "Accepted after an automatic Accept request" on its history line, only to say where it came from.
 
 ## Peek at background offers
 

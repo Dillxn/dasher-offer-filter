@@ -92,4 +92,31 @@ public class ClickEvidenceTest {
         assertTrue(click(Collections.singletonList("Accept"), false, false, false, NONE,
                 Arrays.asList("$16.75", "3 stops (3.9 mi) • 30 min")).accept());
     }
+
+    /**
+     * The user's tap on Dasher's Directions (0.6.11, for the Directions watch): its own words, the event's text or its
+     * description, are exactly "Directions"; the labels below or above it don't count, and it is none of Accept,
+     * Decline or End dash.
+     */
+    @Test
+    public void aTapWhoseOwnWordsAreDirectionsIsNamedSo() {
+        ClickEvidence tap = click(Collections.singletonList(" directions "), false, false, false, NONE, NONE);
+        assertTrue(tap.directions());
+        assertEquals(ClickEvidence.Verdict.DIRECTIONS, tap.verdict());
+        assertTrue(tap.describe(false), tap.describe(false).endsWith(" -> directions"));
+        assertFalse(tap.accept() || tap.decline() || tap.endDash());
+        ClickEvidence described = new ClickEvidence(NONE, "Directions", true, "View", false, false, false, -1, NONE,
+                NONE);
+        assertEquals(ClickEvidence.Verdict.DIRECTIONS, described.verdict());
+
+        ClickEvidence below = click(NONE, false, false, false, NONE, Collections.singletonList("Directions"));
+        assertFalse(below.directions());
+        assertEquals(ClickEvidence.Verdict.OTHER, below.verdict());
+        ClickEvidence above = click(NONE, false, false, false, Collections.singletonList("Directions"), NONE);
+        assertEquals(ClickEvidence.Verdict.OTHER, above.verdict());
+        assertEquals(ClickEvidence.Verdict.OTHER,
+                click(Collections.singletonList("Get directions"), false, false, false, NONE, NONE).verdict());
+        assertEquals(ClickEvidence.Verdict.OWN,
+                click(Collections.singletonList("Directions"), false, false, true, NONE, NONE).verdict());
+    }
 }

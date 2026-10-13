@@ -102,6 +102,12 @@ final class BundledNotes {
                         + "judged by your rules as before.",
                 "Also new, off unless you set it: your own cost per mile for gas and wear, in Autopilot's details. "
                         + "Autopilot then weighs pay after that cost.");
+        notice(22,
+                "When you accept an offer yourself above Autopilot's bar, the bar rises to that score for the rest of "
+                        + "the dash, even past what your acceptance goal allows.",
+                "It starts over at your next dash or when you change your goal or minimums.",
+                "In split screen during a delivery, the app moves the divider to give the map more room, and puts it "
+                        + "back afterward. Move it yourself and it stops for that dash.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -216,6 +222,11 @@ final class BundledNotes {
                         + "Settings → Skipped stores lists them.",
                 "Your own cost per mile, off unless you set it in Autopilot's details, lets Autopilot weigh pay after "
                         + "gas and wear.");
+        release("0.6.11",
+                "Autopilot follows your accepts: accept an offer above its bar and the bar rises to that score for the "
+                        + "rest of the dash.",
+                "In split screen, the navigating app gets more room during a delivery.",
+                "The acceptance meter stays on one line at every width.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

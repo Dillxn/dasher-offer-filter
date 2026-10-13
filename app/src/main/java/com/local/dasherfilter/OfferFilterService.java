@@ -512,6 +512,10 @@ public final class OfferFilterService extends AccessibilityService {
      * window field names Dasher's window from Android's list alone, without asking Dasher.
      */
     private final Set<Integer> dasherWindowIds = ConcurrentHashMap.newKeySet();
+    /** The Directions watch (0.6.11, diagnostics only). */
+    private final DirectionsWatch directionsWatch = new DirectionsWatch();
+    /** The class Dasher's last window change named, short (Android's own classes aside), or null (main thread). */
+    private volatile String lastDasherClass;
 
     // ---- Scanner thread only ----
 
@@ -2019,6 +2023,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (clicked && usersClick(click, event, at)) {
             dasherClicks.incrementAndGet();
             putAwayAfterUserTap(at);
+            armDirectionsWatch(event, at);
         }
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
         // during a peek leaves Dasher up.
@@ -2281,6 +2286,8 @@ public final class OfferFilterService extends AccessibilityService {
      * description goes to its own thread).
      */
     private void noteDasherWindow(AccessibilityEvent event, long at) {
+        CharSequence named = event.getClassName();
+        if (named != null && named.length() > 0) directionsWindow(named.toString(), event.getWindowId(), at);
         boolean watching = false;
         for (LaunchWatch watch : launches) {
             if (at - watch.at < LAUNCH_VERDICT_MS) watching = true;
@@ -2316,6 +2323,107 @@ public final class OfferFilterService extends AccessibilityService {
         boolean drawn = launcher != null && !full.equals(launcher) && !framework;
         if (held && drawn) liftLaunchHold(this, shortName, "Dasher drew");
     }
+
+    /**
+     * Main thread: one of Dasher's window changes, by its event alone, for the Directions watch ({@link
+     * DirectionsWatch}): its class line while a watch is under way, each class it names described once an hour at most.
+     */
+    private void directionsWindow(String full, int windowId, long at) {
+        boolean framework = frameworkClass(full);
+        String shortName = shortClass(full);
+        if (directionsWatch.watching(at)) {
+            for (String line : directionsWatch.window(at, shortName, realWindowId(windowId) ? windowId : -1,
+                    framework)) {
+                DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);
+            }
+            if (!framework) describeDasherActivity(full);
+        }
+        if (!framework) lastDasherClass = shortName;
+    }
+
+    /**
+     * Main thread: the user's click on Dasher. On its "Directions" (the event's own words; no node is read), or on
+     * anything of Dasher's during a delivery, the Directions watch begins (once a minute at most), and Android's list of
+     * windows is logged {@link DirectionsWatch#LOOKS_MS} after it. Diagnostics only (0.6.11).
+     */
+    private void armDirectionsWatch(AccessibilityEvent event, long at) {
+        boolean directions = DirectionsWatch.isDirections(event.getContentDescription());
+        for (CharSequence text : event.getText()) directions |= DirectionsWatch.isDirections(text);
+        if (!directions && !dasherOnDelivery(this)) return;
+        String line = directionsWatch.arm(at, lastDasherClass, new java.util.HashSet<>(dasherWindowIds), directions);
+        if (line == null) return;
+        DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);
+        long armed = directionsWatch.armedAt();
+        for (long after : DirectionsWatch.LOOKS_MS) {
+            scanner.postDelayed(() -> directionsLook(armed, after), Math.max(0, armed + after - SystemClock.uptimeMillis()));
+        }
+    }
+
+    /**
+     * Scanner thread: a look of the Directions watch begun at {@code armed}, {@code after} ms in: Android's list of
+     * windows (nothing asked of any app) and what is in front, in fixed words; at its last, the verdict if none yet.
+     */
+    private void directionsLook(long armed, long after) {
+        if (stopped) return;
+        List<AccessibilityWindowInfo> listed;
+        try {
+            listed = windowSource.get();
+        } catch (RuntimeException unavailable) {
+            listed = null;
+        }
+        String windows = windowsLine(this, listed);
+        String front = "unknown";
+        boolean dasher = false;
+        if (listed != null) {
+            AccessibilityWindowInfo active = null;
+            for (AccessibilityWindowInfo window : listed) if (window.isActive()) active = window;
+            if (active != null) {
+                if (active.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    front = "system";
+                } else if (realWindowId(active.getId()) && dasherWindowIds.contains(active.getId())) {
+                    dasher = true;
+                } else {
+                    AccessibilityNodeInfo root;
+                    try {
+                        root = windowRoot(active, true);
+                    } catch (RuntimeException gone) {
+                        root = null;
+                    }
+                    CharSequence name = root == null ? null : root.getPackageName();
+                    String pkg = name == null ? "" : name.toString();
+                    if (isDasherPackage(pkg)) dasher = true;
+                    else if (pkg.equals(getPackageName())) front = AppName.NAME;
+                    else if (Peek.NAVIGATION.contains(pkg)) front = "a navigation app";
+                    else if (!pkg.isEmpty() && pkg.equals(homePackage())) front = "home";
+                    else if (!pkg.isEmpty()) front = "another app";
+                }
+            }
+        }
+        if (dasher) {
+            String shown = lastDasherClass;
+            front = "Dasher" + (shown == null ? "" : " " + shown);
+        }
+        for (String line : directionsWatch.look(armed, after, windows, front, dasher)) {
+            DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);
+        }
+    }
+
+    /** The phone's home screen app's package, asked once; "" when none is known. */
+    private String homePackage() {
+        String home = homePackage;
+        if (home != null) return home;
+        try {
+            android.content.pm.ResolveInfo found = getPackageManager().resolveActivity(
+                    new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0);
+            home = found == null || found.activityInfo == null ? "" : found.activityInfo.packageName;
+        } catch (RuntimeException unknown) {
+            home = "";
+        }
+        homePackage = home;
+        return home;
+    }
+
+    private volatile String homePackage;
 
     /** A class name's last part: "Home" for "com.doordash.driverapp.Home". */
     private static String shortClass(String full) {
@@ -2588,7 +2696,14 @@ public final class OfferFilterService extends AccessibilityService {
                 + " clearTaskOnLaunch=" + ((found.flags & ActivityInfo.FLAG_CLEAR_TASK_ON_LAUNCH) != 0)
                 + " finishOnTaskLaunch=" + ((found.flags & ActivityInfo.FLAG_FINISH_ON_TASK_LAUNCH) != 0)
                 + " noHistory=" + ((found.flags & ActivityInfo.FLAG_NO_HISTORY) != 0)
-                + " excludeFromRecents=" + ((found.flags & ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS) != 0);
+                + " excludeFromRecents=" + ((found.flags & ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS) != 0)
+                // 0.6.11, for the Directions watch: a minimum height above Dasher's half would explain a page that
+                // can't stay in a split.
+                + " documentLaunchMode=" + found.documentLaunchMode + " screenOrientation=" + found.screenOrientation
+                + " allowTaskReparenting=" + ((found.flags & ActivityInfo.FLAG_ALLOW_TASK_REPARENTING) != 0)
+                + " alwaysRetainTaskState=" + ((found.flags & ActivityInfo.FLAG_ALWAYS_RETAIN_TASK_STATE) != 0)
+                + (found.windowLayout == null ? "" : " windowLayout=minWidth " + found.windowLayout.minWidth
+                        + " minHeight " + found.windowLayout.minHeight + " gravity " + found.windowLayout.gravity);
     }
 
     // ---- The Split tap: Dasher's launch-adjacent start, logged once the screen split (DasherSplit) ----
@@ -3637,7 +3752,7 @@ public final class OfferFilterService extends AccessibilityService {
         ClickEvidence tap = readClick(click, now, walk);
         if (tap == null) return false;
         boolean near = now - offerTargetsAt <= MANUAL_DECLINE_OFFER_AGE_MS;
-        if (tap.own || near) {
+        if (tap.own || near || tap.directions()) {
             // Shape only: a tap can expose a payment field without the page marker needed to identify it.
             DiagnosticLog.logScreen(this, () -> "tap ("
                     + (tap.own ? AppName.NAME + "'s own" : "not " + AppName.NAME + "'s")
@@ -9810,7 +9925,16 @@ public final class OfferFilterService extends AccessibilityService {
      * @param navigation whether the screen is known to be turn-by-turn navigation, whose streets are masked too (else
      *     the log's thread tells from the labels)
      */
-    private static Supplier<String> labelsLine(String head, Scan scan, boolean navigation) {
+    private Supplier<String> labelsLine(String head, Scan scan, boolean navigation) {
+        return labelsLine(head, scan, navigation, dasherOnDelivery(this));
+    }
+
+    /**
+     * {@link #labelsLine(String, Scan, boolean)}, {@code delivery} whether a delivery is under way: then a screen with
+     * a control named exactly "Directions" (the drop-off screen, 0.6.11) is kept, masked, as a recognized one is. For
+     * the log only: it is no evidence of any scene and counts nothing.
+     */
+    private static Supplier<String> labelsLine(String head, Scan scan, boolean navigation, boolean delivery) {
         List<String> text = new ArrayList<>(scan.text);
         List<String> parts = new ArrayList<>(scan.metricParts);
         // An unrecognised screen keeps no word, only counts from the read already made (no call into Dasher).
@@ -9819,7 +9943,9 @@ public final class OfferFilterService extends AccessibilityService {
             if (PersonalText.accountScreen(text) || PersonalText.accountScreen(parts)) return DiagnosticLog.NOT_KEPT;
             List<String> all = new ArrayList<>(text);
             all.addAll(parts);
-            if (!PersonalText.recognizedDashScreen(all)) return PersonalText.UNKNOWN_NOT_KEPT + counts;
+            if (!PersonalText.recognizedDashScreen(all) && !(delivery && PersonalText.namesDirections(text))) {
+                return PersonalText.UNKNOWN_NOT_KEPT + counts;
+            }
             boolean streets = navigation || DasherScene.showsNavigation(all);
             return head + " labels=" + PersonalText.mask(text, streets) + " metricParts="
                     + PersonalText.mask(parts, streets);

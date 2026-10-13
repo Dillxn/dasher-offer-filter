@@ -121,6 +121,7 @@ public class BundledNotesTest {
         both.addAll(notice(19));
         both.addAll(notice(20));
         both.addAll(notice(21));
+        both.addAll(notice(22));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -333,7 +334,8 @@ public class BundledNotesTest {
         }
         List<String> since19 = new ArrayList<>(twenty);
         since19.addAll(notice(21));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's", since19, BundledNotes.noticeChanges(19, true));
+        since19.addAll(notice(22));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's and 22's", since19, BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
@@ -382,11 +384,45 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.11 (the owner, 13 October 2026: "if an accepted offer's score beats the autopilot ask, the ask needs to jump
+     * to the new higher score"; "when either app is in a maps mode for nav the other when in split needs to resize";
+     * "the acceptance rating bar width is causing a line break"): each said as what a user sees.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.11", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.11");
+        assertEquals(lines.toString(), 3, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"follows your accepts", "rises to that score", "rest of the dash",
+                "split screen", "more room", "one line"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "20%"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
+     * 0.6.11's notice (22): an offer the user accepts holds Autopilot's bar for the dash, past the goal, and what ends
+     * it; the divider moved during a delivery, put back, and left alone once the user moves it.
+     */
+    @Test public void notice22SaysWhatHoldsTheBarAndWhatMovesTheDivider() {
+        assertEquals(22, Consent.VERSION);
+        List<String> lines = BundledNotes.noticeChanges(21);
+        assertEquals(notice(22), lines);
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"accept an offer yourself", "rises to that score", "rest of the dash",
+                "past what your acceptance goal allows", "next dash", "change your goal or minimums", "split screen",
+                "during a delivery", "moves the divider", "puts it back", "Move it yourself", "stops for that dash"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+    }
+
+    /**
      * 0.6.10 (the owner, 13 October 2026: "yeah I want all its recommendations"): the skip list and the cost per mile,
      * said as what a user does, never as a suggested rate or a promise of more pay.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.10", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release0610SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.10");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);
@@ -404,7 +440,7 @@ public class BundledNotesTest {
      * inputs, off by default and never a suggested rate.
      */
     @Test public void notice21SaysWhatNowDeclinesAndWhatAutopilotWeighs() {
-        assertEquals(21, Consent.VERSION);
+        assertTrue(Consent.VERSION >= 21);
         String notice = String.join(" ", BundledNotes.noticeChanges(20));
         for (String fact : new String[] {"skip list", "whatever they pay", "Skipped stores", "two stores",
                 "can't be read", "cost per mile", "off unless you set it", "Autopilot's details"}) {
