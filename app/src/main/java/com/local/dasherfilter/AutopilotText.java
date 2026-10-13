@@ -523,6 +523,8 @@ final class AutopilotText {
     static List<String> detailsLines(Status s) {
         List<String> lines = new ArrayList<>();
         lines.add(detailsBar(s));
+        String floor = detailsFloor(s);
+        if (floor != null) lines.add(floor);
         if (s.on) lines.add("Goal: " + goalLabel(s.goal) + ".");
         String ar = detailsAcceptanceRate(s);
         if (ar != null) lines.add(ar);
@@ -548,6 +550,17 @@ final class AutopilotText {
     static String detailsBar(Status s) {
         if (!s.on) return DETAILS_OFF;
         return "Bar: " + s.bar + "% of your minimums (100% = exactly your minimums).";
+    }
+
+    /**
+     * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}): "This dash the
+     * bar stays at 63% or more: you accepted an offer that scored 63% of your minimums. …"; null otherwise.
+     */
+    static String detailsFloor(Status s) {
+        Autopilot.Plan plan = s.plan;
+        if (!s.on || plan == null || !plan.floorBinds()) return null;
+        return "This dash the bar stays at " + plan.floor + "% or more: you accepted an offer that scored " + plan.floor
+                + "% of your minimums. A new dash, or a change of your goal or minimums, lets Autopilot set it again.";
     }
 
     /**
@@ -886,8 +899,9 @@ final class AutopilotText {
 
     /**
      * One plan: "plan 82% RECOVERY: need 80%, pass 18/20 at 82%, share bar 82%, ar 55% dasher (12 min ago, 2 since),
-     * recovering yes, extra 0, lambda 17.1/h, mix 20, best 86%, ok 86-100%". Figures a gated plan did not work out
-     * (the need, the share bar, the value's best and acceptable bars) are left out.
+     * recovering yes, extra 0, lambda 17.1/h, mix 20, best 86%, ok 86-100%", then the accepted floor when there is one
+     * ("floor 63%") and, when it binds, the mode's own target ("own 50%"). Figures a gated plan did not work out (the
+     * need, the share bar, the value's best and acceptable bars) are left out.
      *
      * @param readingAt when Dasher's reading behind the plan was seen (wall clock), or -1
      */
@@ -903,6 +917,8 @@ final class AutopilotText {
         parts.add("mix " + plan.mixSize);
         if (plan.bestBar >= 0) parts.add("best " + plan.bestBar + "%");
         if (plan.acceptableLow >= 0) parts.add("ok " + plan.acceptableLow + "-" + plan.acceptableHigh + "%");
+        if (plan.floor >= 0) parts.add("floor " + plan.floor + "%");
+        if (plan.floorBinds()) parts.add("own " + plan.ownTarget + "%");
         return "plan " + plan.target + "% " + plan.mode.name() + ": " + String.join(", ", parts);
     }
 

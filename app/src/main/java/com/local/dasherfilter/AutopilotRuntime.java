@@ -83,22 +83,37 @@ final class AutopilotRuntime {
         /** Clear history. */
         CLEAR,
         /** After a commit, or after a commit found its plan stale. */
-        COMMIT
+        COMMIT,
+        /** An offer the user accepted by hand (0.6.11): its line has its ACCEPTED step. */
+        ACCEPTED
     }
 
-    /** A change the user made, already saved. Every one but turning Autopilot off makes the next commit a jump. */
+    /**
+     * A change to Autopilot or the rules, already saved. Every one but turning Autopilot off makes the next commit a
+     * jump. The user's own restart the accepted floor (0.6.11); a lesson and Adopt do not.
+     */
     enum UserChange {
-        TURNED_ON(Autopilot.Reason.TURNED_ON),
-        TURNED_OFF(null),
-        GOAL_CHANGED(Autopilot.Reason.GOAL_CHANGED),
-        /** A minimum or max stops changed (not pausing or resuming auto-decline). */
-        RULES_CHANGED(Autopilot.Reason.RULES_CHANGED);
+        TURNED_ON(Autopilot.Reason.TURNED_ON, true, true),
+        TURNED_OFF(null, true, true),
+        GOAL_CHANGED(Autopilot.Reason.GOAL_CHANGED, true, true),
+        /** A minimum, max stops, Strict/Area or learning changed, Reset or an Undo (not pausing auto-decline). */
+        RULES_CHANGED(Autopilot.Reason.RULES_CHANGED, true, false),
+        /** Adopt made the learned minimums the user's own: it only raises them, so the accepted floor stays. */
+        ADOPTED(Autopilot.Reason.RULES_CHANGED, false, false),
+        /** A lesson raised the learned minimums (or saved a best): not the user's own change. */
+        LEARNED(Autopilot.Reason.LEARNED, false, false);
 
         /** The commit reason of its jump; null for turning off, which needs no commit (the bar is 100 at once). */
         final Autopilot.Reason jump;
+        /** Hand accepts before it no longer hold the bar ({@link AutopilotStore#restartFloor}). */
+        final boolean restartsFloor;
+        /** It forgets the goal-relative state (recovering, the stall correction) and any plan under way. */
+        final boolean resetsGoalState;
 
-        UserChange(Autopilot.Reason jump) {
+        UserChange(Autopilot.Reason jump, boolean restartsFloor, boolean resetsGoalState) {
             this.jump = jump;
+            this.restartsFloor = restartsFloor;
+            this.resetsGoalState = resetsGoalState;
         }
     }
 
@@ -307,10 +322,13 @@ final class AutopilotRuntime {
             AutopilotStore.Reading stored = AutopilotStore.reading(app, wall);
             Autopilot.State state = state(app, rules);
             long since = FilterStore.minimumsSince(app);
+            // The accepted floor counts hand accepts this dash, since the user's own last change; none off a dash.
+            long dash = Dashing.currentStart(app);
+            long floorSince = dash <= 0 ? Long.MAX_VALUE : Math.max(dash, AutopilotStore.floorSince(app));
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app)));
+                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince));
             String dropped = publish(app, plan, state, epoch, stored, wall);
             if (dropped != null) {
                 log(app, dropped);
@@ -380,7 +398,8 @@ final class AutopilotRuntime {
      * which a stored line does not keep either: {@link Autopilot.OfferRecord#facts}) and time, add-on and replay,
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
      * as your Decline" step, or a hidden notification of a failing offer), Dasher's "does not lower acceptance rate"
-     * mark, and the bar it was decided at, whether Autopilot set it, and its rules model (for {@link Growth}).
+     * mark, and the bar it was decided at, whether Autopilot set it, and its rules model (for {@link Growth}), and when
+     * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor).
      */
     static List<Autopilot.OfferRecord> records(List<DecisionLog.Entry> newestFirst) {
         List<Autopilot.OfferRecord> records = new ArrayList<>();
@@ -400,7 +419,8 @@ final class AutopilotRuntime {
         return new Autopilot.OfferRecord(entry.facts, entry.at, entry.addOn,
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
                 DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
-                entry.model, entry.scoringRules, OfferRule.SKIP_LIST.equals(entry.reason));
+                entry.model, entry.scoringRules, OfferRule.SKIP_LIST.equals(entry.reason),
+                DecisionLog.handAcceptedAt(entry));
     }
 
     // ---- Commits ----
@@ -437,7 +457,7 @@ final class AutopilotRuntime {
             long elapsed = elapsedClock.getAsLong();
             // The minimums grow in place of a move, when due and no change of the user's waits for its commit.
             if (jump == null && growthDue(app, plan, rules)) return grow(app, plan, wall, elapsed);
-            Autopilot.Step step = step(plan, jump, elapsed);
+            Autopilot.Step step = step(app, plan, jump, elapsed);
             if (step.next == current && jump == null) return Commit.HELD;
             if (step.next != current) {
                 Runnable hook = beforeWriteForTests;
@@ -550,12 +570,14 @@ final class AutopilotRuntime {
     /**
      * Whether the minimums are due to grow from {@code plan} now: it found the evidence ({@link Autopilot.Plan#growth})
      * for exactly {@code rules} and their bar, Autopilot is on with a pay, per-mile or hourly minimum, "Let my
-     * minimums grow" is on, and Autopilot is not recovering toward its acceptance-rate goal (as planned, nor as stored).
+     * minimums grow" is on, Autopilot is not recovering toward its acceptance-rate goal (as planned, nor as stored),
+     * and no accepted floor holds the bar up (0.6.11: bars an accept held up never grow the minimums).
      */
     private static boolean growthDue(Context app, Autopilot.Plan plan, FilterSettings rules) {
         return plan.growth != null && rules.autopilot && rules.hasMonetaryRule()
                 && plan.rulesKey.equals(rules.rulesKey()) && plan.current == rules.minimumScalePercent
-                && FilterStore.minimumsGrow(app) && !plan.recovering && !AutopilotStore.recovering(app);
+                && FilterStore.minimumsGrow(app) && !plan.recovering && !AutopilotStore.recovering(app)
+                && !plan.floorBinds();
     }
 
     /**
@@ -604,12 +626,19 @@ final class AutopilotRuntime {
     private static boolean wanted(Context app, Autopilot.Plan plan) {
         Autopilot.Reason jump = jumpCause(app);
         return jump != null || (plan.growth != null && growthDue(app, plan, FilterStore.load(app)))
-                || step(plan, null, elapsedClock.getAsLong()).next != plan.current;
+                || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
     }
 
-    private static Autopilot.Step step(Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
+    /**
+     * The plan's next step, with its accepted floor: up to it at once, and a bar the floor put (the last change was
+     * the floor's, to this bar) straight back once no floor holds it.
+     */
+    private static Autopilot.Step step(Context app, Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
+        AutopilotStore.Change last = AutopilotStore.lastChange(app);
+        boolean floorHeld = last != null && Autopilot.Reason.ACCEPTED.name().equals(last.why)
+                && last.to == plan.current;
         return Autopilot.step(plan.current, plan.target, jump != null, elapsed - lastCommitElapsed,
-                elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare);
+                elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare, plan.floor, floorHeld);
     }
 
     /** Why a plan can no longer be used, in the spec's order, as its log line; null when it still can. */
@@ -660,6 +689,19 @@ final class AutopilotRuntime {
     /** The user changed a minimum or max stops (already saved with {@link FilterStore#save}). */
     static void rulesChanged(Context context) {
         userChanged(context, UserChange.RULES_CHANGED);
+    }
+
+    /** Adopt made the learned minimums the user's own (already saved): a jump that keeps the accepted floor. */
+    static void adopted(Context context) {
+        userChanged(context, UserChange.ADOPTED);
+    }
+
+    /**
+     * A lesson raised the learned minimums or saved a best (already saved): a jump of its own reason
+     * ({@link Autopilot.Reason#LEARNED}) that keeps the accepted floor and the goal-relative state.
+     */
+    static void learned(Context context) {
+        userChanged(context, UserChange.LEARNED);
     }
 
     /**
@@ -776,18 +818,20 @@ final class AutopilotRuntime {
      * before (or still being worked out) is never published or committed from, so it cannot write that state back.
      * Every change but turning off makes the next commit a jump straight to the new plan's target (at a safe point,
      * like every commit); turning off needs no commit, as the bar is already exactly 100, and forgets the note of the
-     * last change, which no longer explains the bar. Then a plan is asked for. It writes no log line of its own:
-     * {@link #setAutopilot} does.
+     * last change, which no longer explains the bar. The user's own changes also restart the accepted floor (0.6.11):
+     * hand accepts before them no longer hold the bar; a lesson and Adopt keep it. Then a plan is asked for. It writes
+     * no log line of its own: {@link #setAutopilot} does.
      */
     static void userChanged(Context context, UserChange change) {
         if (context == null || change == null) return;
         Context app = app(context);
         synchronized (LOCK) {
-            if (change != UserChange.RULES_CHANGED) {
+            if (change.resetsGoalState) {
                 goalEpoch.incrementAndGet();
                 latest.set(null);
                 AutopilotStore.resetGoalState(app);
             }
+            if (change.restartsFloor) AutopilotStore.restartFloor(app, wallClock.getAsLong());
             if (change == UserChange.TURNED_OFF) {
                 AutopilotStore.clearJump(app);
                 // The bar is exactly 100 again: the note of Autopilot's last move no longer explains it.

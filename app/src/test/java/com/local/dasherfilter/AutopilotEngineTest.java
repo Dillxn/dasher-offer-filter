@@ -893,11 +893,12 @@ public final class AutopilotEngineTest {
     public void aUsersChangeIsTheReasonForItsJump() {
         Autopilot.Plan plan = plan(starters(0), window(), busy(), null, false, 100);
         for (Autopilot.Reason jump : Arrays.asList(Autopilot.Reason.TURNED_ON, Autopilot.Reason.GOAL_CHANGED,
-                Autopilot.Reason.RULES_CHANGED, Autopilot.Reason.CLEARED)) {
+                Autopilot.Reason.RULES_CHANGED, Autopilot.Reason.CLEARED, Autopilot.Reason.LEARNED)) {
             assertTrue(jump.jump);
             assertSame(jump, Autopilot.commitReason(plan, 100, 119, jump));
         }
-        for (Autopilot.Reason own : Arrays.asList(Autopilot.Reason.VALUE_UP, Autopilot.Reason.MINIMUMS_GREW)) {
+        for (Autopilot.Reason own : Arrays.asList(Autopilot.Reason.VALUE_UP, Autopilot.Reason.MINIMUMS_GREW,
+                Autopilot.Reason.ACCEPTED)) {
             assertFalse(own.jump);
             try {
                 Autopilot.commitReason(plan, 100, 119, own);
@@ -910,7 +911,8 @@ public final class AutopilotEngineTest {
                 "history cleared", "learning from your offers", "your minimums are high for these offers",
                 "acceptance rate below your goal", "keeping enough offers for your goal",
                 "keeping at least 1 in 5 offers coming to you", "holding at your minimums", "offers are coming often",
-                "offers are slower", "your minimums grew"};
+                "offers are slower", "your minimums grew", "your learned minimums rose",
+                "you accepted an offer at this score"};
         Autopilot.Reason[] reasons = Autopilot.Reason.values();
         assertEquals(words.length, reasons.length);
         for (int i = 0; i < words.length; i++) assertEquals(reasons[i].name(), words[i], reasons[i].words);

@@ -582,6 +582,20 @@ final class DecisionLog {
         return false;
     }
 
+    /**
+     * When the user accepted the offer by hand (0.6.11, Autopilot's accepted floor): the time of the line's first
+     * {@link StepKind#ACCEPTED} step, the accepts the learner is asked about; {@link Long#MIN_VALUE} when it has none.
+     * Unlike {@link #accepted}, never an automatic, add-on, observed or older kind, nor a tap followed by
+     * {@link StepKind#NOT_LEARNED}.
+     */
+    static long handAcceptedAt(Entry entry) {
+        if (entry == null) return Long.MIN_VALUE;
+        for (Step step : entry.steps) {
+            if (step.kind == StepKind.ACCEPTED) return step.at;
+        }
+        return Long.MIN_VALUE;
+    }
+
     /** A failing offer counts as filtered only when the app did something about it; one left to the user is review. */
     static Tally tally(Entry entry) {
         Outcome outcome = outcome(entry);

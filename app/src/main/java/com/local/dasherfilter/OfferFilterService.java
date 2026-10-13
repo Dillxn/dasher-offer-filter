@@ -8519,7 +8519,18 @@ public final class OfferFilterService extends AccessibilityService {
                 DiagnosticLog.log(this, "accept", "Accepted " + accepted.acceptedOffer.summary() + "; " + how);
             }
         }
-        step(accepted.line, kind, detail);
+        if (kind == DecisionLog.StepKind.ACCEPTED && accepted.line != null) {
+            // A hand accept can hold Autopilot's bar at its score (0.6.11): the plan reads the line with its step, as
+            // the main thread runs these in order, and commits only at the next safe point.
+            OfferSnapshot line = accepted.line;
+            String said = detail;
+            onMain(() -> {
+                DecisionLog.markStep(this, line, DecisionLog.StepKind.ACCEPTED, said, STEP_WINDOW_MS);
+                AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.ACCEPTED);
+            });
+        } else {
+            step(accepted.line, kind, detail);
+        }
         if (!automatic && !accepted.addOn) {
             boolean permitted = learningPermit != null;
             FilterStore.AcceptedLesson lesson = FilterStore.recordConfirmedManualAcceptance(this, learningPermit,

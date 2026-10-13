@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -20,7 +21,8 @@ import java.util.TimeZone;
  *   least {@value #LEAST_BAR}% and fall on at least {@value #LEAST_DAYS} calendar days in the phone's time zone; it is
  *   {@code g = min(10, lowest bar − 100)} points, so 3 ≤ g ≤ 10. It waits while the bar now is below {@code 100 + g}
  *   (Autopilot lowered it since those offers): grown then, the bar could not come down with the minimums, so offers
- *   right after it would be asked more, not the same.</li>
+ *   right after it would be asked more, not the same. A bar an offer the user accepted by hand could have held up
+ *   ({@link Autopilot#acceptedFloor}, 0.6.11) counts as 100: the saved minimums never rise from an accept.</li>
  *   <li>Effect ({@link #grown}): every set money minimum m becomes {@code ⌈m × (100 + g) ÷ 100⌉} in its own stored unit
  *   (cents; cents a mile; cents a minute, shown ×60 an hour); an unset one stays unset; max stops never changes. The
  *   bar becomes {@code max(100, round(bar × 100 ÷ (100 + g)))}, so an offer judged right after it meets the same
@@ -41,6 +43,8 @@ final class Growth {
     /** One growth is at most this many points. */
     static final int MOST_PERCENT = 10;
     private static final long DAY_MS = 24L * 60 * 60_000;
+    /** An accept could have held the bar of a line decided at most this long after it (a dash is shorter). */
+    static final long HELD_HORIZON_MS = DAY_MS;
 
     /** The minimums and the bar before and after one growth of {@link #percent} points (money in stored units). */
     static final class Grown {
@@ -103,6 +107,20 @@ final class Growth {
      * {@code 100 + g}, or a minimum that cannot grow ({@link #grown}).
      */
     static Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> counted, long since, TimeZone zone) {
+        return evidence(rules, counted, since, zone, Collections.<Autopilot.HandAccept>emptyList());
+    }
+
+    /**
+     * As {@link #evidence(FilterSettings, List, long, TimeZone)}, where a line whose bar some hand accept could have
+     * held (0.6.11: the accept came before the line, at most {@link #HELD_HORIZON_MS} before, and scored at least the
+     * line's bar under these rules) counts as 100, below {@value #LEAST_BAR}: bars an accept held up never grow the
+     * minimums. The lines are all scored under exactly these rules ({@link #samePolicy}), so an accept's score is what
+     * it set the floor to then. A line Autopilot's own value rule set above every accept's score still counts.
+     *
+     * @param accepts the hand accepts ({@link Autopilot#handAccepts}), scored under {@code rules}
+     */
+    static Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> counted, long since, TimeZone zone,
+                             List<Autopilot.HandAccept> accepts) {
         if (rules == null || !rules.hasMonetaryRule() || learningDominates(rules) || counted == null || zone == null) return null;
         List<Autopilot.OfferRecord> lines = new ArrayList<>(OFFERS);
         for (Autopilot.OfferRecord record : counted) {
@@ -114,7 +132,7 @@ final class Growth {
         int lowest = Integer.MAX_VALUE;
         Set<Long> days = new HashSet<>();
         for (Autopilot.OfferRecord record : lines) {
-            lowest = Math.min(lowest, record.bar);
+            lowest = Math.min(lowest, held(record, accepts) ? FilterSettings.BAR_AT_MINIMUMS : record.bar);
             days.add(day(record.at, zone));
         }
         if (lowest < LEAST_BAR || days.size() < LEAST_DAYS) return null;
@@ -123,6 +141,15 @@ final class Growth {
         if (rules.minimumScalePercent < FilterSettings.BAR_AT_MINIMUMS + percent) return null;
         Grown grown = grown(rules, percent);
         return grown == null ? null : new Evidence(lines.size(), days.size(), lowest, since, grown);
+    }
+
+    /** Whether some hand accept could have held {@code line}'s bar: before it, within the horizon, scoring as much. */
+    private static boolean held(Autopilot.OfferRecord line, List<Autopilot.HandAccept> accepts) {
+        if (accepts == null) return false;
+        for (Autopilot.HandAccept accept : accepts) {
+            if (accept.at < line.at && line.at - accept.at <= HELD_HORIZON_MS && accept.score >= line.bar) return true;
+        }
+        return false;
     }
 
     /** Growing saved knobs cannot compensate a lower bar on stronger learned floors; wait for Adopt or learner off. */

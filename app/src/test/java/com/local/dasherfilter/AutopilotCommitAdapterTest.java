@@ -148,6 +148,38 @@ public final class AutopilotCommitAdapterTest {
         assertEquals("decided at the bar it was shown at", 82, line.barPercent);
     }
 
+    // ---- An accepted offer's floor (0.6.11) ----
+
+    /**
+     * The user accepts an offer by hand that scores 120% ($8.10 for the $6.75 asked): Autopilot's floor commit waits
+     * while the offer is up and for 10 s after it, like any commit, then lands at the next safe tick, straight to 120%.
+     */
+    @Test public void aHandAcceptsFloorCommitWaitsForTheOfferToGoThenLandsAtTheNextSafeTick() {
+        connect(null);
+        show(waiting());
+        pass(5_000);
+        show(offer("$8.10", "0:35"));
+        pass(2_000);
+        userClicks(accept);
+        show(delivery());
+        long gone = now();
+        assertTrue(DecisionLog.hasStep(line(810), DecisionLog.StepKind.ACCEPTED));
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertNotNull(plan);
+        assertEquals(120, plan.floor);
+        assertEquals(120, plan.target);
+        assertEquals("not within 10 s of the offer", 82, bar());
+        assertTrue(log(), logged(AutopilotText.LOG_DEFERRED) >= 1);
+        long tick = tickAtOrAfter(gone + OfferFilterService.BAR_CHANGE_QUIET_MS);
+        passUntil(tick - 1);
+        assertEquals("nothing before Autopilot's next safe tick", 82, bar());
+        assertEquals(0, commits());
+        passUntil(tick + 1);
+        assertEquals("straight to the accepted offer's score", 120, bar());
+        assertEquals(1, commits());
+        assertEquals("commit 82% -> 120% (you accepted an offer at this score)", firstCommit());
+    }
+
     // ---- Nothing of Dasher's screen read yet ----
 
     /**

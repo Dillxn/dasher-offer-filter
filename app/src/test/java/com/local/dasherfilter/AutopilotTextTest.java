@@ -662,7 +662,8 @@ public final class AutopilotTextTest {
                 {"RECOVERY", "acceptance rate below your goal"}, {"GOAL", "keeping enough offers for your goal"},
                 {"PASS_FLOOR", "keeping at least 1 in 5 offers coming to you"},
                 {"AT_MINIMUMS", "holding at your minimums"}, {"VALUE_UP", "offers are coming often"},
-                {"VALUE_DOWN", "offers are slower"}, {"MINIMUMS_GREW", "your minimums grew"}};
+                {"VALUE_DOWN", "offers are slower"}, {"MINIMUMS_GREW", "your minimums grew"},
+                {"LEARNED", "your learned minimums rose"}, {"ACCEPTED", "you accepted an offer at this score"}};
         assertEquals(Autopilot.Reason.values().length, words.length);
         for (String[] reason : words) {
             assertEquals(reason[1], AutopilotText.reasonWords(Autopilot.Reason.valueOf(reason[0])));
@@ -813,5 +814,76 @@ public final class AutopilotTextTest {
         assertFalse("imports no android class", text.contains("import android"));
         assertFalse("names no android class", text.contains("android."));
         assertFalse("reads no clock", text.contains("currentTimeMillis") || text.contains("elapsedRealtime"));
+    }
+
+    // ---- The accepted floor (0.6.11) ----
+
+    /**
+     * The owner pinned at 50%, then he accepts an offer by hand that scores 63% ($15.12 for 6.0 mi and 26 min asks
+     * $24.00 of his minimums): the bar holds at 63% for the dash, and the details, the log, the chip and the meter say
+     * so.
+     */
+    @Test
+    public void aHandAcceptHoldingTheBarIsExplained() {
+        AutopilotStore.Reading nine = dasher(9, 1);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        OfferSnapshot his = new OfferSnapshot(1512, 6.0, 26, 2);
+        assertEquals(63, AreaScore.scorePercent(owner(70, 50), his));
+        lines.add(new Autopilot.OfferRecord(his, NOW - 90_000L, false, false, true, false, false, 50, true,
+                DecisionLog.MODEL, null, false, NOW - 30_000L));
+        lines.addAll(window(20));
+        Autopilot.Plan plan = floorPlan(owner(70, 50), lines, nine, 50, NOW - 60 * MIN);
+        assertEquals(Autopilot.Mode.PINNED, plan.mode);
+        assertEquals(50, plan.ownTarget);
+        assertEquals(63, plan.floor);
+        assertEquals(63, plan.target);
+        AutopilotText.Status s = status(owner(70, 63), plan, nine, change(1, 50, 63, Autopilot.Reason.ACCEPTED));
+
+        String floor = "This dash the bar stays at 63% or more: you accepted an offer that scored 63% of your minimums. "
+                + "A new dash, or a change of your goal or minimums, lets Autopilot set it again.";
+        assertEquals(floor, AutopilotText.detailsFloor(s));
+        List<String> details = AutopilotText.detailsLines(s);
+        assertEquals(AutopilotText.detailsBar(s), details.get(0));
+        assertEquals("right after the bar", floor, details.get(1));
+        assertTrue(details.contains("Last change 1 min ago: 50% → 63% (you accepted an offer at this score)."));
+        String logged = AutopilotText.logPlan(plan, NOW - MIN, NOW);
+        assertTrue(logged, logged.startsWith("plan 63% PINNED: need 80%, pass " + plan.passAt(63)
+                + "/21 at 63%, share bar 50%, "));
+        assertTrue(logged, logged.endsWith(", floor 63%, own 50%"));
+        assertEquals("Auto 63% ▲", AutopilotText.chip(s));
+        assertEquals("ACCEPTANCE  ", AutopilotText.meterLabel(s));
+        assertEquals(AutopilotText.Status.Kind.PINNED, s.kind);
+        assertTrue("still pinned: the goal can't be met", AutopilotText.detailsPinned(s) != null);
+
+        // No dash, or the accept before the floor's start: no floor, no line, no figures in the log.
+        Autopilot.Plan none = floorPlan(owner(70, 50), lines, nine, 50, Long.MAX_VALUE);
+        AutopilotText.Status unheld = status(owner(70, 50), none, nine, null);
+        assertNull(AutopilotText.detailsFloor(unheld));
+        assertFalse(AutopilotText.logPlan(none, NOW - MIN, NOW).contains("floor"));
+        // A floor below the plan's own target: in the log, but nothing holds the bar.
+        Autopilot.Plan typical = floorPlan(starters(70, 100), window(20), nine, 100, Long.MAX_VALUE);
+        List<Autopilot.OfferRecord> low = new ArrayList<>(window(20));
+        // The eighth offer ($6.00, 7.9 mi, 29 min) scores 75 of the typical minimums: accepted by hand.
+        Autopilot.OfferRecord eighth = low.get(7);
+        low.set(7, new Autopilot.OfferRecord(eighth.facts, eighth.at, false, false, true, false, false, 100, false,
+                DecisionLog.MODEL, null, false, eighth.at + 30_000L));
+        Autopilot.Plan below = floorPlan(starters(70, 100), low, nine, 100, NOW - 60 * MIN);
+        assertEquals(100, typical.target);
+        assertEquals(100, below.ownTarget);
+        assertEquals(75, below.floor);
+        assertEquals(100, below.target);
+        String belowLog = AutopilotText.logPlan(below, NOW - MIN, NOW);
+        assertTrue(belowLog, belowLog.endsWith(", floor " + below.floor + "%"));
+        assertNull(AutopilotText.detailsFloor(status(starters(70, below.target), below, nine, null)));
+        // Off: nothing.
+        assertNull(AutopilotText.detailsFloor(status(owner(70, 100).withAutopilot(false, 70), plan, nine, null)));
+    }
+
+    private static Autopilot.Plan floorPlan(FilterSettings rules, List<Autopilot.OfferRecord> lines,
+                                            AutopilotStore.Reading reading, int current, long floorSince) {
+        Autopilot.State state = new Autopilot.State(false, 0, Autopilot.NEVER, -1, Autopilot.NEVER, current, null);
+        Autopilot.Reading engine = new Autopilot.Reading(reading.percent, reading.at);
+        return Autopilot.plan(new Autopilot.Inputs(rules, lines, busy(), engine, state, NOW, 1, Long.MAX_VALUE,
+                java.util.TimeZone.getTimeZone("UTC"), 0, floorSince));
     }
 }

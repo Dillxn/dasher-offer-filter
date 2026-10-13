@@ -17,7 +17,8 @@ import android.content.SharedPreferences;
  *   <li>a note of the last bar change (time, old and new bar, a fixed reason name), when the bar last rose, and when
  *       the exemption valve was last logged;</li>
  *   <li>the last growth of the minimums ({@link Growth}, 0.5.1): when, how much, how many offers on how many days, the
- *       minimums and the bar before and after, and whether its homepage note (with Undo) still waits for a tap.</li>
+ *       minimums and the bar before and after, and whether its homepage note (with Undo) still waits for a tap;</li>
+ *   <li>when the user's own last change restarted the accepted floor (0.6.11, {@link #floorSince}).</li>
  * </ul>
  * Clear history removes all of it ({@link #clear}). Callers on several threads share it: every read-modify-write is
  * under this class's lock, and every write bumps {@link #version}.
@@ -68,6 +69,12 @@ final class AutopilotStore {
     private static final String[] GREW_KEYS = {GREW_AT, GREW_PERCENT, GREW_OFFERS, GREW_DAYS, GREW_FLAT_FROM,
         GREW_FLAT_TO, GREW_MILE_FROM, GREW_MILE_TO, GREW_MINUTE_FROM, GREW_MINUTE_TO, GREW_BAR_FROM, GREW_BAR_TO,
         GREW_NOTE};
+
+    /**
+     * When the user's own last change (Autopilot on or off, a goal, the rules, Reset, an Undo) restarted the accepted
+     * floor (wall clock): only hand accepts from then on hold the bar (0.6.11).
+     */
+    private static final String FLOOR_SINCE = "floor_since";
 
     /** Changes whenever anything here is written or cleared, so a screen can skip redrawing unchanged state. */
     static volatile long version;
@@ -214,6 +221,21 @@ final class AutopilotStore {
         synchronized (AutopilotStore.class) {
             prefs(context).edit().remove(RECOVERING).remove(EXTRA).remove(CP_AT).remove(CP_AR)
                     .remove(RETIRED_CP_READING).apply();
+            version++;
+        }
+    }
+
+    // ---- The accepted floor (0.6.11) ----
+
+    /** When the accepted floor last restarted (wall clock); 0 when never (since Clear history). */
+    static long floorSince(Context context) {
+        return prefs(context).getLong(FLOOR_SINCE, 0);
+    }
+
+    /** The user's own change at {@code wall}: hand accepts before it no longer hold the bar. */
+    static void restartFloor(Context context, long wall) {
+        synchronized (AutopilotStore.class) {
+            prefs(context).edit().putLong(FLOOR_SINCE, wall).apply();
             version++;
         }
     }
@@ -401,8 +423,8 @@ final class AutopilotStore {
     }
 
     /**
-     * Clear history: the reading, the acceptance-rate state, the jump, the change note and the last growth (with its
-     * note and Undo) all go.
+     * Clear history: the reading, the acceptance-rate state, the jump, the change note, the last growth (with its
+     * note and Undo) and when the accepted floor restarted all go.
      */
     static void clear(Context context) {
         synchronized (AutopilotStore.class) {

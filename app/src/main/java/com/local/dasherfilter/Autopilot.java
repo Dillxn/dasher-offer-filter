@@ -30,10 +30,12 @@ import java.util.TimeZone;
  * number. θ, the largest bar at which an offer is not declined, is {@link AreaScore#passThreshold}; there is no second
  * requirement formula here.
  *
- * <p>Autopilot never accepts anything, never decides a single offer and learns nothing from what the user accepts or
- * declines: the history only counts offers and outcomes for the acceptance rate, and the market for the value. A plan
- * also says whether the minimums are due to grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded
- * bars only.
+ * <p>Autopilot never accepts anything and never decides a single offer. The one thing it takes from what the user
+ * accepts (0.6.11, the owner: "if an accepted offer's score beats the autopilot ask, the ask needs to jump to the new
+ * higher score"): this dash, the bar never stays below the best score, under the current rules, among the offers the
+ * user accepted by hand ({@link #acceptedFloor}, at most 150%). Nothing else is learned: the history only counts offers
+ * and outcomes for the acceptance rate, and the market for the value. A plan also says whether the minimums are due to
+ * grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded bars only, never a bar an accept held up.
  */
 final class Autopilot {
     // ---- Bar ----
@@ -170,9 +172,16 @@ final class Autopilot {
         VALUE_UP(false, "offers are coming often"),
         VALUE_DOWN(false, "offers are slower"),
         /** The minimums grew ({@link Growth}) and the bar came down with them, keeping what it asks. */
-        MINIMUMS_GREW(false, "your minimums grew");
+        MINIMUMS_GREW(false, "your minimums grew"),
+        /**
+         * A lesson raised the learned minimums (0.6.11): a jump, but not the user's own, so it never restarts the
+         * accepted floor.
+         */
+        LEARNED(true, "your learned minimums rose"),
+        /** The bar rose to, or stays held at, the score of an offer the user accepted by hand this dash (0.6.11). */
+        ACCEPTED(false, "you accepted an offer at this score");
 
-        /** A user's change: the next commit goes straight to the plan's target. */
+        /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
         final boolean jump;
         final String words;
 
@@ -197,7 +206,11 @@ final class Autopilot {
         LOWER,
         /** A raise waits for five minutes and three counted offers since the last one. */
         RAISE_WAIT,
-        RAISE
+        RAISE,
+        /** Up to an accepted offer's score at once (0.6.11). */
+        FLOOR,
+        /** A bar the floor put, back to the plan's own target at once (0.6.11). */
+        RELEASE
     }
 
     // ---- Inputs ----
@@ -228,6 +241,11 @@ final class Autopilot {
         final FilterSettings scoringRules;
         /** Declined because a store it is from is on the skip list (0.6.10): it fails at every bar. */
         final boolean skipped;
+        /**
+         * When the user accepted it by hand: the wall time of the line's ACCEPTED step (0.6.11,
+         * {@link DecisionLog#handAcceptedAt}); {@link #NEVER} when it has none.
+         */
+        final long acceptedByHandAt;
 
         /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
@@ -249,6 +267,14 @@ final class Autopilot {
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
                     boolean skipped) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, bar, autopilot, model, scoringRules, skipped,
+                    NEVER);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
+                    boolean skipped, long acceptedByHandAt) {
+            this.acceptedByHandAt = acceptedByHandAt;
             this.skipped = skipped;
             this.scoringRules = scoringRules;
             this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
@@ -358,6 +384,11 @@ final class Autopilot {
          * pay less this × its miles ({@link #mix}). Never a suggested rate.
          */
         final int costPerMileCents;
+        /**
+         * Hand accepts from then on (wall clock) set the accepted floor ({@link #acceptedFloor}, 0.6.11): the later of
+         * the dash's start and the user's last own change. {@link Long#MAX_VALUE}: no floor (no dash under way).
+         */
+        final long floorSince;
 
         /** Inputs with no evidence for growth (no line is decided after {@link Long#MAX_VALUE}). */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
@@ -371,9 +402,17 @@ final class Autopilot {
             this(rules, newestFirst, waits, reading, state, wallNow, generation, minimumsSince, zone, 0);
         }
 
+        /** Inputs with no accepted floor. */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
                int costPerMileCents) {
+            this(rules, newestFirst, waits, reading, state, wallNow, generation, minimumsSince, zone, costPerMileCents,
+                    Long.MAX_VALUE);
+        }
+
+        Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
+               Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
+               int costPerMileCents, long floorSince) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.costPerMileCents = Math.max(0, Math.min(CostPerMile.MOST_CENTS, costPerMileCents));
             this.rules = rules;
@@ -387,6 +426,7 @@ final class Autopilot {
             this.generation = generation;
             this.minimumsSince = minimumsSince;
             this.zone = zone == null ? TimeZone.getTimeZone("UTC") : zone;
+            this.floorSince = floorSince;
         }
     }
 
@@ -584,8 +624,18 @@ final class Autopilot {
     /** A plan: the bar Autopilot wants, why, and every figure behind it. Immutable. */
     static final class Plan {
         final Mode mode;
-        /** The bar Autopilot wants; commits move toward it one {@link #step} at a time. */
+        /**
+         * The bar Autopilot wants, {@code max(ownTarget, floor)}; commits move toward it one {@link #step} at a time
+         * (straight up to a binding floor).
+         */
         final int target;
+        /** What the mode alone would want, before the accepted floor. */
+        final int ownTarget;
+        /**
+         * The accepted floor (0.6.11, {@link #acceptedFloor}): the best score of an offer the user accepted by hand
+         * this dash, under these rules; -1 when none, and always -1 while off or with no money minimum.
+         */
+        final int floor;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -656,14 +706,16 @@ final class Autopilot {
 
         private Plan(Draft d, Mode mode, int target) {
             this.mode = mode;
-            this.target = target;
+            this.ownTarget = target;
+            this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
+            this.target = Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
             this.rulesKey = d.rules.rulesKey();
             this.computedAt = d.wallNow;
             this.generation = d.generation;
             this.counted = d.windowThetas.length;
-            this.passAtTarget = passing(d.windowThetas, target);
+            this.passAtTarget = passing(d.windowThetas, this.target);
             this.need = d.need;
             this.barShare = d.barShare;
             this.pinned = d.pinned;
@@ -718,6 +770,11 @@ final class Autopilot {
             return (1_200L * lambdaNumerator + lambdaDenominator) / (2 * lambdaDenominator);
         }
 
+        /** The accepted floor holds the bar above what the mode alone would want. */
+        boolean floorBinds() {
+            return floor > ownTarget;
+        }
+
         /** The acceptance rate is known and below a goal. */
         boolean belowGoal() {
             return goal > 0 && arHundredths >= 0 && arHundredths < 100 * goal;
@@ -753,6 +810,7 @@ final class Autopilot {
         int extra;
         long checkpointAt;
         int checkpointAr;
+        int floor = -1;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored, Growth.Evidence growth) {
@@ -822,7 +880,8 @@ final class Autopilot {
      * </ol>
      * The acceptance rate, the offer rate, the display figures and whether the minimums are due to grow
      * ({@link Growth#evidence}, from the counted lines Autopilot decided under these minimums) are worked out in every
-     * mode.
+     * mode. So is the accepted floor ({@link #acceptedFloor}); the plan's target is never below it, except while off or
+     * with no money minimum.
      */
     static Plan plan(Inputs in) {
         FilterSettings rules = in.rules;
@@ -839,8 +898,10 @@ final class Autopilot {
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
-        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone);
+        List<HandAccept> accepts = handAccepts(rules, in.newestFirst);
+        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone, accepts);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
+        draft.floor = acceptedFloor(accepts, in.floorSince);
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
@@ -905,6 +966,53 @@ final class Autopilot {
             kept.add(record);
         }
         return Collections.unmodifiableList(kept);
+    }
+
+    // ---- (b) The accepted floor (0.6.11) ----
+
+    /** An offer the user accepted by hand: when (its ACCEPTED step, wall clock) and its score under the plan's rules. */
+    static final class HandAccept {
+        final long at;
+        final int score;
+
+        HandAccept(long at, int score) {
+            this.at = at;
+            this.score = score;
+        }
+    }
+
+    /**
+     * Offers the user accepted by hand, newest first, each scored under these rules ({@link AreaScore#scorePercent},
+     * recomputed, never the recorded score: the bar multiplies the current requirement), capped at {@link #BAR_MAX}.
+     * Left out: a line with no ACCEPTED step, an add-on, a replay, a skipped store's offer, a misread offer
+     * ({@link OfferSanity#looksMisread}), one with more stops than max stops allows (it fails at every bar), and one
+     * whose pay or a needed figure was not read (score -1).
+     */
+    static List<HandAccept> handAccepts(FilterSettings rules, List<OfferRecord> newestFirst) {
+        List<HandAccept> accepts = new ArrayList<>();
+        if (rules == null || newestFirst == null) return accepts;
+        for (OfferRecord record : newestFirst) {
+            if (record == null || record.acceptedByHandAt == NEVER || record.addOn || record.replay || record.skipped
+                    || OfferSanity.looksMisread(record.facts)) continue;
+            if (rules.maxStops > 0 && record.facts.stops != null && record.facts.stops > rules.maxStops) continue;
+            int score = AreaScore.scorePercent(rules, record.facts);
+            if (score < 0) continue;
+            accepts.add(new HandAccept(record.acceptedByHandAt, Math.min(BAR_MAX, score)));
+        }
+        return Collections.unmodifiableList(accepts);
+    }
+
+    /**
+     * The accepted floor: the highest score among {@code accepts} made at or after {@code since} (wall clock); -1 when
+     * none reaches {@link #BAR_MIN}. An identical offer passes at it exactly, and anything worse is declined.
+     */
+    static int acceptedFloor(List<HandAccept> accepts, long since) {
+        int floor = -1;
+        if (accepts == null) return floor;
+        for (HandAccept accept : accepts) {
+            if (accept.at >= since && accept.score >= BAR_MIN) floor = Math.max(floor, accept.score);
+        }
+        return floor;
     }
 
     /** The first {@code count} of {@code lines} (all of them when fewer), unmodifiable. */
@@ -1252,14 +1360,38 @@ final class Autopilot {
     }
 
     /**
-     * Why a commit from {@code from} to {@code to} happened: the pending user change when there is one; otherwise the
-     * plan's mode, with value moves up or down. Off and no-rules plans only ever return to exactly the minimums.
+     * As {@link #step(int, int, boolean, long, long, int, int)}, with the accepted floor (0.6.11): a bar below
+     * {@code floor} goes straight up to it (at most 150), past the commit spacing, the deadband, the raise wait and
+     * the 5-point limit, and never down for it. A bar the floor put ({@code floorHeld}: the last change was
+     * {@link Reason#ACCEPTED} and landed on the current bar) that no floor holds any more goes straight back to the
+     * plan's own target, as it rose.
+     *
+     * @param floor the plan's accepted floor ({@link Plan#floor}), -1 for none
+     * @param floorHeld the last change was the floor's, to the current bar
+     */
+    static Step step(int current, int target, boolean jump, long sinceCommitMs, long sinceRaiseMs,
+                     int offersSinceRaise, int limit, int floor, boolean floorHeld) {
+        Step normal = step(current, target, jump, sinceCommitMs, sinceRaiseMs, offersSinceRaise, limit);
+        if (floor >= BAR_MIN && normal.next < floor) return new Step(Math.min(BAR_MAX, floor), StepKind.FLOOR);
+        // A bar the floor put, no longer held by one: straight back to the plan's own target, as it rose.
+        if (!jump && floorHeld && floor < current && target < current) {
+            return new Step(Math.max(BAR_MIN, Math.min(BAR_MAX, target)), StepKind.RELEASE);
+        }
+        return normal;
+    }
+
+    /**
+     * Why a commit from {@code from} to {@code to} happened: the pending jump when there is one (landing on a binding
+     * accepted floor, a lesson's jump says the floor's words); otherwise the floor's when the commit lands on a binding
+     * one; otherwise the plan's mode, with value moves up or down. Off and no-rules plans only ever return to exactly
+     * the minimums.
      */
     static Reason commitReason(Plan plan, int from, int to, Reason jumpCause) {
-        if (jumpCause != null) {
-            if (!jumpCause.jump) throw new IllegalArgumentException("not a jump cause: " + jumpCause);
-            return jumpCause;
+        if (jumpCause != null && !jumpCause.jump) throw new IllegalArgumentException("not a jump cause: " + jumpCause);
+        if ((jumpCause == null || jumpCause == Reason.LEARNED) && plan.floorBinds() && to == plan.target) {
+            return Reason.ACCEPTED;
         }
+        if (jumpCause != null) return jumpCause;
         switch (plan.mode) {
             case PINNED: return Reason.PINNED;
             // Recovering lasts until the rate reaches the goal + 2 (need's hysteresis): from the goal on it is no longer

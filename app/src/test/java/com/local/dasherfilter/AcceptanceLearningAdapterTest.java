@@ -50,6 +50,8 @@ public class AcceptanceLearningAdapterTest {
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
     }
     @After public void cleanup() {
+        AutopilotRuntime.executorForTests = null; AutopilotRuntime.afterInputsForTests = null;
+        AutopilotRuntime.forgetCache();
         controller.destroy(); OfferFilterService.nodeFetchForTests = null; OfferFilterService.forgetScreenState();
         OfferFilterService.scanLooperForTests = null; OfferFilterService.sawDasherBeside(0);
         OfferNotificationService.forgetDeclineAction();
@@ -217,5 +219,45 @@ public class AcceptanceLearningAdapterTest {
         ShadowSystemClock.advanceBy(Duration.ofMillis(100)); offer(); tapAccept(); delivery();
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
         assertTrue(FilterStore.load(app).accepted.isEmpty());
+    }
+    /**
+     * Autopilot on (0.6.11): the service's no-tap accept ("Accepted without a seen tap") puts the ACCEPTED step on the
+     * line before the plan it asks for reads the history, so that plan holds the bar at the offer's score, and the
+     * next commit makes it so. Learning is off here: the floor counts the accepts the learner is asked about, whatever
+     * it makes of them (with learning on, this offer's own lesson would put its score just under 100).
+     */
+    @Test public void aNoTapAcceptLiftsAutopilotsBarToItsScore() {
+        FilterStore.setAcceptanceLearning(app, false);
+        AutopilotStore.clear(app); AutopilotRuntime.forgetCache();
+        AutopilotRuntime.executorForTests = Runnable::run;
+        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        List<Boolean> stepped = new ArrayList<>();
+        AutopilotRuntime.afterInputsForTests = () -> {
+            DecisionLog.Entry line = latest();
+            if (line.facts.payCents != null && line.facts.payCents == 1050) {
+                stepped.add(DecisionLog.hasStep(line, DecisionLog.StepKind.ACCEPTED));
+            }
+        };
+        waiting();
+        // $10.50 for 3.9 mi and 30 min: 140% of the $7.50 the minimums ask.
+        List<Integer> declines = new ArrayList<>();
+        show(offerCountingDeclines("$10.50", declines));
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        delivery();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(declines.isEmpty());
+        assertTrue(Dashing.on(app));
+        assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPTED));
+        assertFalse(DecisionLog.hasStep(latest(), DecisionLog.StepKind.ACCEPT_TAPPED));
+        assertTrue(DiagnosticLog.read(app).contains("Accepted without a seen tap"));
+        assertFalse("its plan was asked for", stepped.isEmpty());
+        assertTrue("the plan after the accept read the line with its step", stepped.get(stepped.size() - 1));
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(140, plan.floor);
+        assertEquals(140, plan.target);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(140, FilterStore.load(app).minimumScalePercent);
+        assertTrue(DiagnosticLog.read(app).contains(
+                "[autopilot] commit 100% -> 140% (you accepted an offer at this score)"));
     }
 }

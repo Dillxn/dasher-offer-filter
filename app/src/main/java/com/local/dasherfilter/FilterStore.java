@@ -831,7 +831,8 @@ final class FilterStore {
             if (result == AcceptedLesson.RAISED) edit.putString(LEARNED_RAISE, LearnedRaise.encode(lesson, next));
             edit.apply();
         }
-        if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.rulesChanged(context);
+        // A lesson's jump is its own, not the user's: it keeps Autopilot's accepted floor and recovery state (0.6.11).
+        if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.learned(context);
         return result;
     }
 
@@ -918,7 +919,8 @@ final class FilterStore {
             // The learned minimums are now the user's own: no learned raise is left to note.
             edit.putString(ADOPTION, adoption.encode()).remove(LEARNED_RAISE).apply();
         }
-        AutopilotRuntime.rulesChanged(context);
+        // Adopt only raises the minimums: Autopilot's accepted floor stays (0.6.11).
+        AutopilotRuntime.adopted(context);
         return true;
     }
 
