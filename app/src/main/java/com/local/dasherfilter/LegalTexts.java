@@ -58,9 +58,9 @@ final class LegalTexts {
             Automatic declines may dramatically lower your DoorDash acceptance rate. This can affect DoorDash \
             programs that depend on it. You must acknowledge this risk before filtering begins, including after an \
             update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise \
-            to preserve your acceptance rate. Autopilot's acceptance-rate goal is a best effort, not a promise, and \
-            an offer you accept yourself can hold its bar above what the goal allows: Autopilot cannot accept \
-            offers for you, and your acceptance rate rises only when you accept offers.
+            to preserve your acceptance rate. Autopilot's acceptance-rate goal is a best effort, not a promise: \
+            Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. An \
+            offer you accept yourself can also hold Autopilot's bar above what the goal allows.
 
             ## What it does
 
