@@ -238,7 +238,8 @@ final class BundledNotes {
                         + "twice your number.",
                 "Single orders are judged exactly as before; your number didn't change.",
                 "Learning keeps your best pay per stop.",
-                "Fewer empty gaps on the homepage, and the time-of-day chart comes back after each new offer.");
+                "Fewer empty gaps on the homepage, and the time-of-day chart comes back after each new offer.",
+                "No second card of ours beside Dasher's own offer notification: Dasher rings for offers itself.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 
