@@ -641,8 +641,50 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * sun and Settings, each round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty
      * heading only screen readers hear (the page's picture needs none) in the band's gap before them.
      */
+    /**
+     * The main page's header: the title's room, then the buttons, which spread evenly across whatever the box has past
+     * them (on a row of their own, the band's width; 0.6.12, the owner: "still awkward negative space gaps"), the last at
+     * its end. Beside the words its box is just their width, so nothing moves.
+     */
+    static final class SpreadRow extends LinearLayout {
+        SpreadRow(android.content.Context context) {
+            super(context);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER_VERTICAL);
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            if (getChildCount() < 3) return;
+            View title = getChildAt(0);
+            int shown = 0;
+            View first = null;
+            View last = null;
+            for (int i = 1; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (child.getVisibility() == GONE) continue;
+                shown++;
+                if (first == null) first = child;
+                last = child;
+            }
+            if (shown < 2 || last == null) return;
+            int extra = (r - l) - getPaddingRight() - last.getRight();
+            if (extra <= 0) return;
+            // The title's room (it shows no words here) joins the spread as the row widens past the buttons' own.
+            int from = first.getLeft() - Math.min(first.getLeft() - title.getLeft(), extra);
+            int to = (r - l) - getPaddingRight() - last.getWidth();
+            int step = 0;
+            for (int i = 1; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (child.getVisibility() == GONE) continue;
+                child.offsetLeftAndRight(Math.round(from + (to - from) * step / (float) (shown - 1)) - child.getLeft());
+                step++;
+            }
+        }
+    }
+
     private View header(String title, boolean back) {
-        LinearLayout header = ui.row();
+        LinearLayout header = back ? ui.row() : new SpreadRow(this);
         header.setMinimumHeight(ui.dp(back ? 84 : 56));
         if (!back) {
             // The title takes what the header's box has beside the buttons (the band's gap, as the page leaves it for
@@ -651,7 +693,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             name.setContentDescription(title);
             name.setAccessibilityHeading(true);
             name.setMinWidth(ui.dp(FluidLayout.BAND_GAP_DP));
-            header.addView(name, new LinearLayout.LayoutParams(0, ui.dp(48), 1f));
+            header.addView(name, new LinearLayout.LayoutParams(ui.dp(FluidLayout.BAND_GAP_DP), ui.dp(48)));
             mainTitle = name;
             header.addView(bandButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
             // One tap to Dasher filling the screen (with the tab over it), at the user's tap only.

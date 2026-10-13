@@ -287,8 +287,16 @@ final class FluidLayout {
      * buttons and the room between them, and with a fifth button up to {@link #FULL_SCREEN_EXTRA_DP} more.
      */
     private float risesFrom() {
-        float extra = dp(FULL_SCREEN_EXTRA_DP) * clamp((buttonsWidth - dp(FOUR_BUTTONS_DP)) / dp(BUTTON_STEP_DP));
-        return dp(BAND_SIDE_DP) + chipsMost + dp(BAND_GAP_DP) + buttonsWidth + dp(BAND_SIDE_DP) + extra;
+        return risesFromWithoutExtra() + dp(FULL_SCREEN_EXTRA_DP) * fullScreen();
+    }
+
+    private float risesFromWithoutExtra() {
+        return dp(BAND_SIDE_DP) + chipsMost + dp(BAND_GAP_DP) + buttonsWidth + dp(BAND_SIDE_DP);
+    }
+
+    /** How much the band is a full screen's (its five buttons): 0 to 1. */
+    private float fullScreen() {
+        return clamp((buttonsWidth - dp(FOUR_BUTTONS_DP)) / dp(BUTTON_STEP_DP));
     }
 
     /** The folded band's height: what it is once the buttons stand in the chips' row. */
@@ -305,14 +313,24 @@ final class FluidLayout {
      */
     private void band() {
         float risesFrom = risesFrom();
-        rise = clamp((width - risesFrom) / dp(RISE_DP));
+        // 0.6.12 (the owner, 13 October 2026, of 0.6.11 on his 411 dp full screen: "still awkward negative space gaps"): on
+        // a full screen's band (its five buttons) the status words keep the row's whole width until the buttons are about
+        // to rise beside them, then pull in over NARROW_DP, and only then do the buttons rise; before 0.6.12 they pulled
+        // in ahead of it, leaving the row's end empty over the buttons' own row. Beside Dasher it stays as it was, so the
+        // mockup's window keeps its buttons in the tile's row.
+        float shift = dp(NARROW_DP) * fullScreen();
+        float pulled = clamp((width - (risesFrom - dp(NARROW_DP) + shift)) / dp(NARROW_DP));
+        // A full screen's buttons rise over a quarter more, so the stage under the band grows no faster than its turn
+        // allows where they rise later.
+        float riseSpan = dp(RISE_DP) * (1 + 0.25f * fullScreen());
+        rise = clamp((width - risesFrom - shift) / riseSpan);
         // The buttons lift into the first row in two steps, one after the other, so nothing overlaps on the way and
         // nothing moves more than three times as fast as the window's edge: the tile pulls in to leave them their room,
         // then they rise into it.
         float pull = buttonsWidth + dp(BAND_GAP_DP);
         float making = pull / 3;
         float rising = dp(LIFT_RISE_DP);
-        float liftsFrom = Math.max(risesFrom + dp(RISE_DP), dp(MASCOT_LEFT_FOLDED_DP + MASCOT_FOLDED_DP
+        float liftsFrom = Math.max(risesFrom + shift + riseSpan, dp(MASCOT_LEFT_FOLDED_DP + MASCOT_FOLDED_DP
                 + TILE_GAP_FOLDED_DP + TILE_FIT_DP + BAND_GAP_DP + BAND_SIDE_DP) + countsWidth + pull);
         float room = clamp((width - (liftsFrom - making)) / making);
         lift = clamp((width - liftsFrom) / rising);
@@ -336,14 +354,19 @@ final class FluidLayout {
         float tileRight = counts.left - dp(BAND_GAP_DP);
         tile.set(tileLeft, top + (first - tileHeight) / 2, Math.max(tileLeft, tileRight),
                 top + (first + tileHeight) / 2);
-        float wordsEnd = width - dp(BAND_SIDE_DP) - pull * narrow;
+        float wordsEnd = width - dp(BAND_SIDE_DP) - pull * pulled;
         chipRow.set(left, second, Math.min(width, Math.max(wordsEnd, left + chipsMost)), second + dp(ROW_DP));
         float buttonsTop = (second + dp(ROW_DP) * (1 - rise)) * (1 - lift)
                 + Math.max(0, top + (first - dp(ROW_DP)) / 2) * lift;
         float buttonsLeft = Math.max(0, width - dp(BAND_SIDE_DP) - buttonsWidth);
-        float headerLeft = Math.max(0, buttonsLeft - dp(BAND_GAP_DP));
-        header.set(headerLeft, buttonsTop, Math.max(headerLeft, Math.min(width,
-                headerLeft + buttonsWidth + dp(BAND_GAP_DP))), buttonsTop + dp(ROW_DP));
+        // On a row of their own the buttons spread across it (the header's box the band's width), closing in to the
+        // row's end before they rise beside the words, no faster than the band's rate.
+        float closed = Math.max(0, buttonsLeft - dp(BAND_GAP_DP));
+        float span = Math.max(dp(NARROW_DP), (chipsMost + shift + risesFrom - risesFromWithoutExtra()) / 1.9f);
+        float spread = clamp((risesFrom + shift - width) / span);
+        float headerLeft = closed * (1 - spread) + Math.min(closed, dp(BAND_SIDE_DP)) * spread;
+        header.set(headerLeft, buttonsTop, Math.max(headerLeft, Math.min(width, closed + buttonsWidth + dp(BAND_GAP_DP))),
+                buttonsTop + dp(ROW_DP));
         band = second + dp(ROW_DP) + dp(ROW_DP) * (1 - rise);
         bandFolded = firstFolded + dp(ROW_DP);
     }

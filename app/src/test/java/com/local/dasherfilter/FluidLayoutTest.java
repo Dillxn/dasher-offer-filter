@@ -134,6 +134,22 @@ public final class FluidLayoutTest {
                 + layout.buttonsWidth + extra;
     }
 
+    /** How much the band is a full screen's (its five buttons), 0 to 1. */
+    private static float fullScreen(FluidLayout layout, float density) {
+        return Math.max(0, Math.min(1, (layout.buttonsWidth - FluidLayout.FOUR_BUTTONS_DP * density)
+                / (FluidLayout.BUTTON_STEP_DP * density)));
+    }
+
+    /** Where the buttons begin to rise (0.6.12: a full screen's {@link FluidLayout#NARROW_DP} past its fold). */
+    private static float risingFrom(FluidLayout layout, float density) {
+        return risesFrom(layout, density) + FluidLayout.NARROW_DP * density * fullScreen(layout, density);
+    }
+
+    /** How long the buttons take to rise (0.6.12: a full screen's a quarter more). */
+    private static float riseSpan(FluidLayout layout, float density) {
+        return FluidLayout.RISE_DP * density * (1 + 0.25f * fullScreen(layout, density));
+    }
+
     private interface Check {
         void at(Where where, FluidLayout before, FluidLayout now, float density, Content content, boolean area);
     }
@@ -536,8 +552,8 @@ public final class FluidLayoutTest {
      * The band folds by the window's width alone: the mascot into its corner over {@link FluidLayout#NARROW_DP} up to
      * where the buttons fit beside the chips at their widest, then the buttons rising into the chips' row over
      * {@link FluidLayout#RISE_DP}, five buttons up to {@link FluidLayout#FULL_SCREEN_EXTRA_DP} later; the chips keep
-     * their widest from where the fold begins; the header keeps its whole width wherever the window holds it and never
-     * overlaps the chips. At the normal font the buttons rise from 318 dp beside Dasher, 370 dp beside another app and
+     * their widest from where the fold begins; the header keeps its whole width wherever the window holds it (wider, the
+     * buttons spread across their own row, since 0.6.12) and never overlaps the chips. At the normal font the buttons rise from 318 dp beside Dasher, 370 dp beside another app and
      * 486 dp in a full screen; where a readable tile leaves them the room, they lift on into the tile's row (0.6.8).
      */
     @Test
@@ -545,9 +561,11 @@ public final class FluidLayoutTest {
         for (float density : DENSITIES) {
             for (int buttons : BUTTONS) {
                 int risesFrom = buttons == 3 ? 318 : buttons == 4 ? 370 : 486;
+                // 0.6.12: a full screen's buttons rise from NARROW_DP past its fold, over a quarter more.
+                float risingAt = buttons == 5 ? risesFrom + FluidLayout.NARROW_DP + FluidLayout.RISE_DP * 1.25f / 2
+                        : risesFrom + FluidLayout.RISE_DP / 2;
                 Content content = new Content(0, buttons, 0);
-                FluidLayout rising = solve(density, Math.round((risesFrom + FluidLayout.RISE_DP / 2) * density), 600,
-                        content, true);
+                FluidLayout rising = solve(density, Math.round(risingAt * density), 600, content, true);
                 assertEquals(content + ", density " + density, 0.5f, rising.rise, 0.02f);
                 assertEquals(1, rising.narrow, 0);
                 FluidLayout folding = solve(density, Math.round((risesFrom - FluidLayout.NARROW_DP / 2) * density),
@@ -561,7 +579,7 @@ public final class FluidLayoutTest {
 
     private static final Check FOLDS = (where, before, now, density, content, area) -> {
         float from = risesFrom(now, density);
-        float rise = Math.max(0, Math.min(1, (now.width - from) / (FluidLayout.RISE_DP * density)));
+        float rise = Math.max(0, Math.min(1, (now.width - risingFrom(now, density)) / riseSpan(now, density)));
         float narrow = Math.max(0, Math.min(1, (now.width - from + FluidLayout.NARROW_DP * density)
                 / (FluidLayout.NARROW_DP * density)));
         that(Math.abs(now.rise - rise) <= 1e-5f && Math.abs(now.narrow - narrow) <= 1e-5f,
@@ -574,7 +592,7 @@ public final class FluidLayoutTest {
                 + now.chipRow);
         float whole = now.buttonsWidth + FluidLayout.BAND_GAP_DP * density;
         that(now.width < whole + FluidLayout.BAND_SIDE_DP * density
-                || Math.abs(now.header.width() - whole) <= 0.01f && now.header.right <= now.width + 0.01f,
+                || now.header.width() >= whole - 0.01f && now.header.right <= now.width + 0.01f,
                 () -> where + ": the header squeezed, " + now.header);
         that(now.lift > 0 || Math.abs(now.header.bottom - now.band) <= 0.01f
                 && now.header.top >= now.chipRow.top - 0.01f, () -> where + ": the header outside the band, "
@@ -710,7 +728,7 @@ public final class FluidLayoutTest {
                 "road 0,220.2 360x0", "radius 56", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 116.2",
                 "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
         window("B'", 360, 220, 4, 0, 0, "mascot 5.2,1.2 50.4x50.4", "tile 60.9,2.4 255.5x48", "counts 320.4,2.4 0x48",
-                "chips 5.2,51.6 167.4x56", "header 139.8,107.6 216.2x56", "lines 0,163.6 360x0",
+                "chips 5.2,51.6 168.2x56", "header 121.2,107.6 234.8x56", "lines 0,163.6 360x0",
                 "radar 0,163.6 135x56.5", "caption 135,163.6 112.5x48", "chart 135,211.6 112.5x8.5",
                 "map 247.5,163.6 112.5x8.5", "area 247.5,172.2 112.5x48", "road 0,220.2 360x0", "radius 0", "gap 4",
                 "narrow 0.85", "rise 0.00", "band 163.6", "stage 56.5", "turn 1.000", "inner 1.000",
@@ -731,18 +749,18 @@ public final class FluidLayoutTest {
                 "area 153.3,368 257.8x48", "road 0,416 411x0", "radius 84", "gap 12", "narrow 1.00", "rise 1.00",
                 "band 104", "stage 312", "turn 0.258", "inner 0.258", "shown 1.00 1.00 0.00");
         window("E1", 411, 860, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 315x48", "counts 407,16 0x48",
-                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
+                "chips 12,72 395x56", "header 7.1,128 399.9x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
                 "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4", "map 0,385.4 411x348.8",
                 "area 0,734.2 411x48", "road 0,782.2 411x78", "radius 96.7", "gap 12", "narrow 0.00", "rise 0.00",
                 "band 184", "stage 598.2", "turn 0.000", "inner 0.000", "shown 1.00 1.00 1.00");
         window("E1 at twice the font", 411, 860, 5, 1, 0, "mascot 12,8 64x64", "tile 88,13.9 315x52.2",
-                "counts 407,16 0x48", "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0",
+                "counts 407,16 0x48", "chips 12,72 395x56", "header 4,128 403x56", "lines 0,184 411x0",
                 "radar 0,184 205.5x201.4", "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4",
                 "map 0,385.4 411x348.8", "area 0,734.2 411x48", "road 0,782.2 411x78", "radius 96.7", "gap 12",
                 "narrow 0.00", "rise 0.00", "band 184", "stage 598.2", "turn 0.000", "inner 0.000",
                 "shown 1.00 1.00 1.00");
         window("E2", 411, 600, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 315x48", "counts 407,16 0x48",
-                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
+                "chips 12,72 395x56", "header 7.1,128 399.9x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
                 "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4", "map 0,385.4 411x166.6",
                 "area 0,552 411x48", "road 0,600 411x0", "radius 96.7", "gap 12", "narrow 0.00", "rise 0.00",
                 "band 184", "stage 416", "turn 0.000", "inner 0.000", "shown 1.00 1.00 0.00");

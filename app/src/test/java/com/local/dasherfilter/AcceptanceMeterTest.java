@@ -121,12 +121,15 @@ public class AcceptanceMeterTest extends AndroidAdapterTestBase {
         split.pause().stop().destroy();
     }
 
-    /** His own full screen, 411 dp, Autopilot on: the chips' row ends early there, so "AR 8%", the goal the tick's. */
+    /**
+     * His own full screen, 411 dp, Autopilot on: 0.6.11's chips' row ended early there ("AR 8%"); since 0.6.12 (the owner:
+     * "still awkward negative space gaps") it keeps the row's whole width, so the whole label and its goal.
+     */
     @Test @Config(qualifiers = "w411dp-h891dp-420dpi")
     public void onHisFullScreenWithAutopilotOnTheGoalIsTheTicksAlone() {
         ActivityController<MainActivity> full = homepage(false, true, 1f);
         View content = full.get().findViewById(android.R.id.content);
-        assertEquals("411 full screen, on", "AR  8%", statusLine(content).getText().toString());
+        assertEquals("411 full screen, on", "ACCEPTANCE  8% / 70%", statusLine(content).getText().toString());
         full.pause().stop().destroy();
     }
 
