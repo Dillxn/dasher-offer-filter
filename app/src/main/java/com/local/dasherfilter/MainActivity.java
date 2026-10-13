@@ -1227,8 +1227,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     private static String learningDetailWords(FilterSettings rules) {
-        return "On by default. When you accept an offer yourself and it beats your best pay, pay per mile or pay per "
-                + "hour, the learned minimums rise to match it, and offers must meet them as well as your own. Your "
+        return "On by default. When you accept an offer yourself and it beats your best pay per stop, pay per mile or "
+                + "pay per hour, the learned minimums rise to match it, and offers must meet them as well as your own. Your "
                 + "own minimums stay as you set them. Automatic accepts, add-ons, declines and unclear acceptances do "
                 + "not teach it; pay per mile needs a trip of at least 2 miles and pay per hour at least 10 minutes. "
                 + "Off keeps the bests without using them or learning.\n\n"
@@ -1503,9 +1503,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** "Typical minimums set: $4 · $1/mi · $15/hr". */
+    /** "Typical minimums set: $4/stop · $1/mi · $15/hr". */
     private static String typicalSet() {
-        return "Typical minimums set: " + DecisionLog.shortMoney(Autopilot.STARTER_FLAT_CENTS) + " · "
+        return "Typical minimums set: " + DecisionLog.shortMoney(Autopilot.STARTER_FLAT_CENTS) + "/stop · "
                 + DecisionLog.shortMoney(Autopilot.STARTER_PER_MILE_CENTS) + "/mi · "
                 + DecisionLog.shortMoney(Autopilot.STARTER_PER_MINUTE_CENTS * 60L) + "/hr";
     }
@@ -2702,7 +2702,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (reason.startsWith("combined route fails: ")) {
             return "Whole route: " + plainReason(reason.substring("combined route fails: ".length()));
         }
-        // "pay at most $8.35 with its +$ amount; flat minimum": even the most it can pay fails that rule.
+        // "pay at most $8.35 with its +$ amount; dollars per stop": even the most it can pay fails that rule.
         int bound = reason.indexOf(" with its +$ amount; ");
         if (reason.startsWith("pay at most ") && bound > 0) {
             return "Even at " + reason.substring("pay at most ".length(), bound) + " with its +$: "
@@ -2711,7 +2711,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Matcher bar = BAR_REASON.matcher(reason);
         if (bar.matches()) {
             String plain = plainReason(bar.group(2));
-            // Above 100% the offer may meet the minimum itself (a $4.50 offer under a $4.00 minimum pay, declined at
+            // Above 100% the offer may meet the minimum itself (a $4.50 offer under a $4.00 pay per stop, declined at
             // 119%): it missed Autopilot's raised share of it, so the words never say it is below the minimum.
             if (bar.group(1).length() <= 3 && Integer.parseInt(bar.group(1)) > FilterSettings.BAR_AT_MINIMUMS
                     && plain.startsWith("Below your ")) {
@@ -2759,6 +2759,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String plain;
         switch (base) {
             case "flat minimum": plain = "Below your minimum pay"; break;
+            // 0.6.12's pay per stop (before 0.5.0, the retired per-stop rate, in the same words).
+            case OfferRule.PAY_PER_STOP: plain = "Below your pay per stop"; break;
             case OfferRule.SKIP_LIST: plain = "A store on your skip list"; break;
             case "dollars per mile": plain = "Below your per-mile minimum"; break;
             case "dollars per hour": plain = "Below your hourly minimum"; break;
@@ -2771,7 +2773,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             case "auto-decline is off; inspect this offer manually": plain = "Auto-decline paused"; break;
             // Recorded before 0.5.0, under the retired rules.
             case "dollars per minute": plain = "Below your per-minute rate"; break;
-            case "dollars per stop": plain = "Below your per-stop rate"; break;
             case "dollars per item": plain = "Below your per-item rate"; break;
             case "meets enabled rules": plain = "Meets your rules"; break;
             case "combined route and add-on meet enabled rules": plain = "Add-on meets your rules"; break;

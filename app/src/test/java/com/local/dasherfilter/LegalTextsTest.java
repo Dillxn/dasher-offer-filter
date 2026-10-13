@@ -42,10 +42,10 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "13 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.11";
+    static final String TERMS_VERSION = "0.6.12";
     /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
     static final String PRIVACY_EFFECTIVE = "13 October 2026";
-    static final String PRIVACY_VERSION = "0.6.11";
+    static final String PRIVACY_VERSION = "0.6.12";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -98,8 +98,12 @@ public final class LegalTextsTest {
         assertTrue(terms.contains("unsent submissions wait on the phone for at most 7 days"));
         assertTrue(terms.contains("the feedback service keeps them for 90 days"));
         // 0.5.0's minimums, Autopilot and auto-accept (finalSpec.privacyConsent, TERMS).
-        for (String fact : new String[] {"It compares each offer with your active minimums: pay, pay per mile and pay "
-                + "per hour of Dasher's time estimate, plus an optional maximum number of stops.",
+        for (String fact : new String[] {"It compares each offer with your active minimums: pay per stop, pay per mile "
+                + "and pay per hour of Dasher's time estimate, plus an optional maximum number of stops.",
+                // 0.6.12: pay per stop, each stop after the first pickup; single orders as before.
+                "is asked for each stop after the first pickup: once for a single order, which Dasher counts as two "
+                        + "stops, twice for three stops",
+                "When an offer's stops are not read, it stays for review unless its pay misses even one stop's worth",
                 // 0.6.2: on by default, turned on once for earlier installs, and turned off from its chip.
                 "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a "
                         + "goal chosen before), with an "

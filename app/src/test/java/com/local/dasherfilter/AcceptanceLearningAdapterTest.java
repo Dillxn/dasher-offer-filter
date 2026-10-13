@@ -239,7 +239,8 @@ public class AcceptanceLearningAdapterTest {
             }
         };
         waiting();
-        // $10.50 for 3.9 mi and 30 min: 140% of the $7.50 the minimums ask.
+        // $10.50 for 3 stops, 3.9 mi and 30 min: 105% of the $10.00 the minimums ask (its 3 stops ask pay per stop
+        // twice, 2 × $5.00, from 0.6.12).
         List<Integer> declines = new ArrayList<>();
         show(offerCountingDeclines("$10.50", declines));
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
@@ -253,11 +254,11 @@ public class AcceptanceLearningAdapterTest {
         assertFalse("its plan was asked for", stepped.isEmpty());
         assertTrue("the plan after the accept read the line with its step", stepped.get(stepped.size() - 1));
         Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertEquals(140, plan.floor);
-        assertEquals(140, plan.target);
+        assertEquals(105, plan.floor);
+        assertEquals(105, plan.target);
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
-        assertEquals(140, FilterStore.load(app).minimumScalePercent);
+        assertEquals(105, FilterStore.load(app).minimumScalePercent);
         assertTrue(DiagnosticLog.read(app).contains(
-                "[autopilot] commit 100% -> 140% (you accepted an offer at this score)"));
+                "[autopilot] commit 100% -> 105% (you accepted an offer at this score)"));
     }
 }

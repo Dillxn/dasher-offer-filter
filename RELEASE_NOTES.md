@@ -1,3 +1,16 @@
+## 0.6.12 — Minimum pay becomes pay per stop
+
+Version 0.6.12 (code 104) answers the owner's ask of 13 October 2026: "we also need to swap overall payout for pay per stop I think" (he chose Swap: the pay knob becomes a pay-per-stop minimum; max stops, $/mi and $/hr unchanged).
+
+- **Pay per stop.** The pay minimum now counts for each stop after the first pickup: `n = max(1, stops − 1)`. Dasher counts a single order as 2 stops, so single orders are judged exactly as before; a 3-stop offer asks twice the number, 4 stops three times. Your saved number did not change (a downgrade reads it back as the old minimum pay). Decided on best judgment: "after the first pickup" rather than Dasher's raw count with the number halved, which would have changed the number and loosened offers whose stops weren't read.
+- **Stops not read.** An offer whose stops weren't read is declined when its pay misses even one stop's worth (or another minimum), exactly as before; one that would have passed now goes to review. Add-ons judge their combined route the same way, so an add-on whose combined stops weren't read is more often left to you.
+- **Learning keeps your best pay per stop.** An accept you make teaches pay only when its stops were read; the learned ask scales with the offer's stops, and Adopt sets pay per stop to that best (rounded up). A best stored before counts as one stop.
+- **Words.** The knob reads "$4.00/stop" ("Pay / stop" while unset); "Below your pay per stop"; the ticket's details show "Pay per stop — set $26.00 (3 stops: 2 × $13.00, the first pickup not counted)". Reports name the field payPerStopCents. Lines decided before 0.6.12 keep their own words and are explained under the current rules.
+- **Once, at the update.** "Minimums since" moves to now when a money minimum or learned pay best is set, so Autopilot's growth starts its evidence over; nothing else changes (one line in the log).
+- Notice 23.
+
+Evidence boundaries: the unit and Robolectric suites ran here on one SDK: 2446 tests, 2 failing, both in AutopilotClosedLoopTest's simulated market (Autopilot's bar turns back within 30 minutes of a commit once stacked offers ask pay per stop); Autopilot's own logic is unchanged and that is open. No phone has run this build.
+
 ## 0.6.11 — Autopilot follows your accepts; more room for the map in split screen; the acceptance meter on one line
 
 Version 0.6.11 (code 103) answers the owner's asks of 13 October 2026 from his 0.6.10 dash.

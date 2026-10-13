@@ -58,7 +58,7 @@ public class AcceptanceLearningStoreTest {
         FilterStore.LearnedRaise raise = FilterStore.learnedRaise(app);
         assertNotNull(raise);
         assertEquals(1421, raise.flat); assertEquals(237, raise.mile); assertEquals(60, raise.minute);
-        assertEquals("$14.21 · $2.37/mi · $36/hr · yours $7.00 · $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
+        assertEquals("$14.21/stop · $2.37/mi · $36/hr · yours $7.00/stop · $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
         assertNull("nothing was adopted", FilterStore.pendingAdoption(app));
         // OK closes the note; the learned minimums still apply and the saved ones stay.
         FilterStore.closeLearnedRaise(app, raise.id);

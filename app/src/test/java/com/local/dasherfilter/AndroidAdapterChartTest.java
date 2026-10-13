@@ -105,7 +105,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // What the example offer needs is heard first; the page shows no words for it. No offers yet, so the
             // example is a typical one: $7.00, $1.50 × 5 mi = $7.50 and 20 min at $18 an hour = $6.00.
             assertEquals("An offer like 20 min · 5 mi · 2 stops needs $7.50 at your minimums. Your minimums: pay "
-                    + "$7.00, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Strict mode checks every active "
+                    + "$7.00 per stop, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Strict mode checks every active "
                     + "minimum. Farther out means higher pay or pay rates. Solid blue is saved minimums; gray is learned "
                     + "bests stored but off; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
                     + "Learned bests do not move saved knobs. Colored shapes are offers.",
@@ -153,14 +153,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
-                DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 3), 2000,
+                // A single order: 2 stops ask pay per stop once (0.6.12).
+                DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 2), 2000,
                 OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
                 Collections.emptyList()).withScore(357));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             String description = star.getContentDescription().toString();
-            assertTrue(description, description.contains("Your minimums: pay $7.00, per mile off, per hour of trip "
+            assertTrue(description, description.contains("Your minimums: pay $7.00 per stop, per mile off, per hour of trip "
                     + "time off; no max stops."));
             assertTrue("$25.00 against $7.00: " + description,
                     description.contains("The newest offer scores 357% of your resolved minimums."));

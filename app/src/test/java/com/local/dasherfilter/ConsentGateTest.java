@@ -163,7 +163,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the floor and the divider renew the notice (after the skip list's 21)", 22, Consent.VERSION);
+        assertEquals("pay per stop renews the notice (after the floor and the divider's 22)", 23, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -194,6 +194,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "In split screen during a delivery it moves the divider, using the divider's own controls, to give the "
                         + "navigating app more room, and puts it back afterward; move it yourself and it stops for that "
                         + "dash.",
+                // 0.6.12 (notice 23): the pay minimum is per stop after the first pickup; single orders as before.
+                "Your pay minimum is per stop: an offer must pay it for each stop after the first pickup, so a stacked "
+                        + "offer must pay more; a single order is judged as before.",
                 "It can briefly turn offer sound down.",
                 "During a dash it keeps your unlocked screen from timing out; it never wakes or unlocks it."}) {
             assertTrue(fact, does.contains(fact));
@@ -207,7 +210,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         assertTrue(Consent.POINTS[6][1].contains("no warranty"));
         assertTrue(Consent.POINTS[7][1].contains("Don't handle your phone while driving."));
         String learning = Consent.POINTS[4][1];
-        for (String fact : new String[] {"When you accept an offer yourself", "the learned minimums rise to match it",
+        for (String fact : new String[] {"When you accept an offer yourself", "beats your best pay per stop",
+                "the learned minimums rise to match it",
                 "as well as your own minimums", "more declines", "Your own minimums stay as you set them",
                 "with Adopt to make them yours", "Automatic accepts, declines, add-ons", "The Learn button on the homepage",
                 "off keeps the bests without learning", "Reset clears the bests", "your minimums stay"}) {
@@ -361,8 +365,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
-        // offer holds and the divider moved during a delivery. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(22, Consent.VERSION);
+        // offer holds and the divider moved during a delivery; 23, pay per stop. A phone that accepted 14 (0.5.0) sees
+        // it again too.
+        assertEquals(23, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

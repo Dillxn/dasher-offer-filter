@@ -417,7 +417,8 @@ public class WindowFlowsTest {
 
     @Test
     public void aPassingAddOnsCardCarriesTheAddOnsOwnFiguresNotPayNotRead() {
-        FilterStore.save(app, FilterSettings.of(true, 500, 0, 0, 0));
+        // The add-on's one more stop makes the whole route 3 stops: 2 × $4.00 of its $9.00 (0.6.12).
+        FilterStore.save(app, FilterSettings.of(true, 400, 0, 0, 0));
         connect(app(MAPS));
         ActiveRouteStore.save(app, new OfferSnapshot(500, 3.0, 12, 2));
         post("Taco Bell");
@@ -426,6 +427,7 @@ public class WindowFlowsTest {
         Shadows.shadowOf(addOn).addChild(node(DASHER, "Add to route", false));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "+$4.00", false));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "+2 mi", false));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "+1 stop", false));
         Shadows.shadowOf(addOn).addChild(button("Decline"));
         Shadows.shadowOf(addOn).addChild(button("Accept"));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "0:30", false));
@@ -433,7 +435,7 @@ public class WindowFlowsTest {
         assertEquals("on a route: back to the map with its card", MAPS_HOME, started().getComponent());
         assertEquals("one card for the offer (its own, not a second one)", 1, cards().size());
         Notification card = cards().get(0);
-        assertEquals("Add-on passes: +$4.00 · +2 mi", text(card));
+        assertEquals("Add-on passes: +$4.00 · +2 mi · +1 stop", text(card));
         assertEquals("Taco Bell offer meets your rules",
                 String.valueOf(card.extras.getCharSequence(Notification.EXTRA_TITLE)));
     }

@@ -62,13 +62,13 @@ final class LearnedRaiseCard {
         return card.shown();
     }
 
-    /** "$14.21 · $2.37/mi · $36/hr · yours $7.00 · $1.50/mi · $18/hr": labels, not a sentence. */
+    /** "$14.21/stop · $2.37/mi · $36/hr · yours $7.00/stop · $1.50/mi · $18/hr": labels, not a sentence. */
     static String line(FilterStore.LearnedRaise raise) {
         List<String> learned = new ArrayList<>();
         List<String> yours = new ArrayList<>();
         if (raise.flat > 0) {
-            learned.add(DecisionLog.money(raise.flat));
-            yours.add(raise.savedFlat > 0 ? DecisionLog.money(raise.savedFlat) : "no minimum pay");
+            learned.add(DecisionLog.money(raise.flat) + "/stop");
+            yours.add(raise.savedFlat > 0 ? DecisionLog.money(raise.savedFlat) + "/stop" : "no pay per stop");
         }
         if (raise.mile > 0) {
             learned.add(DecisionLog.money(raise.mile) + "/mi");
@@ -85,7 +85,7 @@ final class LearnedRaiseCard {
     static String said(FilterStore.LearnedRaise raise) {
         List<String> parts = new ArrayList<>();
         if (raise.flat > 0) {
-            parts.add("minimum pay " + DecisionLog.money(raise.flat) + " (yours "
+            parts.add("pay per stop " + DecisionLog.money(raise.flat) + " (yours "
                     + (raise.savedFlat > 0 ? DecisionLog.money(raise.savedFlat) : "not set") + ")");
         }
         if (raise.mile > 0) {

@@ -20,7 +20,10 @@ final class FilterSettings {
     final boolean acceptanceLearning;
     final AcceptedFloors accepted;
     final boolean enabled;
-    /** Minimum pay, in cents. */
+    /**
+     * Minimum pay per stop, in cents (each stop after the first pickup, {@link AreaScore#payUnits}; 0.6.12). The field
+     * and its prefs key keep their old names ("flat"): the saved number is unchanged, a single order asks it once.
+     */
     final int flatCents;
     /** Minimum pay per mile, in cents per mile. */
     final int perMileCents;
@@ -98,12 +101,12 @@ final class FilterSettings {
     }
 
     /**
-     * Plain-language summary, e.g. "at least $4.00 · $1.00 per mile · $15.00 per hour · at most 3 stops · Autopilot
+     * Plain-language summary, e.g. "$4.00 per stop · $1.00 per mile · $15.00 per hour · at most 3 stops · Autopilot
      * bar 82% (goal 70%)"; "No rules set" without a rule.
      */
     String describe() {
         List<String> rules = new ArrayList<>();
-        if (flatCents > 0) rules.add("at least " + DecisionLog.money(flatCents));
+        if (flatCents > 0) rules.add(DecisionLog.money(flatCents) + " per stop");
         if (perMileCents > 0) rules.add(DecisionLog.money(perMileCents) + " per mile");
         if (perMinuteCents > 0) rules.add(DecisionLog.money(perHourCents()) + " per hour");
         if (maxStops > 0) rules.add("at most " + maxStops + (maxStops == 1 ? " stop" : " stops"));
@@ -120,10 +123,10 @@ final class FilterSettings {
         return String.join(" · ", rules);
     }
 
-    /** Compact summary for the status line, e.g. "$4 min · $1/mi · $15/hr · ≤3 stops · Auto 82%". */
+    /** Compact summary for the status line, e.g. "$4/stop · $1/mi · $15/hr · ≤3 stops · Auto 82%". */
     String brief() {
         List<String> rules = new ArrayList<>();
-        if (flatCents > 0) rules.add(DecisionLog.shortMoney(flatCents) + " min");
+        if (flatCents > 0) rules.add(DecisionLog.shortMoney(flatCents) + "/stop");
         if (perMileCents > 0) rules.add(DecisionLog.shortMoney(perMileCents) + "/mi");
         if (perMinuteCents > 0) rules.add(DecisionLog.shortMoney(perHourCents()) + "/hr");
         if (maxStops > 0) rules.add("≤" + maxStops + (maxStops == 1 ? " stop" : " stops"));
@@ -144,10 +147,14 @@ final class FilterSettings {
                 + ":proof:" + accepted.stableKey();
     }
 
-    /** Exact scoring policy identity; the changing bar and action switches are deliberately separate. */
+    /**
+     * Exact scoring policy identity; the changing bar and action switches are deliberately separate. ":ps" marks the
+     * pay minimum as pay per stop (0.6.12), so no plan or rules key from the minimum pay matches.
+     */
     String scoringKey() {
         return flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
-                + scoreByArea + ":" + acceptanceLearning + ":" + (acceptanceLearning ? accepted.stableKey() : "off");
+                + scoreByArea + ":" + acceptanceLearning + ":" + (acceptanceLearning ? accepted.stableKey() : "off")
+                + ":ps";
     }
 
     FilterSettings withScoreByArea(boolean on) {

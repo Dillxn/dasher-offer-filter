@@ -75,8 +75,9 @@ public final class MonotonicityPropertyTest {
     }
 
     private static boolean complete(FilterSettings rules, OfferSnapshot offer) {
-        return offer.payCents != null && offer.miles != null && offer.minutes != null && offer.stops != null
-                && !overMaxStops(rules, offer) && rules.hasMonetaryRule();
+        return offer.payCents != null && offer.miles != null && offer.minutes != null
+                // A read of 0 stops counts as unread for pay per stop (0.6.12).
+                && AreaScore.payUnits(offer.stops) != null && !overMaxStops(rules, offer) && rules.hasMonetaryRule();
     }
 
     @Test

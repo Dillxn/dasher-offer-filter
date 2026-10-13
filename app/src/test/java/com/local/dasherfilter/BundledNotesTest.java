@@ -122,6 +122,7 @@ public class BundledNotesTest {
         both.addAll(notice(20));
         both.addAll(notice(21));
         both.addAll(notice(22));
+        both.addAll(notice(23));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -335,7 +336,8 @@ public class BundledNotesTest {
         List<String> since19 = new ArrayList<>(twenty);
         since19.addAll(notice(21));
         since19.addAll(notice(22));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's and 22's", since19, BundledNotes.noticeChanges(19, true));
+        since19.addAll(notice(23));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's and 23's", since19, BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
@@ -384,12 +386,41 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): pay per stop, counted after the first
+     * pickup, single orders unchanged, the learned best per stop; never a promise of more pay.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.12", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.12");
+        assertEquals(lines.toString(), 3, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"pay per stop", "after the first pickup", "3-stop offer asks twice",
+                "Single orders are judged exactly as before", "didn't change", "best pay per stop"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /** 0.6.12's notice (23): the pay minimum per stop after the first pickup, single orders as before, learning's best. */
+    @Test public void notice23SaysThePayMinimumIsPerStop() {
+        assertEquals(23, Consent.VERSION);
+        List<String> lines = BundledNotes.noticeChanges(22);
+        assertEquals(notice(23), lines);
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"pay per stop", "each stop after the first pickup", "twice your number",
+                "Single orders are judged exactly as before", "your number didn't change", "best pay per stop"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+    }
+
+    /**
      * 0.6.11 (the owner, 13 October 2026: "if an accepted offer's score beats the autopilot ask, the ask needs to jump
      * to the new higher score"; "when either app is in a maps mode for nav the other when in split needs to resize";
      * "the acceptance rating bar width is causing a line break"): each said as what a user sees.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.11", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release0611SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.11");
         assertEquals(lines.toString(), 3, lines.size());
         String release = String.join(" ", lines);
@@ -407,9 +438,9 @@ public class BundledNotesTest {
      * it; the divider moved during a delivery, put back, and left alone once the user moves it.
      */
     @Test public void notice22SaysWhatHoldsTheBarAndWhatMovesTheDivider() {
-        assertEquals(22, Consent.VERSION);
-        List<String> lines = BundledNotes.noticeChanges(21);
-        assertEquals(notice(22), lines);
+        assertTrue(Consent.VERSION >= 22);
+        List<String> lines = notice(22);
+        assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"accept an offer yourself", "rises to that score", "rest of the dash",
                 "past what your acceptance goal allows", "next dash", "change your goal or minimums", "split screen",

@@ -884,7 +884,7 @@ public final class AutopilotEngineTest {
         assertEquals(79, twenty.need);
         assertEquals(3, plan.generation);
         assertEquals(NOW, plan.computedAt);
-        assertEquals("true:400:100:25:0:false:false:off:true:70:proof:0:0:0x0.0p0:0:0", plan.rulesKey);
+        assertEquals("true:400:100:25:0:false:false:off:ps:true:70:proof:0:0:0x0.0p0:0:0:1", plan.rulesKey);
     }
 
     // ---- Commit reasons and the plan's other figures ----

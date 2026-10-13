@@ -98,7 +98,7 @@ public class ConfirmationLeftToYouTest {
         int[] totals = DecisionLog.totals(app);
         assertEquals(0, totals[DecisionLog.Tally.FILTERED.ordinal()]);
         assertEquals(1, totals[DecisionLog.Tally.REVIEW.ordinal()]);
-        assertEquals("Rules: decline — below your minimum pay", MainActivity.reasonLine(line));
+        assertEquals("Rules: decline — below your pay per stop", MainActivity.reasonLine(line));
     }
 
     @Test

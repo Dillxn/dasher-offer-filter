@@ -56,7 +56,7 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             View content = controller.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertEquals("Minimum pay, $7.00", node(star, AreaScore.PAY).getContentDescription().toString());
+            assertEquals("Minimum pay per stop, $7.00", node(star, AreaScore.PAY).getContentDescription().toString());
             assertEquals("Minimum per mile, $1.50", node(star, AreaScore.MILE).getContentDescription().toString());
             android.view.accessibility.AccessibilityNodeInfo hour = node(star, AreaScore.MINUTE);
             assertEquals("30 cents a minute is said as 18 dollars an hour",
@@ -67,11 +67,11 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
                 assertNull("no knob for a retired minimum: " + retired, node(star, retired));
             }
             String said = star.getContentDescription().toString();
-            assertTrue(said, said.contains("Your minimums: pay $7.00, per mile $1.50, per hour of trip time 18 dollars "
+            assertTrue(said, said.contains("Your minimums: pay $7.00 per stop, per mile $1.50, per hour of trip time 18 dollars "
                     + "per hour; at most 3 stops."));
             assertTrue("saved units remain distinct from the off learner",
                     said.contains("Learned bests do not move saved knobs."));
-            for (String retired : new String[] {"adaptive", "per stop", "hotspot", "per item", "per minute"}) {
+            for (String retired : new String[] {"adaptive", "hotspot", "per item", "per minute"}) {
                 assertFalse(retired + ": " + said, said.toLowerCase(java.util.Locale.US).contains(retired));
             }
         }
@@ -144,16 +144,16 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
 
     private static void assertNamedAxes(MinimumsStarView star) {
         // 0.6.8: no "Max stops" word (the owner's mockup); its badge alone says it, and screen readers keep the name.
-        String[] expected = {"Pay", "Pay / mile", "Pay / hour", "", "", ""};
+        // 0.6.12: the pay axis is pay per stop.
+        String[] expected = {"Pay / stop", "Pay / mile", "Pay / hour", "", "", ""};
         // 0.6.6: a set minimum stands at its knob as the label, its unit naming the metric ("$10.00", "$1.50/mi",
         // "$30/hr"); an unset one keeps its name.
-        String[] units = {"$", "/mi", "/hr", "", "", ""};
+        String[] units = {"/stop", "/mi", "/hr", "", "", ""};
         List<RectF> labels = new ArrayList<>();
         for (int axis = 0; axis < AreaScore.AXES; axis++) {
             String shown = star.axisLabelText(axis);
             boolean named = expected[axis].equals(shown);
-            boolean valued = !units[axis].isEmpty() && shown.startsWith("$") && (axis == AreaScore.PAY
-                    ? !shown.contains("/") : shown.endsWith(units[axis]));
+            boolean valued = !units[axis].isEmpty() && shown.startsWith("$") && shown.endsWith(units[axis]);
             assertTrue("the visible name identifies the actual metric: " + shown, named || valued);
             RectF label = star.axisLabelBox(axis);
             if (expected[axis].isEmpty()) {

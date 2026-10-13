@@ -434,23 +434,29 @@ final class DecisionLog {
 
         private static JSONObject rulesJson(FilterSettings rules) throws JSONException {
             AcceptedFloors proof = rules.accepted;
-            return new JSONObject().put("flat", rules.flatCents).put("mile", rules.perMileCents)
+            // "payPer":"stop" (0.6.12): "flat" is the pay-per-stop minimum, and the pay best has its stops.
+            return new JSONObject().put("flat", rules.flatCents).put("payPer", "stop").put("mile", rules.perMileCents)
                     .put("minute", rules.perMinuteCents).put("maxStops", rules.maxStops)
                     .put("area", rules.scoreByArea).put("learning", rules.acceptanceLearning)
                     .put("accepted", new JSONObject().put("pay", proof.highestPayCents)
-                            .put("milePay", proof.milePay).put("miles", proof.miles)
+                            .put("payUnits", proof.payUnits).put("milePay", proof.milePay).put("miles", proof.miles)
                             .put("minutePay", proof.minutePay).put("minutes", proof.minutes));
         }
 
+        /**
+         * The rules a line was judged by, or null: a line without "payPer" was judged by the minimum pay (before
+         * 0.6.12), which these rules cannot replay, so it is explained under the current rules and never pooled.
+         */
         private static FilterSettings readRules(JSONObject json, int bar, boolean autopilot) {
-            if (json == null || !json.has("flat") || !json.has("mile") || !json.has("minute")
+            if (json == null || !"stop".equals(json.optString("payPer")) || !json.has("flat") || !json.has("mile") || !json.has("minute")
                     || !json.has("maxStops") || !json.has("area") || !json.has("learning")) return null;
             JSONObject proof = json.optJSONObject("accepted");
             if (proof == null) return null;
             return new FilterSettings(true, json.optInt("flat"), json.optInt("mile"), json.optInt("minute"),
                     json.optInt("maxStops"), autopilot, FilterSettings.GOAL_TOP_TIER, bar,
                     json.optBoolean("area"), json.optBoolean("learning"),
-                    new AcceptedFloors(proof.optInt("pay"), proof.optInt("milePay"), proof.optDouble("miles", 0),
+                    new AcceptedFloors(proof.optInt("pay"), proof.optInt("payUnits", 1), proof.optInt("milePay"),
+                            proof.optDouble("miles", 0),
                             proof.optInt("minutePay"), proof.optInt("minutes")));
         }
 

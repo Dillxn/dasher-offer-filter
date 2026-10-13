@@ -63,7 +63,7 @@ public final class MinimumsGrowthAdapterTest {
     private static final String MAPS = "com.google.android.apps.maps";
     private static final ComponentName MAPS_HOME = new ComponentName(MAPS, MAPS + ".MapsActivity");
     private static final long HOUR = 3_600_000L;
-    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00 -> $4.32, "
+    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00/stop -> $4.32/stop, "
             + "$1.00/mi -> $1.08/mi, $15.00/hr -> $16.20/hr (bar 108% -> 100%)";
 
     private Application app;

@@ -39,7 +39,7 @@ public final class MinimumScaleTest {
         OfferRule.Decision fail = OfferRule.evaluate(offer(969), rules);
         assertEquals(OfferRule.Result.DECLINE, fail.result);
         assertEquals(96, fail.scorePercent);
-        assertEquals("97% bar: flat minimum", fail.reason);
+        assertEquals("97% bar: dollars per stop", fail.reason);
         assertEquals(970, fail.requiredCents);
         assertEquals(96, AreaScore.scorePercent(rules, offer(969)));
         assertEquals(97, AreaScore.scorePercent(rules, offer(970)));
@@ -50,7 +50,7 @@ public final class MinimumScaleTest {
         FilterSettings rules = even().withMinimumScalePercent(125);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(offer(1249), rules).result);
         assertEquals(124, OfferRule.evaluate(offer(1249), rules).scorePercent);
-        assertEquals("125% bar: flat minimum", OfferRule.evaluate(offer(1249), rules).reason);
+        assertEquals("125% bar: dollars per stop", OfferRule.evaluate(offer(1249), rules).reason);
         OfferRule.Decision keep = OfferRule.evaluate(offer(1250), rules);
         assertEquals(OfferRule.Result.KEEP, keep.result);
         assertEquals(125, keep.scorePercent);
@@ -83,8 +83,9 @@ public final class MinimumScaleTest {
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(1000, 5.0, 20, 4), rules).result);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2), rules).result);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(1000, 5.0, 20, null), rules).result);
-        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(10, 5.0, 20, 3), rules).result);
-        assertEquals(10, OfferRule.evaluate(new OfferSnapshot(10, 5.0, 20, 3), rules).requiredCents);
+        // Three stops ask pay per stop twice, $20.00 (0.6.12): 20¢ at a 1% bar.
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(20, 5.0, 20, 3), rules).result);
+        assertEquals(20, OfferRule.evaluate(new OfferSnapshot(20, 5.0, 20, 3), rules).requiredCents);
     }
 
     @Test public void aPayCeilingIsJudgedAtTheLowerOfTheBarAndOneHundredAndNeverPasses() {
@@ -93,7 +94,7 @@ public final class MinimumScaleTest {
         OfferRule.Decision below = OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2, 969), at97);
         assertEquals(OfferRule.Result.DECLINE, below.result);
         assertEquals(970, below.requiredCents);
-        assertEquals("pay at most $9.69 with its +$ amount; 97% bar: flat minimum", below.reason);
+        assertEquals("pay at most $9.69 with its +$ amount; 97% bar: dollars per stop", below.reason);
         // A raised bar never makes the ceiling stricter than the minimums.
         FilterSettings at150 = at97.withMinimumScalePercent(150);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2, 1000), at150)
@@ -101,11 +102,12 @@ public final class MinimumScaleTest {
         OfferRule.Decision short1 = OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2, 999), at150);
         assertEquals(OfferRule.Result.DECLINE, short1.result);
         assertEquals(1000, short1.requiredCents);
-        assertEquals("pay at most $9.99 with its +$ amount; flat minimum", short1.reason);
+        assertEquals("pay at most $9.99 with its +$ amount; dollars per stop", short1.reason);
     }
 
     @Test public void addOnsKeepTheTwoPartRuleWithBothPartsScaledTogether() {
-        FilterSettings rules = FilterSettings.of(true, 1000, 200, 0, 0).withMinimumScalePercent(97);
+        // The combined 3-stop route asks pay per stop twice (0.6.12): $5.00 a stop asks $10.00, as its 5 mi do.
+        FilterSettings rules = FilterSettings.of(true, 500, 200, 0, 0).withMinimumScalePercent(97);
         AddOnOffer near = AddOnOffer.parse(new OfferSnapshot(776, 4.0, 20, 2),
                 Arrays.asList("Add to route", "+$1.94", "+1 mi", "+5 min", "+1 stop"));
         OfferRule.Decision kept = OfferRule.evaluateAddOn(near, rules);

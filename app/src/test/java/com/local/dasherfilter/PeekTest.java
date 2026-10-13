@@ -1345,7 +1345,8 @@ public class PeekTest {
 
     @Test
     public void aNowPassingReplacementCancelsPeekAndKeepsItsObservedFigures() {
-        assertReplacementCancelsPeek(notification("$25.00", "New Order: Go to Taco Bell",
+        // Its stops read, so pay per stop can judge it (0.6.12).
+        assertReplacementCancelsPeek(notification("$25.00", "2 stops (3.1 mi) • 14 min",
                 System.currentTimeMillis()));
         Notification card = app.getSystemService(NotificationManager.class).getActiveNotifications()[0].getNotification();
         contains(card.extras.getCharSequence(Notification.EXTRA_TEXT).toString(), "$25.00");

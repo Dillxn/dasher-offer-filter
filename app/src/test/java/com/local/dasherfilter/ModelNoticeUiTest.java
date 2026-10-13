@@ -385,7 +385,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             assertNotNull(plan);
             assertEquals("the plan for them starts from 100", 100, plan.current);
             assertEquals(typical.rulesKey(), plan.rulesKey);
-            assertEquals("Typical minimums set: $4 · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
+            assertEquals("Typical minimums set: $4/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("then the goal chooser", AutopilotText.CHOOSER_TITLE, title(chooser));
             assertEquals("its stored goal checked", 0, chooser.getListView().getCheckedItemPosition());

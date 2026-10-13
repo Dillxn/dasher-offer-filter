@@ -82,6 +82,13 @@ final class FilterStore {
     private static final String AUTOPILOT_SCHEMA = "autopilot_default_schema";
     private static final int AUTOPILOT_SCHEMA_NOW = 1;
     /**
+     * The pay minimum is pay per stop (0.6.12; the owner, 13 October 2026: "swap overall payout for pay per stop"): 1
+     * once {@link #initializePayPerStop} has run. The saved number is unchanged; it now counts for each stop after the
+     * first pickup.
+     */
+    static final String PAY_PER_STOP_SCHEMA = "pay_per_stop_schema";
+    private static final int PAY_PER_STOP_SCHEMA_NOW = 1;
+    /**
      * Test seam: whether {@link #initializeAutopilot} turns Autopilot on. On in the app. Tests written before 0.6.2 run
      * as an install whose user keeps Autopilot off (ConsentedTestApp turns this off); AutopilotDefaultTest turns it
      * back on to test the default itself.
@@ -90,6 +97,8 @@ final class FilterStore {
     static final String AREA_MODE = "area_mode_v3";
     static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
     static final String ACCEPTED_PAY = "accepted_v3_pay";
+    /** The pay best's stops after the first pickup ({@link AreaScore#payUnits}; 0.6.12); 1 when absent. */
+    static final String ACCEPTED_PAY_UNITS = "accepted_v3_pay_units";
     static final String ACCEPTED_MILE_PAY = "accepted_v3_mile_pay";
     static final String ACCEPTED_MILES = "accepted_v3_miles";
     static final String ACCEPTED_MINUTE_PAY = "accepted_v3_minute_pay";
@@ -170,10 +179,45 @@ final class FilterStore {
         SharedPreferences prefs = prefs(context);
         retireExtraStopFee(context, prefs);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         initializeLearning(prefs);
         stampMinimumsSince(prefs);
         return read(prefs);
+    }
+
+    /**
+     * Pay per stop (0.6.12), once: the saved pay minimum keeps its number and now counts for each stop after the first
+     * pickup, so a single order is judged exactly as before. A stored learned pay best counts as one stop. With a money
+     * minimum or a learned pay best, "minimums since" moves to now: lines judged by the minimum pay say nothing about
+     * pay per stop ({@link Growth}). Adoption, the learned raise's note, growth records, auto-accept, auto-decline and
+     * Autopilot stay as they are. One fixed line in the diagnostic log, outside the lock; never Autopilot's runtime
+     * (whose lock is taken before this class's).
+     */
+    private static void initializePayPerStop(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+        int flat;
+        boolean stored = false;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+            for (String key : RULE_KEYS) stored |= prefs.contains(key);
+            SharedPreferences.Editor edit = prefs.edit().putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_NOW);
+            flat = prefs.getInt(FLAT, 0);
+            int learnedPay = prefs.getInt(ACCEPTED_PAY, 0);
+            if (learnedPay > 0 && !prefs.contains(ACCEPTED_PAY_UNITS)) edit.putInt(ACCEPTED_PAY_UNITS, 1);
+            if (flat > 0 || prefs.getInt(PER_MILE, 0) > 0 || prefs.getInt(PER_MINUTE, 0) > 0 || learnedPay > 0) {
+                policyChangedSince(prefs, edit);
+            }
+            edit.commit();
+        }
+        // A new install has nothing to reinterpret: no line.
+        if (stored && context != null) DiagnosticLog.log(context, "rules", payPerStopLog(flat));
+    }
+
+    /** The migration's one line: "pay per stop: minimum pay $13.00 now counts per stop after the first pickup …". */
+    static String payPerStopLog(int flatCents) {
+        return "pay per stop: " + (flatCents > 0 ? "minimum pay " + DecisionLog.money(flatCents)
+                + " now counts per stop after the first pickup (single orders unchanged)" : "no pay minimum set");
     }
 
     /** "Minimums since" for an install that has none yet (one from before 0.5.1, or a new one): now. */
@@ -191,6 +235,7 @@ final class FilterStore {
     static long minimumsSince(Context context) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         stampMinimumsSince(prefs);
         return prefs.getLong(MINIMUMS_SINCE, 0);
     }
@@ -265,13 +310,15 @@ final class FilterStore {
 
     private static AcceptedFloors accepted(SharedPreferences prefs) {
         if (prefs.getInt(LEARNER_SCHEMA, 0) < 1) return AcceptedFloors.NONE;
-        return new AcceptedFloors(prefs.getInt(ACCEPTED_PAY, 0), prefs.getInt(ACCEPTED_MILE_PAY, 0),
+        return new AcceptedFloors(prefs.getInt(ACCEPTED_PAY, 0), prefs.getInt(ACCEPTED_PAY_UNITS, 1),
+                prefs.getInt(ACCEPTED_MILE_PAY, 0),
                 Double.longBitsToDouble(prefs.getLong(ACCEPTED_MILES, 0)),
                 prefs.getInt(ACCEPTED_MINUTE_PAY, 0), prefs.getInt(ACCEPTED_MINUTES, 0));
     }
 
     private static void writeAccepted(SharedPreferences.Editor edit, AcceptedFloors accepted) {
-        edit.putInt(ACCEPTED_PAY, accepted.highestPayCents).putInt(ACCEPTED_MILE_PAY, accepted.milePay)
+        edit.putInt(ACCEPTED_PAY, accepted.highestPayCents).putInt(ACCEPTED_PAY_UNITS, accepted.payUnits)
+                .putInt(ACCEPTED_MILE_PAY, accepted.milePay)
                 .putLong(ACCEPTED_MILES, Double.doubleToLongBits(accepted.miles))
                 .putInt(ACCEPTED_MINUTE_PAY, accepted.minutePay).putInt(ACCEPTED_MINUTES, accepted.minutes);
     }
@@ -505,6 +552,9 @@ final class FilterStore {
             if (!storedGoal) edit.putInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER);
             if (!storedBar) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
             edit.putInt(RULES_MODEL, MODEL);
+            // Rules moved to model 2 here are judged per stop from the start (0.6.12): their notice and line say what
+            // changed, and the minimums' time is stamped with them; the pay-per-stop step has nothing left to say.
+            edit.putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_NOW);
             if (notice()) {
                 edit.putString(MODEL_NOTICE, noticeJson())
                         .putString(LAST_STATUS, stamped("Rules simplified for " + RELEASE));
@@ -575,6 +625,7 @@ final class FilterStore {
     static String peekModelNotice(Context context) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         return prefs.getString(MODEL_NOTICE, null);
     }
 
@@ -608,6 +659,7 @@ final class FilterStore {
     static void save(Context context, FilterSettings base, FilterSettings next) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         initializeLearning(prefs);
         synchronized (FilterStore.class) {
@@ -650,6 +702,7 @@ final class FilterStore {
     static void setAutopilot(Context context, boolean on, int goal) {
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         // The default first, so a choice made before the rules were ever loaded is the one that stands.
         initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
@@ -681,6 +734,7 @@ final class FilterStore {
         if (next < BAR_MIN || next > BAR_MAX) return false;
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || bar(prefs) != expected) return false;
@@ -715,6 +769,7 @@ final class FilterStore {
         if (grown.barAfter < BAR_MIN || grown.barAfter > BAR_MAX) return false;
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || !prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
@@ -742,6 +797,7 @@ final class FilterStore {
         if (grown == null) return false;
         SharedPreferences prefs = prefs(context);
         migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
         synchronized (FilterStore.class) {
             FilterSettings stored = read(prefs);
             if (stored.flatCents != grown.flatAfter || stored.perMileCents != grown.mileAfter
@@ -997,7 +1053,8 @@ final class FilterStore {
 
         private static String encode(long id, AcceptedFloors bests) {
             try {
-                return new JSONObject().put("id", id).put("pay", bests.highestPayCents).put("milePay", bests.milePay)
+                return new JSONObject().put("id", id).put("pay", bests.highestPayCents)
+                        .put("payUnits", bests.payUnits).put("milePay", bests.milePay)
                         .put("miles", bests.miles).put("minutePay", bests.minutePay).put("minutes", bests.minutes)
                         .toString();
             } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
@@ -1014,7 +1071,8 @@ final class FilterStore {
             FilterSettings current = read(prefs);
             try {
                 JSONObject json = new JSONObject(raw);
-                AcceptedFloors bests = new AcceptedFloors(json.getInt("pay"), json.getInt("milePay"),
+                AcceptedFloors bests = new AcceptedFloors(json.getInt("pay"), json.optInt("payUnits", 1),
+                        json.getInt("milePay"),
                         json.getDouble("miles"), json.getInt("minutePay"), json.getInt("minutes"));
                 if (bests.equals(current.accepted)) {
                     LearnedRaise raise = new LearnedRaise(json.getLong("id"), bests, current);
@@ -1041,10 +1099,14 @@ final class FilterStore {
         }
     }
 
-    /** What {@code bests} ask in the knobs' units, Adopt's arithmetic: {pay + 1¢, ⌈pay ÷ miles⌉, ⌈pay ÷ minutes⌉}. */
+    /**
+     * What {@code bests} ask in the knobs' units, Adopt's arithmetic: {⌈(pay + 1¢) ÷ its stops after the first
+     * pickup⌉, ⌈pay ÷ miles⌉, ⌈pay ÷ minutes⌉}.
+     */
     private static int[] adoptedAsks(AcceptedFloors a) {
         return new int[] {
-                (int) Math.min(FilterSettings.MOST_CENTS, a.highestPayCents > 0 ? a.highestPayCents + 1L : 0),
+                (int) Math.min(FilterSettings.MOST_CENTS,
+                        a.highestPayCents > 0 ? (a.highestPayCents + 1L + a.payUnits - 1) / a.payUnits : 0),
                 a.hasPerMile() ? adoptedRate(a.milePay, a.miles) : 0,
                 a.hasPerMinute() ? adoptedRate(a.minutePay, a.minutes) : 0};
     }

@@ -120,9 +120,12 @@ public class AcceptanceEvidenceTest {
         return root;
     }
 
-    /** $16.75 for 3 stops, 3.9 mi and 30 min: it passes those rules. */
+    /**
+     * $16.75 for 2 stops (a single order; 3 stops ask pay per stop twice from 0.6.12), 3.9 mi and 30 min:
+     * it passes those rules.
+     */
     private AccessibilityNodeInfo passing(String countdown) {
-        return offer("$16.75", "3 stops (3.9 mi) • 30 min", countdown);
+        return offer("$16.75", "2 stops (3.9 mi) • 30 min", countdown);
     }
 
     private AccessibilityNodeInfo screen(String... labels) {

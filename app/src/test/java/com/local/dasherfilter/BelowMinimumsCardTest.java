@@ -210,8 +210,9 @@ public final class BelowMinimumsCardTest {
      * is below the minimums and the user's to accept, on a card to check.
      */
     @Test public void aPeekedAddOnPassingBelowTheMinimumsGoesBackOnACardToCheckWithItsOwnFigures() {
-        // $10 an offer, $1 a mile, $15 an hour.
-        FilterStore.save(app, FilterSettings.of(true, 1000, 100, 25, 0));
+        // $8 a stop, $1 a mile, $15 an hour: the add-on's one more stop makes the whole route 3 stops, which ask pay
+        // per stop twice, $16.00 (0.6.12; without "+1 stop" the whole route's stops are unread and it is unclear).
+        FilterStore.save(app, FilterSettings.of(true, 800, 100, 25, 0));
         connect(app(MAPS));
         autopilotBarAt(82);
         // On a delivery: $15.00 for 5 mi and 25 min.
@@ -226,6 +227,7 @@ public final class BelowMinimumsCardTest {
         Shadows.shadowOf(addOn).addChild(node(DASHER, "+$1.80", false));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "+2 mi", false));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "+8 min", false));
+        Shadows.shadowOf(addOn).addChild(node(DASHER, "+1 stop", false));
         Shadows.shadowOf(addOn).addChild(decline);
         Shadows.shadowOf(addOn).addChild(button("Accept"));
         Shadows.shadowOf(addOn).addChild(node(DASHER, "0:30", false));
@@ -245,7 +247,7 @@ public final class BelowMinimumsCardTest {
         assertTrue("it rings once, as a card to check does",
                 card.getGroupAlertBehavior() != Notification.GROUP_ALERT_SUMMARY);
         assertEquals("Taco Bell offer: open Dasher to check it", title(card));
-        assertEquals("+$1.80 · +2 mi · +8 min; below your minimums, passed by Autopilot's 82% bar. Yours to accept.",
+        assertEquals("+$1.80 · +2 mi · +8 min · +1 stop; below your minimums, passed by Autopilot's 82% bar. Yours to accept.",
                 text(card));
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains("posted REVIEW audibleRequested=true"));

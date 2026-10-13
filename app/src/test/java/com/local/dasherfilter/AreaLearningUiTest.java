@@ -176,8 +176,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
             assertNotNull("the note is on the homepage", note);
             String words = note.getText().toString();
-            assertTrue(words, words.contains("$8.01 · $2.00/mi · $24/hr · yours $5.00 · $1.00/mi · $15/hr"));
-            assertEquals("Learned minimums rose. A new high you accepted raised them: minimum pay $8.01 (yours $5.00), "
+            assertTrue(words, words.contains("$8.01/stop · $2.00/mi · $24/hr · yours $5.00/stop · $1.00/mi · $15/hr"));
+            assertEquals("Learned minimums rose. A new high you accepted raised them: pay per stop $8.01 (yours $5.00), "
                     + "per mile $2.00 (yours $1.00), per hour $24 (yours $15). Your own minimums stay as you set them; "
                     + "Adopt makes these yours.", String.valueOf(note.getContentDescription()));
             MinimumsStarView star = find(content, MinimumsStarView.class);

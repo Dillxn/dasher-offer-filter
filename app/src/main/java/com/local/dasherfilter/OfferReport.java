@@ -82,7 +82,7 @@ final class OfferReport {
 
     /** The rules object's keys, in order (finalSpec.privacyConsent, REPORTS): nothing else is ever in it. */
     static final List<String> RULES_KEYS = Collections.unmodifiableList(Arrays.asList(
-            "enabled", "flatCents", "perMileCents", "perMinuteCents", "maxStops",
+            "enabled", "payPerStopCents", "perMileCents", "perMinuteCents", "maxStops",
             "autopilot", "autopilotGoal", "barPercent", "autopilotMode", "recovering", "extra",
             "arPercent", "arSource", "arAgeMinutes", "lastChange", "context"));
     /** What {@link #rulesJson} says of when the rules were read. */
@@ -199,7 +199,7 @@ final class OfferReport {
         AutopilotStore.Change change = autopilot.lastChange;
         return new JSONObject()
                 .put("enabled", rules.enabled)
-                .put("flatCents", rules.flatCents)
+                .put("payPerStopCents", rules.flatCents)
                 .put("perMileCents", rules.perMileCents)
                 .put("perMinuteCents", rules.perMinuteCents)
                 .put("maxStops", rules.maxStops)

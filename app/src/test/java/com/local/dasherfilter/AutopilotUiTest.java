@@ -976,7 +976,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("and auto-decline", typical.enabled);
             assertTrue("and Autopilot", typical.autopilot);
             assertEquals("the bar back at exactly the minimums", 100, typical.minimumScalePercent);
-            assertEquals("Typical minimums set: $4 · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
+            assertEquals("Typical minimums set: $4/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
             AutopilotStore.Change change = AutopilotStore.lastChange(app);
             assertEquals(50, change.from);
             assertEquals(100, change.to);

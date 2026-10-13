@@ -49,7 +49,7 @@ public final class MinimumsDetailsTest {
 
     private static void assertNothingRetired(String text) {
         for (String retired : new String[] {"Learned", "learned", "Saved", "blue", "purple", "area", "Area", "Pay/stop",
-                "per stop", "item", "Hotspot", "hotspot", "baseline", "Score reference", "strict"}) {
+                "item", "Hotspot", "hotspot", "baseline", "Score reference", "strict"}) {
             assertFalse("no retired words (" + retired + "): " + text, text.contains(retired));
         }
     }
@@ -61,7 +61,7 @@ public final class MinimumsDetailsTest {
         assertTrue(entry.autopilot);
         String text = MinimumsDetails.describe(atBar(starters(), 82), entry);
         assertEquals("Your minimums · bar 82% (Autopilot)\n"
-                + "Pay — set $4.00 · used ≈$3.28\n"
+                + "Pay per stop — set $4.00 · used ≈$3.28\n"
                 + "Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42\n"
                 + "Per hour — set $6.75 (27 min × $15/hr) · used ≈$5.54\n"
                 + "Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%\n"
@@ -87,7 +87,7 @@ public final class MinimumsDetailsTest {
         assertEquals(400, entry.requiredCents);
         String text = MinimumsDetails.describe(at119, entry);
         assertTrue(text, text.startsWith("Your minimums · bar 119% (Autopilot)\n" + MinimumsDetails.CEILING + "\n"));
-        assertTrue(text, text.contains("Pay — set $4.00\n"));
+        assertTrue(text, text.contains("Pay per stop — set $4.00\n"));
         assertTrue(text, text.contains("Required $4.00: the highest set amount"));
         assertFalse(text, text.contains("119% of the highest"));
         assertFalse("the minimums did not change: " + text, text.contains("changed since"));
@@ -108,10 +108,11 @@ public final class MinimumsDetailsTest {
         DecisionLog.Entry entry = decided(unpaid, starters());
         String text = MinimumsDetails.describe(starters(), entry);
         assertTrue(text, text.startsWith("Your minimums · bar 100%\n"));
-        assertTrue(text, text.contains("Pay — set $4.00\n"));
+        // Pay per stop: 4 stops ask it 3 times (0.6.12).
+        assertTrue(text, text.contains("Pay per stop — set $12.00 (4 stops: 3 × $4.00, the first pickup not counted)\n"));
         assertTrue(text, text.contains("Per mile — set $2.00 (2 mi × $1.00)\n"));
         assertTrue(text, text.contains("Per hour — set $2.50 (10 min × $15/hr)\n"));
-        assertTrue(text, text.contains("Required $4.00: the highest set amount\n"));
+        assertTrue(text, text.contains("Required $12.00: the highest set amount\n"));
         assertFalse("nothing used at a bar of exactly 100%: " + text, text.contains("used"));
         assertFalse("no score without pay: " + text, text.contains("score"));
         assertFalse(text, text.contains("Offer $"));
@@ -133,7 +134,7 @@ public final class MinimumsDetailsTest {
         FilterSettings rates = FilterSettings.of(true, 0, 100, 25, 0);
         String none = MinimumsDetails.describe(rates, decided(OfferSnapshot.UNKNOWN, rates));
         assertTrue(none, none.contains("Required: not known until this offer's miles and minutes are read."));
-        assertFalse(none, none.contains("Pay —"));
+        assertFalse(none, none.contains("Pay per stop —"));
         String off = MinimumsDetails.describe(FilterSettings.of(true, 0, 0, 0, 3), decided(worked(),
                 FilterSettings.of(true, 0, 0, 0, 3)));
         assertTrue(off, off.contains("No pay, per-mile or hourly minimum is set."));

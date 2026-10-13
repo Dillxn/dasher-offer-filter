@@ -697,8 +697,8 @@ final class AutopilotText {
     }
 
     /**
-     * The note's one line: "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised them: $4.00
-     * → $4.32 · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."
+     * The note's one line: "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised them:
+     * $4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."
      */
     static String growthLine(AutopilotStore.Grew grew) {
         return "Offers paid above your minimums for " + grew.offers + " " + plural(grew.offers, "offer") + " over "
@@ -708,13 +708,13 @@ final class AutopilotText {
 
     /**
      * The note as a screen reader hears it, in words: "Your minimums grew 8 percent. Offers paid above your minimums
-     * for 30 offers over 2 days, so Autopilot raised them: minimum pay $4.00 to $4.32, per mile $1.00 to $1.08, per
+     * for 30 offers over 2 days, so Autopilot raised them: pay per stop $4.00 to $4.32, per mile $1.00 to $1.08, per
      * hour $15 to $16.20."
      */
     static String growthSaid(AutopilotStore.Grew grew) {
         Growth.Grown g = grew.grown;
         List<String> parts = new ArrayList<>();
-        if (g.flatAfter > 0) parts.add("minimum pay " + DecisionLog.money(g.flatBefore) + " to "
+        if (g.flatAfter > 0) parts.add("pay per stop " + DecisionLog.money(g.flatBefore) + " to "
                 + DecisionLog.money(g.flatAfter));
         if (g.mileAfter > 0) parts.add("per mile " + DecisionLog.money(g.mileBefore) + " to "
                 + DecisionLog.money(g.mileAfter));
@@ -725,19 +725,21 @@ final class AutopilotText {
                 + ", so Autopilot raised them: " + String.join(", ", parts) + ".";
     }
 
-    /** The Undo's toast: "Minimums back to $4.00 · $1.00/mi · $15/hr". */
+    /** The Undo's toast: "Minimums back to $4.00/stop · $1.00/mi · $15/hr". */
     static String growthUndoneToast(Growth.Grown g) {
         List<String> parts = new ArrayList<>();
-        if (g.flatBefore > 0) parts.add(DecisionLog.money(g.flatBefore));
+        if (g.flatBefore > 0) parts.add(DecisionLog.money(g.flatBefore) + "/stop");
         if (g.mileBefore > 0) parts.add(DecisionLog.money(g.mileBefore) + "/mi");
         if (g.minuteBefore > 0) parts.add(DecisionLog.shortMoney(g.minuteBefore * 60L) + "/hr");
         return "Minimums back to " + String.join(" · ", parts);
     }
 
-    /** Each set minimum before and after, as the page shows money: "$4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr → …". */
+    /** Each set minimum before and after, as the page shows money: "$4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr → …". */
     static String grownMinimums(Growth.Grown g) {
         List<String> parts = new ArrayList<>();
-        if (g.flatAfter > 0) parts.add(DecisionLog.money(g.flatBefore) + " → " + DecisionLog.money(g.flatAfter));
+        if (g.flatAfter > 0) {
+            parts.add(DecisionLog.money(g.flatBefore) + "/stop → " + DecisionLog.money(g.flatAfter) + "/stop");
+        }
         if (g.mileAfter > 0) {
             parts.add(DecisionLog.money(g.mileBefore) + "/mi → " + DecisionLog.money(g.mileAfter) + "/mi");
         }
@@ -964,7 +966,9 @@ final class AutopilotText {
     private static String logMinimums(int flatFrom, int mileFrom, int minuteFrom, int flatTo, int mileTo,
                                       int minuteTo) {
         List<String> parts = new ArrayList<>();
-        if (flatFrom > 0 || flatTo > 0) parts.add(DecisionLog.money(flatFrom) + " -> " + DecisionLog.money(flatTo));
+        if (flatFrom > 0 || flatTo > 0) {
+            parts.add(DecisionLog.money(flatFrom) + "/stop -> " + DecisionLog.money(flatTo) + "/stop");
+        }
         if (mileFrom > 0 || mileTo > 0) {
             parts.add(DecisionLog.money(mileFrom) + "/mi -> " + DecisionLog.money(mileTo) + "/mi");
         }

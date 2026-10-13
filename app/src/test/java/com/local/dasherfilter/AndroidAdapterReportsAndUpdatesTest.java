@@ -197,10 +197,10 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
                 + "Auto-decline saved: true; flat cents=2000; per-mile cents=150; per-minute cents=30 "
                 + "(per hour $18.00); max stops=3\n"
                 + "Autopilot: off; goal 70%; bar 100%; AR unknown\n"
-                + "In words: at least $20.00 · $1.50 per mile · $18.00 per hour · at most 3 stops\n"));
+                + "In words: $20.00 per stop · $1.50 per mile · $18.00 per hour · at most 3 stops\n"));
         assertTrue(report.contains("Notification access granted: false"));
         String lower = report.toLowerCase(java.util.Locale.US);
-        for (String retired : Arrays.asList("per-stop", "per stop", "per-item", "per item", "hotspot", "rising",
+        for (String retired : Arrays.asList("per-stop", "per-item", "per item", "hotspot", "rising",
                 "score by area", "learned", "learning", "highest accepted", "best accepted", "adaptive",
                 "minimum scale", "minimums scale")) {
             assertFalse("retired: " + retired, lower.contains(retired));
@@ -226,7 +226,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
                     + "per-minute cents=25 (per hour $15.00); max stops=0\n"
                     + "Autopilot: on; goal 70%; bar 82%; AR 55% (Dasher, 12 min ago); last change 100%->82% "
                     + "(acceptance rate below your goal) 4 min ago\n"
-                    + "In words: at least $4.00 · $1.00 per mile · $15.00 per hour · Autopilot bar 82% (goal 70%)\n"));
+                    + "In words: $4.00 per stop · $1.00 per mile · $15.00 per hour · Autopilot bar 82% (goal 70%)\n"));
             assertEquals("the report's line is the one Autopilot's own words build", "Autopilot: on; goal 70%; "
                     + "bar 82%; AR 55% (Dasher, 12 min ago); last change 100%->82% (acceptance rate below your goal) "
                     + "4 min ago", AutopilotText.reportLine(AutopilotRuntime.status(app, now,
@@ -334,7 +334,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
             List<String> keys = new ArrayList<>();
             for (java.util.Iterator<String> names = rules.keys(); names.hasNext(); ) keys.add(names.next());
             Collections.sort(keys);
-            List<String> expected = new ArrayList<>(Arrays.asList("enabled", "flatCents", "perMileCents",
+            List<String> expected = new ArrayList<>(Arrays.asList("enabled", "payPerStopCents", "perMileCents",
                     "perMinuteCents", "maxStops", "autopilot", "autopilotGoal", "barPercent", "autopilotMode",
                     "recovering", "extra", "arPercent", "arSource", "arAgeMinutes", "lastChange", "context"));
             Collections.sort(expected);

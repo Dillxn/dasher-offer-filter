@@ -57,8 +57,9 @@ public final class AreaScoreTest {
         assertEquals(64, AreaScore.passThreshold(USER, offer));
         assertEquals(64, AreaScore.percent(USER, offer));
         assertEquals("Score 64%", AreaScore.label(64));
-        // Max stops never changes the score; over it, θ is 0.
-        assertEquals(64, AreaScore.scorePercent(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
+        // Max stops never changes the score; over it, θ is 0. Four stops ask pay per stop 3 × $13.00 = $39.00
+        // (0.6.12): ⌊150000 ÷ 3900⌋.
+        assertEquals(38, AreaScore.scorePercent(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
         assertEquals(0, AreaScore.passThreshold(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
         // A minimum that is off asks nothing, so pay and per hour decide a short trip.
         FilterSettings noMile = FilterSettings.of(true, 1300, 0, 41, 0);
@@ -82,10 +83,13 @@ public final class AreaScoreTest {
         assertNull(AreaScore.knownRequired100(rates, nothing));
         assertEquals(-1, AreaScore.asks(rates, nothing).axis);
         assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(rates, nothing));
-        // Unread stops matter to max stops only, never to the requirement or the score.
+        // Unread stops leave pay per stop unread (0.6.12): only its one-stop lower bound is known.
         OfferSnapshot noStops = new OfferSnapshot(1500, 6.0, 25, null);
-        same(cents("2310"), AreaScore.required100(USER, noStops));
-        assertEquals(64, AreaScore.scorePercent(USER, noStops));
+        assertNull(AreaScore.required100(USER, noStops));
+        same(cents("2310"), AreaScore.knownRequired100(USER, noStops));
+        assertEquals(-1, AreaScore.scorePercent(USER, noStops));
+        assertEquals(64, AreaScore.passThreshold(USER, noStops));
+        same(cents("1300"), AreaScore.knownRequired100(FilterSettings.of(true, 1300, 0, 0, 0), noStops));
     }
 
     @Test
@@ -104,7 +108,9 @@ public final class AreaScoreTest {
     @Test
     public void theFixedAsksAreProductsOfARateAndAReadAmount() {
         OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 3);
-        same(cents("1300"), AreaScore.fixedFloor(AreaScore.PAY, 1300, offer));
+        // Pay per stop: 3 stops are 2 after the first pickup (0.6.12).
+        same(cents("2600"), AreaScore.fixedFloor(AreaScore.PAY, 1300, offer));
+        assertNull("unread stops", AreaScore.fixedFloor(AreaScore.PAY, 1300, new OfferSnapshot(1500, 6.0, 25, null)));
         same(cents("2310"), AreaScore.fixedFloor(AreaScore.MILE, 385, offer));
         same(cents("1025"), AreaScore.fixedFloor(AreaScore.MINUTE, 41, offer));
         assertNull("off", AreaScore.fixedFloor(AreaScore.MILE, 0, offer));

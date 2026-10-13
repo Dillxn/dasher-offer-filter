@@ -19,6 +19,8 @@ final class OfferRule {
     static final String COMBINED_FAILS = "combined route fails: ";
     /** The reason of a standalone offer declined because a store it is from is on the skip list ({@link SkipList}). */
     static final String SKIP_LIST = "on your skip list";
+    /** The pay-per-stop minimum's words in a reason (0.6.12; it was "flat minimum" for the minimum pay before). */
+    static final String PAY_PER_STOP = "dollars per stop";
 
     static final class Decision {
         final Result result;
@@ -160,7 +162,7 @@ final class OfferRule {
     /**
      * An add-on keeps the combined route within the rules at the current bar, and its own explicit added pay must cover
      * {@code ⌈bar × max(added miles × per mile, added minutes × per minute) ÷ 100⌉}. Only the amounts the add-on
-     * explicitly adds count; minimum pay is not an increment floor. Unknown added pay is REVIEW only when a rate
+     * explicitly adds count; pay per stop is not an increment floor (the combined route asks it for its own stops). Unknown added pay is REVIEW only when a rate
      * minimum is set. With the bar below 100, a KEEP that would not pass at 100 is marked below the minimums.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
@@ -220,12 +222,15 @@ final class OfferRule {
         return bar == FilterSettings.BAR_AT_MINIMUMS ? "" : bar + "% bar: ";
     }
 
-    /** The binding minimum's words: the first highest of pay, per mile and per hour. */
+    /**
+     * The binding minimum's words: the first highest of pay per stop, per mile and per hour. Lines written before 0.6.12
+     * keep their own words ("flat minimum").
+     */
     private static String axisReason(int axis) {
         switch (axis) {
             case AreaScore.MILE: return "dollars per mile";
             case AreaScore.MINUTE: return "dollars per hour";
-            default: return "flat minimum";
+            default: return PAY_PER_STOP;
         }
     }
 

@@ -692,13 +692,13 @@ final class DashSummary {
 
     /**
      * The switches, the bar and which rules are set (never their amounts): "auto-decline on · Peek on · quiet while
-     * declining off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set: pay, per mile, per hour".
+     * declining off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set: pay per stop, per mile, per hour".
      * Never Autopilot's acceptance-rate reading, its goal or its plan. The bar is Autopilot's, and Autopilot moves it
      * for the goal, so a bar below 100% can say the rate was below the goal; it never says what the rate was.
      */
     private static String settings(Context app, FilterSettings rules) {
         List<String> set = new ArrayList<>();
-        if (rules.flatCents > 0) set.add("pay");
+        if (rules.flatCents > 0) set.add("pay per stop");
         if (rules.perMileCents > 0) set.add("per mile");
         if (rules.perMinuteCents > 0) set.add("per hour");
         if (rules.maxStops > 0) set.add("max stops");

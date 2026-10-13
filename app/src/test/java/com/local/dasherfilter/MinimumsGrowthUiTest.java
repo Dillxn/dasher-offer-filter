@@ -47,9 +47,9 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     private static final long HOUR = 3_600_000L;
     private static final String TITLE = "Your minimums grew 8%";
     private static final String LINE = "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised "
-            + "them: $4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr.";
+            + "them: $4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr.";
     private static final String SAID = "Your minimums grew 8 percent. Offers paid above your minimums for 30 offers "
-            + "over 2 days, so Autopilot raised them: minimum pay $4.00 to $4.32, per mile $1.00 to $1.08, per hour $15 "
+            + "over 2 days, so Autopilot raised them: pay per stop $4.00 to $4.32, per mile $1.00 to $1.08, per hour $15 "
             + "to $16.20.";
 
     private long grewAt;
@@ -130,7 +130,7 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
             // Autopilot's details still say when the minimums last grew.
             AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(), false);
             assertTrue(AutopilotText.detailsLines(status).toString(), AutopilotText.detailsLines(status).contains(
-                    "Your minimums last grew 8%, less than a minute ago: $4.00 → $4.32 · $1.00/mi → $1.08/mi · $15/hr "
+                    "Your minimums last grew 8%, less than a minute ago: $4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr "
                             + "→ $16.20/hr."));
         }
     }
@@ -168,8 +168,8 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
             assertEquals("RULES_CHANGED", AutopilotStore.jump(app));
             assertNull("the note goes with its Undo", note(content));
             assertNull(AutopilotStore.lastGrowth(app));
-            assertEquals("Minimums back to $4.00 · $1.00/mi · $15/hr", ShadowToast.getTextOfLatestToast());
-            assertTrue(DiagnosticLog.read(app).contains("[autopilot] minimums growth undone: $4.32 -> $4.00, "
+            assertEquals("Minimums back to $4.00/stop · $1.00/mi · $15/hr", ShadowToast.getTextOfLatestToast());
+            assertTrue(DiagnosticLog.read(app).contains("[autopilot] minimums growth undone: $4.32/stop -> $4.00/stop, "
                     + "$1.08/mi -> $1.00/mi, $16.20/hr -> $15.00/hr"));
         }
     }

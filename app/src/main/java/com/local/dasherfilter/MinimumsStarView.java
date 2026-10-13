@@ -81,12 +81,12 @@ import java.util.Locale;
 @SuppressLint("ViewConstructor")
 final class MinimumsStarView extends View {
     /** The six stable axis indexes keep their screen readers' ids; only pay, per mile and per hour have knobs. */
-    private static final String[] NAMES = {"Pay", "Per mile", "Per hour", "Per stop", "Hotspot", "Per item"};
+    private static final String[] NAMES = {"Pay per stop", "Per mile", "Per hour", "Per stop", "Hotspot", "Per item"};
     /**
      * The names drawn at the three minimums' knobs while unset (0.6.8: no spoke icons and no "Max stops" word, the
      * owner's mockup; screen readers keep every name).
      */
-    static final String[] AXIS_LABELS = {"Pay", "Pay / mile", "Pay / hour", "", "", ""};
+    static final String[] AXIS_LABELS = {"Pay / stop", "Pay / mile", "Pay / hour", "", "", ""};
     /** Each spoke's icon (the per-stop pin anchors the max stops badge); the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
             Glyph.Shape.PIN};
@@ -263,7 +263,7 @@ final class MinimumsStarView extends View {
      * The retired spokes keep their places.
      */
     static final int[] STEPS = {50, 5, 1, 25, 5, 5};
-    private static final String[] KNOBS = {"Minimum pay", "Minimum per mile", "Minimum per hour of trip time"};
+    private static final String[] KNOBS = {"Minimum pay per stop", "Minimum per mile", "Minimum per hour of trip time"};
     /** A knob takes a touch this far from its middle (a 48 dp target); where two could, the nearer one does. */
     private static final int KNOB_REACH_DP = 24;
     /**
@@ -608,7 +608,9 @@ final class MinimumsStarView extends View {
             double pay = offer.payCents;
             double[] cents = new double[NAMES.length];
             Arrays.fill(cents, Double.NaN);
-            cents[AreaScore.PAY] = pay;
+            // Pay per stop: the offer's pay as it would be for the example's stops (unread stops: not drawn there).
+            Integer units = AreaScore.payUnits(offer.stops), exampleUnits = AreaScore.payUnits(example.stops);
+            if (units != null) cents[AreaScore.PAY] = pay * (exampleUnits == null ? 1 : exampleUnits) / units;
             if (offer.miles != null && offer.miles > 0) cents[AreaScore.MILE] = pay * example.miles / offer.miles;
             if (offer.minutes != null && offer.minutes > 0) {
                 cents[AreaScore.MINUTE] = pay * example.minutes / offer.minutes;
@@ -738,9 +740,10 @@ final class MinimumsStarView extends View {
 
     double learnedAsks(int axis) { return learnedCents[axis]; }
 
-    /** "pay $4.00", "per mile $1.00", "per hour of trip time 15 dollars per hour", or "... off". */
+    /** "pay $4.00 per stop", "per mile $1.00", "per hour of trip time 15 dollars per hour", or "... off". */
     private String spokeSaid(int axis) {
-        String name = axis == AreaScore.MINUTE ? "per hour of trip time" : NAMES[axis].toLowerCase(Locale.US);
+        String name = axis == AreaScore.MINUTE ? "per hour of trip time" : axis == AreaScore.PAY && setRates[axis] > 0
+                ? "pay" : NAMES[axis].toLowerCase(Locale.US);
         return name + " " + (setRates[axis] > 0 ? spokenRate(axis, setRates[axis]) : "off");
     }
 
@@ -1670,12 +1673,18 @@ final class MinimumsStarView extends View {
         return ask == null ? 0 : ask.doubleValue();
     }
 
-    /** The example offer's amount of spoke {@code axis}'s unit when the knob was taken: 1 for pay, else miles... */
+    /**
+     * The example offer's amount of spoke {@code axis}'s unit when the knob was taken: its stops after the first pickup
+     * for pay per stop (1 for the homepage's two stops), else miles...
+     */
     private double units(int axis) {
         switch (axis) {
             case AreaScore.MILE: return dragMiles;
             case AreaScore.MINUTE: return dragMinutes;
-            default: return 1;
+            default: {
+                Integer units = dragFacts == null ? null : AreaScore.payUnits(dragFacts.stops);
+                return units == null ? 1 : units;
+            }
         }
     }
 
@@ -2201,17 +2210,18 @@ final class MinimumsStarView extends View {
         if (readout) drawReadout(canvas);
     }
 
-    /** "$4.00", "$1.00/mi", "$15/hr" (a minute's cents × 60), or "off". */
+    /** "$4.00/stop", "$1.00/mi", "$15/hr" (a minute's cents × 60), or "off". */
     static String readout(int axis, int rate) {
         if (rate <= 0) return "off";
         if (axis == AreaScore.MINUTE) return DecisionLog.shortMoney(rate * 60L) + "/hr";
         if (axis == AreaScore.MILE) return DecisionLog.money(rate) + "/mi";
-        return DecisionLog.money(rate);
+        return DecisionLog.money(rate) + "/stop";
     }
 
-    /** "$4.00", "$1.00", or for the per-hour knob "15 dollars per hour" ("15 dollars 60 cents per hour"). */
+    /** "$4.00 per stop", "$1.00", or for the per-hour knob "15 dollars per hour" ("15 dollars 60 cents per hour"). */
     private static String spokenRate(int axis, int rate) {
         if (axis == AreaScore.MINUTE) return spokenDollars(rate * 60L) + " per hour";
+        if (axis == AreaScore.PAY) return DecisionLog.money(rate) + " per stop";
         return DecisionLog.money(rate);
     }
 
@@ -2672,10 +2682,12 @@ final class MinimumsStarView extends View {
         announceForAccessibility(words);
     }
 
-    /** "Minimum per mile, $1.50", "Minimum per hour of trip time, 15 dollars per hour", "Minimum pay, off". */
+    /** "Minimum per mile, $1.50", "Minimum per hour of trip time, 15 dollars per hour", "Minimum pay per stop, off". */
     private String knobSaid(int axis) {
         int rate = setRates[axis];
-        return KNOBS[axis] + ", " + (rate > 0 ? spokenRate(axis, rate) : "off");
+        // The knob's own name already says "per stop".
+        return KNOBS[axis] + ", " + (rate <= 0 ? "off" : axis == AreaScore.PAY ? DecisionLog.money(rate)
+                : spokenRate(axis, rate));
     }
 
     /** One step up or down on a knob, saved at once, and said. */

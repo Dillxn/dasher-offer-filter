@@ -108,6 +108,12 @@ final class BundledNotes {
                 "It starts over at your next dash or when you change your goal or minimums.",
                 "In split screen during a delivery, the app moves the divider to give the map more room, and puts it "
                         + "back afterward. Move it yourself and it stops for that dash.");
+        // 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): the pay minimum is per stop.
+        notice(23,
+                "Minimum pay is now pay per stop: each stop after the first pickup counts, so a 3-stop offer asks "
+                        + "twice your number.",
+                "Single orders are judged exactly as before; your number didn't change.",
+                "Learning keeps your best pay per stop.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -227,6 +233,11 @@ final class BundledNotes {
                         + "rest of the dash.",
                 "In split screen, the navigating app gets more room during a delivery.",
                 "The acceptance meter stays on one line at every width.");
+        release("0.6.12",
+                "Minimum pay is now pay per stop: each stop after the first pickup counts, so a 3-stop offer asks "
+                        + "twice your number.",
+                "Single orders are judged exactly as before; your number didn't change.",
+                "Learning keeps your best pay per stop.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

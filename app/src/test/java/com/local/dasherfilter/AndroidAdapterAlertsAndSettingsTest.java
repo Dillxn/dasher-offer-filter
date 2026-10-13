@@ -779,7 +779,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         assertEquals("Pay not readable", MainActivity.plainReason("pay not found"));
         // Recorded before 0.5.0, under the retired rules: their own words.
         assertEquals("Below your per-minute rate", MainActivity.plainReason("dollars per minute"));
-        assertEquals("Below your per-stop rate", MainActivity.plainReason("dollars per stop"));
+        // 0.6.12's pay per stop (and the retired per-stop rate, in the same words).
+        assertEquals("Below your pay per stop", MainActivity.plainReason("dollars per stop"));
         assertEquals("Below your per-minute rate (buffer 97%)",
                 MainActivity.plainReason("97% of baseline: dollars per minute"));
         assertEquals("Meets your rules", MainActivity.plainReason("meets enabled rules"));
@@ -816,19 +817,19 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
         OfferSnapshot offer = new OfferSnapshot(450, 2.6, 15, 1);
         OfferRule.Decision decision = OfferRule.evaluate(offer, at119);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
-        assertEquals("119% bar: flat minimum", decision.reason);
+        assertEquals("119% bar: dollars per stop", decision.reason);
         DecisionLog.Entry ticket = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, offer, decision,
                 DecisionLog.Action.CONFIRMATION_TAPPED, true, Collections.<String>emptyList());
         assertEquals("Score 112% of your minimums · bar 119%",
                 AutopilotText.ticketScoreLine(ticket.scorePercent, ticket.barPercent, ticket.model));
-        assertEquals("Below Autopilot's 119% of your minimum pay", MainActivity.reasonLine(ticket));
-        assertFalse(MainActivity.reasonLine(ticket).contains("Below your minimum pay"));
+        assertEquals("Below Autopilot's 119% of your pay per stop", MainActivity.reasonLine(ticket));
+        assertFalse(MainActivity.reasonLine(ticket).contains("Below your pay per stop"));
 
         FilterSettings at82 = at119.withMinimumScalePercent(82);
         OfferSnapshot below = new OfferSnapshot(300, 2.6, 15, 1);
         DecisionLog.Entry belowTicket = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, below,
                 OfferRule.evaluate(below, at82), DecisionLog.Action.CONFIRMATION_TAPPED, true,
                 Collections.<String>emptyList());
-        assertEquals("Below your minimum pay (Autopilot 82%)", MainActivity.reasonLine(belowTicket));
+        assertEquals("Below your pay per stop (Autopilot 82%)", MainActivity.reasonLine(belowTicket));
     }
 }

@@ -15,7 +15,9 @@ public class AcceptedFloorsTest {
         assertSame(a, a.raisedBy(new OfferSnapshot(500, 9.0, 30, 2)));
     }
     @Test public void unknownMeasuresStayUnsetAndShortTripsDoNotSetRateBests() {
-        AcceptedFloors a = AcceptedFloors.NONE.raisedBy(new OfferSnapshot(700, null, null, null));
+        // Unread stops teach nothing on pay per stop (0.6.12).
+        assertEquals(0, AcceptedFloors.NONE.raisedBy(new OfferSnapshot(700, null, null, null)).highestPayCents);
+        AcceptedFloors a = AcceptedFloors.NONE.raisedBy(new OfferSnapshot(700, null, null, 2));
         assertEquals(700, a.highestPayCents); assertFalse(a.hasPerMile()); assertFalse(a.hasPerMinute());
         a = a.raisedBy(new OfferSnapshot(800, 1.0, 7, 2));
         assertEquals(800, a.highestPayCents); assertFalse(a.hasPerMile()); assertFalse(a.hasPerMinute());
@@ -43,7 +45,8 @@ public class AcceptedFloorsTest {
         AcceptedFloors a = AcceptedFloors.NONE.raisedBy(new OfferSnapshot(1000, 3.0, null, null));
         AcceptedFloors b = a.raisedBy(new OfferSnapshot(1000, 2.999, null, null));
         assertEquals(2.999, b.miles, 0); assertNotEquals(a.stableKey(), b.stableKey());
-        assertEquals(b, new AcceptedFloors(1000, 1000, 2.999, 0, 0));
+        // Unread stops set no pay best (0.6.12).
+        assertEquals(b, new AcceptedFloors(0, 1000, 2.999, 0, 0));
     }
     @Test public void malformedStoredPairsCannotBecomeFloors() {
         AcceptedFloors a = new AcceptedFloors(-10, 1000, Double.POSITIVE_INFINITY, 1000, 0);

@@ -29,7 +29,9 @@ final class Consent {
     // of Autopilot's inputs (off by default); both kept on the phone like the rules.
     // 22 (0.6.11): Autopilot's bar rises to the score of an offer you accept yourself, for the rest of the dash; and in
     // split screen during a delivery the divider moves, by its own controls, to give the navigating app more room.
-    static final int VERSION = 22;
+    // 23 (0.6.12): the pay minimum is per stop (each stop after the first pickup), so stacked offers need more;
+    // learning's pay best is per stop.
+    static final int VERSION = 23;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -43,7 +45,9 @@ final class Consent {
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
                 + "on offers that fail your chosen rules. It also declines offers from stores you put on your skip list "
-                + "(from an offer's details), whatever they pay. Strict mode checks every active minimum; optional area mode "
+                + "(from an offer's details), whatever they pay. Your pay minimum is per stop: an offer must pay it for "
+                + "each stop after the first pickup, so a stacked offer must pay more; a single order is judged as "
+                + "before. Strict mode checks every active minimum; optional area mode "
                 + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
                 + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
                 + "mean accepted. Autopilot is on by default and moves that cutoff up or down by itself (50% to 150% of "
@@ -64,8 +68,8 @@ final class Consent {
         {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
                 + "background offer (also just after you unlock, for one that came while it was locked), then return to "
                 + "your previous app. Turn Peek off in Settings."},
-        {"Learning is on by default.", "When you accept an offer yourself and it beats your best pay, pay per mile "
-                + "(trips of 2 miles or more) or pay per hour (10 minutes or more), the learned minimums rise to match "
+        {"Learning is on by default.", "When you accept an offer yourself and it beats your best pay per stop, pay per "
+                + "mile (trips of 2 miles or more) or pay per hour (10 minutes or more), the learned minimums rise to match "
                 + "it at once. Offers must meet them as well as your own minimums, which can mean more declines. Your "
                 + "own minimums stay as you set them; the homepage says what rose, with Adopt to make them yours. "
                 + "The bests stay on this phone. Automatic accepts, declines, add-ons and unclear acceptances "

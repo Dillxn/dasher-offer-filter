@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <pre>
  * Your minimums · bar 82% (Autopilot)
- * Pay — set $4.00 · used ≈$3.28
+ * Pay per stop — set $4.00 · used ≈$3.28
  * Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42
  * Per hour — set $6.75 (27 min × $15/hr) · used ≈$5.54
  * Required ≈$5.54: 82% of the highest set amount ($6.75) · score 85%
@@ -25,7 +25,7 @@ import java.util.List;
 final class MinimumsDetails {
     static final String LEGACY = "Decided under earlier area or learned rules.";
     static final String ADD_ON = "An add-on is judged twice: the whole route against your minimums at the bar, and "
-            + "its added pay against what its added miles and minutes ask at the bar (minimum pay does not apply to "
+            + "its added pay against what its added miles and minutes ask at the bar (pay per stop does not apply to "
             + "what it adds).";
     static final String BELOW = "Below 100%, offers pass only because Autopilot lowered the bar and are never "
             + "auto-accepted.";
@@ -92,8 +92,10 @@ final class MinimumsDetails {
         AcceptedFloors best = rules.accepted;
         if (best.isEmpty()) return "No learned bests yet. Saved minimums are unchanged.";
         List<String> values = new ArrayList<>();
-        if (best.highestPayCents > 0) values.add("Highest accepted pay " + DecisionLog.money(best.highestPayCents)
-                + " (learned pay asks one cent more)");
+        if (best.highestPayCents > 0) values.add(best.payUnits == 1
+                ? "Best pay per stop " + DecisionLog.money(best.highestPayCents) + " (learned pay asks one cent more)"
+                : "Best pay per stop: " + DecisionLog.money(best.highestPayCents) + " for " + (best.payUnits + 1)
+                        + " stops, " + best.payUnits + " after the first pickup (learned pay asks one cent more)");
         if (best.hasPerMile()) values.add("Best mileage rate: " + DecisionLog.money(best.milePay)
                 + " for " + miles(best.miles) + " mi");
         if (best.hasPerMinute()) values.add("Best time rate: " + DecisionLog.money(best.minutePay)
@@ -127,7 +129,7 @@ final class MinimumsDetails {
         boolean[] approximate = {false};
         for (int axis : new int[] {AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE}) {
             if (!floors.active[axis] && floors.acceptedCents[axis] == null) continue;
-            String name = axis == AreaScore.PAY ? "Pay" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
+            String name = axis == AreaScore.PAY ? "Pay per stop" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
             lines.add(name + " — saved " + projection(floors.fixedCents[axis], approximate)
                     + " · learned " + projection(floors.acceptedCents[axis], approximate)
                     + (rules.acceptanceLearning ? "" : " (off)")
@@ -136,7 +138,7 @@ final class MinimumsDetails {
         long required = AreaScore.requiredPay(rules, facts, judgedBar);
         lines.add(required < 0 ? rules.scoreByArea && floors.degenerateArea()
                 ? "Area fitness cannot be formed from a zero route amount across multiple active measures; review it."
-                : "Required pay is unknown until every active measure is read."
+                : "Required pay is unknown until every active measure (miles, minutes, stops) is read."
                 : "Required " + money(required) + " under the " + (recorded ? "recorded " : "current ")
                         + (rules.scoreByArea ? "area" : "strict")
                         + " model at " + judgedBar + "% (one final cent rounding).");
@@ -155,17 +157,26 @@ final class MinimumsDetails {
         return cents == null ? "off or unread" : amount(cents, approximate);
     }
 
-    /** "Pay — set $4.00 · used ≈$3.28", "Per mile — set $6.60 (6.6 mi × $1.00) · used ≈$5.42", or unread. */
+    /**
+     * "Pay per stop — set $26.00 (3 stops: 2 × $13.00, the first pickup not counted) · used ≈$21.32", "Per mile — set
+     * $6.60 (6.6 mi × $1.00) · used ≈$5.42", or unread ("Pay per stop — $13.00 a stop; stops not read (at least
+     * $13.00)").
+     */
     private static String minimum(int axis, int rate, OfferSnapshot facts, int bar, boolean[] approximate) {
-        String name = axis == AreaScore.PAY ? "Pay" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
+        String name = axis == AreaScore.PAY ? "Pay per stop" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
         String unit = axis == AreaScore.MILE ? DecisionLog.money(rate) + " a mile"
-                : axis == AreaScore.MINUTE ? perHour(rate) : DecisionLog.money(rate);
+                : axis == AreaScore.MINUTE ? perHour(rate) : DecisionLog.money(rate) + " a stop";
         BigDecimal set = AreaScore.fixedFloor(axis, rate, facts);
         if (set == null) {
-            return name + " — " + unit + "; " + (axis == AreaScore.MILE ? "miles" : "minutes") + " not read";
+            return name + " — " + unit + "; " + (axis == AreaScore.MILE ? "miles" : axis == AreaScore.MINUTE
+                    ? "minutes" : "stops") + " not read" + (axis == AreaScore.PAY ? " (at least "
+                    + DecisionLog.money(rate) + ")" : "");
         }
         String how = axis == AreaScore.MILE ? " (" + miles(facts.miles) + " mi × " + DecisionLog.money(rate) + ")"
-                : axis == AreaScore.MINUTE ? " (" + facts.minutes + " min × " + perHour(rate) + ")" : "";
+                : axis == AreaScore.MINUTE ? " (" + facts.minutes + " min × " + perHour(rate) + ")"
+                : AreaScore.payUnits(facts.stops) == 1 ? "" : " (" + facts.stops + " stops: "
+                        + AreaScore.payUnits(facts.stops) + " × " + DecisionLog.money(rate)
+                        + ", the first pickup not counted)";
         String line = name + " — set " + amount(set, approximate) + how;
         if (bar == FilterSettings.BAR_AT_MINIMUMS) return line;
         approximate[0] = true;
@@ -179,7 +190,7 @@ final class MinimumsDetails {
     private static String required(FilterSettings rules, OfferSnapshot facts, int bar, boolean[] approximate) {
         if (!rules.hasMonetaryRule()) return "No pay, per-mile or hourly minimum is set.";
         AreaScore.Asks asks = AreaScore.asks(rules, facts);
-        if (asks.known == null) return "Required: not known until this offer's miles and minutes are read.";
+        if (asks.known == null) return "Required: not known until this offer's " + unread(rules) + " are read.";
         String head = "Required " + (asks.missing ? "at least " : "");
         String score = "";
         int percent = AreaScore.scorePercent(rules, facts);
@@ -202,15 +213,20 @@ final class MinimumsDetails {
     private static String needsNow(FilterSettings rules, OfferSnapshot facts) {
         if (!rules.hasMonetaryRule()) return "no pay, per-mile or hourly minimum is set.";
         BigDecimal required = AreaScore.required100(rules, facts);
-        if (required == null) return "needs this offer's miles and minutes to be read.";
+        if (required == null) return "needs this offer's " + unread(rules) + " to be read.";
         return "needs " + money(AreaScore.roundedCents(required, rules.minimumScalePercent)) + " at "
                 + rules.minimumScalePercent + "%.";
     }
 
-    /** "Your rates: $4.00 · $1.00 a mile · $15/hr", the minimums without an offer to apply them to. */
+    /** What a requirement can wait for: "miles and minutes", and the stops with pay per stop set. */
+    private static String unread(FilterSettings rules) {
+        return rules.flatCents > 0 ? "miles, minutes and stops" : "miles and minutes";
+    }
+
+    /** "Your rates: $4.00 a stop · $1.00 a mile · $15/hr", the minimums without an offer to apply them to. */
     private static String rates(FilterSettings rules) {
         List<String> parts = new ArrayList<>();
-        if (rules.flatCents > 0) parts.add(DecisionLog.money(rules.flatCents));
+        if (rules.flatCents > 0) parts.add(DecisionLog.money(rules.flatCents) + " a stop");
         if (rules.perMileCents > 0) parts.add(DecisionLog.money(rules.perMileCents) + " a mile");
         if (rules.perMinuteCents > 0) parts.add(perHour(rules.perMinuteCents));
         return parts.isEmpty() ? "No pay, per-mile or hourly minimum is set." : "Your rates: " + String.join(" · ", parts);

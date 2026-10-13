@@ -35,7 +35,7 @@ public class MinimumsGrowthRuntimeTest {
     private static final long MIN = 60_000L;
     private static final long HOUR = 60 * MIN;
     /** What the spec's example logs. */
-    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00 -> $4.32, "
+    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00/stop -> $4.32/stop, "
             + "$1.00/mi -> $1.08/mi, $15.00/hr -> $16.20/hr (bar 112% -> 104%)";
 
     private Application app;
@@ -170,8 +170,8 @@ public class MinimumsGrowthRuntimeTest {
         List<String> details = AutopilotText.detailsLines(AutopilotRuntime.status(app, wall, true));
         assertTrue(details.toString(), details.contains("Last change less than a minute ago: 112% → 104% (your "
                 + "minimums grew)."));
-        assertTrue(details.toString(), details.contains("Your minimums last grew 8%, less than a minute ago: $4.00 → "
-                + "$4.32 · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."));
+        assertTrue(details.toString(), details.contains("Your minimums last grew 8%, less than a minute ago: $4.00/stop → "
+                + "$4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."));
 
         // At most once: the evidence starts again from the grown minimums, and these 30 offers are from before them.
         elapsed += 2 * MIN;
@@ -292,7 +292,7 @@ public class MinimumsGrowthRuntimeTest {
         assertEquals("other minimums: a jump at the next safe point", "RULES_CHANGED", AutopilotStore.jump(app));
         assertNull("the note and the growth's record go", AutopilotStore.lastGrowth(app));
         assertNull(AutopilotRuntime.growthNote(app));
-        assertEquals(1, count("minimums growth undone: $4.32 -> $4.00, $1.08/mi -> $1.00/mi, $16.20/hr -> $15.00/hr"));
+        assertEquals(1, count("minimums growth undone: $4.32/stop -> $4.00/stop, $1.08/mi -> $1.00/mi, $16.20/hr -> $15.00/hr"));
         assertFalse("once", AutopilotRuntime.undoGrowth(app, grewAt));
         // The jump is the next commit's, as for any change of minimums; no growth comes back on the same evidence.
         AutopilotRuntime.Commit next = AutopilotRuntime.commitIfDue(app);

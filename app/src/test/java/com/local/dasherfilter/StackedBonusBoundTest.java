@@ -62,9 +62,10 @@ public final class StackedBonusBoundTest {
     }
 
     @Test public void aCentShortDeclinesButMeetingTheCeilingAlwaysRemainsReview() {
-        FilterSettings rules = FilterSettings.of(true, 1501, 0, 0, 3);
+        // The screenshot's 3 stops ask pay per stop twice (0.6.12): $7.51 a stop asks $15.02, $7.50 asks $15.00.
+        FilterSettings rules = FilterSettings.of(true, 751, 0, 0, 3);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(screenshot(), rules).result);
-        rules = FilterSettings.of(true, 1500, 0, 0, 3);
+        rules = FilterSettings.of(true, 750, 0, 0, 3);
         OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules);
         assertEquals(OfferRule.Result.REVIEW, decision.result);
         assertEquals(-1, decision.scorePercent);
@@ -76,14 +77,15 @@ public final class StackedBonusBoundTest {
                 OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(99)).result);
         // Below 100 it follows the bar: ⌈0.99 × $15.16⌉ = $15.01 is more than the $15.00 ceiling.
         OfferRule.Decision lowered = OfferRule.evaluate(screenshot(),
-                FilterSettings.of(true, 1516, 0, 0, 3).withMinimumScalePercent(99));
+                FilterSettings.of(true, 758, 0, 0, 3).withMinimumScalePercent(99));
         assertEquals(OfferRule.Result.DECLINE, lowered.result);
         assertEquals(1501, lowered.requiredCents);
-        assertEquals("pay at most $15.00 with its +$ amount; 99% bar: flat minimum", lowered.reason);
+        assertEquals("pay at most $15.00 with its +$ amount; 99% bar: dollars per stop", lowered.reason);
     }
 
     @Test public void aRaisedBarCannotTurnTheCeilingIntoADecline() {
-        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 3);
+        // 3 stops: 2 × $5.00 = $10.00 (0.6.12).
+        FilterSettings rules = FilterSettings.of(true, 500, 0, 0, 3);
         for (int bar : new int[] {100, 120, 150}) {
             OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(bar));
             assertEquals(OfferRule.Result.REVIEW, decision.result);

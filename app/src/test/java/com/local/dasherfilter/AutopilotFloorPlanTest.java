@@ -281,8 +281,8 @@ public final class AutopilotFloorPlanTest {
         List<Autopilot.OfferRecord> plus = new ArrayList<>(never);
         plus.add(line(good, 13, 12));
         assertEquals(120, Autopilot.acceptedFloor(Autopilot.handAccepts(rules, plus), 0));
-        // Unknown stops with max stops set still scores: only stops known to be over fail at every bar.
-        assertEquals(120, Autopilot.acceptedFloor(Autopilot.handAccepts(rules,
+        // Unknown stops leave pay per stop unread (0.6.12): no score, so it never holds the floor.
+        assertEquals(-1, Autopilot.acceptedFloor(Autopilot.handAccepts(rules,
                 Collections.singletonList(line(new OfferSnapshot(1200, 5.0, 20, null), 2, 1))), 0));
     }
 

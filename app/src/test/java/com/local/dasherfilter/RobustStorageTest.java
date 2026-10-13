@@ -214,7 +214,7 @@ public class RobustStorageTest {
                 rules, entry(1000, 700)));
         JSONObject current = json.getJSONObject("rules");
         assertTrue(current.getBoolean("enabled"));
-        assertEquals(1200, current.getInt("flatCents"));
+        assertEquals(1200, current.getInt("payPerStopCents"));
         assertEquals(150, current.getInt("perMileCents"));
         assertEquals(50, current.getInt("perMinuteCents"));
         assertEquals(5, current.getInt("maxStops"));

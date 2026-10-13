@@ -35,7 +35,7 @@ public class OfferReportTest {
     private static final long AT = 1_791_320_557_123L;
     private static final long MIN = 60_000L;
     /** The rules object's keys (finalSpec.privacyConsent, REPORTS), and nothing else. */
-    private static final List<String> KEYS = Arrays.asList("enabled", "flatCents", "perMileCents", "perMinuteCents",
+    private static final List<String> KEYS = Arrays.asList("enabled", "payPerStopCents", "perMileCents", "perMinuteCents",
             "maxStops", "autopilot", "autopilotGoal", "barPercent", "autopilotMode", "recovering", "extra", "arPercent",
             "arSource", "arAgeMinutes", "lastChange", "context");
     /** The worked example's 20 offers, newest first: pay in cents, miles, minutes; two stops each. */
@@ -65,7 +65,7 @@ public class OfferReportTest {
         assertEquals("misread", data.getString("problem"));
         assertEquals("0.4.73 (79)", data.getString("app"));
         assertEquals("the version, never the phone's maker", "Android 15 (API 35)", data.getString("android"));
-        assertEquals(1200, data.getJSONObject("rules").getInt("flatCents"));
+        assertEquals(1200, data.getJSONObject("rules").getInt("payPerStopCents"));
         assertEquals(4, data.getJSONObject("rules").getInt("maxStops"));
         assertTrue(data.getJSONObject("rules").getString("context").startsWith("current rules"));
         JSONObject entry = data.getJSONObject("entry");
@@ -134,7 +134,7 @@ public class OfferReportTest {
         assertEquals("area", entry.getString("scoreKind"));
         assertTrue(outgoing.getString("read").contains("area score "));
         assertEquals("existing user-selected current rules remain", 1200,
-                outgoing.getJSONObject("rules").getInt("flatCents"));
+                outgoing.getJSONObject("rules").getInt("payPerStopCents"));
 
         // An already queued report must cross the same boundary when it is remasked before sending.
         outgoing.put("entry", local);
@@ -241,7 +241,7 @@ public class OfferReportTest {
         JSONObject rules = new JSONObject(text).getJSONObject("rules");
         assertEquals("exactly these keys", new TreeSet<>(KEYS), keys(rules));
         assertTrue(rules.getBoolean("enabled"));
-        assertEquals(1200, rules.getInt("flatCents"));
+        assertEquals(1200, rules.getInt("payPerStopCents"));
         assertEquals(150, rules.getInt("perMileCents"));
         assertEquals("cents per minute as stored ($36.00 per hour)", 60, rules.getInt("perMinuteCents"));
         assertEquals(4, rules.getInt("maxStops"));
@@ -274,7 +274,7 @@ public class OfferReportTest {
                 new AutopilotStore.Change(AT - 4 * MIN - 20_000, 100, 82, "RECOVERY"), true, 2, AT);
         JSONObject json = rules(status);
         assertEquals(new TreeSet<>(KEYS), keys(json));
-        assertEquals(400, json.getInt("flatCents"));
+        assertEquals(400, json.getInt("payPerStopCents"));
         assertEquals(25, json.getInt("perMinuteCents"));
         assertTrue(json.getBoolean("autopilot"));
         assertEquals(50, json.getInt("autopilotGoal"));

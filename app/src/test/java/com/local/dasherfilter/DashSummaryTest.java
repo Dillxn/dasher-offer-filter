@@ -437,7 +437,7 @@ public class DashSummaryTest {
         DashSummary.flush();
         String off = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER, modelForTest(start));
         assertTrue(off, off.contains(" · mode strict · acceptance learning off · bar 100%"));
-        assertTrue(off, off.contains(" · bar 100% (Autopilot off) · rules set: pay, per mile, per hour, max stops\n"));
+        assertTrue(off, off.contains(" · bar 100% (Autopilot off) · rules set: pay per stop, per mile, per hour, max stops\n"));
 
         // Autopilot on, its bar moved: the settings say the bar and the switch, never what the bar came from.
         FilterStore.setAutopilot(app, true, 70);
@@ -446,12 +446,12 @@ public class DashSummaryTest {
         String on = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER, modelForTest(start));
         String settings = on.substring(on.indexOf("Settings: "), on.indexOf('\n', on.indexOf("Settings: ")));
         assertTrue(settings, settings.startsWith("Settings: auto-decline on · Peek on · "));
-        assertTrue(settings, settings.endsWith(" · bar 82% (Autopilot on) · rules set: pay, per mile, per hour, "
+        assertTrue(settings, settings.endsWith(" · bar 82% (Autopilot on) · rules set: pay per stop, per mile, per hour, "
                 + "max stops"));
         assertFalse(settings, settings.contains("37"));
         assertFalse(settings, settings.contains("goal"));
         assertTrue(settings, settings.contains(" · mode strict · acceptance learning off · "));
-        for (String retired : new String[] {"score by area", "adaptive", "minimums scale", "per stop", "per item",
+        for (String retired : new String[] {"score by area", "adaptive", "minimums scale", "per item",
                 "hotspot", "per minute", "learned"}) {
             assertFalse(retired, on.toLowerCase(java.util.Locale.US).contains(retired));
         }

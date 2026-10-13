@@ -109,9 +109,12 @@ public class AcceptanceObservationTest {
         return root;
     }
 
-    /** $16.75 for 3 stops, 3.9 mi and 30 min: it passes those rules (it needs $15.02, for its miles). */
+    /**
+     * $16.75 for 2 stops (a single order; 3 stops ask pay per stop twice from 0.6.12), 3.9 mi and 30 min:
+     * it passes those rules (it needs $15.02, for its miles).
+     */
     private AccessibilityNodeInfo passing(String countdown) {
-        return offer("$16.75", "3 stops (3.9 mi) • 30 min", countdown);
+        return offer("$16.75", "2 stops (3.9 mi) • 30 min", countdown);
     }
 
     private AccessibilityNodeInfo screen(String... labels) {
@@ -230,7 +233,7 @@ public class AcceptanceObservationTest {
         show(waiting());
         show(passing("0:35"));
         later(1_000);
-        show(screen("$16.75", "3 stops (3.9 mi) • 30 min"));
+        show(screen("$16.75", "2 stops (3.9 mi) • 30 min"));
         assertNotAccepted(1675);
         // Dasher finishes the transition, but sends no accessibility event for the completed frame.
         replaceWithoutEvent(delivery());
@@ -314,12 +317,12 @@ public class AcceptanceObservationTest {
         clicked(accept);
         show(screen("Arrived at store"));
         assertAcceptedByTheUser(1675);
-        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 2)));
         assertRulesUnchanged(RULES);
     }
 
     @Test public void provenUnsentRollbackPreservesEarlierAutomaticRequestForTheSameOffer() {
-        OfferSnapshot prior = new OfferSnapshot(1675, 3.9, 30, 3);
+        OfferSnapshot prior = new OfferSnapshot(1675, 3.9, 30, 2);
         finalGuardRefusal(prior);
         assertTrue(AutoAcceptMemory.covers(app, prior));
         clicked(accept);
@@ -336,7 +339,7 @@ public class AcceptanceObservationTest {
         OfferSnapshot prior = new OfferSnapshot(2100, 4.0, 35, 2);
         finalGuardRefusal(prior);
         assertTrue(AutoAcceptMemory.covers(app, prior));
-        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 2)));
     }
 
     @Test public void provenUnsentCleanupDoesNotOverwriteNewerRequestProvenance() {
@@ -349,7 +352,7 @@ public class AcceptanceObservationTest {
         OfferSnapshot prior = new OfferSnapshot(2100, 4.0, 35, 2);
         finalGuardRefusal(prior, () -> AutoAcceptMemory.clear(app));
         assertFalse(AutoAcceptMemory.covers(app, prior));
-        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 2)));
     }
 
     private void finalGuardRefusal(OfferSnapshot previous) { finalGuardRefusal(previous, () -> {}); }
@@ -365,7 +368,7 @@ public class AcceptanceObservationTest {
         controller.get().windowSource = () -> {
             if (calledFrom("dasherStillReadable") && ++metadataChecks[0] == 2) {
                 // This is the second final visibility check, after both persistence commits, before dispatch.
-                assertTrue(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+                assertTrue(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 2)));
                 afterWrite.run();
                 FilterStore.setAutoAcceptEnabled(app, false);
             }
@@ -436,7 +439,7 @@ public class AcceptanceObservationTest {
     }
 
     @Test public void uncertainAutomaticProvenanceMarksTheRetainedPayAcceptanceAutomatic() {
-        OfferSnapshot original = new OfferSnapshot(1675, 3.9, 30, 3).withItems(2, true);
+        OfferSnapshot original = new OfferSnapshot(1675, 3.9, 30, 2).withItems(2, true);
         assertTrue(AutoAcceptMemory.remember(app, original));
         show(waiting());
         AccessibilityNodeInfo shopping = passing("0:35");
@@ -454,7 +457,7 @@ public class AcceptanceObservationTest {
         clicked(accept);
         show(screen("Arrived at store", "$16.75"));
         assertAcceptedByTheUser(1675);
-        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 3)));
+        assertFalse(AutoAcceptMemory.covers(app, new OfferSnapshot(1675, 3.9, 30, 2)));
         assertRulesUnchanged(RULES);
     }
 

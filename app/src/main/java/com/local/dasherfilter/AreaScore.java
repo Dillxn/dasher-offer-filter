@@ -7,7 +7,8 @@ import java.math.RoundingMode;
 
 /** Shared exact three-axis floors, strict/area requirements and stable drawing geometry.
  * Decimal route facts and learned rate pairs remain rational through aggregation and the bar. Only the final
- * required pay rounds up to a cent. Display projections never decide a result. */
+ * required pay rounds up to a cent. Display projections never decide a result. The pay axis is pay per stop (0.6.12):
+ * it asks its rate for each stop after the first pickup ({@link #payUnits}). */
 final class AreaScore {
     static final int PAY = 0, MILE = 1, MINUTE = 2, STOP = 3, HOTSPOT = 4, ITEM = 5, AXES = 6;
     static final float SPREAD = 30;
@@ -46,6 +47,8 @@ final class AreaScore {
         final boolean[] active = new boolean[AXES];
         final boolean missing;
         private final Fraction[] effective = new Fraction[AXES];
+        /** The least an active axis whose own fact is unread can ask (pay per stop with stops unread: one stop). */
+        private final Fraction[] lower = new Fraction[AXES];
         private final int count;
         private Floors(FilterSettings rules, OfferSnapshot offer) {
             int[] saved = rules.minimums();
@@ -64,7 +67,11 @@ final class AreaScore {
                 Fraction used = maximum(fixed, rules.acceptanceLearning ? learned : null);
                 effective[axis] = used;
                 effectiveCents[axis] = display(used);
-                if (used == null) unread = true;
+                if (used == null) {
+                    unread = true;
+                    if (axis == PAY) lower[axis] = maximum(fraction(fixedFloor(PAY, saved[PAY], 1)),
+                            rules.acceptanceLearning ? acceptedFloor(PAY, rules.accepted, 1) : null);
+                }
             }
             missing = unread;
             count = axes;
@@ -78,7 +85,7 @@ final class AreaScore {
         }
         private Fraction knownMaximum() {
             Fraction result = null;
-            for (int axis : MONEY_AXES) result = maximum(result, effective[axis]);
+            for (int axis : MONEY_AXES) result = maximum(result, effective[axis] != null ? effective[axis] : lower[axis]);
             return result;
         }
         private Fraction requiredSquare(boolean area, boolean partial) {
@@ -122,8 +129,10 @@ final class AreaScore {
             known = display(exact);
             missing = floors.missing;
             int found = -1;
-            for (int money : MONEY_AXES) if (exact != null && floors.effective[money] != null
-                    && exact.compareTo(floors.effective[money]) == 0) { found = money; break; }
+            for (int money : MONEY_AXES) {
+                Fraction ask = floors.effective[money] != null ? floors.effective[money] : floors.lower[money];
+                if (exact != null && ask != null && exact.compareTo(ask) == 0) { found = money; break; }
+            }
             axis = found;
         }
         BigDecimal complete() { return missing ? null : known; }
@@ -197,8 +206,27 @@ final class AreaScore {
         }
     }
 
+    /**
+     * How many times the pay-per-stop minimum applies to an offer of {@code stops} stops: rule C (0.6.12), each stop
+     * after the first pickup, {@code max(1, stops − 1)}. Dasher counts a single order as two stops (its pickup and its
+     * drop-off), so a single order asks the number once, exactly as the minimum pay did before; three stops ask it
+     * twice, four three times. Null when the stops were not read (a read of 0 counts as unread).
+     */
+    static Integer payUnits(Integer stops) {
+        return stops == null || stops < 1 ? null : Math.max(1, stops - 1);
+    }
+
+    /** The learned pay ask for {@code units} stops: the best pay per stop × units, plus a cent. */
+    private static Fraction acceptedFloor(int axis, AcceptedFloors proof, int units) {
+        return axis == PAY && proof.highestPayCents > 0 ? Fraction.of((long) proof.highestPayCents * units)
+                .dividedBy(Fraction.of(proof.payUnits)).plus(Fraction.of(1)) : null;
+    }
+
     private static Fraction acceptedFloor(int axis, AcceptedFloors proof, OfferSnapshot offer) {
-        if (axis == PAY) return proof.highestPayCents > 0 ? Fraction.of((long) proof.highestPayCents + 1) : null;
+        if (axis == PAY) {
+            Integer units = payUnits(offer.stops);
+            return units == null ? null : acceptedFloor(PAY, proof, units);
+        }
         if (axis == MILE && proof.hasPerMile() && offer.miles != null) {
             return Fraction.of(proof.milePay).times(Fraction.of(BigDecimal.valueOf(offer.miles)))
                     .dividedBy(Fraction.of(BigDecimal.valueOf(proof.miles)));
@@ -212,11 +240,19 @@ final class AreaScore {
     private static BigDecimal display(Fraction value) { return value == null ? null : value.display(); }
     private static Fraction maximum(Fraction a, Fraction b) { return a == null ? b : b == null || a.compareTo(b) >= 0 ? a : b; }
 
-    /** Exact fixed component; a known zero route asks zero, while an unread route remains null. */
+    /** The pay-per-stop ask for a known number of {@code units} (its lower bound when the stops are unread: 1). */
+    static BigDecimal fixedFloor(int axis, int rate, int units) {
+        return rate <= 0 || axis != PAY ? null : BigDecimal.valueOf((long) rate * units);
+    }
+
+    /** Exact fixed component; a known zero route asks zero, while an unread route (or unread stops) remains null. */
     static BigDecimal fixedFloor(int axis, int rate, OfferSnapshot offer) {
         if (rate <= 0) return null;
         switch (axis) {
-            case PAY: return BigDecimal.valueOf(rate);
+            case PAY: {
+                Integer units = payUnits(offer.stops);
+                return units == null ? null : BigDecimal.valueOf((long) rate * units);
+            }
             case MILE: return offer.miles == null ? null : BigDecimal.valueOf(rate).multiply(BigDecimal.valueOf(offer.miles));
             case MINUTE: return offer.minutes == null ? null : BigDecimal.valueOf((long) rate * offer.minutes);
             default: return null;
