@@ -1791,6 +1791,7 @@ public final class OfferFilterService extends AccessibilityService {
         // The launch-screen line belongs to this screen reader's own watch of a start: a new connection has none.
         launchHold.set(0);
         active = this;
+        ReadingStopped.cancel(this);
         // During an active dash the screen is not let time out, whatever app is in front (the owner: "Don't let it lock
         // mid-dash"), so Peek can still bring Dasher up; it never wakes or unlocks the phone, and the power button wins.
         // Only on fresh signs of the dash, or Dasher in front (window metadata only) showing a screen of it now.
@@ -2016,11 +2017,6 @@ public final class OfferFilterService extends AccessibilityService {
         if (clicked && usersClick(click, event, at)) {
             dasherClicks.incrementAndGet();
             putAwayAfterUserTap(at);
-        }
-        // A Split tap's Dasher first waits for Dasher: its window changes (and the user's click, counted just above,
-        // which gives it up) are looked at now, not at the next of its looks.
-        if (splitPairingPending && (windowsChanged || clicked || type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-            pairingLookSoon();
         }
         // A click of the user's during a decline hands it back at once, like a touch (before any further tap); one
         // during a peek leaves Dasher up.
@@ -2355,7 +2351,7 @@ public final class OfferFilterService extends AccessibilityService {
                 new java.util.HashSet<>(dasherWindowIds));
         synchronized (launches) {
             for (LaunchWatch old : launches) {
-                if (now - old.at > LAUNCH_VERDICT_MS + PAIRING_LOOK_MS) launches.remove(old);
+                if (now - old.at > LAUNCH_VERDICT_MS + 250) launches.remove(old);
             }
             while (launches.size() >= LAUNCHES_KEPT) launches.remove(0);
             launches.add(watch);
@@ -2431,8 +2427,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (now - watch.at <= LAUNCH_VERDICT_MS && started >= watch.at) watching = true;
         }
         boolean held = launchHold.get() != 0;
-        SplitPairing pairing = splitPairing;
-        if (!watching && !held && pairing == null) return;
+        if (!watching && !held) return;
         String word = readWord();
         if (word != null) {
             boolean recognised = !UNRECOGNISED.equals(word);
@@ -2442,10 +2437,6 @@ public final class OfferFilterService extends AccessibilityService {
                 if (recognised) watch.past = true;
             }
             if (held && recognised) liftLaunchHold(this, word, "Dasher drew");
-        }
-        if (pairing != null && pairing.ownAt == NEVER) {
-            scanner.removeCallbacks(pairingTick);
-            scanner.post(pairingTick);
         }
     }
 
@@ -2598,362 +2589,102 @@ public final class OfferFilterService extends AccessibilityService {
                 + " excludeFromRecents=" + ((found.flags & ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS) != 0);
     }
 
-    // ---- The Split tap's Dasher first: this app's own task started beside Dasher, once (scanner thread) ----
+    // ---- The Split tap: the split pane's start, logged once the screen split (DasherSplit, SplitPaneActivity) ----
 
-    /** Between Dasher's own window changes, the pairing looks at Android's list of windows this often. */
-    static final long PAIRING_LOOK_MS = 250;
-    /** Why the pairing last waited, as its "not paired" line says once the tap's time ran out. */
-    private static final String WAIT_UP = "Dasher not up " + DasherSplit.PENDING_MS / 1000 + " s after the tap";
-    private static final String WAIT_LAUNCHER = "Dasher still on its launch screen";
-    private static final String WAIT_UNNAMED = "Dasher's screen not recognised " + DasherSplit.PENDING_MS / 1000
-            + " s after the tap";
-    private static final String WAIT_READ = "Dasher's latest screen not read " + DasherSplit.PENDING_MS / 1000
-            + " s after the tap";
-    private static final String WAIT_OFFER = "an offer or Dasher's question is up";
-    private static final String WAIT_BUSY = "a decline, peek or automatic acceptance is under way";
-    /**
-     * Paused (auto-decline off, or no rule set): nothing of Dasher's is read, so no read can say that no offer is up,
-     * and no split is made beside it ({@link DasherSplit#start} opens recent apps then).
-     */
     static final String NOT_READING = "not reading Dasher while paused";
-    /** Where the pairing's look found Dasher. */
-    private static final int PAIR_NOT_YET = 0;
-    private static final int PAIR_DASHER = 1;
-    private static final int PAIR_OTHER = 2;
-    private static final int PAIR_SPLIT = 3;
-    /** Unknown windows whose root (alone) a pairing asks for at most, each once, to learn whose they are. */
-    private static final int PAIR_ASKED_MAX = 8;
+    static final String SPLIT_OFFER_UP = "an offer or Dasher's question is up";
+    static final String SPLIT_BUSY = "a decline, peek or automatic acceptance is under way";
 
-    /** A Split tap's Dasher-first start: Dasher started, this app's own task to start beside it once it is up. */
-    private static final class SplitPairing {
-        final int gen;
-        final long tapAt;
-        /** The user's clicks on Dasher, and the last card tap (Peek's clock), as the tap was made. */
-        final long clicks;
-        final long cardTaps;
-        /** The launch watch the tap's start of Dasher armed. */
-        final LaunchWatch watch;
-        /** Unknown windows whose root alone was asked for, to learn whose they are. */
-        final Set<Integer> asked = new java.util.HashSet<>();
-        /** When this app's own start beside Dasher was made, {@link #NEVER} before. */
-        long ownAt = NEVER;
-
-        SplitPairing(int gen, long tapAt, long clicks, long cardTaps, LaunchWatch watch) {
-            this.gen = gen;
-            this.tapAt = tapAt;
-            this.clicks = clicks;
-            this.cardTaps = cardTaps;
-            this.watch = watch;
-        }
+    /**
+     * Before the Split tap opens recent apps by itself (main thread; no split after the split pane's start, or Dasher
+     * not beside after its start from the pane): on the scanner, whether anything would meet them, the notice not
+     * accepted, the screen off or locked, a pause, an offer up or its notification, or a decline, peek or automatic
+     * acceptance under way. Nothing then, with one line saying why; else {@code open} runs on the main thread. With
+     * screen reading off, {@code open} runs at once.
+     *
+     * @param why what is logged with a refusal ("no split after the split pane's start")
+     */
+    static void beforeSplitRecents(Context context, String why, Runnable open) {
+        beforeSplitRecents(context, why, false, open);
     }
 
-    /** The Split tap's pairing under way (scanner only), null for none. */
-    private SplitPairing splitPairing;
-    /** Whether one is waiting for Dasher (main thread reads): Dasher's window changes and the user's clicks look again. */
-    private volatile boolean splitPairingPending;
-    private final Runnable pairingTick = this::pairingTick;
-    private final Runnable ownBesideCheck = this::ownBesideCheck;
-
     /**
-     * The Split tap started Dasher's launcher, full screen (main thread, from {@link DasherSplit}): once Dasher is up past
-     * its launch screen with nothing of an offer up, this app's own task is started beside it, once, launch-adjacent.
-     * From Android's list of windows and Dasher's own events only: nothing new is read from Dasher for it, Dasher's
-     * root is never asked for (an unknown window's alone, once, to learn whose it is), and nothing is kept.
-     *
-     * @param gen the tap's number ({@link DasherSplit#pairingCurrent})
+     * As {@link #beforeSplitRecents(Context, String, Runnable)}; with {@code dividerIsTheSplit}, a split divider in
+     * Android's list of windows is the split pane's split (the page has not said so yet): that line, and nothing opens.
      */
-    static void pairWhenDasherIsUp(Context context, int gen) {
+    static void beforeSplitRecents(Context context, String why, boolean dividerIsTheSplit, Runnable open) {
         OfferFilterService service = active;
         if (service == null || service.stopped) {
-            if (DasherSplit.endPairing(gen)) {
-                DiagnosticLog.log(context, "split", "not paired: screen reading is off; nothing more opened");
+            open.run();
+            return;
+        }
+        service.onScanner(() -> {
+            if (dividerIsTheSplit && service.dividerListed()) {
+                service.onMain(() -> {
+                    if (DasherSplit.ownStartSplit(DasherSplit.pairing())) splitMadeByOwnStart(service);
+                });
+                return;
             }
-            return;
-        }
-        long at = SystemClock.uptimeMillis();
-        SplitPairing pairing = new SplitPairing(gen, at, service.dasherClicks.get(), service.cardTapAt, service.launch);
-        service.splitPairingPending = true;
-        service.scanner.post(() -> service.beginPairing(pairing));
+            String blocked = service.splitRecentsBlocked(SystemClock.uptimeMillis());
+            if (blocked == null) {
+                service.onMain(open);
+                return;
+            }
+            service.onMain(() -> {
+                if (DasherSplit.endPairing(DasherSplit.pairing()) || DasherSplit.pending()) {
+                    DasherSplit.forgetPending();
+                }
+                DiagnosticLog.log(service, "split", "not paired: " + blocked + " (" + why + "); nothing more opened");
+            });
+        });
     }
 
-    private void beginPairing(SplitPairing pairing) {
-        if (stopped) return;
-        scanner.removeCallbacks(pairingTick);
-        scanner.removeCallbacks(ownBesideCheck);
-        splitPairing = pairing;
-        // How Dasher's launcher starts, once per Dasher version, for a report (on the describer's thread).
-        describeDasherActivity(DasherSplit.launcherClass(), true);
-        pairingTick();
+    /** Scanner: a split divider is in Android's list of windows now (window metadata only). */
+    private boolean dividerListed() {
+        try {
+            List<AccessibilityWindowInfo> windows = windowSource.get();
+            if (windows != null) for (AccessibilityWindowInfo window : windows) {
+                if (window.getType() == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) return true;
+            }
+        } catch (RuntimeException unavailable) {
+            // Not listed: the page says when it splits.
+        }
+        return false;
     }
 
-    /** Main thread: Dasher's window changed, or the user clicked on it, while the pairing waits: it looks again now. */
-    private void pairingLookSoon() {
-        scanner.removeCallbacks(pairingTick);
-        scanner.post(pairingTick);
-    }
-
-    /**
-     * The pairing's look (scanner): given up for the user's tap on Dasher, a card's tap, the screen off or locked,
-     * another app in front, a split made another way, the notice not accepted, or auto-decline paused (nothing of
-     * Dasher's is read then, so no read can say no offer is up); else, with Dasher up full screen past its launch
-     * screen, its latest change read and nothing of an offer up (no offer's notification tracked; no decline,
-     * question, decline-error recovery, automatic acceptance or peek under way), this app's own start beside it; else
-     * it looks again, until {@link DasherSplit#PENDING_MS} after the tap.
-     */
-    private void pairingTick() {
-        SplitPairing pairing = splitPairing;
-        if (pairing == null || stopped) return;
-        scanner.removeCallbacks(pairingTick);
-        if (pairing.ownAt != NEVER) return;
-        // Ended on the page (it came back without a split, a newer tap): that said why.
-        if (!DasherSplit.pairingCurrent(pairing.gen)) {
-            forgetPairing(pairing);
-            return;
-        }
-        long now = SystemClock.uptimeMillis();
-        String cancel = pairingCancel(pairing);
-        if (cancel != null) {
-            endPairing(pairing, cancel);
-            return;
-        }
-        int place = pairingPlace(pairing);
-        if (place == PAIR_OTHER) {
-            endPairing(pairing, "another app came to the front");
-            return;
-        }
-        if (place == PAIR_SPLIT) {
-            endPairing(pairing, "the screen split before this app's own start");
-            return;
-        }
-        LaunchWatch watch = pairing.watch;
-        String waiting;
-        if (place != PAIR_DASHER) {
-            waiting = WAIT_UP;
-        } else if (watch == null || !watch.past) {
-            waiting = watch != null && watch.launcherSeen ? WAIT_LAUNCHER : WAIT_UNNAMED;
-        } else if (passive || queued.get() != QUEUED_NONE || quietScanPending || judgedReadAt < pairing.tapAt) {
-            // Paused by the saved rules gives the pairing up (above); still paused only until the resume's read.
-            waiting = WAIT_READ;
-        } else {
-            waiting = pairingBusy(now);
-        }
-        if (waiting == null) {
-            startOwnBeside(pairing, now);
-            return;
-        }
-        if (now - pairing.tapAt >= DasherSplit.PENDING_MS) {
-            endPairing(pairing, waiting);
-            return;
-        }
-        scanner.postDelayed(pairingTick, PAIRING_LOOK_MS);
-    }
-
-    /** Why the pairing is given up now, whatever Dasher shows, or null. */
-    private String pairingCancel(SplitPairing pairing) {
+    /** Scanner: why recent apps must not open by themselves now, or null. */
+    private String splitRecentsBlocked(long now) {
         if (!Consent.accepted(this)) return "the notice is not accepted";
         if (!phoneReadable()) return "the screen is off or locked";
-        if (dasherClicks.get() != pairing.clicks) return "your tap on Dasher";
-        if (cardTapAt != pairing.cardTaps) return "a card was tapped";
         if (pausedNow()) return NOT_READING;
-        return null;
-    }
-
-    /**
-     * Where Android's list of windows has Dasher, for the pairing (window metadata; an unknown active window's root
-     * alone is asked for once to learn whose it is; Dasher's never): up full screen in front, uncovered; another app in
-     * front; the screen split; or not yet (this app's own screen, the shade, nothing active).
-     */
-    private int pairingPlace(SplitPairing pairing) {
-        List<AccessibilityWindowInfo> windows;
-        try {
-            windows = windowSource.get();
-        } catch (RuntimeException unavailable) {
-            return PAIR_NOT_YET;
-        }
-        if (windows == null) return PAIR_NOT_YET;
-        boolean split = false;
-        boolean system = false;
-        AccessibilityWindowInfo activeApp = null;
-        for (AccessibilityWindowInfo window : windows) {
-            int type = window.getType();
-            if (type == AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) split = true;
-            if (!window.isActive()) continue;
-            if (type == AccessibilityWindowInfo.TYPE_APPLICATION && activeApp == null) activeApp = window;
-            else if (type == AccessibilityWindowInfo.TYPE_SYSTEM) system = true;
-        }
-        if (split) return PAIR_SPLIT;
-        if (system || activeApp == null) return PAIR_NOT_YET;
-        SplitWindows.Owner owner = pairingOwner(pairing, activeApp);
-        if (owner == SplitWindows.Owner.OTHER) return PAIR_OTHER;
-        if (owner == SplitWindows.Owner.DASHER && activeWindowUncovered(windows, activeApp)) return PAIR_DASHER;
-        return PAIR_NOT_YET;
-    }
-
-    /** Whose the active window is, by its ID; an unknown one's root alone is asked for once. Null when not known. */
-    private SplitWindows.Owner pairingOwner(SplitPairing pairing, AccessibilityWindowInfo window) {
-        int id = window.getId();
-        if (!realWindowId(id)) return window == lastReadableWindow ? SplitWindows.Owner.DASHER : null;
-        if (dasherWindowIds.contains(id)) return SplitWindows.Owner.DASHER;
-        if (isOwnWindow(id)) return SplitWindows.Owner.OURS;
-        if (otherWindows.contains(id)) return SplitWindows.Owner.OTHER;
-        if (pairing.asked.size() >= PAIR_ASKED_MAX || !pairing.asked.add(id)) return null;
-        AccessibilityNodeInfo root = fetchRoot(window, ROOT_IDENTITY, true);
-        if (root == null) return null;
-        if (isDasher(root)) return SplitWindows.Owner.DASHER;
-        return getPackageName().contentEquals(nonNull(root.getPackageName())) ? SplitWindows.Owner.OURS
-                : SplitWindows.Owner.OTHER;
-    }
-
-    /**
-     * Whether something of an offer, or of the app's own work on one, would meet the split now: the last read showed
-     * an offer's figures, Dasher's question or a screen too big to read; an offer's notification is tracked (Dasher
-     * draws its offer a little after it, so a read of the wait just before says nothing of it); or a decline (its
-     * question awaited or held, a decline-error recovery), an automatic acceptance or a peek is under way. Never asked
-     * while paused: the pairing is given up then ({@link #NOT_READING}).
-     */
-    private String pairingBusy(long now) {
         if (readShowsOffer() || scene == DasherScene.OFFER || OfferNotificationService.hasActiveOffer()) {
-            return WAIT_OFFER;
+            return SPLIT_OFFER_UP;
         }
         if (declineUnderWay(now) || declineState.hasPendingConfirmation(now) || heldConfirmation != null
                 || declineError.pending() || peek.active() || autoAccept.candidate() != null || autoAcceptWatched
                 || (autoRequestedAt != 0 && now - autoRequestedAt <= AutoAccept.SUPPRESS_MS)) {
-            return WAIT_BUSY;
+            return SPLIT_BUSY;
         }
         return null;
     }
 
     /**
-     * Dasher is up past its launch screen at a safe moment: this app's own task is started beside it, once, as its
-     * task's base intent (else its enabled launcher alias) with exactly two flags, a new task launched adjacent, which
-     * the phone answers by splitting the screen. The only launch-adjacent start this app makes; never of Dasher.
-     */
-    private void startOwnBeside(SplitPairing pairing, long now) {
-        if (!DasherSplit.ownStarting(pairing.gen)) {
-            forgetPairing(pairing);
-            return;
-        }
-        pairing.ownAt = now;
-        splitPairingPending = false;
-        Intent own = ownTaskIntent();
-        String refused = own == null ? "no launch intent of its own" : null;
-        if (own != null) {
-            own.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
-            try {
-                peekStarter.accept(own);
-            } catch (RuntimeException failed) {
-                // Refused (not from the background, say), or a start Android answered with an error of its own: never
-                // the scanner's failure, which would stop all screen reading. Recent apps instead.
-                refused = failed.getClass().getSimpleName();
-            }
-        }
-        if (refused != null) {
-            forgetPairing(pairing);
-            String why = "this app's own launch-adjacent start was refused: opening recent apps (" + refused + ")";
-            onMain(() -> DasherSplit.recentAppsAfterOwnStart(this, pairing.gen, why));
-            return;
-        }
-        LaunchWatch watch = pairing.watch;
-        String named = watch == null || watch.lastClass == null ? "no class named"
-                : watch.lastClass + (watch.lastNew ? ", new window" : ", known window");
-        DiagnosticLog.log(this, "split", "Dasher up " + (now - pairing.tapAt) + " ms after the tap (" + named
-                + "): this app's own launch-adjacent start");
-        scanner.postDelayed(ownBesideCheck, DasherSplit.VERIFY_MS);
-    }
-
-    /**
-     * Offer Filter's own task's base intent, as Android lists it ({@link ActivityManager#getAppTasks}: the task whose
-     * root is the homepage), else its enabled launcher alias; null when neither. Flags are the caller's.
-     */
-    private Intent ownTaskIntent() {
-        try {
-            ActivityManager activities = getSystemService(ActivityManager.class);
-            if (activities != null) {
-                for (ActivityManager.AppTask task : activities.getAppTasks()) {
-                    ActivityManager.RecentTaskInfo info = task.getTaskInfo();
-                    if (info == null || info.baseIntent == null) continue;
-                    ComponentName root = info.baseIntent.getComponent();
-                    if (root == null) root = info.baseActivity;
-                    if (LauncherAppearance.ourHome(this, root)) return new Intent(info.baseIntent);
-                }
-            }
-        } catch (RuntimeException unavailable) {
-            // Its launcher alias, below.
-        }
-        return DasherSplit.launcher(this, getPackageName());
-    }
-
-    /**
-     * {@link DasherSplit#VERIFY_MS} after this app's own start beside Dasher: split (the divider listed), and the line
-     * says so, unless the page said it already. Else recent apps open with the phone's words (main thread), unless
-     * something since would meet them: the user's tap on Dasher or a card, the screen off or locked, the notice, a
-     * pause, another app in front, an offer or its notification, or a decline, peek or automatic acceptance under way
-     * (the pairing's own checks, again); then nothing more opens, and the line says why.
-     */
-    private void ownBesideCheck() {
-        SplitPairing pairing = splitPairing;
-        if (pairing == null || pairing.ownAt == NEVER || stopped) return;
-        forgetPairing(pairing);
-        if (!DasherSplit.ownStartCurrent(pairing.gen)) return;
-        int place = pairingPlace(pairing);
-        if (place == PAIR_SPLIT) {
-            if (DasherSplit.ownStartSplit(pairing.gen)) logSplitByOwnStart();
-            return;
-        }
-        String why = pairingCancel(pairing);
-        if (why == null && place == PAIR_OTHER) why = "another app came to the front";
-        if (why == null) why = pairingBusy(SystemClock.uptimeMillis());
-        if (why != null) {
-            if (DasherSplit.endPairing(pairing.gen)) {
-                DiagnosticLog.log(this, "split", "not paired: " + why + " (no split after this app's own start); "
-                        + "nothing more opened");
-            }
-            return;
-        }
-        onMain(() -> DasherSplit.recentAppsAfterOwnStart(this, pairing.gen, "no split " + DasherSplit.VERIFY_MS
-                + " ms after this app's own launch-adjacent start: opening recent apps"));
-    }
-
-    /** The pairing is over (scanner): nothing more of it runs. */
-    private void forgetPairing(SplitPairing pairing) {
-        if (splitPairing != pairing) return;
-        splitPairing = null;
-        splitPairingPending = false;
-        scanner.removeCallbacks(pairingTick);
-    }
-
-    /** The pairing is given up (scanner): nothing more is started, and the line says why, once. */
-    private void endPairing(SplitPairing pairing, String why) {
-        forgetPairing(pairing);
-        if (DasherSplit.endPairing(pairing.gen)) {
-            DiagnosticLog.log(this, "split", "not paired: " + why + "; nothing more opened");
-        }
-    }
-
-    /** A card was tapped (scanner): a pairing waiting for Dasher is given up, and Dasher stays as the card opened it. */
-    private void cancelPairing(String why) {
-        SplitPairing pairing = splitPairing;
-        if (pairing != null && pairing.ownAt == NEVER) endPairing(pairing, why);
-    }
-
-    /**
-     * The screen split after this app's own start beside Dasher (any thread): one line, from the scanner, with where
-     * Dasher is (Android's list of windows) and how many tasks of its own this app has (one more than at the tap means
-     * Android made a second one).
+     * The screen split after the split pane's start beside the homepage (any thread): one line, from the scanner, with
+     * where Dasher is (Android's list of windows; the pane starts it next) and how many tasks of its own this app has.
      */
     static void splitMadeByOwnStart(Context context) {
         OfferFilterService service = active;
         if (service == null || service.stopped) {
-            DiagnosticLog.log(context, "split", "split beside Dasher by this app's own launch-adjacent start (own tasks "
-                    + DasherSplit.ownTasks(context) + "); nothing more opened");
+            DiagnosticLog.log(context, "split", "screen split by the split pane's launch-adjacent start (own tasks "
+                    + DasherSplit.ownTasks(context) + "); the pane starts Dasher");
             return;
         }
         service.onScanner(service::logSplitByOwnStart);
     }
 
     private void logSplitByOwnStart() {
-        DiagnosticLog.log(this, "split", "split beside Dasher by this app's own launch-adjacent start (" + dasherPlace()
-                + ", own tasks " + DasherSplit.ownTasks(this) + "); nothing more opened");
+        DiagnosticLog.log(this, "split", "screen split by the split pane's launch-adjacent start (" + dasherPlace()
+                + ", own tasks " + DasherSplit.ownTasks(this) + "); the pane starts Dasher");
     }
 
     /** "Dasher bottom 48%" from Android's list of windows now ({@link SplitWindows#field}), else not identified. */
@@ -3029,6 +2760,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     @Override public boolean onUnbind(Intent intent) {
+        ReadingStopped.unbound(this);
         stop();
         return super.onUnbind(intent);
     }
@@ -4655,8 +4387,6 @@ public final class OfferFilterService extends AccessibilityService {
                 Peek.log(service, CARD_BEFORE_UNLOCK);
             }
             service.peekOver("left Dasher up because you tapped the offer's card", Peek.Outcome.INTERRUPTED);
-            // A Split tap's Dasher first waiting for Dasher starts nothing beside it now: the card opened Dasher.
-            service.cancelPairing("a card was tapped");
             // Tapped from a navigation app: the Back to map chip waits for the offer to end.
             service.noteCardFront(atTap);
         });

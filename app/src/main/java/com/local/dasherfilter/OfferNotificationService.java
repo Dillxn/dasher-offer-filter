@@ -626,6 +626,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         DiagnosticLog.log(this, "notification", "listener disconnected; delivery monitoring unavailable");
         try {
             requestRebind(new ComponentName(this, OfferNotificationService.class));
+            ReadingStopped.afterRebind(this);
         } catch (RuntimeException error) {
             DiagnosticLog.log(this, "notification", "rebind request failed");
         }

@@ -343,8 +343,7 @@ public class BundledNotesTest {
      * ("the mode button being on the homepage"), a peek's take-back teaching, the coloured tab beside this app and the
      * daily count's switch, each said once, with no promise of better offers.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.3", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release063SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.3");
         assertEquals(lines.toString(), 3, lines.size());
         String release = String.join(" ", lines);
@@ -352,6 +351,26 @@ public class BundledNotesTest {
                 "Split opens Dasher full screen first", "Strict or Area is a chip", "no Mode row",
                 "take-back from a peek's decline teaches", "tab shows beside this app",
                 "daily anonymous count has a Settings switch"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
+                "track", "identifier", "location"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
+     * 0.6.4 (the owner, 12 October 2026: "split screen button didnt work"): Split fixed by the split pane, recent apps at
+     * once where a phone won't split, and the 11:06 stop's notice and listener reconnect, with no promise of offers.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.4", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.4");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"Split works again", "small pane beside the screen", "opens Dasher in its half",
+                "recent apps open at once", "stops this app reading Dasher mid-dash", "one notification says so",
+                "notification access reconnects itself"}) {
             assertTrue(fact, release.contains(fact));
         }
         for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",

@@ -175,6 +175,11 @@ final class BundledNotes {
                         + "Autopilot's; Settings has no Mode row.",
                 "A take-back from a peek's decline teaches, the green or amber tab shows beside this app too, and a "
                         + "daily anonymous count has a Settings switch.");
+        release("0.6.4",
+                "Split works again: this app opens a small pane beside the screen, which opens Dasher in its half. "
+                        + "Where a phone won't split, recent apps open at once.",
+                "If Android stops this app reading Dasher mid-dash, one notification says so; notification access "
+                        + "reconnects itself when it stays down.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

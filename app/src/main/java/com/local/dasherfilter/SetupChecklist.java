@@ -295,6 +295,7 @@ final class SetupChecklist {
                     NotificationListenerService.requestRebind(
                             new ComponentName(activity, OfferNotificationService.class));
                     DiagnosticLog.log(activity, "setup", "notification access allowed but not connected; rebind asked");
+                    ReadingStopped.afterRebind(activity);
                     toast("Reconnecting notification access…");
                     return;
                 } catch (RuntimeException refused) {

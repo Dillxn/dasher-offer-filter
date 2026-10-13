@@ -32,7 +32,7 @@ public final class LaunchAdjacentSourceTest {
     private static final String FLAG = "FLAG_ACTIVITY_LAUNCH_ADJACENT";
 
     @Test
-    public void theOnlyLaunchAdjacentStartIsThisAppsOwnTaskBesideDasher() throws IOException {
+    public void theOnlyLaunchAdjacentStartIsThisAppsOwnSplitPane() throws IOException {
         List<String> found = new ArrayList<>();
         for (Path source : mainJava()) {
             String code = codeOnly(read(source));
@@ -41,18 +41,22 @@ public final class LaunchAdjacentSourceTest {
             }
         }
         assertEquals("one launch-adjacent start in the app: " + found, 1, found.size());
-        assertTrue(found.get(0), found.get(0).startsWith("OfferFilterService.java:"));
+        assertTrue(found.get(0), found.get(0).startsWith("DasherSplit.java:"));
 
+        String split = codeOnly(read(new File(root(), PACKAGE + "DasherSplit.java").toPath()));
+        int[] body = methodBody(split, "private static String paneFirst(");
+        int flag = split.indexOf(FLAG);
+        assertTrue("the flag is set inside paneFirst's own body", flag > body[0] && flag < body[1]);
+        // On this app's own pane's intent, with exactly a new task beside it: nothing reset, cleared or reordered.
+        String statement = statementAround(split, flag).replaceAll("\\s+", "");
+        assertEquals("pane.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)", statement);
+        String inBody = split.substring(body[0], body[1]);
+        assertTrue("it is this app's own split pane's intent",
+                inBody.contains("Intent pane = new Intent(activity, SplitPaneActivity.class)"));
+        assertFalse("never Dasher's launcher", inBody.contains("launcher("));
+        // The screen reader's own start beside Dasher is gone.
         String service = codeOnly(read(new File(root(), PACKAGE + "OfferFilterService.java").toPath()));
-        int[] body = methodBody(service, "private void startOwnBeside(");
-        int flag = service.indexOf(FLAG);
-        assertTrue("the flag is set inside startOwnBeside's own body", flag > body[0] && flag < body[1]);
-        // On this app's own intent, with exactly a new task beside it: nothing reset, cleared or reordered.
-        String statement = statementAround(service, flag).replaceAll("\\s+", "");
-        assertEquals("own.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)", statement);
-        String inBody = service.substring(body[0], body[1]);
-        assertTrue("it is this app's own task's intent", inBody.contains("Intent own = ownTaskIntent();"));
-        assertFalse("never Dasher's launcher", inBody.contains("DasherSplit.launcher(this)"));
+        assertFalse("no startOwnBeside", service.contains("startOwnBeside("));
     }
 
     @Test
