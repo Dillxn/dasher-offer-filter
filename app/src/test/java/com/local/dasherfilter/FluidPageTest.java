@@ -86,7 +86,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
     private static final int[] PICTURED = {220, 300, 400, 500, 600, 700, 800, 900};
     private static final String PICTURES = "build/reports/fluid-layout";
     /** The tile's labels with the whole offer shown: the pay, how long ago, the miles and the minutes. */
-    private static final String WHOLE_OFFER = "\\$7\\.90 · (now|\\d+m) · 7\\.2 mi · 21 min";
+    private static final String WHOLE_OFFER = "\\$7\\.90 · 7\\.2 mi · 21 min · (now|\\d+m)";
 
     private ServiceController<OfferFilterService> screen;
     private ServiceController<OfferNotificationService> listener;
@@ -133,25 +133,26 @@ public class FluidPageTest extends AndroidAdapterTestBase {
     }
 
     // ---- A wide window: 840 dp, an unfolded phone or a tablet ----
+    // (0.6.8: the header's buttons in the tile's row make the band 8 dp taller, so setup's stage needs 8 dp more.)
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-split-font1", 840, true, 1f, 320, 240);
+        sweeps("wide-split-font1", 840, true, 1f, 328, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-full-font1", 840, false, 1f, 320, 240);
+        sweeps("wide-full-font1", 840, false, 1f, 328, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-split-font2", 840, true, 2f, 320, 240);
+        sweeps("wide-split-font2", 840, true, 2f, 328, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-full-font2", 840, false, 2f, 320, 240);
+        sweeps("wide-full-font2", 840, false, 2f, 328, 240);
     }
 
     /**
@@ -338,8 +339,11 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             }
             if (heightDp == TO_DP && widthDp < 400 && !stepToDo && fontScale <= 1f) {
                 RectF radar = now.get("radar").box;
-                assertTrue(where + ": one above the other in a tall narrow window", radar.width() >= width - 1
-                        && radar.bottom <= now.get("caption").box.top + 1);
+                RectF chartBox = now.get("chart").box;
+                RectF mapBox = now.get("map").box;
+                assertTrue(where + ": two tiers in a tall narrow window (0.6.8)", radar.right <= chartBox.left + 1
+                        && mapBox.left <= 1 && mapBox.width() >= width - 1 && mapBox.top >= radar.bottom - 1
+                        && mapBox.top >= chartBox.bottom - 1);
             }
 
             // Targets, overlaps, cut words and the page's edges.
@@ -417,7 +421,8 @@ public class FluidPageTest extends AndroidAdapterTestBase {
      * header's three buttons (beside Dasher, Split and Open Dasher go); the stage under it stands in three columns,
      * the radar, the skyline and the map, all wholly there. Every knob, the max stops badge and the three counts are
      * whole targets inside their parts, apart from one another, and Navigate is a whole target on screen. The Learn
-     * button keeps its room rule: on a circle under 74 dp it is not there, and learning stays as set.
+     * button keeps its room rule: on a circle under {@link MinimumsStarView#BUTTON_FROM_DP} it is not there, and
+     * learning stays as set.
      */
     private void smallWindow(String where, float fontScale) throws Exception {
         RuntimeEnvironment.setFontScale(fontScale);
@@ -485,8 +490,8 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         for (int axis : MinimumsStarView.SPOKES) radarIds.add(axis);
         radarIds.add(MinimumsStarView.STOPS_ID);
         assertApartOrNearestWins(where, star, ui, radarNames, radarIds, radarTargets);
-        if (star.skyRadius() < ui.dp(74)) {
-            assertNull(where + ": no Learn button on a circle under 74 dp", star.learnBox());
+        if (star.skyRadius() < ui.dp(MinimumsStarView.BUTTON_FROM_DP)) {
+            assertNull(where + ": no Learn button on a circle too small for it", star.learnBox());
             assertNull(where + ": nor its node", node(star, MinimumsStarView.SCORE_ID));
         }
 
@@ -583,6 +588,8 @@ public class FluidPageTest extends AndroidAdapterTestBase {
      * naming its area, the whole of it while that line is not shown.
      */
     private static float mapLeast(ScenePage page) {
+        // Turning or in two tiers (0.6.8), the map strip's least.
+        if (page.turn() < 1) return FluidLayout.MAP_LEAST_DP;
         View area = page.getChildAt(9);
         return area.getVisibility() == View.GONE ? FluidLayout.TUCKED_DP : FluidLayout.MAP_TUCKED_DP;
     }
@@ -760,7 +767,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             }
             before = now;
         }
-        for (String part : new String[] {"button", "badge", "name 0", "name 1", "name 2", "name 3"}) {
+        for (String part : new String[] {"button", "badge", "name 0", "name 1", "name 2"}) {
             assertTrue(widthDp + " dp wide, font " + fontScale + ": the " + part + " wholly there somewhere",
                     whollyAt.containsKey(part));
         }

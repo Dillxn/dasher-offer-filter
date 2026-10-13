@@ -357,7 +357,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             assertTrue(star.isShown() && map.isShown());
             assertEquals(1f, page.shown(star), 0f);
             assertEquals(1f, page.shown(map), 0f);
-            assertTrue("side by side", star.getRight() <= map.getLeft());
+            assertTrue("side by side, or the map under it (0.6.8: two tiers)", star.getRight() <= map.getLeft()
+                    || star.getBottom() <= map.getTop());
             assertWhollyOnScreen("the radar", star);
             assertWhollyOnScreen("the map", map);
         }
@@ -378,7 +379,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             AreaMapView map = find(content, AreaMapView.class);
             assertEquals(1f, page.shown(star), 0f);
             assertEquals(1f, page.shown(map), 0f);
-            assertTrue("side by side", star.getRight() <= map.getLeft());
+            assertTrue("side by side, or the map under it (0.6.8: two tiers)", star.getRight() <= map.getLeft()
+                    || star.getBottom() <= map.getTop());
         }
     }
 

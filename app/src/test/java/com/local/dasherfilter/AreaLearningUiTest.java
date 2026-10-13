@@ -358,10 +358,10 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             VerdictTile facts = verdictTile(content);
             String shown = facts.shownText();
             assertTrue(shown, shown.startsWith("$7.90 · "));
-            assertTrue(shown, shown.endsWith(" · 7.2 mi · ? min"));
+            assertTrue(shown, (shown + " · ").contains(" · 7.2 mi · ? min · "));
             assertFalse(shown, shown.contains("…"));
             assertEquals("the pay at its own size: " + shown,
-                    VerdictTile.drawn(facts.getResources().getDisplayMetrics(), 16), facts.payTextSize(), 0.5f);
+                    VerdictTile.drawn(facts.getResources().getDisplayMetrics(), VerdictTile.PAY_SP), facts.payTextSize(), 0.5f);
             String said = String.valueOf(facts.getContentDescription());
             assertTrue(said, said.startsWith("$7.90 · 7.2 mi · Time unread · "));
             Rect visible = new Rect();

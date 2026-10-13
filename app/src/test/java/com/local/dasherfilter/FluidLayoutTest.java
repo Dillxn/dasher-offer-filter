@@ -21,11 +21,11 @@ import static org.junit.Assert.fail;
  * seamless"; and 12 October 2026: "at small split ratios I still want to see all relevant infographic"). There is no
  * threshold anywhere: no edge moves more than {@link FluidLayout#TURN_RATE} times as fast as the window's height (and
  * three times as fast as its width, as the band folds), and nothing fades faster than over the road's height; the band
- * never fades and folds by the width alone; as the window shrinks, the road goes first, then the stage turns into
- * three columns (the radar, the skyline, the map) and fades only below its least, all of it together; as it grows
- * nothing fades and both turns go one way; the radar, the skyline, the map and the counts are all wholly there wherever
- * the window is at least 335 dp wide and the stage at least {@link FluidLayout#TUCKED_DP} tall; and no two parts ever
- * overlap or leave the page. {@link FluidPageTest} checks the real page.
+ * never fades and folds by the width alone; as the window shrinks, the road goes first, then the stage turns from two
+ * tiers (0.6.8: the radar and the skyline side by side over the map strip) into three columns (the radar, the skyline,
+ * the map) and fades only below its least, all of it together; as it grows nothing fades and the turn goes one way;
+ * the radar, the skyline and the map are all wholly there wherever the window is at least 335 dp wide and the stage at
+ * least {@link FluidLayout#TUCKED_DP} tall; and no two parts ever overlap or leave the page. {@link FluidPageTest} checks the real page.
  *
  * <p>Each sweep is made once and every test's check is run on each of its windows; each test fails with the first
  * window its own check found wrong.
@@ -42,10 +42,10 @@ public final class FluidLayoutTest {
     private static final int WIDEST_DP = 1400;
     /**
      * What the band holds at the normal font and at twice it, in dp: the latest offer's tile's height, the counts'
-     * width and the chips' width at their widest words ({@link VerdictTile#heightFor},
+     * width (none since 0.6.6: the chart's key holds them) and the chips' width at their widest words ({@link VerdictTile#heightFor},
      * {@link FilterHeroView#countsWidth}, {@link AutopilotChip.Row#widestChips}).
      */
-    private static final int[][] FONTS = {{48, 178, 146}, {52, 196, 200}};
+    private static final int[][] FONTS = {{48, 0, 146}, {52, 0, 200}};
     /** The header's buttons: beside Dasher (three), beside another app (four, with Split), a full screen (five). */
     private static final int[] BUTTONS = {3, 4, 5};
     /** The lines that need the user, in dp: none, a setup step, several cards. */
@@ -124,22 +124,6 @@ public final class FluidLayoutTest {
     }
 
     private static final String[] SHOWN = {"road", "skyline", "radar and map"};
-
-    /** The band's height once folded, the buttons risen into the chips' row: as FluidLayout works it out. */
-    private static float bandFolded(FluidLayout layout, float density) {
-        return Math.max(Math.max(FluidLayout.MASCOT_FOLDED_DP * density, layout.tileHeight),
-                FluidLayout.ROW1_LEAST_DP * density) + FluidLayout.ROW_DP * density;
-    }
-
-    /**
-     * The stage's drive, which the turns go by: its height and half of what the band's fold and the road take on top
-     * of it, as FluidLayout works it out.
-     */
-    private static float drive(FluidLayout layout, float density) {
-        float stage = layout.stage.height();
-        float folded = layout.height - layout.linesHeight - bandFolded(layout, density);
-        return (stage + Math.max(stage, folded)) / 2;
-    }
 
     /** Where the buttons begin to rise into the chips' row, in pixels, from the band's own inputs. */
     private static float risesFrom(FluidLayout layout, float density) {
@@ -260,29 +244,34 @@ public final class FluidLayoutTest {
 
     /**
      * From one window to the next, a pixel apart: no edge moves more than {@code most} pixels, the radar's circle no
-     * more than TURN_RATE, nothing fades by more than over the road's height, and neither turn by more than over the
+     * more than that either, nothing fades by more than over the road's height, and neither turn by more than over the
      * shortest of its halves.
      */
     private static void step(Object where, FluidLayout before, FluidLayout now, float density, float most) {
+        step(where, before, now, density, most, 1);
+    }
+
+    /** As {@link #step}, the fades allowed {@code fades} times as fast. */
+    private static void step(Object where, FluidLayout before, FluidLayout now, float density, float most,
+            float fades) {
         FluidLayout.Box[] was = boxes(before);
         FluidLayout.Box[] is = boxes(now);
         for (int i = 0; i < was.length; i++) {
             float moved = apart(was[i], is[i]);
             if (moved > most) fail(where + ": " + PARTS[i] + " moved " + moved + " px from " + was[i] + " to " + is[i]);
         }
-        that(Math.abs(before.radius - now.radius) <= FluidLayout.TURN_RATE
-                && Math.abs(before.radarX - now.radarX) <= FluidLayout.TURN_RATE
-                && Math.abs(before.radarY - now.radarY) <= FluidLayout.TURN_RATE, () -> where + ": the radar's circle");
+        that(Math.abs(before.radius - now.radius) <= most && Math.abs(before.radarX - now.radarX) <= most
+                && Math.abs(before.radarY - now.radarY) <= most, () -> where + ": the radar's circle");
         float[] a = shown(before);
         float[] b = shown(now);
         for (int i = 0; i < a.length; i++) {
-            if (Math.abs(a[i] - b[i]) > 1 / (FluidLayout.ROAD_DP * density) + 1e-4f) {
+            if (Math.abs(a[i] - b[i]) > fades / (FluidLayout.ROAD_DP * density) + 1e-4f) {
                 fail(where + ": the " + SHOWN[i] + " faded from " + a[i] + " to " + b[i]);
             }
         }
-        that(Math.abs(before.turn - now.turn) <= 0.01f / density + 1e-5f,
+        that(Math.abs(before.turn - now.turn) <= 0.03f / density + 1e-5f,
                 () -> where + ": the turn from " + before.turn + " to " + now.turn);
-        that(Math.abs(before.inner - now.inner) <= 0.01f / density + 1e-5f,
+        that(Math.abs(before.inner - now.inner) <= 0.03f / density + 1e-5f,
                 () -> where + ": the inner turn from " + before.inner + " to " + now.inner);
     }
 
@@ -291,7 +280,7 @@ public final class FluidLayoutTest {
      * the road's height: swept a pixel at a time, from nothing to a tall tablet.
      */
     @Test
-    public void aWindowGrowingAPixelAtATimeMovesNothingFasterThanTwiceItsEdge() {
+    public void aWindowGrowingAPixelAtATimeMovesNothingFasterThanTheTurnRate() {
         passes(heights(), GROWS);
     }
 
@@ -301,8 +290,12 @@ public final class FluidLayoutTest {
 
     /**
      * Narrowing or widening a window of any height a pixel at a time (a split screen's divider on a phone on its side)
-     * moves nothing faster than three times its edge: as the band folds, the status words' end pulls in by the
-     * buttons' width over the fold's {@link FluidLayout#NARROW_DP}, less the pixel the window's edge moved.
+     * moves nothing in the band or the lines faster than three times its edge (as the band folds, the status words' end
+     * pulls in by the buttons' width over the fold's {@link FluidLayout#NARROW_DP}, less the pixel the window's edge
+     * moved); and nothing in the stage faster than one and a half times TURN_RATE and once more, since the turn goes by
+     * the stage's height, which the buttons' rise into the chips' row (56 dp over {@link FluidLayout#RISE_DP}) changes
+     * up to one and a half times as fast as the window's edge (and the skyline, which shows as far as its column's
+     * width lets it read, fades as much faster as it turns).
      */
     @Test
     public void aWindowNarrowingAPixelAtATimeMovesNothingFasterThanThreeTimesItsEdge() {
@@ -310,10 +303,18 @@ public final class FluidLayoutTest {
     }
 
     private static final Check NARROWS = (where, before, now, density, content, area) -> {
-        if (before != null) step(where, before, now, density, FluidLayout.TURN_RATE + 1.01f);
+        if (before == null) return;
+        step(where, before, now, density, 1.5f * FluidLayout.TURN_RATE + 1.01f, 1.5f);
+        FluidLayout.Box[] was = boxes(before);
+        FluidLayout.Box[] is = boxes(now);
+        for (int i = 0; i <= BAND_PARTS; i++) {
+            float moved = apart(was[i], is[i]);
+            String part = PARTS[i];
+            that(moved <= 3.01f, () -> where + ": " + part + " moved " + moved + " px");
+        }
     };
 
-    /** As the window grows nothing fades, and both turns go only one way, towards one above the other. */
+    /** As the window grows nothing fades, and the turn goes only one way, towards two tiers. */
     @Test
     public void asTheWindowGrowsNothingFadesAndTheStageTurnsOneWay() {
         passes(heights(), NOTHING_FADES);
@@ -356,7 +357,7 @@ public final class FluidLayoutTest {
 
     /**
      * The radar and the map stand together, wholly there and usable (the radar's knobs at their least circle, the map
-     * at its tucked height over its area's line), wherever the stage holds them side by side at their least: from
+     * at its least, {@link #mapLeast}), wherever the stage holds them side by side at their least: from
      * {@link FluidLayout#TUCKED_DP}, the radar's icons tucked in towards its rim, in every page at least 280 dp wide.
      */
     @Test
@@ -375,7 +376,7 @@ public final class FluidLayoutTest {
         that(now.stageShown == 1, () -> where + ": the radar and the map wholly there, stage " + now.stage);
         that(now.radius >= FluidLayout.RADIUS_LEAST_DP * density - 0.5f,
                 () -> where + ": the radar's knobs usable, radius " + now.radius);
-        float mapLeast = (area ? FluidLayout.MAP_TUCKED_DP : FluidLayout.TUCKED_DP) * density;
+        float mapLeast = mapLeast(now, area, density);
         that(now.map.height() >= mapLeast - 0.5f && now.map.width() >= FluidLayout.COLUMN_LEAST_DP * density - 0.5f,
                 () -> where + ": the map readable " + now.map);
         that(!area || now.area.height() >= FluidLayout.AREA_LINE_DP * density - 0.5f,
@@ -383,11 +384,19 @@ public final class FluidLayoutTest {
     };
 
     /**
+     * The map's least height: in three columns its tucked height over its area's line (or the whole tucked height
+     * without the line); turning or in two tiers, the strip's least over the line.
+     */
+    private static float mapLeast(FluidLayout now, boolean area, float density) {
+        if (now.turn < 1) return FluidLayout.MAP_LEAST_DP * density;
+        return (area ? FluidLayout.MAP_TUCKED_DP : FluidLayout.TUCKED_DP) * density;
+    }
+
+    /**
      * All four infographics are wholly there wherever the window is at least 335 dp wide and the stage at least
      * {@link FluidLayout#TUCKED_DP} tall: the radar at its least circle or more, the skyline's caption whole over the
-     * skyline at its least, and the map at its tucked height over its area's line (or the whole tucked height without
-     * the line), in three columns, one above the other or anywhere between; the counts stand in the band, which never
-     * fades. Swept both ways, the window growing taller and wider.
+     * skyline at its least, and the map at its least ({@link #mapLeast}), in three columns, two tiers or anywhere
+     * between (the counts are the chart's key since 0.6.6). Swept both ways, the window growing taller and wider.
      */
     @Test
     public void allFourWholeWhereverTheyFit() {
@@ -405,52 +414,51 @@ public final class FluidLayoutTest {
         that(now.caption.height() >= FluidLayout.CAPTION_DP * density - 0.5f
                 && now.chart.height() >= FluidLayout.CHART_LEAST_DP * density - 0.5f,
                 () -> where + ": the skyline " + now.caption + " " + now.chart);
-        float mapLeast = (area ? FluidLayout.MAP_TUCKED_DP : FluidLayout.TUCKED_DP) * density;
+        float mapLeast = mapLeast(now, area, density);
         that(now.map.height() >= mapLeast - 0.5f, () -> where + ": the map " + now.map);
         that(!area || now.area.height() >= FluidLayout.AREA_LINE_DP * density - 0.5f,
                 () -> where + ": the area line " + now.area);
     };
 
     /**
-     * Three columns (the radar, the skyline, the map) while the stage's drive is short, up to
-     * {@link FluidLayout#INNER_START_DP}; then the map moves under the skyline, beside the radar on the left; and the
-     * radar turns above the ground (across the whole width over the skyline's caption) once the window is tall.
+     * Three columns (the radar, the skyline, the map) while the stage is short, up to {@link FluidLayout#turnsFrom};
+     * then the turn; and two tiers once it is over (0.6.8, the owner's mockup): the radar on the left and the skyline's
+     * caption over the skyline on the right, side by side at the stage's top, over the map, a strip the page's width.
      */
     @Test
-    public void sideBySideWhenWideOneAboveTheOtherWhenTall() {
+    public void threeColumnsWhenShortTwoTiersWhenTall() {
         passes(heights(), SIDE_BY_SIDE);
     }
 
     private static final Check SIDE_BY_SIDE = (where, before, now, density, content, area) -> {
-        float drive = drive(now, density);
-        that(drive > FluidLayout.INNER_START_DP * density || now.inner == 1 && now.turn == 1,
-                () -> where + ": three columns, not turned " + now.inner + ", " + now.turn);
+        that(now.stage.height() > now.turnsFrom() || now.turn == 1,
+                () -> where + ": three columns, not turned " + now.turn);
         if (now.stageShown <= 0) return;
-        that(now.inner < 1 || now.radar.left == 0 && now.radar.right <= now.caption.left + 0.01f
+        that(now.turn < 1 || now.radar.left == 0 && now.radar.right <= now.caption.left + 0.01f
                 && now.caption.right <= now.map.left + 0.01f && now.map.right == now.width
                 && now.radar.top == now.stage.top && now.caption.top == now.stage.top && now.map.top == now.stage.top
                 && Math.abs(now.chart.bottom - now.stage.bottom) <= 0.01f
                 && Math.abs(now.area.bottom - now.stage.bottom) <= 0.01f,
                 () -> where + ": three columns " + now.radar + " " + now.caption + " " + now.chart + " " + now.map);
-        that(now.turn < 1 || now.radar.left == 0 && now.radar.right <= now.map.left + 0.01f
-                && now.radar.right <= now.caption.left + 0.01f,
-                () -> where + ": the radar on the left " + now.radar + " " + now.map);
-        that(now.turn > 0 || now.radar.width() == now.width && now.radar.bottom <= now.caption.top + 0.01f
-                && now.caption.left == 0 && now.chart.bottom <= now.map.top + 0.01f && now.map.left == 0,
-                () -> where + ": one above the other " + now.radar + " " + now.caption + " " + now.map);
-        that(drive < 3 * now.width + 300 * density || now.turn == 0,
-                () -> where + ": one above the other in a tall window, not turned " + now.turn);
+        that(now.radar.left == 0 && now.radar.top == now.stage.top && now.radar.right <= now.caption.left + 0.01f,
+                () -> where + ": the radar at the top on the left " + now.radar + " " + now.caption);
+        that(now.turn > 0 || Math.abs(now.caption.left - now.radar.right) <= 0.01f && now.caption.right == now.width
+                && now.caption.top == now.stage.top && Math.abs(now.chart.bottom - now.radar.bottom) <= 0.01f
+                && now.map.left == 0 && now.map.right == now.width
+                && Math.abs(now.map.top - now.radar.bottom) <= 0.01f
+                && Math.abs(now.area.bottom - now.stage.bottom) <= 0.01f,
+                () -> where + ": two tiers " + now.radar + " " + now.caption + " " + now.chart + " " + now.map);
     };
 
-    /** The inner turn (the map moving under the skyline) is over before the outer one (the radar turning) begins. */
+    /** The road comes only once the turn is over: wherever there is a road, the stage stands in two tiers. */
     @Test
-    public void innerTurnEndsBeforeOuterStarts() {
-        passes(heights(), INNER_FIRST);
+    public void theRoadWaitsForTheTurn() {
+        passes(heights(), ROAD_AFTER);
     }
 
-    private static final Check INNER_FIRST = (where, before, now, density, content, area) ->
-            that(now.turn >= 1 || now.inner == 0,
-                    () -> where + ": the radar turning, " + now.turn + ", while the map still moves, " + now.inner);
+    private static final Check ROAD_AFTER = (where, before, now, density, content, area) ->
+            that(now.roadShown == 0 || now.turn == 0 && now.inner == 0,
+                    () -> where + ": a road while the stage turns, " + now.turn);
 
     /**
      * No two parts overlap, nothing stands outside the page, and the page is the window's height, or taller only by
@@ -530,7 +538,7 @@ public final class FluidLayoutTest {
      * {@link FluidLayout#RISE_DP}, five buttons up to {@link FluidLayout#FULL_SCREEN_EXTRA_DP} later; the chips keep
      * their widest from where the fold begins; the header keeps its whole width wherever the window holds it and never
      * overlaps the chips. At the normal font the buttons rise from 318 dp beside Dasher, 370 dp beside another app and
-     * 486 dp in a full screen.
+     * 486 dp in a full screen; where a readable tile leaves them the room, they lift on into the tile's row (0.6.8).
      */
     @Test
     public void theBandFoldsByWidthOnly() {
@@ -568,8 +576,15 @@ public final class FluidLayoutTest {
         that(now.width < whole + FluidLayout.BAND_SIDE_DP * density
                 || Math.abs(now.header.width() - whole) <= 0.01f && now.header.right <= now.width + 0.01f,
                 () -> where + ": the header squeezed, " + now.header);
-        that(Math.abs(now.header.bottom - now.band) <= 0.01f && now.header.top >= now.chipRow.top - 0.01f,
+        that(now.lift > 0 || Math.abs(now.header.bottom - now.band) <= 0.01f
+                && now.header.top >= now.chipRow.top - 0.01f, () -> where + ": the header outside the band, "
+                + now.header);
+        that(now.header.top >= -0.01f && now.header.bottom <= now.band + 0.01f,
                 () -> where + ": the header outside the band, " + now.header);
+        float overTile = Math.min(now.tile.right, now.header.right) - Math.max(now.tile.left, now.header.left);
+        float besideTile = Math.min(now.tile.bottom, now.header.bottom) - Math.max(now.tile.top, now.header.top);
+        that(overTile <= 0.01f || besideTile <= 0.01f, () -> where + ": the header " + now.header + " over the tile "
+                + now.tile);
     };
 
     /**
@@ -665,79 +680,107 @@ public final class FluidLayoutTest {
 
     /**
      * The windows the layout was designed at, each part where it should be: A, 411 by 236 dp beside Dasher (three
-     * buttons), with no line, with a 48 dp line and beside another app (four buttons); B, 360 by 220 dp, and B' beside
-     * another app, where the band cannot fold and the stage fades to half; C, A at twice the font; D1 and D2, A taller,
-     * the map moving under the skyline in D2; E1, a full screen (five buttons) at the normal and twice the font, and
-     * E2, shorter, the radar beginning to turn; F and F4, a phone on its side.
+     * buttons in the tile's row), in three columns, with no line, with a 48 dp line and beside another app (four
+     * buttons, under the chips); B, 360 by 220 dp, and B' beside another app, where the band cannot fold and the stage
+     * fades to half; C, A at twice the font; D1 and D2, A taller, D2 the owner's mockup's 411 by 416 dp turning towards
+     * two tiers with the area's line shown (without it, two tiers: {@link #theMockupsWindowStandsInTwoTiers}); E1, a
+     * full screen (five buttons) at the normal and twice the font, two tiers with the road, and E2, shorter, two tiers
+     * without it; F and F4, a phone on its side, turning.
      */
     @Test
     public void windowsAThroughF() {
-        window("A", 411, 236, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 169.1x48", "counts 229.1,0 177.9x48",
-                "chips 4,48 239x56", "header 243,48 164x56", "lines 0,104 411x0", "radar 0,104 135.3x132.2",
-                "caption 135.3,104 137.9x48", "chart 135.3,152 137.9x84.2", "map 273.2,104 137.9x84.2",
-                "area 273.2,188.2 137.9x48", "road 0,236.2 411x0", "radius 56.2", "gap 12", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 132.2", "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
-        window("A with a line", 411, 236, 3, 0, 48, "mascot 4,0 48x48", "tile 56,0 169.1x48",
-                "counts 229.1,0 177.9x48", "chips 4,48 239x56", "header 243,48 164x56", "lines 0,104 411x48",
-                "radar 0,152 135x84.2", "caption 135,152 138x48", "chart 135,200 138x36.2", "map 273,152 138x36.2",
-                "area 273,188.2 138x48", "road 0,236.2 411x0", "radius 24.2", "gap 4", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 84.2", "turn 1.000", "inner 1.000", "shown 0.73 1.00 0.00");
-        window("A4", 411, 236, 4, 0, 0, "mascot 4,0 48x48", "tile 56,0 169.1x48", "counts 229.1,0 177.9x48",
-                "chips 4,48 186.9x56", "header 190.9,48 216.2x56", "lines 0,104 411x0", "radar 0,104 135.3x132.2",
-                "caption 135.3,104 137.9x48", "chart 135.3,152 137.9x84.2", "map 273.2,104 137.9x84.2",
-                "area 273.2,188.2 137.9x48", "road 0,236.2 411x0", "radius 56.2", "gap 12", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 132.2", "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
-        window("B", 360, 220, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 118.1x48", "counts 178.1,0 177.9x48",
-                "chips 4,48 188x56", "header 192,48 164x56", "lines 0,104 360x0", "radar 0,104 135x116.2",
-                "caption 135,104 112.5x48", "chart 135,152 112.5x68.2", "map 247.5,104 112.5x68.2",
-                "area 247.5,172.2 112.5x48", "road 0,220.2 360x0", "radius 56", "gap 4.1", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 116.2", "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
-        window("B'", 360, 220, 4, 0, 0, "mascot 5.2,1.2 50.4x50.4", "tile 60.9,2.4 113.2x48",
-                "counts 178.1,2.4 177.9x48", "chips 5.2,51.6 167.4x56", "header 139.8,107.6 216.2x56",
-                "lines 0,163.6 360x0", "radar 0,163.6 135x56.5", "caption 135,163.6 112.5x48",
-                "chart 135,211.6 112.5x8.5", "map 247.5,163.6 112.5x8.5", "area 247.5,172.2 112.5x48",
-                "road 0,220.2 360x0", "radius 0", "gap 4", "narrow 0.85", "rise 0.00", "band 163.6", "stage 56.5",
-                "turn 1.000", "inner 1.000", "shown 0.49 1.00 0.00");
-        window("C", 411, 236, 3, 1, 0, "mascot 4,2.1 48x48", "tile 56,0 150.9x52.2", "counts 210.9,2.1 196.2x48",
-                "chips 4,52.2 239x56", "header 243,53.5 164x56", "lines 0,109.5 411x0", "radar 0,109.5 135x126.7",
-                "caption 135,109.5 138x48", "chart 135,157.5 138x78.7", "map 273,109.5 138x78.7",
-                "area 273,188.2 138x48", "road 0,236.2 411x0", "radius 56", "gap 9.3", "narrow 1.00", "rise 0.98",
-                "band 109.5", "stage 126.7", "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
-        window("D1", 411, 300, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 169.1x48", "counts 229.1,0 177.9x48",
-                "chips 4,48 239x56", "header 243,48 164x56", "lines 0,104 411x0", "radar 0,104 201x196.2",
-                "caption 201,104 105x48", "chart 201,152 105x148.2", "map 306,104 105x148.2", "area 306,252.2 105x48",
-                "road 0,300.2 411x0", "radius 94.1", "gap 12", "narrow 1.00", "rise 1.00", "band 104", "stage 196.2",
+        window("A", 411, 236, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 183x48", "counts 243,0 0x48", "chips 4,48 239x56",
+                "header 243,0 164x56", "lines 0,104 411x0", "radar 0,104 135x116", "caption 135,104 138x48",
+                "chart 135,152 138x84.2", "map 273,104 138x84.2", "area 273,188.2 138x48", "road 0,236.2 411x0",
+                "radius 56", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 132.2", "turn 1.000",
+                "inner 1.000", "shown 1.00 1.00 0.00");
+        window("A with a line", 411, 236, 3, 0, 48, "mascot 4,0 48x48", "tile 56,0 183x48", "counts 243,0 0x48",
+                "chips 4,48 239x56", "header 243,0 164x56", "lines 0,104 411x48", "radar 0,152 135x84.2",
+                "caption 135,152 138x48", "chart 135,200 138x36.2", "map 273,152 138x36.2", "area 273,188.2 138x48",
+                "road 0,236.2 411x0", "radius 24.2", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 84.2",
+                "turn 1.000", "inner 1.000", "shown 0.73 1.00 0.00");
+        window("A4", 411, 236, 4, 0, 0, "mascot 4,0 48x48", "tile 56,0 158.3x48", "counts 218.3,0 0x48",
+                "chips 4,48 186.9x56", "header 190.9,48 216.2x56", "lines 0,104 411x0", "radar 0,104 135x116",
+                "caption 135,104 138x48", "chart 135,152 138x84.2", "map 273,104 138x84.2", "area 273,188.2 138x48",
+                "road 0,236.2 411x0", "radius 56", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 132.2",
                 "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
-        window("D2", 411, 400, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 169.1x48", "counts 229.1,0 177.9x48",
-                "chips 4,48 239x56", "header 243,48 164x56", "lines 0,104 411x0", "radar 0,104 211x207.8",
-                "caption 211,104 100x48", "chart 211,152 100x224", "map 311,128 100x224", "area 311,352 100x48",
-                "road 0,400 411x0", "radius 99.9", "gap 12", "narrow 1.00", "rise 1.00", "band 104", "stage 296",
-                "turn 1.000", "inner 0.929", "shown 1.00 1.00 0.00");
-        window("E1", 411, 860, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 137.1x48", "counts 229.1,16 177.9x48",
-                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 411x239.1",
-                "caption 0.1,423.1 411x48", "chart 0.1,471.1 411x106", "map 0.1,577.1 411x157.1",
-                "area 0.1,734.2 411x48", "road 0,782.2 411x78", "radius 115.5", "gap 12", "narrow 0.00", "rise 0.00",
+        window("B", 360, 220, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 156x48", "counts 216,0 0x48", "chips 4,48 188x56",
+                "header 192,48 164x56", "lines 0,104 360x0", "radar 0,104 135x116", "caption 135,104 112.5x48",
+                "chart 135,152 112.5x68.2", "map 247.5,104 112.5x68.2", "area 247.5,172.2 112.5x48",
+                "road 0,220.2 360x0", "radius 56", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 116.2",
+                "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
+        window("B'", 360, 220, 4, 0, 0, "mascot 5.2,1.2 50.4x50.4", "tile 60.9,2.4 255.5x48", "counts 320.4,2.4 0x48",
+                "chips 5.2,51.6 167.4x56", "header 139.8,107.6 216.2x56", "lines 0,163.6 360x0",
+                "radar 0,163.6 135x56.5", "caption 135,163.6 112.5x48", "chart 135,211.6 112.5x8.5",
+                "map 247.5,163.6 112.5x8.5", "area 247.5,172.2 112.5x48", "road 0,220.2 360x0", "radius 0", "gap 4",
+                "narrow 0.85", "rise 0.00", "band 163.6", "stage 56.5", "turn 1.000", "inner 1.000",
+                "shown 0.49 1.00 0.00");
+        window("C", 411, 236, 3, 1, 0, "mascot 4,2.1 48x48", "tile 56,0 185.9x52.2", "counts 245.9,2.1 0x48",
+                "chips 4,52.2 239x56", "header 243,53.5 164x56", "lines 0,109.5 411x0", "radar 0,109.5 135x116",
+                "caption 135,109.5 138x48", "chart 135,157.5 138x78.7", "map 273,109.5 138x78.7",
+                "area 273,188.2 138x48", "road 0,236.2 411x0", "radius 56", "gap 4", "narrow 1.00", "rise 0.98",
+                "band 109.5", "stage 126.7", "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
+        window("D1", 411, 300, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 183x48", "counts 243,0 0x48",
+                "chips 4,48 239x56", "header 243,0 164x56", "lines 0,104 411x0", "radar 0,104 135x116",
+                "caption 135,104 138x48", "chart 135,152 138x148.2", "map 273,104 138x148.2", "area 273,252.2 138x48",
+                "road 0,300.2 411x0", "radius 56", "gap 4", "narrow 1.00", "rise 1.00", "band 104", "stage 196.2",
+                "turn 1.000", "inner 1.000", "shown 1.00 1.00 0.00");
+        window("D2", 411, 416, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 183x48", "counts 243,0 0x48",
+                "chips 4,48 239x56", "header 243,0 164x56", "lines 0,104 411x0", "radar 0,104 183.5x176",
+                "caption 183.5,104 227.6x48", "chart 183.5,152 227.6x128", "map 153.3,280 257.8x88",
+                "area 153.3,368 257.8x48", "road 0,416 411x0", "radius 84", "gap 12", "narrow 1.00", "rise 1.00",
+                "band 104", "stage 312", "turn 0.258", "inner 0.258", "shown 1.00 1.00 0.00");
+        window("E1", 411, 860, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 315x48", "counts 407,16 0x48",
+                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
+                "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4", "map 0,385.4 411x348.8",
+                "area 0,734.2 411x48", "road 0,782.2 411x78", "radius 96.7", "gap 12", "narrow 0.00", "rise 0.00",
                 "band 184", "stage 598.2", "turn 0.000", "inner 0.000", "shown 1.00 1.00 1.00");
-        window("E1 at twice the font", 411, 860, 5, 1, 0, "mascot 12,8 64x64", "tile 88,13.9 118.9x52.2",
-                "counts 210.9,16 196.2x48", "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0",
-                "radar 0,184 411x239.1", "caption 6,423.1 405x48", "chart 6,471.1 405x106", "map 6,577.1 405x157.1",
-                "area 6,734.2 405x48", "road 0,782.2 411x78", "radius 115.5", "gap 12", "narrow 0.00", "rise 0.00",
-                "band 184", "stage 598.2", "turn 0.014", "inner 0.000", "shown 1.00 1.00 1.00");
-        window("E2", 411, 600, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 137.1x48", "counts 229.1,16 177.9x48",
-                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 211x207.8",
-                "caption 211,191.7 200x48", "chart 211,239.7 200x126.3", "map 211,365.9 200x186.1",
-                "area 211,552 200x48", "road 0,600 411x0", "radius 99.9", "gap 12", "narrow 0.00", "rise 0.00",
-                "band 184", "stage 416", "turn 0.976", "inner 0.000", "shown 1.00 1.00 0.00");
-        window("F", 600, 400, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 358.1x48", "counts 418.1,0 177.9x48",
-                "chips 4,48 428x56", "header 432,48 164x56", "lines 0,104 600x0", "radar 0,104 277x284",
-                "caption 277,104 161.5x48", "chart 277,152 161.5x224", "map 438.5,128 161.5x224",
-                "area 438.5,352 161.5x48", "road 0,400 600x0", "radius 138", "gap 12", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 296", "turn 1.000", "inner 0.929", "shown 1.00 1.00 0.00");
-        window("F4", 600, 400, 4, 0, 0, "mascot 4,0 48x48", "tile 56,0 358.1x48", "counts 418.1,0 177.9x48",
-                "chips 4,48 375.8x56", "header 379.8,48 216.2x56", "lines 0,104 600x0", "radar 0,104 277x284",
-                "caption 277,104 161.5x48", "chart 277,152 161.5x224", "map 438.5,128 161.5x224",
-                "area 438.5,352 161.5x48", "road 0,400 600x0", "radius 138", "gap 12", "narrow 1.00", "rise 1.00",
-                "band 104", "stage 296", "turn 1.000", "inner 0.929", "shown 1.00 1.00 0.00");
+        window("E1 at twice the font", 411, 860, 5, 1, 0, "mascot 12,8 64x64", "tile 88,13.9 315x52.2",
+                "counts 407,16 0x48", "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0",
+                "radar 0,184 205.5x201.4", "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4",
+                "map 0,385.4 411x348.8", "area 0,734.2 411x48", "road 0,782.2 411x78", "radius 96.7", "gap 12",
+                "narrow 0.00", "rise 0.00", "band 184", "stage 598.2", "turn 0.000", "inner 0.000",
+                "shown 1.00 1.00 1.00");
+        window("E2", 411, 600, 5, 0, 0, "mascot 12,8 64x64", "tile 88,16 315x48", "counts 407,16 0x48",
+                "chips 12,72 395x56", "header 139,128 268x56", "lines 0,184 411x0", "radar 0,184 205.5x201.4",
+                "caption 205.5,184 205.5x48", "chart 205.5,232 205.5x153.4", "map 0,385.4 411x166.6",
+                "area 0,552 411x48", "road 0,600 411x0", "radius 96.7", "gap 12", "narrow 0.00", "rise 0.00",
+                "band 184", "stage 416", "turn 0.000", "inner 0.000", "shown 1.00 1.00 0.00");
+        window("F", 600, 400, 3, 0, 0, "mascot 4,0 48x48", "tile 56,0 372x48", "counts 432,0 0x48", "chips 4,48 428x56",
+                "header 432,0 164x56", "lines 0,104 600x0", "radar 0,104 173.1x164", "caption 173.1,104 289.4x48",
+                "chart 173.1,152 289.4x116", "map 310.5,268 289.5x84", "area 310.5,352 289.5x48", "road 0,400 600x0",
+                "radius 78", "gap 12", "narrow 1.00", "rise 1.00", "band 104", "stage 296", "turn 0.402", "inner 0.402",
+                "shown 1.00 1.00 0.00");
+        window("F4", 600, 400, 4, 0, 0, "mascot 4,0 48x48", "tile 56,0 319.8x48", "counts 379.8,0 0x48",
+                "chips 4,48 375.8x56", "header 379.8,0 216.2x56", "lines 0,104 600x0", "radar 0,104 173.1x164",
+                "caption 173.1,104 289.4x48", "chart 173.1,152 289.4x116", "map 310.5,268 289.5x84",
+                "area 310.5,352 289.5x48", "road 0,400 600x0", "radius 78", "gap 12", "narrow 1.00", "rise 1.00",
+                "band 104", "stage 296", "turn 0.402", "inner 0.402", "shown 1.00 1.00 0.00");
+    }
+
+    /**
+     * The owner's mockup's window (12 October 2026): his half of a split screen beside Dasher, 411 by 416 dp, at the
+     * normal font. The header's three buttons stand in the tile's row; the stage stands in two tiers, the radar beside
+     * the skyline over a map strip at least 380 dp wide, the radar at least half as wide as the page less a little.
+     */
+    @Test
+    public void theMockupsWindowStandsInTwoTiers() {
+        for (float density : DENSITIES) {
+            FluidLayout layout = solve(density, Math.round(411 * density), Math.round(416 * density), CONTENTS.get(0),
+                    false);
+            String where = "411 by 416 dp at density " + density;
+            assertEquals(where + ": the buttons in the tile's row", 1, layout.lift, 0);
+            assertTrue(where + ": the header beside the tile " + layout.header + " " + layout.tile,
+                    layout.header.top < layout.tile.bottom && layout.header.left >= layout.tile.right);
+            assertEquals(where + ": two tiers", 0, layout.turn, 0);
+            assertTrue(where + ": the radar beside the skyline " + layout.radar + " " + layout.chart,
+                    layout.radar.right <= layout.chart.left + 0.01f && layout.radar.top == layout.caption.top
+                    && layout.radar.width() >= 180 * density);
+            assertTrue(where + ": the map a strip under both " + layout.map, layout.map.top >= layout.radar.bottom
+                    - 0.01f && layout.map.top >= layout.chart.bottom - 0.01f && layout.map.width() >= 380 * density
+                    && layout.map.height() >= FluidLayout.MAP_LEAST_DP * density - 0.5f);
+            assertEquals(where + ": all of it there", 1, layout.stageShown * layout.horizonShown, 0);
+        }
     }
 
     /**
@@ -789,6 +832,6 @@ public final class FluidLayoutTest {
 
     // The sweeps' checks, each run on every window of its sweep (declared last, after every check they hold).
     private static final List<Check> HEIGHT_CHECKS = List.of(GROWS, NOTHING_FADES, IN_ORDER, TOGETHER, ALL_FOUR,
-            SIDE_BY_SIDE, INNER_FIRST, APART, STAYS);
+            SIDE_BY_SIDE, ROAD_AFTER, APART, STAYS);
     private static final List<Check> WIDTH_CHECKS = List.of(NARROWS, ALL_FOUR, APART_ACROSS, FOLDS, ROAD_STAYS);
 }

@@ -22,14 +22,14 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The offer areas drawn into the homepage's ground, north up, with no map tiles: each square where offers came in is
- * gilded deeper the better its pay per mile, with coins on the best three (named after their neighbourhood when the
- * phone's place lookup knows it) and a dotted trail from you to the best. Squares with too few offers to rank are
- * dashed outlines. A dot marks where the phone is now; a scale bar and a small "N ↑" give distance and direction.
- * The land fades out toward every edge instead of stopping at a hard line, so a square or coin the edge cuts through
- * dissolves into the scene's ground; the scale stays crisp above it. The selected square (the best until another is
- * picked) is named on the map with its pay per mile ("Hunt Rd · $2.40/mi"; 0.6.6, the line under the map, its title
- * and its compass rose gone: say each thing once). Tap a square to select it. With nothing to show yet, it says why, in
+ * The offer areas drawn as a strip under the homepage's radar and skyline, north up, with no map tiles: each square
+ * where offers came in is gilded deeper the better its pay per mile. Squares with too few offers to rank are dashed
+ * outlines. A dot marks where the phone is now; a scale bar and a small "N ↑" give distance and direction. The view
+ * always holds both you and the best square. The land fades out toward every edge instead of stopping at a hard line,
+ * so a square the edge cuts through dissolves into the scene's ground; the scale stays crisp above it. The selected
+ * square (the best until another is picked) is outlined and named beside it with its pay per mile ("Hunt Rd ·
+ * $2.40/mi"), on whichever side has room and never cut (0.6.8, the owner's mockup: no rank coins, no trail; 0.6.6, the
+ * line under the map, its title and its compass rose gone: say each thing once). Tap a square to select it. With nothing to show yet, it says why, in
  * as many lines as the land holds (three at most).
  */
 @SuppressLint("ViewConstructor")
@@ -39,7 +39,6 @@ final class AreaMapView extends View {
     }
 
     private static final double MILES_PER_DEGREE_LATITUDE = 69.05;
-    private static final int[] MEDALS = {0xFFE3B341, 0xFFB9BDC3, 0xFFCD8B4E};
     private static final int GOLD = 0xFFD39B2A;
     static final int EXPLAIN_ATLAS = 0x01030001;
     static final String NORTH = "N ↑";
@@ -48,12 +47,12 @@ final class AreaMapView extends View {
             + "or Dasher hotspots.\n\n"
             + "Gold: deeper gold means higher offered pay per mile among your ranked areas. The rate is total "
             + "offered pay divided by total offer miles, using only offers with both figures.\n\n"
-            + "1, 2, 3: the highest ranked areas. At least " + AreaMap.MIN_OFFERS
+            + "The named square is the best ranked area until you tap another. At least " + AreaMap.MIN_OFFERS
             + " offers with pay and miles are needed before ranking, so one offer cannot put an area first. "
             + "Dashed squares need more measured offers.\n\n"
-            + "You: the phone’s latest available location. The dotted trail points toward #1; it is not a road "
-            + "route. North is up and the scale shows straight-line distance.\n\n"
-            + "Tap a square for its rate and sample count. Tap its details below the map to open Maps. "
+            + "You: the phone’s latest available location. The map always shows both you and the best area. "
+            + "North is up and the scale shows straight-line distance.\n\n"
+            + "Tap a square for its name and rate. Tap the named square again to open it in Maps. "
             + "This is recorded offer history, not earnings or a prediction of future offers.";
 
     private final Ui ui;
@@ -272,9 +271,9 @@ final class AreaMapView extends View {
     private String spokenKey() {
         return "Offer map: phone areas when offers arrived, not pickups, final stops or Dasher hotspots. "
                 + "Deeper gold means higher total offered pay divided by total offer miles. "
-                + "Numbers 1 to 3 rank the best sampled areas. Dashed squares have fewer than " + AreaMap.MIN_OFFERS
-                + " offers with pay and miles. The blue dot is You; the dotted trail points toward number 1, "
-                + "not a road route. North is up. Recorded history, not a prediction. Use Explain offer map for the key.";
+                + "The named square is the best ranked area until another is chosen. Dashed squares have fewer than "
+                + AreaMap.MIN_OFFERS + " offers with pay and miles. The blue dot is You. North is up. Recorded "
+                + "history, not a prediction. Use Explain offer map for the key.";
     }
 
     /** Whatever the page gives it; asked with no limit, the least it reads well at ({@link FluidLayout}). */
@@ -331,22 +330,16 @@ final class AreaMapView extends View {
             double latitude = here != null ? here[0] : focus.latitude();
             double longitude = here != null ? here[1] : focus.longitude();
             if (here != null && !ranked.isEmpty()) {
-                // Where the best square's coin is drawn, in degrees: its square's top-right corner.
-                double corner = Math.max(0, (AreaMap.CELL_DEGREES * scale / 2 - ui.dp(14))) / scale;
-                double coinLatitude = focus.latitude() + corner;
-                double coinLongitude = focus.longitude() + corner / squash;
-                // Both in the clear middle (inside the faded edges, with room for the coin) when they fit: centre
-                // between them. Otherwise stay on you.
-                double roomX = (width / 2 - sideFade(width) - ui.dp(14)) / scale;
-                // Below the key there is no faded top edge. In a short map keep the two markers within its
-                // actual clear height; using the full-map edge margin would unnecessarily hide a nearby #1.
-                double roomY = (height / 2 - (height <= ui.dp(80) ? ui.dp(10)
-                        : topFade(height) + ui.dp(14))) / scale;
-                if (Math.abs(coinLongitude - longitude) * squash <= 2 * roomX
-                        && Math.abs(coinLatitude - latitude) <= 2 * roomY) {
-                    latitude = (latitude + coinLatitude) / 2;
-                    longitude = (longitude + coinLongitude) / 2;
-                }
+                // 0.6.8: the view always holds both you and the best square (the owner's mockup), smaller squares if
+                // that is what it takes, centred between them.
+                double half = AreaMap.CELL_DEGREES * 0.6;
+                double edge = ui.dp(6);
+                double spanBothX = (Math.abs(focus.longitude() - here[1]) + 2 * half) * squash;
+                double spanBothY = Math.abs(focus.latitude() - here[0]) + 2 * half;
+                double both = Math.min((width - 2 * edge) / spanBothX, (height - 2 * edge) / spanBothY);
+                scale = Math.min(readable, both);
+                latitude = (here[0] + focus.latitude()) / 2;
+                longitude = (here[1] + focus.longitude()) / 2;
             }
             left = longitude * squash - width / scale / 2;
             top = latitude + height / scale / 2;
@@ -470,19 +463,15 @@ final class AreaMapView extends View {
                 canvas.drawRoundRect(rect, corner, corner, line);
             }
         }
-        if (here != null && !ranked.isEmpty()) drawTrail(canvas, ranked.get(0));
-        for (int i = Math.min(3, ranked.size()) - 1; i >= 0; i--) drawMedal(canvas, ranked.get(i), i);
+        // 0.6.8 (the owner's mockup): no rank coins and no trail; the selected square (the best until another is
+        // picked) carries its name and pay per mile beside it, over the faded edges, never cut.
         namesShown = 0;
-        // The selected square's name and pay per mile first, so another name gives way to it.
-        if (selected != null) drawName(canvas, selected);
-        for (int i = 0; i < Math.min(3, ranked.size()); i++) {
-            if (selected == null || ranked.get(i).row != selected.row || ranked.get(i).col != selected.col) {
-                drawName(canvas, ranked.get(i));
-            }
-        }
         if (here != null) drawHere(canvas);
         fadeEdges(canvas, landWidth, height);
         canvas.restoreToCount(land);
+        AreaMap.Cell named = named();
+        if (named != null) drawName(canvas, named);
+        drawFrame(canvas, width, height);
         drawScale(canvas, height);
         drawKey(canvas, width);
         if (here != null) Motion.next(this);
@@ -562,7 +551,10 @@ final class AreaMapView extends View {
         keyText.setTextAlign(Paint.Align.LEFT);
         keyText.setTypeface(Ui.MEDIUM);
         keyText.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
-        canvas.drawText(NORTH, ui.dp(12), ui.dp(14), keyText);
+        // "N ↑" beside the ⓘ at the top right (0.6.8, the owner's mockup).
+        keyText.setTextAlign(Paint.Align.RIGHT);
+        canvas.drawText(NORTH, width - ui.dp(42), ui.dp(17), keyText);
+        keyText.setTextAlign(Paint.Align.LEFT);
 
         float cx = width - ui.dp(25), cy = ui.dp(13);
         line.setColor(brown());
@@ -608,22 +600,42 @@ final class AreaMapView extends View {
         line.setPathEffect(null);
     }
 
-    /**
-     * The square's neighbourhood on a small label under its coin, when the phone's place lookup knows it. The best
-     * square's name goes first; a later one that would overlap a name already shown is left out.
-     */
+    /** The selected square's neighbourhood (when the phone's place lookup knows it) and its pay per mile, beside it. */
     private void drawName(Canvas canvas, AreaMap.Cell cell) {
         String name = nameShown(cell);
         if (name == null) return;
-        float half = (float) (AreaMap.CELL_DEGREES * scale / 2);
-        float cx = x(cell.longitude());
-        float cy = y(cell.latitude()) + Math.min(half - ui.dp(4), ui.dp(14));
-        CharSequence shown = measureLabel(name, cx, cy);
-        for (int i = 0; i < namesShown; i++) {
-            if (RectF.intersects(pill, namePills[i])) return;
-        }
+        cellBounds(cell, rect);
+        float cy = rect.centerY();
+        CharSequence shown = measureLabel(name, 0, cy);
+        float halfWidth = pill.width() / 2;
+        float gap = ui.dp(6);
+        float edge = ui.dp(6);
+        // Beside the square on whichever side has room (its right first), else over it; always wholly inside the map.
+        float cx;
+        if (rect.right + gap + 2 * halfWidth <= getWidth() - edge) cx = rect.right + gap + halfWidth;
+        else if (rect.left - gap - 2 * halfWidth >= edge) cx = rect.left - gap - halfWidth;
+        else cx = rect.centerX();
+        cx = Math.max(edge + halfWidth, Math.min(getWidth() - edge - halfWidth, cx));
+        float halfHeight = pill.height() / 2;
+        cy = Math.max(keyHeight() + halfHeight, Math.min(getHeight() - edge - halfHeight, cy));
+        pill.set(cx - halfWidth, cy - halfHeight, cx + halfWidth, cy + halfHeight);
         namePills[namesShown++].set(pill);
         drawLabel(canvas, shown, cx, cy);
+    }
+
+    /** Where the selected square's name stands, in this view's pixels, as last drawn; empty for none (for tests). */
+    RectF namePill() {
+        return namesShown > 0 ? new RectF(namePills[0]) : new RectF();
+    }
+
+    /** A soft frame round the strip, as the mockup draws it. */
+    private void drawFrame(Canvas canvas, float width, float height) {
+        float inset = ui.dp(3);
+        rect.set(inset, inset, width - inset, height - inset);
+        line.setPathEffect(null);
+        line.setStrokeWidth(Math.max(1, ui.dp(1)));
+        line.setColor(ui.dark ? 0x33FFFFFF : 0x2A3A2A18);
+        canvas.drawRoundRect(rect, ui.dp(16), ui.dp(16), line);
     }
 
     /**
@@ -632,10 +644,17 @@ final class AreaMapView extends View {
      */
     String nameShown(AreaMap.Cell cell) {
         String name = names.get(key(cell));
-        boolean chosen = selected != null && selected.row == cell.row && selected.col == cell.col;
+        AreaMap.Cell named = named();
+        boolean chosen = named != null && named.row == cell.row && named.col == cell.col;
         if (!chosen) return name;
         String rate = cell.ranked() ? cell.perMile() : "Unranked";
         return name == null ? rate : name + " · " + rate;
+    }
+
+    /** The square the map names: the selected one, else the best ranked; null with none. */
+    private AreaMap.Cell named() {
+        if (selected != null) return selected;
+        return ranked.isEmpty() ? null : ranked.get(0);
     }
 
     /** How many place names the last drawing showed (for tests). */
@@ -647,10 +666,11 @@ final class AreaMapView extends View {
     private CharSequence measureLabel(String label, float cx, float cy) {
         labelText.setFakeBoldText(true);
         labelText.setTextAlign(Paint.Align.CENTER);
-        labelText.setTextSize(Math.min(ui.sp(10), ui.dp(14)));
-        CharSequence shown = Ui.fit(labelText, label, ui.dp(160), 0.8f);
-        float halfWidth = labelText.measureText(shown, 0, shown.length()) / 2 + ui.dp(5);
-        float halfHeight = labelText.getTextSize() * 0.75f;
+        labelText.setTextSize(Math.min(ui.sp(13), ui.dp(17)));
+        CharSequence shown = Ui.fit(labelText, label, Math.max(ui.dp(60), Math.min(ui.dp(220), getWidth()
+                - ui.dp(16))), 0.8f);
+        float halfWidth = labelText.measureText(shown, 0, shown.length()) / 2 + ui.dp(8);
+        float halfHeight = labelText.getTextSize() * 0.8f;
         pill.set(cx - halfWidth, cy - halfHeight, cx + halfWidth, cy + halfHeight);
         return shown;
     }
@@ -658,29 +678,14 @@ final class AreaMapView extends View {
     /** Text on a soft pill, so a name reads over any square. */
     private void drawLabel(Canvas canvas, CharSequence shown, float cx, float cy) {
         float halfHeight = pill.height() / 2;
-        fill.setColor(ui.dark ? 0xCC14171C : 0xE6FFFFFF);
+        fill.setColor(ui.dark ? 0xE014171C : 0xF0FFFFFF);
         canvas.drawRoundRect(pill, halfHeight, halfHeight, fill);
+        line.setPathEffect(null);
+        line.setStrokeWidth(ui.dp(1.5f));
+        line.setColor(GOLD);
+        canvas.drawRoundRect(pill, halfHeight, halfHeight, line);
         labelText.setColor(ui.dark ? 0xFFF3E6C8 : 0xFF3A2A18);
         canvas.drawText(shown, 0, shown.length(), cx, cy + labelText.getTextSize() / 3, labelText);
-    }
-
-    /** A dotted trail from where you are to the best area's coin. */
-    private void drawTrail(Canvas canvas, AreaMap.Cell best) {
-        float fromX = x(here[1]);
-        float fromY = y(here[0]);
-        float corner = Math.max(0, (float) (AreaMap.CELL_DEGREES * scale / 2) - ui.dp(14));
-        float toX = x(best.longitude()) + corner;
-        float toY = y(best.latitude()) - corner;
-        if (Math.hypot(toX - fromX, toY - fromY) < ui.dp(24)) return;
-        path.reset();
-        path.moveTo(fromX, fromY);
-        path.quadTo((fromX + toX) / 2 + (toY - fromY) * 0.25f, (fromY + toY) / 2 - (toX - fromX) * 0.25f, toX, toY);
-        line.setColor(ui.dark ? 0xFFE0876E : 0xFFB5523B);
-        line.setStrokeWidth(ui.dp(2.5f));
-        // The dots walk slowly toward the best area.
-        line.setPathEffect(new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, -ui.dp(8) * Motion.loop(1.6f, 0)));
-        canvas.drawPath(path, line);
-        line.setPathEffect(null);
     }
 
     /** Faint lines along the square edges, so the squares read as a grid on the paper. */
@@ -693,23 +698,6 @@ final class AreaMapView extends View {
         for (double lng = firstLng; x(lng) <= width; lng += step) canvas.drawLine(x(lng), 0, x(lng), height, line);
         double firstLat = Math.ceil(top / step) * step;
         for (double lat = firstLat; y(lat) <= height; lat -= step) canvas.drawLine(0, y(lat), width, y(lat), line);
-    }
-
-    /** A coin with the area's place, in its square's top-right corner so the "You" dot stays clear. */
-    private void drawMedal(Canvas canvas, AreaMap.Cell cell, int place) {
-        float radius = ui.dp(11);
-        medalBounds(cell, rect);
-        float cx = rect.centerX(), cy = rect.centerY();
-        fill.setColor(0x33000000);
-        canvas.drawCircle(cx, cy + ui.dp(1.5f), radius, fill);
-        fill.setColor(MEDALS[place]);
-        canvas.drawCircle(cx, cy, radius, fill);
-        line.setColor(0xFFFFFFFF);
-        line.setStrokeWidth(ui.dp(1.5f));
-        canvas.drawCircle(cx, cy, radius - ui.dp(2), line);
-        text.setColor(0xFF2B2A27);
-        text.setTextSize(ui.dp(12));
-        canvas.drawText(Integer.toString(place + 1), cx, cy + text.getTextSize() / 3, text);
     }
 
     /** The phone's position: a dot with a halo that breathes out and fades. */

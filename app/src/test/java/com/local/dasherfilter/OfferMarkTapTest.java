@@ -410,7 +410,8 @@ public class OfferMarkTapTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             DecisionChartView chart = findChart(content);
             assertEquals("wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
-            assertTrue("beside the map", star.getRight() <= find(content, AreaMapView.class).getLeft());
+            AreaMapView map = find(content, AreaMapView.class);
+            assertTrue("beside the map or over it", star.getRight() <= map.getLeft() || star.getBottom() <= map.getTop());
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertNotNull("its offers reach screen readers", star.getAccessibilityNodeProvider()

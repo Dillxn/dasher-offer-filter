@@ -15,26 +15,28 @@ package com.local.dasherfilter;
  * buttons rise into the chips' row. Five buttons (a full screen's, with Open Dasher) fold up to
  * {@link #FULL_SCREEN_EXTRA_DP} later, so a phone's own screen keeps its whole mascot.
  *
+ * <p>Since 0.6.8 the buttons also lift into the first row, beside the tile, where the folded mascot, a readable tile
+ * ({@link #TILE_FIT_DP}) and the buttons fit there (the owner's mockup: the buttons in the verdict's row beside
+ * Dasher): first the tile pulls in, then the buttons rise. The first row keeps its height: the header's box hangs
+ * past it into the second row's end, where the chips' row leaves the buttons' room, so the band is no taller for it.
+ *
  * <p>The stage holds the minimums' constellation (the radar) and the ground: the skyline's caption over the skyline,
  * and the offer map over the line naming its chosen area. In a short window they stand in three columns: the radar,
- * the skyline and the map. As the window grows taller the map moves under the skyline (the inner turn: the map's top
- * comes down while the skyline's bottom rises, then the skyline widens to the right over the map and the map to the
- * left under it) until the radar stands beside the skyline over the map; then, as before 0.6.3, the radar's column
- * shortens from below while the ground's moves down beside it, and the radar's widens to the right over the ground
- * and the ground's to the left under it, until the radar stands above the ground (the outer turn). Each turn takes a
- * range of heights long enough that nothing in it moves more than {@link #TURN_RATE} times as fast as the window's
- * edge, and the inner turn is over before the outer one begins; the radar's column keeps one width from where the
- * inner turn begins.
+ * the skyline and the map. From where the stage holds the top tier's least over the map strip's least
+ * ({@link #turnsFrom}) it turns to two tiers (0.6.8, the owner's mockup of 12 October 2026: the radar and the skyline
+ * side by side over the map, a strip the page's width): the radar's and the skyline's columns shorten from below to
+ * the tier's line while the map's top comes down to it, then the map widens to the left under them and the skyline to
+ * the right over it. Nothing in the turn moves more than {@link #TURN_RATE} times as fast as the window's edge. Taller
+ * still, the top tier grows until the radar's circle fills its column, the map strip takes the rest, and then the road.
  *
- * <p>Every size and place is a continuous function of the window's width and height, with no threshold anywhere. Room
- * beyond what every part reads well at goes to the radar, the skyline and the map by weight. As the window shrinks,
- * what must go gives way least important first: the road (it takes room only beyond what every part reads well at,
- * and waits for it as if the buttons stood in the chips' row, so the band's fold never takes the road back), then the
- * stage shrinks through both turns to its three columns, the radar's icons tuck in towards its rim so that its circle
- * keeps its least in a radar as short as {@link #TUCKED_DP}, and only below that do the radar, the skyline and the map
- * fade, all together. In three columns the skyline also fades by the width alone, as its column narrows below
- * {@link #COLUMN_LEAST_DP}. A part is used (touched, heard) only while it is wholly there; the band and the lines never
- * go, and below what they need the page scrolls.
+ * <p>Every size and place is a continuous function of the window's width and height, with no threshold anywhere. As
+ * the window shrinks, what must go gives way least important first: the road (it waits until the turn is over, and as
+ * if the buttons stood in the chips' row, so the band's fold never takes the road back), then the stage shrinks through
+ * the turn to its three columns, the radar's icons tuck in towards its rim so that its circle keeps its least in a
+ * radar as short as {@link #TUCKED_DP}, and only below that do the radar, the skyline and the map fade, all together.
+ * In three columns the skyline also fades by the width alone, as its column narrows below {@link #COLUMN_LEAST_DP}. A
+ * part is used (touched, heard) only while it is wholly there; the band and the lines never go, and below what they
+ * need the page scrolls.
  *
  * <p>Pure arithmetic in pixels with no Android type, so every window size can be checked.
  */
@@ -66,6 +68,13 @@ final class FluidLayout {
     static final float FULL_SCREEN_EXTRA_DP = 64;
     static final float FOUR_BUTTONS_DP = 212;
     static final float BUTTON_STEP_DP = 52;
+    /**
+     * The latest offer's tile reads at this width beside the buttons: from where the folded mascot, this tile and the
+     * buttons fit in the first row, the buttons rise into it over {@link #LIFT_RISE_DP} (0.6.8, the owner's mockup:
+     * the buttons in the verdict's row beside Dasher), once the tile has pulled in to leave them their room.
+     */
+    static final float TILE_FIT_DP = 140;
+    static final float LIFT_RISE_DP = 32;
 
     // ---- The stage ----
     /** The parts' heights where each reads well (the most a part that fades takes), and their least. */
@@ -74,28 +83,15 @@ final class FluidLayout {
     static final float CHART_DP = 80;
     static final float CHART_LEAST_DP = 56;
     static final float MAP_DP = 120;
-    static final float MAP_MIDDLE_DP = 96;
     static final float MAP_LEAST_DP = 84;
     static final float AREA_LINE_DP = 48;
-    /** The radar's radius where it reads well, a little less, and the least its knobs work at. */
+    /** The radar's radius where it reads well, and the least its knobs work at. */
     static final float RADIUS_DP = 84;
-    static final float RADIUS_MIDDLE_DP = 72;
     static final float RADIUS_LEAST_DP = 56;
-    /** How room beyond what every part reads well at is shared. */
-    static final float RADAR_WEIGHT = 1.7f;
-    static final float CHART_WEIGHT = 0.7f;
-    static final float MAP_WEIGHT = 1f;
-    /**
-     * The radar and the ground stand side by side while the room under the lines is at most {@link #SIDE_FROM_DP} and
-     * {@link #SIDE_SHARE} of the page's width tall; taller, they turn towards one above the other.
-     */
-    static final float SIDE_FROM_DP = 180;
-    static final float SIDE_SHARE = 0.5f;
     /** The fastest any part moves while the stage turns, against the window's edge. */
-    static final float TURN_RATE = 2f;
-    /** Side by side, the ground keeps at least this width (its skyline's buildings), and the radar at most this share. */
-    static final float SIDE_GROUND_LEAST_DP = 200;
-    static final float SIDE_RADAR_MOST = 0.6f;
+    static final float TURN_RATE = 5f;
+    /** The widest page the turn is over in before the road comes (a tablet on its side). */
+    static final float TURN_WIDEST_DP = 1400;
     /**
      * In three columns the skyline's column is half the ground's, the map's keeping at least this width (the skyline's
      * gives way first); the skyline fades by the width alone as its column narrows below it.
@@ -107,8 +103,6 @@ final class FluidLayout {
      */
     static final float TUCKED_DP = 116;
     static final float MAP_TUCKED_DP = TUCKED_DP - AREA_LINE_DP;
-    /** The inner turn begins where the stage's drive ({@link #solve}) is this. */
-    static final float INNER_START_DP = 284;
 
     // ---- The radar's icons: the constellation's own as the page's sky (MinimumsStarView) ----
     /**
@@ -127,11 +121,6 @@ final class FluidLayout {
     private static final float COS = (float) Math.cos(Math.toRadians(MinimumsStarView.SPREAD));
     private static final float SIN = (float) Math.sin(Math.toRadians(MinimumsStarView.SPREAD));
     private static final float ICON_ACROSS_DP = 4 + 11 + 4;
-    /**
-     * The inner turn's end is worked out as a fixed point, each step at least halving the distance to it: at most this
-     * many steps, fewer once a step finds it.
-     */
-    private static final int INNER_END_STEPS = 40;
 
     /** A box in the page's pixels. */
     static final class Box {
@@ -203,7 +192,7 @@ final class FluidLayout {
     float horizonShown;
     float stageShown;
     float roadShown;
-    /** The outer turn, from one above the other (0) to side by side (1); the inner, stacked (0) to three columns. */
+    /** The turn, from two tiers (0) to three columns (1); and the same again, as the inner turn was before 0.6.8. */
     float turn;
     float inner;
     /**
@@ -212,20 +201,17 @@ final class FluidLayout {
      */
     float narrow;
     float rise;
+    /** How far the buttons have lifted from the chips' row into the first row (0 to 1). */
+    float lift;
     float band;
     /** The page's whole height: the height given, or what never goes when that is more. */
     int total;
 
     FluidLayout(float density) {
         this.density = density;
-        float most = radarHeight(dp(RADIUS_DP));
-        float middle = radarHeight(dp(RADIUS_MIDDLE_DP));
-        radarSteps = new float[] {most, most, middle, middle, radarHeight(dp(RADIUS_LEAST_DP))};
-        float area = dp(AREA_LINE_DP);
-        float horizon = dp(CAPTION_DP + CHART_LEAST_DP);
-        groundSteps = new float[] {dp(CAPTION_DP + CHART_DP + MAP_DP) + area, horizon + dp(MAP_DP) + area,
-                horizon + dp(MAP_MIDDLE_DP) + area, dp(MAP_MIDDLE_DP) + area, dp(MAP_LEAST_DP) + area};
-        comfortable = radarSteps[0] + groundSteps[0];
+        tierEase = Math.max(radarHeight(dp(RADIUS_DP)), dp(CAPTION_DP + CHART_DP));
+        tierLeast = Math.max(dp(TUCKED_DP), dp(CAPTION_DP + CHART_LEAST_DP));
+        comfortable = tierEase + dp(MAP_DP);
     }
 
     private float dp(float value) {
@@ -264,11 +250,6 @@ final class FluidLayout {
         return 2 * (COS * radius + dp(ICON_ACROSS_DP));
     }
 
-    /** The radar's box height where a column {@code width} wide stops its circle growing. */
-    private float tallest(float width) {
-        return radarHeight(radiusIn(width, Float.MAX_VALUE));
-    }
-
     /**
      * The largest circle a box {@code width} by {@code height} holds, its icons as far out as that height lets them
      * stand ({@link #gapFor}); 0 for none. Above the circle's top or above the upper icons, whichever stands higher.
@@ -281,99 +262,22 @@ final class FluidLayout {
         return Math.max(0, Math.min(across, Math.min(rim, icons)));
     }
 
-    // ---- The stage's steps, from where every part reads well to the least, as the window shrinks ----
+    // ---- The stage's two tiers ----
 
-    /**
-     * The radar's height at each step: where it reads well, still so while the skyline comes to its least, a little
-     * less, still so while the skyline and its caption shrink away, and its least. The same in every window at one
-     * density, so worked out once.
-     */
-    private final float[] radarSteps;
-    /**
-     * The ground's height (the caption, the skyline, the map and its area's line) at each of the same steps. The map
-     * takes its area's line's room while the line is not shown, so the steps are the same either way.
-     */
-    private final float[] groundSteps;
-    /** The stage where every part reads well one above the other: the most it ever needs. */
+    /** The top tier where every part reads well (the radar's circle at {@link #RADIUS_DP}), and its least. */
+    private final float tierEase;
+    private final float tierLeast;
+    /** The stage where every part reads well: the top tier over the map strip. */
     private final float comfortable;
 
     /**
-     * The ground one above the other in a column {@code height} tall: {caption, skyline, how much of the skyline it
-     * would leave}; the map takes the rest, over its area's line. Taller than every part reads well at, the room goes
-     * to the skyline and the map by weight; shorter, the skyline comes to its least, the map to a little less, the
-     * skyline and its caption shrink, and the map to its least and below. The skyline stands over the map only so far
-     * as the inner turn has gone ({@link #ground}), and how much of it is there goes by its column's width.
+     * The radar's column's width in a top tier {@code height} tall: as wide as its circle there needs, at most half the
+     * page, and at least its least circle's (or half the page, if less). The skyline takes the rest.
      */
-    private float[] groundColumn(float height) {
-        float[] b = groundSteps;
-        float caption = dp(CAPTION_DP);
-        float chartLeast = dp(CHART_LEAST_DP);
-        if (height >= b[0]) {
-            float share = CHART_WEIGHT / (CHART_WEIGHT + MAP_WEIGHT);
-            return new float[] {caption, dp(CHART_DP) + (height - b[0]) * share, 1};
-        }
-        if (height >= b[1]) return new float[] {caption, chartLeast + height - b[1], 1};
-        if (height >= b[2]) return new float[] {caption, chartLeast, 1};
-        if (height >= b[3]) {
-            float shown = (height - b[3]) / (caption + chartLeast);
-            return new float[] {caption * shown, chartLeast * shown, shown};
-        }
-        return new float[] {0, 0, 0};
-    }
-
-    /**
-     * The radar and the ground one above the other, sharing {@code height}: {radar, ground}. Each step takes the radar
-     * and the ground along together, so they come to a little less together and to their least together; room beyond
-     * every part's ease goes to both by weight, but to the radar only as far as the page's width lets its circle grow.
-     */
-    private float[] stacked(float height) {
-        float[] a = radarSteps;
-        float[] b = groundSteps;
-        float[] n = new float[a.length];
-        for (int i = 0; i < a.length; i++) n[i] = a[i] + b[i];
-        if (height >= n[0]) {
-            float more = height - n[0];
-            float share = RADAR_WEIGHT / (RADAR_WEIGHT + CHART_WEIGHT + MAP_WEIGHT);
-            float radar = Math.min(a[0] + more * share, Math.max(a[0], tallest(width)));
-            return new float[] {radar, height - radar};
-        }
-        for (int i = 1; i < n.length; i++) {
-            if (height >= n[i]) {
-                float along = n[i - 1] > n[i] ? (height - n[i]) / (n[i - 1] - n[i]) : 0;
-                return new float[] {a[i] + along * (a[i - 1] - a[i]), b[i] + along * (b[i - 1] - b[i])};
-            }
-        }
-        float last = n[n.length - 1];
-        float share = last > 0 ? Math.max(0, height) / last : 0;
-        return new float[] {a[a.length - 1] * share, b[b.length - 1] * share};
-    }
-
-    /**
-     * The radar's column's width side by side in a stage {@code height} tall: as wide as its radar needs there, the
-     * ground keeping room of its own and the radar at most {@link #SIDE_RADAR_MOST} of the page, and at least what its
-     * least circle needs (or half the page, if less).
-     */
-    private float sideWidth(float height) {
-        float side = Math.min(Math.min(radarWidth(radiusIn(Float.MAX_VALUE, height)), SIDE_RADAR_MOST * width),
-                width - dp(SIDE_GROUND_LEAST_DP));
-        return Math.max(side, Math.min(radarWidth(dp(RADIUS_LEAST_DP)), width / 2f));
-    }
-
-    /**
-     * The skyline's column's width in three columns, in a ground {@code wide} pixels across: half of it, the map's
-     * keeping at least {@link #COLUMN_LEAST_DP} (none for the skyline in a ground narrower than that).
-     */
-    private float skySide(float wide) {
-        return Math.max(0, Math.min(wide / 2, wide - dp(COLUMN_LEAST_DP)));
-    }
-
-    /**
-     * The stage's height where the stage's drive ({@link #solve}) is {@code drive}, with the band {@code unfolded}
-     * pixels taller than folded.
-     */
-    private float stageAt(float drive, float unfolded) {
-        return drive - unfolded / 2 - Math.min(dp(ROAD_DP) / 2,
-                Math.max(0, drive - (dp(ROW_DP) + comfortable) + unfolded / 2));
+    private float radarSide(float height) {
+        float half = width / 2f;
+        return Math.max(Math.min(radarWidth(radiusIn(Float.MAX_VALUE, height)), half),
+                Math.min(radarWidth(dp(RADIUS_LEAST_DP)), half));
     }
 
     // ---- The band ----
@@ -402,6 +306,16 @@ final class FluidLayout {
     private void band() {
         float risesFrom = risesFrom();
         rise = clamp((width - risesFrom) / dp(RISE_DP));
+        // The buttons lift into the first row in two steps, one after the other, so nothing overlaps on the way and
+        // nothing moves more than three times as fast as the window's edge: the tile pulls in to leave them their room,
+        // then they rise into it.
+        float pull = buttonsWidth + dp(BAND_GAP_DP);
+        float making = pull / 3;
+        float rising = dp(LIFT_RISE_DP);
+        float liftsFrom = Math.max(risesFrom + dp(RISE_DP), dp(MASCOT_LEFT_FOLDED_DP + MASCOT_FOLDED_DP
+                + TILE_GAP_FOLDED_DP + TILE_FIT_DP + BAND_GAP_DP + BAND_SIDE_DP) + countsWidth + pull);
+        float room = clamp((width - (liftsFrom - making)) / making);
+        lift = clamp((width - liftsFrom) / rising);
         narrow = clamp((width - (risesFrom - dp(NARROW_DP))) / dp(NARROW_DP));
         float ring = dp(MASCOT_DP - (MASCOT_DP - MASCOT_FOLDED_DP) * narrow);
         float left = dp(MASCOT_LEFT_DP - (MASCOT_LEFT_DP - MASCOT_LEFT_FOLDED_DP) * narrow);
@@ -413,16 +327,19 @@ final class FluidLayout {
         float countsTall = dp(FilterHeroView.COUNTS_HEIGHT_DP);
         // The tile is never squeezed under a touch target's width: wide counts (a large font) give way to it.
         float tileGap = dp(TILE_GAP_DP - (TILE_GAP_DP - TILE_GAP_FOLDED_DP) * narrow);
-        float countsLeft = Math.max(width - dp(BAND_SIDE_DP) - countsWidth,
+        float countsLeft = Math.max(width - dp(BAND_SIDE_DP) - countsWidth - pull * room,
                 mascot.right + tileGap + dp(ROW1_LEAST_DP) + dp(BAND_GAP_DP));
-        counts.set(countsLeft, top + (first - countsTall) / 2, Math.max(countsLeft, width - dp(BAND_SIDE_DP)),
+        counts.set(countsLeft, top + (first - countsTall) / 2, Math.max(countsLeft,
+                width - dp(BAND_SIDE_DP) - pull * room),
                 top + (first + countsTall) / 2);
         float tileLeft = Math.min(mascot.right + tileGap, counts.left);
-        tile.set(tileLeft, top + (first - tileHeight) / 2, Math.max(tileLeft, counts.left - dp(BAND_GAP_DP)),
+        float tileRight = counts.left - dp(BAND_GAP_DP);
+        tile.set(tileLeft, top + (first - tileHeight) / 2, Math.max(tileLeft, tileRight),
                 top + (first + tileHeight) / 2);
-        float wordsEnd = width - dp(BAND_SIDE_DP) - (buttonsWidth + dp(BAND_GAP_DP)) * narrow;
+        float wordsEnd = width - dp(BAND_SIDE_DP) - pull * narrow;
         chipRow.set(left, second, Math.min(width, Math.max(wordsEnd, left + chipsMost)), second + dp(ROW_DP));
-        float buttonsTop = second + dp(ROW_DP) * (1 - rise);
+        float buttonsTop = (second + dp(ROW_DP) * (1 - rise)) * (1 - lift)
+                + Math.max(0, top + (first - dp(ROW_DP)) / 2) * lift;
         float buttonsLeft = Math.max(0, width - dp(BAND_SIDE_DP) - buttonsWidth);
         float headerLeft = Math.max(0, buttonsLeft - dp(BAND_GAP_DP));
         header.set(headerLeft, buttonsTop, Math.max(headerLeft, Math.min(width,
@@ -431,148 +348,164 @@ final class FluidLayout {
         bandFolded = firstFolded + dp(ROW_DP);
     }
 
-    // The turns' measures for the stage as it stands: the stage's drive, where the outer turn begins, the radar's
-    // column's height one above the other, its width and height side by side, how far the outer turn's halves move
-    // their parts, and the skyline's column's width in three columns.
-    private float drive;
-    private float start;
-    private float above;
-    private float side;
-    private float sideHeight;
-    private float down;
-    private float across;
-    private float skyRest;
-
     /**
      * Works out where everything stands. The band first, by the width alone, then the lines under it. The road takes
-     * room only beyond what every part reads well at, and only as if the buttons stood in the chips' row, so the band's
-     * fold gives its room to the stage, never to the road. The turns go by the stage's drive, its height and half of
-     * what the band's fold and the road take on top of it, so neither turn moves its parts faster for the band folding
-     * or the road coming as the window grows. The inner turn begins at a drive of {@link #INNER_START_DP} and moves its
-     * parts TURN_RATE pixels for each pixel of drive; the outer turn begins where the inner turn is over (and never
-     * before SIDE_FROM_DP and SIDE_SHARE of the width, or the radar at its middle circle above the whole skyline), and
-     * moves its parts as fast. The radar's column side by side is as wide as the stage's height asks up to where the
-     * inner turn begins, and keeps that width through both turns.
+     * room only beyond what every part reads well at, and only as if the band were folded, so the band's fold gives
+     * its room to the stage, never to the road. The stage is two tiers: the radar and the skyline side by side at its
+     * top, the map a strip the page's width under them ({@link #tiers}).
      */
     void solve() {
         band();
         lines.set(0, band, width, band + linesHeight);
         float folded = height - linesHeight - bandFolded;
         float under = Math.max(0, height - band - linesHeight);
-        float roadHeight = Math.max(0, Math.min(dp(ROAD_DP), Math.min(under, folded - dp(ROW_DP)) - comfortable));
+        float line = areaLine ? dp(AREA_LINE_DP) : 0;
+        // The road waits for the turn to be over: past its longest moves (down by the top tier or the map strip, and
+        // across the widest page) at TURN_RATE from where it begins, the same at every width.
+        float settled = Math.max(comfortable + line,
+                turnsFrom() + (Math.max(tierEase, dp(MAP_DP) + line) + dp(TURN_WIDEST_DP)) / TURN_RATE);
+        float roadHeight = Math.max(0, Math.min(dp(ROAD_DP), Math.min(under, folded - dp(ROW_DP)) - settled));
         float stageHeight = under - roadHeight;
-        drive = (stageHeight + Math.max(stageHeight, folded)) / 2;
-        float unfolded = band - bandFolded;
         stage.set(0, lines.bottom, width, lines.bottom + stageHeight);
         road.set(0, stage.bottom, width, stage.bottom + roadHeight);
         roadShown = roadHeight / dp(ROAD_DP);
-        side = sideWidth(Math.max(0, Math.min(stageHeight, stageAt(dp(INNER_START_DP), unfolded))));
-        float groundWide = width - side;
-        skyRest = skySide(groundWide);
-        float innerAcross = Math.max(1, Math.max(skyRest, groundWide - skyRest));
-        float[] a = radarSteps;
-        float[] b = groundSteps;
-        start = Math.max(Math.max(dp(SIDE_FROM_DP) + SIDE_SHARE * width, a[2] + b[2]),
-                innerEnd(unfolded, innerAcross));
-        float travelled = Math.max(0, TURN_RATE * (drive - start));
-        // The radar's column one above the other leaves the ground what the whole skyline needs over the map at a
-        // little less, so the skyline never shrinks as the stage turns.
-        above = Math.min(stacked(stageHeight)[0], Math.max(0, stageHeight - b[2]));
-        sideHeight = Math.min(stageHeight, tallest(side));
-        down = Math.max(1, Math.max(above, Math.abs(sideHeight - above)));
-        across = Math.max(1, Math.max(side, width - side));
-        turn = 1 - 0.5f * Math.min(1, travelled / down) - 0.5f * Math.min(1, Math.max(0, travelled - down) / across);
-        arrange(stageHeight, travelled);
-        // Before anything fades: the radar and the ground at their least one above the other, the tucked stage in
-        // three columns, and in between in step with the turn.
-        int last = a.length - 1;
-        float least = a[last] + b[last] + turn * (dp(TUCKED_DP) - a[last] - b[last]);
-        // A pixel's rounding short of its least the stage is still wholly there (its knobs keep their touches); it
-        // fades from there at the same rate, never in a step.
-        stageShown = least > 1 ? Math.min(1, stageHeight / (least - 1)) : 1;
+        arrange(stageHeight);
         total = Math.max(height, Math.round(road.bottom));
     }
 
     /**
-     * The drive at which the inner turn is over: it begins at {@link #INNER_START_DP} and takes, at TURN_RATE, the
-     * skyline's column's height in a stage at that drive and the width across it ({@code innerAcross}). Worked out
-     * step by step from where it begins: each step at least halves the distance to it, since the stage's height grows
-     * no faster than its drive and the skyline's no faster than the stage's.
+     * The stage {@code height} tall (the owner's mockup of 12 October 2026, "each thing once"). From
+     * {@link #turnsFrom} up it turns, gradually, from three columns ({@link #columns}) to two tiers ({@link #tiers}):
+     * first the radar's and the skyline's columns shorten from below to the top tier while the map's top comes down to
+     * it beside them, then the map widens to the left under the skyline and the radar, and the skyline to the right
+     * over it, until the map is a strip the page's width. Each edge moves at most {@link #TURN_RATE} pixels for each
+     * pixel of the stage's height, so the turn takes a range of heights long enough for its longest move. Below
+     * {@link #TUCKED_DP} the radar, the skyline and the map fade, all together.
      */
-    private float innerEnd(float unfolded, float innerAcross) {
-        float end = dp(INNER_START_DP);
-        for (int i = 0; i < INNER_END_STEPS; i++) {
-            float at = stageAt(end, unfolded);
-            float[] column = groundColumn(at);
-            float sky = column[0] + column[1];
-            float innerDown = Math.max(1, Math.max(sky, Math.abs(at - sky)));
-            float next = dp(INNER_START_DP) + (innerDown + innerAcross) / TURN_RATE;
-            // Found: every step from here gives the same again.
-            if (next == end) break;
-            end = next;
-        }
-        return end;
-    }
-
-    /**
-     * The stage {@code height} tall, turned {@code travelled} pixels from side by side ({@link #solve}): side by side,
-     * the radar at the top of its column on the left (as tall as its circle at that width needs) and the ground on the
-     * right; as it turns, first the ground's column moves down beside the radar's, which takes the height it has one
-     * above the other, each edge moving {@code travelled} pixels at most; then the radar's column widens to the right
-     * over the ground and the ground's to the left under it, until the two stand one above the other. The radar's icons
-     * stand as far out as its height lets them.
-     */
-    private void arrange(float height, float travelled) {
+    private void arrange(float height) {
         float top = stage.top;
-        float groundTop = top + Math.min(above, travelled);
-        // A radar taller side by side than one above the other keeps its height as long as it can, so its bottom never
-        // moves with both the turn and its own column's width at once.
-        float radarBottom = top + (sideHeight > above
-                ? Math.max(above, Math.min(sideHeight, above + down - travelled))
-                : Math.min(above, sideHeight + travelled));
-        float over = Math.max(0, travelled - down);
-        float radarRight = Math.min(width, side + over);
-        float groundLeft = Math.max(0, side - over);
-        float bottom = top + height;
-        radar.set(0, top, radarRight, radarBottom);
+        float least = turnsFrom();
+        columns(top, height);
+        if (height <= least) {
+            turn = 1;
+        } else {
+            tiers(top, height);
+            float travelled = TURN_RATE * (height - least);
+            // The first half: bottoms and tops along the columns to the tier's line.
+            float down = Math.max(1, Math.max(Math.abs(c[1][3] - t[1][3]), Math.max(Math.abs(c[3][3] - t[3][3]),
+                    Math.abs(c[4][1] - t[4][1]))));
+            float s = Math.min(travelled, down);
+            float over = Math.max(0, travelled - down);
+            float across = Math.max(1, Math.max(Math.abs(c[4][0] - t[4][0]), Math.max(Math.abs(c[3][2] - t[3][2]),
+                    Math.abs(c[1][2] - t[1][2]))));
+            turn = 1 - 0.5f * Math.min(1, travelled / down) - 0.5f * Math.min(1, over / across);
+            for (int k = 0; k < c.length; k++) {
+                c[k][0] = toward(c[k][0], t[k][0], over);
+                c[k][1] = toward(c[k][1], t[k][1], s);
+                c[k][2] = toward(c[k][2], t[k][2], over);
+                c[k][3] = toward(c[k][3], t[k][3], s);
+            }
+            // The skyline's left edge follows the radar's right one.
+            c[2][0] = c[1][2];
+            c[3][0] = c[1][2];
+            horizonShown += (clamp((width - c[1][2]) / dp(COLUMN_LEAST_DP)) - horizonShown) * (1 - turn);
+        }
+        inner = turn;
+        radar.set(c[1][0], c[1][1], c[1][2], c[1][3]);
+        caption.set(c[2][0], c[2][1], c[2][2], c[2][3]);
+        chart.set(c[3][0], c[3][1], c[3][2], c[3][3]);
+        map.set(c[4][0], c[4][1], c[4][2], c[4][3]);
+        area.set(c[5][0], c[5][1], c[5][2], c[5][3]);
         iconGap = gapFor(radar.height());
         radius = radiusIn(radar.width(), radar.height());
         radarX = (radar.left + radar.right) / 2;
         radarY = (radar.top + radar.bottom) / 2;
-        ground(groundLeft, groundTop, width, bottom, Math.max(0, TURN_RATE * (drive - dp(INNER_START_DP))));
+        // A pixel's rounding short of its least the stage is still wholly there (its knobs keep their touches); it
+        // fades from there at the same rate, never in a step.
+        stageShown = Math.min(1, height / (dp(TUCKED_DP) - 1));
+    }
+
+    /** {@code from} moved toward {@code to} by at most {@code by}. */
+    private static float toward(float from, float to, float by) {
+        return from < to ? Math.min(to, from + by) : Math.max(to, from - by);
     }
 
     /**
-     * The ground between {@code left} and {@code right}, {@code top} and {@code bottom}, its inner turn {@code tau}
-     * pixels along: at none, the skyline's column (its caption over the skyline) and the map's (the map over its
-     * area's line) side by side, each the ground's whole height, the skyline's half the ground's width
-     * ({@link #skySide}); as it turns, first the map's top moves down while the skyline's bottom rises to what the
-     * skyline needs over the map ({@link #groundColumn}), each edge moving {@code tau} pixels at most; then the skyline
-     * widens to the right over the map and the map to the left under it, until the skyline stands over the map. In
-     * three columns the skyline is there only as far as its column's width lets it read, by the width alone; once over
-     * the map, wholly.
+     * The stage's height from which it turns towards two tiers: the top tier's least over the map strip's least (and
+     * its area's line, when shown).
      */
-    private void ground(float left, float top, float right, float bottom, float tau) {
-        float wide = Math.max(0, right - left);
-        float tall = Math.max(0, bottom - top);
-        float skyWide = skySide(wide);
-        float[] column = groundColumn(tall);
-        float sky = column[0] + column[1];
-        float innerDown = Math.max(1, Math.max(sky, Math.abs(tall - sky)));
-        float innerAcross = Math.max(1, Math.max(skyWide, wide - skyWide));
-        inner = 1 - 0.5f * Math.min(1, tau / innerDown)
-                - 0.5f * Math.min(1, Math.max(0, tau - innerDown) / innerAcross);
-        float mapTop = top + Math.min(sky, tau);
-        float skyBottom = top + (tall > sky ? Math.max(sky, Math.min(tall, sky + innerDown - tau))
-                : Math.min(sky, tall + tau));
-        float over = Math.max(0, tau - innerDown);
-        float skyRight = Math.min(right, left + skyWide + over);
-        float mapLeft = Math.max(left, left + skyWide - over);
-        caption.set(left, top, skyRight, top + Math.min(dp(CAPTION_DP), Math.max(0, skyBottom - top)));
-        chart.set(left, caption.bottom, skyRight, Math.max(caption.bottom, skyBottom));
-        float line = areaLine ? Math.min(dp(AREA_LINE_DP), Math.max(0, bottom - mapTop)) : 0;
-        map.set(mapLeft, mapTop, right, Math.max(mapTop, bottom - line));
-        area.set(mapLeft, bottom - line, right, bottom);
-        horizonShown = 1 - inner * (1 - clamp(skyRest / dp(COLUMN_LEAST_DP)));
+    float turnsFrom() {
+        return tierLeast + dp(MAP_LEAST_DP) + (areaLine ? dp(AREA_LINE_DP) : 0);
+    }
+
+    // The parts' boxes as {left, top, right, bottom}, in three columns (c) and in two tiers (t): unused, the radar,
+    // the skyline's caption, the skyline, the map and its area's line.
+    private final float[][] c = new float[6][4];
+    private final float[][] t = new float[6][4];
+
+    /**
+     * Three columns in a stage {@code height} tall: the radar on the left at the top of its column, the box the top
+     * tier would give it ({@link #tierFor}), so the turn never shrinks it; the skyline's caption over the skyline, half
+     * the rest, the map's keeping at least {@link #COLUMN_LEAST_DP}; and the map over its area's line. The skyline is
+     * there only as far as its column's width lets it read.
+     */
+    private void columns(float top, float height) {
+        float bottom = top + height;
+        float tier = Math.min(height, tierFor(height));
+        // The radar's column grows with it only while the skyline's and the map's keep their least, so the skyline
+        // never fades as the window grows.
+        float side = Math.min(radarSide(tier), Math.max(radarSide(tierLeast), width - 2 * dp(COLUMN_LEAST_DP)));
+        float ground = width - side;
+        float sky = Math.max(0, Math.min(ground / 2, ground - dp(COLUMN_LEAST_DP)));
+        float split = side + sky;
+        put(c[1], 0, top, side, top + tier);
+        put(c[2], side, top, split, top + Math.min(dp(CAPTION_DP), height));
+        put(c[3], side, c[2][3], split, bottom);
+        float line = areaLine ? Math.min(dp(AREA_LINE_DP), height) : 0;
+        put(c[4], split, top, width, bottom - line);
+        put(c[5], split, bottom - line, width, bottom);
+        horizonShown = clamp(sky / dp(COLUMN_LEAST_DP));
+    }
+
+    /**
+     * Two tiers in a stage {@code height} tall, at least {@link #turnsFrom}: the radar on the left and the skyline's
+     * caption over the skyline on the right, side by side, over the map, a strip the page's width, over its area's
+     * line. Taller than every part reads well at, the top tier grows until the radar's circle fills its column (half
+     * the page at most), and the map takes the rest; shorter, the map comes to its least first, then the top tier.
+     */
+    private void tiers(float top, float height) {
+        float line = areaLine ? dp(AREA_LINE_DP) : 0;
+        float tier = tierFor(height);
+        float bottom = top + height;
+        float side = radarSide(tier);
+        put(t[1], 0, top, side, top + tier);
+        put(t[2], side, top, width, top + Math.min(dp(CAPTION_DP), tier));
+        put(t[3], side, t[2][3], width, top + tier);
+        put(t[4], 0, top + tier, width, bottom - line);
+        put(t[5], 0, bottom - line, width, bottom);
+    }
+
+    /**
+     * The top tier's height in a stage {@code height} tall: the map strip comes to its least first, then the tier to
+     * its least; taller than every part reads well at, the tier grows until the radar's circle fills half the page and
+     * the strip takes the rest.
+     */
+    private float tierFor(float height) {
+        float line = areaLine ? dp(AREA_LINE_DP) : 0;
+        float mapEase = dp(MAP_DP) + line;
+        float mapLeast = dp(MAP_LEAST_DP) + line;
+        if (height >= tierEase + mapEase) {
+            float most = Math.max(tierEase, radarHeight(radiusIn(width / 2f, Float.MAX_VALUE)));
+            return Math.min(most, height - mapEase);
+        }
+        if (height >= tierEase + mapLeast) return tierEase;
+        return Math.max(tierLeast, height - mapLeast);
+    }
+
+    private static void put(float[] box, float left, float top, float right, float bottom) {
+        box[0] = left;
+        box[1] = top;
+        box[2] = right;
+        box[3] = bottom;
     }
 }

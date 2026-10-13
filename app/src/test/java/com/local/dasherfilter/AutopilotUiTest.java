@@ -190,7 +190,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         String words = line.getText().toString();
         AutopilotText.Status status = AutopilotRuntime.status(app, System.currentTimeMillis(),
                 OfferFilterService.isConnected());
-        assertEquals("the line as drawn", AutopilotText.statusLine(status), words);
+        assertEquals("the line as drawn", AutopilotText.shownLine(status), words);
         assertFalse("the bar is the chip's alone: " + words, words.startsWith("Autopilot"));
         assertEquals("never a live region", View.ACCESSIBILITY_LIVE_REGION_NONE, line.getAccessibilityLiveRegion());
         if (words.isEmpty()) {
@@ -493,11 +493,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // Four offers came after Dasher's 55% and none was accepted: about 53%, 17 accepts short of 70%.
             reading(55, 12);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.READING);
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
 
             reading(74, 1);
             AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.READING);
-            assertEquals("74% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  74% / 70%", autopilotLine(content));
 
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
             assertEquals("Pay first", autopilotLine(content));
@@ -510,7 +510,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             // With a goal, even the lowest bar passes too few: pinned.
             reading(9, 1);
             AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-            assertEquals("9% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  9% / 70%", autopilotLine(content));
 
             // Autopilot moves the bar by itself at its next safe point: the line, the chip, the button and the dashed
             // shape follow, and nothing is announced.
@@ -520,7 +520,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
             assertEquals(50, FilterStore.load(app).minimumScalePercent);
             // At the lowest bar the line says so first (0.6.3), and the chip shows only its bar.
-            assertEquals("Lowest bar · 9% / 70%", autopilotLine(content));
+            assertEquals("LOWEST BAR  9% / 70%", autopilotLine(content));
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertEquals("Auto 50%", find(content, AutopilotChip.class).getText().toString());
@@ -586,7 +586,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             Ui ui = new Ui(activity.get());
             ScenePage scene = find(content, ScenePage.class);
             View window = (View) scene.getParent();
-            String words = "53% / 70%";
+            String words = "ACCEPTANCE  53% / 70%";
             if (fontScale <= 1f) assertEquals(words, autopilotLine(content));
             layOut(content);
             TextView line = statusLine(content);
@@ -695,7 +695,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertNotNull("background offers are off: a line to fix", fix);
             assertTrue("under the header", inWindow((View) fix.getParent()).top
                     >= inWindow(pageHeader(content)).bottom - 1);
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals("Auto 100% ▲", chip.getText().toString());
             layOut(content);
@@ -707,7 +707,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             layOut(content);
             assertNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
             assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
             float[] without = stageAsItStands(content, new Ui(activity.get()));
             for (int i = 0; i < withLine.length; i++) {
@@ -740,7 +740,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertNotNull("Peek paused itself: a line that needs the user", paused);
             assertTrue("under the header", inWindow((View) paused.getParent()).top
                     >= inWindow(pageHeader(content)).bottom - 1);
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
             assertNull("and never Next match while Autopilot is on", shownLineStarting(content, "Next match"));
             AutopilotChip chip = find(content, AutopilotChip.class);
             assertEquals("Auto 100% ▲", chip.getText().toString());
@@ -755,7 +755,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             assertNull(Peek.pausedWhy(app));
             assertNull(shownTextContaining(content, "Peek paused: "));
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
         }
     }
 
@@ -799,7 +799,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("the chip", chip.isShown());
             assertEquals("Auto 100% ▲", chip.getText().toString());
             TextView line = statusLine(content);
-            assertEquals("beside Autopilot's status line", AutopilotText.statusLine(AutopilotRuntime.status(app,
+            assertEquals("beside Autopilot's status line", AutopilotText.shownLine(AutopilotRuntime.status(app,
                     System.currentTimeMillis(), true)), line.getText().toString());
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip.Row row = (AutopilotChip.Row) chip.getParent();
@@ -855,7 +855,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("53% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
 
             TextView status = statusLine(content);
             status.performClick();
@@ -956,7 +956,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Lowest bar · 9% / 70%", autopilotLine(content));
+            assertEquals("LOWEST BAR  9% / 70%", autopilotLine(content));
             statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
@@ -1016,7 +1016,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
-            assertEquals("Lowest bar · 9% / 70%", autopilotLine(content));
+            assertEquals("LOWEST BAR  9% / 70%", autopilotLine(content));
             statusLine(content).performClick();
             idle();
             AlertDialog details = ShadowAlertDialog.getLatestAlertDialog();
@@ -1203,7 +1203,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     contrast(chip.getCurrentTextColor(), ui.surface) >= 4.5);
             assertEquals("amber below the goal", AutopilotChip.amber(ui), chip.getCurrentTextColor());
             TextView line = statusLine(content);
-            assertEquals("Autopilot's status beside it", AutopilotText.statusLine(AutopilotRuntime.status(app,
+            assertEquals("Autopilot's status beside it", AutopilotText.shownLine(AutopilotRuntime.status(app,
                     System.currentTimeMillis(), true)), line.getText().toString());
             assertEquals("every word of it", line.getText().length(),
                     line.getLayout().getLineEnd(line.getLineCount() - 1));
@@ -1557,14 +1557,14 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             mascot.performClick();
             idle();
             assertTrue(FilterStore.load(app).enabled);
-            assertEquals("not left checking until the next visit", "74% / 70%",
+            assertEquals("not left checking until the next visit", "ACCEPTANCE  74% / 70%",
                     autopilotLine(content));
             mascot.performClick();
             idle();
             assertEquals("Auto-decline paused", autopilotLine(content));
             mascot.performClick();
             idle();
-            assertEquals("74% / 70%", autopilotLine(content));
+            assertEquals("ACCEPTANCE  74% / 70%", autopilotLine(content));
             assertNull("a pause and a resume make no jump", AutopilotStore.jump(app));
             assertFalse(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("commit "));
         }

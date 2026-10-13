@@ -372,6 +372,19 @@ final class AutopilotText {
         return arShort(s) + " / " + s.goal + "%";
     }
 
+    /**
+     * The meter's label (0.6.8, the words over its track): "LOWEST BAR" where Autopilot's bar is pinned at its lowest,
+     * else "ACCEPTANCE".
+     */
+    static String meterLabel(Status s) {
+        return s.kind == Status.Kind.PINNED && s.bar == Autopilot.BAR_MIN ? "LOWEST BAR  " : "ACCEPTANCE  ";
+    }
+
+    /** The status line's words as shown: the meter's label and words where it meters, else {@link #statusLine}. */
+    static String shownLine(Status s) {
+        return meters(s) ? meterLabel(s) + meterWords(s) : statusLine(s);
+    }
+
     /** Whether the status line shows the acceptance meter: Autopilot on with a goal and a known rate. */
     static boolean meters(Status s) {
         switch (s.kind) {

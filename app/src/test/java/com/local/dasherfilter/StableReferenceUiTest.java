@@ -153,10 +153,10 @@ public class StableReferenceUiTest extends AndroidAdapterTestBase {
             String visible = tile.shownText();
             assertTrue("the pay comes first: " + visible, visible.startsWith(drawn[0] + " · "));
             assertTrue("then the miles and the trip time, whole: " + visible,
-                    visible.endsWith(" · " + drawn[1] + " · " + drawn[2]));
+                    (visible + " · ").contains(" · " + drawn[1] + " · " + drawn[2] + " · "));
             assertFalse("facts are never cut: " + visible, visible.contains("…"));
             assertEquals("the pay at its own size, never drawn smaller: " + visible,
-                    VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16), tile.payTextSize(), 0.5f);
+                    VerdictTile.drawn(tile.getResources().getDisplayMetrics(), VerdictTile.PAY_SP), tile.payTextSize(), 0.5f);
             String outcome = MainActivity.captionOutcome(offer);
             assertEquals("outcome stays visible, as the tile's badge", outcome, tile.outcome());
             assertNotNull(tile.symbol());

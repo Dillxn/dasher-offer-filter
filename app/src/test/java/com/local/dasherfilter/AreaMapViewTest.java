@@ -116,6 +116,6 @@ public class AreaMapViewTest {
         map.show(Arrays.asList(best, farAway), new double[] {1888.5 * AreaMap.CELL_DEGREES,
                 -6121.5 * AreaMap.CELL_DEGREES});
         draw(map, 360, 200);
-        assertEquals("apart, both names", 2, map.namesShown());
+        assertEquals("apart, still only the best square's name (0.6.8: only the named square)", 1, map.namesShown());
     }
 }

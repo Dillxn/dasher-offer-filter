@@ -379,11 +379,28 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.8 (the owner, 13 October 2026: "calmer homepage update didnt look like mockup you did"): the homepage as the
+     * mockup drew it, said as what a user sees.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.8", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.8");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"looks like the mockup", "side by side over a wide map",
+                "buttons beside the latest offer", "pay is bigger", "even with Autopilot off", "by its knob"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
      * 0.6.7 (the owner, 13 October 2026, of 0.6.4's split pane: "it's still worse than before we tried to fix split"):
      * Split back to 0.6.2's one start of Dasher beside this app.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.7", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release067SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.7");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);

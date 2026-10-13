@@ -182,6 +182,26 @@ final class OfferClock {
             label.setTextAlign(Paint.Align.CENTER);
         }
 
+        /** Autopilot's bar now, % of the minimums (100 while it is off): a slot under it is coloured as filtered. */
+        private int barPercent = 100;
+
+        void setBar(int percent) {
+            int bar = percent > 0 ? percent : 100;
+            if (bar == barPercent) return;
+            barPercent = bar;
+            invalidateSelf();
+        }
+
+        /**
+         * A slot's colour as a bar of the skyline would be (0.6.8): red under Autopilot's bar, amber from it up to
+         * 100%, green at or above both.
+         */
+        int slotColor(int middle) {
+            if (middle < barPercent) return Ui.resultColor(OfferRule.Result.DECLINE);
+            if (middle < 100) return Ui.resultColor(OfferRule.Result.REVIEW);
+            return Ui.resultColor(OfferRule.Result.KEEP);
+        }
+
         /** What to draw; null draws nothing. */
         void show(OfferClock clock) {
             if (this.clock == clock) return;
@@ -227,29 +247,14 @@ final class OfferClock {
             if (barsBottom - barsTop < ui.dp(8)) return;
             int top = scaleTop(c);
             float slot = (right - left) / SLOTS;
-            // The skyline's tree colour: a score, as its trees are.
-            int bar = faded(ui.dark ? 0xFF9DD6B6 : 0xFF32664F);
-            // The title, at the left over the bars.
+            // The title, at the left over the bars. 0.6.8: no 100% line or key of its own, the skyline's "100%" being
+            // the one (the owner's mockup); each slot is coloured as a bar of the skyline would be.
             label.setTextAlign(Paint.Align.LEFT);
             label.setColor(faded(ui.inkSecondary));
             label.setFakeBoldText(false);
-            // Only where it fits beside the key (screen readers hear it whatever the width).
-            float key = label.measureText("100%") + ui.dp(20);
-            if (label.measureText(TITLE) + ui.dp(8) + key <= right - left) {
+            if (label.measureText(TITLE) + ui.dp(8) <= right - left) {
                 canvas.drawText(TITLE, left, titleBottom - label.descent(), label);
             }
-            // 100%: just meets the minimums now. Solid and thin: the skyline's dashed line is Autopilot's bar.
-            float hundred = y(100, top, barsTop, barsBottom);
-            line.setStrokeWidth(ui.dp(1));
-            line.setColor(faded(ui.inkMuted));
-            canvas.drawLine(left, hundred, right, hundred, line);
-            // Its key, in the title's row at the right: a short line and "100%".
-            label.setTextAlign(Paint.Align.RIGHT);
-            label.setColor(faded(ui.inkMuted));
-            float keyEnd = right - label.measureText("100%") - ui.dp(4);
-            float keyY = titleBottom - text / 2 + ui.dp(1);
-            canvas.drawLine(keyEnd - ui.dp(12), keyY, keyEnd, keyY, line);
-            canvas.drawText("100%", right, titleBottom - label.descent(), label);
             label.setTextAlign(Paint.Align.CENTER);
             float width = Math.min(ui.dp(18), slot * 0.5f);
             // Every hour's label where they fit side by side; else every other one, and only "now" where even those
@@ -263,6 +268,7 @@ final class OfferClock {
                 float center = left + slot * (i + 0.5f);
                 boolean current = i == c.now;
                 if (c.offers[i] > 0) {
+                    int bar = faded(slotColor(c.middle[i]));
                     // A low middle still shows a sliver: the slot has offers.
                     float tip = Math.min(y(Math.min(c.middle[i], top), top, barsTop, barsBottom),
                             barsBottom - ui.dp(2));

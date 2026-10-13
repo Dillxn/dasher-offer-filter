@@ -68,14 +68,12 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             ViewGroup sky = (ViewGroup) star.getParent();
             RectF badge = star.stopsBox();
-            assertNotNull("a badge by the per-stop pin", badge);
+            assertNotNull("a badge at the bottom of the radar", badge);
             assertEquals("hollow, with no limit", "≤∞", star.stopsWords());
             Ui ui = new Ui(app);
-            RectF pin = star.stopsPinBox();
-            assertNotNull("the per-stop pin stays, as the badge's anchor", pin);
-            float dx = Math.max(0, Math.max(badge.left - pin.right, pin.left - badge.right));
-            float dy = Math.max(0, Math.max(badge.top - pin.bottom, pin.top - badge.bottom));
-            assertTrue("the badge stands right by its pin: " + badge + " / " + pin, Math.hypot(dx, dy) <= ui.dp(12));
+            // 0.6.8, the owner's mockup: at the bottom, under the middle, where the Learn button stood.
+            assertTrue("the badge under the middle: " + badge + " / " + star.skyX() + ", " + star.skyY(),
+                    badge.centerY() > star.skyY() && Math.abs(badge.centerX() - star.skyX()) <= ui.dp(24));
             android.graphics.Rect target = new android.graphics.Rect();
             node(star, MinimumsStarView.STOPS_ID).getBoundsInParent(target);
             assertTrue("a full touch target: " + target, target.height() >= ui.dp(48) - 1
@@ -217,10 +215,9 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNotNull("one round button by the chart", button);
             Ui ui = new Ui(app);
             assertTrue("a full touch target", button.width() >= ui.dp(48) - 1 && button.height() >= ui.dp(48) - 1);
-            assertTrue("about where the row of three had its middle: by the circle's upright line, at most 10 dp left of "
-                    + "it", button.centerX() <= star.skyX() + 1 && button.centerX() >= star.skyX() - ui.dp(10) - 1);
-            assertTrue("below the middle, as the row stood: " + button + " / " + star.skyY(),
-                    button.centerY() > star.skyY());
+            // 0.6.8, the owner's mockup: on the lower left of the rim, where the max stops pin stood.
+            assertTrue("left of the middle: " + button + " / " + star.skyX(), button.centerX() < star.skyX());
+            assertTrue("below the middle: " + button + " / " + star.skyY(), button.centerY() > star.skyY());
             for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertTrue("clear of the knobs", Math.hypot(knob[0] - button.centerX(), knob[1] - button.centerY())
@@ -279,9 +276,7 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
             assertNotNull("a setup line to do", setup);
             RectF button = star.learnBox();
             assertNotNull(button);
-            assertTrue("by the circle's upright line, at most 10 dp left of it", button.centerX() <= star.skyX() + 1
-                    && button.centerX() >= star.skyX() - new Ui(app).dp(10) - 1);
-            assertTrue("below the middle, where the row of three stood", button.centerY() > star.skyY());
+            assertTrue("on the lower left (0.6.8)", button.centerX() < star.skyX() && button.centerY() > star.skyY());
             int[] starAt = new int[2];
             star.getLocationInWindow(starAt);
             for (String words : new String[] {"Turn on Offer Filter in Accessibility", "Allow notification access"}) {

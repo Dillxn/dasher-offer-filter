@@ -150,7 +150,7 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             assertEquals("Review", tile.outcome());
             String shown = tile.shownText();
             assertTrue("unread pay is drawn as unread, never guessed: " + shown, shown.startsWith("$?"));
-            assertTrue("and so are the miles and the minutes: " + shown, shown.endsWith("? mi · ? min"));
+            assertTrue("and so are the miles and the minutes: " + shown, (shown + " · ").contains("? mi · ? min · "));
             String said = String.valueOf(tile.getContentDescription());
             assertTrue("and heard as unread: " + said,
                     said.startsWith("Pay unread · Miles unread · Time unread · Review · "));
@@ -306,11 +306,11 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             assertTrue("its two lines fit: " + tile.getHeight(),
                     tile.getHeight() >= VerdictTile.heightFor(tile.getContext()) - 1);
             String shown = tile.shownText();
-            float paySize = VerdictTile.drawn(tile.getResources().getDisplayMetrics(), 16);
+            float paySize = VerdictTile.drawn(tile.getResources().getDisplayMetrics(), VerdictTile.PAY_SP);
             assertTrue("the pay never cut: " + shown, shown.startsWith("$18.35") && !shown.startsWith("$18.35…"));
             assertTrue("condensed at most to four fifths: " + tile.payCondensed(), tile.payCondensed() >= 0.8f - 1e-4f);
-            if (tile.getWidth() >= ui.dp(140)) {
-                // Room for the template ("$88.88" and "88.8 mi · 88 min" at twice the font): nothing gives way.
+            if (tile.getWidth() >= tile.templateWidth()) {
+                // Room for the template ("$88.88", its tag and "88.8 mi · 88 min"): nothing gives way.
                 assertEquals("the pay at its own size: " + shown + " in " + tile.getWidth() + " px",
                         paySize, tile.payTextSize(), 0.5f);
                 assertTrue("the trip whole: " + shown, shown.contains("3 mi · 15 min") && !shown.contains("…"));

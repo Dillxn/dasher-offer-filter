@@ -91,7 +91,8 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             assertTrue("near the left edge, inside the page", x - r >= 0 && x - r <= ui.dp(16));
             assertTrue("at the top of the page", y - r >= 0 && y - r <= ui.dp(12));
             View header = page.getChildAt(3);  // 0.6.3: tile, chip row, hero, then the header
-            assertTrue("above the header", y + r <= header.getTop() + 1);
+            assertTrue("above the header, or before it in the tile's row (0.6.8)",
+                    y + r <= header.getTop() + 1 || x + r <= header.getLeft() + 1);
             assertTrue("and above the radar", y + r <= star.getTop());
             RectF counts = new RectF();
             hero.countsAt(counts);
@@ -105,7 +106,8 @@ public class MascotSpacingTest extends AndroidAdapterTestBase {
             RectF pageBox = inWindow(page);
             tileBox.offset(-pageBox.left, -pageBox.top);
             assertTrue("the tile right of the mascot, never under it", tileBox.left >= x + r - 1);
-            assertTrue("the tile above the header", tileBox.bottom <= header.getTop() + 1);
+            assertTrue("the tile above the header, or before it in its row (0.6.8)",
+                    tileBox.bottom <= header.getTop() + 1 || tileBox.right <= header.getLeft() + 1);
             if (hero.countsShown() > 0) {
                 assertTrue("the tile never under the counts", tileBox.right <= counts.left + 1);
             }

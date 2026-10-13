@@ -143,7 +143,8 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     private static void assertNamedAxes(MinimumsStarView star) {
-        String[] expected = {"Pay", "Pay / mile", "Pay / hour", "Max stops", "", ""};
+        // 0.6.8: no "Max stops" word (the owner's mockup); its badge alone says it, and screen readers keep the name.
+        String[] expected = {"Pay", "Pay / mile", "Pay / hour", "", "", ""};
         // 0.6.6: a set minimum stands at its knob as the label, its unit naming the metric ("$10.00", "$1.50/mi",
         // "$30/hr"); an unset one keeps its name.
         String[] units = {"$", "/mi", "/hr", "", "", ""};

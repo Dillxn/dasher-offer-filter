@@ -354,7 +354,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             assertTrue(mascot.isShown());
             assertEquals("the constellation wholly there", 1f, scene.shown(star), 0f);
             assertEquals("the map with it", 1f, scene.shown(map), 0f);
-            assertTrue("side by side", star.getRight() <= map.getLeft());
+            assertTrue("side by side, or the map under it (0.6.8)", star.getRight() <= map.getLeft()
+                    || star.getBottom() <= map.getTop());
             assertTrue("under the strip and the header",
                     star.getTop() >= iconDescribed(content, "Settings").getBottom());
             assertTrue("its knobs at their least circle at least",
@@ -396,7 +397,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             AreaMapView map = find(content, AreaMapView.class);
             assertEquals("the constellation wholly there", 1f, scene.shown(star), 0f);
             assertEquals("the map with it", 1f, scene.shown(map), 0f);
-            assertTrue("the map keeps its readable least", map.getHeight() >= new Ui(app).dp(84));
+            assertTrue("the map keeps its readable least",
+                    map.getHeight() >= new Ui(app).dp(FluidLayout.MAP_LEAST_DP) - 1);
             DecisionChartView chart = findChart(content);
             assertTrue("the skyline is either whole at its least or on its way out, never squeezed in use",
                     scene.shown(chart) < 1 || chart.getHeight() >= new Ui(app).dp(FluidLayout.CHART_LEAST_DP) - 1);
@@ -648,7 +650,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
                         System.currentTimeMillis(), OfferFilterService.isConnected()))));
             }
             if (autopilot) {
-                assertEquals("the status line is Autopilot's", AutopilotText.statusLine(AutopilotRuntime.status(app,
+                assertEquals("the status line is Autopilot's", AutopilotText.shownLine(AutopilotRuntime.status(app,
                         System.currentTimeMillis(), OfferFilterService.isConnected())), status.getText().toString());
                 String bar = chip.getText().toString();
                 assertEquals("the bar is the chip's", AutopilotText.chip(AutopilotRuntime.status(app,

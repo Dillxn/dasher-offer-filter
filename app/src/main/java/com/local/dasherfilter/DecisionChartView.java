@@ -29,7 +29,7 @@ import java.util.Map;
  * newest, unless another was chosen), and the stored route's offer (0.6.3, {@link #setRoute}) has a small road beside
  * that badge. Pay in dollars stays on the verdict and on each ticket. Under the bars, the dash's counts are the chart's
  * key ("DASH ✓ 1 ✕ 0 ? 1", the band's counts before 0.6.6), and a tap on one opens its latest offer
- * ({@link OnCount}). Tapping a bar selects it (a spotlight picks it out) and reports it to the listener; an offer picked
+ * ({@link OnCount}). Tapping a bar selects it (its badge picks it out) and reports it to the listener; an offer picked
  * on the constellation is selected the same way ({@link #choose}). Bars rise; with Android's animations off they rest.
  */
 @SuppressLint("ViewConstructor")
@@ -156,12 +156,21 @@ final class DecisionChartView extends View {
         String heading = keyLabel.startsWith("Last") ? "LAST" : "DASH";
         float headingWide = label.measureText(heading) + ui.dp(6);
         label.setLetterSpacing(0);
-        label.setTextSize(Math.min(ui.sp(12), ui.dp(15)));
+        label.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
         float badge = keyBadge();
-        float column = Math.max(0, (right - left - headingWide) / 3f);
-        boolean roomForHeading = column >= badge * 2 + ui.dp(4) + label.measureText("88");
+        float count = badge * 2 + ui.dp(5) + label.measureText("88");
+        // "latest →" at the row's end (0.6.8, the owner's mockup) where the counts leave it room.
+        label.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
+        float latest = label.measureText(LATEST) + ui.dp(8);
+        label.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
+        latestShown = right - left - headingWide - latest >= 3 * (count + ui.dp(8));
+        float room = right - left - (latestShown ? latest : 0);
+        float column = Math.max(0, (room - headingWide) / 3f);
+        boolean roomForHeading = column >= count;
         float start = left + (roomForHeading ? headingWide : 0);
-        if (!roomForHeading) column = (right - left) / 3f;
+        if (!roomForHeading) column = room / 3f;
+        // The counts side by side as a key, not spread across the street.
+        column = Math.min(column, count + ui.dp(14));
         for (int k = 0; k < 3; k++) keyBoxes[k].set(start + k * column, plotBottom(), start + (k + 1) * column,
                 getHeight());
         label.setTypeface(null);
@@ -169,8 +178,12 @@ final class DecisionChartView extends View {
     }
 
     private float keyBadge() {
-        return Math.min(ui.dp(6), Math.max(ui.dp(4), (getHeight() - plotBottom()) / 4f));
+        return Math.min(ui.dp(8), Math.max(ui.dp(4), (getHeight() - plotBottom()) / 3f));
     }
+
+    /** At the key's end: which end of the street is newest. */
+    static final String LATEST = "latest →";
+    private boolean latestShown;
 
     /** The lines for these rules: the minimums at 100%, and Autopilot's bar, dashed, when it is not 100%. */
     void setRules(FilterSettings rules) {
@@ -280,9 +293,7 @@ final class DecisionChartView extends View {
         // The spotlight moving to the bar just tapped draws every frame; the rest is steady motion.
         float spotlight = Motion.settle(selectedAt, 300);
         int marked = badged();
-        if (selected >= 0 && selected < entries.size()) {
-            drawSpotlight(canvas, buildingCenter(selected, slot), barWidth, bottom, spotlight);
-        }
+        // 0.6.8: no spotlight beam (the owner's mockup): the badge alone marks the selected bar.
         // The lines under the bars, so a bar's top stays visible where it crosses one.
         drawThresholdLines(canvas, left, right);
         for (int i = 0; i < entries.size(); i++) {
@@ -437,27 +448,22 @@ final class DecisionChartView extends View {
             canvas.drawText(Ui.resultSymbol(kinds[k]), x + badge + ui.dp(2), middle + label.getTextSize() / 3, label);
             label.setTextAlign(Paint.Align.LEFT);
             label.setTypeface(Ui.MEDIUM);
-            label.setTextSize(Math.min(ui.sp(12), ui.dp(15)));
+            label.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
             label.setColor(none ? ui.inkMuted : ui.ink);
             String number = none ? "–" : Integer.toString(keyCounts[k]);
             canvas.drawText(number, x + 2 * badge + ui.dp(5), middle - (label.ascent() + label.descent()) / 2, label);
+        }
+        if (latestShown && !entries.isEmpty()) {
+            label.setTypeface(null);
+            label.setTextAlign(Paint.Align.RIGHT);
+            label.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
+            label.setColor(ui.inkMuted);
+            canvas.drawText(LATEST, right, middle - (label.ascent() + label.descent()) / 2, label);
         }
         label.setTypeface(null);
         label.setTextAlign(Paint.Align.CENTER);
         label.setTextSize(ui.sp(11));
         label.setColor(ui.inkMuted);
-    }
-
-    /** A soft beam from the top of the chart down onto the selected bar. */
-    private void drawSpotlight(Canvas canvas, float center, float barWidth, float bottom, float shown) {
-        path.reset();
-        path.moveTo(center - ui.dp(4), 0);
-        path.lineTo(center + ui.dp(4), 0);
-        path.lineTo(center + barWidth / 2f + ui.dp(8), bottom);
-        path.lineTo(center - barWidth / 2f - ui.dp(8), bottom);
-        path.close();
-        fill.setColor((ui.accent & 0x00FFFFFF) | (Math.round(0x12 * shown) << 24));
-        canvas.drawPath(path, fill);
     }
 
     /** The badge ({@link OutcomeBadge}), kept whole inside the view however tall its bar. */
@@ -511,7 +517,7 @@ final class DecisionChartView extends View {
     private float plotTop() { return Math.min(ui.dp(26), getHeight() * 0.40f); }
     private float plotBottom() {
         // The key grows with font size, while a compact chart still keeps its bars above it.
-        return Math.max(plotTop(), getHeight() - Math.max(ui.dp(18), ui.sp(12) * 1.3f + ui.dp(4)));
+        return Math.max(plotTop(), getHeight() - Math.max(ui.dp(22), ui.sp(14) * 1.3f + ui.dp(4)));
     }
     private float slotWidth() { return Math.max(0, getWidth() - ui.dp(SIDE_DP * 2)) / (float) SLOTS; }
     private float buildingWidth(float slot) { return Math.max(1, Math.min(ui.dp(16), slot * 0.6f)); }

@@ -46,7 +46,7 @@ public class AtlasClarityTest extends AndroidAdapterTestBase {
         assertTrue(description, description.contains("phone areas when offers arrived"));
         assertTrue(description, description.contains("not pickups, final stops or Dasher hotspots"));
         assertTrue(description, description.contains("blue dot is You"));
-        assertTrue(description, description.contains("not a road route"));
+        assertTrue(description, description.contains("The named square is the best ranked area"));
         assertTrue(description, description.contains("not a prediction"));
     }
 

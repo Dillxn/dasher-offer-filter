@@ -307,13 +307,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNull("nothing to fix yet", shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
             assertEquals("and the map beside it", 1f, scene.shown(map), 0f);
-            assertTrue("side by side, the radar on the left", star.getRight() <= map.getLeft());
-            // 0.6.3: the chips' row and the header share the band (the buttons rise into the chips' row as it widens).
+            assertTrue("apart, the radar on the left or above (0.6.8: two tiers beside Dasher)",
+                    star.getRight() <= map.getLeft() || star.getBottom() <= map.getTop());
+            // 0.6.3: the chips' row and the header share the band (the buttons rise into the chips' row as it widens,
+            // and from 0.6.8 into the tile's row).
             android.graphics.RectF strip = inWindow(chipRow(content));
             android.graphics.RectF header = inWindow(pageHeader(content));
             assertTrue("both under the band: its chips' row and the header", inWindow(star).top >= header.bottom - 1
-                    && inWindow(map).top >= header.bottom - 1 && strip.bottom <= header.bottom + 1
-                    && inWindow(star).top >= strip.bottom - 1);
+                    && inWindow(map).top >= header.bottom - 1 && inWindow(star).top >= strip.bottom - 1
+                    && inWindow(map).top >= strip.bottom - 1);
             float radius = star.skyRadius();
             assertTrue("a circle the knobs work at: " + radius,
                     radius >= new Ui(app).dp(FluidLayout.RADIUS_LEAST_DP) - 1);
@@ -415,7 +417,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             // With no rule yet, the start is the strip's status line, at the top of the page.
             TextView start = statusLine(content);
             assertEquals(MainActivity.START_LINE, start.getText().toString());
-            assertTrue("the start in the band, beside or above the header", inWindow(start).bottom <= header.bottom + 1);
+            assertTrue("the start in the band, in the chips' row", inWindow(start).bottom
+                    <= inWindow(chipRow(content)).bottom + 1);
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
             assertTrue("under the steps", inWindow(star).top >= linesBottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
@@ -427,7 +430,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             android.graphics.RectF page = inWindow(scene);
             float mascotY = page.top + mascot.getTop() + mascot.mascotY();
             float mascotX = page.left + mascot.getLeft() + mascot.mascotX();
-            assertTrue("the mascot in the strip, above the header", mascotY + mascot.mascotRadius() <= header.top + 1);
+            assertTrue("the mascot in the strip, above the header or before it in its row (0.6.8)",
+                    mascotY + mascot.mascotRadius() <= header.top + 1
+                            || mascotX + mascot.mascotRadius() <= header.left + 1);
             assertTrue("inside the page", mascotX - mascot.mascotRadius() >= page.left);
         } finally {
             service.destroy();
@@ -478,8 +483,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNotNull("a setup line to do", line);
             TextView start = statusLine(content);
             assertEquals("the start is the strip's status line", MainActivity.START_LINE, start.getText().toString());
-            assertTrue("at the top, in the band beside or above the header",
-                    inWindow(start).bottom <= inWindow(pageHeader(content)).bottom + 1);
+            assertTrue("at the top, in the band's chips' row",
+                    inWindow(start).bottom <= inWindow(chipRow(content)).bottom + 1);
             assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);
             assertTrue("under the lines", inWindow(star).top >= inWindow(line).bottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
@@ -805,6 +810,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void inAShortSplitWithAnotherAppTheRadarKeepsItsKnobsAndButtonBesideTheMap() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        // Set up, as during a dash (0.6.8): two setup lines under the band would leave the top tier only the
+        // radar's least circle, too small for the Learn button.
+        ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
+        service.get().onServiceConnected();
+        ServiceController<OfferNotificationService> listener =
+                Robolectric.buildService(OfferNotificationService.class).create();
+        listener.get().onListenerConnected();
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
@@ -818,11 +830,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertNotNull("and the Autopilot button", star.learnBox());
             assertTrue("the strip's chip as well", find(content, AutopilotChip.class).isShown());
             AreaMapView map = find(content, AreaMapView.class);
-            assertTrue("the map beside it", map.isShown() && star.getRight() <= map.getLeft());
+            assertTrue("the map beside it or under it", map.isShown()
+                    && (star.getRight() <= map.getLeft() || star.getBottom() <= map.getTop()));
             assertTrue(act(star, AreaScore.MILE, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             assertEquals("a knob sets its minimum here as anywhere", 155, FilterStore.load(app).perMileCents);
             assertFalse("no page opens", settingsShown(content));
+        } finally {
+            listener.destroy();
+            service.destroy();
         }
     }
 
@@ -978,7 +994,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             android.graphics.RectF line = inWindow(paused);
             android.graphics.RectF radar = inWindow(star);
             assertTrue("the line at the top, the radar under the header: " + line + " / " + radar,
-                    line.bottom <= inWindow(pageHeader(content)).bottom + 1
+                    line.bottom <= inWindow(chipRow(content)).bottom + 1
                             && radar.top >= inWindow(pageHeader(content)).bottom - 1);
             assertFalse("the knob nowhere near the line", line.contains(radar.left + knob[0], radar.top + knob[1]));
 

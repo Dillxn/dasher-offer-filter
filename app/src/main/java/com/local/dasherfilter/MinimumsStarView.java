@@ -82,8 +82,11 @@ import java.util.Locale;
 final class MinimumsStarView extends View {
     /** The six stable axis indexes keep their screen readers' ids; only pay, per mile and per hour have knobs. */
     private static final String[] NAMES = {"Pay", "Per mile", "Per hour", "Per stop", "Hotspot", "Per item"};
-    /** The names drawn by the icons: the three minimums, and max stops by the pin; hotspot and per item are gone. */
-    static final String[] AXIS_LABELS = {"Pay", "Pay / mile", "Pay / hour", "Max stops", "", ""};
+    /**
+     * The names drawn at the three minimums' knobs while unset (0.6.8: no spoke icons and no "Max stops" word, the
+     * owner's mockup; screen readers keep every name).
+     */
+    static final String[] AXIS_LABELS = {"Pay", "Pay / mile", "Pay / hour", "", "", ""};
     /** Each spoke's icon (the per-stop pin anchors the max stops badge); the names are for screen readers. */
     private static final Glyph.Shape[] ICONS = {Glyph.Shape.COIN, Glyph.Shape.ROAD, Glyph.Shape.CLOCK,
             Glyph.Shape.PIN};
@@ -316,13 +319,12 @@ final class MinimumsStarView extends View {
      * The Learn button's middle stands up to this far left of the circle's (dp), where the max stops badge leaves
      * room, so the per-hour name beside its clock keeps clear of it on a smaller circle.
      */
-    private static final int BUTTON_LEFT_DP = 10;
     /**
      * The Learn button is wholly there on a circle of at least this radius, in dp, and gone on one of at most the
-     * second, growing from its middle in between ({@link #placeButton}).
+     * second, growing from its middle in between ({@link #placeButton}; 0.6.8: smaller, on the rim, than inside it).
      */
-    private static final int BUTTON_WHOLE_DP = 82;
-    private static final int BUTTON_FROM_DP = 74;
+    static final int BUTTON_WHOLE_DP = 68;
+    static final int BUTTON_FROM_DP = 60;
     /** The spokes' names are wholly there on a circle of the least radius the page uses, gone at this radius (dp). */
     private static final int NAMES_FROM_DP = 44;
     /**
@@ -426,8 +428,8 @@ final class MinimumsStarView extends View {
         Arrays.fill(barCents, Double.NaN);
         Arrays.fill(set, Double.NaN);
         Arrays.fill(auto, Double.NaN);
-        axisText.setTypeface(Ui.MEDIUM);
-        axisText.setTextSize(Math.min(ui.sp(11), ui.dp(13)));
+        axisText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        axisText.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
         axisText.setTextAlign(Paint.Align.LEFT);
         axisText.setColor(ui.dark ? 0xFFE0E8EE : 0xFF394D5A);
         axisText.setShadowLayer(ui.dp(3), 0, 0, ui.dark ? 0xFF0D1428 : 0xFFE7EEF2);
@@ -923,27 +925,27 @@ final class MinimumsStarView extends View {
         float margin = ui.dp(4);
         RectF padded = new RectF();
         for (int axis : AreaScore.DRAW_ORDER) {
-            if (AXIS_LABELS[axis].isEmpty() || !skyIcon(axis, skyX, skyY, skyRadius, iconBox)) continue;
+            if (AXIS_LABELS[axis].isEmpty() || !spoke(axis)) continue;
+            // At the knob, moving with it (0.6.8): pay's above and to its left, per mile's above and to its right, per
+            // hour's on its right.
+            float[] at = point(skyX, skyY, skyRadius, axis, knobFraction(axis, 1));
             float width = Math.max(ui.dp(1), axisText.measureText(axisLabelText(axis)));
-            float left = axis == AreaScore.PAY ? iconBox.right + gap
-                    : axis == AreaScore.STOP ? iconBox.left : iconBox.left - gap - width;
-            float top = axis == AreaScore.STOP
-                    ? Math.min(iconBox.top, badge ? stopsBox.top : iconBox.top) - margin - height
-                    : iconBox.centerY() - height / 2;
+            float away = ui.dp(12);
+            float left = axis == AreaScore.PAY ? at[0] + away - width
+                    : axis == AreaScore.MILE ? at[0] - away : at[0] + away + ui.dp(2);
+            float top = axis == AreaScore.MINUTE ? at[1] - height / 2 : at[1] - away - height;
+            if (axis == AreaScore.MINUTE && left + width > getWidth() - margin) {
+                // No room on its right: under the knob instead, never over it.
+                left = at[0] - width / 2;
+                top = at[1] + away;
+            }
             left = Math.max(margin, Math.min(getWidth() - margin - width, left));
+            top = Math.max(margin, Math.min(getHeight() - margin - height, top));
             RectF box = axisLabels[axis];
             box.set(left, top, left + width, top + height);
             padded.set(box);
             padded.inset(-ui.dp(2), -ui.dp(2));
-            // Its own room: inside the view, off the icons and the knobs.
-            float room = Math.min(box.top - margin, getHeight() - margin - box.bottom);
-            for (int i = 0; i < ICONS.length; i++) {
-                if (skyIcon(i, skyX, skyY, skyRadius, iconBox)) room = Math.min(room, apart(padded, iconBox));
-            }
-            if (knobs) for (int i : SPOKES) {
-                float[] at = point(skyX, skyY, skyRadius, i, knobFraction(i, 1));
-                room = Math.min(room, outside(padded, at[0], at[1]) - ui.dp(9));
-            }
+            float room = Math.min(box.top - margin, getHeight() - margin - box.bottom) + ui.dp(1);
             float shown = Math.min(small, nameFade(room));
             // Then what it gives way to: the badge (always wholly there) and the button, drawn over it, which it goes
             // under as it fades; and other words, the rings' dollars and the names before it, gone before they would
@@ -1115,12 +1117,7 @@ final class MinimumsStarView extends View {
         drawChosenOutline(canvas, cx, cy, radius);
         boolean knobs = knobsOn();
         if (knobs) drawKnobs(canvas, cx, cy, radius, glide);
-        for (int i = 0; i < ICONS.length; i++) {
-            if (!skyIcon(i, cx, cy, radius, iconBox)) continue;
-            icons[i].setBounds(Math.round(iconBox.left), Math.round(iconBox.top), Math.round(iconBox.right),
-                    Math.round(iconBox.bottom));
-            icons[i].draw(canvas);
-        }
+        // 0.6.8: no spoke icons (the owner's mockup): each minimum's value at its knob says what the spoke is.
         canvas.restoreToCount(layer);
         // The held knob's readout is placed first, so the rings' dollars it would cover step aside for it.
         if (readoutAxis() >= 0) placeReadout(cx, cy, radius);
@@ -2341,9 +2338,10 @@ final class MinimumsStarView extends View {
             stopsBox.right = stopsBox.left + width;
             return true;
         }
-        if (!skyIcon(AreaScore.STOP, skyX, skyY, skyRadius, iconBox)) return false;
-        float middle = Math.min(iconBox.centerY(), getHeight() - Math.max(ui.dp(BUTTON_DP), height) / 2);
-        float left = iconBox.right + ui.dp(8);
+        if (skyRadius <= 0) return false;
+        // 0.6.8, the owner's mockup: at the bottom, under the middle, where the Learn button stood.
+        float middle = Math.min(skyY + skyRadius * 0.72f, getHeight() - Math.max(ui.dp(BUTTON_DP), height) / 2);
+        float left = skyX - width / 2 - ui.dp(10);
         stopsBox.set(left, middle - height / 2, left + width, middle + height / 2);
         return true;
     }
@@ -2458,9 +2456,13 @@ final class MinimumsStarView extends View {
         fill.setColor(modePressed ? (ui.dark ? 0xFF2E2E2C : 0xFFE4E3DE) : ui.surface);
         canvas.drawRoundRect(modeBox, corner, corner, fill);
         line.setPathEffect(null);
-        line.setColor(ui.dark ? 0x66FFFFFF : 0x550B0B0B);
-        line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        canvas.drawRoundRect(modeBox, corner, corner, line);
+        // Area ringed in the minimums' blue, Strict in grey (0.6.3's chip rule, the owner's mockup).
+        boolean area = ModeChip.AREA.equals(modeWord);
+        line.setColor(area ? setColor() : ui.dark ? 0x66FFFFFF : 0x550B0B0B);
+        line.setStrokeWidth(area ? ui.dp(2) : Math.max(1, ui.dp(1)));
+        RectF ringed = new RectF(modeBox);
+        ringed.inset(line.getStrokeWidth() / 2, line.getStrokeWidth() / 2);
+        canvas.drawRoundRect(ringed, corner, corner, line);
         pillText.setColor(ui.ink);
         Paint.Align align = pillText.getTextAlign();
         pillText.setTextAlign(Paint.Align.CENTER);
@@ -2530,15 +2532,20 @@ final class MinimumsStarView extends View {
     private float placeButton() {
         if (!knobsOn()) return 0;
         float half = ui.dp(BUTTON_DP) / 2f;
-        float aside = -ui.dp(BUTTON_LEFT_DP);
-        if (placeStops()) aside = Math.max(aside, stopsBox.right + ui.dp(4) + half - skyX);
-        // Square to the line the pay and per-hour spokes make through the middle, SPREAD degrees off level.
-        float below = (ui.dp(KNOB_REACH_DP) + half + SIN * aside) / COS;
-        buttonX = skyX + aside;
-        buttonY = skyY + below;
+        // 0.6.8, the owner's mockup: on the lower left of the rim, where the max stops pin stood, clear of the badge.
+        placeStops();
+        buttonX = skyX - COS * skyRadius;
+        buttonY = skyY + SIN * skyRadius;
+        if (stopsBox.width() > 0) buttonX = Math.min(buttonX, stopsBox.left - ui.dp(4) - half);
+        buttonX = Math.max(half + ui.dp(2), buttonX);
+        buttonY = Math.min(getHeight() - half - ui.dp(2), buttonY);
         float amount = within(skyRadius - ui.dp(BUTTON_FROM_DP), ui.dp(BUTTON_WHOLE_DP - BUTTON_FROM_DP));
         float room = Math.min(Math.min(buttonX, getWidth() - buttonX), Math.min(buttonY, getHeight() - buttonY));
         amount = Math.min(amount, within(room, half));
+        if (stopsBox.width() > 0 && buttonY + half > stopsBox.top && buttonY - half < stopsBox.bottom) {
+            // Pressed against the badge on a small circle: it fades rather than cover it.
+            amount = Math.min(amount, within(stopsBox.left - ui.dp(4) - buttonX, half));
+        }
         float drawn = half * amount;
         scoreBox.set(buttonX - drawn, buttonY - drawn, buttonX + drawn, buttonY + drawn);
         return amount;

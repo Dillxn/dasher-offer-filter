@@ -1803,15 +1803,27 @@ public final class MainActivity extends Activity implements Updater.Busy {
             // Paused by the Earn by Time guard (TimeModeGuard): its line, whether or not Autopilot is on.
             showSlot(SLOT_PAUSED, guarded, guarded + ": nothing is declined. Resume auto-decline", ui.ink);
         } else if (saved.autopilot) {
-            showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
-                    ui.inkSecondary);
             if (AutopilotText.meters(status)) {
-                meter.set(status.shownArPercent(), status.goal, status.belowGoal()
-                        ? Ui.resultColor(OfferRule.Result.REVIEW) : Ui.resultColor(OfferRule.Result.KEEP));
+                int fill = status.belowGoal() ? Ui.resultColor(OfferRule.Result.REVIEW)
+                        : Ui.resultColor(OfferRule.Result.KEEP);
+                showSlot(SLOT_AUTOPILOT, meterWords(AutopilotText.meterLabel(status), AutopilotText.meterWords(status), fill),
+                        AutopilotText.chipDescription(status), ui.inkSecondary);
+                meter.set(status.shownArPercent(), status.goal, fill);
                 showMeter(true);
+            } else {
+                showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
+                        ui.inkSecondary);
             }
         } else if (!saved.enabled) {
             showSlot(SLOT_PAUSED, PAUSED_LINE, PAUSED_LINE + ": nothing is declined. Resume auto-decline", ui.ink);
+        } else if (status.shownArPercent() >= 0) {
+            // Autopilot off, the acceptance rate known (0.6.8: the owner, with Autopilot off, saw no rate at all): the
+            // meter with the rate alone, no goal, since nothing pursues one.
+            int rate = status.shownArPercent();
+            String words = (status.arSource == Autopilot.ArSource.ESTIMATE ? "~" : "") + rate + "%";
+            showSlot(SLOT_ON, meterWords("ACCEPTANCE  ", words, ui.ink), "Acceptance rate " + rate + " percent", ui.inkSecondary);
+            meter.set(rate, 0, ui.inkSecondary);
+            showMeter(true);
         } else if (showWait) {
             showSlot(SLOT_WAIT, estimate.label(), null, ui.inkSecondary);
         } else {
@@ -1863,14 +1875,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * The status line, as {@code which} says: its words, what screen readers hear, its ink, and whether a tap does
      * something.
      */
-    private void showSlot(int which, String words, String said, int color) {
+    private void showSlot(int which, CharSequence words, String said, int color) {
         slot = which;
         showMeter(false);
         // Nothing to say (Autopilot waiting, say, whose chip says it all and opens its details): no words, no tap, and
         // nothing for screen readers to stop on.
-        boolean blank = words.isEmpty();
+        boolean blank = words.length() == 0;
         if (blank) said = null;
-        if (!words.contentEquals(statusLine.getText())) statusLine.setText(words);
+        if (!words.toString().contentEquals(statusLine.getText()) || words instanceof android.text.Spanned) {
+            statusLine.setText(words);
+        }
         if (!java.util.Objects.equals(said, statusLine.getContentDescription() == null ? null
                 : statusLine.getContentDescription().toString())) {
             statusLine.setContentDescription(said);
@@ -1885,11 +1899,28 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (statusLine.getImportantForAccessibility() != important) statusLine.setImportantForAccessibility(important);
     }
 
-    /** Autopilot's acceptance meter before the status line's words ({@link AcceptanceMeter}), or none. */
+    /** The acceptance meter along the status words' bottom ({@link AcceptanceMeter}), or none. */
     private void showMeter(boolean shown) {
-        android.graphics.drawable.Drawable now = statusLine.getCompoundDrawablesRelative()[0];
-        if ((now == meter) == shown) return;
-        statusLine.setCompoundDrawablesRelativeWithIntrinsicBounds(shown ? meter : null, null, null, null);
+        if ((statusLine.getBackground() == meter) == shown) return;
+        statusLine.setBackground(shown ? meter : null);
+        statusLine.setPaddingRelative(statusLine.getPaddingStart(), 0, statusLine.getPaddingEnd(),
+                shown ? ui.dp(AcceptanceMeter.ROOM_DP) : 0);
+    }
+
+    /** "ACCEPTANCE 7% / 70%": the {@code label} small and quiet, the rate bold in the fill's {@code ink}. */
+    private static CharSequence meterWords(String label, String rate, int ink) {
+        android.text.SpannableStringBuilder words = new android.text.SpannableStringBuilder(label);
+        words.setSpan(new android.text.style.RelativeSizeSpan(0.8f), 0, words.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        int start = words.length();
+        int slash = rate.indexOf(" / ");
+        words.append(rate);
+        int end = slash < 0 ? words.length() : start + slash;
+        words.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        words.setSpan(new android.text.style.ForegroundColorSpan(ink), start, end,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return words;
     }
 
     /** The status line's tap: the starter, resume, Autopilot's details, or how long until a matching offer. */
@@ -2117,6 +2148,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (chart != null) chart.setRules(rules);
         minimums.show(rules, CHART_COMPARISON, recentEntries);
         offerClock = OfferClock.of(recentEntries, rules, ZoneId.systemDefault(), System.currentTimeMillis());
+        if (clockFace != null) clockFace.setBar(rules.autopilot ? rules.minimumScalePercent : 100);
         if (offerCaption != null && chart != null) refreshOfferCaption(chart.selectedEntry());
     }
 

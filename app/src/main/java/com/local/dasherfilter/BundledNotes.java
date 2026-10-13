@@ -193,6 +193,11 @@ final class BundledNotes {
                 "Split is back to how 0.6.2 did it: one tap opens Dasher beside this app straight away, with no small "
                         + "pane in between.",
                 "If the screen doesn't split, recent apps open so you can pick Dasher's card.");
+        release("0.6.8",
+                "The homepage now looks like the mockup: the radar and the chart side by side over a wide map, the "
+                        + "buttons beside the latest offer.",
+                "The latest offer's pay is bigger, your acceptance rate shows as a bar even with Autopilot off, and "
+                        + "each minimum sits by its knob.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

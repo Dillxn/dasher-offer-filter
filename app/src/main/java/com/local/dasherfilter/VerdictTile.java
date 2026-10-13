@@ -20,11 +20,12 @@ import android.view.accessibility.AccessibilityNodeInfo;
  * 2026: "that sentence needs to be removed at all sizes and replaced with more thoughtful, concise (either via label
  * and or graphic) expression"). Two lines in a box of one fixed size, beside the mascot:
  * <ul>
- * <li>the outcome's badge (the skyline's, {@link OutcomeBadge}), the pay in bold, a short tag only where the badge
- * alone would leave the outcome unsaid ("below min" in Autopilot's purple; "auto";
- * "requested" in amber), and how long ago at the right: "now", "12m", "3h", "4d";</li>
- * <li>the trip under it, "2.1 mi · 13 min", and its stops when the offer is the stored route's (whose road marks the
- * badge's lower right).</li>
+ * <li>the outcome's badge (the skyline's, {@link OutcomeBadge}, half as large again since 0.6.8), the pay in bold
+ * (24 sp, the owner's mockup), and a short tag only where the badge alone would leave the outcome unsaid ("below min"
+ * in Autopilot's purple; "auto"; "requested" in amber);</li>
+ * <li>the trip under it, "2.1 mi · 13 min", then how long ago, "now", "12m", "3h", "4d" (0.6.8: the header's buttons
+ * may stand at the tile's right), and its stops when the offer is the stored route's (whose road marks the badge's
+ * lower right), each only where it fits.</li>
  * </ul>
  * An unread figure shows as unread ("$?", "? mi", "? min" in the muted ink), never left out or guessed. With no offer
  * yet: a dashed ring and "Waiting for offers" (everything ready) or "No offers yet".
@@ -33,7 +34,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
  * are drawn ({@link #heightFor}: 48 dp at the normal font), as wide as the page gives it. Where that is too narrow for
  * everything, the tag moves to the end of the trip's line if it fits there whole (else it goes), then the pay and the
  * trip condense to four fifths of their width, then the age goes, then the trip's end is cut; the pay is never cut. The
- * age keeps the room of its widest ("59m"), so the minutes passing move nothing. The words are drawn at the user's
+ * age keeps the room of its widest ("59m"), so the minutes passing move nothing before it. The words are drawn at the user's
  * size, at a large font a little smaller (never below three quarters of it nor below the default size, as a setup
  * step's words), so the tile keeps beside the mascot and the dash's counts in a short window.
  *
@@ -58,20 +59,21 @@ final class VerdictTile extends View {
     static final String AUTOMATICALLY_ACCEPTED = "Automatically accepted";
 
     /** The words' sizes at the normal font. */
-    private static final float PAY_SP = 16;
-    private static final float TAG_SP = 11;
-    private static final float AGE_SP = 12;
-    private static final float TRIP_SP = 12;
+    static final float PAY_SP = 24;
+    private static final float TAG_SP = 16;
+    private static final float AGE_SP = 14;
+    private static final float TRIP_SP = 14;
     private static final float EMPTY_SP = 14;
     /** The tile is never shorter than a touch target. */
     private static final float LEAST_DP = 48;
     /** The badge's middle from the start; the pay (and the words with no offer) from here. */
-    private static final float BADGE_X_DP = 9;
-    private static final float TEXT_X_DP = 22;
-    /** Between the pay's line and the trip's; before a tag; before the age, at the least. */
+    private static final float BADGE_X_DP = 14;
+    private static final float TEXT_X_DP = 32;
+    /** The badge drawn this much larger than the skyline's, beside the larger pay (the mockup). */
+    private static final float BADGE_SCALE = 1.5f;
+    /** Between the pay's line and the trip's; before a tag. */
     private static final float LINE_GAP_DP = 2;
     private static final float TAG_GAP_DP = 6;
-    private static final float AGE_GAP_DP = 6;
     /** A dot's or the road's middle this far right of the badge's, and up or down. */
     private static final float PIP_OFFSET_DP = 6;
     private static final float ROAD_PIP_DP = 9;
@@ -125,12 +127,12 @@ final class VerdictTile extends View {
     private int tagLine;
     private boolean ageShown;
     /** The trip's line as drawn: its labels (the last perhaps cut) and the dots between them, each at its place. */
-    private final String[] tripShown = new String[5];
-    private final float[] tripX = new float[5];
-    private final int[] tripShownColor = new int[5];
+    private final String[] tripShown = new String[7];
+    private final float[] tripX = new float[7];
+    private final int[] tripShownColor = new int[7];
     private int tripShownParts;
     /** The trip's labels as drawn, for {@link #shownText}. */
-    private final String[] labelsShown = new String[3];
+    private final String[] labelsShown = new String[4];
     private int labelsShownCount;
     private float tagX;
     private float payX;
@@ -165,8 +167,8 @@ final class VerdictTile extends View {
         for (String each : AGES) room = Math.max(room, agePaint.measureText(each));
         ageRoom = room;
         tall = heightFor(context);
-        templateWide = (int) Math.ceil(Math.max(ui.dp(TEXT_X_DP) + payPaint.measureText(TEMPLATE_PAY)
-                + ui.dp(AGE_GAP_DP) + ageRoom, tripPaint.measureText(TEMPLATE_TRIP)));
+        templateWide = (int) Math.ceil(Math.max(ui.dp(TEXT_X_DP) + payPaint.measureText(TEMPLATE_PAY),
+                ui.dp(TEXT_X_DP) + tripPaint.measureText(TEMPLATE_TRIP + SEPARATOR) + ageRoom));
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_NONE);
         tappable(false);
@@ -374,28 +376,22 @@ final class VerdictTile extends View {
         }
         emptyLayout = null;
         float tagGap = ui.dp(TAG_GAP_DP);
-        float ageGap = ui.dp(AGE_GAP_DP);
         float payWide = payPaint.measureText(pay);
         float tagWide = tag == null ? 0 : tagPaint.measureText(tag);
-        float ageWide = Math.max(ageRoom, agePaint.measureText(age));
         // The trip itself (miles and minutes), without the route's stops, which come only where there is room left.
         float dot = tripPaint.measureText(SEPARATOR);
         float tripWide = tripPaint.measureText(trip[0]) + dot + tripPaint.measureText(trip[1]);
-        // First the tag: beside the pay with the age kept; else at the end of the trip's line, whole; else nowhere.
+        // First the tag: beside the pay; else at the end of the trip's line, whole; else nowhere.
+        float tripX0 = textX;
         tagLine = 0;
         if (tag != null) {
-            if (textX + payWide + tagGap + tagWide + ageGap + ageWide <= width) tagLine = 1;
-            else if (tripWide + tagGap + tagWide <= width) tagLine = 2;
+            if (textX + payWide + tagGap + tagWide <= width) tagLine = 1;
+            else if (tripX0 + tripWide + tagGap + tagWide <= width) tagLine = 2;
         }
-        // Then the pay condensed, down to four fifths of its width, to keep the age; else the age goes. The pay is
-        // never cut: past four fifths with the age gone, it is drawn smaller.
+        // Then the pay condensed, down to four fifths of its width. The pay is never cut: past four fifths, it is drawn
+        // smaller.
         float payRoom = width - textX - (tagLine == 1 ? tagGap + tagWide : 0);
-        ageShown = true;
-        float payScale = share(payWide, payRoom - ageGap - ageWide);
-        if (payScale < LEAST_CONDENSED) {
-            ageShown = false;
-            payScale = share(payWide, payRoom);
-        }
+        float payScale = share(payWide, payRoom);
         payDrawn.set(payPaint);
         payDrawn.setColor(payColor);
         if (payScale < LEAST_CONDENSED) {
@@ -406,42 +402,51 @@ final class VerdictTile extends View {
         }
         payX = textX;
         tagX = textX + payDrawn.measureText(pay) + tagGap;
-        // The trip: condensed down to four fifths of its width, then its end cut; the route's stops only where they
-        // fit as it is drawn.
-        float tripRoom = width - (tagLine == 2 ? tagGap + tagWide : 0);
+        // The trip, under the pay: condensed down to four fifths of its width, then its end cut; the age (0.6.8, at the
+        // trip's end as in the mockup) and the route's stops only where they fit as it is drawn, the age first.
+        float tripRoom = width - tripX0 - (tagLine == 2 ? tagGap + tagWide : 0);
         float tripScale = share(tripWide, tripRoom);
         boolean cut = tripScale < LEAST_CONDENSED;
         tripDrawn.set(tripPaint);
         tripDrawn.setTextScaleX(Math.max(LEAST_CONDENSED, tripScale));
         dot = tripDrawn.measureText(SEPARATOR);
-        int labels = Math.min(2, tripLabels);
-        if (!cut && tripLabels > 2) {
-            float all = tripDrawn.measureText(trip[0]);
-            for (int i = 1; i < tripLabels; i++) all += dot + tripDrawn.measureText(trip[i]);
-            if (all <= tripRoom) labels = tripLabels;
+        // The labels in their order: miles, minutes, the age, the route's stops.
+        String[] words = {trip[0], trip[1], age, tripLabels > 2 ? trip[2] : null};
+        int[] inks = {tripColor[0], tripColor[1], ui.inkSecondary, tripColor[2]};
+        int count = tripLabels > 2 ? 4 : 3;
+        int labels = 2;
+        if (!cut) {
+            float all = tripDrawn.measureText(words[0]) + dot + tripDrawn.measureText(words[1]);
+            while (labels < count) {
+                float more = all + dot + tripDrawn.measureText(words[labels]);
+                if (more > tripRoom) break;
+                all = more;
+                labels++;
+            }
         }
+        ageShown = labels >= 3;
         float ellipsis = tripDrawn.measureText("…");
         float x = 0;
         tripShownParts = 0;
         labelsShownCount = 0;
         for (int i = 0; i < labels; i++) {
             float before = i == 0 ? 0 : dot;
-            float wide = tripDrawn.measureText(trip[i]);
+            float wide = tripDrawn.measureText(words[i]);
             // Whole while the line fits; once it is cut, a label is whole only where the ellipsis still fits after it.
             boolean last = i == labels - 1;
             if (!cut || x + before + wide + (last ? 0 : ellipsis) <= tripRoom) {
                 if (i > 0) put(SEPARATOR, x, ui.inkSecondary);
-                put(trip[i], x + before, tripColor[i]);
-                labelsShown[labelsShownCount++] = trip[i];
+                put(words[i], x + before, inks[i]);
+                labelsShown[labelsShownCount++] = words[i];
                 x += before + wide;
                 continue;
             }
             // Cut: as much of this label as leaves room for the ellipsis, else the ellipsis alone after the last one.
-            int fits = tripDrawn.breakText(trip[i], true, Math.max(0, tripRoom - x - before - ellipsis), null);
-            String kept = trip[i].substring(0, fits).trim();
+            int fits = tripDrawn.breakText(words[i], true, Math.max(0, tripRoom - x - before - ellipsis), null);
+            String kept = words[i].substring(0, fits).trim();
             if (!kept.isEmpty()) {
                 if (i > 0) put(SEPARATOR, x, ui.inkSecondary);
-                put(kept + "…", x + before, tripColor[i]);
+                put(kept + "…", x + before, inks[i]);
                 labelsShown[labelsShownCount++] = kept + "…";
                 x += before + tripDrawn.measureText(kept + "…");
             } else if (x + ellipsis <= tripRoom) {
@@ -451,7 +456,8 @@ final class VerdictTile extends View {
             }
             break;
         }
-        if (tagLine == 2) tagX = x + tagGap;
+        if (tagLine == 2) tagX = tripX0 + x + tagGap;
+        for (int i = 0; i < tripShownParts; i++) tripX[i] += tripX0;
         shownText = describeShown();
     }
 
@@ -473,7 +479,6 @@ final class VerdictTile extends View {
     private String describeShown() {
         StringBuilder shown = new StringBuilder(pay);
         if (tagLine == 1) shown.append(SEPARATOR).append(tag);
-        if (ageShown) shown.append(SEPARATOR).append(age);
         for (int i = 0; i < labelsShownCount; i++) shown.append(SEPARATOR).append(labelsShown[i]);
         if (tagLine == 2) shown.append(SEPARATOR).append(tag);
         return shown.toString();
@@ -494,7 +499,10 @@ final class VerdictTile extends View {
             }
             return;
         }
+        canvas.save();
+        canvas.scale(BADGE_SCALE, BADGE_SCALE, badgeX, badgeY);
         OutcomeBadge.draw(canvas, ui, badgeX, badgeY, badgeColor, symbol, 255);
+        canvas.restore();
         float pip = ui.dp(PIP_OFFSET_DP);
         if (pipColor != 0) OutcomeBadge.drawPip(canvas, ui, badgeX + pip, badgeY - pip, pipColor);
         if (onRoute) OutcomeBadge.drawRoadPip(canvas, ui, badgeX + pip, badgeY + pip, ui.dp(ROAD_PIP_DP), ui.ink);
@@ -503,7 +511,6 @@ final class VerdictTile extends View {
             tagPaint.setColor(tagColor);
             canvas.drawText(tag, tagX, tagLine == 1 ? line1 : line2, tagPaint);
         }
-        if (ageShown) canvas.drawText(age, getWidth(), line1, agePaint);
         for (int i = 0; i < tripShownParts; i++) {
             tripDrawn.setColor(tripShownColor[i]);
             canvas.drawText(tripShown[i], tripX[i], line2, tripDrawn);
