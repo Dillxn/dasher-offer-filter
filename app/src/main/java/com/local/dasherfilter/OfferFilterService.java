@@ -8446,6 +8446,13 @@ public final class OfferFilterService extends AccessibilityService {
         AddOnOffer addOn = isAddOn ? AddOnOffer.parse(ActiveRouteStore.load(this), scan.text) : null;
         OfferRule.Decision decision = isAddOn
                 ? OfferRule.evaluateAddOn(addOn, settings) : OfferRule.evaluate(offer, settings);
+        // The skip list (0.6.10): a standalone offer from a store on it is declined, whatever it pays; its stores are
+        // remembered for its ticket's buttons (memory only). Add-ons are unchanged.
+        if (!isAddOn) {
+            List<String> stores = StoreName.stores(scan.text);
+            SkipList.remember(offer, stores);
+            if (SkipList.skipped(this, stores) != null) decision = OfferRule.skipped(decision);
+        }
         // An add-on's own pay is its explicit "+$" increment, which is never standalone pay.
         OfferSnapshot learn = isAddOn ? addOn.incremental : offer;
         OfferSnapshot routeAfter = isAddOn ? addOn.combined : offer;

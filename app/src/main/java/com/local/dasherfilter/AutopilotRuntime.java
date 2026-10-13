@@ -310,7 +310,7 @@ final class AutopilotRuntime {
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned, since, TimeZone.getDefault()));
+                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app)));
             String dropped = publish(app, plan, state, epoch, stored, wall);
             if (dropped != null) {
                 log(app, dropped);
@@ -400,7 +400,7 @@ final class AutopilotRuntime {
         return new Autopilot.OfferRecord(entry.facts, entry.at, entry.addOn,
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
                 DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
-                entry.model, entry.scoringRules);
+                entry.model, entry.scoringRules, OfferRule.SKIP_LIST.equals(entry.reason));
     }
 
     // ---- Commits ----

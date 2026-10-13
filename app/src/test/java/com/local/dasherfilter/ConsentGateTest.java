@@ -163,10 +163,15 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the daily count renews the notice", 20, Consent.VERSION);
+        assertEquals("the skip list renews the notice (after the daily count's 20)", 21, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
+                // 0.6.10 (notice 21): the skip list declines whatever an offer pays; the cost per mile is the driver's
+                // own, off by default.
+                "It also declines offers from stores you put on your skip list (from an offer's details), whatever "
+                        + "they pay.",
+                "your own cost per mile if you set one in its details (off by default)",
                 // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
                 // meet the minimums, which the acceptance-rate warning covers too.
                 // 0.6.2 (notice 19): on by default, and its chip turns it off.
@@ -348,8 +353,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
-        // growth; 20, the anonymous daily count. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(20, Consent.VERSION);
+        // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile. A phone that accepted
+        // 14 (0.5.0) sees it again too.
+        assertEquals(21, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

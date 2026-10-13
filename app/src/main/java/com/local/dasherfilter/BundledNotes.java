@@ -93,6 +93,15 @@ final class BundledNotes {
                         + "days. Settings → Send an anonymous daily count turns it off.",
                 "Also new: Strict or Area is a chip beside Autopilot's, the latest offer is a short label, and Split "
                         + "opens Dasher first, then puts this app beside it.");
+        // 0.6.10 (the owner, 13 October 2026, of the #DeclineNow study: "yeah I want all its recommendations"): the
+        // store skip list and the driver's cost per mile, both changing what gets declined, so one notice for both.
+        notice(21,
+                "New: a skip list. \"Skip <store> from now on\" on an offer's details declines its offers, whatever "
+                        + "they pay. Settings → Skipped stores removes one.",
+                "An offer from two stores is declined if either is on the list; an offer whose store can't be read is "
+                        + "judged by your rules as before.",
+                "Also new, off unless you set it: your own cost per mile for gas and wear, in Autopilot's details. "
+                        + "Autopilot then weighs pay after that cost.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -202,6 +211,11 @@ final class BundledNotes {
                 "When an offer comes from the same store as one declined in the last half hour, both tickets say so, "
                         + "with how much later and for how much.",
                 "Each minimum's value now stays readable over the offer's outline, and the chart says which end is latest.");
+        release("0.6.10",
+                "Skip a store: on an offer's details, \"Skip <store> from now on\" declines its offers from then on. "
+                        + "Settings → Skipped stores lists them.",
+                "Your own cost per mile, off unless you set it in Autopilot's details, lets Autopilot weigh pay after "
+                        + "gas and wear.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

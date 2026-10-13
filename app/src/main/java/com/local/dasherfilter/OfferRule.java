@@ -17,6 +17,8 @@ final class OfferRule {
     static final String ADD_ON_UNCLEAR = "add-on has missing or ambiguous incremental/route evidence";
     static final String ADD_ON_ECONOMICS = "add-on marginal economics";
     static final String COMBINED_FAILS = "combined route fails: ";
+    /** The reason of a standalone offer declined because a store it is from is on the skip list ({@link SkipList}). */
+    static final String SKIP_LIST = "on your skip list";
 
     static final class Decision {
         final Result result;
@@ -144,6 +146,15 @@ final class OfferRule {
                 : below ? "below your minimums; passes the " + bar + "% bar"
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
+    }
+
+    /**
+     * {@code decision} for a standalone offer from a store on the skip list: declined, its score, bar and rules kept
+     * for its line, never below the minimums (so never left to the user or auto-accepted for that).
+     */
+    static Decision skipped(Decision decision) {
+        return new Decision(Result.DECLINE, decision.requiredCents, SKIP_LIST, decision.basis, decision.scorePercent,
+                decision.minimumScalePercent, false, decision.autopilot, decision.scoringRules);
     }
 
     /**

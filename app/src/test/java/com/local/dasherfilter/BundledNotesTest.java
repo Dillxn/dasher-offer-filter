@@ -120,6 +120,7 @@ public class BundledNotesTest {
         both.addAll(notice(18));
         both.addAll(notice(19));
         both.addAll(notice(20));
+        both.addAll(notice(21));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -319,7 +320,7 @@ public class BundledNotesTest {
      * What's-new card with it, so the box names the release's other homepage and split changes too.
      */
     @Test public void theDailyCountHasItsOwnNotice() {
-        assertEquals(20, Consent.VERSION);
+        assertTrue(Consent.VERSION >= 20);
         List<String> twenty = notice(20);
         assertTrue(twenty.toString(), twenty.size() >= 2 && twenty.size() <= 3);
         String notice = String.join(" ", twenty);
@@ -330,7 +331,9 @@ public class BundledNotesTest {
                 "Settings → " + DailyCount.SWITCH + " turns it off", "Strict or Area", "Split"}) {
             assertTrue(fact, notice.contains(fact));
         }
-        assertEquals("a reader of notice 19 sees only these", twenty, BundledNotes.noticeChanges(19, true));
+        List<String> since19 = new ArrayList<>(twenty);
+        since19.addAll(notice(21));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's", since19, BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
@@ -379,11 +382,39 @@ public class BundledNotesTest {
     }
 
     /**
-     * 0.6.9 (the owner, 13 October 2026: "yeah I want all its recommendations"): the came-back note, said as what the
-     * tickets show, never as a promise of the same order or of more pay.
+     * 0.6.10 (the owner, 13 October 2026: "yeah I want all its recommendations"): the skip list and the cost per mile,
+     * said as what a user does, never as a suggested rate or a promise of more pay.
      */
     @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.9", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals("0.6.10", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.10");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"Skip a store", "from now on", "Skipped stores", "cost per mile",
+                "off unless you set it", "Autopilot's details"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"irs", "72.5", "earn more", "more pay", "you'll make", "guarantee"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
+     * 0.6.10's notice (21): the skip list as a reason the app declines, and the cost per mile as one of Autopilot's
+     * inputs, off by default and never a suggested rate.
+     */
+    @Test public void notice21SaysWhatNowDeclinesAndWhatAutopilotWeighs() {
+        assertEquals(21, Consent.VERSION);
+        String notice = String.join(" ", BundledNotes.noticeChanges(20));
+        for (String fact : new String[] {"skip list", "whatever they pay", "Skipped stores", "two stores",
+                "can't be read", "cost per mile", "off unless you set it", "Autopilot's details"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        assertFalse(notice.contains("IRS"));
+    }
+
+    /** 0.6.9: the came-back note, said as what the tickets show, never as a promise of the same order. */
+    @Test public void release069SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.9");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);

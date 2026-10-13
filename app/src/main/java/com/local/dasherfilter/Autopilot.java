@@ -226,6 +226,8 @@ final class Autopilot {
         /** The rules model it was decided under (DecisionLog's "model"; 1 for a line an older version wrote). */
         final int model;
         final FilterSettings scoringRules;
+        /** Declined because a store it is from is on the skip list (0.6.10): it fails at every bar. */
+        final boolean skipped;
 
         /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
@@ -241,6 +243,13 @@ final class Autopilot {
 
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, bar, autopilot, model, scoringRules, false);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
+                    boolean skipped) {
+            this.skipped = skipped;
             this.scoringRules = scoringRules;
             this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
             this.at = at;
@@ -344,6 +353,11 @@ final class Autopilot {
         final long minimumsSince;
         /** The phone's time zone, for the calendar days of that evidence. */
         final TimeZone zone;
+        /**
+         * The driver's own cost per mile, in cents (0.6.10; 0 is off, the default): the value rule counts each offer's
+         * pay less this × its miles ({@link #mix}). Never a suggested rate.
+         */
+        final int costPerMileCents;
 
         /** Inputs with no evidence for growth (no line is decided after {@link Long#MAX_VALUE}). */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
@@ -354,7 +368,14 @@ final class Autopilot {
 
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone) {
+            this(rules, newestFirst, waits, reading, state, wallNow, generation, minimumsSince, zone, 0);
+        }
+
+        Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
+               Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
+               int costPerMileCents) {
             if (rules == null) throw new IllegalArgumentException("rules");
+            this.costPerMileCents = Math.max(0, Math.min(CostPerMile.MOST_CENTS, costPerMileCents));
             this.rules = rules;
             this.newestFirst = newestFirst == null ? Collections.<OfferRecord>emptyList()
                     : Collections.unmodifiableList(new ArrayList<>(newestFirst));
@@ -810,11 +831,14 @@ final class Autopilot {
         List<OfferRecord> counted = countedLines(in.newestFirst);
         List<OfferRecord> window = firstOf(counted, WINDOW);
         int[] thetas = new int[window.size()];
-        for (int i = 0; i < thetas.length; i++) thetas[i] = AreaScore.passThreshold(rules, window.get(i).facts);
+        // A skipped store's offer (0.6.10) fails at every bar: its θ is below the lowest.
+        for (int i = 0; i < thetas.length; i++) {
+            thetas[i] = window.get(i).skipped ? 0 : AreaScore.passThreshold(rules, window.get(i).facts);
+        }
         boolean ignoreExempt = exemptionsIgnored(window);
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
-        List<MixLine> mix = mix(rules, window, thetas);
+        List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
         Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
 
@@ -1092,6 +1116,16 @@ final class Autopilot {
      * most $150 an hour of those minutes ({@code 60·pay ≤ 15,000·minutes}). {@code thetas} is the window's θ, in order.
      */
     static List<MixLine> mix(FilterSettings rules, List<OfferRecord> window, int[] thetas) {
+        return mix(rules, window, thetas, 0);
+    }
+
+    /**
+     * As {@link #mix(FilterSettings, List, int[])}, with the driver's cost per mile (0.6.10; 0 is off): each line's pay
+     * is the pay less {@code cost × miles} (rounded up, never below 0), and with a cost set an offer whose miles were
+     * not read is left out. Only the value rule sees it; the acceptance-rate limit, which counts offers, comes first
+     * as before.
+     */
+    static List<MixLine> mix(FilterSettings rules, List<OfferRecord> window, int[] thetas, int costPerMileCents) {
         List<MixLine> mix = new ArrayList<>();
         for (int i = 0; i < window.size(); i++) {
             OfferSnapshot facts = window.get(i).facts;
@@ -1099,7 +1133,13 @@ final class Autopilot {
             if (!rules.hasMonetaryRule()
                     || AreaScore.requiredPay(rules, facts, FilterSettings.BAR_AT_MINIMUMS) < 0) continue;
             if (60L * facts.payCents > MAX_RATE_CENTS_PER_HOUR * facts.minutes) continue;
-            mix.add(new MixLine(thetas[i], facts.payCents, facts.minutes));
+            int pay = facts.payCents;
+            if (costPerMileCents > 0) {
+                if (facts.miles == null) continue;
+                pay = (int) Math.max(0, pay - Math.min(Integer.MAX_VALUE,
+                        OfferRule.mileageCost(costPerMileCents, facts.miles)));
+            }
+            mix.add(new MixLine(thetas[i], pay, facts.minutes));
         }
         return mix;
     }

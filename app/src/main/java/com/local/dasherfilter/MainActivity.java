@@ -81,6 +81,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Said with the knobs' beckoning, when the user chose to set a first minimum by hand. */
     static final String KNOBS_HINT = "Drag a knob to start. Each knob sets a minimum.";
     /** "Set my own" in a window too short for the constellation (it has faded away): how to reach its knobs. */
+    /** The ticket's skip-list buttons (0.6.10): "Skip DiBella's Subs from now on", "Stop skipping DiBella's Subs". */
+    static final String SKIP_ADD = "Skip ";
+    static final String SKIP_ADD_END = " from now on";
+    static final String SKIP_STOP = "Stop skipping ";
     static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
     /**
      * The status line while auto-decline is paused with Autopilot off: the same words as Autopilot's line says then,
@@ -1298,6 +1302,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             AutopilotRuntime.setMinimumsGrow(this, on);
             words.setText(autopilotDetailWords(autopilotStatus()));
         });
+        addCostPerMile(body);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
@@ -1323,6 +1328,74 @@ public final class MainActivity extends Activity implements Updater.Busy {
             }
         }
         OwnWindowTouches.show(builder);
+    }
+
+    /** Settings' row of skipped stores (0.6.10). */
+    static final String SKIPPED_STORES = "Skipped stores";
+    static final String SKIPPED_NONE = "None yet. Add a store from an offer's details: \"Skip … from now on\".";
+    private Button skippedRow;
+
+    private void showSkippedCount() {
+        if (skippedRow == null) return;
+        int count = SkipList.stores(this).size();
+        ui.setRow(skippedRow, SKIPPED_STORES, count == 0 ? "None" : count + (count == 1 ? " store" : " stores"));
+    }
+
+    /** The skipped stores, oldest first; a tap on one asks to stop skipping it. */
+    private void showSkippedStores() {
+        List<String> stores = SkipList.stores(this);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle(SKIPPED_STORES)
+                .setPositiveButton("Close", null);
+        if (stores.isEmpty()) builder.setMessage(SKIPPED_NONE);
+        else builder.setItems(stores.toArray(new String[0]), (dialog, which) -> {
+            String store = stores.get(which);
+            OwnWindowTouches.show(new AlertDialog.Builder(this)
+                    .setTitle(SKIP_STOP + store + "?")
+                    .setMessage("Its offers will be judged by your rules again.")
+                    .setNegativeButton("Keep skipping", null)
+                    .setPositiveButton("Stop skipping", (again, button) -> {
+                        SkipList.remove(this, store);
+                        showSkippedCount();
+                        toast("Stopped skipping " + store);
+                    }));
+        });
+        OwnWindowTouches.show(builder);
+    }
+
+    /**
+     * Autopilot's details: the driver's own cost per mile (0.6.10, {@link CostPerMile}), off by default, a stepper of
+     * {@link CostPerMile#STEP_CENTS} cents with its words beside it; never a suggested rate.
+     */
+    private void addCostPerMile(LinearLayout body) {
+        LinearLayout row = ui.row();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(ui.dp(48));
+        row.setPaddingRelative(ui.dp(4), ui.dp(8), 0, 0);
+        TextView label = ui.text("", 15, ui.ink, false);
+        row.addView(label, Ui.weighted());
+        Runnable show = () -> {
+            int cents = CostPerMile.cents(this);
+            label.setText(ui.twoLines(CostPerMile.TITLE + ": " + CostPerMile.words(cents), CostPerMile.ABOUT));
+            label.setContentDescription(CostPerMile.TITLE + ", " + CostPerMile.words(cents) + ". "
+                    + CostPerMile.ABOUT);
+        };
+        Button less = ui.button("−", false, () -> {
+            CostPerMile.set(this, CostPerMile.cents(this) - CostPerMile.STEP_CENTS);
+            show.run();
+        });
+        less.setContentDescription("Lower your cost per mile");
+        Button more = ui.button("+", false, () -> {
+            CostPerMile.set(this, CostPerMile.cents(this) + CostPerMile.STEP_CENTS);
+            show.run();
+        });
+        more.setContentDescription("Raise your cost per mile");
+        for (Button step : new Button[] {less, more}) {
+            LinearLayout.LayoutParams at = new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48));
+            at.setMarginStart(ui.dp(6));
+            row.addView(step, at);
+        }
+        show.run();
+        body.addView(row, Ui.matchWidth());
     }
 
     private String autopilotDetailWords(AutopilotText.Status status) {
@@ -1599,6 +1672,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             if (on && !AreaMap.hasPermission(this)) askForLocation();
             refresh();
         });
+        // The skip list (0.6.10) exists nowhere else: its stores, each removable.
+        skippedRow = ui.listRow(switches, SKIPPED_STORES, this::showSkippedStores);
+        showSkippedCount();
 
         LinearLayout connections = group(body);
         // Checks are always automatic; a tap checks now. Public signed updates need no user account.
@@ -2443,6 +2519,24 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 if (shownNow != null) showSelection(shownNow);
             });
         }
+        // The skip list (0.6.10): each store read on this offer, while the app remembers it (memory only).
+        if (!entry.addOn) {
+            for (String store : SkipList.storesOf(entry.facts)) {
+                boolean skipped = SkipList.contains(this, store);
+                ui.addButton(ticket, skipped ? SKIP_STOP + store : SKIP_ADD + store + SKIP_ADD_END, false, () -> {
+                    if (skipped) {
+                        SkipList.remove(this, store);
+                        toast("Stopped skipping " + store);
+                    } else {
+                        SkipList.add(this, store);
+                        toast("Offers from " + store + " will be declined");
+                    }
+                    showSkippedCount();
+                    DecisionLog.Entry shownNow = countTicket != null ? countTicket : chart.selectedEntry();
+                    if (shownNow != null) showSelection(shownNow);
+                });
+            }
+        }
         ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
     }
 
@@ -2597,6 +2691,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         String plain;
         switch (base) {
             case "flat minimum": plain = "Below your minimum pay"; break;
+            case OfferRule.SKIP_LIST: plain = "A store on your skip list"; break;
             case "dollars per mile": plain = "Below your per-mile minimum"; break;
             case "dollars per hour": plain = "Below your hourly minimum"; break;
             case "meets your minimums": plain = "Meets your minimums"; break;

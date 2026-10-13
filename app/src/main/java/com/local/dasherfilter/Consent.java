@@ -25,7 +25,9 @@ final class Consent {
     // 19 (0.6.2): Autopilot on by default, for new installs and once for installs updating, with goal 70%.
     // 20 (0.6.3): the anonymous daily count (DailyCount), on by default with its switch in Settings, and in Privacy
     // the install page's Download count; both kept by the feedback service only as daily totals.
-    static final int VERSION = 20;
+    // 21 (0.6.10): the store skip list, a reason the app declines (any pay), and the driver's own cost per mile, one
+    // of Autopilot's inputs (off by default); both kept on the phone like the rules.
+    static final int VERSION = 21;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -38,12 +40,14 @@ final class Consent {
                 + "Only continue if you understand and accept that risk."},
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
-                + "on offers that fail your chosen rules. Strict mode checks every active minimum; optional area mode "
+                + "on offers that fail your chosen rules. It also declines offers from stores you put on your skip list "
+                + "(from an offer's details), whatever they pay. Strict mode checks every active minimum; optional area mode "
                 + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
                 + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
                 + "mean accepted. Autopilot is on by default and moves that cutoff up or down by itself (50% to 150% of "
                 + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
-                + "you decline: raised, it declines offers that meet your minimums; to protect your acceptance goal it can "
+                + "you decline, and your own cost per mile if you set one in its details (off by default): raised, "
+                + "it declines offers that meet your minimums; to protect your acceptance goal it can "
                 + "let offers below your minimums through for you to decide. Autopilot also raises your minimums after "
                 + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
                 + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "

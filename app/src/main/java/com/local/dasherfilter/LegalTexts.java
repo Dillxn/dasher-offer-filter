@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 12 October 2026 · for {app} 0.6.3
+            Beta terms, effective 13 October 2026 · for {app} 0.6.10
 
             ## What {app} is
 
@@ -91,6 +91,11 @@ final class LegalTexts {
             committing you to that delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on \
             filtering stays strict against saved minimums at the current bar; standalone learned floors do not \
             apply to add-ons unless adopted as saved minimums.
+            - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
+            Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
+            screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
+            read is judged by your rules as usual. Store names can be misread. Autopilot can weigh your own cost \
+            per mile, off unless you set it in its details.
             - Acceptance learning is separate from area mode and Autopilot, and is on by default; the Learn button \
             on the homepage turns it off and on. While filtering and learning are on, each positively confirmed \
             manual standalone acceptance (an offer you accepted yourself, including one you took back from the \
@@ -213,7 +218,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 12 October 2026 · for {app} 0.6.3
+            Beta privacy policy, effective 13 October 2026 · for {app} 0.6.10
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -365,11 +370,20 @@ final class LegalTexts {
             and why), and a few masked lines read from the offer. This history has no age-based expiry: entries \
             remain until newer decisions replace them or you clear history or uninstall. Aggregate outcome counts \
             are kept separately until you clear history or uninstall.
-            - "Same store" notes (from 0.6.9): when a single-store offer comes from the store of an offer declined \
-            in the last 30 minutes, both offers' lines in the decision history note how many minutes apart they came \
-            and the other offer's pay. The store's name is read from Dasher's screen and kept only in the app's \
-            memory for 30 minutes, never written to the phone's storage or put in a report; the lines keep only the \
-            minutes and pay.
+            - Your skip list (from 0.6.10): the names of the stores you add from an offer's details, until you \
+            remove them in Settings → Skipped stores or uninstall; Clear history leaves it, as it leaves your \
+            rules. The stores read on recent offers, for their details' Skip buttons, are kept only in the app's \
+            memory, never written to the phone's storage or put in a report. The offers declined for the skip list \
+            keep the reason "on your skip list" in the decision history, never the store's name, and the logs note \
+            only that a store was added or removed and how many are on the list.
+            - Your cost per mile (from 0.6.10): a whole number of cents, off unless you set it in Autopilot's \
+            details, kept until you change it or uninstall; Clear history leaves it. Autopilot's log notes when you \
+            change it.
+            - "Same store" notes (from 0.6.9): when an offer from one store (two orders from it included) comes \
+            from the store of an offer declined in the last 30 minutes, both offers' lines in the decision history \
+            note how many minutes apart they came and the other offer's pay. The store's name is read from Dasher's \
+            screen and kept only in the app's memory for 30 minutes, never written to the phone's storage or put in \
+            a report; the lines keep only the minutes and pay.
             - Up to 200 numeric wait-estimate records in a rolling 24-hour window, pruned when used: the \
             observation time, positively observed waiting duration and any observed offer's pay, miles, minutes, \
             stops and item count/applicability, used for the wait estimate and by Autopilot to estimate how often \

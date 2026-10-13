@@ -919,7 +919,17 @@ public final class OfferNotificationService extends NotificationListenerService 
         if (AddOnOffer.isLikely(labels)) {
             return OfferRule.evaluateAddOn(AddOnOffer.parse(ActiveRouteStore.load(this), labels), settings);
         }
-        return OfferRule.evaluate(facts, settings);
+        OfferRule.Decision decision = OfferRule.evaluate(facts, settings);
+        // A store on the skip list (0.6.10) is never shown to pass from its notification ("Go to <store>"): left for
+        // review, so nothing chimes or accepts; the screen, read through Peek or by the user, declines it.
+        String store = store(labels);
+        int more = store.indexOf(" · ");
+        if (more > 0) store = store.substring(0, more);
+        if (decision.result == OfferRule.Result.KEEP && SkipList.contains(this, store)) {
+            return new OfferRule.Decision(OfferRule.Result.REVIEW, decision.requiredCents, OfferRule.SKIP_LIST, facts,
+                    decision.scorePercent, decision.minimumScalePercent, false, decision.autopilot).withRules(settings);
+        }
+        return decision;
     }
 
     /**

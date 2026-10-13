@@ -12,7 +12,7 @@ import java.util.List;
  *
  * <p>The store's name ({@link StoreName}) is kept in memory only, for {@link #WINDOW_MS}, and never written: the
  * history lines keep only the minutes and pay, as {@link DecisionLog.StepKind#SAME_STORE_LATER} and
- * {@link DecisionLog.StepKind#SAME_STORE_EARLIER} marks. Single-store offers only; an add-on, an offer with unread pay
+ * {@link DecisionLog.StepKind#SAME_STORE_EARLIER} marks. Single-store offers only (one store read, "Pick up 2 orders" from it included); an add-on, an offer with unread pay
  * or an unread store is left out.
  */
 final class CameBack {
@@ -96,7 +96,8 @@ final class CameBack {
 
     /** As {@link #note}, marking both offers' history lines (main thread, after the later offer was recorded). */
     static void note(Context context, DecisionLog.Entry entry, List<String> labels) {
-        Match match = note(StoreName.read(labels), StoreName.singleStore(labels), entry.addOn,
+        List<String> stores = StoreName.stores(labels);
+        Match match = note(stores.size() == 1 ? stores.get(0) : "", stores.size() == 1, entry.addOn,
                 entry.result == OfferRule.Result.DECLINE, entry.facts, System.currentTimeMillis());
         if (match == null) return;
         DecisionLog.markStep(context, match.earlier, DecisionLog.StepKind.SAME_STORE_LATER, match.laterDetail(),
